@@ -51,44 +51,52 @@ nav{
   margin-top:56px;
   position:relative;
   background:var(--white);
-  border-bottom:1px solid var(--border);
 }
-.hero-gold-rule{position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold);opacity:0.55;z-index:2;}
-.hero-img{
+.hero-gold-rule{
+  position:absolute;top:0;left:0;right:0;
+  height:2px;background:var(--gold);opacity:0.55;z-index:2;
+}
+.hero-img-wrap{
   width:100%;
-  max-height:70vh;
-  object-fit:contain;
-  object-position:center center;
-  display:block;
   background:var(--white);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:200px;
 }
-.hero-no-img{
-  height:300px;
-  background:linear-gradient(135deg,#2A3A35,#1A2828);
+.hero-img-wrap img{
+  width:100%;
+  max-height:65vh;
+  object-fit:contain;
+  display:block;
+}
+.hero-no-img-placeholder{
+  height:240px;
   display:flex;align-items:center;justify-content:center;
+  background:var(--warm);width:100%;
 }
-.hero-overlay{display:none;}
 .hero-badge{
   position:absolute;top:12px;right:12px;z-index:3;
-  background:rgba(45,140,140,0.12);
+  background:rgba(255,255,255,0.92);
   border:1px solid var(--border-teal);
   padding:5px 12px;display:flex;align-items:center;gap:7px;
   backdrop-filter:blur(8px);
 }
 .badge-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);animation:pulse 2s ease-in-out infinite;}
 .badge-text{font-size:11px;color:var(--teal);letter-spacing:0.06em;font-weight:500;}
-.hero-content{
-  padding:16px 20px;
+.hero-info{
+  padding:14px 20px;
   background:var(--white);
   border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
 }
 .hero-tag{
   font-size:9px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;
   color:var(--teal);margin-bottom:4px;
 }
 .hero-title{
-  font-size:clamp(18px,3vw,26px);font-weight:600;
-  color:var(--ink);letter-spacing:-0.02em;line-height:1.2;
+  font-size:clamp(16px,2.5vw,24px);font-weight:600;
+  color:var(--ink);letter-spacing:-0.01em;line-height:1.25;
 }
 
 /* PHOTO STRIP */
@@ -274,16 +282,19 @@ nav{
 <!-- HERO -->
 <div class="hero" id="hero-section">
   <div class="hero-gold-rule"></div>
-  <div class="hero-no-img" id="hero-img-wrap"></div>
-  <div class="hero-overlay"></div>
   <div class="hero-badge" id="hero-badge">
     <div class="badge-dot"></div>
     <span class="badge-text" id="hero-badge-text">Available</span>
   </div>
-  <div class="hero-content">
-    <p class="hero-tag" id="hero-tag"></p>
-    <h1 class="hero-title" id="hero-title"></h1>
+  <div class="hero-img-wrap" id="hero-img-wrap">
+    <div class="hero-no-img-placeholder">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-6 4 6"/></svg>
+    </div>
   </div>
+</div>
+<div class="hero-info">
+  <p class="hero-tag" id="hero-tag"></p>
+  <h1 class="hero-title" id="hero-title"></h1>
 </div>
 
 <!-- PHOTO STRIP -->
@@ -397,8 +408,7 @@ function renderProperty(p) {
   // Hero
   if (p.images && p.images.length > 0) {
     const wrap = document.getElementById('hero-img-wrap');
-    wrap.innerHTML = `<img src="${p.images[0]}" alt="${p.title_en}" style="width:100%;height:100%;object-fit:cover;">`;
-    wrap.className = '';
+    wrap.innerHTML = `<img src="${p.images[0]}" alt="${p.title_en}">`;
   }
   const txLabel = p.transaction_type === 'for_sale' ? { lo:'ຂາຍ', en:'For Sale', zh:'出售' } : { lo:'ໃຫ້ເຊົ່າ', en:'For Rent', zh:'租房' };
   document.getElementById('hero-tag').innerHTML = `<span class="lo-i">${txLabel.lo}</span><span class="en-i">${txLabel.en}</span><span class="zh-i">${txLabel.zh}</span> · <span class="lo-i">${p.district_lo||''}</span><span class="en-i">${p.district_en||''}</span><span class="zh-i">${p.district_zh||''}</span>`;
@@ -416,7 +426,7 @@ function renderProperty(p) {
         document.querySelectorAll('.photo-thumb').forEach(t => t.classList.remove('active'));
         div.classList.add('active');
         const heroWrap = document.getElementById('hero-img-wrap');
-        heroWrap.innerHTML = `<img src="${img}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+        heroWrap.innerHTML = `<img src="${img}" alt="">`;
       };
       strip.appendChild(div);
     });
