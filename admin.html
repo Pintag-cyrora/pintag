@@ -395,9 +395,9 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           <p class="form-section-title">Media</p>
           <div class="form-grid">
             <div class="form-group form-full">
-              <label class="form-label">Google Drive Video File ID</label>
-              <input class="form-input" id="f-video" type="text" placeholder="1cfHy-5iUpmcldZtITp3-5rl_GsQkyxuj">
-              <p class="form-hint">From the Drive share link: drive.google.com/file/d/<strong>THIS_PART</strong>/view</p>
+              <label class="form-label">Video URL</label>
+              <input class="form-input" id="f-video" type="text" placeholder="Paste any video link — TikTok, Facebook, YouTube, Google Drive">
+              <p class="form-hint">Works with: TikTok · Facebook · YouTube · Google Drive · Vimeo. Just paste the full URL.</p>
             </div>
             <div class="form-group form-full">
               <label class="form-label">Property Images (one URL per line)</label>
@@ -560,7 +560,7 @@ async function editListing(id) {
   document.getElementById('f-district-lo').value = p.district_lo || '';
   document.getElementById('f-district-zh').value = p.district_zh || '';
   document.getElementById('f-map').value = p.map_embed_url || '';
-  document.getElementById('f-video').value = p.video_drive_id || '';
+  document.getElementById('f-video').value = p.video_url || p.video_drive_id || '';
   document.getElementById('f-agent').value = p.agent_name || '';
   document.getElementById('f-whatsapp').value = p.whatsapp || '';
   document.getElementById('f-featured').value = String(p.is_featured || false);
@@ -611,7 +611,7 @@ async function saveListing(e) {
     district_lo: document.getElementById('f-district-lo').value.trim() || null,
     district_zh: document.getElementById('f-district-zh').value.trim() || null,
     map_embed_url: document.getElementById('f-map').value.trim() || null,
-    video_drive_id: document.getElementById('f-video').value.trim() || null,
+    video_url: document.getElementById('f-video').value.trim() || null,
     agent_name: document.getElementById('f-agent').value.trim() || null,
     whatsapp: document.getElementById('f-whatsapp').value.trim() || null,
     is_featured: document.getElementById('f-featured').value === 'true',
