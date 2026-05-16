@@ -483,14 +483,24 @@ function renderProperty(p) {
   }
 
   // Map
-  if (p.map_embed_url) {
-    document.getElementById('map-frame').src = p.map_embed_url;
-    const distEn = p.district_en || '';
-    const distLo = p.district_lo || '';
-    const distZh = p.district_zh || '';
-    document.getElementById('map-label').innerHTML = `${distLo} · ${distEn} · ${distZh}`;
+  const mapBox = document.querySelector('.listing-map-box');
+  const distEn = p.district_en || '';
+  const distLo = p.district_lo || '';
+  const distZh = p.district_zh || '';
+  const mapLabel = `${distLo} · ${distEn} · ${distZh}`;
+
+  let mapUrl = p.map_embed_url;
+  if (!mapUrl && (distEn || distLo)) {
+    // Auto-generate map using OpenStreetMap - no API key needed
+    const searchQuery = encodeURIComponent((distEn || distLo) + ', Vientiane, Laos');
+    mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=102.5,17.9,102.7,18.0&layer=mapnik&marker=17.97,102.63`;
+  }
+
+  if (mapUrl) {
+    document.getElementById('map-frame').src = mapUrl;
+    document.getElementById('map-label').innerHTML = mapLabel;
   } else {
-    document.querySelector('.listing-map-box').innerHTML = '<div style="width:100%;height:100%;background:#D4E4D4;display:flex;align-items:center;justify-content:center;"><p style="color:#7A9098;font-size:13px;">Map coming soon</p></div>';
+    mapBox.innerHTML = '<div style="width:100%;height:100%;background:#D4E4D4;display:flex;align-items:center;justify-content:center;"><p style="color:#7A9098;font-size:13px;letter-spacing:0.08em;">ແຜນທີ່ · Map · 地图</p></div>';
   }
 
   // Right panel
