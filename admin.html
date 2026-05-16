@@ -645,7 +645,13 @@ async function saveListing(e) {
   });
 
   const titleEn = document.getElementById('f-title-en').value.trim();
-  const slug = titleEn.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') + '-' + Date.now().toString().slice(-4);
+  const slugBase = titleEn.toLowerCase()
+    .replace(/[^a-z0-9\s-]/g,'')
+    .replace(/\s+/g,'-')
+    .replace(/-+/g,'-')
+    .replace(/^-|-$/g,'')
+    .substring(0, 60);
+  const slug = slugBase + '-' + Date.now().toString().slice(-6);
 
   const body = {
     title_en: titleEn,
