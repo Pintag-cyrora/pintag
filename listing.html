@@ -658,10 +658,21 @@ function getVideoEmbed(url) {
 }
 
 function setLang(lang, btn) {
+  localStorage.setItem('pintag-lang', lang);
   document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
   document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 }
+
+(function(){
+  const saved = localStorage.getItem('pintag-lang');
+  if (saved && saved !== 'lo') {
+    document.body.className = 'lang-' + saved;
+    document.querySelectorAll('.lang-btn').forEach(b => {
+      b.classList.toggle('active', b.textContent.trim() === (saved === 'en' ? 'EN' : '中文'));
+    });
+  }
+})();
 
 loadProperty();
 </script>
