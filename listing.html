@@ -490,11 +490,7 @@ function renderProperty(p) {
   const mapLabel = `${distLo} · ${distEn} · ${distZh}`;
 
   let mapUrl = p.map_embed_url;
-  if (!mapUrl && (distEn || distLo)) {
-    // Auto-generate map using OpenStreetMap - no API key needed
-    const searchQuery = encodeURIComponent((distEn || distLo) + ', Vientiane, Laos');
-    mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=102.5,17.9,102.7,18.0&layer=mapnik&marker=17.97,102.63`;
-  }
+
 
   if (mapUrl) {
     document.getElementById('map-frame').src = mapUrl;
