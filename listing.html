@@ -186,6 +186,17 @@ nav{
 .l-agent strong{color:var(--ink);font-weight:500;}
 .l-disclaimer{font-size:11px;color:var(--ink-muted);font-style:italic;}
 
+/* VIDEO ORIENTATION */
+.listing-grid.video-vertical .listing-left{
+  grid-template-rows:2fr 1fr;
+}
+.listing-grid.video-horizontal .listing-left{
+  grid-template-rows:1fr 1fr;
+}
+.listing-grid.video-vertical{
+  min-height:700px;
+}
+
 /* MOBILE */
 @media(max-width:700px){
   .listing-grid{grid-template-columns:1fr;}
@@ -390,6 +401,13 @@ function renderProperty(p) {
   const videoBox = document.getElementById('video-box');
   const videoUrl = p.video_url || (p.video_drive_id ? `https://drive.google.com/file/d/${p.video_drive_id}/view` : null);
   if (videoUrl) {
+    // Set orientation class immediately on load
+    const isVertical = videoUrl.includes('tiktok.com') ||
+                       (videoUrl.includes('instagram.com') && videoUrl.includes('/reel/'));
+    const grid = document.querySelector('.listing-grid');
+    if (grid) {
+      grid.classList.add(isVertical ? 'video-vertical' : 'video-horizontal');
+    }
     const embedHtml = getVideoEmbed(videoUrl);
     if (embedHtml) {
       // Show thumbnail with play button, load embed on click
@@ -498,20 +516,31 @@ function renderProperty(p) {
 function loadVideo(coverEl, url) {
   const embedHtml = getVideoEmbed(url);
   if (!embedHtml) return;
+
+  // Detect orientation based on platform
+  const isVertical = url.includes('tiktok.com') || 
+                     (url.includes('instagram.com') && url.includes('/reel/'));
+  
+  // Adjust grid layout
+  const grid = document.querySelector('.listing-grid');
+  if (grid) {
+    grid.classList.remove('video-vertical', 'video-horizontal');
+    grid.classList.add(isVertical ? 'video-vertical' : 'video-horizontal');
+  }
+
   const container = document.getElementById('video-embed-container');
   container.innerHTML = embedHtml;
   container.style.display = 'block';
-  container.style.width = '100%';
-  container.style.height = '100%';
   container.style.position = 'absolute';
   container.style.inset = '0';
-  // Make the iframe inside fill completely
+
   const iframe = container.querySelector('iframe, video');
   if (iframe) {
     iframe.style.width = '100%';
     iframe.style.height = '100%';
     iframe.style.position = 'absolute';
     iframe.style.inset = '0';
+    iframe.style.border = 'none';
   }
   coverEl.style.display = 'none';
 }
