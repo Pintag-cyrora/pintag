@@ -448,7 +448,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             <div class="form-group form-full">
               <label class="form-label">Property Images</label>
               <div class="upload-zone" id="upload-zone" onclick="document.getElementById('img-file-input').click()">
-                <input type="file" id="img-file-input" multiple accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="handleImageUpload(this.files)">
+                <input type="file" id="img-file-input" multiple accept="image/*" style="display:none;" onchange="handleImageUpload(this.files)">
                 <div class="upload-zone-inner" id="upload-zone-inner">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
                   <p style="font-size:14px;font-weight:500;color:var(--ink);margin-top:8px;">Click to upload photos</p>
@@ -764,7 +764,7 @@ async function handleImageUpload(files) {
         headers: {
           'apikey': SUPABASE_ANON_UPLOAD,
           'Authorization': 'Bearer ' + SUPABASE_ANON_UPLOAD,
-          'Content-Type': file.type,
+          'Content-Type': file.type || 'image/jpeg',
           'x-upsert': 'true'
         },
         body: file
