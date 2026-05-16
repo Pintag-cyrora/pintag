@@ -188,13 +188,17 @@ nav{
 
 /* VIDEO ORIENTATION */
 .listing-grid.video-vertical .listing-left{
-  grid-template-rows:2fr 1fr;
+  grid-template-rows:2fr 1fr !important;
 }
 .listing-grid.video-horizontal .listing-left{
-  grid-template-rows:1fr 1fr;
+  grid-template-rows:1fr 1fr !important;
 }
 .listing-grid.video-vertical{
-  min-height:700px;
+  min-height:720px;
+}
+/* TikTok embed needs object-fit contain not cover */
+.listing-grid.video-vertical #video-embed-container iframe{
+  object-fit:contain;
 }
 
 /* MOBILE */
@@ -402,7 +406,7 @@ function renderProperty(p) {
   const videoUrl = p.video_url || (p.video_drive_id ? `https://drive.google.com/file/d/${p.video_drive_id}/view` : null);
   if (videoUrl) {
     // Set orientation class immediately on load
-    const isVertical = videoUrl.includes('tiktok.com') ||
+    const isVertical = (videoUrl.includes('tiktok.com') && videoUrl.includes('/video/')) ||
                        (videoUrl.includes('instagram.com') && videoUrl.includes('/reel/'));
     const grid = document.querySelector('.listing-grid');
     if (grid) {
@@ -503,9 +507,16 @@ function renderProperty(p) {
 
   // Buttons
   const btns = document.getElementById('l-btns');
-  const dlUrl = p.video_url || (p.video_drive_id ? `https://drive.google.com/uc?export=download&id=${p.video_drive_id}` : null);
+  // Download button - uses dedicated download_url (Google Drive watermarked version)
+  const dlUrl = p.download_url || (p.video_drive_id ? `https://drive.google.com/uc?export=download&id=${p.video_drive_id}` : null);
   if (dlUrl) {
-    btns.innerHTML += `<a href="${dlUrl}" target="_blank" class="btn-download">↓ <span class="lo-i">ດາວໂຫຼດວິດີໂອ</span><span class="en-i">Download Video</span><span class="zh-i">下载视频</span></a>`;
+    // Convert Google Drive share link to direct download
+    let directDl = dlUrl;
+    const driveId = dlUrl.match(/[-\w]{25,}/);
+    if (dlUrl.includes('drive.google.com') && driveId) {
+      directDl = `https://drive.google.com/uc?export=download&id=${driveId[0]}`;
+    }
+    btns.innerHTML += `<a href="${directDl}" target="_blank" class="btn-download">↓ <span class="lo-i">ດາວໂຫຼດວິດີໂອ (Pintag)</span><span class="en-i">Download Video (Pintag)</span><span class="zh-i">下载视频 (Pintag)</span></a>`;
   }
   btns.innerHTML += `<a href="https://wa.me/${(p.whatsapp||'').replace(/[^0-9]/g,'')}?text=${waMsg}" target="_blank" class="btn-wa"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> WhatsApp</a>`;
 
@@ -518,7 +529,7 @@ function loadVideo(coverEl, url) {
   if (!embedHtml) return;
 
   // Detect orientation based on platform
-  const isVertical = url.includes('tiktok.com') || 
+  const isVertical = (url.includes('tiktok.com') && url.includes('/video/')) ||
                      (url.includes('instagram.com') && url.includes('/reel/'));
   
   // Adjust grid layout
@@ -555,10 +566,18 @@ function getVideoEmbed(url) {
     return `<iframe src="https://www.youtube.com/embed/${ytMatch[1]}?rel=0" frameborder="0" allowfullscreen allow="autoplay; picture-in-picture" style="width:100%;height:100%;display:block;"></iframe>`;
   }
 
-  // TikTok
+  // TikTok - full URL
   const ttMatch = url.match(/tiktok\.com\/@[\w.]+\/video\/(\d+)/);
   if (ttMatch) {
-    return `<iframe src="https://www.tiktok.com/embed/v2/${ttMatch[1]}" frameborder="0" allowfullscreen style="width:100%;height:100%;display:block;"></iframe>`;
+    return `<iframe src="https://www.tiktok.com/embed/v2/${ttMatch[1]}" frameborder="0" allowfullscreen allow="autoplay" style="width:100%;height:100%;display:block;"></iframe>`;
+  }
+  // TikTok - short link fallback (vt.tiktok.com or vm.tiktok.com)
+  if (url.includes('tiktok.com') && !url.includes('/@')) {
+    return `<div style="width:100%;height:100%;background:#1A2428;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center;">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="#38A8A8"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.34 6.34 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.76a4.85 4.85 0 01-1.01-.07z"/></svg>
+      <p style="color:rgba(255,255,255,0.7);font-size:13px;line-height:1.6;">ໃຊ້ລິ້ງ TikTok ເຕັມ<br>Use full TikTok URL<br><span style="color:#38A8A8;font-size:11px;">tiktok.com/@username/video/123...</span></p>
+      <a href="${url}" target="_blank" style="background:#38A8A8;color:white;padding:10px 20px;text-decoration:none;font-size:13px;font-weight:500;border-radius:3px;">Watch on TikTok ↗</a>
+    </div>`;
   }
 
   // Facebook

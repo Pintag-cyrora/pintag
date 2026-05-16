@@ -165,6 +165,47 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .form-message.success{background:rgba(30,107,69,0.1);color:var(--green);border:1px solid rgba(30,107,69,0.2);}
 .form-message.error{background:rgba(192,57,43,0.08);color:var(--red);border:1px solid rgba(192,57,43,0.2);}
 
+/* IMAGE UPLOAD */
+.upload-zone{
+  border:2px dashed var(--border-teal, rgba(45,140,140,0.3));
+  border-radius:4px;padding:32px 20px;text-align:center;cursor:pointer;
+  background:var(--warm);transition:all 0.2s;
+}
+.upload-zone:hover,.upload-zone.drag-over{
+  border-color:var(--teal);background:rgba(45,140,140,0.05);
+}
+.upload-zone-inner{display:flex;flex-direction:column;align-items:center;gap:0;}
+.upload-progress-bar{
+  height:4px;background:var(--border);border-radius:2px;overflow:hidden;
+}
+.upload-progress-fill{
+  height:100%;background:var(--teal);border-radius:2px;
+  transition:width 0.3s;width:0%;
+}
+.upload-status{font-size:12px;color:var(--ink-muted);margin-top:6px;}
+.image-preview-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));
+  gap:8px;margin-top:12px;
+}
+.image-preview-item{
+  position:relative;aspect-ratio:1;border-radius:3px;overflow:hidden;
+  border:1px solid var(--border);background:var(--warm);
+}
+.image-preview-item img{width:100%;height:100%;object-fit:cover;display:block;}
+.image-preview-item .img-remove{
+  position:absolute;top:4px;right:4px;
+  width:20px;height:20px;border-radius:50%;
+  background:rgba(192,57,43,0.85);color:#fff;
+  border:none;cursor:pointer;font-size:12px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+  line-height:1;
+}
+.image-preview-item .img-order{
+  position:absolute;bottom:4px;left:4px;
+  background:rgba(26,36,40,0.75);color:#fff;
+  font-size:9px;font-weight:500;padding:2px 5px;border-radius:2px;
+}
+
 /* LANDMARK BUILDER */
 .landmark-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
 .landmark-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;}
@@ -395,14 +436,31 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           <p class="form-section-title">Media</p>
           <div class="form-grid">
             <div class="form-group form-full">
-              <label class="form-label">Video URL</label>
-              <input class="form-input" id="f-video" type="text" placeholder="Paste any video link — TikTok, Facebook, YouTube, Google Drive">
-              <p class="form-hint">Works with: TikTok · Facebook · YouTube · Google Drive · Vimeo. Just paste the full URL.</p>
+              <label class="form-label">Video URL — <span style="color:var(--teal);font-weight:400;">Social Media Embed</span></label>
+              <input class="form-input" id="f-video" type="text" placeholder="TikTok, Facebook, YouTube link — promotes agent's social media">
+              <p class="form-hint">Paste the agent's TikTok, Facebook, or YouTube video link. Viewers can watch and follow their social media.</p>
             </div>
             <div class="form-group form-full">
-              <label class="form-label">Property Images (one URL per line)</label>
-              <textarea class="form-textarea" id="f-images" rows="4" placeholder="https://... (image URL 1)&#10;https://... (image URL 2)"></textarea>
-              <p class="form-hint">Upload photos to Google Drive, make them public, paste the direct image URLs here</p>
+              <label class="form-label">Download URL — <span style="color:var(--teal);font-weight:400;">Watermarked Video</span></label>
+              <input class="form-input" id="f-download-url" type="text" placeholder="Google Drive download link of watermarked Pintag video">
+              <p class="form-hint">Upload the watermarked video to Google Drive → Share → Copy link. Agents download this version with Pintag watermark.</p>
+            </div>
+            <div class="form-group form-full">
+              <label class="form-label">Property Images</label>
+              <div class="upload-zone" id="upload-zone" onclick="document.getElementById('img-file-input').click()">
+                <input type="file" id="img-file-input" multiple accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="handleImageUpload(this.files)">
+                <div class="upload-zone-inner" id="upload-zone-inner">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                  <p style="font-size:14px;font-weight:500;color:var(--ink);margin-top:8px;">Click to upload photos</p>
+                  <p style="font-size:12px;color:var(--ink-muted);margin-top:4px;">JPG, PNG, WebP · Max 10MB each · Multiple files allowed</p>
+                </div>
+              </div>
+              <div id="upload-progress" style="display:none;margin-top:8px;">
+                <div class="upload-progress-bar"><div class="upload-progress-fill" id="progress-fill"></div></div>
+                <p class="upload-status" id="upload-status">Uploading...</p>
+              </div>
+              <div id="image-preview-grid" class="image-preview-grid"></div>
+              <input type="hidden" id="f-images" value="[]">
             </div>
           </div>
         </div>
@@ -561,10 +619,12 @@ async function editListing(id) {
   document.getElementById('f-district-zh').value = p.district_zh || '';
   document.getElementById('f-map').value = p.map_embed_url || '';
   document.getElementById('f-video').value = p.video_url || p.video_drive_id || '';
+  document.getElementById('f-download-url').value = p.download_url || '';
   document.getElementById('f-agent').value = p.agent_name || '';
   document.getElementById('f-whatsapp').value = p.whatsapp || '';
   document.getElementById('f-featured').value = String(p.is_featured || false);
-  if (p.images && p.images.length) document.getElementById('f-images').value = p.images.join('\n');
+  if (p.images && p.images.length) populateExistingImages(p.images);
+  else populateExistingImages([]);
   document.getElementById('landmark-list').innerHTML = '';
   const landmarks = p.landmarks || [];
   if (landmarks.length) landmarks.forEach(l => addLandmark(l));
@@ -583,8 +643,6 @@ async function saveListing(e) {
     const dist = row.querySelector('.lm-dist').value.trim();
     if (name) landmarks.push({ name_en: name, name_lo: name, name_zh: name, distance: dist });
   });
-
-  const images = document.getElementById('f-images').value.split('\n').map(s=>s.trim()).filter(Boolean);
 
   const titleEn = document.getElementById('f-title-en').value.trim();
   const slug = titleEn.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') + '-' + Date.now().toString().slice(-4);
@@ -612,11 +670,12 @@ async function saveListing(e) {
     district_zh: document.getElementById('f-district-zh').value.trim() || null,
     map_embed_url: document.getElementById('f-map').value.trim() || null,
     video_url: document.getElementById('f-video').value.trim() || null,
+    download_url: document.getElementById('f-download-url').value.trim() || null,
     agent_name: document.getElementById('f-agent').value.trim() || null,
     whatsapp: document.getElementById('f-whatsapp').value.trim() || null,
     is_featured: document.getElementById('f-featured').value === 'true',
     landmarks: landmarks,
-    images: images
+    images: JSON.parse(document.getElementById('f-images').value || '[]')
   };
 
   const editId = document.getElementById('edit-id').value;
@@ -661,6 +720,111 @@ function addLandmark(data) {
     <button type="button" class="btn-remove" onclick="this.parentElement.remove()">×</button>
   `;
   list.appendChild(row);
+}
+
+// ── IMAGE UPLOAD ──
+const SUPABASE_URL_UPLOAD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SUPABASE_ANON_UPLOAD = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+let uploadedImages = [];
+
+// Drag and drop
+const zone = document.getElementById('upload-zone');
+if (zone) {
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    handleImageUpload(e.dataTransfer.files);
+  });
+}
+
+async function handleImageUpload(files) {
+  if (!files || files.length === 0) return;
+  const progress = document.getElementById('upload-progress');
+  const fill = document.getElementById('progress-fill');
+  const status = document.getElementById('upload-status');
+  progress.style.display = 'block';
+
+  const fileArr = Array.from(files);
+  let completed = 0;
+
+  for (const file of fileArr) {
+    if (file.size > 10 * 1024 * 1024) {
+      status.textContent = `${file.name} is too large (max 10MB)`;
+      continue;
+    }
+    status.textContent = `Uploading ${file.name}...`;
+    const ext = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    
+    try {
+      const res = await fetch(`${SUPABASE_URL_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_UPLOAD,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_UPLOAD,
+          'Content-Type': file.type,
+          'x-upsert': 'true'
+        },
+        body: file
+      });
+
+      if (res.ok) {
+        const publicUrl = `${SUPABASE_URL_UPLOAD}/storage/v1/object/public/property-images/${fileName}`;
+        uploadedImages.push(publicUrl);
+        completed++;
+        fill.style.width = `${(completed / fileArr.length) * 100}%`;
+        addImagePreview(publicUrl, uploadedImages.length - 1);
+        updateImagesField();
+        status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
+      } else {
+        const err = await res.text();
+        status.textContent = `Error uploading ${file.name}`;
+        console.error(err);
+      }
+    } catch (err) {
+      status.textContent = `Error: ${err.message}`;
+    }
+  }
+
+  setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
+}
+
+function addImagePreview(url, index) {
+  const grid = document.getElementById('image-preview-grid');
+  const div = document.createElement('div');
+  div.className = 'image-preview-item';
+  div.dataset.url = url;
+  div.innerHTML = `
+    <img src="${url}" alt="Property photo">
+    <button class="img-remove" onclick="removeImage('${url}', this.parentElement)" type="button">×</button>
+    <span class="img-order">${index + 1}</span>
+  `;
+  grid.appendChild(div);
+}
+
+function removeImage(url, el) {
+  uploadedImages = uploadedImages.filter(u => u !== url);
+  el.remove();
+  updateImagesField();
+  // Reorder numbers
+  document.querySelectorAll('.image-preview-item .img-order').forEach((span, i) => {
+    span.textContent = i + 1;
+  });
+}
+
+function updateImagesField() {
+  document.getElementById('f-images').value = JSON.stringify(uploadedImages);
+}
+
+// When editing existing listing - show existing images
+function populateExistingImages(images) {
+  uploadedImages = images || [];
+  const grid = document.getElementById('image-preview-grid');
+  grid.innerHTML = '';
+  uploadedImages.forEach((url, i) => addImagePreview(url, i));
+  updateImagesField();
 }
 </script>
 </body>
