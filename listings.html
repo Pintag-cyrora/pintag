@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pintag · ລາຍການທັງໝົດ</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --teal:#2D8C8C;--teal-light:#38A8A8;--teal-dim:rgba(45,140,140,0.08);
+  --ink:#1A2428;--ink-soft:#3D5058;--ink-muted:#7A9098;
+  --warm:#F7F3EC;--off:#F2EDE4;--white:#fff;
+  --border:rgba(26,36,40,0.08);--gold:#B8960C;
+}
+body{font-family:'DM Sans',sans-serif;font-weight:400;font-size:15px;line-height:1.7;background:var(--warm);color:var(--ink);-webkit-font-smoothing:antialiased;}
+
+/* LANG */
+.lo{display:block;}.en{display:none;}.zh{display:none;}
+.lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
+body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
+body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}body.lang-en .zh-i{display:none;}
+body.lang-zh .lo{display:none;}body.lang-zh .en{display:none;}body.lang-zh .zh{display:block;}
+body.lang-zh .lo-i{display:none;}body.lang-zh .en-i{display:none;}body.lang-zh .zh-i{display:inline;}
+
+/* NAV */
+nav{
+  position:sticky;top:0;z-index:200;height:56px;
+  display:flex;align-items:center;justify-content:space-between;padding:0 24px;
+  background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);
+}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
+.nav-wordmark{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;}
+.nav-right{display:flex;align-items:center;gap:8px;}
+.lang-switcher{display:flex;gap:2px;background:var(--warm);border:1px solid var(--border);border-radius:4px;padding:3px;}
+.lang-btn{font-size:11px;font-weight:500;padding:5px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:3px;transition:all 0.2s;font-family:'DM Sans',sans-serif;}
+.lang-btn.active{background:var(--ink);color:#fff;}
+.nav-home{font-size:12px;color:var(--ink-muted);text-decoration:none;letter-spacing:0.04em;}
+.nav-home:hover{color:var(--teal);}
+
+/* HEADER */
+.page-header{background:var(--white);border-bottom:1px solid var(--border);padding:28px 24px 0;}
+.page-header-inner{max-width:1100px;margin:0 auto;}
+.page-title{font-size:clamp(20px,4vw,30px);font-weight:600;color:var(--ink);letter-spacing:-0.02em;margin-bottom:4px;}
+.page-count{font-size:13px;color:var(--ink-muted);margin-bottom:20px;}
+
+/* FILTERS */
+.filters{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:16px;overflow-x:auto;scrollbar-width:none;}
+.filters::-webkit-scrollbar{display:none;}
+.filter-btn{
+  font-size:12px;font-weight:500;padding:7px 14px;border-radius:20px;
+  border:1px solid var(--border);background:var(--white);color:var(--ink-soft);
+  cursor:pointer;white-space:nowrap;transition:all 0.2s;font-family:'DM Sans',sans-serif;
+}
+.filter-btn.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+.filter-btn:hover:not(.active){background:var(--warm);border-color:var(--ink-muted);}
+
+/* CONTENT */
+.page-content{max-width:1100px;margin:0 auto;padding:28px 24px;}
+
+/* GRID */
+.listings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
+
+/* CARD */
+.prop-card{
+  background:var(--white);border:1px solid var(--border);
+  text-decoration:none;display:block;
+  transition:transform 0.2s,box-shadow 0.2s;
+  overflow:hidden;
+}
+.prop-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(26,36,40,0.08);}
+.prop-card-img{
+  position:relative;height:200px;overflow:hidden;background:var(--ink);
+}
+.prop-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.4s ease;}
+.prop-card:hover .prop-card-img img{transform:scale(1.03);}
+.prop-card-no-img{width:100%;height:100%;background:linear-gradient(135deg,#2A3A35,#1A2828);display:flex;align-items:center;justify-content:center;}
+.card-status{
+  position:absolute;top:12px;left:12px;
+  font-size:9px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;
+  padding:4px 10px;border-radius:2px;backdrop-filter:blur(8px);
+}
+.status-available{background:rgba(30,107,69,0.85);color:#fff;}
+.status-sold{background:rgba(192,57,43,0.85);color:#fff;}
+.status-rented{background:rgba(154,98,0,0.85);color:#fff;}
+.status-under_offer{background:rgba(45,140,140,0.85);color:#fff;}
+.card-featured{
+  position:absolute;top:12px;right:12px;
+  font-size:9px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;
+  padding:4px 10px;background:rgba(184,150,12,0.85);color:#fff;border-radius:2px;
+  backdrop-filter:blur(8px);
+}
+.prop-card-body{padding:18px 16px;}
+.card-tag{font-size:9px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:var(--teal);margin-bottom:6px;}
+.card-title{font-size:15px;font-weight:500;color:var(--ink);margin-bottom:4px;line-height:1.35;}
+.card-loc{font-size:12px;color:var(--ink-muted);margin-bottom:10px;display:flex;align-items:center;gap:5px;}
+.card-specs{display:flex;gap:12px;margin-bottom:12px;}
+.card-spec{font-size:12px;color:var(--ink-soft);}
+.card-spec span{font-weight:500;color:var(--ink);}
+.card-price{font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;}
+.card-price-req{font-size:13px;color:var(--ink-muted);font-style:italic;}
+.card-divider{height:1px;background:var(--border);margin:10px 0;}
+.card-agent{font-size:11px;color:var(--ink-muted);}
+
+/* EMPTY / LOADING */
+.state-center{text-align:center;padding:80px 24px;color:var(--ink-muted);}
+.state-title{font-size:18px;font-weight:500;color:var(--ink);margin-bottom:8px;}
+.loading-dots{display:flex;gap:8px;justify-content:center;margin-bottom:16px;}
+.loading-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);animation:dotPulse 1.2s ease-in-out infinite;}
+.loading-dot:nth-child(2){animation-delay:0.2s;}
+.loading-dot:nth-child(3){animation-delay:0.4s;}
+@keyframes dotPulse{0%,100%{opacity:0.3;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
+
+@media(max-width:600px){
+  .listings-grid{grid-template-columns:1fr;}
+  nav,.page-header-inner,.page-content{padding-left:16px;padding-right:16px;}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">
+    <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
+      <circle cx="11" cy="9" r="6" fill="#38A8A8"/>
+      <circle cx="20" cy="15" r="3.5" fill="#fff" stroke="#38A8A8" stroke-width="0.5"/>
+    </svg>
+    <span class="nav-wordmark">Pintag</span>
+  </a>
+  <div class="nav-right">
+    <div class="lang-switcher">
+      <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
+      <button class="lang-btn" onclick="setLang('en',this)">EN</button>
+      <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
+    </div>
+    <a href="index.html" class="nav-home">← <span class="lo-i">ໜ້າຫຼັກ</span><span class="en-i">Home</span><span class="zh-i">首页</span></a>
+  </div>
+</nav>
+
+<div class="page-header">
+  <div class="page-header-inner">
+    <h1 class="page-title">
+      <span class="lo-i">ລາຍການທັງໝົດ</span>
+      <span class="en-i">All Listings</span>
+      <span class="zh-i">所有房源</span>
+    </h1>
+    <p class="page-count" id="count-text">Loading...</p>
+    <div class="filters" id="filters">
+      <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">
+        <span class="lo-i">ທັງໝົດ</span><span class="en-i">All</span><span class="zh-i">全部</span>
+      </button>
+      <button class="filter-btn" data-filter="for_sale" onclick="setFilter('for_sale',this)">
+        <span class="lo-i">ຂາຍ</span><span class="en-i">For Sale</span><span class="zh-i">出售</span>
+      </button>
+      <button class="filter-btn" data-filter="for_rent" onclick="setFilter('for_rent',this)">
+        <span class="lo-i">ໃຫ້ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">租房</span>
+      </button>
+      <button class="filter-btn" data-filter="house" onclick="setFilter('house',this)">
+        <span class="lo-i">ເຮືອນ</span><span class="en-i">House</span><span class="zh-i">住宅</span>
+      </button>
+      <button class="filter-btn" data-filter="villa" onclick="setFilter('villa',this)">
+        <span class="lo-i">ວິລລ່າ</span><span class="en-i">Villa</span><span class="zh-i">别墅</span>
+      </button>
+      <button class="filter-btn" data-filter="apartment" onclick="setFilter('apartment',this)">
+        <span class="lo-i">ອາພາດເມັນ</span><span class="en-i">Apartment</span><span class="zh-i">公寓</span>
+      </button>
+      <button class="filter-btn" data-filter="land" onclick="setFilter('land',this)">
+        <span class="lo-i">ທີ່ດິນ</span><span class="en-i">Land</span><span class="zh-i">土地</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="page-content">
+  <div id="listings-container" class="listings-grid">
+    <div style="grid-column:1/-1;" class="state-center">
+      <div class="loading-dots"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>
+      <p class="lo-i">ກຳລັງໂຫຼດ...</p><p class="en-i">Loading...</p><p class="zh-i">加载中...</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+
+let allProperties = [];
+let currentFilter = 'all';
+
+async function loadListings() {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/properties?order=is_featured.desc,created_at.desc`, {
+    headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
+  });
+  allProperties = await res.json();
+  renderListings();
+}
+
+function setFilter(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderListings();
+}
+
+function renderListings() {
+  const filtered = currentFilter === 'all' ? allProperties : allProperties.filter(p =>
+    p.transaction_type === currentFilter || p.property_type === currentFilter
+  );
+  const lang = document.body.className === 'lang-en' ? 'en' : document.body.className === 'lang-zh' ? 'zh' : 'lo';
+  const countText = document.getElementById('count-text');
+  countText.innerHTML = `<span class="lo-i">${filtered.length} ລາຍການ · ວຽງຈັນ</span><span class="en-i">${filtered.length} listings · Vientiane</span><span class="zh-i">${filtered.length} 个房源 · 万象</span>`;
+
+  const container = document.getElementById('listings-container');
+  if (!filtered.length) {
+    container.innerHTML = `<div style="grid-column:1/-1;" class="state-center"><p class="state-title lo-i">ບໍ່ມີລາຍການ</p><p class="state-title en-i">No listings found</p><p class="state-title zh-i">暂无房源</p><p class="lo-i">ລອງປ່ຽນໂຕກອງ</p><p class="en-i">Try a different filter</p><p class="zh-i">尝试其他筛选条件</p></div>`;
+    return;
+  }
+
+  container.innerHTML = '';
+  filtered.forEach(p => {
+    const card = document.createElement('a');
+    card.className = 'prop-card';
+    card.href = `listing.html?slug=${p.slug}`;
+
+    const title = p[`title_${lang}`] || p.title_en;
+    const district = p[`district_${lang}`] || p.district_en || '';
+    const txLabel = { lo: p.transaction_type === 'for_sale' ? 'ຂາຍ' : 'ໃຫ້ເຊົ່າ', en: p.transaction_type === 'for_sale' ? 'For Sale' : 'For Rent', zh: p.transaction_type === 'for_sale' ? '出售' : '租房' };
+    const imgHtml = (p.images && p.images.length > 0) ? `<img src="${p.images[0]}" alt="${p.title_en}" loading="lazy">` : `<div class="prop-card-no-img"></div>`;
+    const specsHtml = [
+      p.bedrooms ? `<span class="card-spec"><span>${p.bedrooms}</span> <span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">beds</span><span class="zh-i">卧</span></span>` : '',
+      p.bathrooms ? `<span class="card-spec"><span>${p.bathrooms}</span> <span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">baths</span><span class="zh-i">浴</span></span>` : '',
+      p.sqm ? `<span class="card-spec"><span>${p.sqm}</span> sqm</span>` : ''
+    ].filter(Boolean).join('');
+
+    card.innerHTML = `
+      <div class="prop-card-img">
+        ${imgHtml}
+        <span class="card-status status-${p.status}">${p.status}</span>
+        ${p.is_featured ? '<span class="card-featured">Featured</span>' : ''}
+      </div>
+      <div class="prop-card-body">
+        <p class="card-tag"><span class="lo-i">${txLabel.lo}</span><span class="en-i">${txLabel.en}</span><span class="zh-i">${txLabel.zh}</span> · ${p.property_type || ''}</p>
+        <p class="card-title">${title}</p>
+        <p class="card-loc">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+          ${district}, <span class="lo-i">ວຽງຈັນ</span><span class="en-i">Vientiane</span><span class="zh-i">万象</span>
+        </p>
+        ${specsHtml ? `<div class="card-specs">${specsHtml}</div>` : ''}
+        ${p.price_display ? `<p class="card-price">${p.price_display}</p>` : `<p class="card-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>`}
+        ${p.agent_name ? `<div class="card-divider"></div><p class="card-agent">${p.agent_name} · Pintag</p>` : ''}
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+function setLang(lang, btn) {
+  document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderListings();
+}
+
+loadListings();
+</script>
+</body>
+</html>

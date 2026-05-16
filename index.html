@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pintag · ລາຍການອະສັງຫາວຽງຈັນ</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+:root{
+  --teal:#2D8C8C;
+  --teal-light:#38A8A8;
+  --teal-dim:rgba(45,140,140,0.1);
+  --ink:#1A2428;
+  --ink-soft:#3D5058;
+  --ink-muted:#7A9098;
+  --warm:#F7F3EC;
+  --off:#F2EDE4;
+  --white:#FFFFFF;
+  --border:rgba(26,36,40,0.08);
+  --border-teal:rgba(45,140,140,0.2);
+  --gold:#B8960C;
+}
+body{
+  background:var(--white);
+  color:var(--ink);
+  font-family:'DM Sans',sans-serif;
+  font-weight:400;
+  font-size:16px;
+  line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+
+/* ── LANGUAGE ── */
+.lo{display:block;}.en{display:none;}.zh{display:none;}
+.lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
+body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
+body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}body.lang-en .zh-i{display:none;}
+body.lang-zh .lo{display:none;}body.lang-zh .en{display:none;}body.lang-zh .zh{display:block;}
+body.lang-zh .lo-i{display:none;}body.lang-zh .en-i{display:none;}body.lang-zh .zh-i{display:inline;}
+
+/* ── NAV ── */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  height:58px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;
+  background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border);
+}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
+.nav-wordmark{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;}
+.nav-right{display:flex;align-items:center;gap:8px;}
+.lang-switcher{
+  display:flex;align-items:center;gap:2px;
+  background:var(--warm);border:1px solid var(--border);border-radius:4px;padding:3px;
+}
+.lang-btn{
+  font-size:11px;font-weight:500;padding:5px 10px;border:none;background:transparent;
+  color:var(--ink-muted);cursor:pointer;border-radius:3px;transition:all 0.2s;
+  font-family:'DM Sans',sans-serif;
+}
+.lang-btn.active{background:var(--ink);color:#fff;}
+.nav-cta{
+  font-size:12px;font-weight:500;color:#fff;text-decoration:none;
+  padding:9px 16px;background:var(--teal);border-radius:3px;
+  transition:background 0.2s;white-space:nowrap;
+}
+.nav-cta:hover{background:var(--teal-light);}
+
+/* ── HERO ── */
+.hero{
+  margin-top:58px;position:relative;
+  height:70vh;min-height:460px;
+  overflow:hidden;
+}
+.hero-img{width:100%;height:100%;object-fit:cover;object-position:center 35%;display:block;}
+.hero-overlay{
+  position:absolute;inset:0;
+  background:linear-gradient(to bottom,rgba(26,36,40,0.15) 0%,rgba(26,36,40,0.05) 30%,rgba(26,36,40,0.7) 100%);
+}
+.hero-gold-rule{position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold);opacity:0.55;z-index:2;}
+.hero-badge{
+  position:absolute;top:20px;right:20px;z-index:3;
+  background:rgba(255,255,255,0.12);backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,0.18);
+  padding:7px 14px;display:flex;align-items:center;gap:8px;
+}
+.badge-dot{width:6px;height:6px;border-radius:50%;background:var(--teal-light);animation:pulse 2s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+.badge-text{font-size:11px;color:rgba(255,255,255,0.85);letter-spacing:0.08em;font-weight:400;}
+.hero-content{position:absolute;bottom:0;left:0;right:0;padding:24px 24px;z-index:2;}
+.hero-eyebrow{
+  font-size:10px;font-weight:500;letter-spacing:0.22em;text-transform:uppercase;
+  color:rgba(255,255,255,0.55);margin-bottom:8px;
+  display:flex;align-items:center;gap:10px;
+}
+.eyebrow-line{width:20px;height:1px;background:rgba(255,255,255,0.3);}
+.hero-headline{
+  font-size:clamp(18px,3.8vw,36px);font-weight:600;line-height:1.15;
+  color:#fff;margin-bottom:8px;letter-spacing:-0.02em;
+}
+.hero-tagline{
+  font-family:'Cormorant Garamond',serif;
+  font-size:clamp(15px,3vw,22px);font-weight:300;font-style:italic;
+  color:rgba(255,255,255,0.6);margin-bottom:24px;letter-spacing:0.02em;
+}
+.hero-btns{display:flex;gap:10px;flex-wrap:wrap;}
+.btn-white{
+  display:inline-flex;align-items:center;gap:8px;padding:13px 22px;
+  background:#fff;color:var(--ink);font-size:14px;font-weight:500;
+  text-decoration:none;border-radius:3px;transition:all 0.2s;
+}
+.btn-white:hover{background:var(--warm);}
+.btn-outline-w{
+  display:inline-flex;align-items:center;gap:8px;padding:13px 22px;
+  background:transparent;color:rgba(255,255,255,0.75);font-size:14px;font-weight:400;
+  text-decoration:none;border-radius:3px;border:1px solid rgba(255,255,255,0.25);transition:all 0.2s;
+}
+.btn-outline-w:hover{background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.5);}
+
+/* ── VALUE STRIP ── */
+.value-strip{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  border-bottom:1px solid var(--border);background:var(--white);
+}
+.value-item{
+  padding:22px 16px;border-right:1px solid var(--border);
+  display:flex;flex-direction:column;gap:5px;
+}
+.value-item:last-child{border-right:none;}
+.value-icon{
+  width:30px;height:30px;border-radius:50%;
+  background:var(--teal-dim);border:1px solid var(--border-teal);
+  display:flex;align-items:center;justify-content:center;margin-bottom:4px;
+}
+.value-title{font-size:14px;font-weight:500;color:var(--ink);line-height:1.3;}
+.value-sub{font-size:12px;font-weight:300;color:var(--ink-muted);line-height:1.5;}
+
+/* ── SECTIONS ── */
+.sec-light{background:var(--white);padding:72px 24px;}
+.sec-warm{background:var(--warm);padding:72px 24px;}
+.sec-inner{max-width:680px;margin:0 auto;}
+.sec-label{
+  font-size:9px;font-weight:500;letter-spacing:0.25em;text-transform:uppercase;
+  color:var(--teal);margin-bottom:16px;display:flex;align-items:center;gap:12px;
+}
+.sec-label::after{content:'';flex:1;height:1px;background:var(--border);}
+.sec-title{
+  font-size:clamp(22px,5vw,34px);font-weight:600;line-height:1.2;
+  color:var(--ink);margin-bottom:8px;letter-spacing:-0.02em;
+}
+.sec-title .accent{color:var(--teal);}
+.sec-body{font-size:16px;font-weight:300;line-height:1.85;color:var(--ink-soft);}
+
+/* ── STEPS ── */
+.steps{display:flex;flex-direction:column;margin-top:32px;}
+.step{
+  display:grid;grid-template-columns:44px 1fr;padding:24px 0;
+  border-bottom:1px solid var(--border);gap:0 16px;
+}
+.step:last-child{border-bottom:none;}
+.step-num{
+  font-family:'Cormorant Garamond',serif;
+  font-size:24px;font-weight:300;color:var(--teal);opacity:0.45;line-height:1;padding-top:3px;
+}
+.step-title{font-size:15px;font-weight:500;color:var(--ink);margin-bottom:6px;}
+.step-lo{font-size:12px;font-weight:300;color:var(--teal);margin-bottom:6px;opacity:0.65;}
+.step-desc{font-size:14px;font-weight:300;color:var(--ink-soft);line-height:1.8;}
+
+/* ── FEATURED LISTING ── */
+.featured-listing{
+  background:var(--off);border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+  overflow:hidden;margin-top:32px;
+}
+.featured-top{display:none;}
+.featured-video{position:relative;background:var(--ink);overflow:hidden;}
+.video-embed{width:100%;height:100%;min-height:480px;border:none;display:block;}
+.featured-info{padding:36px 32px;display:flex;flex-direction:column;justify-content:space-between;}
+.feat-tag{font-size:9px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;}
+.feat-title{font-size:22px;font-weight:600;color:var(--ink);margin-bottom:6px;line-height:1.3;}
+.feat-loc{font-size:13px;font-weight:300;color:var(--ink-muted);margin-bottom:10px;display:flex;align-items:center;gap:5px;}
+.feat-landmarks{
+  padding:10px 12px;background:rgba(45,140,140,0.06);
+  border:1px solid var(--border-teal);border-radius:2px;
+  margin-bottom:12px;
+}
+.feat-landmark-title{font-size:9px;font-weight:500;letter-spacing:0.16em;text-transform:uppercase;color:var(--teal);margin-bottom:6px;}
+.feat-landmark-item{font-size:13px;font-weight:400;color:var(--ink-soft);padding:4px 0;display:flex;gap:8px;}
+.feat-landmark-item span:first-child{color:var(--ink-muted);}
+.feat-specs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;}
+.feat-spec{padding:8px 10px;background:var(--white);border:1px solid var(--border);}
+.feat-spec-val{font-size:15px;font-weight:500;color:var(--ink);line-height:1;}
+.feat-spec-key{font-size:9px;font-weight:400;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-muted);margin-top:2px;}
+.feat-price{font-size:26px;font-weight:600;color:var(--ink);margin-bottom:16px;letter-spacing:-0.01em;}
+.feat-price span{font-size:13px;font-weight:300;color:var(--ink-muted);}
+.feat-btns{display:flex;flex-direction:column;gap:8px;}
+.btn-download{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:11px 16px;background:var(--ink);color:#fff;
+  font-size:13px;font-weight:500;text-decoration:none;border-radius:3px;
+  transition:all 0.2s;letter-spacing:0.04em;
+}
+.btn-download:hover{background:var(--ink-soft);}
+.btn-wa-small{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:11px 16px;background:#25D366;color:#fff;
+  font-size:13px;font-weight:500;text-decoration:none;border-radius:3px;transition:all 0.2s;
+}
+.btn-wa-small:hover{background:#20BD5C;}
+
+/* MAP */
+.featured-map{height:280px;border-top:1px solid var(--border);overflow:hidden;position:relative;}
+.featured-map iframe{width:100%;height:100%;border:none;display:block;}
+.map-label{
+  position:absolute;bottom:10px;left:10px;
+  background:rgba(26,36,40,0.85);color:rgba(255,255,255,0.85);
+  font-size:10px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;
+  padding:5px 10px;backdrop-filter:blur(8px);pointer-events:none;
+}
+
+.featured-footer{
+  padding:12px 18px;border-top:1px solid var(--border);background:var(--white);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.feat-footer-note{font-size:13px;font-weight:300;color:var(--ink-muted);}
+.feat-footer-link{font-size:13px;font-weight:500;color:var(--teal);text-decoration:none;}
+
+
+/* NEW FEATURED GRID */
+.feat-new-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  min-height:600px;
+}
+.feat-left{
+  display:grid;
+  grid-template-rows:1fr 1fr;
+  border-right:1px solid var(--border);
+}
+.feat-video-box{
+  position:relative;
+  overflow:hidden;
+  background:var(--ink);
+  border-bottom:1px solid var(--border);
+}
+.feat-map-box{
+  position:relative;
+  overflow:hidden;
+  background:#D4E4D4;
+}
+.feat-right{
+  padding:36px 32px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  overflow-y:auto;
+}
+.feat-desc{
+  font-size:14px;
+  font-weight:300;
+  line-height:1.85;
+  color:var(--ink-soft);
+  margin:12px 0 16px;
+  padding:14px 0;
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+}
+.feat-divider{height:1px;background:var(--border);margin:12px 0;}
+/* ── MOCKUP SECTION ── */
+.mockup-section{padding:72px 24px;background:var(--warm);}
+.mockup-inner{max-width:680px;margin:0 auto;}
+.mockup-wrap{
+  display:grid;grid-template-columns:1fr 1.2fr;
+  gap:48px;align-items:center;margin-top:32px;
+}
+.mockup-text{}
+.mockup-title{font-size:clamp(20px,4vw,30px);font-weight:600;color:var(--ink);letter-spacing:-0.02em;margin-bottom:12px;line-height:1.2;}
+.mockup-title .accent{color:var(--teal);}
+.mockup-body{font-size:15px;font-weight:300;color:var(--ink-soft);line-height:1.85;margin-bottom:20px;}
+.mockup-features{display:flex;flex-direction:column;gap:8px;}
+.mockup-feature{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:10px 12px;background:var(--white);border:1px solid var(--border);
+}
+.mf-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);flex-shrink:0;margin-top:5px;}
+.mf-text{font-size:13px;font-weight:400;color:var(--ink-soft);line-height:1.55;}
+.mf-text strong{color:var(--ink);font-weight:500;}
+
+/* phone mockup SVG container */
+.phone-mockup{
+  display:flex;justify-content:center;align-items:center;
+}
+
+/* ── AGENT PORTFOLIO ── */
+.portfolio-section{
+  background:var(--ink);padding:56px 24px;text-align:center;
+  position:relative;overflow:hidden;
+}
+.portfolio-section::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(to right,transparent,var(--teal),transparent);opacity:0.3;
+}
+.portfolio-inner{max-width:520px;margin:0 auto;position:relative;z-index:1;}
+.portfolio-eyebrow{
+  font-size:9px;font-weight:500;letter-spacing:0.25em;text-transform:uppercase;
+  color:var(--teal-light);margin-bottom:16px;
+}
+.portfolio-title{
+  font-size:clamp(22px,5vw,34px);font-weight:600;color:#F7F3EC;
+  line-height:1.2;margin-bottom:12px;letter-spacing:-0.02em;
+}
+.portfolio-sub{font-size:14px;font-weight:300;color:rgba(255,255,255,0.45);line-height:1.85;margin-bottom:24px;}
+.portfolio-url{
+  display:inline-flex;align-items:center;gap:10px;
+  padding:12px 20px;background:rgba(45,140,140,0.12);
+  border:1px solid rgba(45,140,140,0.3);font-size:14px;font-weight:500;
+  color:var(--teal-light);letter-spacing:0.04em;border-radius:3px;
+  margin-bottom:24px;
+}
+
+/* ── FREE OFFER ── */
+.free-offer{
+  background:var(--off);padding:64px 24px;text-align:center;
+  position:relative;overflow:hidden;
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+}
+.free-offer-inner{max-width:520px;margin:0 auto;position:relative;z-index:1;}
+.free-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:9px;font-weight:500;letter-spacing:0.22em;text-transform:uppercase;
+  color:var(--teal);padding:7px 14px;border:1px solid var(--border-teal);
+  border-radius:2px;margin-bottom:16px;
+}
+.free-title{
+  font-size:clamp(22px,5vw,34px);font-weight:600;color:var(--ink);
+  line-height:1.2;margin-bottom:6px;letter-spacing:-0.02em;
+}
+.free-title .accent{color:var(--teal);}
+.free-avail{font-size:13px;font-weight:300;color:var(--ink-muted);margin-bottom:8px;font-style:italic;}
+.free-sub{font-size:15px;font-weight:300;color:var(--ink-soft);line-height:1.85;margin-bottom:28px;}
+.free-items{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:8px;margin-bottom:28px;text-align:left;
+}
+.free-item{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:12px 14px;background:var(--white);
+  border:1px solid var(--border);border-radius:3px;
+}
+.free-item-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);flex-shrink:0;margin-top:5px;}
+.free-item-text{font-size:13px;font-weight:400;color:var(--ink-soft);line-height:1.5;}
+
+/* ── CTA ── */
+.cta-section{padding:72px 24px;background:var(--white);}
+.cta-grid{
+  max-width:680px;margin:0 auto;
+  display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start;
+}
+.cta-title{
+  font-size:clamp(22px,4vw,32px);font-weight:600;line-height:1.2;
+  color:var(--ink);margin-bottom:12px;letter-spacing:-0.02em;
+}
+.cta-title .accent{color:var(--teal);}
+.cta-body{font-size:15px;font-weight:300;color:var(--ink-soft);line-height:1.85;}
+.cta-form{display:flex;flex-direction:column;gap:10px;}
+.btn-wa-main{
+  display:flex;align-items:center;gap:12px;padding:15px 20px;
+  background:#25D366;color:#fff;font-size:15px;font-weight:500;
+  text-decoration:none;border-radius:3px;transition:background 0.2s;
+}
+.btn-wa-main:hover{background:#20BD5C;}
+.cta-note{font-size:13px;font-weight:300;color:var(--ink-muted);line-height:1.85;text-align:center;}
+.cta-turnaround{
+  margin-top:8px;padding:10px 14px;
+  background:var(--warm);border-left:2px solid var(--teal);
+  font-size:12px;font-weight:400;color:var(--ink-soft);line-height:1.65;
+}
+
+/* ── FOOTER ── */
+footer{
+  background:var(--ink);padding:48px 24px 28px;
+  display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center;
+}
+.footer-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
+.footer-word{font-size:16px;font-weight:600;color:rgba(255,255,255,0.35);letter-spacing:-0.02em;}
+.footer-tagline{
+  font-family:'Cormorant Garamond',serif;
+  font-size:15px;font-style:italic;color:rgba(255,255,255,0.18);
+}
+.footer-about{
+  max-width:480px;font-size:13px;font-weight:300;
+  color:rgba(255,255,255,0.22);line-height:1.85;
+  border-top:1px solid rgba(255,255,255,0.07);
+  padding-top:20px;
+}
+.footer-about p+p{margin-top:6px;}
+.footer-links{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;}
+.footer-link{font-size:10px;font-weight:300;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.18);text-decoration:none;transition:color 0.2s;}
+.footer-link:hover{color:var(--teal-light);}
+.footer-copy{font-size:9px;color:rgba(255,255,255,0.1);letter-spacing:0.08em;}
+.footer-divider{width:40px;height:1px;background:rgba(255,255,255,0.08);}
+
+
+.video-cover{
+  position:absolute;inset:0;
+  cursor:pointer;z-index:2;
+}
+.video-cover-overlay{
+  position:absolute;inset:0;
+  background:rgba(26,36,40,0.3);
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:14px;
+  transition:background 0.2s;
+}
+.video-cover-overlay:hover{background:rgba(26,36,40,0.45);}
+.video-play-btn{
+  width:64px;height:64px;border-radius:50%;
+  border:2px solid rgba(255,255,255,0.7);
+  background:rgba(255,255,255,0.15);
+  display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(8px);
+  transition:all 0.2s;
+}
+.video-cover-overlay:hover .video-play-btn{background:var(--teal);border-color:var(--teal);}
+.video-play-label{
+  font-size:12px;font-weight:500;
+  color:rgba(255,255,255,0.85);
+  letter-spacing:0.1em;text-transform:uppercase;
+}
+/* ── MOBILE ── */
+@media(max-width:600px){
+  .value-strip{grid-template-columns:1fr 1fr;}
+  .value-item:nth-child(2){border-right:none;}
+  .feat-new-grid{grid-template-columns:1fr;}
+  .feat-left{grid-template-rows:240px 200px;}
+  .feat-left{border-right:none;border-bottom:1px solid var(--border);}
+  .feat-right{padding:24px 16px;}
+  .mockup-wrap{grid-template-columns:1fr;}
+  .phone-mockup{display:none;}
+  .cta-grid{grid-template-columns:1fr;}
+  .free-items{grid-template-columns:1fr;}
+  nav{padding:0 14px;}
+  .nav-cta{padding:8px 12px;font-size:12px;}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">
+    <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
+      <circle cx="11" cy="9" r="6" fill="#38A8A8"/>
+      <circle cx="20" cy="15" r="3.5" fill="#fff" stroke="#38A8A8" stroke-width="0.5"/>
+    </svg>
+    <span class="nav-wordmark">Pintag</span>
+  </a>
+  <div class="nav-right">
+    <div class="lang-switcher">
+      <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
+      <button class="lang-btn" onclick="setLang('en',this)">EN</button>
+      <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
+    </div>
+    <a href="https://wa.me/8562055546963?text=ສະບາຍດີ%20Pintag%0Aຂ້ອຍຢາກສົ່ງລາຍການອະສັງຫາ%0A%0Aປະເພດ%3A%0Aສະຖານທີ%3A%0Aລາຄາ%3A%0Aຫ້ອງນອນ%3A%0Aຫ້ອງນ້ຳ%3A%0Aລາຍລະອຽດ%3A" class="nav-cta" target="_blank">
+      <span class="lo-i">ສົ່ງລາຍການ</span>
+      <span class="en-i">Submit Listing</span>
+      <span class="zh-i">提交房源</span>
+    </a>
+  </div>
+</nav>
+
+<!-- ① HERO -->
+<section class="hero">
+  <div class="hero-gold-rule"></div>
+  <img src="pintag-hero.png" alt="Vientiane Property — Pintag" class="hero-img">
+  <div class="hero-overlay"></div>
+  <div class="hero-badge">
+    <div class="badge-dot"></div>
+    <span class="badge-text">10 listings live · ວຽງຈັນ</span>
+  </div>
+  <div class="hero-content">
+    <div class="hero-eyebrow">
+      <span class="eyebrow-line"></span>
+      <span class="lo-i">ອະສັງຫາລິມະຊັບ · ວຽງຈັນ</span>
+      <span class="en-i">Real Estate · Vientiane</span>
+      <span class="zh-i">万象房产</span>
+    </div>
+    <h1 class="hero-headline">
+      <span class="lo">ທ່ານສາມາດລົງລາຍລະອຽດ ແລະ ນຳສະເໜີອະສັງຫາ<br>ໄດ້ຢ່າງເປັນລະບຽບ ແລະ ມືອາຊີບ<br><span style="font-size:0.72em;color:rgba(255,255,255,0.6);font-weight:400;">ໂດຍຫຼີກລ້ຽງການເຮັດວຽກເດີມຊ້ຳໄປຊ້ຳມາ</span></span>
+      <span class="en">Share listings professionally —<br>without repeating yourself.</span>
+      <span class="zh">专业分享房源，<br>无需重复解答。</span>
+    </h1>
+    <p class="hero-tagline">Pin a location. Tag a property.</p>
+    <div class="hero-btns">
+      <a href="https://wa.me/8562055546963?text=ສະບາຍດີ%20Pintag%0Aຂ້ອຍຢາກສົ່ງລາຍການອະສັງຫາ%0A%0Aປະເພດ%3A%0Aສະຖານທີ%3A%0Aລາຄາ%3A%0Aຫ້ອງນອນ%3A%0Aຫ້ອງນ້ຳ%3A%0Aລາຍລະອຽດ%3A" class="btn-white" target="_blank">
+        <span class="lo-i">ສົ່ງລາຍການຂອງທ່ານ →</span>
+        <span class="en-i">Submit Your Listing →</span>
+        <span class="zh-i">提交您的房源 →</span>
+      </a>
+      <a href="listings.html" class="btn-outline-w" target="_blank">
+        <span class="lo-i">ເບິ່ງລາຍການ</span>
+        <span class="en-i">Browse Listings</span>
+        <span class="zh-i">查看房源</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ② VALUE STRIP -->
+<div class="value-strip">
+  <div class="value-item">
+    <div class="value-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+    </div>
+    <p class="value-title"><span class="lo-i">ລາຍການເປັນລະບົບ</span><span class="en-i">Organized listings</span><span class="zh-i">整洁的房源</span></p>
+    <p class="value-sub"><span class="lo-i">ຂໍ້ມູນຄົບໃນໜ້າດຽວ</span><span class="en-i">All info in one place</span><span class="zh-i">信息集中一处</span></p>
+  </div>
+  <div class="value-item">
+    <div class="value-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+    </div>
+    <p class="value-title"><span class="lo-i">ສະຖານທີ່ຊັດເຈນ</span><span class="en-i">Location first</span><span class="zh-i">位置优先</span></p>
+    <p class="value-sub"><span class="lo-i">ແຜນທີ່ + ສະຖານທີ່ໃກ້ຄຽງ</span><span class="en-i">Map + nearby landmarks</span><span class="zh-i">地图与周边地标</span></p>
+  </div>
+  <div class="value-item">
+    <div class="value-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
+    </div>
+    <p class="value-title"><span class="lo-i">ແບ່ງປັນງ່າຍ</span><span class="en-i">Easy to share</span><span class="zh-i">轻松分享</span></p>
+    <p class="value-sub"><span class="lo-i">ລິ້ງດຽວ ຄົບທຸກຢ່າງ</span><span class="en-i">One link, everything inside</span><span class="zh-i">一个链接，包含一切</span></p>
+  </div>
+  <div class="value-item">
+    <div class="value-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.4 3.14 2 2 0 012 .18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 7.91a16 16 0 006.29 6.29l1.31-1.31a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+    </div>
+    <p class="value-title"><span class="lo-i">ຫຼຸດຄຳຖາມຊ້ຳ</span><span class="en-i">Fewer repeat questions</span><span class="zh-i">减少重复询问</span></p>
+    <p class="value-sub"><span class="lo-i">ຜູ້ຊື້ເຫັນຂໍ້ມູນກ່ອນ</span><span class="en-i">Buyers see details first</span><span class="zh-i">买家先看详情</span></p>
+  </div>
+</div>
+
+<!-- ③ HOW IT WORKS -->
+<section class="sec-warm">
+  <div class="sec-inner">
+    <p class="sec-label"><span class="lo-i">ວິທີການ</span><span class="en-i">How it works</span><span class="zh-i">如何运作</span></p>
+    <h2 class="sec-title">
+      <span class="lo">3 ຂັ້ນຕອນ. <span class="accent">ບໍ່ຍຸ່ງຍາກ.</span></span>
+      <span class="en">3 steps. <span class="accent">Zero chaos.</span></span>
+      <span class="zh">3个步骤。<span class="accent">简单高效。</span></span>
+    </h2>
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">01</span>
+        <div>
+          <p class="step-title"><span class="lo-i">ສົ່ງລາຍລະອຽດທາງ WhatsApp</span><span class="en-i">Send your property details via WhatsApp</span><span class="zh-i">通过 WhatsApp 发送房源资料</span></p>
+          <p class="step-lo"><span class="lo-i">ສົ່ງຮູບ, ວິດີໂອ ແລະ ລາຄາ — ບໍ່ຕ້ອງກອກຟອມ</span><span class="en-i">Photos, video, price — no complicated forms</span><span class="zh-i">照片、视频、价格 — 无需复杂表格</span></p>
+          <p class="step-desc"><span class="lo-i">ສົ່ງສິ່ງທີ່ທ່ານມີຜ່ານ WhatsApp ໄດ້ເລີຍ. ບໍ່ມີຂັ້ນຕອນຍຸ່ງຍາກ — ສົ່ງຕາມທີ່ທ່ານສະດວກ.</span><span class="en-i">Send your property details, photos, video, and price through WhatsApp. No complicated forms — just send what you already have.</span><span class="zh-i">通过 WhatsApp 把房源资料、照片、视频和价格发送给我们即可。无需复杂表格，直接发送现有资料。</span></p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">02</span>
+        <div>
+          <p class="step-title"><span class="lo-i">ລາຍການຂອງທ່ານໄດ້ຮັບໜ້າ Pintag ທີ່ເປັນລະບົບ</span><span class="en-i">Your listing gets a structured Pintag page</span><span class="zh-i">您的房源获得专业 Pintag 页面</span></p>
+          <p class="step-lo"><span class="lo-i">ຮູບ, ວິດີໂອ, ແຜນທີ່, ສະຖານທີ່ໃກ້ຄຽງ, 3 ພາສາ</span><span class="en-i">Photos, video, map, landmarks, 3 languages</span><span class="zh-i">照片、视频、地图、地标、三语</span></p>
+          <p class="step-desc"><span class="lo-i">ທຸກຢ່າງຖືກຈັດລຽງໃນໜ້າທີ່ເບິ່ງງ່າຍ — ພ້ອມຂໍ້ມູນເປັນ 3 ພາສາ ແລະ ປຸ່ມ WhatsApp ສຳລັບຜູ້ຊື້.</span><span class="en-i">Everything organized into one clean page — trilingual information and a direct WhatsApp button for serious buyers.</span><span class="zh-i">所有资料整理成一个清晰专业的页面，包含三语信息和买家直接联系按钮。</span></p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">03</span>
+        <div>
+          <p class="step-title"><span class="lo-i">ແຊຣ໌ລິ້ງ — ໄດ້ຮັບຜູ້ຊື້ຈິງຈັງ</span><span class="en-i">Share once. Reach serious buyers.</span><span class="zh-i">分享链接，精准触达真实买家</span></p>
+          <p class="step-lo"><span class="lo-i">ລິ້ງດຽວ — ລາຄາ, ສະຖານທີ່, ລາຍລະອຽດ ທຸກຢ່າງ</span><span class="en-i">One link — price, location, details, everything</span><span class="zh-i">一个链接 — 价格、位置、详情，一应俱全</span></p>
+          <p class="step-desc"><span class="lo-i">ວາງລິ້ງ Pintag ລົງໃນ Facebook ຫຼື TikTok. ຄົນທີ່ຄລິກເຫັນທຸກຢ່າງທັນທີ — ບໍ່ຕ້ອງຖາມລາຄາ, ບໍ່ຕ້ອງຂໍຮູບ.</span><span class="en-i">Share your Pintag link on Facebook or TikTok. Viewers immediately see all details — no need to ask for price or photos again.</span><span class="zh-i">将 Pintag 链接分享至 Facebook 或 TikTok。查看者立即看到所有详情 — 无需再问价格或索要照片。</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ④ FEATURED LISTING WITH MAP -->
+<section class="sec-light" style="padding-left:0;padding-right:0;">
+  <div style="max-width:680px;margin:0 auto;padding:0 24px;">
+    <p class="sec-label"><span class="lo-i">ຕົວຢ່າງລາຍການ</span><span class="en-i">Featured listing</span><span class="zh-i">精选房源</span></p>
+    <h2 class="sec-title">
+      <span class="lo">ນີ້ຄືສິ່ງທີ່ <span class="accent">ລາຍການ Pintag</span> ໜ້າຕາເປັນແນວໃດ</span>
+      <span class="en">This is what a <span class="accent">Pintag listing</span> looks like.</span>
+      <span class="zh">这就是 <span class="accent">Pintag 房源</span>页面的样子</span>
+    </h2>
+  </div>
+    <div class="featured-listing">
+      <!-- NEW LAYOUT: Left = video (top) + map (bottom) | Right = full info panel -->
+      <div class="feat-new-grid">
+
+        <!-- LEFT COLUMN: video top half, map bottom half -->
+        <div class="feat-left">
+          <div class="feat-video-box" id="videoBox">
+            <div class="video-cover" id="videoCover" onclick="playVideo()">
+              <img src="pintag-villa.png" alt="Villa Thad Luang Tai" style="width:100%;height:100%;object-fit:cover;display:block;">
+              <div class="video-cover-overlay">
+                <div class="video-play-btn">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+                <span class="video-play-label">
+                  <span class="lo-i">ຫຼິ້ນວິດີໂອ</span>
+                  <span class="en-i">Play Video</span>
+                  <span class="zh-i">播放视频</span>
+                </span>
+              </div>
+            </div>
+            <iframe class="video-embed" id="videoFrame"
+              src="" data-src="https://drive.google.com/file/d/1cfHy-5iUpmcldZtITp3-5rl_GsQkyxuj/preview"
+              frameborder="0" allow="autoplay" allowfullscreen style="display:none;">
+            </iframe>
+          </div>
+          <div class="feat-map-box">
+            <iframe
+              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d7640.287!2d102.62315!3d17.96522!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x31246813a14d0da5%3A0x6e5b6e3c5f5b7b1a!2sThat%20Luang%20Tai%2C%20Vientiane%2C%20Laos!5e0!3m2!1sen!2sla!4v1715000000001!5m2!1sen!2sla"
+              frameborder="0" allowfullscreen loading="lazy" style="width:100%;height:100%;border:none;display:block;">
+            </iframe>
+            <div class="map-label">ທາດຫລວງໃຕ້ · Thad Luang Tai · 塔銮南</div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: full info -->
+        <div class="feat-right">
+          <p class="feat-tag"><span class="lo-i">ຂາຍ · ທາດຫລວງໃຕ້</span><span class="en-i">For Sale · Thad Luang Tai</span><span class="zh-i">出售 · 塔銮南区</span></p>
+          <p class="feat-title"><span class="lo-i">ວິລລ່າພ້ອມສະລອຍນ້ຳ · ຮ່ອມ 1</span><span class="en-i">Villa with Pool · Lane 1</span><span class="zh-i">带泳池别墅 · 一巷</span></p>
+          <p class="feat-loc">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+            <span class="lo-i">ທາດຫລວງໃຕ້, ວຽງຈັນ</span><span class="en-i">Thad Luang Tai, Vientiane</span><span class="zh-i">塔銮南区, 万象</span>
+          </p>
+
+          <div class="feat-desc">
+            <p class="lo">ເຮືອນຫຼູຫຼາ 2 ຊັ້ນ ພ້ອມສະລອຍນ້ຳ ຕັ້ງຢູ່ບ້ານທາດຫລວງໃຕ້ ຮ່ອມ 1. ຕັ້ງຢູ່ໃນເຂດທີ່ສະຫງົບ ໃກ້ທາດຫລວງ ແລະ ຕະຫຼາດດອນຈັນ. ເໝາະສຳລັບຄອບຄົວ, ຜູ້ບໍລິຫານ ຫຼື ການລົງທຶນ. ເຮືອນຕົກແຕ່ງດ້ວຍໄມ້ທຳມະຊາດ, ຫ້ອງໂຖງກວ້າງ, ຫ້ອງຄົວທີ່ທັນສະໄໝ ແລະ ສວນຫຍ້າກວ້າງຂວາງ.</p>
+            <p class="en">A luxury two-story villa with private pool located in Thad Luang Tai Lane 1. Set in a quiet, established neighborhood close to That Luang monument and Donechan Market. Warm wooden interiors, spacious living areas, modern kitchen, and a large garden — ideal for families, executives, or investors seeking quality residential property in central Vientiane.</p>
+            <p class="zh">位于塔銮南一巷的豪华两层别墅，配有私人泳池。地处安静成熟社区，毗邻塔銮寺与东昌市场。室内采用温馨木质装修，客厅宽敞，厨房现代，花园宽阔，非常适合家庭居住、高管入住或投资用途。</p>
+          </div>
+
+          <div class="feat-divider"></div>
+
+          <div class="feat-landmarks">
+            <p class="feat-landmark-title"><span class="lo-i">ໃກ້ຄຽງ</span><span class="en-i">Nearby</span><span class="zh-i">周边</span></p>
+            <div class="feat-landmark-item"><span>ທາດຫລວງ</span><span>5 min</span></div>
+            <div class="feat-landmark-item"><span>ຕະຫຼາດດອນຈັນ</span><span>8 min</span></div>
+            <div class="feat-landmark-item"><span>ສະໜາມບິນ</span><span>15 min</span></div>
+          </div>
+
+          <div class="feat-specs">
+            <div class="feat-spec">
+              <p class="feat-spec-val">4</p>
+              <p class="feat-spec-key"><span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">Bedrooms</span><span class="zh-i">卧室</span></p>
+            </div>
+            <div class="feat-spec">
+              <p class="feat-spec-val">4</p>
+              <p class="feat-spec-key"><span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">Bathrooms</span><span class="zh-i">浴室</span></p>
+            </div>
+            <div class="feat-spec">
+              <p class="feat-spec-val">471</p>
+              <p class="feat-spec-key">SQM</p>
+            </div>
+            <div class="feat-spec">
+              <p class="feat-spec-val">2</p>
+              <p class="feat-spec-key"><span class="lo-i">ຊັ້ນ</span><span class="en-i">Floors</span><span class="zh-i">层</span></p>
+            </div>
+          </div>
+
+          <p class="feat-price">USD 360,000 <span><span class="lo-i">ຂາຍ</span><span class="en-i">For Sale</span><span class="zh-i">出售</span></span></p>
+
+          <div class="feat-btns">
+            <a href="https://drive.google.com/uc?export=download&id=1cfHy-5iUpmcldZtITp3-5rl_GsQkyxuj" target="_blank" class="btn-download">
+              ↓ <span class="lo-i">ດາວໂຫຼດວິດີໂອ</span><span class="en-i">Download Video</span><span class="zh-i">下载视频</span>
+            </a>
+            <a href="https://wa.me/8562055546963?text=ສະບາຍດີ%2C%20ຂ້ອຍເຫັນລາຍການ%20Pintag%3A%20ວິລລ່າທາດຫລວງໃຕ້%20%E2%80%94%20ຢາກສອບຖາມເພີ່ມ" class="btn-wa-small" target="_blank">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              WhatsApp
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="featured-footer">
+        <span class="feat-footer-note">
+          <span class="lo-i">ລາຍການໂດຍ Keomany · Listed on Pintag · ທຳອິດ: ພຶດສະພາ 2025</span>
+          <span class="en-i">Listed by Keomany · First booking: May 2025</span>
+          <span class="zh-i">由 Keomany 发布 · 首次预订: 2025年5月</span>
+        </span>
+        <a href="listings.html" class="feat-footer-link" target="_blank">
+          <span class="lo-i">ເບິ່ງລາຍການທັງໝົດ →</span>
+          <span class="en-i">View all listings →</span>
+          <span class="zh-i">查看所有房源 →</span>
+        </a>
+      </div>
+    </div>
+</section>
+
+<!-- ⑤ PRODUCT MOCKUP -->
+<div class="mockup-section">
+  <div class="mockup-inner">
+    <p class="sec-label"><span class="lo-i">ໜ້າ Pintag ຂອງທ່ານ</span><span class="en-i">Your Pintag listing page</span><span class="zh-i">您的 Pintag 房源页面</span></p>
+    <div class="mockup-wrap">
+      <div class="mockup-text">
+        <h2 class="mockup-title">
+          <span class="lo">ນີ້ຄືສິ່ງທີ່ Agent ແລະ ຜູ້ຊື້<br><span class="accent">ຈະເຫັນ</span></span>
+          <span class="en">This is what agents<br>and buyers <span class="accent">see.</span></span>
+          <span class="zh">这就是经纪人和买家<br><span class="accent">看到的页面</span></span>
+        </h2>
+        <p class="mockup-body">
+          <span class="lo-i">ລາຍການ Pintag ທຸກໜ້າ ມີໂຄງສ້າງດຽວກັນ — ເຂົ້າໃຈງ່າຍ, ເບິ່ງສວຍ, ແລະ ໃຊ້ງານໄດ້ທັນທີ.</span>
+          <span class="en-i">Every Pintag listing page follows the same structure — easy to understand, professional, and ready to share immediately.</span>
+          <span class="zh-i">每个 Pintag 房源页面都遵循相同的结构 — 清晰易懂，专业美观，随时可以分享。</span>
+        </p>
+        <div class="mockup-features">
+          <div class="mockup-feature"><div class="mf-dot"></div><p class="mf-text"><strong><span class="lo-i">ສະຫຼັບພາສາ</span><span class="en-i">Language toggle</span><span class="zh-i">语言切换</span></strong> — <span class="lo-i">ລາວ · English · 中文 ທັນທີ</span><span class="en-i">Lao · English · Chinese instantly</span><span class="zh-i">老挝语 · 英语 · 中文，即时切换</span></p></div>
+          <div class="mockup-feature"><div class="mf-dot"></div><p class="mf-text"><strong><span class="lo-i">ແຜນທີ່ + ສະຖານທີ່ໃກ້ຄຽງ</span><span class="en-i">Map + landmarks</span><span class="zh-i">地图与周边地标</span></strong> — <span class="lo-i">ທຸກລາຍການ</span><span class="en-i">every listing</span><span class="zh-i">每个房源必备</span></p></div>
+          <div class="mockup-feature"><div class="mf-dot"></div><p class="mf-text"><strong><span class="lo-i">ວິດີໂອ + ດາວໂຫຼດ</span><span class="en-i">Video + download</span><span class="zh-i">视频与下载</span></strong> — <span class="lo-i">Agent ດາວໂຫຼດໄດ້ທັນທີ</span><span class="en-i">agents download directly</span><span class="zh-i">经纪人可直接下载</span></p></div>
+          <div class="mockup-feature"><div class="mf-dot"></div><p class="mf-text"><strong>WhatsApp</strong> — <span class="lo-i">ປຸ່ມຕິດຕໍ່ໂດຍກົງ, ຂໍ້ຄວາມຖືກຕັ້ງໄວ້ລ່ວງໜ້າ</span><span class="en-i">pre-filled message, one tap</span><span class="zh-i">预填消息，一键联系</span></p></div>
+        </div>
+      </div>
+      <div class="phone-mockup">
+        <!-- Inline SVG phone mockup -->
+        <svg width="220" height="480" viewBox="0 0 220 480" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="photoGrad2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#1A2428" stop-opacity="0.1"/>
+              <stop offset="100%" stop-color="#1A2428" stop-opacity="0.65"/>
+            </linearGradient>
+            <clipPath id="screenClip">
+              <rect x="18" y="28" width="184" height="424" rx="16"/>
+            </clipPath>
+          </defs>
+
+          <!-- Phone frame -->
+          <rect x="10" y="10" width="200" height="460" rx="24" fill="#1A2428" stroke="#2D8C8C" stroke-width="1.5"/>
+          <!-- Screen background -->
+          <rect x="18" y="28" width="184" height="424" rx="16" fill="#F7F3EC"/>
+          <!-- Notch -->
+          <rect x="80" y="22" width="60" height="10" rx="5" fill="#0F1A1E"/>
+
+          <!-- NAV BAR -->
+          <rect x="18" y="28" width="184" height="26" fill="white"/>
+          <circle cx="34" cy="41" r="6" fill="#38A8A8"/>
+          <text x="43" y="45" font-family="DM Sans" font-size="8" font-weight="600" fill="#1A2428">Pintag</text>
+          <rect x="128" y="34" width="66" height="14" rx="3" fill="#F7F3EC" stroke="#E0D8CC" stroke-width="0.5"/>
+          <rect x="129" y="35" width="20" height="12" rx="2" fill="#1A2428"/>
+          <text x="133" y="45" font-family="DM Sans" font-size="5.5" fill="white">ລາວ</text>
+          <text x="153" y="45" font-family="DM Sans" font-size="5.5" fill="#7A9098">EN</text>
+          <text x="167" y="45" font-family="DM Sans" font-size="5.5" fill="#7A9098">中文</text>
+
+          <!-- HERO PHOTO -->
+          <rect x="18" y="54" width="184" height="88" fill="#2C3E38" clip-path="url(#screenClip)"/>
+          <rect x="18" y="54" width="184" height="88" fill="url(#photoGrad2)"/>
+          <!-- Gold rule -->
+          <rect x="18" y="54" width="184" height="1.5" fill="#B8960C" opacity="0.55"/>
+          <!-- Play button on photo -->
+          <circle cx="110" cy="85" r="14" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>
+          <polygon points="107,79 107,91 118,85" fill="white"/>
+          <!-- Location badge -->
+          <rect x="22" y="128" width="80" height="10" rx="2" fill="rgba(26,36,40,0.65)"/>
+          <text x="26" y="136" font-family="DM Sans" font-size="5.5" fill="#38A8A8">ທາດຫລວງໃຕ້ · Vientiane</text>
+
+          <!-- TITLE + TAG -->
+          <rect x="18" y="142" width="184" height="44" fill="white"/>
+          <text x="24" y="153" font-family="DM Sans" font-size="5.5" font-weight="500" fill="#2D8C8C">FOR SALE · THAD LUANG TAI</text>
+          <text x="24" y="164" font-family="DM Sans" font-size="9" font-weight="600" fill="#1A2428">ວິລລ່າພ້ອມສະລອຍນ້ຳ</text>
+          <text x="24" y="175" font-family="DM Sans" font-size="7" fill="#3D5058">Villa with Pool · Lane 1</text>
+
+          <!-- DESCRIPTION -->
+          <rect x="18" y="186" width="184" height="42" fill="#F7F3EC"/>
+          <line x1="18" y1="186" x2="202" y2="186" stroke="#E8E2D8" stroke-width="0.5"/>
+          <text x="24" y="197" font-family="DM Sans" font-size="6" fill="#3D5058">ເຮືອນຫຼູຫຼາ 2 ຊັ້ນ ພ້ອມສະລອຍນ້ຳ ຕັ້ງຢູ່</text>
+          <text x="24" y="207" font-family="DM Sans" font-size="6" fill="#3D5058">ບ້ານທາດຫລວງໃຕ້ ຮ່ອມ 1. ເໝາະສຳລັບ</text>
+          <text x="24" y="217" font-family="DM Sans" font-size="6" fill="#3D5058">ຄອບຄົວ, ຜູ້ບໍລິຫານ ຫຼື ການລົງທຶນ.</text>
+          <line x1="18" y1="228" x2="202" y2="228" stroke="#E8E2D8" stroke-width="0.5"/>
+
+          <!-- LANDMARKS -->
+          <rect x="18" y="228" width="184" height="42" fill="white"/>
+          <text x="24" y="239" font-family="DM Sans" font-size="5.5" font-weight="500" fill="#2D8C8C">NEARBY</text>
+          <circle cx="24" cy="249" r="2" fill="#2D8C8C"/>
+          <text x="30" y="252" font-family="DM Sans" font-size="6.5" fill="#3D5058">ທາດຫລວງ</text>
+          <text x="166" y="252" font-family="DM Sans" font-size="6.5" fill="#7A9098">5 min</text>
+          <circle cx="24" cy="260" r="2" fill="#2D8C8C"/>
+          <text x="30" y="263" font-family="DM Sans" font-size="6.5" fill="#3D5058">ຕະຫຼາດດອນຈັນ</text>
+          <text x="166" y="263" font-family="DM Sans" font-size="6.5" fill="#7A9098">8 min</text>
+          <line x1="18" y1="270" x2="202" y2="270" stroke="#E8E2D8" stroke-width="0.5"/>
+
+          <!-- SPECS 4-column -->
+          <rect x="18" y="270" width="184" height="34" fill="#F7F3EC"/>
+          <rect x="20" y="273" width="42" height="28" rx="2" fill="white" stroke="#E8E2D8" stroke-width="0.5"/>
+          <text x="35" y="284" font-family="DM Sans" font-size="9" font-weight="600" fill="#1A2428">4</text>
+          <text x="25" y="294" font-family="DM Sans" font-size="5" fill="#7A9098">BEDROOMS</text>
+          <rect x="65" y="273" width="42" height="28" rx="2" fill="white" stroke="#E8E2D8" stroke-width="0.5"/>
+          <text x="80" y="284" font-family="DM Sans" font-size="9" font-weight="600" fill="#1A2428">4</text>
+          <text x="68" y="294" font-family="DM Sans" font-size="5" fill="#7A9098">BATHROOMS</text>
+          <rect x="110" y="273" width="42" height="28" rx="2" fill="white" stroke="#E8E2D8" stroke-width="0.5"/>
+          <text x="122" y="284" font-family="DM Sans" font-size="9" font-weight="600" fill="#1A2428">471</text>
+          <text x="118" y="294" font-family="DM Sans" font-size="5" fill="#7A9098">SQM</text>
+          <rect x="155" y="273" width="43" height="28" rx="2" fill="white" stroke="#E8E2D8" stroke-width="0.5"/>
+          <text x="170" y="284" font-family="DM Sans" font-size="9" font-weight="600" fill="#1A2428">2</text>
+          <text x="160" y="294" font-family="DM Sans" font-size="5" fill="#7A9098">FLOORS</text>
+
+          <!-- MAP -->
+          <rect x="18" y="304" width="184" height="60" fill="#D4E4D4"/>
+          <line x1="18" y1="318" x2="202" y2="318" stroke="#C0D4C0" stroke-width="0.5"/>
+          <line x1="18" y1="332" x2="202" y2="332" stroke="#C0D4C0" stroke-width="0.5"/>
+          <line x1="18" y1="346" x2="202" y2="346" stroke="#C0D4C0" stroke-width="0.5"/>
+          <line x1="65" y1="304" x2="65" y2="364" stroke="#C0D4C0" stroke-width="0.5"/>
+          <line x1="115" y1="304" x2="115" y2="364" stroke="#C0D4C0" stroke-width="0.5"/>
+          <line x1="165" y1="304" x2="165" y2="364" stroke="#C0D4C0" stroke-width="0.5"/>
+          <line x1="18" y1="332" x2="202" y2="332" stroke="#BDD4BD" stroke-width="2"/>
+          <line x1="100" y1="304" x2="100" y2="364" stroke="#BDD4BD" stroke-width="2"/>
+          <circle cx="100" cy="332" r="7" fill="#2D8C8C"/>
+          <circle cx="100" cy="332" r="3" fill="white"/>
+          <rect x="18" y="353" width="184" height="11" fill="rgba(26,36,40,0.72)"/>
+          <text x="24" y="361" font-family="DM Sans" font-size="5.5" font-weight="500" fill="#38A8A8">ທາດຫລວງໃຕ້ · Thad Luang Tai · 塔銮南</text>
+
+          <!-- PRICE -->
+          <rect x="18" y="364" width="184" height="20" fill="white"/>
+          <text x="24" y="378" font-family="DM Sans" font-size="11" font-weight="600" fill="#1A2428">USD 360,000</text>
+          <text x="142" y="378" font-family="DM Sans" font-size="7" fill="#7A9098">For Sale</text>
+
+          <!-- DOWNLOAD BUTTON -->
+          <rect x="18" y="384" width="184" height="22" fill="#1A2428"/>
+          <text x="75" y="399" font-family="DM Sans" font-size="8" font-weight="500" fill="white">↓ Download Video</text>
+
+          <!-- WHATSAPP BUTTON -->
+          <rect x="18" y="406" width="184" height="22" fill="#25D366"/>
+          <text x="60" y="421" font-family="DM Sans" font-size="8" font-weight="500" fill="white">WhatsApp Agent</text>
+
+          <!-- FOOTER -->
+          <rect x="18" y="428" width="184" height="20" fill="white"/>
+          <line x1="18" y1="428" x2="202" y2="428" stroke="#E8E2D8" stroke-width="0.5"/>
+          <text x="24" y="442" font-family="DM Sans" font-size="6" fill="#7A9098">Listed by Keomany · Pintag · May 2025</text>
+
+          <!-- Home indicator -->
+          <rect x="85" y="458" width="50" height="3" rx="1.5" fill="#1A2428" opacity="0.25"/>
+        </svg>
+      </div>
+    </div>
+    <p style="margin-top:20px;font-size:13px;color:var(--ink-muted);text-align:center;font-style:italic;">
+      <span class="lo-i">ນີ້ຄືໜ້າ Pintag ທີ່ Agent ແລະ ຜູ້ຊື້ຈະເຫັນ · This is what agents and buyers see.</span>
+      <span class="en-i">This is what agents and buyers see when they open a Pintag listing link.</span>
+      <span class="zh-i">这就是经纪人和买家打开 Pintag 房源链接时看到的页面。</span>
+    </p>
+  </div>
+</div>
+
+<!-- ⑥ AGENT PORTFOLIO -->
+<div class="portfolio-section">
+  <div class="portfolio-inner">
+    <p class="portfolio-eyebrow"><span class="lo-i">ໂປຣໄຟລ໌ Agent</span><span class="en-i">Agent Portfolio</span><span class="zh-i">经纪人主页</span></p>
+    <h2 class="portfolio-title">
+      <span class="lo">ໂປຣໄຟລ໌ນາຍໜ້າຂອງທ່ານ<br>ຢູ່ Pintag</span>
+      <span class="en">Your own agent profile<br>on Pintag.</span>
+      <span class="zh">您专属的<br>Pintag 经纪人主页</span>
+    </h2>
+    <p class="portfolio-sub">
+      <span class="lo-i">ລາຍການທັງໝົດຂອງທ່ານ ຢູ່ໃນລິ້ງດຽວ — ເຊົ່ນ pintag.io/keomany — ທີ່ທ່ານສາມາດວາງໄວ້ໃນ TikTok bio ຫຼື Facebook ໄດ້ທັນທີ.</span>
+      <span class="en-i">All your listings in one shareable link — like pintag.io/your-name — ready to put in your TikTok bio or Facebook profile.</span>
+      <span class="zh-i">您所有房源都在一个可分享的链接中 — 例如 pintag.io/your-name — 可直接放入 TikTok 主页或 Facebook 简介。</span>
+    </p>
+    <div class="portfolio-url">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38A8A8" stroke-width="1.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+      pintag.io/your-name
+    </div>
+    <a href="https://wa.me/8562055546963?text=ສະບາຍດີ%20Pintag%2C%20ຂ້ອຍຢາກມີໂປຣໄຟລ໌ Pintag ຂອງຂ້ອຍເອງ" class="btn-white" style="display:inline-flex;align-items:center;gap:8px;" target="_blank">
+      <span class="lo-i">ສ້າງໂປຣໄຟລ໌ຂອງຂ້ອຍ →</span>
+      <span class="en-i">Create my profile →</span>
+      <span class="zh-i">创建我的主页 →</span>
+    </a>
+  </div>
+</div>
+
+<!-- ⑦ FREE OFFER -->
+<div class="free-offer">
+  <div class="free-offer-inner">
+    <div class="free-badge">
+      <span class="lo-i">ສຳລັບ Agent ໃໝ່</span>
+      <span class="en-i">For new agents</span>
+      <span class="zh-i">新经纪人专享</span>
+    </div>
+    <h2 class="free-title">
+      <span class="lo">ຟຣີ 3–5 ລາຍການທຳອິດ<span class="accent">.</span></span>
+      <span class="en">Free for your first 3–5 listings<span class="accent">.</span></span>
+      <span class="zh">前 3–5 个房源完全免费<span class="accent">。</span></span>
+    </h2>
+    <p class="free-avail">
+      <span class="lo-i">Currently available for early agents · ເປີດຮັບ Agent ໃໝ່ຢູ່ຕອນນີ້</span>
+      <span class="en-i">Currently available for early agents joining Pintag</span>
+      <span class="zh-i">目前对早期加入 Pintag 的经纪人开放</span>
+    </p>
+    <p class="free-sub">
+      <span class="lo-i">ທົດລອງ Pintag ໂດຍບໍ່ມີຄ່າໃຊ້ຈ່າຍ. ລາຍການຂອງທ່ານໄດ້ຮັບໜ້າ Pintag ທີ່ຈັດລຽງຄົບຖ້ວນ, ວິດີໂອ ແລະ ໂປຣໄຟລ໌ຂອງທ່ານ.</span>
+      <span class="en-i">Try Pintag at no cost. Your listing gets a structured Pintag page, video, and your own agent profile — ready to share.</span>
+      <span class="zh-i">免费体验 Pintag。您的房源将获得完整的结构化页面、视频和专属主页，随时可以分享。</span>
+    </p>
+    <div class="free-items">
+      <div class="free-item"><div class="free-item-dot"></div><p class="free-item-text"><span class="lo-i">ໜ້າລາຍການ 3 ພາສາ</span><span class="en-i">Trilingual listing page</span><span class="zh-i">三语房源页面</span></p></div>
+      <div class="free-item"><div class="free-item-dot"></div><p class="free-item-text"><span class="lo-i">ວິດີໂອຊິເນມາຕິກ + ລາຍນ້ຳ</span><span class="en-i">Cinematic video + watermark</span><span class="zh-i">电影级视频与水印</span></p></div>
+      <div class="free-item"><div class="free-item-dot"></div><p class="free-item-text"><span class="lo-i">ແຜນທີ່ + ສະຖານທີ່ໃກ້ຄຽງ</span><span class="en-i">Map + landmark context</span><span class="zh-i">地图与周边地标</span></p></div>
+      <div class="free-item"><div class="free-item-dot"></div><p class="free-item-text"><span class="lo-i">ດາວໂຫຼດວິດີໂອໄດ້</span><span class="en-i">Downloadable video file</span><span class="zh-i">可下载视频文件</span></p></div>
+    </div>
+    <a href="https://wa.me/8562055546963?text=ສະບາຍດີ%20Pintag%0Aຂ້ອຍຢາກສົ່ງລາຍການອະສັງຫາ%0A%0Aປະເພດ%3A%0Aສະຖານທີ%3A%0Aລາຄາ%3A%0Aຫ້ອງນອນ%3A%0Aຫ້ອງນ້ຳ%3A%0Aລາຍລະອຽດ%3A" class="btn-teal" target="_blank" style="display:inline-flex;align-items:center;gap:10px;padding:13px 22px;background:var(--teal);color:white;text-decoration:none;border-radius:3px;font-size:14px;font-weight:500;transition:background 0.2s;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      <span class="lo-i">ເລີ່ມຕົ້ນຟຣີ →</span>
+      <span class="en-i">Start for free →</span>
+      <span class="zh-i">免费开始 →</span>
+    </a>
+  </div>
+</div>
+
+<!-- ⑧ CTA -->
+<section class="cta-section">
+  <div class="cta-grid">
+    <div>
+      <p class="sec-label"><span class="lo-i">ສົ່ງລາຍການ</span><span class="en-i">Submit a listing</span><span class="zh-i">提交房源</span></p>
+      <h2 class="cta-title">
+        <span class="lo">ລາຍການຂອງທ່ານ<br><span class="accent">ພ້ອມໃນ 48 ຊົ່ວໂມງ</span></span>
+        <span class="en">Your listing page.<br><span class="accent">Ready in 48 hours.</span></span>
+        <span class="zh">您的房源页面<br><span class="accent">48小时内准备完毕</span></span>
+      </h2>
+      <p class="cta-body">
+        <span class="lo-i">ສົ່ງຮູບ, ວິດີໂອ ແລະ ລາຍລະອຽດເຮືອນທາງ WhatsApp. ລາຍການຂອງທ່ານໄດ້ຮັບໜ້າ Pintag ທີ່ເປັນລະບົບ, ມີ 3 ພາສາ ແລະ ແຜນທີ່ — ພ້ອມແບ່ງປັນ.</span>
+        <span class="en-i">Send your photos, video, and property details via WhatsApp. Your listing gets a structured Pintag page — trilingual, with map, ready to share.</span>
+        <span class="zh-i">通过 WhatsApp 发送照片、视频和房源详情。您的房源将获得完整的 Pintag 页面——三语、含地图、随时可分享。</span>
+      </p>
+    </div>
+    <div class="cta-form">
+      <a href="https://wa.me/8562055546963?text=ສະບາຍດີ%20Pintag%0Aຂ້ອຍຢາກສົ່ງລາຍການອະສັງຫາ%0A%0Aປະເພດ%3A%0Aສະຖານທີ%3A%0Aລາຄາ%3A%0Aຫ້ອງນອນ%3A%0Aຫ້ອງນ້ຳ%3A%0Aລາຍລະອຽດ%3A" class="btn-wa-main" target="_blank">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        <span class="lo-i">ສົ່ງທາງ WhatsApp</span>
+        <span class="en-i">Submit via WhatsApp</span>
+        <span class="zh-i">通过 WhatsApp 提交</span>
+      </a>
+      <div class="cta-turnaround">
+        <span class="lo-i">⏱ 48 ຊົ່ວໂມງ ນັບຈາກເວລາທີ່ທ່ານສົ່ງຮູບ ແລະ ວິດີໂອຄົບ</span>
+        <span class="en-i">⏱ 48 hours from when you send complete photos and video</span>
+        <span class="zh-i">⏱ 从您发送完整照片和视频起 48 小时内完成</span>
+      </div>
+      <p class="cta-note">
+        <span class="lo-i">ຟຣີ 3–5 ລາຍການທຳອິດ · ບໍ່ຕ້ອງມີຄວາມຮູ້ດ້ານເທັກ</span>
+        <span class="en-i">Free for first 3–5 listings · No technical knowledge needed</span>
+        <span class="zh-i">前 3–5 个免费 · 无需技术知识</span>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ⑨ FOOTER with condensed About -->
+<footer>
+  <div class="footer-logo">
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+      <circle cx="11" cy="9" r="6" fill="#38A8A8" opacity="0.4"/>
+      <circle cx="20" cy="15" r="3.5" fill="#1A2428" stroke="#38A8A8" stroke-width="0.5" opacity="0.4"/>
+    </svg>
+    <span class="footer-word">Pintag</span>
+  </div>
+  <p class="footer-tagline">Pin a location. Tag a property.</p>
+
+  <div class="footer-about">
+    <p class="lo">Pintag ຊ່ວຍຈັດລຽງລາຍການອະສັງຫາໃຫ້ເບິ່ງງ່າຍ ແລະ ແບ່ງປັນໄດ້ສະດວກຫຼາຍຂຶ້ນ. ຮູບ, ວິດີໂອ, ແຜນທີ່, ສະຖານທີ່ໃກ້ຄຽງ ແລະ ລາຍລະອຽດສຳຄັນ ຖືກຈັດຢູ່ໃນໜ້າດຽວທີ່ເຂົ້າໃຈງ່າຍ. ເພື່ອໃຫ້ການເບິ່ງອະສັງຫາໃນລາວ ດູເປັນລະບຽບ ແລະ ເປັນມືອາຊີບຫຼາຍຂຶ້ນ.</p>
+    <p class="en">Pintag helps organize property listings into clean, easy-to-share pages. Photos, videos, maps, nearby landmarks, and important details — all in one simple page. Built to make real estate in Laos feel more organized and professional.</p>
+    <p class="zh">Pintag 帮助把房源信息整理成更清晰、更容易分享的页面。照片、视频、地图、周边地标以及重要房源资料，都集中在同一个简洁页面里。希望让老挝房地产展示方式变得更加有条理，也更专业。</p>
+  </div>
+
+  <div class="footer-divider"></div>
+  <div class="footer-links">
+    <a href="listings.html" class="footer-link"><span class="lo-i">ລາຍການ</span><span class="en-i">Listings</span><span class="zh-i">房源</span></a>
+    <a href="https://wa.me/8562055546963" class="footer-link" target="_blank"><span class="lo-i">ຕິດຕໍ່</span><span class="en-i">Contact</span><span class="zh-i">联系</span></a>
+    <a href="https://wa.me/8562055546963?text=ສະບາຍດີ%20Pintag%2C%20ຂ້ອຍຢາກລົງໂຄສະນາ" class="footer-link" target="_blank"><span class="lo-i">ສຳລັບ Agent</span><span class="en-i">For Agents</span><span class="zh-i">经纪人</span></a>
+  </div>
+  <p class="footer-copy">© 2025 Pintag · Vientiane, Laos · pintag.io</p>
+</footer>
+
+<script>
+function playVideo(){
+  var cover = document.getElementById('videoCover');
+  var frame = document.getElementById('videoFrame');
+  var src = frame.getAttribute('data-src');
+  frame.src = src + '&autoplay=1';
+  frame.style.display = 'block';
+  cover.style.display = 'none';
+}
+function setLang(lang,btn){
+  document.body.className = lang==='lo' ? '' : 'lang-'+lang;
+  document.querySelectorAll('.lang-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>
