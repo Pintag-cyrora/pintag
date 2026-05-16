@@ -240,9 +240,10 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
   <div class="login-box">
     <p class="login-logo">Pintag</p>
     <p class="login-sub">Admin Panel</p>
-    <input type="password" class="login-input" id="password-input" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()">
+    <input type="email" class="login-input" id="email-input" placeholder="Email" onkeydown="if(event.key==='Enter')login()">
+    <input type="password" class="login-input" id="password-input" placeholder="Password" onkeydown="if(event.key==='Enter')login()">
     <button class="login-btn" onclick="login()">Sign In</button>
-    <p class="login-error" id="login-error">Incorrect password</p>
+    <p class="login-error" id="login-error">Incorrect email or password</p>
   </div>
 </div>
 
@@ -502,38 +503,63 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 // ── CONFIG ──
 const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
-// !! CHANGE THIS PASSWORD !!
-const ADMIN_PASSWORD = 'pintag2025';
+
+let authToken = null;
 
 // ── AUTH ──
-function login() {
+async function login() {
+  const email = document.getElementById('email-input').value.trim();
   const pw = document.getElementById('password-input').value;
-  if (pw === ADMIN_PASSWORD) {
-    sessionStorage.setItem('pintag-admin', '1');
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('admin-screen').style.display = 'block';
-    loadListings();
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_ANON, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: pw })
+  });
+  const data = await res.json();
+
+  if (res.ok && data.access_token) {
+    authToken = data.access_token;
+    sessionStorage.setItem('pintag-token', data.access_token);
+    showAdmin();
   } else {
-    document.getElementById('login-error').style.display = 'block';
+    errEl.textContent = data.error_description || data.msg || 'Incorrect email or password';
+    errEl.style.display = 'block';
   }
 }
-function logout() {
-  sessionStorage.removeItem('pintag-admin');
+
+async function logout() {
+  const token = sessionStorage.getItem('pintag-token');
+  if (token) {
+    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token }
+    });
+  }
+  sessionStorage.removeItem('pintag-token');
+  authToken = null;
   location.reload();
 }
-if (sessionStorage.getItem('pintag-admin')) {
+
+function showAdmin() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('admin-screen').style.display = 'block';
   loadListings();
 }
 
+const savedToken = sessionStorage.getItem('pintag-token');
+if (savedToken) { authToken = savedToken; showAdmin(); }
+
 // ── SUPABASE HELPERS ──
 async function supabase(method, path, body) {
+  const token = authToken || SUPABASE_ANON;
   const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
     method,
     headers: {
       'apikey': SUPABASE_ANON,
-      'Authorization': 'Bearer ' + SUPABASE_ANON,
+      'Authorization': 'Bearer ' + token,
       'Content-Type': 'application/json',
       'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal'
     },
@@ -729,8 +755,6 @@ function addLandmark(data) {
 }
 
 // ── IMAGE UPLOAD ──
-const SUPABASE_URL_UPLOAD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SUPABASE_ANON_UPLOAD = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 let uploadedImages = [];
 
 // Drag and drop
@@ -765,11 +789,11 @@ async function handleImageUpload(files) {
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     
     try {
-      const res = await fetch(`${SUPABASE_URL_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
+      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/property-images/${fileName}`, {
         method: 'POST',
         headers: {
-          'apikey': SUPABASE_ANON_UPLOAD,
-          'Authorization': 'Bearer ' + SUPABASE_ANON_UPLOAD,
+          'apikey': SUPABASE_ANON,
+          'Authorization': 'Bearer ' + (authToken || SUPABASE_ANON),
           'Content-Type': file.type || 'image/jpeg',
           'x-upsert': 'true'
         },
