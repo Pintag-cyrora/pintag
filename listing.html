@@ -231,23 +231,20 @@ nav{
 
 /* VIDEO ORIENTATION */
 .listing-grid.video-vertical .listing-left{
-  grid-template-rows:2fr 1fr !important;
+  grid-template-rows:740px 1fr !important;
 }
 .listing-grid.video-horizontal .listing-left{
   grid-template-rows:1fr 1fr !important;
 }
 .listing-grid.video-vertical{
-  min-height:720px;
-}
-/* TikTok embed needs object-fit contain not cover */
-.listing-grid.video-vertical #video-embed-container iframe{
-  object-fit:contain;
+  min-height:1040px;
 }
 
 /* MOBILE */
 @media(max-width:700px){
   .listing-grid{grid-template-columns:1fr;}
   .listing-left{grid-template-rows:260px 200px;border-right:none;border-bottom:1px solid var(--border);}
+  .listing-grid.video-vertical .listing-left{grid-template-rows:600px 200px !important;}
   .listing-right{padding:24px 16px;}
   .l-specs{grid-template-columns:repeat(2,1fr);}
   .price-bar{top:56px;}
