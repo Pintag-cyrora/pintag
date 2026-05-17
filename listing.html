@@ -4,19 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag · Property</title>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
 :root{
   --teal:#2D8C8C;--teal-light:#38A8A8;--teal-dim:rgba(45,140,140,0.1);
   --ink:#1A2428;--ink-soft:#3D5058;--ink-muted:#7A9098;
-  --warm:#F7F3EC;--off:#F2EDE4;--white:#fff;
+  --warm:#F7F3EC;--white:#FFFFFF;
   --border:rgba(26,36,40,0.08);--border-teal:rgba(45,140,140,0.2);--gold:#B8960C;
 }
-body{font-family:'DM Sans',sans-serif;font-weight:400;font-size:16px;line-height:1.75;background:var(--white);color:var(--ink);-webkit-font-smoothing:antialiased;}
+body{font-family:'DM Sans',sans-serif;font-weight:400;font-size:16px;line-height:1.75;background:var(--white);color:var(--ink);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
 
-/* LANG */
+/* LANGUAGE */
 .lo{display:block;}.en{display:none;}.zh{display:none;}
 .lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
 body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
@@ -25,229 +25,143 @@ body.lang-zh .lo{display:none;}body.lang-zh .en{display:none;}body.lang-zh .zh{d
 body.lang-zh .lo-i{display:none;}body.lang-zh .en-i{display:none;}body.lang-zh .zh-i{display:inline;}
 
 /* NAV */
-nav{
-  position:fixed;top:0;left:0;right:0;z-index:200;height:56px;
-  display:flex;align-items:center;justify-content:space-between;padding:0 24px;
-  background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);
-}
-.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
-.nav-wordmark{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;}
-.nav-right{display:flex;align-items:center;gap:8px;}
-.lang-switcher{display:flex;gap:2px;background:var(--warm);border:1px solid var(--border);border-radius:4px;padding:3px;}
-.lang-btn{font-size:11px;font-weight:500;padding:5px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:3px;transition:all 0.2s;font-family:'DM Sans',sans-serif;}
-.lang-btn.active{background:var(--ink);color:#fff;}
-.nav-back{font-size:12px;color:var(--ink-muted);text-decoration:none;letter-spacing:0.04em;display:flex;align-items:center;gap:6px;}
-.nav-back:hover{color:var(--ink);}
+nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(255,255,255,0.98);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);}
+.nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none;}
+.nav-wordmark{font-size:16px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;}
+.nav-back{font-size:13px;color:var(--ink-muted);text-decoration:none;display:flex;align-items:center;gap:5px;}
+.nav-back:hover{color:var(--teal);}
 
 /* LOADING */
 .loading-screen{display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:12px;}
-.loading-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);animation:loadPulse 1.2s ease-in-out infinite;}
-@keyframes loadPulse{0%,100%{opacity:0.3;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
-.loading-text{font-size:13px;color:var(--ink-muted);letter-spacing:0.1em;text-transform:uppercase;}
+.loading-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);animation:pulse-anim 1.2s ease-in-out infinite;}
+@keyframes pulse-anim{0%,100%{opacity:0.3;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
 
-/* HERO IMAGE */
-/* MAIN PHOTO DISPLAY */
-.hero{
-  margin-top:56px;
-  position:relative;
-  background:var(--white);
-}
-.hero-gold-rule{
-  position:absolute;top:0;left:0;right:0;
-  height:2px;background:var(--gold);opacity:0.55;z-index:2;
-}
-.hero-img-wrap{
-  width:100%;
-  background:var(--white);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  min-height:200px;
-}
-.hero-img-wrap img{
-  width:100%;
-  height:auto;
-  max-height:55vh;
-  object-fit:contain;
-  display:block;
-  background:var(--white);
-}
-.hero-no-img-placeholder{
-  height:240px;
-  display:flex;align-items:center;justify-content:center;
-  background:var(--warm);width:100%;
-}
-.hero-badge{
-  position:absolute;top:12px;right:12px;z-index:3;
-  background:rgba(255,255,255,0.92);
-  border:1px solid var(--border-teal);
-  padding:5px 12px;display:flex;align-items:center;gap:7px;
-  backdrop-filter:blur(8px);
-}
-.badge-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);animation:pulse 2s ease-in-out infinite;}
-.badge-text{font-size:11px;color:var(--teal);letter-spacing:0.06em;font-weight:500;}
-.hero-info{
-  padding:14px 20px;
-  background:var(--white);
-  border-top:1px solid var(--border);
-  border-bottom:1px solid var(--border);
-}
-.hero-tag{
-  font-size:9px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;
-  color:var(--teal);margin-bottom:4px;
-}
-.hero-title{
-  font-size:clamp(16px,2.5vw,24px);font-weight:600;
-  color:var(--ink);letter-spacing:-0.01em;line-height:1.25;
-}
+/* GALLERY */
+.gallery{margin-top:52px;position:relative;background:var(--ink);}
+.gallery-main{position:relative;height:62vh;min-height:280px;max-height:600px;overflow:hidden;cursor:pointer;user-select:none;}
+.gallery-main img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;transition:transform 0.4s ease;}
+.gallery-main:hover img{transform:scale(1.02);}
+.gallery-gold-rule{position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold);opacity:0.55;z-index:2;}
+.gallery-overlay{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(26,36,40,0.65) 0%,transparent 100%);padding:20px 16px 10px;z-index:2;display:flex;align-items:flex-end;justify-content:space-between;}
+.gallery-counter{font-size:12px;font-weight:500;color:rgba(255,255,255,0.75);background:rgba(0,0,0,0.35);backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;letter-spacing:0.06em;}
+.gallery-status{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.92);padding:5px 12px;font-size:11px;font-weight:500;color:var(--teal);letter-spacing:0.06em;}
+.status-dot{width:5px;height:5px;border-radius:50%;background:var(--teal);animation:pulse-anim 2s ease-in-out infinite;}
+.gallery-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;font-size:20px;color:#fff;line-height:1;}
+.gallery-btn:hover{background:rgba(255,255,255,0.28);}
+.gallery-btn.prev{left:12px;}
+.gallery-btn.next{right:12px;}
+.gallery-thumbs{display:flex;gap:3px;height:68px;background:var(--ink);overflow-x:auto;scrollbar-width:none;padding:0 3px;}
+.gallery-thumbs::-webkit-scrollbar{display:none;}
+.thumb{flex-shrink:0;width:96px;height:68px;overflow:hidden;cursor:pointer;opacity:0.5;transition:opacity 0.2s;}
+.thumb.active,.thumb:hover{opacity:1;}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block;}
 
-/* PHOTO STRIP */
-.photo-strip{display:flex;gap:2px;height:72px;background:var(--ink);overflow-x:auto;scrollbar-width:none;}
-.photo-strip::-webkit-scrollbar{display:none;}
-.photo-thumb{flex-shrink:0;width:110px;height:72px;overflow:hidden;cursor:pointer;opacity:0.6;transition:opacity 0.2s;position:relative;}
-.photo-thumb.active,.photo-thumb:hover{opacity:1;}
-.photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
-.photo-thumb-empty{background:linear-gradient(135deg,#2A3A35,#1A2828);display:flex;align-items:center;justify-content:center;width:100%;height:100%;}
-.thumb-num{font-size:11px;color:rgba(255,255,255,0.3);}
+/* LANGUAGE TABS */
+.lang-tabs{display:flex;border-bottom:2px solid var(--border);background:var(--white);position:sticky;top:52px;z-index:200;}
+.lang-tab{flex:1;padding:14px 8px;text-align:center;font-size:13px;font-weight:500;color:var(--ink-muted);cursor:pointer;border:none;background:transparent;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.2s;font-family:'DM Sans',sans-serif;letter-spacing:0.04em;}
+.lang-tab.active{color:var(--teal);border-bottom-color:var(--teal);}
+.lang-tab:hover:not(.active){color:var(--ink);}
 
-/* STICKY PRICE BAR */
-.price-bar{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:14px 24px;background:var(--white);border-bottom:1px solid var(--border);
-  flex-wrap:wrap;gap:12px;position:sticky;top:56px;z-index:100;
-}
-.price-main{font-size:24px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1;}
-.price-type{font-size:10px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:var(--teal);margin-bottom:3px;}
-.price-on-request{font-size:16px;font-weight:400;color:var(--ink-muted);font-style:italic;}
-.btn-wa-main{
-  display:flex;align-items:center;gap:10px;padding:12px 20px;
-  background:#25D366;color:#fff;font-size:14px;font-weight:500;
-  text-decoration:none;border-radius:3px;transition:background 0.2s;white-space:nowrap;
-}
-.btn-wa-main:hover{background:#20BD5C;}
+/* STICKY WA — mobile only */
+.sticky-wa{position:fixed;bottom:0;left:0;right:0;z-index:500;padding:10px 14px;background:rgba(255,255,255,0.98);border-top:1px solid var(--border);backdrop-filter:blur(16px);display:none;}
+.sticky-wa a{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:15px;background:#25D366;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:4px;letter-spacing:0.02em;}
+@media(max-width:800px){.sticky-wa{display:block;}body{padding-bottom:76px;}}
 
-/* MAIN CONTENT */
-.listing-content{max-width:1100px;margin:0 auto;}
+/* CONTENT */
+.content{max-width:800px;margin:0 auto;}
 
-/* THE HALF-BOX LAYOUT */
-.listing-grid{
-  display:grid;grid-template-columns:1fr 1fr;
-  border:1px solid var(--border);
-  border-top:none;
-  min-height:600px;
-}
-.listing-left{
-  display:grid;grid-template-rows:1fr 1fr;
-  border-right:1px solid var(--border);
-}
-.listing-video-box{
-  position:relative;overflow:hidden;background:var(--ink);
-  border-bottom:1px solid var(--border);
-  display:flex;align-items:stretch;
-}
-.listing-video-box iframe,
-.listing-video-box video,
-#video-embed-container,
-#video-embed-container iframe{
-  width:100% !important;
-  height:100% !important;
-  min-height:300px;
-  border:none;
-  display:block;
-  flex:1;
-}
-.video-cover{position:absolute;inset:0;cursor:pointer;z-index:2;width:100%;height:100%;}
+/* PRICE */
+.price-bar{padding:20px 20px 14px;border-bottom:1px solid var(--border);}
+.price-type-tag{font-size:10px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;color:var(--teal);margin-bottom:4px;}
+.price-figure{font-size:32px;font-weight:700;color:var(--ink);letter-spacing:-0.03em;line-height:1;}
+.price-on-req{font-size:20px;font-weight:400;color:var(--ink-muted);font-style:italic;}
+
+/* HEADER */
+.listing-header{padding:20px 20px 0;}
+.l-tag{font-size:10px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;}
+.l-title{font-size:clamp(20px,4vw,28px);font-weight:700;color:var(--ink);line-height:1.2;letter-spacing:-0.02em;margin-bottom:8px;}
+.l-location{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink-muted);}
+
+/* DESCRIPTION */
+.l-desc-section{padding:20px;border-top:1px solid var(--border);margin-top:20px;}
+.section-label{font-size:10px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:10px;}
+.l-desc{font-size:15px;font-weight:300;color:var(--ink-soft);line-height:1.9;}
+
+/* WA DESKTOP */
+.wa-desktop{padding:20px;border-top:1px solid var(--border);}
+.btn-wa-full{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:18px;background:#25D366;color:#fff;font-size:16px;font-weight:600;text-decoration:none;border-radius:4px;transition:background 0.2s;letter-spacing:0.02em;}
+.btn-wa-full:hover{background:#20BD5C;}
+@media(max-width:800px){.wa-desktop{display:none;}}
+
+/* SPECS */
+.specs-section{padding:20px;border-top:1px solid var(--border);}
+.specs-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}
+.spec-card{padding:14px 10px;background:var(--warm);border:1px solid var(--border);text-align:center;}
+.spec-val{font-size:22px;font-weight:700;color:var(--ink);line-height:1;letter-spacing:-0.02em;}
+.spec-key{font-size:10px;font-weight:400;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-top:4px;}
+.tags-row{display:flex;gap:6px;flex-wrap:wrap;}
+.tag-pill{font-size:11px;font-weight:500;padding:6px 12px;border-radius:20px;background:var(--white);border:1px solid var(--border);color:var(--ink-soft);letter-spacing:0.04em;}
+
+/* LANDMARKS */
+.landmarks-section{padding:20px;border-top:1px solid var(--border);}
+.landmark-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px;}
+.landmark-row:last-child{border-bottom:none;}
+.landmark-name{color:var(--ink-soft);display:flex;align-items:center;gap:8px;}
+.landmark-name::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--teal);flex-shrink:0;}
+.landmark-dist{color:var(--ink-muted);font-size:13px;font-weight:500;}
+
+/* MEDIA HALF BOX */
+.media-section{border-top:1px solid var(--border);}
+.media-grid{display:grid;grid-template-columns:1fr 1fr;min-height:380px;}
+.media-video{position:relative;background:var(--ink);overflow:hidden;border-right:1px solid var(--border);}
+.media-map{position:relative;background:#D4E4D4;overflow:hidden;}
+.video-cover{position:absolute;inset:0;cursor:pointer;z-index:2;}
 .video-cover img{width:100%;height:100%;object-fit:cover;display:block;}
-.video-cover-overlay{
-  position:absolute;inset:0;background:rgba(26,36,40,0.3);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
-  transition:background 0.2s;
-}
+.video-cover-overlay{position:absolute;inset:0;background:rgba(26,36,40,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;transition:background 0.2s;}
 .video-cover-overlay:hover{background:rgba(26,36,40,0.45);}
-.play-btn{
-  width:60px;height:60px;border-radius:50%;
-  border:2px solid rgba(255,255,255,0.65);background:rgba(255,255,255,0.12);
-  display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);transition:all 0.2s;
-}
+.play-btn{width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,255,255,0.65);background:rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);transition:all 0.2s;}
 .video-cover-overlay:hover .play-btn{background:var(--teal);border-color:var(--teal);}
 .play-label{font-size:11px;font-weight:500;color:rgba(255,255,255,0.8);letter-spacing:0.1em;text-transform:uppercase;}
-.video-embed{width:100%;height:100%;border:none;display:none;}
-.listing-map-box{position:relative;overflow:hidden;background:#D4E4D4;}
-.listing-map-box iframe{width:100%;height:100%;border:none;display:block;}
-.map-overlay-label{
-  position:absolute;bottom:10px;left:10px;
-  background:rgba(26,36,40,0.85);color:rgba(255,255,255,0.85);
-  font-size:9px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;
-  padding:5px 10px;backdrop-filter:blur(8px);pointer-events:none;
-}
+.map-iframe{width:100%;height:100%;border:none;display:block;}
+.map-placeholder{width:100%;height:100%;background:#D4E4D4;display:flex;align-items:center;justify-content:center;}
+.map-label{position:absolute;bottom:8px;left:8px;z-index:2;background:rgba(26,36,40,0.82);color:rgba(255,255,255,0.8);font-size:9px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;padding:4px 10px;backdrop-filter:blur(8px);pointer-events:none;}
+.media-labels{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--border);}
+.media-label{padding:10px 16px;font-size:9px;font-weight:500;letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-muted);background:var(--warm);}
+.media-label+.media-label{border-left:1px solid var(--border);}
 
-/* RIGHT PANEL */
-.listing-right{padding:36px 32px;display:flex;flex-direction:column;gap:0;overflow-y:auto;}
-.l-tag{font-size:9px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;}
-.l-title{font-size:clamp(18px,2.5vw,24px);font-weight:600;color:var(--ink);margin-bottom:4px;letter-spacing:-0.01em;line-height:1.25;}
-.l-location{font-size:13px;color:var(--ink-muted);margin-bottom:16px;display:flex;align-items:center;gap:6px;}
-.l-desc{
-  font-size:14px;font-weight:300;color:var(--ink-soft);line-height:1.85;
-  padding:16px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);
-  margin-bottom:16px;
-}
-.l-landmarks{margin-bottom:16px;}
-.l-landmarks-title{font-size:9px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;}
-.l-landmark{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0;border-bottom:0.5px solid var(--border);}
-.l-landmark:last-child{border-bottom:none;}
-.l-landmark-name{color:var(--ink-soft);}
-.l-landmark-dist{color:var(--ink-muted);font-size:12px;}
-.l-specs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:16px;}
-.l-spec{padding:10px 8px;background:var(--warm);border:1px solid var(--border);text-align:center;}
-.l-spec-val{font-size:16px;font-weight:600;color:var(--ink);line-height:1;}
-.l-spec-key{font-size:9px;font-weight:400;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-top:3px;}
-.l-tags-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;}
-.l-tag-pill{font-size:10px;font-weight:400;padding:4px 10px;border-radius:2px;background:var(--warm);border:1px solid var(--border);color:var(--ink-soft);}
-.l-price{font-size:24px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;margin-bottom:16px;}
-.l-price-on-req{font-size:16px;font-weight:300;color:var(--ink-muted);font-style:italic;margin-bottom:16px;}
-.l-btns{display:flex;flex-direction:column;gap:8px;margin-top:auto;}
-.btn-download{
-  display:flex;align-items:center;justify-content:center;gap:8px;
-  padding:12px 16px;background:var(--ink);color:#fff;font-size:13px;font-weight:500;
-  text-decoration:none;border-radius:3px;transition:all 0.2s;letter-spacing:0.04em;
-}
+/* DOWNLOAD */
+.download-section{padding:16px 20px;border-top:1px solid var(--border);}
+.btn-download{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;background:var(--ink);color:#fff;font-size:14px;font-weight:500;text-decoration:none;border-radius:3px;transition:background 0.2s;letter-spacing:0.04em;}
 .btn-download:hover{background:var(--ink-soft);}
-.btn-wa{
-  display:flex;align-items:center;justify-content:center;gap:8px;
-  padding:12px 16px;background:#25D366;color:#fff;font-size:13px;font-weight:500;
-  text-decoration:none;border-radius:3px;transition:all 0.2s;
-}
-.btn-wa:hover{background:#20BD5C;}
 
-/* LISTING FOOTER */
-.listing-footer{
-  padding:12px 20px;border-top:1px solid var(--border);background:var(--white);
-  display:flex;align-items:center;justify-content:space-between;
-  font-size:13px;
-}
-.l-agent{color:var(--ink-muted);}
-.l-agent strong{color:var(--ink);font-weight:500;}
-.l-disclaimer{font-size:11px;color:var(--ink-muted);font-style:italic;}
+/* AGENT CARD */
+.agent-card{margin:20px;padding:20px;background:var(--warm);border:1px solid var(--border);display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.agent-avatar{width:56px;height:56px;border-radius:50%;overflow:hidden;background:var(--teal-dim);border:2px solid var(--border-teal);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.agent-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+.agent-initials{font-size:20px;font-weight:700;color:var(--teal);}
+.agent-info{flex:1;min-width:120px;}
+.agent-name{font-size:17px;font-weight:600;color:var(--ink);margin-bottom:3px;}
+.agent-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);background:var(--teal-dim);padding:3px 8px;border-radius:2px;border:1px solid var(--border-teal);}
+.agent-date{font-size:12px;color:var(--ink-muted);margin-top:4px;}
+.btn-agent-wa{display:flex;align-items:center;gap:8px;padding:12px 18px;background:#25D366;color:#fff;font-size:14px;font-weight:600;text-decoration:none;border-radius:3px;transition:background 0.2s;white-space:nowrap;flex-shrink:0;}
+.btn-agent-wa:hover{background:#20BD5C;}
+@media(max-width:500px){.btn-agent-wa{width:100%;justify-content:center;}}
 
-/* VIDEO ORIENTATION */
-.listing-grid.video-vertical .listing-left{
-  grid-template-rows:740px 1fr !important;
-}
-.listing-grid.video-horizontal .listing-left{
-  grid-template-rows:1fr 1fr !important;
-}
-.listing-grid.video-vertical{
-  min-height:1040px;
-}
+/* FOOTER */
+.listing-footer{padding:16px 20px 28px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.footer-note{font-size:12px;color:var(--ink-muted);}
+.footer-disclaimer{font-size:11px;color:var(--ink-muted);font-style:italic;}
 
 /* MOBILE */
-@media(max-width:700px){
-  .listing-grid{grid-template-columns:1fr;}
-  .listing-left{grid-template-rows:260px 200px;border-right:none;border-bottom:1px solid var(--border);}
-  .listing-grid.video-vertical .listing-left{grid-template-rows:600px 200px !important;}
-  .listing-right{padding:24px 16px;}
-  .l-specs{grid-template-columns:repeat(2,1fr);}
-  .price-bar{top:56px;}
+@media(max-width:600px){
+  .gallery-main{height:55vw;min-height:220px;}
+  .media-grid{grid-template-columns:1fr;min-height:auto;}
+  .media-video{min-height:220px;border-right:none;border-bottom:1px solid var(--border);}
+  .media-map{min-height:200px;}
+  .media-labels{grid-template-columns:1fr 1fr;}
+  .specs-grid{grid-template-columns:repeat(2,1fr);}
+  .price-figure{font-size:26px;}
+  .l-title{font-size:20px;}
 }
 </style>
 </head>
@@ -255,421 +169,341 @@ nav{
 
 <div class="loading-screen" id="loading">
   <div class="loading-dot"></div>
-  <p class="loading-text">Loading listing</p>
 </div>
 
 <div id="page" style="display:none;">
 
+<!-- NAV -->
 <nav>
-  <a href="listings.html" class="nav-logo">
-    <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
-      <circle cx="11" cy="9" r="6" fill="#38A8A8"/>
-      <circle cx="20" cy="15" r="3.5" fill="#fff" stroke="#38A8A8" stroke-width="0.5"/>
+  <a href="index.html" class="nav-logo">
+    <svg width="24" height="24" viewBox="0 0 40 40" fill="none">
+      <circle cx="12" cy="9" r="7.5" fill="#38A8A8"/>
+      <circle cx="25" cy="14" r="3.5" fill="#0D1F26" opacity="0.9"/>
     </svg>
     <span class="nav-wordmark">Pintag</span>
   </a>
-  <div class="nav-right">
-    <div class="lang-switcher">
-      <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
-      <button class="lang-btn" onclick="setLang('en',this)">EN</button>
-      <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
-    </div>
-    <a href="listings.html" class="nav-back">← <span class="lo-i">ລາຍການ</span><span class="en-i">Listings</span><span class="zh-i">房源</span></a>
-  </div>
+  <a href="listings.html" class="nav-back">← <span class="lo-i">ລາຍການ</span><span class="en-i">Listings</span><span class="zh-i">房源</span></a>
 </nav>
 
-<!-- HERO -->
-<div class="hero" id="hero-section">
-  <div class="hero-gold-rule"></div>
-  <div class="hero-badge" id="hero-badge">
-    <div class="badge-dot"></div>
-    <span class="badge-text" id="hero-badge-text">Available</span>
-  </div>
-  <div class="hero-img-wrap" id="hero-img-wrap">
-    <div class="hero-no-img-placeholder">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-6 4 6"/></svg>
-    </div>
-  </div>
-</div>
-<div class="hero-info">
-  <p class="hero-tag" id="hero-tag"></p>
-  <h1 class="hero-title" id="hero-title"></h1>
-</div>
-
-<!-- PHOTO STRIP -->
-<div class="photo-strip" id="photo-strip"></div>
-
-<!-- PRICE BAR -->
-<div class="price-bar">
-  <div>
-    <p class="price-type" id="pb-type"></p>
-    <p class="price-main" id="pb-price"></p>
-  </div>
-  <a href="#" class="btn-wa-main" id="pb-wa" target="_blank">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-    <span class="lo-i">ສອບຖາມທາງ WhatsApp</span>
-    <span class="en-i">WhatsApp Agent</span>
-    <span class="zh-i">WhatsApp 咨询</span>
+<!-- STICKY WA (mobile) -->
+<div class="sticky-wa">
+  <a href="#" id="sticky-wa-link" target="_blank">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+    <span id="sticky-wa-text">WhatsApp Agent</span>
   </a>
 </div>
 
-<!-- MAIN LISTING GRID -->
-<div class="listing-content">
-  <div class="listing-grid">
-
-    <!-- LEFT: VIDEO + MAP -->
-    <div class="listing-left">
-      <div class="listing-video-box" id="video-box">
-        <div class="video-cover" id="video-cover" onclick="playVideo()">
-          <img src="" alt="" id="video-thumb-img">
-          <div class="video-cover-overlay">
-            <div class="play-btn">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
-            </div>
-            <span class="play-label">
-              <span class="lo-i">ຫຼິ້ນວິດີໂອ</span>
-              <span class="en-i">Play Video</span>
-              <span class="zh-i">播放视频</span>
-            </span>
-          </div>
-        </div>
-        <iframe class="video-embed" id="video-frame" src="" data-src="" frameborder="0" allow="autoplay" allowfullscreen></iframe>
-      </div>
-      <div class="listing-map-box">
-        <iframe id="map-frame" src="" frameborder="0" allowfullscreen loading="lazy"></iframe>
-        <div class="map-overlay-label" id="map-label"></div>
-      </div>
+<!-- GALLERY -->
+<div class="gallery">
+  <div class="gallery-gold-rule"></div>
+  <div class="gallery-main" id="gallery-main">
+    <div id="gallery-no-img" style="width:100%;height:100%;background:#2A3A35;display:flex;align-items:center;justify-content:center;">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-6 4 6"/></svg>
     </div>
-
-    <!-- RIGHT: INFO -->
-    <div class="listing-right">
-      <p class="l-tag" id="l-tag"></p>
-      <h2 class="l-title" id="l-title"></h2>
-      <p class="l-location" id="l-location">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
-        <span id="l-location-text"></span>
-      </p>
-      <div class="l-desc" id="l-desc"></div>
-      <div class="l-landmarks" id="l-landmarks" style="display:none;">
-        <p class="l-landmarks-title"><span class="lo-i">ໃກ້ຄຽງ</span><span class="en-i">Nearby</span><span class="zh-i">周边</span></p>
-        <div id="l-landmarks-list"></div>
-      </div>
-      <div class="l-specs" id="l-specs"></div>
-      <div class="l-tags-row" id="l-tags-row"></div>
-      <div id="l-price-wrap"></div>
-      <div class="l-btns" id="l-btns"></div>
+    <div class="gallery-overlay">
+      <span class="gallery-counter" id="gallery-counter" style="display:none;"></span>
+      <span class="gallery-status">
+        <span class="status-dot"></span>
+        <span id="status-text">Available</span>
+      </span>
     </div>
   </div>
-
-  <div class="listing-footer">
-    <p class="l-agent" id="l-agent"></p>
-    <p class="l-disclaimer">
-      <span class="lo-i">ຂໍ້ມູນໂດຍ Agent · Pintag ບໍ່ຮັບຜິດຊອບຄວາມຖືກຕ້ອງ</span>
-      <span class="en-i">Information provided by agent · Pintag does not verify accuracy</span>
-      <span class="zh-i">信息由经纪人提供 · Pintag 不承担准确性责任</span>
-    </p>
-  </div>
+  <button class="gallery-btn prev" id="btn-prev" onclick="galleryPrev(event)" style="display:none;">‹</button>
+  <button class="gallery-btn next" id="btn-next" onclick="galleryNext(event)" style="display:none;">›</button>
+  <div class="gallery-thumbs" id="gallery-thumbs" style="display:none;"></div>
 </div>
 
-</div><!-- end #page -->
+<!-- LANGUAGE TABS -->
+<div class="lang-tabs">
+  <button class="lang-tab active" data-lang="lo" onclick="setLang('lo',this)">ລາວ</button>
+  <button class="lang-tab" data-lang="en" onclick="setLang('en',this)">English</button>
+  <button class="lang-tab" data-lang="zh" onclick="setLang('zh',this)">中文</button>
+</div>
+
+<div class="content">
+
+  <!-- PRICE -->
+  <div class="price-bar">
+    <p class="price-type-tag" id="pb-type"></p>
+    <p class="price-figure" id="pb-price"></p>
+  </div>
+
+  <!-- TITLE + LOCATION -->
+  <div class="listing-header">
+    <p class="l-tag" id="l-tag"></p>
+    <h1 class="l-title" id="l-title"></h1>
+    <p class="l-location">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+      <span id="l-location"></span>
+    </p>
+  </div>
+
+  <!-- DESCRIPTION -->
+  <div class="l-desc-section">
+    <p class="section-label"><span class="lo-i">ລາຍລະອຽດ</span><span class="en-i">Description</span><span class="zh-i">房源描述</span></p>
+    <div class="l-desc" id="l-desc"></div>
+  </div>
+
+  <!-- WA DESKTOP -->
+  <div class="wa-desktop">
+    <a href="#" id="wa-desktop" target="_blank" class="btn-wa-full">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      <span id="wa-desktop-label">WhatsApp Agent</span>
+    </a>
+  </div>
+
+  <!-- SPECS -->
+  <div class="specs-section" id="specs-section" style="display:none;">
+    <p class="section-label"><span class="lo-i">ຂໍ້ມູນຫຼັກ</span><span class="en-i">Details</span><span class="zh-i">详情</span></p>
+    <div class="specs-grid" id="specs-grid"></div>
+    <div class="tags-row" id="tags-row"></div>
+  </div>
+
+  <!-- LANDMARKS -->
+  <div class="landmarks-section" id="landmarks-section" style="display:none;">
+    <p class="section-label"><span class="lo-i">ສະຖານທີ່ໃກ້ຄຽງ</span><span class="en-i">Nearby</span><span class="zh-i">周边地标</span></p>
+    <div id="landmarks-list"></div>
+  </div>
+
+  <!-- VIDEO + MAP -->
+  <div class="media-section">
+    <div class="media-grid">
+      <div class="media-video" id="video-box">
+        <div style="width:100%;height:100%;min-height:200px;background:#1A2428;display:flex;align-items:center;justify-content:center;">
+          <p style="color:rgba(255,255,255,0.2);font-size:13px;letter-spacing:0.08em;">No video</p>
+        </div>
+      </div>
+      <div class="media-map">
+        <iframe id="map-frame" src="about:blank" frameborder="0" allowfullscreen loading="lazy" class="map-iframe" style="display:none;width:100%;height:100%;min-height:200px;"></iframe>
+        <div id="map-placeholder" class="map-placeholder" style="min-height:200px;">
+          <p style="color:#7A9098;font-size:13px;">📍 Map</p>
+        </div>
+        <div class="map-label" id="map-label"></div>
+      </div>
+    </div>
+    <div class="media-labels">
+      <p class="media-label"><span class="lo-i">ວິດີໂອ</span><span class="en-i">Video</span><span class="zh-i">视频</span></p>
+      <p class="media-label"><span class="lo-i">ແຜນທີ່</span><span class="en-i">Map</span><span class="zh-i">地图</span></p>
+    </div>
+  </div>
+
+  <!-- DOWNLOAD -->
+  <div class="download-section" id="dl-section" style="display:none;">
+    <a href="#" id="dl-btn" target="_blank" class="btn-download">
+      ↓ <span class="lo-i">ດາວໂຫຼດວິດີໂອ (Pintag)</span><span class="en-i">Download Video (Pintag)</span><span class="zh-i">下载视频 (Pintag)</span>
+    </a>
+  </div>
+
+  <!-- AGENT CARD -->
+  <div class="agent-card">
+    <div class="agent-avatar" id="agent-avatar">
+      <span class="agent-initials" id="agent-initials">?</span>
+    </div>
+    <div class="agent-info">
+      <p class="agent-name" id="agent-name">Agent</p>
+      <p><span class="agent-badge">✓ Pintag Agent</span></p>
+      <p class="agent-date" id="agent-date"></p>
+    </div>
+    <a href="#" id="agent-wa" target="_blank" class="btn-agent-wa">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      WhatsApp
+    </a>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="listing-footer">
+    <p class="footer-note" id="footer-note"></p>
+    <p class="footer-disclaimer"><span class="lo-i">ຂໍ້ມູນໂດຍ Agent</span><span class="en-i">Info by agent · Pintag does not verify</span><span class="zh-i">信息由经纪人提供</span></p>
+  </div>
+
+</div>
+</div>
 
 <script>
-const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
-
-const params = new URLSearchParams(location.search);
-const slug = params.get('slug');
-let currentLang = 'lo';
-let property = null;
+const SB = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const slug = new URLSearchParams(location.search).get('slug');
+let imgs = [], idx = 0;
 
 async function loadProperty() {
-  if (!slug) { location.href = 'listings.html'; return; }
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/properties?slug=eq.${slug}&limit=1`, {
-    headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
-  });
-  const data = await res.json();
-  if (!data || !data[0]) { location.href = 'listings.html'; return; }
-  property = data[0];
-  renderProperty(property);
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('page').style.display = 'block';
+  if (!slug) { location.href='listings.html'; return; }
+  const r = await fetch(`${SB}/rest/v1/properties?slug=eq.${encodeURIComponent(slug)}&limit=1`,{headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
+  const d = await r.json();
+  if (!d||!d[0]) { location.href='listings.html'; return; }
+  render(d[0]);
+  document.getElementById('loading').style.display='none';
+  document.getElementById('page').style.display='block';
 }
 
-function t(field) {
-  if (!property) return '';
-  const lang = document.body.className === 'lang-en' ? 'en' : document.body.className === 'lang-zh' ? 'zh' : 'lo';
-  return property[`${field}_${lang}`] || property[`${field}_en`] || property[`${field}_lo`] || '';
+function fmtDate(s) {
+  if (!s) return '';
+  const d=new Date(s);
+  const m=['ມ.ກ','ກ.ພ','ມ.ນ','ເ.ສ','ພ.ພ','ມິ.ຖ','ກ.ລ','ສ.ຫ','ກ.ຍ','ຕ.ລ','ພ.ຈ','ທ.ວ'];
+  return `ລົງ ${d.getDate()} ${m[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function renderProperty(p) {
-  document.title = `Pintag · ${p.title_en}`;
+function render(p) {
+  document.title = 'Pintag · '+(p.title_en||'');
+  const txLo=p.transaction_type==='for_sale'?'ຂາຍ':'ໃຫ້ເຊົ່າ';
+  const txEn=p.transaction_type==='for_sale'?'For Sale':'For Rent';
+  const txZh=p.transaction_type==='for_sale'?'出售':'租房';
+  const waN=(p.whatsapp||'').replace(/[^0-9]/g,'');
+  const waM=encodeURIComponent(`ສະບາຍດີ, ຂ້ອຍເຫັນລາຍການ Pintag: ${p.title_en||''} — ຢາກສອບຖາມ`);
+  const waU=`https://wa.me/${waN}?text=${waM}`;
+  const agName=p.agent_name||'Agent';
 
-  // Hero
-  if (p.images && p.images.length > 0) {
-    const wrap = document.getElementById('hero-img-wrap');
-    wrap.innerHTML = `<img src="${p.images[0]}" alt="${p.title_en}">`;
-  }
-  const txLabel = p.transaction_type === 'for_sale' ? { lo:'ຂາຍ', en:'For Sale', zh:'出售' } : { lo:'ໃຫ້ເຊົ່າ', en:'For Rent', zh:'租房' };
-  document.getElementById('hero-tag').innerHTML = `<span class="lo-i">${txLabel.lo}</span><span class="en-i">${txLabel.en}</span><span class="zh-i">${txLabel.zh}</span> · <span class="lo-i">${p.district_lo||''}</span><span class="en-i">${p.district_en||''}</span><span class="zh-i">${p.district_zh||''}</span>`;
-  document.getElementById('hero-title').innerHTML = `<span class="lo-i">${p.title_lo||p.title_en}</span><span class="en-i">${p.title_en}</span><span class="zh-i">${p.title_zh||p.title_en}</span>`;
-  document.getElementById('hero-badge-text').textContent = p.status === 'available' ? 'Available · ວ່າງ' : p.status;
-
-  // Photo strip
-  const strip = document.getElementById('photo-strip');
-  if (p.images && p.images.length > 0) {
-    p.images.forEach((img, i) => {
-      const div = document.createElement('div');
-      div.className = 'photo-thumb' + (i === 0 ? ' active' : '');
-      div.innerHTML = `<img src="${img}" alt="Photo ${i+1}">`;
-      div.onclick = () => {
-        document.querySelectorAll('.photo-thumb').forEach(t => t.classList.remove('active'));
-        div.classList.add('active');
-        const heroWrap = document.getElementById('hero-img-wrap');
-        heroWrap.innerHTML = `<img src="${img}" alt="">`;
-      };
-      strip.appendChild(div);
-    });
-  }
-
-  // Price bar
-  document.getElementById('pb-type').innerHTML = `<span class="lo-i">${txLabel.lo}</span><span class="en-i">${txLabel.en}</span><span class="zh-i">${txLabel.zh}</span>`;
-  const pbPrice = document.getElementById('pb-price');
-  if (p.price_display) {
-    pbPrice.textContent = p.price_display;
-  } else {
-    pbPrice.className = 'price-on-request';
-    pbPrice.innerHTML = '<span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span>';
-  }
-  const waMsg = encodeURIComponent(`ສະບາຍດີ, ຂ້ອຍເຫັນລາຍການ Pintag: ${p.title_en} — ຢາກສອບຖາມເພີ່ມ`);
-  document.getElementById('pb-wa').href = `https://wa.me/${(p.whatsapp||'').replace(/[^0-9]/g,'')}?text=${waMsg}`;
-
-  // Video - universal embed
-  const videoBox = document.getElementById('video-box');
-  const videoUrl = p.video_url || (p.video_drive_id ? `https://drive.google.com/file/d/${p.video_drive_id}/view` : null);
-  if (videoUrl) {
-    // Set orientation class immediately on load
-    const isVertical = (videoUrl.includes('tiktok.com') && videoUrl.includes('/video/')) ||
-                       (videoUrl.includes('instagram.com') && videoUrl.includes('/reel/'));
-    const grid = document.querySelector('.listing-grid');
-    if (grid) {
-      grid.classList.add(isVertical ? 'video-vertical' : 'video-horizontal');
+  // Gallery
+  imgs=p.images&&p.images.length?p.images:[];
+  if(imgs.length){
+    document.getElementById('gallery-no-img').style.display='none';
+    const main=document.getElementById('gallery-main');
+    const img=document.createElement('img');img.src=imgs[0];img.alt=p.title_en||'';
+    main.insertBefore(img,main.firstChild);
+    if(imgs.length>1){
+      document.getElementById('gallery-counter').style.display='block';
+      document.getElementById('gallery-counter').textContent=`1 / ${imgs.length}`;
+      document.getElementById('btn-prev').style.display='flex';
+      document.getElementById('btn-next').style.display='flex';
+      const t=document.getElementById('gallery-thumbs');
+      t.style.display='flex';
+      imgs.forEach((s,i)=>{
+        const d=document.createElement('div');d.className='thumb'+(i===0?' active':'');
+        d.innerHTML=`<img src="${s}" alt="">`;d.onclick=()=>goTo(i);t.appendChild(d);
+      });
     }
-    const embedHtml = getVideoEmbed(videoUrl);
-    if (embedHtml) {
-      // Show thumbnail with play button, load embed on click
-      const thumbSrc = p.images && p.images[0] ? p.images[0] : '';
-      videoBox.innerHTML = `
-        <div class="video-cover" id="video-cover" onclick="loadVideo(this, '${videoUrl.replace(/'/g,"\'")}')">
-          ${thumbSrc ? `<img src="${thumbSrc}" alt="Video thumbnail" style="width:100%;height:100%;object-fit:cover;display:block;">` : '<div style="width:100%;height:100%;background:#1A2428;"></div>'}
-          <div class="video-cover-overlay">
-            <div class="play-btn">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
-            </div>
-            <span class="play-label">
-              <span class="lo-i">ຫຼິ້ນວິດີໂອ</span>
-              <span class="en-i">Play Video</span>
-              <span class="zh-i">播放视频</span>
-            </span>
-          </div>
-        </div>
-        <div id="video-embed-container" style="position:absolute;inset:0;display:none;"></div>
-      `;
-    }
-  } else {
-    videoBox.innerHTML = '<div style="width:100%;height:100%;background:#1A2428;display:flex;align-items:center;justify-content:center;"><p style="color:rgba(255,255,255,0.3);font-size:13px;">No video available</p></div>';
   }
 
-  // Map
-  const mapBox = document.querySelector('.listing-map-box');
-  const distEn = p.district_en || '';
-  const distLo = p.district_lo || '';
-  const distZh = p.district_zh || '';
-  const mapLabel = `${distLo} · ${distEn} · ${distZh}`;
+  // Status
+  const st=p.status==='available'?'<span class="lo-i">ວ່າງ</span><span class="en-i">Available</span><span class="zh-i">可用</span>':p.status||'';
+  document.getElementById('status-text').innerHTML=st;
 
-  let mapUrl = p.map_embed_url;
-
-
-  if (mapUrl) {
-    document.getElementById('map-frame').src = mapUrl;
-    document.getElementById('map-label').innerHTML = mapLabel;
-  } else {
-    mapBox.innerHTML = '<div style="width:100%;height:100%;background:#D4E4D4;display:flex;align-items:center;justify-content:center;"><p style="color:#7A9098;font-size:13px;letter-spacing:0.08em;">ແຜນທີ່ · Map · 地图</p></div>';
-  }
-
-  // Right panel
-  document.getElementById('l-tag').innerHTML = `<span class="lo-i">${txLabel.lo} · ${p.district_lo||''}</span><span class="en-i">${txLabel.en} · ${p.district_en||''}</span><span class="zh-i">${txLabel.zh} · ${p.district_zh||''}</span>`;
-  document.getElementById('l-title').innerHTML = `<span class="lo-i">${p.title_lo||p.title_en}</span><span class="en-i">${p.title_en}</span><span class="zh-i">${p.title_zh||p.title_en}</span>`;
-  document.getElementById('l-location-text').innerHTML = `<span class="lo-i">${p.district_lo||''}, ວຽງຈັນ</span><span class="en-i">${p.district_en||''}, Vientiane</span><span class="zh-i">${p.district_zh||''}, 万象</span>`;
-
-  // Description
-  const descEl = document.getElementById('l-desc');
-  descEl.innerHTML = `<span class="lo">${p.desc_lo||p.desc_en||''}</span><span class="en">${p.desc_en||''}</span><span class="zh">${p.desc_zh||p.desc_en||''}</span>`;
-
-  // Landmarks
-  if (p.landmarks && p.landmarks.length > 0) {
-    document.getElementById('l-landmarks').style.display = 'block';
-    const list = document.getElementById('l-landmarks-list');
-    p.landmarks.forEach(l => {
-      const div = document.createElement('div');
-      div.className = 'l-landmark';
-      div.innerHTML = `<span class="l-landmark-name"><span class="lo-i">${l.name_lo||l.name_en}</span><span class="en-i">${l.name_en||l.name_lo}</span><span class="zh-i">${l.name_zh||l.name_en}</span></span><span class="l-landmark-dist">${l.distance||''}</span>`;
-      list.appendChild(div);
-    });
-  }
-
-  // Specs
-  const specs = document.getElementById('l-specs');
-  const specItems = [];
-  if (p.bedrooms) specItems.push({ val: p.bedrooms, key: '<span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">Beds</span><span class="zh-i">卧室</span>' });
-  if (p.bathrooms) specItems.push({ val: p.bathrooms, key: '<span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">Baths</span><span class="zh-i">浴室</span>' });
-  if (p.sqm) specItems.push({ val: p.sqm, key: 'SQM' });
-  if (p.floors) specItems.push({ val: p.floors, key: '<span class="lo-i">ຊັ້ນ</span><span class="en-i">Floors</span><span class="zh-i">层</span>' });
-  specs.style.gridTemplateColumns = `repeat(${Math.min(specItems.length,4)},1fr)`;
-  specItems.forEach(s => {
-    const div = document.createElement('div');
-    div.className = 'l-spec';
-    div.innerHTML = `<p class="l-spec-val">${s.val}</p><p class="l-spec-key">${s.key}</p>`;
-    specs.appendChild(div);
-  });
-
-  // Tags
-  const tagsRow = document.getElementById('l-tags-row');
-  const tags = [];
-  if (p.furnished) tags.push(p.furnished === 'fully' ? 'Fully Furnished' : p.furnished === 'partially' ? 'Part Furnished' : 'Unfurnished');
-  if (p.parking) tags.push('Parking ✓');
-  if (p.pool) tags.push('Pool ✓');
-  tags.forEach(tag => {
-    const span = document.createElement('span');
-    span.className = 'l-tag-pill';
-    span.textContent = tag;
-    tagsRow.appendChild(span);
+  // Lang tabs — hide empty
+  document.querySelectorAll('.lang-tab').forEach(tab=>{
+    const l=tab.dataset.lang;
+    if(l==='en'&&!p.title_en&&!p.desc_en) tab.style.display='none';
+    if(l==='zh'&&!p.title_zh&&!p.desc_zh) tab.style.display='none';
   });
 
   // Price
-  const priceWrap = document.getElementById('l-price-wrap');
-  if (p.price_display) {
-    priceWrap.innerHTML = `<p class="l-price">${p.price_display}</p>`;
-  } else {
-    priceWrap.innerHTML = `<p class="l-price-on-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>`;
+  document.getElementById('pb-type').innerHTML=`<span class="lo-i">${txLo}</span><span class="en-i">${txEn}</span><span class="zh-i">${txZh}</span>`;
+  const pe=document.getElementById('pb-price');
+  if(p.price_display){pe.textContent=p.price_display;}
+  else{pe.className='price-on-req';pe.innerHTML='<span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span>';}
+
+  // Header
+  document.getElementById('l-tag').innerHTML=`<span class="lo-i">${txLo}</span><span class="en-i">${txEn}</span><span class="zh-i">${txZh}</span>`;
+  document.getElementById('l-title').innerHTML=`<span class="lo-i">${p.title_lo||p.title_en||''}</span><span class="en-i">${p.title_en||''}</span><span class="zh-i">${p.title_zh||p.title_en||''}</span>`;
+  document.getElementById('l-location').innerHTML=`<span class="lo-i">${p.district_lo||''}, ວຽງຈັນ</span><span class="en-i">${p.district_en||''}, Vientiane</span><span class="zh-i">${p.district_zh||''}, 万象</span>`;
+
+  // Desc
+  document.getElementById('l-desc').innerHTML=`<span class="lo">${p.desc_lo||p.desc_en||''}</span><span class="en">${p.desc_en||''}</span><span class="zh">${p.desc_zh||p.desc_en||''}</span>`;
+
+  // WA
+  [document.getElementById('wa-desktop'),document.getElementById('sticky-wa-link'),document.getElementById('agent-wa')].forEach(el=>{if(el)el.href=waU;});
+  document.getElementById('wa-desktop-label').textContent=`ຕິດຕໍ່ ${agName} · WhatsApp`;
+  document.getElementById('sticky-wa-text').textContent=`ຕິດຕໍ່ ${agName} · WhatsApp`;
+
+  // Specs
+  const sg=document.getElementById('specs-grid');
+  const si=[];
+  if(p.bedrooms) si.push({v:p.bedrooms,k:'<span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">Beds</span><span class="zh-i">卧室</span>'});
+  if(p.bathrooms) si.push({v:p.bathrooms,k:'<span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">Baths</span><span class="zh-i">浴室</span>'});
+  if(p.sqm) si.push({v:p.sqm,k:'SQM'});
+  if(p.floors) si.push({v:p.floors,k:'<span class="lo-i">ຊັ້ນ</span><span class="en-i">Floors</span><span class="zh-i">层</span>'});
+  if(si.length){
+    document.getElementById('specs-section').style.display='block';
+    sg.style.gridTemplateColumns=`repeat(${Math.min(si.length,4)},1fr)`;
+    si.forEach(s=>sg.innerHTML+=`<div class="spec-card"><p class="spec-val">${s.v}</p><p class="spec-key">${s.k}</p></div>`);
+    const tags=[];
+    if(p.furnished==='fully') tags.push('<span class="lo-i">ເຄື່ອງເຟີນີເຈີຄົບ</span><span class="en-i">Fully Furnished</span><span class="zh-i">全配家具</span>');
+    if(p.furnished==='partially') tags.push('<span class="lo-i">ເຄື່ອງເຟີນີເຈີບາງສ່ວນ</span><span class="en-i">Part Furnished</span><span class="zh-i">部分家具</span>');
+    if(p.parking) tags.push('<span class="lo-i">ທີ່ຈອດລົດ ✓</span><span class="en-i">Parking ✓</span><span class="zh-i">停车位 ✓</span>');
+    if(p.pool) tags.push('<span class="lo-i">ສະລອຍນ້ຳ ✓</span><span class="en-i">Pool ✓</span><span class="zh-i">泳池 ✓</span>');
+    const tr=document.getElementById('tags-row');
+    tags.forEach(t=>tr.innerHTML+=`<span class="tag-pill">${t}</span>`);
   }
 
-  // Buttons
-  const btns = document.getElementById('l-btns');
-  // Download button - uses dedicated download_url (Google Drive watermarked version)
-  const dlUrl = p.download_url || (p.video_drive_id ? `https://drive.google.com/uc?export=download&id=${p.video_drive_id}` : null);
-  if (dlUrl) {
-    // Convert Google Drive share link to direct download
-    let directDl = dlUrl;
-    const driveId = dlUrl.match(/[-\w]{25,}/);
-    if (dlUrl.includes('drive.google.com') && driveId) {
-      directDl = `https://drive.google.com/uc?export=download&id=${driveId[0]}`;
-    }
-    btns.innerHTML += `<a href="${directDl}" target="_blank" class="btn-download">↓ <span class="lo-i">ດາວໂຫຼດວິດີໂອ (Pintag)</span><span class="en-i">Download Video (Pintag)</span><span class="zh-i">下载视频 (Pintag)</span></a>`;
+  // Landmarks
+  if(p.landmarks&&p.landmarks.length){
+    document.getElementById('landmarks-section').style.display='block';
+    const ll=document.getElementById('landmarks-list');
+    p.landmarks.forEach(l=>ll.innerHTML+=`<div class="landmark-row"><span class="landmark-name"><span class="lo-i">${l.name_lo||l.name_en||''}</span><span class="en-i">${l.name_en||l.name_lo||''}</span><span class="zh-i">${l.name_zh||l.name_en||''}</span></span><span class="landmark-dist">${l.distance||''}</span></div>`);
   }
-  btns.innerHTML += `<a href="https://wa.me/${(p.whatsapp||'').replace(/[^0-9]/g,'')}?text=${waMsg}" target="_blank" class="btn-wa"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> WhatsApp</a>`;
 
-  // Agent footer
-  document.getElementById('l-agent').innerHTML = `<strong>${p.agent_name||'Agent'}</strong> · Listed on Pintag · ${p.status === 'available' ? '✓ Available' : p.status}`;
+  // Video
+  const vb=document.getElementById('video-box');
+  const vu=p.video_url||(p.video_drive_id?`https://drive.google.com/file/d/${p.video_drive_id}/view`:null);
+  if(vu){
+    const isTT=vu.includes('tiktok.com');
+    const th=imgs[0]||'';
+    const pl=isTT?'<span class="lo-i">ເບິ່ງໃນ TikTok ↗</span><span class="en-i">Watch on TikTok ↗</span><span class="zh-i">在TikTok观看 ↗</span>':'<span class="lo-i">ຫຼິ້ນວິດີໂອ</span><span class="en-i">Play Video</span><span class="zh-i">播放视频</span>';
+    vb.style.position='relative';
+    vb.innerHTML=`<div class="video-cover" onclick="playVid(this,'${vu.replace(/'/g,"\\'")}')"> ${th?`<img src="${th}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">`:'<div style="width:100%;height:100%;min-height:200px;background:#1A2428;"></div>'}<div class="video-cover-overlay"><div class="play-btn"><svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div><span class="play-label">${pl}</span></div></div><div id="vec" style="position:absolute;inset:0;display:none;"></div>`;
+  }
+
+  // Map
+  if(p.map_embed_url){
+    const mf=document.getElementById('map-frame');mf.src=p.map_embed_url;mf.style.display='block';
+    document.getElementById('map-placeholder').style.display='none';
+    document.getElementById('map-label').innerHTML=`<span class="lo-i">${p.district_lo||''}</span><span class="en-i">${p.district_en||''}</span><span class="zh-i">${p.district_zh||''}</span>`;
+  }
+
+  // Download
+  const du=p.download_url||(p.video_drive_id?`https://drive.google.com/uc?export=download&id=${p.video_drive_id}`:null);
+  if(du){
+    document.getElementById('dl-section').style.display='block';
+    let durl=du;const m=du.match(/[-\w]{25,}/);
+    if(du.includes('drive.google.com')&&m) durl=`https://drive.google.com/uc?export=download&id=${m[0]}`;
+    document.getElementById('dl-btn').href=durl;
+  }
+
+  // Agent card
+  document.getElementById('agent-name').textContent=agName;
+  document.getElementById('agent-initials').textContent=agName.charAt(0).toUpperCase();
+  document.getElementById('agent-date').textContent=fmtDate(p.created_at);
+
+  // Footer
+  document.getElementById('footer-note').textContent=`${agName} · Pintag · ${p.status==='available'?'✓ Available':p.status||''}`;
 }
 
-function loadVideo(coverEl, url) {
-  const embedHtml = getVideoEmbed(url);
-  if (!embedHtml) return;
+function goTo(i){
+  idx=(i+imgs.length)%imgs.length;
+  const main=document.getElementById('gallery-main');
+  const img=main.querySelector('img');if(img)img.src=imgs[idx];
+  document.getElementById('gallery-counter').textContent=`${idx+1} / ${imgs.length}`;
+  document.querySelectorAll('.thumb').forEach((t,ti)=>t.classList.toggle('active',ti===idx));
+}
+function galleryNext(e){if(e)e.stopPropagation();goTo(idx+1);}
+function galleryPrev(e){if(e)e.stopPropagation();goTo(idx-1);}
+document.getElementById('gallery-main').onclick=()=>imgs.length>1&&galleryNext();
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')galleryNext();if(e.key==='ArrowLeft')galleryPrev();});
 
-  // Detect orientation based on platform
-  const isVertical = (url.includes('tiktok.com') && url.includes('/video/')) ||
-                     (url.includes('instagram.com') && url.includes('/reel/'));
-  
-  // Adjust grid layout
-  const grid = document.querySelector('.listing-grid');
-  if (grid) {
-    grid.classList.remove('video-vertical', 'video-horizontal');
-    grid.classList.add(isVertical ? 'video-vertical' : 'video-horizontal');
-  }
-
-  const container = document.getElementById('video-embed-container');
-  container.innerHTML = embedHtml;
-  container.style.display = 'block';
-  container.style.position = 'absolute';
-  container.style.inset = '0';
-
-  const iframe = container.querySelector('iframe, video');
-  if (iframe) {
-    iframe.style.width = '100%';
-    iframe.style.height = '100%';
-    iframe.style.position = 'absolute';
-    iframe.style.inset = '0';
-    iframe.style.border = 'none';
-  }
-  coverEl.style.display = 'none';
+function playVid(cover,url){
+  if(url.includes('tiktok.com')){window.open(url,'_blank');return;}
+  const h=getEmbed(url);if(!h)return;
+  const c=document.getElementById('vec');
+  c.innerHTML=h;c.style.display='block';c.style.position='absolute';c.style.inset='0';
+  const f=c.querySelector('iframe,video');
+  if(f){f.style.cssText='width:100%;height:100%;position:absolute;inset:0;border:none;';}
+  cover.style.display='none';
 }
 
-// ── UNIVERSAL VIDEO EMBED ──
-function getVideoEmbed(url) {
-  if (!url) return null;
-
-  // YouTube
-  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
-  if (ytMatch) {
-    return `<iframe src="https://www.youtube.com/embed/${ytMatch[1]}?rel=0" frameborder="0" allowfullscreen allow="autoplay; picture-in-picture" style="width:100%;height:100%;display:block;"></iframe>`;
-  }
-
-  // TikTok - full URL
-  const ttMatch = url.match(/tiktok\.com\/@[\w.]+\/video\/(\d+)/);
-  if (ttMatch) {
-    return `<iframe src="https://www.tiktok.com/embed/v2/${ttMatch[1]}" frameborder="0" allowfullscreen allow="autoplay" style="width:100%;height:100%;display:block;"></iframe>`;
-  }
-  // TikTok - short link fallback (vt.tiktok.com or vm.tiktok.com)
-  if (url.includes('tiktok.com') && !url.includes('/@')) {
-    return `<div style="width:100%;height:100%;background:#1A2428;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center;">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="#38A8A8"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.34 6.34 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.76a4.85 4.85 0 01-1.01-.07z"/></svg>
-      <p style="color:rgba(255,255,255,0.7);font-size:13px;line-height:1.6;">ໃຊ້ລິ້ງ TikTok ເຕັມ<br>Use full TikTok URL<br><span style="color:#38A8A8;font-size:11px;">tiktok.com/@username/video/123...</span></p>
-      <a href="${url}" target="_blank" style="background:#38A8A8;color:white;padding:10px 20px;text-decoration:none;font-size:13px;font-weight:500;border-radius:3px;">Watch on TikTok ↗</a>
-    </div>`;
-  }
-
-  // Facebook
-  if (url.includes('facebook.com')) {
-    const fbEncoded = encodeURIComponent(url);
-    return `<iframe src="https://www.facebook.com/plugins/video.php?href=${fbEncoded}&show_text=false&width=560&mute=0" frameborder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" style="width:100%;height:100%;display:block;"></iframe>`;
-  }
-
-  // Google Drive
-  const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if (driveMatch) {
-    return `<iframe src="https://drive.google.com/file/d/${driveMatch[1]}/preview" frameborder="0" allow="autoplay" allowfullscreen style="width:100%;height:100%;display:block;"></iframe>`;
-  }
-
-  // Vimeo
-  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
-  if (vimeoMatch) {
-    return `<iframe src="https://player.vimeo.com/video/${vimeoMatch[1]}" frameborder="0" allowfullscreen style="width:100%;height:100%;display:block;"></iframe>`;
-  }
-
-  // Direct video file
-  if (url.match(/\.(mp4|webm|ogg)$/i)) {
-    return `<video controls style="width:100%;height:100%;display:block;"><source src="${url}"></video>`;
-  }
-
+function getEmbed(url){
+  const yt=url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+  if(yt)return`<iframe src="https://www.youtube.com/embed/${yt[1]}?rel=0" frameborder="0" allowfullscreen allow="autoplay;picture-in-picture"></iframe>`;
+  if(url.includes('facebook.com'))return`<iframe src="https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&mute=0" frameborder="0" allowfullscreen allow="autoplay;clipboard-write;encrypted-media;picture-in-picture;web-share"></iframe>`;
+  const dr=url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if(dr)return`<iframe src="https://drive.google.com/file/d/${dr[1]}/preview" frameborder="0" allow="autoplay" allowfullscreen></iframe>`;
+  const vi=url.match(/vimeo\.com\/(\d+)/);
+  if(vi)return`<iframe src="https://player.vimeo.com/video/${vi[1]}" frameborder="0" allowfullscreen></iframe>`;
   return null;
 }
 
-function setLang(lang, btn) {
-  localStorage.setItem('pintag-lang', lang);
-  document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
-  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+function setLang(lang,btn){
+  document.body.className=lang==='lo'?'':'lang-'+lang;
+  document.querySelectorAll('.lang-tab').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
 }
-
-(function(){
-  const saved = localStorage.getItem('pintag-lang');
-  if (saved && saved !== 'lo') {
-    document.body.className = 'lang-' + saved;
-    document.querySelectorAll('.lang-btn').forEach(b => {
-      b.classList.toggle('active', b.textContent.trim() === (saved === 'en' ? 'EN' : '中文'));
-    });
-  }
-})();
 
 loadProperty();
 </script>
