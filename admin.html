@@ -240,10 +240,9 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
   <div class="login-box">
     <p class="login-logo">Pintag</p>
     <p class="login-sub">Admin Panel</p>
-    <input type="email" class="login-input" id="email-input" placeholder="Email" onkeydown="if(event.key==='Enter')login()">
-    <input type="password" class="login-input" id="password-input" placeholder="Password" onkeydown="if(event.key==='Enter')login()">
+    <input type="password" class="login-input" id="password-input" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()">
     <button class="login-btn" onclick="login()">Sign In</button>
-    <p class="login-error" id="login-error">Incorrect email or password</p>
+    <p class="login-error" id="login-error">Incorrect password</p>
   </div>
 </div>
 
@@ -475,6 +474,11 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <input class="form-input" id="f-agent" type="text" placeholder="Keomany">
             </div>
             <div class="form-group">
+              <label class="form-label">Agent Photo URL</label>
+              <input class="form-input" id="f-agent-photo" type="text" placeholder="https://pintag-cyrora.github.io/pintag/agent-keomany.jpg">
+              <p class="form-hint">Use: pintag-cyrora.github.io/pintag/agent-keomany.jpg or agent-tik.jpg</p>
+            </div>
+            <div class="form-group">
               <label class="form-label">WhatsApp Number</label>
               <input class="form-input" id="f-whatsapp" type="text" placeholder="+8562055546963">
             </div>
@@ -503,63 +507,38 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 // ── CONFIG ──
 const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
-
-let authToken = null;
+// !! CHANGE THIS PASSWORD !!
+const ADMIN_PASSWORD = 'pintag2025';
 
 // ── AUTH ──
-async function login() {
-  const email = document.getElementById('email-input').value.trim();
+function login() {
   const pw = document.getElementById('password-input').value;
-  const errEl = document.getElementById('login-error');
-  errEl.style.display = 'none';
-
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: { 'apikey': SUPABASE_ANON, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: pw })
-  });
-  const data = await res.json();
-
-  if (res.ok && data.access_token) {
-    authToken = data.access_token;
-    sessionStorage.setItem('pintag-token', data.access_token);
-    showAdmin();
+  if (pw === ADMIN_PASSWORD) {
+    sessionStorage.setItem('pintag-admin', '1');
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('admin-screen').style.display = 'block';
+    loadListings();
   } else {
-    errEl.textContent = data.error_description || data.msg || 'Incorrect email or password';
-    errEl.style.display = 'block';
+    document.getElementById('login-error').style.display = 'block';
   }
 }
-
-async function logout() {
-  const token = sessionStorage.getItem('pintag-token');
-  if (token) {
-    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-      method: 'POST',
-      headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token }
-    });
-  }
-  sessionStorage.removeItem('pintag-token');
-  authToken = null;
+function logout() {
+  sessionStorage.removeItem('pintag-admin');
   location.reload();
 }
-
-function showAdmin() {
+if (sessionStorage.getItem('pintag-admin')) {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('admin-screen').style.display = 'block';
   loadListings();
 }
 
-const savedToken = sessionStorage.getItem('pintag-token');
-if (savedToken) { authToken = savedToken; showAdmin(); }
-
 // ── SUPABASE HELPERS ──
 async function supabase(method, path, body) {
-  const token = authToken || SUPABASE_ANON;
   const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
     method,
     headers: {
       'apikey': SUPABASE_ANON,
-      'Authorization': 'Bearer ' + token,
+      'Authorization': 'Bearer ' + SUPABASE_ANON,
       'Content-Type': 'application/json',
       'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal'
     },
@@ -647,6 +626,7 @@ async function editListing(id) {
   document.getElementById('f-video').value = p.video_url || p.video_drive_id || '';
   document.getElementById('f-download-url').value = p.download_url || '';
   document.getElementById('f-agent').value = p.agent_name || '';
+  document.getElementById('f-agent-photo').value = p.agent_photo_url || '';
   document.getElementById('f-whatsapp').value = p.whatsapp || '';
   document.getElementById('f-featured').value = String(p.is_featured || false);
   if (p.images && p.images.length) populateExistingImages(p.images);
@@ -704,6 +684,7 @@ async function saveListing(e) {
     video_url: document.getElementById('f-video').value.trim() || null,
     download_url: document.getElementById('f-download-url').value.trim() || null,
     agent_name: document.getElementById('f-agent').value.trim() || null,
+    agent_photo_url: document.getElementById('f-agent-photo').value.trim() || null,
     whatsapp: document.getElementById('f-whatsapp').value.trim() || null,
     is_featured: document.getElementById('f-featured').value === 'true',
     landmarks: landmarks,
@@ -755,6 +736,8 @@ function addLandmark(data) {
 }
 
 // ── IMAGE UPLOAD ──
+const SUPABASE_URL_UPLOAD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SUPABASE_ANON_UPLOAD = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 let uploadedImages = [];
 
 // Drag and drop
@@ -789,11 +772,11 @@ async function handleImageUpload(files) {
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     
     try {
-      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/property-images/${fileName}`, {
+      const res = await fetch(`${SUPABASE_URL_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
         method: 'POST',
         headers: {
-          'apikey': SUPABASE_ANON,
-          'Authorization': 'Bearer ' + (authToken || SUPABASE_ANON),
+          'apikey': SUPABASE_ANON_UPLOAD,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_UPLOAD,
           'Content-Type': file.type || 'image/jpeg',
           'x-upsert': 'true'
         },

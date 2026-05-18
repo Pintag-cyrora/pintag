@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag · Property</title>
+<!-- Open Graph meta tags — updated dynamically by JS -->
+<meta property="og:site_name" content="Pintag">
+<meta property="og:type" content="website">
+<meta id="og-title" property="og:title" content="Pintag · Property Listing">
+<meta id="og-desc" property="og:description" content="View this property on Pintag · pintag.io">
+<meta id="og-image" property="og:image" content="https://pintag-cyrora.github.io/pintag/pintag-hero.png">
+<meta id="og-url" property="og:url" content="https://pintag.io">
+<meta name="twitter:card" content="summary_large_image">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -36,17 +44,30 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
 .loading-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);animation:pulse-anim 1.2s ease-in-out infinite;}
 @keyframes pulse-anim{0%,100%{opacity:0.3;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
 
-/* GALLERY */
+/* ── GALLERY ── */
 .gallery{margin-top:52px;position:relative;background:var(--ink);}
-.gallery-main{position:relative;height:62vh;min-height:280px;max-height:600px;overflow:hidden;cursor:pointer;user-select:none;}
-.gallery-main img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;transition:transform 0.4s ease;}
-.gallery-main:hover img{transform:scale(1.02);}
+.gallery-main{
+  position:relative;
+  height:62vh;min-height:280px;max-height:600px;
+  overflow:hidden;cursor:pointer;user-select:none;
+}
+/* CROSSFADE: each image is absolutely stacked, opacity transition only */
+.gallery-img{
+  position:absolute;inset:0;
+  width:100%;height:100%;
+  object-fit:cover;object-position:center;
+  opacity:0;
+  transition:opacity 0.35s ease;
+  pointer-events:none;
+}
+.gallery-img.active{opacity:1;}
+.gallery-no-img{width:100%;height:100%;background:#2A3A35;display:flex;align-items:center;justify-content:center;}
 .gallery-gold-rule{position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold);opacity:0.55;z-index:2;}
-.gallery-overlay{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(26,36,40,0.65) 0%,transparent 100%);padding:20px 16px 10px;z-index:2;display:flex;align-items:flex-end;justify-content:space-between;}
-.gallery-counter{font-size:12px;font-weight:500;color:rgba(255,255,255,0.75);background:rgba(0,0,0,0.35);backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;letter-spacing:0.06em;}
-.gallery-status{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.92);padding:5px 12px;font-size:11px;font-weight:500;color:var(--teal);letter-spacing:0.06em;}
+.gallery-overlay{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(26,36,40,0.6) 0%,transparent 100%);padding:20px 16px 10px;z-index:2;display:flex;align-items:flex-end;justify-content:space-between;pointer-events:none;}
+.gallery-counter{font-size:12px;font-weight:500;color:rgba(255,255,255,0.8);background:rgba(0,0,0,0.3);backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;letter-spacing:0.06em;}
+.gallery-status{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.93);padding:5px 12px;font-size:11px;font-weight:500;color:var(--teal);letter-spacing:0.06em;pointer-events:all;}
 .status-dot{width:5px;height:5px;border-radius:50%;background:var(--teal);animation:pulse-anim 2s ease-in-out infinite;}
-.gallery-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;font-size:20px;color:#fff;line-height:1;}
+.gallery-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;font-size:20px;color:#fff;line-height:1;border:none;}
 .gallery-btn:hover{background:rgba(255,255,255,0.28);}
 .gallery-btn.prev{left:12px;}
 .gallery-btn.next{right:12px;}
@@ -62,7 +83,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
 .lang-tab.active{color:var(--teal);border-bottom-color:var(--teal);}
 .lang-tab:hover:not(.active){color:var(--ink);}
 
-/* STICKY WA — mobile only */
+/* STICKY WA mobile */
 .sticky-wa{position:fixed;bottom:0;left:0;right:0;z-index:500;padding:10px 14px;background:rgba(255,255,255,0.98);border-top:1px solid var(--border);backdrop-filter:blur(16px);display:none;}
 .sticky-wa a{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:15px;background:#25D366;color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:4px;letter-spacing:0.02em;}
 @media(max-width:800px){.sticky-wa{display:block;}body{padding-bottom:76px;}}
@@ -75,6 +96,44 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
 .price-type-tag{font-size:10px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;color:var(--teal);margin-bottom:4px;}
 .price-figure{font-size:32px;font-weight:700;color:var(--ink);letter-spacing:-0.03em;line-height:1;}
 .price-on-req{font-size:20px;font-weight:400;color:var(--ink-muted);font-style:italic;}
+
+/* ── AGENT CARD — prominent, below price ── */
+.agent-card{
+  display:flex;align-items:center;gap:16px;
+  padding:16px 20px;
+  border-bottom:1px solid var(--border);
+  background:var(--white);
+  flex-wrap:wrap;
+}
+.agent-avatar{
+  width:52px;height:52px;border-radius:50%;
+  overflow:hidden;flex-shrink:0;
+  background:var(--teal-dim);
+  border:2px solid var(--border-teal);
+  display:flex;align-items:center;justify-content:center;
+}
+.agent-avatar img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
+.agent-initials{font-size:18px;font-weight:700;color:var(--teal);}
+.agent-info{flex:1;min-width:100px;}
+.agent-name{font-size:16px;font-weight:600;color:var(--ink);line-height:1.2;margin-bottom:3px;}
+.agent-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.agent-badge{
+  display:inline-flex;align-items:center;gap:3px;
+  font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--teal);background:var(--teal-dim);
+  padding:3px 8px;border-radius:2px;border:1px solid var(--border-teal);
+}
+.agent-location{font-size:11px;color:var(--ink-muted);}
+.btn-agent-wa{
+  display:flex;align-items:center;gap:8px;
+  padding:11px 18px;background:#25D366;color:#fff;
+  font-size:13px;font-weight:600;text-decoration:none;
+  border-radius:3px;transition:background 0.2s;white-space:nowrap;flex-shrink:0;
+}
+.btn-agent-wa:hover{background:#20BD5C;}
+@media(max-width:480px){
+  .btn-agent-wa{width:100%;justify-content:center;margin-top:4px;}
+}
 
 /* HEADER */
 .listing-header{padding:20px 20px 0;}
@@ -110,7 +169,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
 .landmark-name::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--teal);flex-shrink:0;}
 .landmark-dist{color:var(--ink-muted);font-size:13px;font-weight:500;}
 
-/* MEDIA HALF BOX */
+/* MEDIA */
 .media-section{border-top:1px solid var(--border);}
 .media-grid{display:grid;grid-template-columns:1fr 1fr;min-height:380px;}
 .media-video{position:relative;background:var(--ink);overflow:hidden;border-right:1px solid var(--border);}
@@ -134,19 +193,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
 .btn-download{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;background:var(--ink);color:#fff;font-size:14px;font-weight:500;text-decoration:none;border-radius:3px;transition:background 0.2s;letter-spacing:0.04em;}
 .btn-download:hover{background:var(--ink-soft);}
 
-/* AGENT CARD */
-.agent-card{margin:20px;padding:20px;background:var(--warm);border:1px solid var(--border);display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
-.agent-avatar{width:56px;height:56px;border-radius:50%;overflow:hidden;background:var(--teal-dim);border:2px solid var(--border-teal);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
-.agent-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
-.agent-initials{font-size:20px;font-weight:700;color:var(--teal);}
-.agent-info{flex:1;min-width:120px;}
-.agent-name{font-size:17px;font-weight:600;color:var(--ink);margin-bottom:3px;}
-.agent-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);background:var(--teal-dim);padding:3px 8px;border-radius:2px;border:1px solid var(--border-teal);}
-.agent-date{font-size:12px;color:var(--ink-muted);margin-top:4px;}
-.btn-agent-wa{display:flex;align-items:center;gap:8px;padding:12px 18px;background:#25D366;color:#fff;font-size:14px;font-weight:600;text-decoration:none;border-radius:3px;transition:background 0.2s;white-space:nowrap;flex-shrink:0;}
-.btn-agent-wa:hover{background:#20BD5C;}
-@media(max-width:500px){.btn-agent-wa{width:100%;justify-content:center;}}
-
 /* FOOTER */
 .listing-footer{padding:16px 20px 28px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .footer-note{font-size:12px;color:var(--ink-muted);}
@@ -154,11 +200,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
 
 /* MOBILE */
 @media(max-width:600px){
-  .gallery-main{height:55vw;min-height:220px;}
+  .gallery-main{height:56vw;min-height:220px;}
   .media-grid{grid-template-columns:1fr;min-height:auto;}
   .media-video{min-height:220px;border-right:none;border-bottom:1px solid var(--border);}
   .media-map{min-height:200px;}
-  .media-labels{grid-template-columns:1fr 1fr;}
   .specs-grid{grid-template-columns:repeat(2,1fr);}
   .price-figure{font-size:26px;}
   .l-title{font-size:20px;}
@@ -185,11 +230,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
   <a href="listings.html" class="nav-back">← <span class="lo-i">ລາຍການ</span><span class="en-i">Listings</span><span class="zh-i">房源</span></a>
 </nav>
 
-<!-- STICKY WA (mobile) -->
+<!-- STICKY WA mobile -->
 <div class="sticky-wa">
   <a href="#" id="sticky-wa-link" target="_blank">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-    <span id="sticky-wa-text">WhatsApp Agent</span>
+    <span id="sticky-wa-text">WhatsApp</span>
   </a>
 </div>
 
@@ -197,7 +242,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
 <div class="gallery">
   <div class="gallery-gold-rule"></div>
   <div class="gallery-main" id="gallery-main">
-    <div id="gallery-no-img" style="width:100%;height:100%;background:#2A3A35;display:flex;align-items:center;justify-content:center;">
+    <div id="gallery-no-img" class="gallery-no-img">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-6 4 6"/></svg>
     </div>
     <div class="gallery-overlay">
@@ -228,6 +273,24 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
     <p class="price-figure" id="pb-price"></p>
   </div>
 
+  <!-- ── AGENT CARD — directly below price ── -->
+  <div class="agent-card" id="agent-card">
+    <div class="agent-avatar" id="agent-avatar">
+      <span class="agent-initials" id="agent-initials">?</span>
+    </div>
+    <div class="agent-info">
+      <p class="agent-name" id="agent-name">Agent</p>
+      <div class="agent-meta">
+        <span class="agent-badge">✓ Pintag Agent</span>
+        <span class="agent-location">ວຽງຈັນ · Vientiane</span>
+      </div>
+    </div>
+    <a href="#" id="agent-wa" target="_blank" class="btn-agent-wa">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      <span id="agent-wa-label">WhatsApp</span>
+    </a>
+  </div>
+
   <!-- TITLE + LOCATION -->
   <div class="listing-header">
     <p class="l-tag" id="l-tag"></p>
@@ -248,7 +311,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
   <div class="wa-desktop">
     <a href="#" id="wa-desktop" target="_blank" class="btn-wa-full">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-      <span id="wa-desktop-label">WhatsApp Agent</span>
+      <span id="wa-desktop-label">WhatsApp</span>
     </a>
   </div>
 
@@ -294,56 +357,53 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:52px;display:flex;ali
     </a>
   </div>
 
-  <!-- AGENT CARD -->
-  <div class="agent-card">
-    <div class="agent-avatar" id="agent-avatar">
-      <span class="agent-initials" id="agent-initials">?</span>
-    </div>
-    <div class="agent-info">
-      <p class="agent-name" id="agent-name">Agent</p>
-      <p><span class="agent-badge">✓ Pintag Agent</span></p>
-      <p class="agent-date" id="agent-date"></p>
-    </div>
-    <a href="#" id="agent-wa" target="_blank" class="btn-agent-wa">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-      WhatsApp
-    </a>
-  </div>
-
   <!-- FOOTER -->
   <div class="listing-footer">
     <p class="footer-note" id="footer-note"></p>
-    <p class="footer-disclaimer"><span class="lo-i">ຂໍ້ມູນໂດຍ Agent</span><span class="en-i">Info by agent · Pintag does not verify</span><span class="zh-i">信息由经纪人提供</span></p>
+    <p class="footer-disclaimer"><span class="lo-i">ຂໍ້ມູນໂດຍ Agent · Pintag ບໍ່ຮັບຜິດຊອບ</span><span class="en-i">Info by agent · Pintag does not verify</span><span class="zh-i">信息由经纪人提供</span></p>
   </div>
 
 </div>
 </div>
 
 <script>
-const SB = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
-const slug = new URLSearchParams(location.search).get('slug');
-let imgs = [], idx = 0;
+const SB='https://eoladhcljbpbhnrmmpev.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const BASE='https://pintag-cyrora.github.io/pintag';
+const slug=new URLSearchParams(location.search).get('slug');
+let imgs=[],idx=0;
 
-async function loadProperty() {
-  if (!slug) { location.href='listings.html'; return; }
-  const r = await fetch(`${SB}/rest/v1/properties?slug=eq.${encodeURIComponent(slug)}&limit=1`,{headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
-  const d = await r.json();
-  if (!d||!d[0]) { location.href='listings.html'; return; }
+async function loadProperty(){
+  if(!slug){location.href='listings.html';return;}
+  const r=await fetch(`${SB}/rest/v1/properties?slug=eq.${encodeURIComponent(slug)}&limit=1`,{headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
+  const d=await r.json();
+  if(!d||!d[0]){location.href='listings.html';return;}
   render(d[0]);
   document.getElementById('loading').style.display='none';
   document.getElementById('page').style.display='block';
 }
 
-function fmtDate(s) {
-  if (!s) return '';
+function fmtDate(s){
+  if(!s)return'';
   const d=new Date(s);
   const m=['ມ.ກ','ກ.ພ','ມ.ນ','ເ.ສ','ພ.ພ','ມິ.ຖ','ກ.ລ','ສ.ຫ','ກ.ຍ','ຕ.ລ','ພ.ຈ','ທ.ວ'];
-  return `ລົງ ${d.getDate()} ${m[d.getMonth()]} ${d.getFullYear()}`;
+  return`ລົງ ${d.getDate()} ${m[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function render(p) {
-  document.title = 'Pintag · '+(p.title_en||'');
+function render(p){
+  document.title='Pintag · '+(p.title_en||'Property');
+
+  // Update OG meta tags for link preview
+  const pageUrl=`${BASE}/listing.html?slug=${encodeURIComponent(p.slug||'')}`;
+  const ogImg=p.images&&p.images[0]?p.images[0]:`${BASE}/pintag-hero.png`;
+  const ogTitle=p.title_en||(p.title_lo||'Property Listing')+' · Pintag';
+  const ogDesc=`${p.price_display||'Price on request'} · ${p.district_en||p.district_lo||'Vientiane'} · pintag.io`;
+  document.getElementById('og-title').setAttribute('content',ogTitle);
+  document.getElementById('og-desc').setAttribute('content',ogDesc);
+  document.getElementById('og-image').setAttribute('content',ogImg);
+  document.getElementById('og-url').setAttribute('content',pageUrl);
+  document.title=`${ogTitle}`;
+
   const txLo=p.transaction_type==='for_sale'?'ຂາຍ':'ໃຫ້ເຊົ່າ';
   const txEn=p.transaction_type==='for_sale'?'For Sale':'For Rent';
   const txZh=p.transaction_type==='for_sale'?'出售':'租房';
@@ -352,13 +412,17 @@ function render(p) {
   const waU=`https://wa.me/${waN}?text=${waM}`;
   const agName=p.agent_name||'Agent';
 
-  // Gallery
+  // Gallery with crossfade
   imgs=p.images&&p.images.length?p.images:[];
+  const main=document.getElementById('gallery-main');
   if(imgs.length){
     document.getElementById('gallery-no-img').style.display='none';
-    const main=document.getElementById('gallery-main');
-    const img=document.createElement('img');img.src=imgs[0];img.alt=p.title_en||'';
-    main.insertBefore(img,main.firstChild);
+    imgs.forEach((src,i)=>{
+      const img=document.createElement('img');
+      img.className='gallery-img'+(i===0?' active':'');
+      img.src=src;img.alt=`Photo ${i+1}`;
+      main.insertBefore(img,main.querySelector('.gallery-overlay'));
+    });
     if(imgs.length>1){
       document.getElementById('gallery-counter').style.display='block';
       document.getElementById('gallery-counter').textContent=`1 / ${imgs.length}`;
@@ -366,22 +430,32 @@ function render(p) {
       document.getElementById('btn-next').style.display='flex';
       const t=document.getElementById('gallery-thumbs');
       t.style.display='flex';
-      imgs.forEach((s,i)=>{
-        const d=document.createElement('div');d.className='thumb'+(i===0?' active':'');
-        d.innerHTML=`<img src="${s}" alt="">`;d.onclick=()=>goTo(i);t.appendChild(d);
+      imgs.forEach((src,i)=>{
+        const d=document.createElement('div');
+        d.className='thumb'+(i===0?' active':'');
+        d.innerHTML=`<img src="${src}" alt="">`;
+        d.onclick=()=>goTo(i);
+        t.appendChild(d);
       });
     }
+    // Touch swipe
+    let tx=0;
+    main.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;},{passive:true});
+    main.addEventListener('touchend',e=>{
+      const dx=e.changedTouches[0].clientX-tx;
+      if(Math.abs(dx)>40){dx<0?galleryNext():galleryPrev();}
+    },{passive:true});
   }
 
-  // Status
+  // Status badge
   const st=p.status==='available'?'<span class="lo-i">ວ່າງ</span><span class="en-i">Available</span><span class="zh-i">可用</span>':p.status||'';
   document.getElementById('status-text').innerHTML=st;
 
-  // Lang tabs — hide empty
+  // Hide lang tabs for empty languages
   document.querySelectorAll('.lang-tab').forEach(tab=>{
     const l=tab.dataset.lang;
-    if(l==='en'&&!p.title_en&&!p.desc_en) tab.style.display='none';
-    if(l==='zh'&&!p.title_zh&&!p.desc_zh) tab.style.display='none';
+    if(l==='en'&&!p.title_en&&!p.desc_en)tab.style.display='none';
+    if(l==='zh'&&!p.title_zh&&!p.desc_zh)tab.style.display='none';
   });
 
   // Price
@@ -390,35 +464,47 @@ function render(p) {
   if(p.price_display){pe.textContent=p.price_display;}
   else{pe.className='price-on-req';pe.innerHTML='<span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span>';}
 
-  // Header
+  // Agent card — prominent below price
+  document.getElementById('agent-name').textContent=agName;
+  document.getElementById('agent-initials').textContent=agName.charAt(0).toUpperCase();
+  document.getElementById('agent-wa').href=waU;
+  document.getElementById('agent-wa-label').textContent=`ຕິດຕໍ່ ${agName}`;
+  // Agent photo
+  if(p.agent_photo_url){
+    const av=document.getElementById('agent-avatar');
+    av.innerHTML=`<img src="${p.agent_photo_url}" alt="${agName}">`;
+  }
+
+  // WA buttons
+  document.getElementById('wa-desktop').href=waU;
+  document.getElementById('wa-desktop-label').textContent=`ຕິດຕໍ່ ${agName} · WhatsApp`;
+  document.getElementById('sticky-wa-link').href=waU;
+  document.getElementById('sticky-wa-text').textContent=`ຕິດຕໍ່ ${agName} · WhatsApp`;
+
+  // Title + location
   document.getElementById('l-tag').innerHTML=`<span class="lo-i">${txLo}</span><span class="en-i">${txEn}</span><span class="zh-i">${txZh}</span>`;
   document.getElementById('l-title').innerHTML=`<span class="lo-i">${p.title_lo||p.title_en||''}</span><span class="en-i">${p.title_en||''}</span><span class="zh-i">${p.title_zh||p.title_en||''}</span>`;
   document.getElementById('l-location').innerHTML=`<span class="lo-i">${p.district_lo||''}, ວຽງຈັນ</span><span class="en-i">${p.district_en||''}, Vientiane</span><span class="zh-i">${p.district_zh||''}, 万象</span>`;
 
-  // Desc
+  // Description
   document.getElementById('l-desc').innerHTML=`<span class="lo">${p.desc_lo||p.desc_en||''}</span><span class="en">${p.desc_en||''}</span><span class="zh">${p.desc_zh||p.desc_en||''}</span>`;
-
-  // WA
-  [document.getElementById('wa-desktop'),document.getElementById('sticky-wa-link'),document.getElementById('agent-wa')].forEach(el=>{if(el)el.href=waU;});
-  document.getElementById('wa-desktop-label').textContent=`ຕິດຕໍ່ ${agName} · WhatsApp`;
-  document.getElementById('sticky-wa-text').textContent=`ຕິດຕໍ່ ${agName} · WhatsApp`;
 
   // Specs
   const sg=document.getElementById('specs-grid');
   const si=[];
-  if(p.bedrooms) si.push({v:p.bedrooms,k:'<span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">Beds</span><span class="zh-i">卧室</span>'});
-  if(p.bathrooms) si.push({v:p.bathrooms,k:'<span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">Baths</span><span class="zh-i">浴室</span>'});
-  if(p.sqm) si.push({v:p.sqm,k:'SQM'});
-  if(p.floors) si.push({v:p.floors,k:'<span class="lo-i">ຊັ້ນ</span><span class="en-i">Floors</span><span class="zh-i">层</span>'});
+  if(p.bedrooms)si.push({v:p.bedrooms,k:'<span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">Beds</span><span class="zh-i">卧室</span>'});
+  if(p.bathrooms)si.push({v:p.bathrooms,k:'<span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">Baths</span><span class="zh-i">浴室</span>'});
+  if(p.sqm)si.push({v:p.sqm,k:'SQM'});
+  if(p.floors)si.push({v:p.floors,k:'<span class="lo-i">ຊັ້ນ</span><span class="en-i">Floors</span><span class="zh-i">层</span>'});
   if(si.length){
     document.getElementById('specs-section').style.display='block';
     sg.style.gridTemplateColumns=`repeat(${Math.min(si.length,4)},1fr)`;
     si.forEach(s=>sg.innerHTML+=`<div class="spec-card"><p class="spec-val">${s.v}</p><p class="spec-key">${s.k}</p></div>`);
     const tags=[];
-    if(p.furnished==='fully') tags.push('<span class="lo-i">ເຄື່ອງເຟີນີເຈີຄົບ</span><span class="en-i">Fully Furnished</span><span class="zh-i">全配家具</span>');
-    if(p.furnished==='partially') tags.push('<span class="lo-i">ເຄື່ອງເຟີນີເຈີບາງສ່ວນ</span><span class="en-i">Part Furnished</span><span class="zh-i">部分家具</span>');
-    if(p.parking) tags.push('<span class="lo-i">ທີ່ຈອດລົດ ✓</span><span class="en-i">Parking ✓</span><span class="zh-i">停车位 ✓</span>');
-    if(p.pool) tags.push('<span class="lo-i">ສະລອຍນ້ຳ ✓</span><span class="en-i">Pool ✓</span><span class="zh-i">泳池 ✓</span>');
+    if(p.furnished==='fully')tags.push('<span class="lo-i">ເຄື່ອງເຟີນີເຈີຄົບ</span><span class="en-i">Fully Furnished</span><span class="zh-i">全配家具</span>');
+    if(p.furnished==='partially')tags.push('<span class="lo-i">ບາງສ່ວນ</span><span class="en-i">Part Furnished</span><span class="zh-i">部分家具</span>');
+    if(p.parking)tags.push('<span class="lo-i">ທີ່ຈອດລົດ ✓</span><span class="en-i">Parking ✓</span><span class="zh-i">停车位 ✓</span>');
+    if(p.pool)tags.push('<span class="lo-i">ສະລອຍນ້ຳ ✓</span><span class="en-i">Pool ✓</span><span class="zh-i">泳池 ✓</span>');
     const tr=document.getElementById('tags-row');
     tags.forEach(t=>tr.innerHTML+=`<span class="tag-pill">${t}</span>`);
   }
@@ -443,7 +529,8 @@ function render(p) {
 
   // Map
   if(p.map_embed_url){
-    const mf=document.getElementById('map-frame');mf.src=p.map_embed_url;mf.style.display='block';
+    const mf=document.getElementById('map-frame');
+    mf.src=p.map_embed_url;mf.style.display='block';
     document.getElementById('map-placeholder').style.display='none';
     document.getElementById('map-label').innerHTML=`<span class="lo-i">${p.district_lo||''}</span><span class="en-i">${p.district_en||''}</span><span class="zh-i">${p.district_zh||''}</span>`;
   }
@@ -453,41 +540,40 @@ function render(p) {
   if(du){
     document.getElementById('dl-section').style.display='block';
     let durl=du;const m=du.match(/[-\w]{25,}/);
-    if(du.includes('drive.google.com')&&m) durl=`https://drive.google.com/uc?export=download&id=${m[0]}`;
+    if(du.includes('drive.google.com')&&m)durl=`https://drive.google.com/uc?export=download&id=${m[0]}`;
     document.getElementById('dl-btn').href=durl;
   }
 
-  // Agent card
-  document.getElementById('agent-name').textContent=agName;
-  document.getElementById('agent-initials').textContent=agName.charAt(0).toUpperCase();
-  document.getElementById('agent-date').textContent=fmtDate(p.created_at);
-
   // Footer
-  document.getElementById('footer-note').textContent=`${agName} · Pintag · ${p.status==='available'?'✓ Available':p.status||''}`;
+  document.getElementById('footer-note').textContent=`${agName} · Pintag · ${fmtDate(p.created_at)}`;
 }
 
+// Gallery navigation with crossfade
 function goTo(i){
+  if(!imgs.length)return;
+  const prev=document.querySelectorAll('.gallery-img')[idx];
   idx=(i+imgs.length)%imgs.length;
-  const main=document.getElementById('gallery-main');
-  const img=main.querySelector('img');if(img)img.src=imgs[idx];
+  const next=document.querySelectorAll('.gallery-img')[idx];
+  if(prev)prev.classList.remove('active');
+  if(next)next.classList.add('active');
   document.getElementById('gallery-counter').textContent=`${idx+1} / ${imgs.length}`;
   document.querySelectorAll('.thumb').forEach((t,ti)=>t.classList.toggle('active',ti===idx));
 }
 function galleryNext(e){if(e)e.stopPropagation();goTo(idx+1);}
 function galleryPrev(e){if(e)e.stopPropagation();goTo(idx-1);}
-document.getElementById('gallery-main').onclick=()=>imgs.length>1&&galleryNext();
+document.getElementById('gallery-main').addEventListener('click',()=>{if(imgs.length>1)galleryNext();});
 document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')galleryNext();if(e.key==='ArrowLeft')galleryPrev();});
 
+// Video
 function playVid(cover,url){
   if(url.includes('tiktok.com')){window.open(url,'_blank');return;}
   const h=getEmbed(url);if(!h)return;
   const c=document.getElementById('vec');
   c.innerHTML=h;c.style.display='block';c.style.position='absolute';c.style.inset='0';
   const f=c.querySelector('iframe,video');
-  if(f){f.style.cssText='width:100%;height:100%;position:absolute;inset:0;border:none;';}
+  if(f)f.style.cssText='width:100%;height:100%;position:absolute;inset:0;border:none;';
   cover.style.display='none';
 }
-
 function getEmbed(url){
   const yt=url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
   if(yt)return`<iframe src="https://www.youtube.com/embed/${yt[1]}?rel=0" frameborder="0" allowfullscreen allow="autoplay;picture-in-picture"></iframe>`;
