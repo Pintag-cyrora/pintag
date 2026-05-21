@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag · Property</title>
 <!-- OG tags injected by Cloudflare Worker -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -160,7 +162,7 @@ nav{
 /* STICKY WA — mobile only */
 .sticky-wa{
   position:fixed;bottom:0;left:0;right:0;z-index:500;
-  padding:8px 16px 10px;
+  padding:8px 16px calc(10px + env(safe-area-inset-bottom));
   background:rgba(255,255,255,0.97);
   border-top:1px solid var(--border);
   backdrop-filter:blur(20px);
@@ -503,7 +505,6 @@ nav{
       <span class="zh-i">信息由经纪人提供</span>
     </p>
   </div>
-
 </div>
 </div>
 
@@ -514,9 +515,45 @@ const BASE='https://pintag-cyrora.github.io/pintag';
 const slug=new URLSearchParams(location.search).get('slug');
 let imgs=[],idx=0;
 
+// ── NORMALIZE — defensive data layer ──
+function normalizeProperty(p){
+  if(!p||typeof p!=='object') return null;
+  return {
+    ...p,
+    images: Array.isArray(p.images) ? p.images : (typeof p.images==='string' ? tryParseJSON(p.images) : []),
+    landmarks: Array.isArray(p.landmarks) ? p.landmarks : (typeof p.landmarks==='string' ? tryParseJSON(p.landmarks) : []),
+    title_en: p.title_en||'',
+    title_lo: p.title_lo||'',
+    title_zh: p.title_zh||'',
+    desc_en: p.desc_en||'',
+    desc_lo: p.desc_lo||'',
+    desc_zh: p.desc_zh||'',
+    district_en: p.district_en||'',
+    district_lo: p.district_lo||'',
+    district_zh: p.district_zh||'',
+    price_display: p.price_display||'',
+    agent_name: p.agent_name||'Agent',
+    whatsapp: p.whatsapp||'',
+    status: p.status||'available',
+    transaction_type: p.transaction_type||'for_sale',
+    slug: p.slug||''
+  };
+}
+
+function tryParseJSON(str){
+  try{ const r=JSON.parse(str); return Array.isArray(r)?r:[]; }catch(e){ return []; }
+}
+
+// Sanitize agent-entered text before innerHTML injection
+function safeText(str){
+  const d=document.createElement('div');
+  d.textContent=str||'';
+  return d.innerHTML;
+}
+
 // ── AUTO AGENT PHOTO by name ──
 function getAgentPhoto(name){
-  if(!name)return null;
+  if(!name) return null;
   const n=name.toLowerCase().trim();
   const map={
     'keomany':'agent-keomany.jpg',
@@ -524,289 +561,335 @@ function getAgentPhoto(name){
     'ທິກ':'agent-tik.jpg',
     'ແກ້ວມະນີ':'agent-keomany.jpg',
   };
-  // Check exact match first
-  if(map[n])return`${BASE}/${map[n]}`;
-  // Check if name contains known agent name
-  for(const[k,v]of Object.entries(map)){
-    if(n.includes(k)||k.includes(n))return`${BASE}/${v}`;
+  if(map[n]) return BASE+'/'+map[n];
+  for(const k in map){ if(n.includes(k)||k.includes(n)) return BASE+'/'+map[k]; }
+  return null;
+}
+
+// ── LOAD ──
+function showError(loading, isTimeout){
+  const msg = isTimeout
+    ? 'ການໂຫຼດໃຊ້ເວລາດົນເກີນໄປ · Connection timed out'
+    : 'ບໍ່ສາມາດໂຫຼດໄດ້ · Unable to load listing';
+  loading.innerHTML =
+    '<div style="padding:40px 24px;text-align:center;font-family:DM Sans,sans-serif;max-width:320px;margin:0 auto;">' +
+      '<p style="color:#7A9098;font-size:14px;line-height:1.7;margin-bottom:20px;">'+msg+'</p>' +
+      '<button onclick="location.reload()" style="padding:10px 24px;background:#2D8C8C;color:#fff;border:none;border-radius:3px;font-size:14px;font-family:DM Sans,sans-serif;cursor:pointer;margin-bottom:12px;display:block;width:100%;">↺ ລອງໃໝ່ · Retry</button>' +
+      '<a href="listings.html" style="color:#7A9098;font-size:13px;text-decoration:none;display:block;">← ກັບຄືນ · Back to listings</a>' +
+    '</div>';
+}
+
+async function loadProperty(){
+  const loading=document.getElementById('loading');
+  const page=document.getElementById('page');
+  const controller=new AbortController();
+  const timer=setTimeout(function(){
+    controller.abort();
+  }, 8000);
+  try{
+    if(!slug) throw new Error('No slug');
+    const r=await fetch(
+      SB+'/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&limit=1',
+      { headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}, signal:controller.signal }
+    );
+    clearTimeout(timer);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    if(!d||!d[0]) throw new Error('Not found');
+    const p=normalizeProperty(d[0]);
+    if(!p) throw new Error('Invalid data');
+    render(p);
+    loading.style.display='none';
+    page.style.display='block';
+  }catch(err){
+    clearTimeout(timer);
+    console.error('Pintag load error:',err.message);
+    const isTimeout = err.name==='AbortError';
+    showError(loading, isTimeout);
   }
-  // Fall back to stored URL if available
+}
+
+function fmtDate(s){
+  if(!s) return '';
+  try{
+    const d=new Date(s);
+    const m=['ມ.ກ','ກ.ພ','ມ.ນ','ເ.ສ','ພ.ພ','ມິ.ຖ','ກ.ລ','ສ.ຫ','ກ.ຍ','ຕ.ລ','ພ.ຈ','ທ.ວ'];
+    return d.getDate()+' '+m[d.getMonth()]+' '+d.getFullYear();
+  }catch(e){ return ''; }
+}
+
+function render(p){
+  try{
+    document.title='Pintag · '+(p.title_en||p.title_lo||'Property');
+    const txLo=p.transaction_type==='for_sale'?'ຂາຍ':'ໃຫ້ເຊົ່າ';
+    const txEn=p.transaction_type==='for_sale'?'For Sale':'For Rent';
+    const txZh=p.transaction_type==='for_sale'?'出售':'租房';
+    const waN=p.whatsapp.replace(/[^0-9]/g,'');
+    const waM=encodeURIComponent('ສະບາຍດີ, ຂ້ອຍເຫັນລາຍການ Pintag: '+(p.title_en||'')+'  — ຢາກສອບຖາມ');
+    const waU='https://wa.me/'+waN+'?text='+waM;
+    const agName=p.agent_name;
+
+    // Gallery
+    imgs=Array.isArray(p.images)?p.images:[];
+    const stage=document.getElementById('g-stage');
+    if(imgs.length){
+      document.getElementById('g-no-img').style.display='none';
+      imgs.forEach(function(src,i){
+        const img=document.createElement('img');
+        img.className='g-img'+(i===0?' active':'');
+        img.src=src;
+        img.alt='Photo '+(i+1);
+        img.loading=i===0?'eager':'lazy';
+        img.decoding='async';
+        stage.insertBefore(img,stage.querySelector('.gallery-ui'));
+      });
+      if(imgs.length>1){
+        document.getElementById('g-counter').style.display='block';
+        document.getElementById('g-counter').textContent='1 / '+imgs.length;
+        document.getElementById('g-prev').style.display='flex';
+        document.getElementById('g-next').style.display='flex';
+        const pb=document.getElementById('g-progress');
+        pb.style.display='flex';
+        imgs.forEach(function(_,i){
+          const bar=document.createElement('div');
+          bar.className='g-bar'+(i===0?' active':'');
+          bar.onclick=function(){ goTo(i); };
+          pb.appendChild(bar);
+        });
+      }
+      let tx=0;
+      stage.addEventListener('touchstart',function(e){ tx=e.touches[0].clientX; },{passive:true});
+      stage.addEventListener('touchend',function(e){
+        const dx=e.changedTouches[0].clientX-tx;
+        if(Math.abs(dx)>40){ dx<0?gNext():gPrev(); }
+      },{passive:true});
+    }
+
+    // Status
+    const st=p.status==='available'?
+      '<span class="lo-i">ວ່າງ</span><span class="en-i">Available</span><span class="zh-i">可用</span>':
+      (p.status||'');
+    document.getElementById('s-text').innerHTML=st;
+
+    // Lang tabs
+    document.querySelectorAll('.lang-tab').forEach(function(tab){
+      const l=tab.dataset.lang;
+      if(l==='en'&&!p.title_en&&!p.desc_en) tab.style.display='none';
+      if(l==='zh'&&!p.title_zh&&!p.desc_zh) tab.style.display='none';
+    });
+
+    // Price
+    document.getElementById('pb-type').innerHTML=
+      '<span class="lo-i">'+txLo+'</span><span class="en-i">'+txEn+'</span><span class="zh-i">'+txZh+'</span>';
+    const pe=document.getElementById('pb-price');
+    if(p.price_display){ pe.textContent=p.price_display; }
+    else{ pe.className='price-on-req'; pe.innerHTML='<span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span>'; }
+
+    // Agent
+    document.getElementById('agent-name-el').textContent = agName;
+
+    var av = document.getElementById('agent-photo');
+    var fallbackInitial = agName.charAt(0).toUpperCase();
+    var photoUrl = getAgentPhoto(agName) || p.agent_photo_url || null;
+
+    av.innerHTML = '<span class="agent-initial">' + fallbackInitial + '</span>';
+
+    if(photoUrl){
+      var img = document.createElement('img');
+      img.src = photoUrl;
+      img.alt = agName;
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;object-position:top center;display:block;';
+      img.onerror = function(){
+        this.onerror = null;
+        av.innerHTML = '<span class="agent-initial">' + fallbackInitial + '</span>';
+      };
+      av.replaceChildren(img);
+    }
+    document.getElementById('btn-contact').href=waU;
+    document.getElementById('contact-label').textContent='ຕິດຕໍ່ '+agName;
+    document.getElementById('sticky-wa-link').href=waU;
+    document.getElementById('sticky-wa-text').textContent='ຕິດຕໍ່ '+agName+' · WhatsApp';
+
+    // Title + location
+    document.getElementById('l-type').innerHTML=
+      '<span class="lo-i">'+txLo+'</span><span class="en-i">'+txEn+'</span><span class="zh-i">'+txZh+'</span>';
+    document.getElementById('l-title').innerHTML=
+      '<span class="lo-i">'+(p.title_lo||p.title_en)+'</span><span class="en-i">'+p.title_en+'</span><span class="zh-i">'+(p.title_zh||p.title_en)+'</span>';
+    document.getElementById('l-loc').innerHTML=
+      '<span class="lo-i">'+(p.district_lo||'')+', ວຽງຈັນ</span><span class="en-i">'+(p.district_en||'')+', Vientiane</span><span class="zh-i">'+(p.district_zh||'')+', 万象</span>';
+
+    // Description
+    document.getElementById('l-desc').innerHTML=
+      '<span class="lo">'+safeText(p.desc_lo||p.desc_en)+'</span><span class="en">'+safeText(p.desc_en)+'</span><span class="zh">'+safeText(p.desc_zh||p.desc_en)+'</span>';
+
+    // Specs
+    var sg=document.getElementById('specs-grid');
+    var si=[];
+    if(p.bedrooms) si.push({v:p.bedrooms,k:'<span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">Beds</span><span class="zh-i">卧室</span>'});
+    if(p.bathrooms) si.push({v:p.bathrooms,k:'<span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">Baths</span><span class="zh-i">浴室</span>'});
+    if(p.sqm) si.push({v:p.sqm,k:'SQM'});
+    if(p.floors) si.push({v:p.floors,k:'<span class="lo-i">ຊັ້ນ</span><span class="en-i">Floors</span><span class="zh-i">层</span>'});
+    if(si.length){
+      document.getElementById('specs-section').style.display='block';
+      sg.style.gridTemplateColumns='repeat('+Math.min(si.length,4)+',1fr)';
+      si.forEach(function(s){ sg.innerHTML+='<div class="spec-card"><p class="spec-val">'+s.v+'</p><p class="spec-key">'+s.k+'</p></div>'; });
+      var tags=[];
+      if(p.furnished==='fully') tags.push('<span class="lo-i">ເຄື່ອງເຟີນີເຈີຄົບ</span><span class="en-i">Fully Furnished</span><span class="zh-i">全配家具</span>');
+      if(p.furnished==='partially') tags.push('<span class="lo-i">ບາງສ່ວນ</span><span class="en-i">Part Furnished</span><span class="zh-i">部分家具</span>');
+      if(p.parking) tags.push('<span class="lo-i">ທີ່ຈອດລົດ ✓</span><span class="en-i">Parking ✓</span><span class="zh-i">停车位 ✓</span>');
+      if(p.pool) tags.push('<span class="lo-i">ສະລອຍນ້ຳ ✓</span><span class="en-i">Pool ✓</span><span class="zh-i">泳池 ✓</span>');
+      var tr=document.getElementById('tags-row');
+      tags.forEach(function(t){ tr.innerHTML+='<span class="tag-pill">'+t+'</span>'; });
+    }
+
+    // Landmarks — safe forEach
+    if(p.landmarks.length){
+      document.getElementById('landmarks-section').style.display='block';
+      var ll=document.getElementById('landmarks-list');
+      p.landmarks.forEach(function(l){
+        if(!l||typeof l!=='object') return;
+        ll.innerHTML+='<div class="landmark-row"><span class="landmark-name"><span class="lo-i">'+(l.name_lo||l.name_en||'')+'</span><span class="en-i">'+(l.name_en||l.name_lo||'')+'</span><span class="zh-i">'+(l.name_zh||l.name_en||'')+'</span></span><span class="landmark-dist">'+(l.distance||'')+'</span></div>';
+      });
+    }
+
+    // Video
+    var vb=document.getElementById('video-box');
+    var vu=p.video_url||(p.video_drive_id?'https://drive.google.com/file/d/'+p.video_drive_id+'/view':null);
+    if(vu){
+      vb.style.display='block';
+      var isTT=vu.includes('tiktok.com');
+      var th=imgs[0]||'';
+      var pl=isTT?'<span class="lo-i">ເບິ່ງໃນ TikTok ↗</span><span class="en-i">Watch on TikTok ↗</span><span class="zh-i">在TikTok观看 ↗</span>':'<span class="lo-i">ຫຼິ້ນວິດີໂອ</span><span class="en-i">Play Video</span><span class="zh-i">播放视频</span>';
+      vb.style.position='relative';
+      // Build video cover using DOM — avoids URL quote escaping fragility
+      var cover=document.createElement('div');
+      cover.className='video-cover';
+      var videoUrl=vu; // capture for closure
+      cover.onclick=function(){ playVid(this,videoUrl); };
+      if(th){
+        var tImg=document.createElement('img');
+        tImg.src=th; tImg.alt='';
+        tImg.style.cssText='width:100%;height:100%;object-fit:cover;display:block;';
+        cover.appendChild(tImg);
+      } else {
+        var tDiv=document.createElement('div');
+        tDiv.style.cssText='width:100%;height:100%;min-height:200px;background:#1A2428;';
+        cover.appendChild(tDiv);
+      }
+      var overlay=document.createElement('div');
+      overlay.className='video-cover-overlay';
+      overlay.innerHTML='<div class="play-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div><span class="play-label">'+pl+'</span>';
+      cover.appendChild(overlay);
+      var vec=document.createElement('div');
+      vec.id='vec'; vec.style.cssText='position:absolute;inset:0;display:none;';
+      vb.innerHTML='';
+      vb.appendChild(cover);
+      vb.appendChild(vec);
+      // Show media labels
+      document.querySelector('.media-labels').style.display='grid';
+    } else {
+      // No video — make map full width
+      var mg=document.querySelector('.media-grid');
+      if(mg) mg.style.gridTemplateColumns='1fr';
+      var ml=document.querySelector('.media-lbl+.media-lbl');
+      if(ml) ml.style.display='none';
+    }
+
+    // Map
+    if(p.map_embed_url){
+      var mf=document.getElementById('map-frame');
+      mf.src=p.map_embed_url;
+      mf.style.display='block';
+      document.getElementById('map-ph').style.display='none';
+      document.getElementById('map-lbl').innerHTML=
+        '<span class="lo-i">'+(p.district_lo||'')+'</span><span class="en-i">'+(p.district_en||'')+'</span><span class="zh-i">'+(p.district_zh||'')+'</span>';
+    }
+
+    // Download
+    var du=p.download_url||(p.video_drive_id?'https://drive.google.com/uc?export=download&id='+p.video_drive_id:null);
+    if(du){
+      document.getElementById('dl-section').style.display='block';
+      var durl=du;
+      var m=du.match(/[-\w]{25,}/);
+      if(du.includes('drive.google.com')&&m) durl='https://drive.google.com/uc?export=download&id='+m[0];
+      document.getElementById('dl-btn').href=durl;
+    }
+
+    // Footer
+    document.getElementById('footer-note').textContent=agName+' · Pintag · '+fmtDate(p.created_at);
+
+  }catch(err){
+    console.error('Pintag render error:',err.message,err.stack);
+    document.getElementById('loading').innerHTML='<div style="padding:40px 24px;text-align:center;font-family:DM Sans,sans-serif;"><p style="color:#7A9098;font-size:14px;margin-bottom:16px;">Unable to display listing</p><a href="listings.html" style="color:#2D8C8C;font-size:14px;text-decoration:none;">← Back to listings</a></div>';
+    document.getElementById('loading').style.display='flex';
+    document.getElementById('page').style.display='none';
+  }
+}
+
+// ── GALLERY NAV ──
+function goTo(i){
+  if(!imgs.length) return;
+  document.querySelectorAll('.g-img')[idx] && document.querySelectorAll('.g-img')[idx].classList.remove('active');
+  document.querySelectorAll('.g-bar')[idx] && document.querySelectorAll('.g-bar')[idx].classList.remove('active');
+  idx=(i+imgs.length)%imgs.length;
+  document.querySelectorAll('.g-img')[idx] && document.querySelectorAll('.g-img')[idx].classList.add('active');
+  document.querySelectorAll('.g-bar')[idx] && document.querySelectorAll('.g-bar')[idx].classList.add('active');
+  document.getElementById('g-counter').textContent=(idx+1)+' / '+imgs.length;
+}
+function gNext(e){ if(e)e.stopPropagation(); goTo(idx+1); }
+function gPrev(e){ if(e)e.stopPropagation(); goTo(idx-1); }
+document.getElementById('g-stage').addEventListener('click',function(){ if(imgs.length>1) gNext(); });
+document.addEventListener('keydown',function(e){
+  if(e.key==='ArrowRight') gNext();
+  if(e.key==='ArrowLeft') gPrev();
+});
+
+// ── VIDEO ──
+function playVid(cover,url){
+  if(url.includes('tiktok.com')){ window.open(url,'_blank'); return; }
+  var h=getEmbed(url); if(!h) return;
+  var c=document.getElementById('vec');
+  c.innerHTML=h; c.style.cssText='display:block;position:absolute;inset:0;';
+  var f=c.querySelector('iframe,video');
+  if(f) f.style.cssText='width:100%;height:100%;position:absolute;inset:0;border:none;';
+  cover.style.display='none';
+}
+function getEmbed(url){
+  var yt=url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+  if(yt) return '<iframe src="https://www.youtube.com/embed/'+yt[1]+'?rel=0" frameborder="0" allowfullscreen allow="autoplay;picture-in-picture"></iframe>';
+  if(url.includes('facebook.com')) return '<iframe src="https://www.facebook.com/plugins/video.php?href='+encodeURIComponent(url)+'&show_text=false&mute=0" frameborder="0" allowfullscreen allow="autoplay;clipboard-write;encrypted-media;picture-in-picture;web-share"></iframe>';
+  var dr=url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if(dr) return '<iframe src="https://drive.google.com/file/d/'+dr[1]+'/preview" frameborder="0" allow="autoplay" allowfullscreen></iframe>';
+  var vi=url.match(/vimeo\.com\/(\d+)/);
+  if(vi) return '<iframe src="https://player.vimeo.com/video/'+vi[1]+'" frameborder="0" allowfullscreen></iframe>';
   return null;
 }
 
 // ── SHARE ──
 async function shareList(){
-  var titleEl = document.getElementById('l-title');
-  var title = titleEl ? titleEl.textContent : 'Pintag';
-  var url = window.location.href;
+  var titleEl=document.getElementById('l-title');
+  var title=titleEl?titleEl.textContent:'Pintag';
+  var url=window.location.href;
   if(navigator.share){
-    try{ await navigator.share({title:title, url:url}); }catch(e){}
+    try{ await navigator.share({title:title,url:url}); }catch(e){}
   } else {
     try{
       await navigator.clipboard.writeText(url);
-      var btn = document.querySelector('.g-share-btn');
+      var btn=document.querySelector('.g-share-btn');
       if(btn){ btn.style.background='rgba(45,140,140,0.5)'; setTimeout(function(){ btn.style.background=''; },1500); }
     }catch(e){}
   }
 }
 
-async function loadProperty(){
-  if(!slug){location.href='listings.html';return;}
-  const r=await fetch(`${SB}/rest/v1/properties?slug=eq.${encodeURIComponent(slug)}&limit=1`,{
-    headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}
-  });
-  const d=await r.json();
-  if(!d||!d[0]){location.href='listings.html';return;}
-  render(d[0]);
-  document.getElementById('loading').style.display='none';
-  document.getElementById('page').style.display='block';
-}
-
-function fmtDate(s){
-  if(!s)return'';
-  const d=new Date(s);
-  const m=['ມ.ກ','ກ.ພ','ມ.ນ','ເ.ສ','ພ.ພ','ມິ.ຖ','ກ.ລ','ສ.ຫ','ກ.ຍ','ຕ.ລ','ພ.ຈ','ທ.ວ'];
-  return`${d.getDate()} ${m[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-function render(p){
-  document.title='Pintag · '+(p.title_en||'Property');
-
-  // Page title only — OG tags handled by Cloudflare Worker
-  const pageUrl=`${BASE}/listing.html?slug=${encodeURIComponent(p.slug||'')}`;
-
-  const txLo=p.transaction_type==='for_sale'?'ຂາຍ':'ໃຫ້ເຊົ່າ';
-  const txEn=p.transaction_type==='for_sale'?'For Sale':'For Rent';
-  const txZh=p.transaction_type==='for_sale'?'出售':'租房';
-  const waN=(p.whatsapp||'').replace(/[^0-9]/g,'');
-  const waM=encodeURIComponent(`ສະບາຍດີ, ຂ້ອຍເຫັນລາຍການ Pintag: ${p.title_en||''} — ຢາກສອບຖາມ`);
-  const waU=`https://wa.me/${waN}?text=${waM}`;
-  const agName=p.agent_name||'Agent';
-
-  // ── GALLERY ──
-  imgs=p.images&&p.images.length?p.images:[];
-  const stage=document.getElementById('g-stage');
-  if(imgs.length){
-    document.getElementById('g-no-img').style.display='none';
-    // Build crossfade images
-    imgs.forEach((src,i)=>{
-      const img=document.createElement('img');
-      img.className='g-img'+(i===0?' active':'');
-      img.src=src;img.alt=`Photo ${i+1}`;
-      stage.insertBefore(img,stage.querySelector('.gallery-ui'));
-    });
-    // Counter
-    if(imgs.length>1){
-      document.getElementById('g-counter').style.display='block';
-      document.getElementById('g-counter').textContent=`1 / ${imgs.length}`;
-      document.getElementById('g-prev').style.display='flex';
-      document.getElementById('g-next').style.display='flex';
-      // Progress bars
-      const pb=document.getElementById('g-progress');
-      pb.style.display='flex';
-      imgs.forEach((_,i)=>{
-        const bar=document.createElement('div');
-        bar.className='g-bar'+(i===0?' active':'');
-        bar.onclick=()=>goTo(i);
-        pb.appendChild(bar);
-      });
-    }
-    // Touch swipe
-    let tx=0;
-    stage.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;},{passive:true});
-    stage.addEventListener('touchend',e=>{
-      const dx=e.changedTouches[0].clientX-tx;
-      if(Math.abs(dx)>40){dx<0?gNext():gPrev();}
-    },{passive:true});
-  }
-
-  // Status
-  const st=p.status==='available'?
-    '<span class="lo-i">ວ່າງ</span><span class="en-i">Available</span><span class="zh-i">可用</span>':
-    (p.status||'');
-  document.getElementById('s-text').innerHTML=st;
-
-  // Language tabs — hide empty
-  document.querySelectorAll('.lang-tab').forEach(tab=>{
-    const l=tab.dataset.lang;
-    if(l==='en'&&!p.title_en&&!p.desc_en)tab.style.display='none';
-    if(l==='zh'&&!p.title_zh&&!p.desc_zh)tab.style.display='none';
-  });
-
-  // Price
-  document.getElementById('pb-type').innerHTML=
-    `<span class="lo-i">${txLo}</span><span class="en-i">${txEn}</span><span class="zh-i">${txZh}</span>`;
-  const pe=document.getElementById('pb-price');
-  if(p.price_display){pe.textContent=p.price_display;}
-  else{pe.className='price-on-req';pe.innerHTML='<span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span>';}
-
-  // ── AGENT — auto photo by name ──
-  document.getElementById('agent-name-el').textContent=agName;
-  document.getElementById('agent-initial').textContent=agName.charAt(0).toUpperCase();
-  // Try auto-match first, then stored URL
-  const photoUrl=getAgentPhoto(agName)||p.agent_photo_url||null;
-  if(photoUrl){
-    const av=document.getElementById('agent-photo');
-    av.innerHTML=`<img src="${photoUrl}" alt="${agName}" onerror="this.parentElement.innerHTML='<span class=\\'agent-initial\\'>${agName.charAt(0).toUpperCase()}</span>'">`;
-  }
-  document.getElementById('btn-contact').href=waU;
-  document.getElementById('contact-label').textContent=`ຕິດຕໍ່ ${agName}`;
-
-  // WA buttons
-  document.getElementById('sticky-wa-link').href=waU;
-  document.getElementById('sticky-wa-text').textContent=`ຕິດຕໍ່ ${agName} · WhatsApp`;
-
-  // Title + location
-  document.getElementById('l-type').innerHTML=
-    `<span class="lo-i">${txLo}</span><span class="en-i">${txEn}</span><span class="zh-i">${txZh}</span>`;
-  document.getElementById('l-title').innerHTML=
-    `<span class="lo-i">${p.title_lo||p.title_en||''}</span><span class="en-i">${p.title_en||''}</span><span class="zh-i">${p.title_zh||p.title_en||''}</span>`;
-  document.getElementById('l-loc').innerHTML=
-    `<span class="lo-i">${p.district_lo||''}, ວຽງຈັນ</span><span class="en-i">${p.district_en||''}, Vientiane</span><span class="zh-i">${p.district_zh||''}, 万象</span>`;
-
-  // Description
-  document.getElementById('l-desc').innerHTML=
-    `<span class="lo">${p.desc_lo||p.desc_en||''}</span><span class="en">${p.desc_en||''}</span><span class="zh">${p.desc_zh||p.desc_en||''}</span>`;
-
-  // Specs
-  const sg=document.getElementById('specs-grid');
-  const si=[];
-  if(p.bedrooms)si.push({v:p.bedrooms,k:'<span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">Beds</span><span class="zh-i">卧室</span>'});
-  if(p.bathrooms)si.push({v:p.bathrooms,k:'<span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">Baths</span><span class="zh-i">浴室</span>'});
-  if(p.sqm)si.push({v:p.sqm,k:'SQM'});
-  if(p.floors)si.push({v:p.floors,k:'<span class="lo-i">ຊັ້ນ</span><span class="en-i">Floors</span><span class="zh-i">层</span>'});
-  if(si.length){
-    document.getElementById('specs-section').style.display='block';
-    sg.style.gridTemplateColumns=`repeat(${Math.min(si.length,4)},1fr)`;
-    si.forEach(s=>sg.innerHTML+=`<div class="spec-card"><p class="spec-val">${s.v}</p><p class="spec-key">${s.k}</p></div>`);
-    const tags=[];
-    if(p.furnished==='fully')tags.push('<span class="lo-i">ເຄື່ອງເຟີນີເຈີຄົບ</span><span class="en-i">Fully Furnished</span><span class="zh-i">全配家具</span>');
-    if(p.furnished==='partially')tags.push('<span class="lo-i">ບາງສ່ວນ</span><span class="en-i">Part Furnished</span><span class="zh-i">部分家具</span>');
-    if(p.parking)tags.push('<span class="lo-i">ທີ່ຈອດລົດ ✓</span><span class="en-i">Parking ✓</span><span class="zh-i">停车位 ✓</span>');
-    if(p.pool)tags.push('<span class="lo-i">ສະລອຍນ້ຳ ✓</span><span class="en-i">Pool ✓</span><span class="zh-i">泳池 ✓</span>');
-    const tr=document.getElementById('tags-row');
-    tags.forEach(t=>tr.innerHTML+=`<span class="tag-pill">${t}</span>`);
-  }
-
-  // Landmarks
-  if(p.landmarks&&p.landmarks.length){
-    document.getElementById('landmarks-section').style.display='block';
-    const ll=document.getElementById('landmarks-list');
-    p.landmarks.forEach(l=>ll.innerHTML+=
-      `<div class="landmark-row">
-        <span class="landmark-name">
-          <span class="lo-i">${l.name_lo||l.name_en||''}</span>
-          <span class="en-i">${l.name_en||l.name_lo||''}</span>
-          <span class="zh-i">${l.name_zh||l.name_en||''}</span>
-        </span>
-        <span class="landmark-dist">${l.distance||''}</span>
-      </div>`
-    );
-  }
-
-  // Video
-  const vb=document.getElementById('video-box');
-  const vu=p.video_url||(p.video_drive_id?`https://drive.google.com/file/d/${p.video_drive_id}/view`:null);
-  if(vu){
-    document.getElementById('video-box').style.display='block';
-    const isTT=vu.includes('tiktok.com');
-    const th=imgs[0]||'';
-    const pl=isTT?
-      '<span class="lo-i">ເບິ່ງໃນ TikTok ↗</span><span class="en-i">Watch on TikTok ↗</span><span class="zh-i">在TikTok观看 ↗</span>':
-      '<span class="lo-i">ຫຼິ້ນວິດີໂອ</span><span class="en-i">Play Video</span><span class="zh-i">播放视频</span>';
-    vb.style.position='relative';
-    vb.innerHTML=`
-      <div class="video-cover" onclick="playVid(this,'${vu.replace(/'/g,"\\'")}')">
-        ${th?`<img src="${th}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">`:
-        '<div style="width:100%;height:100%;min-height:200px;background:#1A2428;"></div>'}
-        <div class="video-cover-overlay">
-          <div class="play-btn">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
-          </div>
-          <span class="play-label">${pl}</span>
-        </div>
-      </div>
-      <div id="vec" style="position:absolute;inset:0;display:none;"></div>`;
-  }
-
-  // If no video, make map full width
-  if(!vu && p.map_embed_url){
-    const mg=document.querySelector('.media-grid');
-    if(mg)mg.classList.add('no-video');
-    const ml=document.querySelector('.media-labels');
-    if(ml)ml.style.gridTemplateColumns='1fr';
-    const ml2=document.querySelector('.media-lbl+.media-lbl');
-    if(ml2)ml2.style.display='none';
-  }
-  // Map
-  if(p.map_embed_url){
-    const mf=document.getElementById('map-frame');
-    mf.src=p.map_embed_url;mf.style.display='block';
-    document.getElementById('map-ph').style.display='none';
-    document.getElementById('map-lbl').innerHTML=
-      `<span class="lo-i">${p.district_lo||''}</span><span class="en-i">${p.district_en||''}</span><span class="zh-i">${p.district_zh||''}</span>`;
-  }
-
-  // Download
-  const du=p.download_url||(p.video_drive_id?`https://drive.google.com/uc?export=download&id=${p.video_drive_id}`:null);
-  if(du){
-    document.getElementById('dl-section').style.display='block';
-    let durl=du;const m=du.match(/[-\w]{25,}/);
-    if(du.includes('drive.google.com')&&m)durl=`https://drive.google.com/uc?export=download&id=${m[0]}`;
-    document.getElementById('dl-btn').href=durl;
-  }
-
-  // Footer
-  document.getElementById('footer-note').textContent=`${agName} · Pintag · ${fmtDate(p.created_at)}`;
-}
-
-// ── GALLERY NAVIGATION ──
-function goTo(i){
-  if(!imgs.length)return;
-  document.querySelectorAll('.g-img')[idx]?.classList.remove('active');
-  document.querySelectorAll('.g-bar')[idx]?.classList.remove('active');
-  idx=(i+imgs.length)%imgs.length;
-  document.querySelectorAll('.g-img')[idx]?.classList.add('active');
-  document.querySelectorAll('.g-bar')[idx]?.classList.add('active');
-  document.getElementById('g-counter').textContent=`${idx+1} / ${imgs.length}`;
-}
-function gNext(e){if(e)e.stopPropagation();goTo(idx+1);}
-function gPrev(e){if(e)e.stopPropagation();goTo(idx-1);}
-document.getElementById('g-stage').addEventListener('click',()=>{if(imgs.length>1)gNext();});
-document.addEventListener('keydown',e=>{
-  if(e.key==='ArrowRight')gNext();
-  if(e.key==='ArrowLeft')gPrev();
-});
-
-// ── VIDEO ──
-function playVid(cover,url){
-  if(url.includes('tiktok.com')){window.open(url,'_blank');return;}
-  const h=getEmbed(url);if(!h)return;
-  const c=document.getElementById('vec');
-  c.innerHTML=h;c.style.cssText='display:block;position:absolute;inset:0;';
-  const f=c.querySelector('iframe,video');
-  if(f)f.style.cssText='width:100%;height:100%;position:absolute;inset:0;border:none;';
-  cover.style.display='none';
-}
-function getEmbed(url){
-  const yt=url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
-  if(yt)return`<iframe src="https://www.youtube.com/embed/${yt[1]}?rel=0" frameborder="0" allowfullscreen allow="autoplay;picture-in-picture"></iframe>`;
-  if(url.includes('facebook.com'))return`<iframe src="https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&mute=0" frameborder="0" allowfullscreen allow="autoplay;clipboard-write;encrypted-media;picture-in-picture;web-share"></iframe>`;
-  const dr=url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if(dr)return`<iframe src="https://drive.google.com/file/d/${dr[1]}/preview" frameborder="0" allow="autoplay" allowfullscreen></iframe>`;
-  const vi=url.match(/vimeo\.com\/(\d+)/);
-  if(vi)return`<iframe src="https://player.vimeo.com/video/${vi[1]}" frameborder="0" allowfullscreen></iframe>`;
-  return null;
-}
-
 // ── LANGUAGE ──
 function setLang(lang,btn){
   document.body.className=lang==='lo'?'':'lang-'+lang;
-  document.querySelectorAll('.lang-tab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.lang-tab').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
 }
 
 loadProperty();
+
 </script>
 </body>
 </html>
