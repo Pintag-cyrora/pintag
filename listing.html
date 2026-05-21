@@ -34,10 +34,10 @@ nav{
   background:rgba(255,255,255,0.97);backdrop-filter:blur(20px);
   border-bottom:1px solid var(--border);
 }
-.nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none;}
-.nav-wordmark{font-size:16px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;}
-.nav-back{font-size:13px;color:var(--ink-muted);text-decoration:none;display:flex;align-items:center;gap:5px;transition:color 0.2s;}
-.nav-back:hover{color:var(--ink);}
+.nav-logo{display:flex;align-items:center;gap:9px;text-decoration:none;}
+.nav-wordmark{font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-0.03em;}
+.nav-back{font-size:13px;font-weight:400;color:var(--ink-muted);text-decoration:none;display:flex;align-items:center;gap:5px;transition:color 0.25s;letter-spacing:0.01em;}
+.nav-back:hover{color:var(--teal);}
 
 /* LOADING */
 .loading-screen{display:flex;align-items:center;justify-content:center;height:100vh;}
@@ -132,15 +132,16 @@ nav{
 /* Nav arrows — subtle */
 .g-btn{
   position:absolute;top:50%;transform:translateY(-50%);z-index:3;
-  width:36px;height:36px;border-radius:50%;
-  background:rgba(255,255,255,0.12);border:none;
+  width:38px;height:38px;border-radius:50%;
+  background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.2);
   display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:background 0.2s;
-  font-size:18px;color:rgba(255,255,255,0.8);line-height:1;
+  cursor:pointer;transition:all 0.3s cubic-bezier(0.4,0,0.2,1);
+  font-size:20px;color:rgba(255,255,255,0.85);line-height:1;
+  backdrop-filter:blur(8px);
 }
-.g-btn:hover{background:rgba(255,255,255,0.22);}
-.g-btn.prev{left:10px;}
-.g-btn.next{right:10px;}
+.g-btn:hover{background:rgba(255,255,255,0.26);border-color:rgba(255,255,255,0.4);transform:translateY(-50%) scale(1.05);}
+.g-btn.prev{left:12px;}
+.g-btn.next{right:12px;}
 
 /* ── LANGUAGE TABS — calm ── */
 .lang-tabs{
@@ -169,25 +170,28 @@ nav{
   display:none;
 }
 .sticky-wa a{
-  display:flex;align-items:center;justify-content:center;gap:9px;
-  width:100%;padding:12px;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;padding:14px;
   background:#1A9E50;color:#fff;
-  font-size:14px;font-weight:500;
-  text-decoration:none;border-radius:3px;letter-spacing:0.02em;
+  font-size:14px;font-weight:600;
+  text-decoration:none;border-radius:4px;letter-spacing:0.02em;
+  transition:background 0.2s;
+  box-shadow:0 2px 12px rgba(26,158,80,0.25);
 }
+.sticky-wa a:active{background:#168C45;}
 @media(max-width:800px){.sticky-wa{display:block;}body{padding-bottom:66px;}}
 
 /* CONTENT */
 .content{max-width:780px;margin:0 auto;}
 
 /* PRICE */
-.price-section{padding:24px 20px 20px;}
+.price-section{padding:28px 20px 22px;}
 .price-type{
-  font-size:10px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;
-  color:var(--ink-muted);margin-bottom:5px;
+  font-size:10px;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;
+  color:var(--teal);margin-bottom:6px;
 }
 .price-figure{
-  font-size:34px;font-weight:700;color:var(--ink);
+  font-size:36px;font-weight:700;color:var(--ink);
   letter-spacing:-0.03em;line-height:1;
 }
 .price-on-req{
@@ -212,8 +216,8 @@ nav{
 .agent-photo img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
 .agent-initial{font-size:17px;font-weight:600;color:var(--teal);}
 .agent-details{flex:1;min-width:100px;}
-.agent-name{font-size:15px;font-weight:600;color:var(--ink);margin-bottom:2px;}
-.agent-sub{font-size:12px;color:var(--ink-muted);}
+.agent-name{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:3px;letter-spacing:-0.01em;}
+.agent-sub{font-size:11px;font-weight:400;color:var(--ink-muted);letter-spacing:0.02em;}
 /* Quiet verification — no pill */
 .agent-verified{color:var(--ink-muted);font-size:11px;font-weight:400;}
 .btn-contact{
@@ -225,26 +229,26 @@ nav{
   transition:background 0.2s;white-space:nowrap;flex-shrink:0;
 }
 .btn-contact:hover{background:#168C45;}
-@media(max-width:460px){.btn-contact{width:100%;justify-content:center;margin-top:4px;}}
+@media(max-width:800px){.btn-contact{display:none;}}
 
 /* TITLE + LOCATION */
-.listing-header{padding:24px 20px 0;}
+.listing-header{padding:28px 20px 0;}
 .l-type{
   font-size:10px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;
   color:var(--ink-muted);margin-bottom:8px;
 }
 .l-title{
-  font-size:clamp(20px,3.5vw,26px);font-weight:700;
-  color:var(--ink);line-height:1.25;letter-spacing:-0.02em;margin-bottom:10px;
+  font-size:clamp(21px,3.5vw,28px);font-weight:700;
+  color:var(--ink);line-height:1.2;letter-spacing:-0.025em;margin-bottom:12px;
 }
 .l-location{
   display:flex;align-items:center;gap:6px;
-  font-size:14px;color:var(--ink-muted);
+  font-size:14px;font-weight:400;color:var(--ink-soft);letter-spacing:0.01em;
 }
 
 /* DESCRIPTION — breathing room */
-.l-desc-section{padding:24px 20px;border-top:1px solid var(--border);margin-top:24px;}
-.l-desc{font-size:15px;font-weight:300;color:var(--ink-soft);line-height:1.95;}
+.l-desc-section{padding:28px 20px;border-top:1px solid var(--border);margin-top:28px;}
+.l-desc{font-size:15px;font-weight:400;color:var(--ink-soft);line-height:2.0;letter-spacing:0.01em;}
 
 
 
@@ -252,10 +256,11 @@ nav{
 .specs-section{padding:24px 20px;border-bottom:1px solid var(--border);}
 .specs-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}
 .spec-card{
-  padding:14px 8px;
+  padding:16px 8px;
   background:var(--warm);
-  border:1px solid var(--border);
+  border:1px solid rgba(26,36,40,0.06);
   text-align:center;
+  border-radius:3px;
 }
 .spec-val{font-size:22px;font-weight:700;color:var(--ink);line-height:1;letter-spacing:-0.02em;}
 .spec-key{font-size:9px;font-weight:400;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-top:4px;}
@@ -352,6 +357,39 @@ nav{
   .price-figure{font-size:28px;}
   .l-title{font-size:20px;}
 }
+
+/* PREMIUM MOTION — subtle, calm, intentional */
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(10px);}
+  to{opacity:1;transform:translateY(0);}
+}
+.fade-up{
+  animation:fadeUp 0.45s cubic-bezier(0.4,0,0.2,1) both;
+}
+.fade-up-1{animation-delay:0.05s;}
+.fade-up-2{animation-delay:0.1s;}
+.fade-up-3{animation-delay:0.15s;}
+.fade-up-4{animation-delay:0.2s;}
+.fade-up-5{animation-delay:0.25s;}
+
+/* Image loading — smooth reveal */
+.g-img{transition:opacity 0.45s cubic-bezier(0.4,0,0.2,1);}
+
+/* Spec card hover */
+.spec-card{transition:transform 0.2s ease,box-shadow 0.2s ease;}
+.spec-card:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(26,36,40,0.06);}
+
+/* Landmark row hover */
+.landmark-row{transition:background 0.15s ease;border-radius:3px;padding-left:4px;padding-right:4px;}
+.landmark-row:hover{background:var(--warm);}
+
+/* Tag pill hover */
+.tag-pill{transition:all 0.15s ease;}
+.tag-pill:hover{border-color:var(--teal);color:var(--teal);}
+
+@media(prefers-reduced-motion:reduce){
+  .fade-up,.g-img,.spec-card,.landmark-row,.tag-pill{animation:none;transition:none;}
+}
 </style>
 </head>
 <body>
@@ -365,9 +403,9 @@ nav{
 <!-- NAV -->
 <nav>
   <a href="index.html" class="nav-logo">
-    <svg width="22" height="22" viewBox="0 0 40 40" fill="none">
+    <svg width="24" height="24" viewBox="0 0 40 40" fill="none">
       <circle cx="12" cy="9" r="7.5" fill="#38A8A8"/>
-      <circle cx="25" cy="14" r="3.5" fill="#0D1F26" opacity="0.9"/>
+      <circle cx="25" cy="14" r="3.5" fill="#1A2428" opacity="0.85"/>
     </svg>
     <span class="nav-wordmark">Pintag</span>
   </a>
@@ -419,13 +457,13 @@ nav{
 <div class="content">
 
   <!-- PRICE -->
-  <div class="price-section">
+  <div class="price-section fade-up fade-up-1">
     <p class="price-type" id="pb-type"></p>
     <p class="price-figure" id="pb-price"></p>
   </div>
 
   <!-- AGENT — calm, credible, prominent -->
-  <div class="agent-row">
+  <div class="agent-row fade-up fade-up-2">
     <div class="agent-photo" id="agent-photo">
       <span class="agent-initial" id="agent-initial">?</span>
     </div>
@@ -440,7 +478,7 @@ nav{
   </div>
 
   <!-- TITLE + LOCATION -->
-  <div class="listing-header">
+  <div class="listing-header fade-up fade-up-3">
     <p class="l-type" id="l-type"></p>
     <h1 class="l-title" id="l-title"></h1>
     <p class="l-location">
@@ -450,7 +488,7 @@ nav{
   </div>
 
   <!-- DESCRIPTION -->
-  <div class="l-desc-section">
+  <div class="l-desc-section fade-up fade-up-4">
     <div class="l-desc" id="l-desc"></div>
   </div>
 
