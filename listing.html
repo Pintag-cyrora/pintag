@@ -536,7 +536,7 @@ function getAgentPhoto(name){
 
 // ── SHARE ──
 async function shareList(){
-  const title = document.getElementById('l-title')?.textContent||'Pintag · Property';
+  const titleEl = document.getElementById('l-title'); const title = titleEl ? titleEl.textContent : 'Pintag · Property';
   const url = window.location.href;
   if(navigator.share){
     try{
