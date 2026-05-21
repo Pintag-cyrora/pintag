@@ -572,16 +572,8 @@ function fmtDate(s){
 function render(p){
   document.title='Pintag · '+(p.title_en||'Property');
 
-  // OG meta tags
+  // Page title only — OG tags handled by Cloudflare Worker
   const pageUrl=`${BASE}/listing.html?slug=${encodeURIComponent(p.slug||'')}`;
-  const ogImg=p.images&&p.images[0]?p.images[0]:`${BASE}/pintag-hero.png`;
-  const ogTitle=(p.title_en||p.title_lo||'Property')+' · Pintag';
-  const ogDesc=`${p.price_display||'Price on request'} · ${p.district_en||p.district_lo||'Vientiane'} · pintag.io`;
-  document.getElementById('og-title').content=ogTitle;
-  document.getElementById('og-desc').content=ogDesc;
-  document.getElementById('og-image').content=ogImg;
-  document.getElementById('og-url').content=pageUrl;
-  document.title=ogTitle;
 
   const txLo=p.transaction_type==='for_sale'?'ຂາຍ':'ໃຫ້ເຊົ່າ';
   const txEn=p.transaction_type==='for_sale'?'For Sale':'For Rent';
