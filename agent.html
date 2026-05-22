@@ -10,13 +10,13 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
-  --teal:#2D8C8C;--teal-light:#38A8A8;--teal-dim:rgba(45,140,140,0.08);
+  --teal:#2D8C8C;--teal-light:#38A8A8;
   --ink:#1C2B32;--ink-soft:#3D5058;--ink-muted:#7A9098;
   --warm:#F7F3EC;--white:#FFFFFF;
   --border:rgba(26,36,40,0.07);
   --wa:#1A9E50;
 }
-body{font-family:'DM Sans',sans-serif;font-weight:400;font-size:16px;line-height:1.75;background:var(--white);color:var(--ink);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+body{font-family:'DM Sans',sans-serif;font-weight:400;background:var(--white);color:var(--ink);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
 
 /* NAV */
 nav{
@@ -35,178 +35,188 @@ nav{
 .loading-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:ldot 1.2s ease-in-out infinite;}
 @keyframes ldot{0%,100%{opacity:0.25;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
 
-/* HERO */
-.agent-hero{
+/* ── AGENT IDENTITY — no boxes, atmosphere only ── */
+.agent-identity{
   margin-top:54px;
-  padding:40px 20px 32px;
-  background:var(--white);
-  border-bottom:1px solid var(--border);
-  max-width:780px;
-  margin-left:auto;margin-right:auto;
+  padding:48px 24px 36px;
+  max-width:780px;margin-left:auto;margin-right:auto;
+  padding-top:calc(54px + 48px);
 }
-.agent-hero-inner{display:flex;align-items:flex-start;gap:20px;margin-top:54px;}
+.agent-photo-row{
+  display:flex;align-items:flex-end;gap:20px;
+  margin-bottom:28px;
+}
 .agent-avatar{
-  width:80px;height:80px;border-radius:50%;
+  width:88px;height:88px;border-radius:50%;
   overflow:hidden;flex-shrink:0;
   background:var(--warm);
-  border:1.5px solid var(--border);
 }
 .agent-avatar img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
 .agent-avatar-initial{
   width:100%;height:100%;
   display:flex;align-items:center;justify-content:center;
-  font-size:28px;font-weight:700;color:var(--teal);
+  font-size:32px;font-weight:700;color:var(--teal);
 }
-.agent-info{flex:1;}
-.agent-name{
-  font-size:24px;font-weight:800;color:var(--ink);
-  letter-spacing:-0.03em;line-height:1.1;margin-bottom:4px;
+.agent-identity-text{}
+.agent-verified{
+  font-size:10px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;
+  color:var(--teal);margin-bottom:6px;display:block;
 }
-.agent-title{font-size:13px;color:var(--ink-muted);font-weight:400;margin-bottom:12px;letter-spacing:0.02em;}
-.agent-verified-badge{
-  display:inline-flex;align-items:center;gap:5px;
-  font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;
-  color:var(--teal);
+.agent-name-block{
+  font-size:clamp(28px,5vw,38px);font-weight:800;
+  color:var(--ink);letter-spacing:-0.035em;line-height:1.05;
+  margin-bottom:6px;
 }
-.agent-verified-badge svg{flex-shrink:0;}
+.agent-sub{
+  font-size:14px;font-weight:400;color:var(--ink-muted);
+  letter-spacing:0.01em;
+}
 
-/* BIO */
+/* BIO — editorial, no box */
 .agent-bio{
-  padding:24px 20px;
-  border-bottom:1px solid var(--border);
-  max-width:780px;margin:0 auto;
-}
-.agent-bio p{font-size:15px;font-weight:400;color:var(--ink-soft);line-height:1.95;}
-
-/* META PILLS */
-.agent-meta{
-  padding:20px 20px;
-  border-bottom:1px solid var(--border);
-  max-width:780px;margin:0 auto;
-  display:flex;flex-wrap:wrap;gap:8px;
-}
-.meta-pill{
-  display:flex;align-items:center;gap:6px;
-  padding:6px 14px;
-  background:var(--warm);
-  border:1px solid var(--border);
-  border-radius:20px;
-  font-size:12px;font-weight:500;color:var(--ink-soft);
+  font-size:16px;font-weight:300;color:var(--ink-soft);
+  line-height:2.0;margin-top:20px;
+  max-width:560px;
 }
 
-/* WA CTA */
-.agent-cta{
-  padding:20px 20px;
-  border-bottom:1px solid var(--border);
+/* LANGUAGES — quiet, inline */
+.agent-langs{
+  margin-top:16px;
+  font-size:12px;font-weight:500;color:var(--ink-muted);
+  letter-spacing:0.06em;text-transform:uppercase;
+}
+
+/* DIVIDER */
+.section-divider{
+  height:1px;background:var(--border);
+  max-width:780px;margin:0 auto;
+}
+
+/* WA — integrated, calm */
+.agent-contact{
+  padding:28px 24px;
   max-width:780px;margin:0 auto;
 }
 .btn-wa{
   display:flex;align-items:center;justify-content:center;gap:10px;
-  width:100%;padding:15px;
+  width:100%;padding:16px;
   background:var(--wa);color:#fff;
   font-size:15px;font-weight:600;
   text-decoration:none;border-radius:4px;
   transition:background 0.2s;
-  box-shadow:0 2px 12px rgba(26,158,80,0.2);
+  box-shadow:0 2px 16px rgba(26,158,80,0.18);
   letter-spacing:0.01em;
 }
 .btn-wa:active{background:#168C45;}
 
-/* LISTINGS SECTION */
-.listings-section{
+/* ── PORTFOLIO — cinematic grid ── */
+.agent-portfolio{
+  padding:36px 24px 48px;
   max-width:780px;margin:0 auto;
-  padding:28px 20px;
 }
-.section-label{
-  font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;
-  color:var(--ink-muted);margin-bottom:20px;
+.portfolio-header{
+  display:flex;align-items:baseline;justify-content:space-between;
+  margin-bottom:24px;
 }
-.listings-grid{
+.portfolio-title{
+  font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;
+  color:var(--ink-muted);
+}
+.portfolio-count{
+  font-size:11px;font-weight:400;color:var(--ink-muted);
+}
+
+/* Card grid — 2 col, cinematic feel */
+.portfolio-grid{
   display:grid;
   grid-template-columns:repeat(2,1fr);
-  gap:12px;
+  gap:14px;
 }
+
+/* First card spans full width — hero listing */
+.portfolio-grid .listing-card:first-child{
+  grid-column:1/-1;
+}
+.portfolio-grid .listing-card:first-child .card-img{
+  aspect-ratio:16/9;
+}
+
 .listing-card{
   text-decoration:none;
   display:block;
-  border-radius:4px;
   overflow:hidden;
-  border:1px solid var(--border);
   background:var(--white);
-  transition:transform 0.2s ease,box-shadow 0.2s ease;
+  transition:transform 0.25s cubic-bezier(0.4,0,0.2,1);
 }
-.listing-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(26,36,40,0.08);}
+.listing-card:hover{transform:translateY(-3px);}
 .card-img{
   aspect-ratio:4/3;
   overflow:hidden;
   background:var(--warm);
   position:relative;
+  border-radius:3px;
 }
 .card-img img{
   width:100%;height:100%;
   object-fit:cover;display:block;
-  transition:transform 0.4s ease;
+  transition:transform 0.5s cubic-bezier(0.4,0,0.2,1);
 }
-.listing-card:hover .card-img img{transform:scale(1.03);}
-.card-img-ph{
-  width:100%;height:100%;
-  display:flex;align-items:center;justify-content:center;
-}
-.card-status{
-  position:absolute;top:8px;right:8px;
+.listing-card:hover .card-img img{transform:scale(1.04);}
+.card-tx{
+  position:absolute;top:10px;left:10px;
   background:rgba(255,255,255,0.92);
-  font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;
-  color:var(--teal);padding:3px 8px;border-radius:2px;
+  font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--ink-soft);padding:3px 9px;border-radius:2px;
 }
-.card-body{padding:12px;}
+.card-body{padding:12px 2px 0;}
 .card-price{
-  font-size:15px;font-weight:700;color:var(--ink);
+  font-size:16px;font-weight:700;color:var(--ink);
   letter-spacing:-0.02em;line-height:1;margin-bottom:4px;
 }
 .card-title{
   font-size:12px;font-weight:400;color:var(--ink-soft);
-  line-height:1.4;margin-bottom:6px;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  line-height:1.4;margin-bottom:4px;
+  display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;
 }
 .card-loc{
-  display:flex;align-items:center;gap:4px;
   font-size:11px;color:var(--ink-muted);
+  display:flex;align-items:center;gap:4px;
 }
 
-/* NO LISTINGS */
+/* No listings */
 .no-listings{
-  padding:40px 20px;text-align:center;
-  color:var(--ink-muted);font-size:14px;
+  grid-column:1/-1;
+  padding:40px 0;text-align:center;
+  color:var(--ink-muted);font-size:14px;font-weight:300;
 }
 
 /* FOOTER */
 .agent-footer{
-  padding:24px 20px 40px;
+  padding:20px 24px 40px;
   text-align:center;
   border-top:1px solid var(--border);
-  max-width:780px;margin:0 auto;
 }
-.agent-footer p{font-size:12px;color:var(--ink-muted);}
+.agent-footer p{font-size:12px;color:var(--ink-muted);letter-spacing:0.04em;}
 
-/* FADE IN */
-@keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-.fade-up{animation:fadeUp 0.4s cubic-bezier(0.4,0,0.2,1) both;}
-.fade-up-1{animation-delay:0.05s;}
-.fade-up-2{animation-delay:0.1s;}
-.fade-up-3{animation-delay:0.15s;}
-.fade-up-4{animation-delay:0.2s;}
+/* MOTION */
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.fade-up{animation:fadeUp 0.45s cubic-bezier(0.4,0,0.2,1) both;}
+.fu1{animation-delay:0.0s;}
+.fu2{animation-delay:0.07s;}
+.fu3{animation-delay:0.14s;}
+.fu4{animation-delay:0.21s;}
 @media(prefers-reduced-motion:reduce){.fade-up{animation:none;}}
 
 /* MOBILE */
 @media(max-width:600px){
-  .agent-hero-inner{gap:16px;}
-  .agent-avatar{width:64px;height:64px;}
-  .agent-name{font-size:20px;}
-  .listings-grid{grid-template-columns:repeat(2,1fr);gap:8px;}
-  .card-price{font-size:14px;}
-}
-@media(max-width:360px){
-  .listings-grid{grid-template-columns:1fr;}
+  .agent-identity{padding:calc(54px + 32px) 20px 28px;}
+  .agent-avatar{width:72px;height:72px;}
+  .agent-name-block{font-size:26px;}
+  .agent-bio{font-size:15px;}
+  .portfolio-grid{gap:10px;}
+  .agent-contact{padding:20px 20px;}
+  .agent-portfolio{padding:28px 20px 40px;}
+  .card-price{font-size:15px;}
 }
 </style>
 </head>
@@ -229,44 +239,48 @@ nav{
   <a href="listings.html" class="nav-back">← Listings</a>
 </nav>
 
-<div class="agent-hero">
-  <div class="agent-hero-inner fade-up fade-up-1">
+<!-- AGENT IDENTITY -->
+<div class="agent-identity fade-up fu1">
+  <div class="agent-photo-row">
     <div class="agent-avatar" id="agent-avatar">
       <div class="agent-avatar-initial" id="agent-initial">?</div>
     </div>
-    <div class="agent-info">
-      <h1 class="agent-name" id="agent-name">—</h1>
-      <p class="agent-title" id="agent-title">Pintag · ວຽງຈັນ</p>
-      <span class="agent-verified-badge" id="agent-badge" style="display:none;">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        Pintag Agent
-      </span>
+    <div class="agent-identity-text">
+      <span class="agent-verified" id="agent-badge" style="display:none;">✓ Pintag Agent</span>
+      <h1 class="agent-name-block" id="agent-name">—</h1>
+      <p class="agent-sub" id="agent-sub">ວຽງຈັນ</p>
+    </div>
+  </div>
+  <p class="agent-bio" id="agent-bio" style="display:none;"></p>
+  <p class="agent-langs" id="agent-langs" style="display:none;"></p>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- CONTACT -->
+<div class="agent-contact fade-up fu2">
+  <a href="#" id="wa-btn" target="_blank" class="btn-wa">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+    <span id="wa-label">ຕິດຕໍ່ · WhatsApp</span>
+  </a>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- PORTFOLIO -->
+<div class="agent-portfolio fade-up fu3">
+  <div class="portfolio-header">
+    <span class="portfolio-title">ລາຍການ · Portfolio</span>
+    <span class="portfolio-count" id="portfolio-count"></span>
+  </div>
+  <div class="portfolio-grid" id="portfolio-grid">
+    <div class="no-listings" id="no-listings" style="display:none;">
+      ຍັງບໍ່ມີລາຍການ · No active listings
     </div>
   </div>
 </div>
 
-<div class="agent-bio fade-up fade-up-2" id="agent-bio" style="display:none;">
-  <p id="bio-text"></p>
-</div>
-
-<div class="agent-meta fade-up fade-up-2" id="agent-meta" style="display:none;"></div>
-
-<div class="agent-cta fade-up fade-up-3">
-  <a href="#" id="wa-btn" target="_blank" class="btn-wa">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-    <span id="wa-label">ຕິດຕໍ່ Agent</span>
-  </a>
-</div>
-
-<div class="listings-section fade-up fade-up-4">
-  <p class="section-label" id="listings-label">ລາຍການ</p>
-  <div class="listings-grid" id="listings-grid"></div>
-  <div class="no-listings" id="no-listings" style="display:none;">
-    ຍັງບໍ່ມີລາຍການ · No active listings
-  </div>
-</div>
-
-<div class="agent-footer">
+<div class="agent-footer fade-up fu4">
   <p>Pintag · pintag.io</p>
 </div>
 
@@ -278,21 +292,17 @@ const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6
 const slug=new URLSearchParams(location.search).get('slug');
 
 function showError(msg){
-  var loading=document.getElementById('loading');
-  loading.innerHTML='<div style="padding:40px 24px;text-align:center;font-family:DM Sans,sans-serif;max-width:320px;margin:0 auto;"><p style="color:#7A9098;font-size:14px;line-height:1.7;margin-bottom:20px;">'+msg+'</p><a href="listings.html" style="color:#2D8C8C;font-size:14px;text-decoration:none;">← ກັບຄືນ · Back</a></div>';
+  document.getElementById('loading').innerHTML=
+    '<div style="padding:40px 24px;text-align:center;font-family:DM Sans,sans-serif;max-width:320px;margin:0 auto;">'+
+    '<p style="color:#7A9098;font-size:14px;line-height:1.8;margin-bottom:20px;">'+msg+'</p>'+
+    '<a href="listings.html" style="color:#2D8C8C;font-size:14px;text-decoration:none;">← ກັບຄືນ · Back</a></div>';
 }
 
 async function loadAgent(){
-  var loading=document.getElementById('loading');
-  var page=document.getElementById('page');
-
-  if(!slug){ showError('ບໍ່ພົບ Agent · Agent not found'); return; }
-
+  if(!slug){showError('ບໍ່ພົບ Agent · Agent not found');return;}
   var controller=new AbortController();
-  var timer=setTimeout(function(){ controller.abort(); },8000);
-
+  var timer=setTimeout(function(){controller.abort();},8000);
   try{
-    // Fetch agent
     var r=await fetch(
       SB+'/rest/v1/agents?slug=eq.'+encodeURIComponent(slug)+'&limit=1',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY},signal:controller.signal}
@@ -303,7 +313,6 @@ async function loadAgent(){
     if(!agents||!agents[0]) throw new Error('Not found');
     var a=agents[0];
 
-    // Fetch listings for this agent
     var r2=await fetch(
       SB+'/rest/v1/properties?agent_id=eq.'+a.id+'&status=eq.available&order=created_at.desc&select=slug,title_lo,title_en,price_display,district_lo,district_en,images,transaction_type,bedrooms',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}}
@@ -311,19 +320,16 @@ async function loadAgent(){
     var listings=await r2.json();
     if(!Array.isArray(listings)) listings=[];
 
-    renderAgent(a, listings);
-    loading.style.display='none';
-    page.style.display='block';
-
+    render(a,listings);
+    document.getElementById('loading').style.display='none';
+    document.getElementById('page').style.display='block';
   }catch(err){
     clearTimeout(timer);
-    var isTimeout=err.name==='AbortError';
-    showError(isTimeout?'ການໂຫຼດໃຊ້ເວລາດົນ · Timed out':'ບໍ່ສາມາດໂຫຼດໄດ້ · Unable to load');
+    showError(err.name==='AbortError'?'ການໂຫຼດໃຊ້ເວລາດົນ · Timed out':'ບໍ່ສາມາດໂຫຼດໄດ້ · Unable to load');
   }
 }
 
-function renderAgent(a, listings){
-  // Page title
+function render(a,listings){
   document.title='Pintag · '+(a.name_en||'Agent');
 
   // Avatar
@@ -332,93 +338,88 @@ function renderAgent(a, listings){
   document.getElementById('agent-initial').textContent=initial;
   if(a.photo_url){
     var img=document.createElement('img');
-    img.alt=a.name_en||'Agent';
+    img.alt=a.name_en||'';
     img.style.cssText='width:100%;height:100%;object-fit:cover;object-position:top center;display:block;';
-    img.onerror=function(){ this.onerror=null; av.innerHTML='<div class="agent-avatar-initial">'+initial+'</div>'; };
+    img.onerror=function(){this.onerror=null;av.innerHTML='<div class="agent-avatar-initial">'+initial+'</div>';};
     img.src=a.photo_url;
     av.innerHTML='';
     av.appendChild(img);
   }
 
-  // Name + title
+  // Identity
+  if(a.is_verified) document.getElementById('agent-badge').style.display='block';
   document.getElementById('agent-name').textContent=a.name_lo||a.name_en||'Agent';
-  var titleParts=[];
-  if(a.agency_name) titleParts.push(a.agency_name);
-  titleParts.push('Pintag · ວຽງຈັນ');
-  document.getElementById('agent-title').textContent=titleParts.join(' · ');
-
-  // Verified badge
-  if(a.is_verified){
-    document.getElementById('agent-badge').style.display='inline-flex';
-  }
+  var sub=[];
+  if(a.agency_name) sub.push(a.agency_name);
+  sub.push('Pintag · ວຽງຈັນ');
+  document.getElementById('agent-sub').textContent=sub.join(' · ');
 
   // Bio
   var bio=a.bio_lo||a.bio_en||'';
   if(bio){
-    document.getElementById('agent-bio').style.display='block';
-    document.getElementById('bio-text').textContent=bio;
+    var bioEl=document.getElementById('agent-bio');
+    bioEl.textContent=bio;
+    bioEl.style.display='block';
   }
 
-  // Meta pills
-  var metaEl=document.getElementById('agent-meta');
-  var pills=[];
+  // Languages — quiet inline text, not pills
   if(a.languages&&a.languages.length){
-    a.languages.forEach(function(l){ pills.push({icon:'🌐',text:l}); });
-  }
-  if(a.specialties&&a.specialties.length){
-    a.specialties.forEach(function(s){ pills.push({icon:'◆',text:s}); });
-  }
-  if(pills.length){
-    metaEl.style.display='flex';
-    pills.forEach(function(p){
-      var pill=document.createElement('span');
-      pill.className='meta-pill';
-      pill.textContent=p.text;
-      metaEl.appendChild(pill);
-    });
+    var langsEl=document.getElementById('agent-langs');
+    langsEl.textContent=a.languages.join(' · ');
+    langsEl.style.display='block';
   }
 
   // WhatsApp
   var waN=(a.whatsapp||'').replace(/[^0-9]/g,'');
-  var waM=encodeURIComponent('ສະບາຍດີ '+( a.name_lo||a.name_en||'')+', ຂ້ອຍຢາກສອບຖາມກ່ຽວກັບລາຍການ Pintag ຂອງທ່ານ');
+  var waM=encodeURIComponent('ສະບາຍດີ '+(a.name_lo||a.name_en||'')+', ຂ້ອຍຢາກສອບຖາມກ່ຽວກັບລາຍການ Pintag');
   document.getElementById('wa-btn').href='https://wa.me/'+waN+'?text='+waM;
   document.getElementById('wa-label').textContent='ຕິດຕໍ່ '+(a.name_lo||a.name_en||'Agent')+' · WhatsApp';
 
-  // Listings
-  var grid=document.getElementById('listings-grid');
-  var label=document.getElementById('listings-label');
-  label.textContent='ລາຍການ ('+(listings.length)+')';
+  // Portfolio
+  var grid=document.getElementById('portfolio-grid');
+  document.getElementById('portfolio-count').textContent=listings.length?listings.length+' ລາຍການ':'';
 
   if(!listings.length){
     document.getElementById('no-listings').style.display='block';
     return;
   }
 
-  listings.forEach(function(p){
+  listings.forEach(function(p,i){
     var imgs=Array.isArray(p.images)?p.images:[];
     var thumb=imgs[0]||'';
     var price=p.price_display||'';
     var title=p.title_lo||p.title_en||'';
     var district=p.district_lo||p.district_en||'';
     var tx=p.transaction_type==='for_sale'?'ຂາຍ':'ເຊົ່າ';
-    var url='listing.html?slug='+encodeURIComponent(p.slug||'');
 
     var card=document.createElement('a');
-    card.href=url;
+    card.href='listing.html?slug='+encodeURIComponent(p.slug||'');
     card.className='listing-card';
 
-    var imgHtml=thumb
-      ?'<img src="'+thumb+'" alt="'+title+'" loading="lazy" decoding="async">'
-      :'<div class="card-img-ph"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(26,36,40,0.15)" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>';
+    // Thumbnail
+    var imgDiv=document.createElement('div');
+    imgDiv.className='card-img';
+    if(thumb){
+      var tImg=document.createElement('img');
+      tImg.src=thumb;tImg.alt=title;
+      tImg.loading=i===0?'eager':'lazy';
+      tImg.decoding='async';
+      imgDiv.appendChild(tImg);
+    }
+    var txBadge=document.createElement('span');
+    txBadge.className='card-tx';
+    txBadge.textContent=tx;
+    imgDiv.appendChild(txBadge);
 
-    card.innerHTML=
-      '<div class="card-img">'+imgHtml+'<span class="card-status">'+tx+'</span></div>'+
-      '<div class="card-body">'+
-        '<p class="card-price">'+price+'</p>'+
-        '<p class="card-title">'+title+'</p>'+
-        (district?'<p class="card-loc"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7A9098" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>'+district+'</p>':'+')+
-      '</div>';
+    // Body
+    var body=document.createElement('div');
+    body.className='card-body';
+    if(price){var pEl=document.createElement('p');pEl.className='card-price';pEl.textContent=price;body.appendChild(pEl);}
+    if(title){var tEl=document.createElement('p');tEl.className='card-title';tEl.textContent=title;body.appendChild(tEl);}
+    if(district){var dEl=document.createElement('p');dEl.className='card-loc';dEl.textContent=district;body.appendChild(dEl);}
 
+    card.appendChild(imgDiv);
+    card.appendChild(body);
     grid.appendChild(card);
   });
 }
