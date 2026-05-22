@@ -29,14 +29,21 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .en-i{display:none;}body.lang-zh .
 
 /* NAV */
 nav{
-  position:fixed;top:0;left:0;right:0;z-index:300;height:52px;
+  position:fixed;top:0;left:0;right:0;z-index:300;height:54px;
   display:flex;align-items:center;justify-content:space-between;padding:0 20px;
-  background:rgba(255,255,255,0.97);backdrop-filter:blur(20px);
-  border-bottom:1px solid var(--border);
+  background:rgba(255,255,255,0.97);backdrop-filter:blur(24px);
+  border-bottom:1px solid rgba(26,36,40,0.05);
 }
-.nav-logo{display:flex;align-items:center;gap:9px;text-decoration:none;}
-.nav-wordmark{font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-0.03em;}
-.nav-back{font-size:13px;font-weight:400;color:var(--ink-muted);text-decoration:none;display:flex;align-items:center;gap:5px;transition:color 0.25s;letter-spacing:0.01em;}
+.nav-logo{display:flex;align-items:center;gap:6px;text-decoration:none;}
+.nav-wordmark{
+  font-size:18px;font-weight:800;color:#1C2B32;
+  letter-spacing:-0.02em;line-height:1;
+}
+.nav-back{
+  font-size:12px;font-weight:500;color:var(--ink-muted);
+  text-decoration:none;display:flex;align-items:center;gap:4px;
+  transition:color 0.2s;letter-spacing:0.04em;text-transform:uppercase;
+}
 .nav-back:hover{color:var(--teal);}
 
 /* LOADING */
@@ -46,7 +53,7 @@ nav{
 
 /* ── GALLERY — immersive, no thumbnails ── */
 .gallery{
-  margin-top:52px;
+  margin-top:54px;
   position:relative;
   background:var(--ink);
   overflow:hidden;
@@ -148,7 +155,7 @@ nav{
   display:flex;
   border-bottom:1px solid var(--border);
   background:var(--white);
-  position:sticky;top:52px;z-index:200;
+  position:sticky;top:54px;z-index:200;
 }
 .lang-tab{
   flex:1;padding:13px 8px;
@@ -403,9 +410,9 @@ nav{
 <!-- NAV -->
 <nav>
   <a href="index.html" class="nav-logo">
-    <svg width="24" height="24" viewBox="0 0 40 40" fill="none">
-      <circle cx="12" cy="9" r="7.5" fill="#38A8A8"/>
-      <circle cx="25" cy="14" r="3.5" fill="#1A2428" opacity="0.85"/>
+    <svg width="28" height="24" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision">
+      <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
+      <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
     </svg>
     <span class="nav-wordmark">Pintag</span>
   </a>
