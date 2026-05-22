@@ -35,66 +35,110 @@ nav{
 .loading-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:ldot 1.2s ease-in-out infinite;}
 @keyframes ldot{0%,100%{opacity:0.25;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
 
-/* ── AGENT IDENTITY — no boxes, atmosphere only ── */
-.agent-identity{
+/* ── HERO — cinematic, image-first ── */
+.agent-hero{
   margin-top:54px;
-  padding:48px 24px 36px;
-  max-width:780px;margin-left:auto;margin-right:auto;
-  padding-top:calc(54px + 48px);
+  position:relative;
+  background:var(--ink);
+  overflow:hidden;
 }
-.agent-photo-row{
-  display:flex;align-items:flex-end;gap:20px;
-  margin-bottom:28px;
+.hero-img{
+  width:100%;
+  height:75vw;
+  min-height:320px;
+  max-height:520px;
+  object-fit:cover;
+  object-position:center;
+  display:block;
+  opacity:0.85;
 }
-.agent-avatar{
-  width:88px;height:88px;border-radius:50%;
-  overflow:hidden;flex-shrink:0;
-  background:var(--warm);
+.hero-gradient{
+  position:absolute;inset:0;
+  background:linear-gradient(
+    to bottom,
+    rgba(20,28,32,0.0) 0%,
+    rgba(20,28,32,0.1) 40%,
+    rgba(20,28,32,0.75) 80%,
+    rgba(20,28,32,0.92) 100%
+  );
 }
-.agent-avatar img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
-.agent-avatar-initial{
+/* Agent identity overlaid on hero bottom */
+.hero-identity{
+  position:absolute;
+  bottom:0;left:0;right:0;
+  padding:24px 24px 28px;
+  display:flex;align-items:flex-end;gap:16px;
+}
+.hero-avatar{
+  width:64px;height:64px;
+  border-radius:50%;
+  overflow:hidden;
+  flex-shrink:0;
+  border:2px solid rgba(255,255,255,0.25);
+  background:rgba(255,255,255,0.1);
+}
+.hero-avatar img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
+.hero-avatar-initial{
   width:100%;height:100%;
   display:flex;align-items:center;justify-content:center;
-  font-size:32px;font-weight:700;color:var(--teal);
+  font-size:22px;font-weight:700;color:rgba(255,255,255,0.8);
 }
-.agent-identity-text{}
-.agent-verified{
+.hero-text{}
+.hero-verified{
   font-size:10px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;
-  color:var(--teal);margin-bottom:6px;display:block;
+  color:var(--teal-light);margin-bottom:4px;display:block;
 }
-.agent-name-block{
-  font-size:clamp(28px,5vw,38px);font-weight:800;
-  color:var(--ink);letter-spacing:-0.035em;line-height:1.05;
-  margin-bottom:6px;
+.hero-name{
+  font-size:clamp(22px,5vw,30px);font-weight:800;
+  color:#fff;letter-spacing:-0.03em;line-height:1.05;
+  margin-bottom:2px;
 }
-.agent-sub{
-  font-size:14px;font-weight:400;color:var(--ink-muted);
-  letter-spacing:0.01em;
-}
-
-/* BIO — editorial, no box */
-.agent-bio{
-  font-size:16px;font-weight:300;color:var(--ink-soft);
-  line-height:2.0;margin-top:20px;
-  max-width:560px;
+.hero-sub{
+  font-size:13px;font-weight:400;
+  color:rgba(255,255,255,0.6);letter-spacing:0.01em;
 }
 
-/* LANGUAGES — quiet, inline */
-.agent-langs{
-  margin-top:16px;
-  font-size:12px;font-weight:500;color:var(--ink-muted);
-  letter-spacing:0.06em;text-transform:uppercase;
+/* Hero fallback — no image */
+.hero-no-img{
+  width:100%;
+  padding:calc(54px + 48px) 24px 40px;
+  background:var(--warm);
 }
+.hero-no-img .hero-identity{
+  position:static;padding:0;
+  align-items:flex-start;
+  flex-direction:column;gap:12px;
+}
+.hero-no-img .hero-avatar{
+  border-color:var(--border);
+  background:var(--white);
+}
+.hero-no-img .hero-avatar-initial{color:var(--teal);}
+.hero-no-img .hero-name{color:var(--ink);}
+.hero-no-img .hero-sub{color:var(--ink-muted);}
+.hero-no-img .hero-verified{color:var(--teal);}
 
-/* DIVIDER */
-.section-divider{
-  height:1px;background:var(--border);
+/* ── BIO — editorial, open space ── */
+.agent-bio-section{
+  padding:28px 24px 24px;
+  border-bottom:1px solid var(--border);
   max-width:780px;margin:0 auto;
 }
+.agent-bio-text{
+  font-size:16px;font-weight:300;
+  color:var(--ink-soft);line-height:2.0;
+  max-width:540px;
+}
+.agent-langs{
+  margin-top:12px;
+  font-size:11px;font-weight:500;
+  color:var(--ink-muted);letter-spacing:0.1em;text-transform:uppercase;
+}
 
-/* WA — integrated, calm */
+/* ── CONTACT ── */
 .agent-contact{
-  padding:28px 24px;
+  padding:24px 24px;
+  border-bottom:1px solid var(--border);
   max-width:780px;margin:0 auto;
 }
 .btn-wa{
@@ -109,114 +153,102 @@ nav{
 }
 .btn-wa:active{background:#168C45;}
 
-/* ── PORTFOLIO — cinematic grid ── */
+/* ── PORTFOLIO ── */
 .agent-portfolio{
-  padding:36px 24px 48px;
+  padding:32px 24px 56px;
   max-width:780px;margin:0 auto;
 }
 .portfolio-header{
   display:flex;align-items:baseline;justify-content:space-between;
   margin-bottom:24px;
 }
-.portfolio-title{
-  font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;
-  color:var(--ink-muted);
+.portfolio-label{
+  font-size:11px;font-weight:600;letter-spacing:0.18em;
+  text-transform:uppercase;color:var(--ink-muted);
 }
-.portfolio-count{
-  font-size:11px;font-weight:400;color:var(--ink-muted);
-}
+.portfolio-count{font-size:11px;color:var(--ink-muted);}
 
-/* Card grid — 2 col, cinematic feel */
-.portfolio-grid{
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:14px;
-}
+/* Grid — editorial feel */
+.portfolio-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
 
-/* First card spans full width — hero listing */
-.portfolio-grid .listing-card:first-child{
-  grid-column:1/-1;
-}
-.portfolio-grid .listing-card:first-child .card-img{
-  aspect-ratio:16/9;
-}
+/* First card — hero listing, full width */
+.portfolio-grid .p-card:first-child{grid-column:1/-1;}
+.portfolio-grid .p-card:first-child .p-img{aspect-ratio:16/9;}
+.portfolio-grid .p-card:first-child .p-price{font-size:20px;}
+.portfolio-grid .p-card:first-child .p-title{-webkit-line-clamp:2;font-size:14px;}
 
-.listing-card{
-  text-decoration:none;
-  display:block;
-  overflow:hidden;
-  background:var(--white);
-  transition:transform 0.25s cubic-bezier(0.4,0,0.2,1);
+.p-card{
+  display:block;text-decoration:none;
+  transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);
 }
-.listing-card:hover{transform:translateY(-3px);}
-.card-img{
-  aspect-ratio:4/3;
-  overflow:hidden;
-  background:var(--warm);
+.p-card:hover{transform:translateY(-3px);}
+.p-img{
+  aspect-ratio:4/3;overflow:hidden;
+  background:var(--warm);border-radius:3px;
   position:relative;
-  border-radius:3px;
 }
-.card-img img{
-  width:100%;height:100%;
-  object-fit:cover;display:block;
+.p-img img{
+  width:100%;height:100%;object-fit:cover;display:block;
   transition:transform 0.5s cubic-bezier(0.4,0,0.2,1);
 }
-.listing-card:hover .card-img img{transform:scale(1.04);}
-.card-tx{
+.p-card:hover .p-img img{transform:scale(1.04);}
+.p-img-ph{
+  width:100%;height:100%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--warm);
+}
+.p-tx{
   position:absolute;top:10px;left:10px;
   background:rgba(255,255,255,0.92);
   font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;
   color:var(--ink-soft);padding:3px 9px;border-radius:2px;
 }
-.card-body{padding:12px 2px 0;}
-.card-price{
-  font-size:16px;font-weight:700;color:var(--ink);
-  letter-spacing:-0.02em;line-height:1;margin-bottom:4px;
+.p-featured-dot{
+  position:absolute;top:10px;right:10px;
+  width:7px;height:7px;border-radius:50%;
+  background:var(--teal-light);
+  box-shadow:0 0 0 2px rgba(255,255,255,0.6);
 }
-.card-title{
-  font-size:12px;font-weight:400;color:var(--ink-soft);
-  line-height:1.4;margin-bottom:4px;
+.p-body{padding:12px 2px 0;}
+.p-price{font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-0.02em;line-height:1;margin-bottom:5px;}
+.p-title{
+  font-size:13px;font-weight:400;color:var(--ink-soft);line-height:1.45;margin-bottom:4px;
   display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;
 }
-.card-loc{
-  font-size:11px;color:var(--ink-muted);
-  display:flex;align-items:center;gap:4px;
-}
+.p-loc{font-size:11px;color:var(--ink-muted);}
 
-/* No listings */
 .no-listings{
-  grid-column:1/-1;
-  padding:40px 0;text-align:center;
-  color:var(--ink-muted);font-size:14px;font-weight:300;
+  grid-column:1/-1;padding:48px 0;
+  text-align:center;color:var(--ink-muted);
+  font-size:14px;font-weight:300;line-height:1.8;
 }
 
 /* FOOTER */
 .agent-footer{
   padding:20px 24px 40px;
-  text-align:center;
-  border-top:1px solid var(--border);
+  text-align:center;border-top:1px solid var(--border);
 }
 .agent-footer p{font-size:12px;color:var(--ink-muted);letter-spacing:0.04em;}
 
 /* MOTION */
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
-.fade-up{animation:fadeUp 0.45s cubic-bezier(0.4,0,0.2,1) both;}
-.fu1{animation-delay:0.0s;}
-.fu2{animation-delay:0.07s;}
-.fu3{animation-delay:0.14s;}
-.fu4{animation-delay:0.21s;}
-@media(prefers-reduced-motion:reduce){.fade-up{animation:none;}}
+.fu{animation:fadeUp 0.45s cubic-bezier(0.4,0,0.2,1) both;}
+.fu1{animation-delay:0s;}
+.fu2{animation-delay:0.08s;}
+.fu3{animation-delay:0.16s;}
+.fu4{animation-delay:0.24s;}
+@media(prefers-reduced-motion:reduce){.fu{animation:none;}}
 
 /* MOBILE */
 @media(max-width:600px){
-  .agent-identity{padding:calc(54px + 32px) 20px 28px;}
-  .agent-avatar{width:72px;height:72px;}
-  .agent-name-block{font-size:26px;}
-  .agent-bio{font-size:15px;}
+  .hero-img{height:72vw;min-height:260px;}
+  .hero-identity{padding:20px 20px 24px;}
+  .hero-avatar{width:52px;height:52px;}
+  .hero-name{font-size:22px;}
+  .agent-bio-section,.agent-contact,.agent-portfolio{padding-left:20px;padding-right:20px;}
   .portfolio-grid{gap:10px;}
-  .agent-contact{padding:20px 20px;}
-  .agent-portfolio{padding:28px 20px 40px;}
-  .card-price{font-size:15px;}
+  .p-price{font-size:15px;}
+  .portfolio-grid .p-card:first-child .p-price{font-size:17px;}
 }
 </style>
 </head>
@@ -239,48 +271,35 @@ nav{
   <a href="listings.html" class="nav-back">← Listings</a>
 </nav>
 
-<!-- AGENT IDENTITY -->
-<div class="agent-identity fade-up fu1">
-  <div class="agent-photo-row">
-    <div class="agent-avatar" id="agent-avatar">
-      <div class="agent-avatar-initial" id="agent-initial">?</div>
-    </div>
-    <div class="agent-identity-text">
-      <span class="agent-verified" id="agent-badge" style="display:none;">✓ Pintag Agent</span>
-      <h1 class="agent-name-block" id="agent-name">—</h1>
-      <p class="agent-sub" id="agent-sub">ວຽງຈັນ</p>
-    </div>
-  </div>
-  <p class="agent-bio" id="agent-bio" style="display:none;"></p>
+<!-- HERO — image first, identity overlaid -->
+<div class="agent-hero" id="agent-hero">
+  <!-- populated by JS -->
+</div>
+
+<!-- BIO -->
+<div class="agent-bio-section fu fu2" id="bio-section" style="display:none;">
+  <p class="agent-bio-text" id="bio-text"></p>
   <p class="agent-langs" id="agent-langs" style="display:none;"></p>
 </div>
 
-<div class="section-divider"></div>
-
 <!-- CONTACT -->
-<div class="agent-contact fade-up fu2">
+<div class="agent-contact fu fu3">
   <a href="#" id="wa-btn" target="_blank" class="btn-wa">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
     <span id="wa-label">ຕິດຕໍ່ · WhatsApp</span>
   </a>
 </div>
 
-<div class="section-divider"></div>
-
 <!-- PORTFOLIO -->
-<div class="agent-portfolio fade-up fu3">
+<div class="agent-portfolio fu fu4">
   <div class="portfolio-header">
-    <span class="portfolio-title">ລາຍການ · Portfolio</span>
+    <span class="portfolio-label">Portfolio</span>
     <span class="portfolio-count" id="portfolio-count"></span>
   </div>
-  <div class="portfolio-grid" id="portfolio-grid">
-    <div class="no-listings" id="no-listings" style="display:none;">
-      ຍັງບໍ່ມີລາຍການ · No active listings
-    </div>
-  </div>
+  <div class="portfolio-grid" id="portfolio-grid"></div>
 </div>
 
-<div class="agent-footer fade-up fu4">
+<div class="agent-footer">
   <p>Pintag · pintag.io</p>
 </div>
 
@@ -313,8 +332,9 @@ async function loadAgent(){
     if(!agents||!agents[0]) throw new Error('Not found');
     var a=agents[0];
 
+    // Fetch listings — featured first, then by date
     var r2=await fetch(
-      SB+'/rest/v1/properties?agent_id=eq.'+a.id+'&status=eq.available&order=created_at.desc&select=slug,title_lo,title_en,price_display,district_lo,district_en,images,transaction_type,bedrooms',
+      SB+'/rest/v1/properties?agent_id=eq.'+a.id+'&status=eq.available&order=is_featured.desc,created_at.desc&select=slug,title_lo,title_en,price_display,district_lo,district_en,images,transaction_type,bedrooms,is_featured',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}}
     );
     var listings=await r2.json();
@@ -329,49 +349,91 @@ async function loadAgent(){
   }
 }
 
-function render(a,listings){
+function getHeroImage(listings){
+  // Priority: featured → most recent with image → fallback
+  var featured=listings.find(function(l){return l.is_featured;});
+  if(featured&&featured.images&&featured.images[0]) return featured.images[0];
+  var withImg=listings.find(function(l){return l.images&&l.images[0];});
+  if(withImg) return withImg.images[0];
+  return null;
+}
+
+function render(a, listings){
   document.title='Pintag · '+(a.name_en||'Agent');
 
-  // Avatar
-  var av=document.getElementById('agent-avatar');
+  var heroImg=getHeroImage(listings);
   var initial=(a.name_en||'A').charAt(0).toUpperCase();
-  document.getElementById('agent-initial').textContent=initial;
-  if(a.photo_url){
-    var img=document.createElement('img');
-    img.alt=a.name_en||'';
-    img.style.cssText='width:100%;height:100%;object-fit:cover;object-position:top center;display:block;';
-    img.onerror=function(){this.onerror=null;av.innerHTML='<div class="agent-avatar-initial">'+initial+'</div>';};
-    img.src=a.photo_url;
-    av.innerHTML='';
-    av.appendChild(img);
+  var heroEl=document.getElementById('agent-hero');
+
+  // Build hero
+  if(heroImg){
+    // Cinematic hero with image
+    heroEl.innerHTML=
+      '<img class="hero-img" src="'+heroImg+'" alt="'+(a.name_lo||a.name_en||'')+' · Pintag" loading="eager">'+
+      '<div class="hero-gradient"></div>'+
+      '<div class="hero-identity fu fu1">'+
+        '<div class="hero-avatar" id="hero-av"><div class="hero-avatar-initial">'+initial+'</div></div>'+
+        '<div class="hero-text">'+
+          (a.is_verified?'<span class="hero-verified">✓ Pintag Agent</span>':'')+
+          '<h1 class="hero-name">'+(a.name_lo||a.name_en||'Agent')+'</h1>'+
+          '<p class="hero-sub" id="hero-sub">Pintag · ວຽງຈັນ</p>'+
+        '</div>'+
+      '</div>';
+  } else {
+    // No image fallback — elegant light hero
+    heroEl.classList.add('hero-no-img');
+    heroEl.innerHTML=
+      '<div class="hero-identity fu fu1">'+
+        '<div class="hero-avatar" id="hero-av"><div class="hero-avatar-initial" style="color:var(--teal);">'+initial+'</div></div>'+
+        '<div class="hero-text">'+
+          (a.is_verified?'<span class="hero-verified">✓ Pintag Agent</span>':'')+
+          '<h1 class="hero-name" style="color:var(--ink);">'+(a.name_lo||a.name_en||'Agent')+'</h1>'+
+          '<p class="hero-sub" id="hero-sub" style="color:var(--ink-muted);">Pintag · ວຽງຈັນ</p>'+
+        '</div>'+
+      '</div>';
   }
 
-  // Identity
-  if(a.is_verified) document.getElementById('agent-badge').style.display='block';
-  document.getElementById('agent-name').textContent=a.name_lo||a.name_en||'Agent';
-  var sub=[];
-  if(a.agency_name) sub.push(a.agency_name);
-  sub.push('Pintag · ວຽງຈັນ');
-  document.getElementById('agent-sub').textContent=sub.join(' · ');
+  // Agent avatar in hero
+  if(a.photo_url){
+    var av=document.getElementById('hero-av');
+    if(av){
+      var img=document.createElement('img');
+      img.alt=a.name_en||'';
+      img.style.cssText='width:100%;height:100%;object-fit:cover;object-position:top center;display:block;';
+      img.onerror=function(){this.onerror=null;av.innerHTML='<div class="hero-avatar-initial">'+initial+'</div>';};
+      img.src=a.photo_url;
+      av.innerHTML='';
+      av.appendChild(img);
+    }
+  }
+
+  // Sub line
+  var subEl=document.getElementById('hero-sub');
+  if(subEl){
+    var sub=[];
+    if(a.agency_name) sub.push(a.agency_name);
+    sub.push('Pintag · ວຽງຈັນ');
+    subEl.textContent=sub.join(' · ');
+  }
 
   // Bio
   var bio=a.bio_lo||a.bio_en||'';
   if(bio){
-    var bioEl=document.getElementById('agent-bio');
-    bioEl.textContent=bio;
-    bioEl.style.display='block';
+    document.getElementById('bio-section').style.display='block';
+    document.getElementById('bio-text').textContent=bio;
   }
 
-  // Languages — quiet inline text, not pills
+  // Languages
   if(a.languages&&a.languages.length){
     var langsEl=document.getElementById('agent-langs');
     langsEl.textContent=a.languages.join(' · ');
     langsEl.style.display='block';
+    if(!bio) document.getElementById('bio-section').style.display='block';
   }
 
   // WhatsApp
   var waN=(a.whatsapp||'').replace(/[^0-9]/g,'');
-  var waM=encodeURIComponent('ສະບາຍດີ '+(a.name_lo||a.name_en||'')+', ຂ້ອຍຢາກສອບຖາມກ່ຽວກັບລາຍການ Pintag');
+  var waM=encodeURIComponent('ສະບາຍດີ '+(a.name_lo||a.name_en||'')+', ຂ້ອຍຢາກສອບຖາມກ່ຽວກັບລາຍການ Pintag ຂອງທ່ານ');
   document.getElementById('wa-btn').href='https://wa.me/'+waN+'?text='+waM;
   document.getElementById('wa-label').textContent='ຕິດຕໍ່ '+(a.name_lo||a.name_en||'Agent')+' · WhatsApp';
 
@@ -380,7 +442,10 @@ function render(a,listings){
   document.getElementById('portfolio-count').textContent=listings.length?listings.length+' ລາຍການ':'';
 
   if(!listings.length){
-    document.getElementById('no-listings').style.display='block';
+    var empty=document.createElement('div');
+    empty.className='no-listings';
+    empty.textContent='ຍັງບໍ່ມີລາຍການ · No active listings';
+    grid.appendChild(empty);
     return;
   }
 
@@ -394,29 +459,44 @@ function render(a,listings){
 
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug||'');
-    card.className='listing-card';
+    card.className='p-card';
 
-    // Thumbnail
+    // Image
     var imgDiv=document.createElement('div');
-    imgDiv.className='card-img';
+    imgDiv.className='p-img';
     if(thumb){
       var tImg=document.createElement('img');
-      tImg.src=thumb;tImg.alt=title;
+      tImg.alt=title;
       tImg.loading=i===0?'eager':'lazy';
       tImg.decoding='async';
+      tImg.src=thumb;
       imgDiv.appendChild(tImg);
+    } else {
+      var ph=document.createElement('div');
+      ph.className='p-img-ph';
+      imgDiv.appendChild(ph);
     }
+
+    // Transaction badge
     var txBadge=document.createElement('span');
-    txBadge.className='card-tx';
+    txBadge.className='p-tx';
     txBadge.textContent=tx;
     imgDiv.appendChild(txBadge);
 
+    // Featured dot
+    if(p.is_featured){
+      var dot=document.createElement('span');
+      dot.className='p-featured-dot';
+      dot.title='Featured listing';
+      imgDiv.appendChild(dot);
+    }
+
     // Body
     var body=document.createElement('div');
-    body.className='card-body';
-    if(price){var pEl=document.createElement('p');pEl.className='card-price';pEl.textContent=price;body.appendChild(pEl);}
-    if(title){var tEl=document.createElement('p');tEl.className='card-title';tEl.textContent=title;body.appendChild(tEl);}
-    if(district){var dEl=document.createElement('p');dEl.className='card-loc';dEl.textContent=district;body.appendChild(dEl);}
+    body.className='p-body';
+    if(price){var pEl=document.createElement('p');pEl.className='p-price';pEl.textContent=price;body.appendChild(pEl);}
+    if(title){var tEl=document.createElement('p');tEl.className='p-title';tEl.textContent=title;body.appendChild(tEl);}
+    if(district){var dEl=document.createElement('p');dEl.className='p-loc';dEl.textContent=district;body.appendChild(dEl);}
 
     card.appendChild(imgDiv);
     card.appendChild(body);
