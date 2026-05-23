@@ -225,7 +225,7 @@ async function load(){
     if(!ag||!ag[0]) throw new Error('Not found');
     var a=ag[0];
     var r2=await fetch(
-      SB+'/rest/v1/properties?agent_id=eq.'+a.id+'&status=eq.available&order=is_featured.desc,created_at.desc&select=slug,title_lo,title_en,price_display,district_lo,district_en,images,transaction_type,is_featured',
+      SB+'/rest/v1/properties?agent_id=eq.'+a.id+'&order=is_featured.desc,created_at.desc&select=slug,title_lo,title_en,price_display,district_lo,district_en,images,transaction_type,is_featured,status',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var listings=await r2.json();
     if(!Array.isArray(listings)) listings=[];
