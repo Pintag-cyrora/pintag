@@ -3,518 +3,535 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pintag · ສຳລັບ Agent</title>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<title>Pintag · ສຳລັບຕົວແທນ</title>
+<meta name="description" content="ໜ້າລາຍການທີ່ດູດີ. ແຊຣ໌ໄດ້ທຸກທີ່. ເບິ່ງເປັນມືອາຊີບທັນທີ.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-html{scroll-behavior:smooth;}
 :root{
-  --teal:#2D8C8C;--teal-light:#38A8A8;--teal-dim:rgba(45,140,140,0.1);
-  --ink:#1A2428;--ink-soft:#3D5058;--ink-muted:#7A9098;
-  --warm:#F7F3EC;--off:#F2EDE4;--white:#fff;
-  --border:rgba(26,36,40,0.08);--border-teal:rgba(45,140,140,0.2);--gold:#B8960C;
+  --teal:#2D8C8C;--teal-light:#38A8A8;
+  --ink:#1C2B32;--ink-soft:#3D5058;--ink-muted:#7A9098;
+  --warm:#F7F3EC;--white:#FFFFFF;
+  --border:rgba(26,36,40,0.07);--wa:#1A9E50;
 }
-body{font-family:'DM Sans',sans-serif;font-weight:400;font-size:16px;line-height:1.75;color:var(--ink);background:var(--white);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
-
-/* LANG */
-.lo{display:block;}.en{display:none;}.zh{display:none;}
-.lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
-body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
-body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}body.lang-en .zh-i{display:none;}
-body.lang-zh .lo{display:none;}body.lang-zh .en{display:none;}body.lang-zh .zh{display:block;}
-body.lang-zh .lo-i{display:none;}body.lang-zh .en-i{display:none;}body.lang-zh .zh-i{display:inline;}
+body{font-family:'DM Sans',sans-serif;font-weight:400;background:var(--white);color:var(--ink);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
 
 /* NAV */
-nav{
-  position:fixed;top:0;left:0;right:0;z-index:200;height:56px;
-  display:flex;align-items:center;justify-content:space-between;padding:0 24px;
-  background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);
-  border-bottom:1px solid var(--border);
-}
-.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
-.nav-wordmark{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;}
-.nav-right{display:flex;align-items:center;gap:8px;}
-.lang-switcher{display:flex;gap:2px;background:var(--warm);border:1px solid var(--border);border-radius:4px;padding:3px;}
-.lang-btn{font-size:11px;font-weight:500;padding:5px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:3px;transition:all 0.2s;font-family:'DM Sans',sans-serif;}
-.lang-btn.active{background:var(--ink);color:#fff;}
-.nav-back{font-size:12px;color:var(--ink-muted);text-decoration:none;display:flex;align-items:center;gap:5px;transition:color 0.2s;}
-.nav-back:hover{color:var(--teal);}
+nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(255,255,255,0.97);backdrop-filter:blur(24px);border-bottom:1px solid rgba(26,36,40,0.05);}
+.nav-logo{display:flex;align-items:center;gap:6px;text-decoration:none;}
+.nav-wordmark{font-size:18px;font-weight:800;color:#1C2B32;letter-spacing:-0.02em;line-height:1;}
+.nav-right{display:flex;align-items:center;gap:16px;}
+.nav-link{font-size:12px;font-weight:500;color:var(--ink-muted);text-decoration:none;letter-spacing:0.04em;text-transform:uppercase;transition:color 0.2s;}
+.nav-link:hover,.nav-link.active{color:var(--teal);}
 
-/* HERO */
+/* LOADING */
+.loading-screen{display:flex;align-items:center;justify-content:center;height:100vh;}
+.loading-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:ldot 1.2s ease-in-out infinite;}
+@keyframes ldot{0%,100%{opacity:0.25;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
+
+/* ── HERO — full viewport, warm invitation ── */
 .hero{
-  margin-top:56px;position:relative;
-  height:90vh;min-height:500px;overflow:hidden;
+  margin-top:54px;
+  height:calc(100vh - 54px);
+  min-height:500px;
+  max-height:780px;
+  position:relative;
+  background:var(--ink);
+  display:flex;align-items:flex-end;
+  overflow:hidden;
 }
-.hero-img{width:100%;height:100%;object-fit:cover;object-position:center 55%;display:block;}
-.hero-overlay{
+.hero-bg-img{
   position:absolute;inset:0;
-  background:linear-gradient(to bottom,rgba(26,36,40,0.3) 0%,rgba(26,36,40,0.15) 40%,rgba(26,36,40,0.75) 100%);
+  width:100%;height:100%;
+  object-fit:cover;object-position:center 30%;
+  opacity:0.45;
 }
-.hero-gold{position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold);opacity:0.55;z-index:2;}
+.hero-bg-fallback{
+  position:absolute;inset:0;
+  background:linear-gradient(160deg,#0D2028 0%,#1A3840 45%,#0A1820 100%);
+}
+.hero-accent{position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(45,140,140,0.12) 0%,transparent 65%);top:-100px;right:-80px;}
+.hero-gradient{
+  position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(12,20,24,0.96) 0%,rgba(12,20,24,0.5) 45%,rgba(12,20,24,0.1) 100%);
+}
 .hero-content{
-  position:absolute;bottom:0;left:0;right:0;
-  padding:48px 32px;z-index:2;max-width:680px;
+  position:relative;z-index:2;
+  padding:0 24px 52px;
+  width:100%;max-width:780px;margin:0 auto;
 }
-.hero-eyebrow{
-  font-size:10px;font-weight:500;letter-spacing:0.22em;text-transform:uppercase;
-  color:rgba(255,255,255,0.5);margin-bottom:14px;
-  display:flex;align-items:center;gap:10px;
+.hero-eyebrow{font-size:10px;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;color:var(--teal-light);margin-bottom:14px;display:block;}
+.hero-title{
+  font-size:clamp(30px,7vw,52px);font-weight:800;
+  color:#fff;letter-spacing:-0.04em;line-height:1.02;
+  margin-bottom:14px;max-width:520px;
 }
-.eyebrow-line{width:20px;height:1px;background:rgba(255,255,255,0.3);}
-.hero-headline{
-  font-size:clamp(28px,6vw,56px);font-weight:700;
-  color:#fff;line-height:1.1;letter-spacing:-0.03em;margin-bottom:14px;
-}
-.hero-headline .teal{color:#38A8A8;}
+.hero-title em{font-style:normal;color:var(--teal-light);}
 .hero-sub{
-  font-size:16px;font-weight:300;color:rgba(255,255,255,0.6);
-  line-height:1.8;margin-bottom:28px;max-width:480px;
+  font-size:15px;font-weight:300;
+  color:rgba(255,255,255,0.5);
+  line-height:1.7;max-width:380px;margin-bottom:28px;
 }
 .btn-hero{
   display:inline-flex;align-items:center;gap:10px;
-  padding:15px 26px;background:#fff;color:var(--ink);
-  font-size:14px;font-weight:600;text-decoration:none;border-radius:3px;
-  transition:all 0.2s;letter-spacing:0.02em;
+  padding:14px 24px;
+  background:var(--wa);color:#fff;
+  font-size:14px;font-weight:600;
+  text-decoration:none;border-radius:4px;
+  box-shadow:0 4px 20px rgba(26,158,80,0.28);
+  transition:background 0.2s;
 }
-.btn-hero:hover{background:var(--warm);}
-.btn-hero-outline{
-  display:inline-flex;align-items:center;gap:10px;
-  padding:15px 26px;background:transparent;color:rgba(255,255,255,0.8);
-  font-size:14px;font-weight:400;text-decoration:none;border-radius:3px;
-  border:1px solid rgba(255,255,255,0.3);transition:all 0.2s;
-  margin-left:10px;
-}
-.btn-hero-outline:hover{background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.55);}
+.btn-hero:active{background:#168C45;}
 
-/* VALUE STRIP */
-.value-strip{
-  display:grid;grid-template-columns:repeat(3,1fr);
+/* ── STATEMENT — title card moment, warm ── */
+.statement-block{
+  padding:56px 24px;
+  background:var(--warm);
+  border-bottom:1px solid var(--border);
+}
+.statement-inner{max-width:780px;margin:0 auto;}
+.statement-text{
+  font-size:clamp(20px,4vw,28px);font-weight:700;
+  color:var(--ink);letter-spacing:-0.03em;line-height:1.3;
+  max-width:520px;
+}
+.statement-text em{font-style:normal;color:var(--teal);}
+.statement-sub{
+  margin-top:12px;
+  font-size:14px;font-weight:300;color:var(--ink-muted);
+  line-height:1.75;max-width:440px;
+}
+
+/* ── AGENT SHOWCASE — dramatic, human, full presence ── */
+.agent-showcase{
+  padding:0;
+  background:var(--white);
+}
+.showcase-header{
+  padding:40px 24px 24px;
+  max-width:780px;margin:0 auto;
+  display:flex;align-items:baseline;justify-content:space-between;
+}
+.showcase-label{font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink-muted);}
+.showcase-link{font-size:12px;color:var(--teal);text-decoration:none;font-weight:500;}
+
+/* Agent cards — stacked, full width feel */
+.agent-cards{
+  display:flex;flex-direction:column;gap:0;
+}
+.agent-feature-card{
+  display:block;text-decoration:none;
+  position:relative;
+  overflow:hidden;
   background:var(--ink);
 }
-.value-item{
-  padding:28px 24px;border-right:1px solid rgba(255,255,255,0.07);
-  display:flex;flex-direction:column;gap:6px;
+/* Alternate warm/dark for rhythm */
+.agent-feature-card:nth-child(even){background:var(--warm);}
+.afc-img{
+  width:100%;
+  height:72vw;
+  min-height:280px;
+  max-height:480px;
+  object-fit:cover;
+  object-position:center 20%;
+  display:block;
+  transition:transform 0.6s cubic-bezier(0.4,0,0.2,1);
 }
-.value-item:last-child{border-right:none;}
-.value-num{
-  font-size:36px;font-weight:700;color:#fff;
-  letter-spacing:-0.03em;line-height:1;
+.agent-feature-card:hover .afc-img{transform:scale(1.03);}
+.afc-gradient{
+  position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(12,20,24,0.9) 0%,rgba(12,20,24,0.4) 45%,transparent 75%);
 }
-.value-num span{color:#38A8A8;}
-.value-label{font-size:13px;font-weight:300;color:rgba(255,255,255,0.45);line-height:1.5;}
+.agent-feature-card:nth-child(even) .afc-gradient{
+  background:linear-gradient(to top,rgba(247,243,236,0.95) 0%,rgba(247,243,236,0.6) 45%,transparent 75%);
+}
+.afc-identity{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:24px 24px 28px;
+  display:flex;align-items:flex-end;justify-content:space-between;
+}
+.afc-left{}
+.afc-avatar{
+  width:52px;height:52px;border-radius:50%;
+  overflow:hidden;
+  border:2px solid rgba(255,255,255,0.3);
+  background:rgba(255,255,255,0.1);
+  margin-bottom:10px;
+}
+.agent-feature-card:nth-child(even) .afc-avatar{border-color:rgba(26,36,40,0.2);background:rgba(26,36,40,0.05);}
+.afc-avatar img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
+.afc-avatar-initial{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:rgba(255,255,255,0.75);}
+.agent-feature-card:nth-child(even) .afc-avatar-initial{color:var(--teal);}
+.afc-verified{font-size:9px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:var(--teal-light);margin-bottom:4px;display:block;}
+.agent-feature-card:nth-child(even) .afc-verified{color:var(--teal);}
+.afc-name{font-size:clamp(22px,5vw,32px);font-weight:800;color:#fff;letter-spacing:-0.035em;line-height:1;}
+.agent-feature-card:nth-child(even) .afc-name{color:var(--ink);}
+.afc-right{text-align:right;padding-bottom:4px;}
+.afc-count{font-size:11px;color:rgba(255,255,255,0.45);font-weight:400;}
+.agent-feature-card:nth-child(even) .afc-count{color:var(--ink-muted);}
+.afc-arrow{font-size:20px;color:rgba(255,255,255,0.3);display:block;margin-top:4px;}
+.agent-feature-card:nth-child(even) .afc-arrow{color:var(--ink-muted);}
 
-/* SECTIONS */
-.sec{padding:72px 24px;}
-.sec-warm{background:var(--warm);}
-.sec-white{background:var(--white);}
-.sec-dark{background:var(--ink);}
-.sec-inner{max-width:680px;margin:0 auto;}
-.sec-label{
-  font-size:9px;font-weight:500;letter-spacing:0.25em;text-transform:uppercase;
-  color:var(--teal);margin-bottom:16px;display:flex;align-items:center;gap:12px;
-}
-.sec-label::after{content:'';flex:1;height:1px;background:var(--border);}
-.sec-label.light::after{background:rgba(255,255,255,0.1);}
-.sec-label.light{color:#38A8A8;}
-.sec-title{
-  font-size:clamp(24px,5vw,38px);font-weight:700;
-  color:var(--ink);line-height:1.15;letter-spacing:-0.025em;margin-bottom:12px;
-}
-.sec-title.light{color:#fff;}
-.sec-title .accent{color:var(--teal);}
-.sec-title .accent-light{color:#38A8A8;}
-.sec-body{font-size:16px;font-weight:300;color:var(--ink-soft);line-height:1.85;}
-.sec-body.light{color:rgba(255,255,255,0.45);}
-
-/* STEPS */
-.steps{margin-top:36px;display:flex;flex-direction:column;}
-.step{
-  display:grid;grid-template-columns:56px 1fr;
-  padding:24px 0;border-bottom:1px solid var(--border);gap:0 16px;
-  align-items:start;
-}
-.step:last-child{border-bottom:none;}
-.step-num{
-  font-family:'Cormorant Garamond',serif;
-  font-size:28px;font-weight:300;color:var(--teal);opacity:0.45;line-height:1;padding-top:2px;
-}
-.step-title{font-size:16px;font-weight:600;color:var(--ink);margin-bottom:6px;}
-.step-desc{font-size:14px;font-weight:300;color:var(--ink-soft);line-height:1.8;}
-
-/* FEATURES GRID */
-.features-grid{
-  display:grid;grid-template-columns:1fr 1fr;
-  gap:12px;margin-top:32px;
-}
-.feature{
-  padding:20px;background:var(--white);border:1px solid var(--border);
-}
-.feature-icon{
-  width:36px;height:36px;border-radius:50%;
-  background:var(--teal-dim);border:1px solid var(--border-teal);
-  display:flex;align-items:center;justify-content:center;margin-bottom:12px;
-}
-.feature-title{font-size:15px;font-weight:600;color:var(--ink);margin-bottom:6px;}
-.feature-desc{font-size:13px;font-weight:300;color:var(--ink-muted);line-height:1.7;}
-
-/* MOCKUP PREVIEW */
-.mockup-wrap{
-  display:grid;grid-template-columns:1fr 1fr;
-  gap:32px;align-items:center;margin-top:32px;
-}
-.mockup-img{
-  border:1px solid var(--border);overflow:hidden;
-  box-shadow:0 20px 60px rgba(26,36,40,0.12);
-}
-.mockup-img img{width:100%;display:block;}
-.mockup-points{display:flex;flex-direction:column;gap:16px;}
-.mockup-point{
-  display:flex;gap:14px;align-items:flex-start;
-  padding:14px;background:var(--warm);border:1px solid var(--border);
-}
-.mp-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);flex-shrink:0;margin-top:5px;}
-.mp-title{font-size:14px;font-weight:500;color:var(--ink);margin-bottom:3px;}
-.mp-desc{font-size:13px;font-weight:300;color:var(--ink-muted);line-height:1.6;}
-
-/* FREE OFFER */
-.offer-box{
-  padding:40px;background:rgba(255,255,255,0.04);
-  border:1px solid rgba(255,255,255,0.1);margin-top:36px;
-}
-.offer-badge{
-  display:inline-flex;align-items:center;gap:8px;
-  font-size:9px;font-weight:500;letter-spacing:0.22em;text-transform:uppercase;
-  color:#38A8A8;padding:6px 14px;border:1px solid rgba(56,168,168,0.3);
-  border-radius:2px;margin-bottom:16px;
-}
-.offer-title{
-  font-size:clamp(22px,4vw,34px);font-weight:700;color:#fff;
-  line-height:1.2;letter-spacing:-0.02em;margin-bottom:10px;
-}
-.offer-title .accent{color:#38A8A8;}
-.offer-sub{font-size:14px;font-weight:300;color:rgba(255,255,255,0.4);line-height:1.85;margin-bottom:28px;}
-.offer-items{
-  display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:28px;
-}
-.offer-item{
-  display:flex;gap:10px;align-items:flex-start;
-  padding:12px 14px;background:rgba(255,255,255,0.04);
-  border:1px solid rgba(255,255,255,0.07);border-radius:3px;
-}
-.offer-item-dot{width:6px;height:6px;border-radius:50%;background:#38A8A8;flex-shrink:0;margin-top:5px;}
-.offer-item-text{font-size:13px;font-weight:400;color:rgba(255,255,255,0.6);line-height:1.5;}
-
-/* CTA SECTION */
-.cta-box{
-  display:grid;grid-template-columns:1fr 1fr;
-  gap:48px;align-items:start;
-  padding:64px 32px;background:var(--off);
+/* ── LISTING STRIP — horizontal scroll, visual proof ── */
+.listing-strip-section{
+  padding:40px 0 40px 24px;
   border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+  background:var(--white);
+  overflow:hidden;
 }
-.cta-title{font-size:clamp(20px,4vw,32px);font-weight:700;color:var(--ink);letter-spacing:-0.02em;margin-bottom:12px;line-height:1.2;}
-.cta-title .accent{color:var(--teal);}
-.cta-body{font-size:15px;font-weight:300;color:var(--ink-soft);line-height:1.85;}
-.cta-actions{display:flex;flex-direction:column;gap:10px;}
-.btn-wa{
-  display:flex;align-items:center;gap:12px;padding:16px 22px;
-  background:#25D366;color:#fff;font-size:15px;font-weight:600;
-  text-decoration:none;border-radius:3px;transition:background 0.2s;
+.strip-header{padding-right:24px;margin-bottom:20px;max-width:780px;}
+.strip-label{font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink-muted);}
+.listing-strip{
+  display:flex;gap:12px;
+  overflow-x:auto;
+  padding-right:24px;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
 }
-.btn-wa:hover{background:#20BD5C;}
-.turnaround{
-  padding:10px 14px;background:var(--white);
-  border-left:3px solid var(--teal);
-  font-size:13px;color:var(--ink-soft);line-height:1.7;
+.listing-strip::-webkit-scrollbar{display:none;}
+.strip-card{
+  flex-shrink:0;
+  width:62vw;
+  max-width:240px;
+  display:block;
+  text-decoration:none;
+  border-radius:4px;
+  overflow:hidden;
+  background:var(--warm);
+  transition:transform 0.25s cubic-bezier(0.4,0,0.2,1);
 }
-.cta-note{font-size:12px;color:var(--ink-muted);text-align:center;line-height:1.8;}
+.strip-card:hover{transform:translateY(-3px);}
+.strip-img{
+  aspect-ratio:3/4;
+  overflow:hidden;
+  position:relative;
+}
+.strip-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.5s cubic-bezier(0.4,0,0.2,1);}
+.strip-card:hover .strip-img img{transform:scale(1.04);}
+.strip-img-ph{width:100%;height:100%;background:linear-gradient(135deg,#C8D5D0,#B0C4BE);}
+.strip-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(12,20,24,0.75) 0%,transparent 55%);}
+.strip-price{position:absolute;bottom:10px;left:12px;font-size:15px;font-weight:700;color:#fff;letter-spacing:-0.02em;}
+.strip-tx{position:absolute;top:10px;left:10px;background:rgba(255,255,255,0.9);font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-soft);padding:3px 8px;border-radius:2px;}
+.strip-body{padding:10px 12px;}
+.strip-title{font-size:12px;font-weight:400;color:var(--ink-soft);line-height:1.4;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;}
 
-/* FOOTER */
-footer{
-  background:var(--ink);padding:40px 24px 28px;
-  display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;
+/* ── TYPOGRAPHY MOMENT — cinematic pause ── */
+.typo-moment{
+  padding:64px 24px;
+  background:var(--ink);
+  text-align:center;
 }
-.footer-logo{display:flex;align-items:center;gap:10px;}
-.footer-word{font-size:16px;font-weight:600;color:rgba(255,255,255,0.3);letter-spacing:-0.02em;}
-.footer-tagline{
-  font-family:'Cormorant Garamond',serif;
-  font-size:14px;font-style:italic;color:rgba(255,255,255,0.15);
+.typo-inner{max-width:560px;margin:0 auto;}
+.typo-main{
+  font-size:clamp(22px,5vw,34px);font-weight:700;
+  color:#fff;letter-spacing:-0.03em;line-height:1.2;
+  margin-bottom:10px;
 }
-.footer-copy{font-size:10px;color:rgba(255,255,255,0.1);letter-spacing:0.08em;}
+.typo-main em{font-style:normal;color:var(--teal-light);}
+.typo-sub{font-size:13px;font-weight:300;color:rgba(255,255,255,0.45);letter-spacing:0.02em;}
 
+/* ── THREE PILLARS — minimal, spaced ── */
+.pillars{
+  padding:48px 24px;
+  background:var(--white);
+  border-bottom:1px solid var(--border);
+  max-width:780px;margin:0 auto;
+}
+.pillar{
+  padding:20px 0;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:baseline;gap:20px;
+}
+.pillar:last-child{border-bottom:none;}
+.pillar-num{font-size:11px;font-weight:600;letter-spacing:0.14em;color:var(--teal);flex-shrink:0;width:20px;}
+.pillar-content{}
+.pillar-title{font-size:16px;font-weight:700;color:var(--ink);letter-spacing:-0.02em;margin-bottom:3px;}
+.pillar-body{font-size:13px;font-weight:300;color:var(--ink-muted);line-height:1.6;}
+
+/* ── FINAL CTA — warm, confident, simple ── */
+.final-cta{
+  padding:56px 24px 64px;
+  background:var(--warm);
+  text-align:center;
+}
+.cta-inner{max-width:480px;margin:0 auto;}
+.cta-eyebrow{font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:var(--teal);margin-bottom:14px;display:block;}
+.cta-title{font-size:clamp(22px,4vw,28px);font-weight:800;color:var(--ink);letter-spacing:-0.03em;line-height:1.15;margin-bottom:10px;}
+.cta-sub{font-size:14px;font-weight:300;color:var(--ink-muted);line-height:1.7;margin-bottom:28px;}
+.btn-cta-wa{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;padding:16px;
+  background:var(--wa);color:#fff;
+  font-size:15px;font-weight:600;
+  text-decoration:none;border-radius:4px;
+  box-shadow:0 2px 16px rgba(26,158,80,0.2);
+  transition:background 0.2s;
+}
+.btn-cta-wa:active{background:#168C45;}
+
+.page-footer{padding:20px 24px 40px;text-align:center;border-top:1px solid var(--border);}
+.page-footer p{font-size:12px;color:var(--ink-muted);letter-spacing:0.04em;}
+
+/* MOTION */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+.fu{animation:fadeUp 0.5s cubic-bezier(0.4,0,0.2,1) both;}
+.fu1{animation-delay:0s;}.fu2{animation-delay:0.1s;}.fu3{animation-delay:0.2s;}.fu4{animation-delay:0.3s;}
+@media(prefers-reduced-motion:reduce){.fu{animation:none;}}
+
+/* MOBILE */
 @media(max-width:600px){
-  .value-strip{grid-template-columns:1fr;}
-  .value-item{border-right:none;border-bottom:1px solid rgba(255,255,255,0.07);}
-  .features-grid{grid-template-columns:1fr;}
-  .mockup-wrap{grid-template-columns:1fr;}
-  .offer-items{grid-template-columns:1fr;}
-  .cta-box{grid-template-columns:1fr;padding:40px 20px;}
-  .hero-content{padding:32px 20px;}
-  nav{padding:0 14px;}
+  .hero-content{padding:0 20px 44px;}
+  .hero-title{font-size:30px;}
+  .statement-block{padding:40px 20px;}
+  .showcase-header{padding:32px 20px 20px;}
+  .pillars{padding:36px 20px;}
+  .final-cta{padding:44px 20px 56px;}
+  .typo-moment{padding:48px 20px;}
+  .listing-strip-section{padding:32px 0 32px 20px;}
+  .strip-card{width:68vw;}
 }
 </style>
 </head>
 <body>
 
-<!-- NAV -->
+<div class="loading-screen" id="loading"><div class="loading-dot"></div></div>
+<div id="page" style="display:none;">
+
 <nav>
   <a href="index.html" class="nav-logo">
-    <svg width="26" height="26" viewBox="0 0 40 40" fill="none">
-      <circle cx="12" cy="9" r="7.5" fill="#38A8A8"/>
-      <circle cx="25" cy="14" r="3.5" fill="#0D1F26" opacity="0.9"/>
+    <svg width="28" height="24" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision">
+      <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
+      <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
     </svg>
     <span class="nav-wordmark">Pintag</span>
   </a>
   <div class="nav-right">
-    <div class="lang-switcher">
-      <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
-      <button class="lang-btn" onclick="setLang('en',this)">EN</button>
-      <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
-    </div>
-    <a href="index.html" class="nav-back">← <span class="lo-i">ກັບຄືນ</span><span class="en-i">Back</span><span class="zh-i">返回</span></a>
+    <a href="listings.html" class="nav-link">Listings</a>
+    <a href="for-agents.html" class="nav-link active">Agents</a>
   </div>
 </nav>
 
-<!-- HERO -->
-<section class="hero">
-  <img src="pintag-balcony.png" alt="Pintag Agent" class="hero-img">
-  <div class="hero-overlay"></div>
-  <div class="hero-gold"></div>
+<!-- HERO — full viewport, warm and cinematic -->
+<div class="hero fu fu1">
+  <img class="hero-bg-img" id="hero-bg" src="https://pintag-cyrora.github.io/pintag/pintag-villa.png" alt="Pintag" loading="eager">
+  <div class="hero-bg-fallback"></div>
+  <div class="hero-accent"></div>
+  <div class="hero-gradient"></div>
   <div class="hero-content">
-    <div class="hero-eyebrow">
-      <span class="eyebrow-line"></span>
-      <span class="lo-i">ສຳລັບ Agent · ນາຍໜ້າອະສັງຫາ</span>
-      <span class="en-i">For Real Estate Agents</span>
-      <span class="zh-i">面向房产经纪人</span>
-    </div>
-    <h1 class="hero-headline">
-      <span class="lo">ລົງລາຍການ<br><span class="teal">ຢ່າງມືອາຊີບ.</span><br>ບໍ່ຕ້ອງຕອບຊ້ຳ.</span>
-      <span class="en">List professionally.<br><span class="teal">Stop repeating yourself.</span></span>
-      <span class="zh">专业发布房源。<br><span class="teal">不再重复解答。</span></span>
-    </h1>
-    <p class="hero-sub">
-      <span class="lo-i">ທ່ານໂພສໃນ TikTok ແລະ Facebook ຢູ່ແລ້ວ. Pintag ຊ່ວຍໃຫ້ທ່ານມີໜ້າລາຍການທີ່ເປັນລະບົບ — ທີ່ຜູ້ຊື້ຈະໄດ້ຂໍ້ມູນທຸກຢ່າງໂດຍບໍ່ຕ້ອງຖາມທ່ານຊ້ຳ.</span>
-      <span class="en-i">You already post on TikTok and Facebook. Pintag gives you a structured listing page so buyers get all the details without asking you again.</span>
-      <span class="zh-i">您已经在TikTok和Facebook上发帖了。Pintag为您提供结构化的房源页面，让买家无需重复询问就能获取所有信息。</span>
-    </p>
-    <div>
-      <a href="https://wa.me/8562055546963?text=ສະບາຍດີ%20Pintag%0Aຂ້ອຍເປັນ Agent ແລະ ຢາກລົງລາຍການ" class="btn-hero" target="_blank">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="#1A2428"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-        <span class="lo-i">ເລີ່ມຕົ້ນຟຣີ</span>
-        <span class="en-i">Start for free</span>
-        <span class="zh-i">免费开始</span>
-      </a>
-      <a href="listings.html" class="btn-hero-outline">
-        <span class="lo-i">ເບິ່ງຕົວຢ່າງ</span>
-        <span class="en-i">See examples</span>
-        <span class="zh-i">查看示例</span>
-      </a>
-    </div>
-  </div>
-</section>
-
-<!-- VALUE STRIP -->
-<div class="value-strip">
-  <div class="value-item">
-    <p class="value-num">3<span>–5</span></p>
-    <p class="value-label">
-      <span class="lo-i">ລາຍການຟຣີທຳອິດ</span>
-      <span class="en-i">Free listings to start</span>
-      <span class="zh-i">前几个免费房源</span>
-    </p>
-  </div>
-  <div class="value-item">
-    <p class="value-num">3</p>
-    <p class="value-label">
-      <span class="lo-i">ພາສາ · ລາວ, ອັງກິດ, ຈີນ</span>
-      <span class="en-i">Languages · Lao, English, Chinese</span>
-      <span class="zh-i">语言 · 老挝语、英语、中文</span>
-    </p>
-  </div>
-  <div class="value-item">
-    <p class="value-num">48<span>h</span></p>
-    <p class="value-label">
-      <span class="lo-i">ລາຍການພ້ອມໃຊ້</span>
-      <span class="en-i">Listing ready to share</span>
-      <span class="zh-i">房源准备就绪</span>
-    </p>
-  </div>
-</div>
-
-<!-- HOW IT WORKS -->
-<section class="sec sec-warm">
-  <div class="sec-inner">
-    <p class="sec-label"><span class="lo-i">ວິທີການ</span><span class="en-i">How it works</span><span class="zh-i">如何运作</span></p>
-    <h2 class="sec-title">
-      <span class="lo">3 ຂັ້ນຕອນ. <span class="accent">ງ່າຍຫຼາຍ.</span></span>
-      <span class="en">3 steps. <span class="accent">That's it.</span></span>
-      <span class="zh">3个步骤。<span class="accent">就这么简单。</span></span>
-    </h2>
-    <div class="steps">
-      <div class="step">
-        <span class="step-num">01</span>
-        <div>
-          <p class="step-title"><span class="lo-i">ສົ່ງຂໍ້ມູນທາງ WhatsApp</span><span class="en-i">Send your listing details via WhatsApp</span><span class="zh-i">通过 WhatsApp 发送房源资料</span></p>
-          <p class="step-desc"><span class="lo-i">ສົ່ງຮູບ, ວິດີໂອ, ລາຄາ ແລະ ທີ່ຕັ້ງ ຜ່ານ WhatsApp. ບໍ່ຕ້ອງກອກຟອມ — ສົ່ງສິ່ງທີ່ທ່ານມີໄດ້ເລີຍ.</span><span class="en-i">Send your photos, video, price, and location via WhatsApp. No complicated forms — just send what you already have.</span><span class="zh-i">通过 WhatsApp 发送照片、视频、价格和地址。无需复杂表格，直接发送现有资料。</span></p>
-        </div>
-      </div>
-      <div class="step">
-        <span class="step-num">02</span>
-        <div>
-          <p class="step-title"><span class="lo-i">ລາຍການຂອງທ່ານໄດ້ຮັບໜ້າ Pintag</span><span class="en-i">Your listing gets a structured Pintag page</span><span class="zh-i">您的房源获得专业 Pintag 页面</span></p>
-          <p class="step-desc"><span class="lo-i">ຮູບ, ວິດີໂອ, ແຜນທີ່, ສະຖານທີ່ໃກ້ຄຽງ ແລະ ຂໍ້ມູນ 3 ພາສາ — ທຸກຢ່າງຢູ່ໃນໜ້າດຽວ.</span><span class="en-i">Photos, video, map, nearby landmarks, and trilingual information — everything in one clean page.</span><span class="zh-i">照片、视频、地图、周边地标以及三语信息，全部集中在一个清晰页面。</span></p>
-        </div>
-      </div>
-      <div class="step">
-        <span class="step-num">03</span>
-        <div>
-          <p class="step-title"><span class="lo-i">ແຊຣ໌ລິ້ງ — ໄດ້ຮັບຜູ້ຊື້ຈິງຈັງ</span><span class="en-i">Share your link — reach serious buyers</span><span class="zh-i">分享链接，精准触达真实买家</span></p>
-          <p class="step-desc"><span class="lo-i">ວາງລິ້ງ Pintag ໃນ TikTok bio, Facebook ຫຼື WhatsApp. ຜູ້ຊື້ເຫັນທຸກຢ່າງທັນທີ — ບໍ່ຕ້ອງຖາມລາຄາ, ບໍ່ຕ້ອງຂໍຮູບ.</span><span class="en-i">Share your Pintag link on TikTok bio, Facebook, or WhatsApp. Buyers see everything immediately — no need to ask for price or photos.</span><span class="zh-i">将 Pintag 链接分享到 TikTok 主页、Facebook 或 WhatsApp，买家立即看到所有信息。</span></p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- FEATURES -->
-<section class="sec sec-white">
-  <div class="sec-inner">
-    <p class="sec-label"><span class="lo-i">ຟີເຈີ</span><span class="en-i">Features</span><span class="zh-i">功能</span></p>
-    <h2 class="sec-title">
-      <span class="lo">ທຸກຢ່າງທີ່ Agent <span class="accent">ຕ້ອງການ.</span></span>
-      <span class="en">Everything an agent <span class="accent">needs.</span></span>
-      <span class="zh">经纪人<span class="accent">所需的一切。</span></span>
-    </h2>
-    <div class="features-grid">
-      <div class="feature">
-        <div class="feature-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
-        </div>
-        <p class="feature-title"><span class="lo-i">ລາຍການ 3 ພາສາ</span><span class="en-i">Trilingual listing</span><span class="zh-i">三语房源</span></p>
-        <p class="feature-desc"><span class="lo-i">ລາວ, ອັງກິດ ແລະ ຈີນ — ໃນໜ້າດຽວ</span><span class="en-i">Lao, English and Chinese in one page</span><span class="zh-i">老挝语、英语和中文集于一页</span></p>
-      </div>
-      <div class="feature">
-        <div class="feature-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
-        </div>
-        <p class="feature-title"><span class="lo-i">ແຜນທີ່ + ສະຖານທີ່ໃກ້ຄຽງ</span><span class="en-i">Map + landmarks</span><span class="zh-i">地图与周边地标</span></p>
-        <p class="feature-desc"><span class="lo-i">ທຸກລາຍການມີແຜນທີ່ ແລະ ສະຖານທີ່ໃກ້ຄຽງ</span><span class="en-i">Every listing includes a map and nearby landmarks</span><span class="zh-i">每个房源都包含地图和周边地标</span></p>
-      </div>
-      <div class="feature">
-        <div class="feature-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-        </div>
-        <p class="feature-title"><span class="lo-i">ວິດີໂອ + ດາວໂຫຼດ</span><span class="en-i">Video + download</span><span class="zh-i">视频与下载</span></p>
-        <p class="feature-desc"><span class="lo-i">TikTok, Facebook, YouTube — ທຸກ Platform</span><span class="en-i">TikTok, Facebook, YouTube — any platform</span><span class="zh-i">TikTok、Facebook、YouTube 均支持</span></p>
-      </div>
-      <div class="feature">
-        <div class="feature-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.4 3.14 2 2 0 012 .18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 7.91a16 16 0 006.29 6.29l1.31-1.31a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-        </div>
-        <p class="feature-title"><span class="lo-i">WhatsApp ໂດຍກົງ</span><span class="en-i">Direct WhatsApp</span><span class="zh-i">直接 WhatsApp 联系</span></p>
-        <p class="feature-desc"><span class="lo-i">ຜູ້ຊື້ຕິດຕໍ່ທ່ານໂດຍກົງ — ຂໍ້ຄວາມຖືກຕັ້ງໄວ້ລ່ວງໜ້າ</span><span class="en-i">Buyers contact you directly — pre-filled message</span><span class="zh-i">买家直接联系您，消息自动预填</span></p>
-      </div>
-      <div class="feature">
-        <div class="feature-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        </div>
-        <p class="feature-title"><span class="lo-i">ໂປຣໄຟລ໌ Agent</span><span class="en-i">Agent profile page</span><span class="zh-i">经纪人主页</span></p>
-        <p class="feature-desc"><span class="lo-i">ໜ້າ Agent ຂອງທ່ານ pintag.io/your-name</span><span class="en-i">Your own page at pintag.io/your-name</span><span class="zh-i">专属主页 pintag.io/your-name</span></p>
-      </div>
-      <div class="feature">
-        <div class="feature-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
-        </div>
-        <p class="feature-title"><span class="lo-i">ຄຸ້ມຄອງງ່າຍ</span><span class="en-i">Easy management</span><span class="zh-i">轻松管理</span></p>
-        <p class="feature-desc"><span class="lo-i">ເພີ່ມ, ແກ້ໄຂ, ລຶບ — ໃນໜ້າ Admin ດຽວ</span><span class="en-i">Add, edit, delete — in one admin panel</span><span class="zh-i">在一个管理面板中添加、编辑、删除</span></p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- FREE OFFER -->
-<section class="sec sec-dark">
-  <div class="sec-inner">
-    <p class="sec-label light"><span class="lo-i">ສຳລັບ Agent ໃໝ່</span><span class="en-i">For new agents</span><span class="zh-i">新经纪人专享</span></p>
-    <div class="offer-box">
-      <div class="offer-badge">
-        <span class="lo-i">ເປີດຮັບຢູ່ຕອນນີ້</span>
-        <span class="en-i">Currently available</span>
-        <span class="zh-i">现已开放</span>
-      </div>
-      <h2 class="offer-title">
-        <span class="lo">ຟຣີ 3–5 ລາຍການທຳອິດ<span class="accent">.</span></span>
-        <span class="en">Free for your first<br>3–5 listings<span class="accent">.</span></span>
-        <span class="zh">前 3–5 个房源<span class="accent">完全免费。</span></span>
-      </h2>
-      <p class="offer-sub">
-        <span class="lo-i">ທົດລອງ Pintag ໂດຍບໍ່ມີຄ່າໃຊ້ຈ່າຍ. ລາຍການຂອງທ່ານໄດ້ຮັບໜ້າ Pintag ທີ່ຈັດລຽງຄົບ, ວິດີໂອ ແລະ ໂປຣໄຟລ໌ Agent.</span>
-        <span class="en-i">Try Pintag at no cost. Your listing gets a complete Pintag page, video integration, and your own agent profile.</span>
-        <span class="zh-i">免费体验 Pintag。您的房源将获得完整页面、视频集成和专属经纪人主页。</span>
-      </p>
-      <div class="offer-items">
-        <div class="offer-item"><div class="offer-item-dot"></div><p class="offer-item-text"><span class="lo-i">ໜ້າລາຍການ 3 ພາສາ</span><span class="en-i">Trilingual listing page</span><span class="zh-i">三语房源页面</span></p></div>
-        <div class="offer-item"><div class="offer-item-dot"></div><p class="offer-item-text"><span class="lo-i">ວິດີໂອ + ດາວໂຫຼດ</span><span class="en-i">Video + download button</span><span class="zh-i">视频与下载按钮</span></p></div>
-        <div class="offer-item"><div class="offer-item-dot"></div><p class="offer-item-text"><span class="lo-i">ແຜນທີ່ + ສະຖານທີ່</span><span class="en-i">Map + landmarks</span><span class="zh-i">地图与周边地标</span></p></div>
-        <div class="offer-item"><div class="offer-item-dot"></div><p class="offer-item-text"><span class="lo-i">ໂປຣໄຟລ໌ Agent</span><span class="en-i">Agent profile page</span><span class="zh-i">经纪人主页</span></p></div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- CTA -->
-<div class="cta-box">
-  <div>
-    <p class="sec-label"><span class="lo-i">ເລີ່ມຕົ້ນ</span><span class="en-i">Get started</span><span class="zh-i">开始</span></p>
-    <h2 class="cta-title">
-      <span class="lo">ລາຍການຂອງທ່ານ<br><span class="accent">ພ້ອມໃນ 48 ຊົ່ວໂມງ</span></span>
-      <span class="en">Your listing page.<br><span class="accent">Ready in 48 hours.</span></span>
-      <span class="zh">您的房源页面。<br><span class="accent">48小时内准备完毕。</span></span>
-    </h2>
-    <p class="cta-body">
-      <span class="lo-i">ສົ່ງຮູບ, ວິດີໂອ ແລະ ລາຍລະອຽດຜ່ານ WhatsApp. ພວກເຮົາຈະຈັດການທຸກຢ່າງໃຫ້.</span>
-      <span class="en-i">Send your photos, video, and property details via WhatsApp. We handle everything.</span>
-      <span class="zh-i">通过 WhatsApp 发送照片、视频和房源详情，我们负责处理一切。</span>
-    </p>
-  </div>
-  <div class="cta-actions">
-    <a href="https://wa.me/8562055546963?text=ສະບາຍດີ%20Pintag%0Aຂ້ອຍເປັນ Agent ແລະ ຢາກລົງລາຍການ%0A%0Aປະເພດ%3A%0Aສະຖານທີ%3A%0Aລາຄາ%3A%0Aຫ້ອງນອນ%3A%0Aຫ້ອງນ້ຳ%3A%0Aລາຍລະອຽດ%3A" class="btn-wa" target="_blank">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-      <span class="lo-i">ສົ່ງທາງ WhatsApp</span>
-      <span class="en-i">Submit via WhatsApp</span>
-      <span class="zh-i">通过 WhatsApp 提交</span>
+    <span class="hero-eyebrow">Pintag · ສຳລັບຕົວແທນ</span>
+    <h1 class="hero-title">ໃຫ້ລາຍການ<br>ຂອງທ່ານ<br><em>ດູດີຂຶ້ນ</em></h1>
+    <p class="hero-sub">Modern property presentation for agents who want to stand out.</p>
+    <a href="#contact" class="btn-hero">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      ສອບຖາມກ່ຽວກັບ Pintag
     </a>
-    <div class="turnaround">
-      <span class="lo-i">⏱ 48 ຊົ່ວໂມງ ນັບຈາກທີ່ທ່ານສົ່ງຮູບ ແລະ ວິດີໂອຄົບ</span>
-      <span class="en-i">⏱ 48 hours from when you send complete photos and video</span>
-      <span class="zh-i">⏱ 从发送完整照片和视频起48小时内完成</span>
-    </div>
-    <p class="cta-note">
-      <span class="lo-i">ຟຣີ 3–5 ລາຍການທຳອິດ · ບໍ່ຕ້ອງມີຄວາມຮູ້ດ້ານເທັກ</span>
-      <span class="en-i">Free for first 3–5 listings · No technical knowledge needed</span>
-      <span class="zh-i">前 3–5 个免费 · 无需技术知识</span>
-    </p>
   </div>
 </div>
 
-<!-- FOOTER -->
-<footer>
-  <div class="footer-logo">
-    <svg width="22" height="22" viewBox="0 0 40 40" fill="none">
-      <circle cx="12" cy="9" r="7.5" fill="#38A8A8" opacity="0.4"/>
-      <circle cx="25" cy="14" r="3.5" fill="#1A2428" opacity="0.4"/>
-    </svg>
-    <span class="footer-word">Pintag</span>
+<!-- STATEMENT — warm, clear, positioned -->
+<div class="statement-block fu fu2">
+  <div class="statement-inner">
+    <p class="statement-text">Facebook ແລະ TikTok ສ້າງຄວາມສົນໃຈ.<br><em>Pintag ຊ່ວຍໃຫ້ອະສັງຫາຂອງທ່ານດູດີ ແລະ ໜ້າເຊື່ອຖື.</em></p>
+    <p class="statement-sub">Your TikTok and Facebook create the audience. Pintag gives them somewhere professional to land.</p>
   </div>
-  <p class="footer-tagline">Pin a location. Tag a property.</p>
-  <p class="footer-copy">© 2025 Pintag · Vientiane, Laos · pintag.io</p>
-</footer>
+</div>
+
+<!-- AGENT SHOWCASE — human, dramatic, stacked -->
+<div class="agent-showcase">
+  <div class="showcase-header fu fu3">
+    <span class="showcase-label">ຕົວແທນ Pintag</span>
+    <a href="#contact" class="showcase-link">ເຂົ້າຮ່ວມ →</a>
+  </div>
+  <div class="agent-cards" id="agent-cards">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+<!-- LISTING STRIP — horizontal scroll, visual proof -->
+<div class="listing-strip-section fu fu3">
+  <div class="strip-header">
+    <span class="strip-label">ລາຍການຫຼ້າສຸດ</span>
+  </div>
+  <div class="listing-strip" id="listing-strip">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+<!-- TYPOGRAPHY MOMENT — cinematic pause -->
+<div class="typo-moment">
+  <div class="typo-inner">
+    <p class="typo-main">ໜ້າລາຍການທີ່ <em>ດູດີ</em><br>ສ້າງຄວາມໄວ້ວາງໃຈ</p>
+    <p class="typo-sub">One link. Full presentation. Direct contact.</p>
+  </div>
+</div>
+
+<!-- THREE PILLARS — minimal horizontal rows -->
+<div class="pillars fu fu4">
+  <div class="pillar">
+    <span class="pillar-num">01</span>
+    <div class="pillar-content">
+      <p class="pillar-title">ໜ້າລາຍການທີ່ດູດີ</p>
+      <p class="pillar-body">Gallery, map, price, WhatsApp. Every listing gets a full premium mobile page.</p>
+    </div>
+  </div>
+  <div class="pillar">
+    <span class="pillar-num">02</span>
+    <div class="pillar-content">
+      <p class="pillar-title">ໜ້າລວມລາຍການສ່ວນຕົວ</p>
+      <p class="pillar-body">One link shows your full portfolio. Share anywhere. Look professional instantly.</p>
+    </div>
+  </div>
+  <div class="pillar">
+    <span class="pillar-num">03</span>
+    <div class="pillar-content">
+      <p class="pillar-title">ເວລາແຊຣ໌ ດູດີທັນທີ</p>
+      <p class="pillar-body">ສົ່ງລິ້ງ — ຜູ້ຊື້ເຫັນຮູບ ແລະ ລາຄາທັນທີ ກ່ອນທີ່ຈະຄລິກ.</p>
+    </div>
+  </div>
+</div>
+
+<!-- FINAL CTA -->
+<div class="final-cta" id="contact">
+  <div class="cta-inner">
+    <span class="cta-eyebrow">ເລີ່ມຕົ້ນໄດ້ເລີຍ</span>
+    <h2 class="cta-title">ທ່ານພ້ອມໃຫ້ລາຍການ<br>ຂອງທ່ານດູດີຂຶ້ນແລ້ວບໍ?</h2>
+    <p class="cta-sub">Free to start. No technical setup needed.</p>
+    <a href="https://wa.me/85620542966655?text=ສະບາຍດີ%2C%20ຂ້ອຍຢາກຮູ້ກ່ຽວກັບ%20Pintag%20ສຳລັບຕົວແທນ" target="_blank" class="btn-cta-wa">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      ຕິດຕໍ່ Pintag · WhatsApp
+    </a>
+  </div>
+</div>
+
+<div class="page-footer"><p>Pintag · pintag.io</p></div>
+</div>
 
 <script>
-function setLang(lang,btn){
-  document.body.className=lang==='lo'?'':'lang-'+lang;
-  document.querySelectorAll('.lang-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
+const SB='https://eoladhcljbpbhnrmmpev.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-villa.png';
+
+function getHeroImg(listings){
+  if(!listings||!listings.length) return FALLBACK;
+  var f=listings.find(function(l){return l.is_featured;});
+  if(f&&f.images&&f.images[0]) return f.images[0];
+  var w=listings.find(function(l){return l.images&&l.images[0];});
+  return w?w.images[0]:FALLBACK;
 }
+
+async function load(){
+  try{
+    var r1=await fetch(SB+'/rest/v1/agents?order=created_at.asc&select=id,slug,name_lo,name_en,photo_url,bio_lo,bio_en,is_verified',
+      {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
+    var agents=await r1.json();
+    if(!Array.isArray(agents)) agents=[];
+
+    var r2=await fetch(SB+'/rest/v1/properties?status=eq.available&order=is_featured.desc,created_at.desc&select=agent_id,images,is_featured,slug,title_lo,title_en,price_display,transaction_type',
+      {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
+    var listings=await r2.json();
+    if(!Array.isArray(listings)) listings=[];
+
+    var byAgent={};
+    listings.forEach(function(l){
+      if(!l.agent_id) return;
+      if(!byAgent[l.agent_id]) byAgent[l.agent_id]=[];
+      byAgent[l.agent_id].push(l);
+    });
+
+    // Update hero with first featured listing image
+    var heroImg=getHeroImg(listings);
+    var heroBg=document.getElementById('hero-bg');
+    if(heroBg) heroBg.src=heroImg;
+
+    renderAgents(agents,byAgent);
+    renderStrip(listings.slice(0,6));
+
+  }catch(e){
+    // fail silently — static content remains visible
+  }
+  document.getElementById('loading').style.display='none';
+  document.getElementById('page').style.display='block';
+}
+
+function renderAgents(agents,byAgent){
+  var cont=document.getElementById('agent-cards');
+  if(!agents.length){cont.style.display='none';return;}
+  agents.forEach(function(a,i){
+    var al=byAgent[a.id]||[];
+    var heroImg=getHeroImg(al);
+    var initial=(a.name_en||'A').charAt(0).toUpperCase();
+    var count=al.length;
+
+    var card=document.createElement('a');
+    card.href='agents.html?slug='+encodeURIComponent(a.slug||'');
+    card.className='agent-feature-card';
+
+    // Hero image
+    var img=document.createElement('img');
+    img.className='afc-img';
+    img.src=heroImg;
+    img.alt=a.name_lo||a.name_en||'Agent';
+    img.loading=i===0?'eager':'lazy';
+    img.decoding='async';
+    card.appendChild(img);
+
+    // Gradient
+    var grad=document.createElement('div');grad.className='afc-gradient';card.appendChild(grad);
+
+    // Identity
+    var ident=document.createElement('div');ident.className='afc-identity';
+    var left=document.createElement('div');left.className='afc-left';
+
+    // Avatar
+    var av=document.createElement('div');av.className='afc-avatar';
+    if(a.photo_url){
+      var avImg=document.createElement('img');avImg.alt=a.name_en||'';
+      avImg.onerror=function(){this.onerror=null;av.innerHTML='<div class="afc-avatar-initial">'+initial+'</div>';};
+      avImg.src=a.photo_url;av.appendChild(avImg);
+    } else {
+      av.innerHTML='<div class="afc-avatar-initial">'+initial+'</div>';
+    }
+    left.appendChild(av);
+
+    if(a.is_verified){var vb=document.createElement('span');vb.className='afc-verified';vb.textContent='VERIFIED AGENT';left.appendChild(vb);}
+    var nm=document.createElement('p');nm.className='afc-name';nm.textContent=a.name_lo||a.name_en||'Agent';left.appendChild(nm);
+    ident.appendChild(left);
+
+    var right=document.createElement('div');right.className='afc-right';
+    if(count){var ct=document.createElement('span');ct.className='afc-count';ct.textContent=count+' ລາຍການ';right.appendChild(ct);}
+    var arr=document.createElement('span');arr.className='afc-arrow';arr.textContent='→';right.appendChild(arr);
+    ident.appendChild(right);
+
+    card.appendChild(ident);
+    cont.appendChild(card);
+  });
+}
+
+function renderStrip(listings){
+  var strip=document.getElementById('listing-strip');
+  if(!listings.length){document.querySelector('.listing-strip-section').style.display='none';return;}
+  listings.forEach(function(p){
+    var imgs=Array.isArray(p.images)?p.images:[];
+    var thumb=imgs[0]||'';
+    var card=document.createElement('a');
+    card.href='listing.html?slug='+encodeURIComponent(p.slug||'');
+    card.className='strip-card';
+    var imgDiv=document.createElement('div');imgDiv.className='strip-img';
+    if(thumb){var si=document.createElement('img');si.src=thumb;si.alt=p.title_lo||'';si.loading='lazy';si.decoding='async';imgDiv.appendChild(si);}
+    else{var ph=document.createElement('div');ph.className='strip-img-ph';imgDiv.appendChild(ph);}
+    var ov=document.createElement('div');ov.className='strip-overlay';imgDiv.appendChild(ov);
+    if(p.price_display){var pr=document.createElement('span');pr.className='strip-price';pr.textContent=p.price_display;imgDiv.appendChild(pr);}
+    var tx=document.createElement('span');tx.className='strip-tx';tx.textContent=p.transaction_type==='for_sale'?'ຂາຍ':'ເຊົ່າ';imgDiv.appendChild(tx);
+    var body=document.createElement('div');body.className='strip-body';
+    if(p.title_lo||p.title_en){var ti=document.createElement('p');ti.className='strip-title';ti.textContent=p.title_lo||p.title_en;body.appendChild(ti);}
+    card.appendChild(imgDiv);card.appendChild(body);strip.appendChild(card);
+  });
+}
+
+load();
 </script>
 </body>
 </html>
