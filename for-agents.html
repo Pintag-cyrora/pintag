@@ -52,7 +52,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
   position:absolute;inset:0;
   background:linear-gradient(
     to top,
-    rgba(12,20,24,0.82) 0%,
+    rgba(12,20,24,0.68) 0%,
     rgba(12,20,24,0.28) 50%,
     rgba(12,20,24,0.04) 100%
   );
@@ -95,7 +95,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .agent-feature-card:hover .afc-img{transform:scale(1.03);}
 .afc-gradient{
   position:absolute;inset:0;
-  background:linear-gradient(to top,rgba(12,20,24,0.82) 0%,rgba(12,20,24,0.28) 55%,transparent 80%);
+  background:linear-gradient(to top,rgba(12,20,24,0.68) 0%,rgba(12,20,24,0.28) 55%,transparent 80%);
 }
 .agent-feature-card:nth-child(even) .afc-gradient{
   background:linear-gradient(to top,rgba(247,243,236,0.88) 0%,rgba(247,243,236,0.4) 55%,transparent 80%);
@@ -118,12 +118,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .agent-feature-card:nth-child(even) .afc-arrow{color:var(--ink-muted);}
 
 /* ── LISTING STRIP ── */
-.listing-strip-section{padding:36px 0 36px 24px;background:var(--white);}
-.strip-label-row{padding-right:24px;margin-bottom:18px;max-width:780px;}
-.strip-label{font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink-muted);}
+.listing-strip-section{padding:32px 0 32px 24px;background:var(--white);}
+
 .listing-strip{display:flex;gap:10px;overflow-x:auto;padding-right:24px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .listing-strip::-webkit-scrollbar{display:none;}
-.strip-card{flex-shrink:0;width:50vw;max-width:200px;display:block;text-decoration:none;border-radius:3px;overflow:hidden;background:var(--warm);transition:transform 0.25s cubic-bezier(0.4,0,0.2,1);}
+.strip-card{flex-shrink:0;width:72vw;max-width:280px;display:block;text-decoration:none;border-radius:3px;overflow:hidden;background:var(--warm);transition:transform 0.25s cubic-bezier(0.4,0,0.2,1);}
 .strip-card:hover{transform:translateY(-3px);}
 .strip-img{aspect-ratio:3/4;overflow:hidden;position:relative;}
 .strip-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.5s ease;}
@@ -131,7 +130,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .strip-img-ph{width:100%;height:100%;background:linear-gradient(135deg,#C4D0CB,#ADBFB8);}
 .strip-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(12,20,24,0.72) 0%,transparent 55%);}
 .strip-price{position:absolute;bottom:10px;left:11px;font-size:15px;font-weight:700;color:#fff;letter-spacing:-0.02em;}
-.strip-tx{position:absolute;top:8px;left:8px;background:rgba(255,255,255,0.88);font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-soft);padding:3px 7px;border-radius:2px;}
 
 /* ── TYPOGRAPHY MOMENT — warm pause ── */
 .typo-moment{
@@ -240,9 +238,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 
 <!-- LISTING STRIP -->
 <div class="listing-strip-section fu fu3">
-  <div class="strip-label-row">
-    <span class="strip-label">ລາຍການຫຼ້າສຸດ</span>
-  </div>
   <div class="listing-strip" id="listing-strip"></div>
 </div>
 
@@ -258,21 +253,21 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
   <div class="pillar">
     <span class="pillar-num">01</span>
     <div class="pillar-content">
-      <p class="pillar-title">ໜ້າລາຍການທີ່ທັນສະໄໝ</p>
+      <p class="pillar-title">ການນຳສະເໜີທີ່ທັນສະໄໝ</p>
       <p class="pillar-body">ຮູບພາບ, ແຜນທີ່, ລາຄາ, WhatsApp — ທຸກລາຍການໄດ້ຮັບໜ້າລາຍການທີ່ຄົບຖ້ວນ.</p>
     </div>
   </div>
   <div class="pillar">
     <span class="pillar-num">02</span>
     <div class="pillar-content">
-      <p class="pillar-title">ໂປຣໄຟລ໌ຂອງທ່ານແບບມືອາຊີບທັນທີ ແຄ່ກົດລິ້ງດຽວ</p>
+      <p class="pillar-title">ໂປຣໄຟລ໌ທີ່ດູດີ ແລະ ໜ້າເຊື່ອຖື</p>
       <p class="pillar-body">ລິ້ງດຽວ ສະແດງທຸກລາຍການຂອງທ່ານ. ແຊຣ໌ໄດ້ທຸກທີ່. ດູດີທັນທີ.</p>
     </div>
   </div>
   <div class="pillar">
     <span class="pillar-num">03</span>
     <div class="pillar-content">
-      <p class="pillar-title">ກົດແຊຣ໌ພຽງລິ້ງດຽວ ກໍສາມາດສະເໜີຂໍ້ມູນຄົບຖ້ວນ</p>
+      <p class="pillar-title">ຄວາມໜ້າເຊື່ອຖື ເລີ່ມຈາກຄວາມໃສ່ໃຈ</p>
       <p class="pillar-body">ສົ່ງລິ້ງດຽວ — ຜູ້ຊື້ເຫັນຮູບ ແລະ ລາຄາທັນທີ ກ່ອນຄລິກ.</p>
     </div>
   </div>
@@ -327,10 +322,7 @@ async function load(){
       byAgent[l.agent_id].push(l);
     });
 
-    // Update hero with best available listing image
-    var heroImg=getHeroImg(listings);
-    var heroBg=document.getElementById('hero-bg');
-    if(heroBg&&heroImg&&heroImg!==FALLBACK) heroBg.src=heroImg;
+    // Hero is art-directed — never overwritten by data
 
     renderAgents(agents,byAgent);
     renderStrip(listings.slice(0,6));
@@ -401,7 +393,7 @@ function renderStrip(listings){
     else{var ph=document.createElement('div');ph.className='strip-img-ph';imgDiv.appendChild(ph);}
     var ov=document.createElement('div');ov.className='strip-overlay';imgDiv.appendChild(ov);
     if(p.price_display){var pr=document.createElement('span');pr.className='strip-price';pr.textContent=p.price_display;imgDiv.appendChild(pr);}
-    var tx=document.createElement('span');tx.className='strip-tx';tx.textContent=p.transaction_type==='for_sale'?'ຂາຍ':'ເຊົ່າ';imgDiv.appendChild(tx);
+
     card.appendChild(imgDiv);strip.appendChild(card);
   });
 }
