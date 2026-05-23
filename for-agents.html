@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="preload" as="image" href="https://pintag-cyrora.github.io/pintag/pintag-interior.png?v=3">
+<link rel="preload" as="image" href="https://pintag-cyrora.github.io/pintag/pintag-interior.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -43,11 +43,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .hero-bg-img{
   position:absolute;inset:0;width:100%;height:100%;
   object-fit:cover;object-position:center 35%;
-  opacity:0.55;
+  opacity:0.85;
   transition:opacity 0.6s ease;
 }
-.hero-bg-img.loaded{opacity:0.6;}
-.hero-bg-fallback{position:absolute;inset:0;background:linear-gradient(160deg,#0D2028 0%,#1C3A42 50%,#0A1820 100%);}
+.hero-bg-img.loaded{opacity:0.9;}
+.hero-bg-fallback{position:absolute;inset:0;background:linear-gradient(160deg,#1a3038 0%,#243e46 50%,#152830 100%);}
 .hero-gradient{
   position:absolute;inset:0;
   background:linear-gradient(
@@ -203,10 +203,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 <!-- HERO -->
 <div class="hero fu fu1">
   <img class="hero-bg-img" id="hero-bg"
-    src="https://pintag-cyrora.github.io/pintag/pintag-interior.png?v=3"
+    src="https://pintag-cyrora.github.io/pintag/pintag-interior.png"
     alt=""
     loading="eager"
-    onerror="this.src='https://pintag-cyrora.github.io/pintag/pintag-villa.png?v=3'">
+    onerror="this.src='https://pintag-cyrora.github.io/pintag/pintag-villa.png'">
   <div class="hero-bg-fallback"></div>
   <div class="hero-gradient"></div>
   <div class="hero-content">
