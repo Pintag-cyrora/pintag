@@ -1,707 +1,41 @@
 <script>
-const BASE_DB = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const BASE_DB =
+  'https://eoladhcljbpbhnrmmpev.supabase.co';
 
 const SEC_KEY =
-'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 
 let propertyContext = null;
 
+/* ---------------------------------- */
+/* URL PARAM */
+/* ---------------------------------- */
+
 function fetchUrlParamSlug() {
-  return new URLSearchParams(window.location.search).get('slug');
+  return new URLSearchParams(
+    window.location.search
+  ).get('slug');
 }
+
+/* ---------------------------------- */
+/* LANGUAGE */
+/* ---------------------------------- */
 
 function getCurrentLang() {
-  if (document.body.classList.contains('lang-en')) return 'en';
-  if (document.body.classList.contains('lang-zh')) return 'zh';
+
+  const body = document.body;
+
+  if (!body) return 'lo';
+
+  if (body.classList.contains('lang-en')) {
+    return 'en';
+  }
+
+  if (body.classList.contains('lang-zh')) {
+    return 'zh';
+  }
+
   return 'lo';
-}
-
-async function requestPropertyData() {
-
-  const slug = fetchUrlParamSlug();
-
-  const wrapper =
-    document.getElementById('view-target');
-
-  if (!slug) {
-
-    const msg = {
-      lo:'ບໍ່ພົບລະຫັດລາຍການ',
-      en:'Missing listing reference',
-      zh:'缺少房源编号'
-    };
-
-    wrapper.innerHTML = `
-      <div class="loader-stage">
-        <h3>${msg[getCurrentLang()]}</h3>
-      </div>
-    `;
-
-    return;
-  }
-
-  try {
-
-    const cleanSlug =
-      encodeURIComponent(slug.trim());
-
-    const response = await fetch(
-      `${BASE_DB}/rest/v1/properties?slug=eq.${cleanSlug}&select=*`,
-      {
-        headers:{
-          apikey:SEC_KEY,
-          Authorization:'Bearer ' + SEC_KEY
-        }
-      }
-    );
-
-    const payload =
-      await response.json();
-
-    if (!payload || !payload.length) {
-
-      const msg = {
-        lo:'ບໍ່ພົບລາຍການນີ້',
-        en:'Listing not found',
-        zh:'未找到该房源'
-      };
-
-      wrapper.innerHTML = `
-        <div class="loader-stage">
-          <h3>${msg[getCurrentLang()]}</h3>
-        </div>
-      `;
-
-      return;
-    }
-
-    propertyContext = payload[0];
-
-    buildMockupLayout();
-
-  } catch (err) {
-
-    console.error(err);
-
-    const msg = {
-      lo:'ເກີດຂໍ້ຜິດພາດ ກະລຸນາລອງໃໝ່',
-      en:'Something went wrong',
-      zh:'出现错误'
-    };
-
-    wrapper.innerHTML = `
-      <div class="loader-stage">
-        <h3>${msg[getCurrentLang()]}</h3>
-      </div>
-    `;
-  }
-}
-
-function buildMockupLayout() {
-
-  const container =
-    document.getElementById('view-target');
-
-  const lang = getCurrentLang();
-
-  const data = propertyContext;
-
-  const resolvedTitle =
-    data[`title_${lang}`] ||
-    data.title_en ||
-    data.title_lo ||
-    '';
-
-  const resolvedDesc =
-    data[`description_${lang}`] ||
-    data.description_en ||
-    data.description_lo ||
-    '';
-
-  const resolvedDistrict =
-    data[`district_${lang}`] ||
-    data.district_en ||
-    '';
-
-  const txLabels = {
-    sale:{
-      lo:'ຂາຍ',
-      en:'For Sale',
-      zh:'出售'
-    },
-    rent:{
-      lo:'ໃຫ້ເຊົ່າ',
-      en:'For Rent',
-      zh:'租房'
-    }
-  };
-
-  const isSale =
-    data.transaction_type === 'for_sale' ||
-    data.transaction_type === 'sale';
-
-  const txTag =
-    isSale
-      ? txLabels.sale[lang]
-      : txLabels.rent[lang];
-
-  const imagesArray =
-    Array.isArray(data.images)
-      ? data.images
-      : [];
-
-  let mosaicContainerMarkup = '';
-
-  if (imagesArray.length) {
-
-    let sideImagesMarkup = '';
-
-    const secondary =
-      imagesArray.slice(1,3);
-
-    if (secondary.length === 0) {
-
-      sideImagesMarkup += `
-        <div class="mosaic-sub-img">
-          <img src="${imagesArray[0]}" alt="">
-        </div>
-      `;
-
-      sideImagesMarkup += `
-        <div class="mosaic-sub-img">
-          <img src="${imagesArray[0]}" alt="">
-        </div>
-      `;
-
-    } else {
-
-      secondary.forEach(imgSrc => {
-
-        sideImagesMarkup += `
-          <div
-            class="mosaic-sub-img"
-            onclick="shiftFocusHero('${imgSrc}')">
-
-            <img src="${imgSrc}" alt="">
-          </div>
-        `;
-      });
-    }
-
-    mosaicContainerMarkup = `
-      <div class="mosaic-gallery">
-
-        <div
-          class="mosaic-main"
-          id="primary-hero-frame">
-
-          <img
-            src="${imagesArray[0]}"
-            alt="">
-        </div>
-
-        <div class="mosaic-sidebar">
-          ${sideImagesMarkup}
-        </div>
-
-      </div>
-    `;
-  }
-
-  let standaloneMediaMarkup = '';
-
-  if (data.video_url || data.map_url) {
-
-    const videoLabel = {
-      lo:'ວິດີໂອນຳສະເໜີ',
-      en:'Video Presentation',
-      zh:'视频介绍'
-    };
-
-    const mapLabel = {
-      lo:'ແຜນທີ່ຕັ້ງ',
-      en:'Location',
-      zh:'位置地图'
-    };
-
-    standaloneMediaMarkup += `
-      <div class="divider"></div>
-      <div class="asset-stack">
-    `;
-
-    if (data.video_url) {
-
-      const parsedFrame =
-        generateEmbeddedVideoFrame(
-          data.video_url
-        );
-
-      if (parsedFrame) {
-
-        standaloneMediaMarkup += `
-          <div>
-
-            <p class="section-caption">
-              ${videoLabel[lang]}
-            </p>
-
-            <div class="asset-iframe-wrapper">
-              ${parsedFrame}
-            </div>
-
-          </div>
-        `;
-      }
-    }
-
-    if (data.map_url) {
-
-      standaloneMediaMarkup += `
-        <div>
-
-          <p class="section-caption">
-            ${mapLabel[lang]}
-          </p>
-
-          <div class="asset-iframe-wrapper">
-
-            <iframe
-              src="${data.map_url}"
-              allowfullscreen
-              loading="lazy">
-            </iframe>
-
-          </div>
-
-        </div>
-      `;
-    }
-
-    standaloneMediaMarkup += `
-      </div>
-    `;
-  }
-
-  const waText =
-    encodeURIComponent(
-      (
-        lang === 'en'
-          ? 'Hi, I am interested in this property: '
-          : lang === 'zh'
-          ? '您好，我对这个房源感兴趣：'
-          : 'ສະບາຍດີ, ຂ້ອຍສົນໃຈອະສັງຫາລາຍການນີ້: '
-      )
-      + resolvedTitle
-      + ' (' + window.location.href + ')'
-    );
-
-  const directWhatsAppUrl =
-    `https://wa.me/${
-      data.agent_phone || '85620542966655'
-    }?text=${waText}`;
-
-  const labels = {
-    price:{
-      lo:'ມູນຄ່າອະສັງຫາ',
-      en:'Price',
-      zh:'价格'
-    },
-
-    inquire:{
-      lo:'ສອບຖາມລາຄາ',
-      en:'Inquire for Pricing',
-      zh:'询价'
-    },
-
-    overview:{
-      lo:'ລາຍລະອຽດອະສັງຫາ',
-      en:'Overview',
-      zh:'房源详情'
-    },
-
-    beds:{
-      lo:'ຫ້ອງນອນ',
-      en:'Bedrooms',
-      zh:'卧室'
-    },
-
-    baths:{
-      lo:'ຫ້ອງນ້ຳ',
-      en:'Bathrooms',
-      zh:'卫生间'
-    },
-
-    area:{
-      lo:'ເນື້ອທີ່',
-      en:'Area',
-      zh:'面积'
-    },
-
-    type:{
-      lo:'ປະເພດ',
-      en:'Type',
-      zh:'类型'
-    },
-
-    agent:{
-      lo:'ຕົວແທນ',
-      en:'Agent',
-      zh:'经纪人'
-    },
-
-    city:{
-      lo:'ວຽງຈັນ',
-      en:'Vientiane',
-      zh:'万象'
-    },
-
-    wa:{
-      lo:'ສອບຖາມຜ່ານ WhatsApp',
-      en:'Inquire via WhatsApp',
-      zh:'WhatsApp咨询'
-    },
-
-    share:{
-      lo:'ແຊຣ໌ລາຍການ',
-      en:'Share Listing',
-      zh:'分享房源'
-    }
-  };
-
-  container.innerHTML = `
-
-    ${mosaicContainerMarkup}
-
-    <div class="columns-grid">
-
-      <div class="stream-content">
-
-        <div class="info-header">
-
-          <span class="info-tag">
-            ${txTag} · ${data.property_type || ''}
-          </span>
-
-          <h1 class="info-title">
-            ${resolvedTitle}
-          </h1>
-
-          <div class="info-location">
-
-            <svg width="16" height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round">
-
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-
-              <circle cx="12" cy="10" r="3"></circle>
-
-            </svg>
-
-            ${resolvedDistrict}
-            ${resolvedDistrict ? ', ' : ''}
-            ${labels.city[lang]}
-
-          </div>
-
-        </div>
-
-        ${
-          resolvedDesc
-          ? `
-          <div class="divider"></div>
-
-          <div>
-
-            <p class="section-caption">
-              ${labels.overview[lang]}
-            </p>
-
-            <p class="body-narrative">
-              ${resolvedDesc}
-            </p>
-
-          </div>
-          `
-          : ''
-        }
-
-        ${standaloneMediaMarkup}
-
-      </div>
-
-      <div class="sticky-sidebar">
-
-        <div class="sticky-card">
-
-          <p class="card-price-label">
-            ${labels.price[lang]}
-          </p>
-
-          ${
-            data.price_display
-            ? `
-              <p class="card-price-value">
-                ${data.price_display}
-              </p>
-            `
-            : `
-              <p class="card-price-negotiable">
-                ${labels.inquire[lang]}
-              </p>
-            `
-          }
-
-          <div class="card-metrics">
-
-            ${
-              data.bedrooms
-              ? `
-                <div class="metric-row">
-                  <span class="metric-label">
-                    ${labels.beds[lang]}
-                  </span>
-
-                  <span class="metric-value">
-                    ${data.bedrooms}
-                  </span>
-                </div>
-              `
-              : ''
-            }
-
-            ${
-              data.bathrooms
-              ? `
-                <div class="metric-row">
-                  <span class="metric-label">
-                    ${labels.baths[lang]}
-                  </span>
-
-                  <span class="metric-value">
-                    ${data.bathrooms}
-                  </span>
-                </div>
-              `
-              : ''
-            }
-
-            ${
-              data.sqm
-              ? `
-                <div class="metric-row">
-                  <span class="metric-label">
-                    ${labels.area[lang]}
-                  </span>
-
-                  <span class="metric-value">
-                    ${data.sqm} m²
-                  </span>
-                </div>
-              `
-              : ''
-            }
-
-          </div>
-
-          <div class="action-box">
-
-            <a
-              href="${directWhatsAppUrl}"
-              target="_blank"
-              class="btn-primary btn-whatsapp">
-
-              ${labels.wa[lang]}
-
-            </a>
-
-            <button
-              class="btn-primary btn-outline"
-              onclick="triggerNativeShareChannel()">
-
-              ${labels.share[lang]}
-
-            </button>
-
-          </div>
-
-          ${
-            data.agent_name
-            ? `
-              <div class="card-agent">
-
-                <img
-                  class="agent-pfp"
-                  src="${data.agent_photo || ''}"
-                  onerror="this.src='https://placehold.co/100x100/EDE8DF/7A9098?text=P'"
-                  alt="">
-
-                <div class="agent-info-stack">
-
-                  <span class="agent-subtitle">
-                    ${labels.agent[lang]}
-                  </span>
-
-                  <span class="agent-username">
-                    ${data.agent_name}
-                  </span>
-
-                </div>
-
-              </div>
-            `
-            : ''
-          }
-
-        </div>
-
-      </div>
-
-    </div>
-  `;
-}
-
-function shiftFocusHero(imageSource) {
-
-  const currentHeroImg =
-    document.querySelector(
-      '#primary-hero-frame img'
-    );
-
-  if (currentHeroImg) {
-    currentHeroImg.src = imageSource;
-  }
-}
-
-function generateEmbeddedVideoFrame(url) {
-
-  if (!url) return null;
-
-  if (url.includes('youtube.com/embed/')) {
-
-    return `
-      <iframe
-        src="${url}"
-        frameborder="0"
-        allowfullscreen
-        allow="autoplay;encrypted-media">
-      </iframe>
-    `;
-  }
-
-  if (url.includes('youtube.com/watch?v=')) {
-
-    const id =
-      url.split('v=')[1]?.split('&')[0];
-
-    return `
-      <iframe
-        src="https://www.youtube.com/embed/${id}"
-        frameborder="0"
-        allowfullscreen
-        allow="autoplay;encrypted-media">
-      </iframe>
-    `;
-  }
-
-  if (url.includes('youtu.be/')) {
-
-    const id =
-      url.split('youtu.be/')[1]?.split('?')[0];
-
-    return `
-      <iframe
-        src="https://www.youtube.com/embed/${id}"
-        frameborder="0"
-        allowfullscreen
-        allow="autoplay;encrypted-media">
-      </iframe>
-    `;
-  }
-
-  if (url.includes('facebook.com')) {
-
-    return `
-      <iframe
-        src="https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&mute=0"
-        frameborder="0"
-        allowfullscreen
-        allow="autoplay;clipboard-write;encrypted-media;picture-in-picture;web-share">
-      </iframe>
-    `;
-  }
-
-  const driveMatch =
-    url.match(
-      /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/
-    );
-
-  if (driveMatch) {
-
-    return `
-      <iframe
-        src="https://drive.google.com/file/d/${driveMatch[1]}/preview"
-        frameborder="0"
-        allow="autoplay"
-        allowfullscreen>
-      </iframe>
-    `;
-  }
-
-  return null;
-}
-
-async function triggerNativeShareChannel() {
-
-  const lang =
-    getCurrentLang();
-
-  const dynamicTitle =
-    propertyContext
-      ? (
-          propertyContext[`title_${lang}`]
-          || propertyContext.title_lo
-          || propertyContext.title_en
-        )
-      : 'Pintag';
-
-  const copied = {
-    lo:'ລິ້ງຖືກຄັດລອກແລ້ວ',
-    en:'Link copied',
-    zh:'链接已复制'
-  };
-
-  if (navigator.share) {
-
-    try {
-
-      await navigator.share({
-        title:dynamicTitle,
-        url:window.location.href
-      });
-
-    } catch(err) {
-      console.error(err);
-    }
-
-  } else {
-
-    try {
-
-      await navigator.clipboard.writeText(
-        window.location.href
-      );
-
-      alert(copied[lang]);
-
-    } catch(err) {
-      console.error(err);
-    }
-  }
 }
 
 function setLang(
@@ -735,5 +69,671 @@ function setLang(
   }
 }
 
-requestPropertyData();
+/* ---------------------------------- */
+/* FETCH PROPERTY */
+/* ---------------------------------- */
+
+async function requestPropertyData() {
+
+  const slug =
+    fetchUrlParamSlug();
+
+  const wrapper =
+    document.getElementById(
+      'view-target'
+    );
+
+  if (!slug) {
+
+    const msg = {
+      lo:'ບໍ່ພົບລະຫັດລາຍການ',
+      en:'Missing listing reference',
+      zh:'缺少房源编号'
+    };
+
+    wrapper.innerHTML = `
+      <div class="loader-stage">
+        <h3>${msg[getCurrentLang()]}</h3>
+      </div>
+    `;
+
+    return;
+  }
+
+  try {
+
+    const cleanSlug =
+      encodeURIComponent(
+        slug.trim()
+      );
+
+    const response =
+      await fetch(
+        `${BASE_DB}/rest/v1/properties?slug=eq.${cleanSlug}&select=*`,
+        {
+          headers:{
+            apikey:SEC_KEY,
+            Authorization:
+              'Bearer ' + SEC_KEY
+          }
+        }
+      );
+
+    const payload =
+      await response.json();
+
+    if (
+      !payload ||
+      !payload.length
+    ) {
+
+      const msg = {
+        lo:'ບໍ່ພົບລາຍການນີ້',
+        en:'Listing not found',
+        zh:'未找到该房源'
+      };
+
+      wrapper.innerHTML = `
+        <div class="loader-stage">
+          <h3>${msg[getCurrentLang()]}</h3>
+        </div>
+      `;
+
+      return;
+    }
+
+    propertyContext =
+      payload[0];
+
+    buildMockupLayout();
+
+  } catch(err) {
+
+    console.error(err);
+
+    wrapper.innerHTML = `
+      <div class="loader-stage">
+        <h3>Error loading property</h3>
+      </div>
+    `;
+  }
+}
+
+/* ---------------------------------- */
+/* BUILD PAGE */
+/* ---------------------------------- */
+
+function buildMockupLayout() {
+
+  const container =
+    document.getElementById(
+      'view-target'
+    );
+
+  const lang =
+    getCurrentLang();
+
+  const data =
+    propertyContext;
+
+  const resolvedTitle =
+    data[`title_${lang}`] ||
+    data.title_en ||
+    data.title_lo ||
+    '';
+
+  const resolvedDesc =
+    data[`description_${lang}`] ||
+    data.description_en ||
+    data.description_lo ||
+    '';
+
+  const resolvedDistrict =
+    data[`district_${lang}`] ||
+    data.district_en ||
+    '';
+
+  const txLabels = {
+    sale:{
+      lo:'ຂາຍ',
+      en:'For Sale',
+      zh:'出售'
+    },
+    rent:{
+      lo:'ໃຫ້ເຊົ່າ',
+      en:'For Rent',
+      zh:'租房'
+    }
+  };
+
+  const isSale =
+    data.transaction_type ===
+      'for_sale' ||
+    data.transaction_type ===
+      'sale';
+
+  const txTag =
+    isSale
+      ? txLabels.sale[lang]
+      : txLabels.rent[lang];
+
+  const imagesArray =
+    Array.isArray(data.images)
+      ? data.images
+      : [];
+
+  /* ---------------------------------- */
+  /* GALLERY */
+  /* ---------------------------------- */
+
+  let mosaicContainerMarkup =
+    '';
+
+  if (imagesArray.length) {
+
+    let sideImagesMarkup =
+      '';
+
+    const secondary =
+      imagesArray.slice(1,3);
+
+    if (!secondary.length) {
+
+      sideImagesMarkup += `
+        <div class="mosaic-sub-img">
+          <img src="${imagesArray[0]}" alt="">
+        </div>
+      `;
+
+      sideImagesMarkup += `
+        <div class="mosaic-sub-img">
+          <img src="${imagesArray[0]}" alt="">
+        </div>
+      `;
+
+    } else {
+
+      secondary.forEach(imgSrc => {
+
+        sideImagesMarkup += `
+          <div
+            class="mosaic-sub-img"
+            onclick="shiftFocusHero('${imgSrc}')">
+
+            <img
+              src="${imgSrc}"
+              alt="">
+
+          </div>
+        `;
+      });
+    }
+
+    mosaicContainerMarkup = `
+      <div class="mosaic-gallery">
+
+        <div
+          class="mosaic-main"
+          id="primary-hero-frame">
+
+          <img
+            src="${imagesArray[0]}"
+            alt="">
+
+        </div>
+
+        <div class="mosaic-sidebar">
+          ${sideImagesMarkup}
+        </div>
+
+      </div>
+    `;
+  }
+
+  /* ---------------------------------- */
+  /* EMBEDS */
+  /* ---------------------------------- */
+
+  let standaloneMediaMarkup =
+    '';
+
+  if (
+    data.video_url ||
+    data.map_url
+  ) {
+
+    standaloneMediaMarkup += `
+      <div class="divider"></div>
+      <div class="asset-stack">
+    `;
+
+    if (data.video_url) {
+
+      const parsedFrame =
+        generateEmbeddedVideoFrame(
+          data.video_url
+        );
+
+      if (parsedFrame) {
+
+        standaloneMediaMarkup += `
+          <div>
+
+            <p class="section-caption">
+              Video
+            </p>
+
+            <div class="asset-iframe-wrapper">
+              ${parsedFrame}
+            </div>
+
+          </div>
+        `;
+      }
+    }
+
+    if (data.map_url) {
+
+      standaloneMediaMarkup += `
+        <div>
+
+          <p class="section-caption">
+            Map
+          </p>
+
+          <div class="asset-iframe-wrapper">
+
+            <iframe
+              src="${data.map_url}"
+              loading="lazy"
+              allowfullscreen>
+            </iframe>
+
+          </div>
+
+        </div>
+      `;
+    }
+
+    standaloneMediaMarkup += `
+      </div>
+    `;
+  }
+
+  /* ---------------------------------- */
+  /* WHATSAPP */
+  /* ---------------------------------- */
+
+  const waText =
+    encodeURIComponent(
+      resolvedTitle +
+      ' (' +
+      window.location.href +
+      ')'
+    );
+
+  const directWhatsAppUrl =
+    `https://wa.me/${
+      data.agent_phone ||
+      '85620542966655'
+    }?text=${waText}`;
+
+  /* ---------------------------------- */
+  /* RENDER */
+  /* ---------------------------------- */
+
+  container.innerHTML = `
+
+    ${mosaicContainerMarkup}
+
+    <div class="columns-grid">
+
+      <div class="stream-content">
+
+        <div class="info-header">
+
+          <span class="info-tag">
+            ${txTag}
+            ·
+            ${data.property_type || ''}
+          </span>
+
+          <h1 class="info-title">
+            ${resolvedTitle}
+          </h1>
+
+          <div class="info-location">
+
+            ${resolvedDistrict}
+            ${resolvedDistrict ? ',' : ''}
+            Vientiane
+
+          </div>
+
+        </div>
+
+        ${
+          resolvedDesc
+          ? `
+            <div class="divider"></div>
+
+            <div>
+
+              <p class="section-caption">
+                Overview
+              </p>
+
+              <p class="body-narrative">
+                ${resolvedDesc}
+              </p>
+
+            </div>
+          `
+          : ''
+        }
+
+        ${standaloneMediaMarkup}
+
+      </div>
+
+      <div class="sticky-sidebar">
+
+        <div class="sticky-card">
+
+          <p class="card-price-label">
+            Price
+          </p>
+
+          ${
+            data.price_display
+            ? `
+              <p class="card-price-value">
+                ${data.price_display}
+              </p>
+            `
+            : `
+              <p class="card-price-negotiable">
+                Contact Agent
+              </p>
+            `
+          }
+
+          <div class="card-metrics">
+
+            ${
+              data.bedrooms
+              ? `
+                <div class="metric-row">
+
+                  <span class="metric-label">
+                    Bedrooms
+                  </span>
+
+                  <span class="metric-value">
+                    ${data.bedrooms}
+                  </span>
+
+                </div>
+              `
+              : ''
+            }
+
+            ${
+              data.bathrooms
+              ? `
+                <div class="metric-row">
+
+                  <span class="metric-label">
+                    Bathrooms
+                  </span>
+
+                  <span class="metric-value">
+                    ${data.bathrooms}
+                  </span>
+
+                </div>
+              `
+              : ''
+            }
+
+            ${
+              data.sqm
+              ? `
+                <div class="metric-row">
+
+                  <span class="metric-label">
+                    Area
+                  </span>
+
+                  <span class="metric-value">
+                    ${data.sqm} m²
+                  </span>
+
+                </div>
+              `
+              : ''
+            }
+
+          </div>
+
+          <div class="action-box">
+
+            <a
+              href="${directWhatsAppUrl}"
+              target="_blank"
+              class="btn-primary btn-whatsapp">
+
+              WhatsApp
+
+            </a>
+
+            <button
+              class="btn-primary btn-outline"
+              onclick="triggerNativeShareChannel()">
+
+              Share Listing
+
+            </button>
+
+          </div>
+
+          ${
+            data.agent_name
+            ? `
+              <div class="card-agent">
+
+                <img
+                  class="agent-pfp"
+                  src="${data.agent_photo || ''}"
+                  onerror="this.src='https://placehold.co/100x100/EDE8DF/7A9098?text=P'"
+                  alt="">
+
+                <div class="agent-info-stack">
+
+                  <span class="agent-subtitle">
+                    Agent
+                  </span>
+
+                  <span class="agent-username">
+                    ${data.agent_name}
+                  </span>
+
+                </div>
+
+              </div>
+            `
+            : ''
+          }
+
+        </div>
+
+      </div>
+
+    </div>
+  `;
+}
+
+/* ---------------------------------- */
+/* HERO SWAP */
+/* ---------------------------------- */
+
+function shiftFocusHero(
+  imageSource
+) {
+
+  const currentHeroImg =
+    document.querySelector(
+      '#primary-hero-frame img'
+    );
+
+  if (currentHeroImg) {
+    currentHeroImg.src =
+      imageSource;
+  }
+}
+
+/* ---------------------------------- */
+/* VIDEO EMBED */
+/* ---------------------------------- */
+
+function generateEmbeddedVideoFrame(
+  url
+) {
+
+  if (!url) return null;
+
+  if (
+    url.includes(
+      'youtube.com/embed/'
+    )
+  ) {
+
+    return `
+      <iframe
+        src="${url}"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
+  if (
+    url.includes(
+      'youtube.com/watch?v='
+    )
+  ) {
+
+    const id =
+      url
+        .split('v=')[1]
+        ?.split('&')[0];
+
+    return `
+      <iframe
+        src="https://www.youtube.com/embed/${id}"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
+  if (
+    url.includes(
+      'youtu.be/'
+    )
+  ) {
+
+    const id =
+      url
+        .split('youtu.be/')[1]
+        ?.split('?')[0];
+
+    return `
+      <iframe
+        src="https://www.youtube.com/embed/${id}"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
+  if (
+    url.includes(
+      'facebook.com'
+    )
+  ) {
+
+    return `
+      <iframe
+        src="https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
+  const driveMatch =
+    url.match(
+      /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/
+    );
+
+  if (driveMatch) {
+
+    return `
+      <iframe
+        src="https://drive.google.com/file/d/${driveMatch[1]}/preview"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
+  return null;
+}
+
+/* ---------------------------------- */
+/* SHARE */
+/* ---------------------------------- */
+
+async function triggerNativeShareChannel() {
+
+  if (navigator.share) {
+
+    try {
+
+      await navigator.share({
+        title:'Pintag',
+        url:window.location.href
+      });
+
+    } catch(err) {
+      console.error(err);
+    }
+
+  } else {
+
+    try {
+
+      await navigator.clipboard.writeText(
+        window.location.href
+      );
+
+      alert('Link copied');
+
+    } catch(err) {
+      console.error(err);
+    }
+  }
+}
+
+/* ---------------------------------- */
+/* INIT */
+/* ---------------------------------- */
+
+window.addEventListener(
+  'DOMContentLoaded',
+  () => {
+    requestPropertyData();
+  }
+);
 </script>
