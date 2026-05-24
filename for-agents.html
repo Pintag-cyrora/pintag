@@ -15,7 +15,7 @@
   --teal:#2D8C8C;--teal-light:#38A8A8;
   --ink:#1C2B32;--ink-soft:#3D5058;--ink-muted:#7A9098;
   --warm:#F7F3EC;--warm-deep:#EDE8DF;--white:#FFFFFF;
-  --border:rgba(26,36,40,0.07);--wa:#1A9E50;
+  --border:rgba(26,36,40,0.06);--wa:#1A9E50;
 }
 body{font-family:'DM Sans',sans-serif;font-weight:400;background:var(--white);color:var(--ink);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
 
@@ -32,7 +32,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .loading-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:ldot 1.2s ease-in-out infinite;}
 @keyframes ldot{0%,100%{opacity:0.25;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
 
-/* ── EDITORIAL LIGHT HERO ── */
+/* EDITORIAL HERO */
 .hero{
   margin-top:54px;
   height:calc(100vh - 54px);
@@ -47,34 +47,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
   z-index:1;
 }
 .hero-bg-fallback{position:absolute;inset:0;z-index:0;background:var(--warm);}
-
-/* Premium Soft Mask */
 .hero-gradient{
   position:absolute;inset:0;z-index:2;
-  background: linear-gradient(
-    to right,
-    rgba(247, 243, 236, 0.95) 0%,
-    rgba(247, 243, 236, 0.75) 40%,
-    rgba(247, 243, 236, 0.2) 100-percent
-  );
+  background: linear-gradient(to right, rgba(247, 243, 236, 0.96) 0%, rgba(247, 243, 236, 0.75) 50%, rgba(247, 243, 236, 0.1) 100%);
 }
-
-.hero-content{
-  position:relative;z-index:3;
-  padding:0 40px;width:100%;max-width:1240px;margin:0 auto;
-}
-.hero-text-block {
-  max-width: 520px;
-  padding: 32px;
-  border-radius: 24px;
-  background: radial-gradient(circle at left, rgba(247, 243, 236, 0.9) 0%, rgba(247, 243, 236, 0) 100%);
-}
+.hero-content{position:relative;z-index:3;padding:0 40px;width:100%;max-width:1240px;margin:0 auto;}
+.hero-text-block {max-width: 520px;padding: 32px;border-radius: 24px;}
 .hero-eyebrow{font-size:11px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:var(--teal);margin-bottom:16px;display:block;}
-.hero-title{
-  font-size:clamp(32px, 5.5vw, 48px);font-weight:800;
-  color:var(--ink);letter-spacing:-0.03em;line-height:1.15;
-  margin-bottom:14px;
-}
+.hero-title{font-size:clamp(32px, 5.5vw, 48px);font-weight:800;color:var(--ink);letter-spacing:-0.03em;line-height:1.15;margin-bottom:14px;}
 .hero-title em{font-style:normal;color:var(--teal);}
 .hero-sub{font-size:16px;font-weight:400;color:var(--ink-soft);line-height:1.6;margin-bottom:28px;}
 .btn-hero{
@@ -83,142 +63,71 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
   font-size:14px;font-weight:600;text-decoration:none;border-radius:30px;
   transition:all 0.2s ease;
 }
-.btn-hero:hover{
-  background:var(--teal);
-  box-shadow:0 4px 20px rgba(45, 140, 140, 0.25);
-}
+.btn-hero:hover{background:var(--teal);box-shadow:0 4px 20px rgba(45, 140, 140, 0.25);}
 
-/* ── STATEMENT ── */
+/* STATEMENT */
 .statement-block{padding:60px 40px;background:var(--warm);border-bottom:1px solid var(--border);}
 .statement-inner{max-width:1160px;margin:0 auto;}
-.statement-text{
-  font-size:clamp(20px,3.5vw,26px);font-weight:700;
-  color:var(--ink);letter-spacing:-0.02em;line-height:1.4;max-width:640px;
-}
+.statement-text{font-size:clamp(20px,3.5vw,26px);font-weight:700;color:var(--ink);letter-spacing:-0.02em;line-height:1.4;max-width:640px;}
 .statement-text em{font-style:normal;color:var(--teal);}
 .statement-sub{margin-top:14px;font-size:15px;font-weight:400;color:var(--ink-soft);line-height:1.7;max-width:480px;}
 
-/* ── BOUTIQUE AGENT ROSTER ── */
-.roster-section {
-  padding: 80px 40px;
-  max-width: 1160px;
-  margin: 0 auto;
-}
-.roster-label {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--teal);
-  margin-bottom: 40px;
-  display: block;
-}
+/* PREMIUM MINIMALIST ROSTER FRAMEWORK */
+.roster-section {padding: 80px 40px;max-width: 1160px;margin: 0 auto;}
+.roster-label {font-size: 11px;font-weight: 700;letter-spacing: 0.2em;text-transform: uppercase;color: var(--teal);margin-bottom: 40px;display: block;}
 
-/* Open space display layout grid */
 .roster-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 32px;
+  gap: 40px 28px;
   background: transparent;
 }
 
-.roster-card {
-  display: flex;
-  flex-direction: column;
-  background: var(--white);
-  text-decoration: none;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-}
+.roster-card {display: flex;flex-direction: column;background: var(--white);text-decoration: none;position: relative;}
 
 .roster-portrait {
   width: 100%;
   aspect-ratio: 4/5;
-  border-radius: 16px;
+  border-radius: 12px;
   overflow: hidden;
-  margin-bottom: 20px;
-  background: var(--warm);
+  margin-bottom: 16px;
+  background: var(--warm-deep);
   border: 1px solid var(--border);
   position: relative;
 }
+.roster-portrait img {width: 100%;height: 100%;object-fit: cover;object-position: top center;display: block;transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);}
+.roster-card:hover .roster-portrait img {transform: scale(1.025);}
 
-.roster-portrait img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top center;
-  display: block;
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
+.roster-portrait-initial {width: 100%;height: 100%;display: flex;align-items: center;justify-content: center;font-size: 32px;font-weight: 300;color: var(--ink-muted);background: var(--warm);}
 
-.roster-card:hover .roster-portrait img {
-  transform: scale(1.03);
-}
+.roster-info {padding: 0 2px;}
+.roster-credential {font-size: 10px;font-weight: 700;letter-spacing: 0.08em;color: var(--teal);text-transform: uppercase;margin-bottom: 6px;display: block;}
 
-.roster-portrait-initial {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  font-weight: 300;
-  color: var(--ink-muted);
-  background: var(--warm);
-}
-
-.roster-info {
-  padding: 0 4px;
-}
-
-.roster-credential {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--teal);
-  text-transform: uppercase;
-  margin-bottom: 6px;
-  display: block;
-}
-
-.roster-name-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.roster-name {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--ink);
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-}
+.roster-name-row {display: flex;align-items: center;gap: 10px;margin-bottom: 6px;}
+.roster-name {font-size: 20px;font-weight: 700;color: var(--ink);letter-spacing: -0.015em;line-height: 1.25;}
 
 .roster-count {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ink-muted);
   background: var(--warm);
-  padding: 4px 10px;
-  border-radius: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(26,36,40,0.04);
 }
 
 .roster-bio {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 400;
-  color: var(--ink-soft);
+  color: var(--ink-muted);
   line-height: 1.6;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  opacity: 0.85;
 }
 
-/* ── LISTING STRIP ── */
+/* LISTING STRIP */
 .listing-strip-section{padding:40px 0 60px 40px;background:var(--white);border-top:1px solid var(--border);}
 .listing-strip{display:flex;gap:16px;overflow-x:auto;padding-right:40px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .listing-strip::-webkit-scrollbar{display:none;}
@@ -231,13 +140,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .strip-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(28,43,50,0.4) 0%,transparent 60%);}
 .strip-price{position:absolute;bottom:14px;left:16px;font-size:18px;font-weight:700;color:var(--white);letter-spacing:-0.02em;}
 
-/* ── TYPOGRAPHY BREAK ── */
+/* TYPOGRAPHY BREAK */
 .typo-moment{padding:100px 40px;background:var(--warm);text-align:center;border-top:1px solid var(--border);}
 .typo-inner{max-width:480px;margin:0 auto;}
 .typo-main{font-size:clamp(24px,4vw,36px);font-weight:700;color:var(--ink);letter-spacing:-0.03em;line-height:1.3;}
 .typo-main em{font-style:normal;color:var(--teal);}
 
-/* ── PILLARS ── */
+/* PILLARS */
 .pillars{padding:60px 40px;max-width:1160px;margin:0 auto;}
 .pillar{padding:24px 0;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:24px;}
 .pillar:last-child{border-bottom:none;}
@@ -245,7 +154,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .pillar-title{font-size:16px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin-bottom:6px;}
 .pillar-body{font-size:14px;font-weight:400;color:var(--ink-soft);line-height:1.65;}
 
-/* ── FINAL CTA ── */
+/* FINAL CTA */
 .final-cta{padding:80px 40px;background:var(--warm);text-align:center;border-top:1px solid var(--border);}
 .cta-inner{max-width:480px;margin:0 auto;}
 .cta-eyebrow{font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--teal);margin-bottom:16px;display:block;}
@@ -262,19 +171,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
 .fu{animation:fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;}
 .fu1{animation-delay:0s;}.fu2{animation-delay:0.1s;}.fu3{animation-delay:0.2s;}.fu4{animation-delay:0.3s;}
-@media(prefers-reduced-motion:reduce){.fu{animation:none;}}
 
 @media(max-width:768px){
   .hero{align-items:flex-end;}
-  .hero-gradient{
-    background: linear-gradient(to top, rgba(247, 243, 236, 0.98) 0%, rgba(247, 243, 236, 0.85) 50%, rgba(247, 243, 236, 0) 100%);
-  }
+  .hero-gradient{background: linear-gradient(to top, rgba(247, 243, 236, 0.98) 0%, rgba(247, 243, 236, 0.85) 50%, rgba(247, 243, 236, 0) 100%);}
   .hero-content{padding:0 20px 40px;}
-  .hero-text-block{padding:0;background:transparent;}
+  .hero-text-block{padding:0;}
   .statement-block{padding:44px 20px;}
   .roster-section{padding:44px 20px 24px;}
-  .roster-list{grid-template-columns: 1fr; gap: 40px;}
-  .roster-portrait{aspect-ratio:4/5;}
+  .roster-list{grid-template-columns: 1fr; gap: 44px;}
   .pillars{padding:44px 20px;}
   .final-cta{padding:56px 20px;}
   .typo-moment{padding:72px 20px;}
@@ -302,17 +207,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 </nav>
 
 <div class="hero fu fu1">
-  <img class="hero-bg-img" id="hero-bg"
-    src="https://pintag-cyrora.github.io/pintag/pintag-interior.png"
-    alt="" loading="eager"
-    onerror="this.src='https://pintag-cyrora.github.io/pintag/pintag-villa.png'">
+  <img class="hero-bg-img" id="hero-bg" src="https://pintag-cyrora.github.io/pintag/pintag-interior.png" alt="" loading="eager" onerror="this.src='https://pintag-cyrora.github.io/pintag/pintag-villa.png'">
   <div class="hero-bg-fallback"></div>
   <div class="hero-gradient"></div>
   
   <div class="hero-content">
     <div class="hero-text-block">
       <span class="hero-eyebrow">Pintag · ສຳລັບຕົວແທນ</span>
-      <h1 class="hero-title">ความໜ້າເຊື່ອຖື<br>ເລີ່ມຈາກ<br><em>การນຳສະເໜີທີ່ດີ</em></h1>
+      <h1 class="hero-title">ຄວາມໜ້າເຊື່ອຖື<br>ເລີ່ມຕົ້ນຈາກ<br><em>ການນຳສະເໜີທີ່ດີ</em></h1>
       <p class="hero-sub">Trust begins with premium, spatial presentation.</p>
       <a href="#contact" class="btn-hero">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
@@ -325,14 +227,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 <div class="statement-block fu fu2">
   <div class="statement-inner">
     <p class="statement-text">Facebook ແລະ TikTok ສ້າງຄວາມສົນໃຈ.<br><em>Pintag ຊ່ວຍໃຫ້ການນຳສະເໜີຂອງທ່ານດູດີ ແລະ ໜ້າເຊື່ອຖື.</em></p>
-    <p class="statement-sub">ໃຫ້ເຮົາเป็นສ່ວນໜຶ່ງໃນການນຳສະເໜີອະສັງຫາຂອງທ່ານ.</p>
+    <p class="statement-sub">ໃຫ້ເຮົາເປັນສ່ວນໜຶ່ງໃນການນຳສະເໜີອະສັງຫາຂອງທ່ານ.</p>
   </div>
 </div>
 
 <div class="roster-section fu fu3">
   <span class="roster-label">ຕົວແທນນາຍໜ້າຊັ້ນນຳ</span>
-  <div class="roster-list" id="roster-list">
-    </div>
+  <div class="roster-list" id="roster-list"></div>
 </div>
 
 <div class="listing-strip-section fu fu3">
@@ -341,7 +242,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 
 <div class="typo-moment">
   <div class="typo-inner">
-    <p class="typo-main">การນຳສະເໜີທີ່ດີ<br><em>ສ້າງຄວາມໄວ້ວາງໃຈ</em></p>
+    <p class="typo-main">ການນຳສະເໜີທີ່ດີ<br><em>ສ້າງຄວາມໄວ້ວາງໃຈ</em></p>
   </div>
 </div>
 
@@ -350,7 +251,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
     <span class="pillar-num">01</span>
     <div>
       <p class="pillar-title">ການນຳສະເໜີທີ່ທັນສະໄໝ</p>
-      <p class="pillar-body">ຮູບພາບ, ແຜนທີ່, ລາຄາ, WhatsApp — ທຸກລາຍການໄດ້ຮັບໜ້າລາຍການທີ່ຄົບຖ້ວນ.</p>
+      <p class="pillar-body">ຮູບພາບ, ແຜນທີ່, ລາຄາ, WhatsApp — ທຸກລາຍການໄດ້ຮັບໜ້າລາຍການທີ່ຄົບຖ້ວນ.</p>
     </div>
   </div>
   <div class="pillar">
@@ -363,8 +264,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
   <div class="pillar">
     <span class="pillar-num">03</span>
     <div>
-      <p class="pillar-title">ຄວາມໜ້າເຊື່ອຖື ເລີ່ມຈາກຄວາມໃສ່ໃຈ</p>
-      <p class="pillar-body">ສົ່ງລິ້ງດຽו — ຜູ້ຊື້ເຫັນຮູບ ແລະ ລາຄາທັນທີ ກ່ອນຄລິກ.</p>
+      <p class="pillar-title">ຄວາມໜ້າເຊື່ອຖື ເລີ່ມຈາກຄວາມໃស່ໃຈ</p>
+      <p class="pillar-body">ສົ່ງລິ້ງດຽວ — ຜູ້ຊື້ເຫັນຮູບ ແລະ ລາຄາທັນທີ ກ່ອນຄລິກ.</p>
     </div>
   </div>
 </div>
@@ -378,7 +279,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
       <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
       ຕິດຕໍ່ Pintag · WhatsApp
     </a>
-    <p class="cta-wa-note">ທັກຫາເຮົາໃນ WhatsApp — ເຮົາຈະຊ່ວຍຕັ້ງໂປຣໄຟລ໌ໃຫ້ທ່ານ<br>ບໍ່ມີຄ່າໃຊ້ຈ່າຍ. ບໍ່ຕ້ອງມີຄວາມຮູ້ດ້ານເຕັກໂນໂລຊີ.</p>
+    <p class="cta-wa-note">ທັກຫາເຮົາໃນ WhatsApp — ເຮົາຈະຊ່ວຍຕັ້ງໂປຣໄຟລ໌ໃຫ້ທ່ານ</p>
   </div>
 </div>
 
@@ -429,7 +330,6 @@ function renderRoster(agents,byAgent){
     card.href='agent.html?slug='+encodeURIComponent(a.slug||'');
     card.className='roster-card';
 
-    // Premium Portrait Aspect Framing
     var port=document.createElement('div'); port.className='roster-portrait';
     if(a.photo_url){
       var pi=document.createElement('img'); pi.alt='';
@@ -440,7 +340,6 @@ function renderRoster(agents,byAgent){
     }
     card.appendChild(port);
 
-    // Text Description Stack
     var info=document.createElement('div'); info.className='roster-info';
     
     if(a.is_verified){
@@ -448,7 +347,6 @@ function renderRoster(agents,byAgent){
       info.appendChild(vc);
     }
     
-    // Aligned Metadata Row (Name & Pill Tag Counter)
     var nameRow=document.createElement('div'); nameRow.className='roster-name-row';
     var nm=document.createElement('p'); nm.className='roster-name'; nm.textContent=a.name_lo||a.name_en||'Agent';
     nameRow.appendChild(nm);
