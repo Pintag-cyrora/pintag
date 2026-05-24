@@ -1,940 +1,781 @@
-<!DOCTYPE html>
-<html lang="lo">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pintag · Property</title>
-<!-- OG tags injected by Cloudflare Worker -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0;}
-html{scroll-behavior:smooth;}
-:root{
-  --teal:#2D8C8C;--teal-light:#38A8A8;--teal-dim:rgba(45,140,140,0.08);
-  --ink:#1A2428;--ink-soft:#3D5058;--ink-muted:#7A9098;
-  --warm:#F7F3EC;--white:#FFFFFF;
-  --border:rgba(26,36,40,0.07);--border-teal:rgba(45,140,140,0.18);
-}
-body{font-family:'DM Sans',sans-serif;font-weight:400;font-size:16px;line-height:1.75;background:var(--white);color:var(--ink);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+<!-- MAIN CONTENT WRAPPER -->
+<div class="g-wrap">
 
-/* LANGUAGE */
-.lo{display:block;}.en{display:none;}.zh{display:none;}
-.lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
-body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
-body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}body.lang-en .zh-i{display:none;}
-body.lang-zh .lo{display:none;}body.lang-zh .en{display:none;}body.lang-zh .zh{display:block;}
-body.lang-zh .lo-i{display:none;}body.lang-zh .en-i{display:none;}body.lang-zh .zh-i{display:inline;}
+  <!-- REQUIRED TARGET -->
+  <div id="view-target">
 
-/* NAV */
-nav{
-  position:fixed;top:0;left:0;right:0;z-index:300;height:54px;
-  display:flex;align-items:center;justify-content:space-between;padding:0 20px;
-  background:rgba(255,255,255,0.97);backdrop-filter:blur(24px);
-  border-bottom:1px solid rgba(26,36,40,0.05);
-}
-.nav-logo{display:flex;align-items:center;gap:6px;text-decoration:none;}
-.nav-wordmark{
-  font-size:18px;font-weight:800;color:#1C2B32;
-  letter-spacing:-0.02em;line-height:1;
-}
-.nav-back{
-  font-size:12px;font-weight:500;color:var(--ink-muted);
-  text-decoration:none;display:flex;align-items:center;gap:4px;
-  transition:color 0.2s;letter-spacing:0.04em;text-transform:uppercase;
-}
-.nav-back:hover{color:var(--teal);}
+    <!-- LOADER -->
+    <div class="loader-stage">
 
-/* LOADING */
-.loading-screen{display:flex;align-items:center;justify-content:center;height:100vh;}
-.loading-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:ldot 1.2s ease-in-out infinite;}
-@keyframes ldot{0%,100%{opacity:0.25;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
-
-/* ── GALLERY — immersive, no thumbnails ── */
-.gallery{
-  margin-top:54px;
-  position:relative;
-  background:var(--ink);
-  overflow:hidden;
-}
-.gallery-stage{
-  position:relative;
-  height:72vw;
-  min-height:300px;
-  max-height:580px;
-  overflow:hidden;
-  cursor:pointer;
-  user-select:none;
-}
-/* Crossfade stack */
-.g-img{
-  position:absolute;inset:0;
-  width:100%;height:100%;
-  object-fit:cover;object-position:center;
-  opacity:0;
-  transition:opacity 0.4s ease;
-  pointer-events:none;
-  display:block;
-}
-.g-img.active{opacity:1;}
-.gallery-no-img{
-  width:100%;height:100%;
-  background:#2A3A35;
-  display:flex;align-items:center;justify-content:center;
-}
-
-/* Gallery overlay — counter + status only */
-.gallery-ui{
-  position:absolute;bottom:0;left:0;right:0;
-  padding:40px 16px 14px;
-  background:linear-gradient(to top,rgba(20,28,32,0.55) 0%,transparent 100%);
-  display:flex;align-items:flex-end;justify-content:space-between;
-  z-index:2;pointer-events:none;
-}
-.g-counter{
-  font-size:12px;font-weight:400;
-  color:rgba(255,255,255,0.7);
-  letter-spacing:0.08em;
-}
-.g-status{
-  display:flex;align-items:center;gap:5px;
-  background:rgba(255,255,255,0.92);
-  padding:4px 10px;
-  font-size:10px;font-weight:500;
-  color:var(--teal);letter-spacing:0.06em;
-  pointer-events:all;
-}
-.s-dot{
-  width:4px;height:4px;border-radius:50%;
-  background:var(--teal);
-  animation:ldot 2s ease-in-out infinite;
-}
-
-/* Progress bar — replaces thumbnail strip */
-.gallery-progress{
-  display:flex;gap:3px;
-  padding:0 16px;
-  background:var(--ink);
-  height:3px;
-}
-.g-bar{
-  flex:1;height:3px;
-  background:rgba(255,255,255,0.18);
-  cursor:pointer;
-  transition:background 0.25s;
-}
-.g-bar.active{background:rgba(255,255,255,0.75);}
-
-/* Share button */
-.g-share-btn{
-  width:32px;height:32px;border-radius:50%;
-  background:rgba(255,255,255,0.15);border:none;
-  display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:background 0.2s;
-  backdrop-filter:blur(8px);
-}
-.g-share-btn:hover{background:rgba(255,255,255,0.25);}
-
-/* Nav arrows — subtle */
-.g-btn{
-  position:absolute;top:50%;transform:translateY(-50%);z-index:3;
-  width:38px;height:38px;border-radius:50%;
-  background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.2);
-  display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:all 0.3s cubic-bezier(0.4,0,0.2,1);
-  font-size:20px;color:rgba(255,255,255,0.85);line-height:1;
-  backdrop-filter:blur(8px);
-}
-.g-btn:hover{background:rgba(255,255,255,0.26);border-color:rgba(255,255,255,0.4);transform:translateY(-50%) scale(1.05);}
-.g-btn.prev{left:12px;}
-.g-btn.next{right:12px;}
-
-/* ── LANGUAGE TABS — calm ── */
-.lang-tabs{
-  display:flex;
-  border-bottom:1px solid var(--border);
-  background:var(--white);
-  position:sticky;top:54px;z-index:200;
-}
-.lang-tab{
-  flex:1;padding:13px 8px;
-  text-align:center;font-size:13px;font-weight:400;
-  color:var(--ink-muted);cursor:pointer;border:none;background:transparent;
-  border-bottom:2px solid transparent;margin-bottom:-1px;
-  transition:all 0.2s;font-family:'DM Sans',sans-serif;
-  letter-spacing:0.04em;
-}
-.lang-tab.active{color:var(--teal);border-bottom-color:var(--teal);font-weight:500;}
-
-/* STICKY WA — mobile only */
-.sticky-wa{
-  position:fixed;bottom:0;left:0;right:0;z-index:500;
-  padding:8px 16px calc(10px + env(safe-area-inset-bottom));
-  background:rgba(255,255,255,0.97);
-  border-top:1px solid var(--border);
-  backdrop-filter:blur(20px);
-  display:none;
-}
-.sticky-wa a{
-  display:flex;align-items:center;justify-content:center;gap:10px;
-  width:100%;padding:14px;
-  background:#1A9E50;color:#fff;
-  font-size:14px;font-weight:600;
-  text-decoration:none;border-radius:4px;letter-spacing:0.02em;
-  transition:background 0.2s;
-  box-shadow:0 2px 12px rgba(26,158,80,0.25);
-}
-.sticky-wa a:active{background:#168C45;}
-@media(max-width:800px){.sticky-wa{display:block;}body{padding-bottom:66px;}}
-
-/* CONTENT */
-.content{max-width:780px;margin:0 auto;}
-
-/* PRICE */
-.price-section{padding:28px 20px 22px;}
-.price-type{
-  font-size:10px;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;
-  color:var(--teal);margin-bottom:6px;
-}
-.price-figure{
-  font-size:36px;font-weight:700;color:var(--ink);
-  letter-spacing:-0.03em;line-height:1;
-}
-.price-on-req{
-  font-size:20px;font-weight:300;color:var(--ink-muted);font-style:italic;
-}
-
-/* ── AGENT — credible, calm ── */
-.agent-row{
-  display:flex;align-items:center;gap:14px;
-  padding:16px 20px;
-  border-top:1px solid var(--border);
-  border-bottom:1px solid var(--border);
-  flex-wrap:wrap;
-}
-.agent-photo{
-  width:48px;height:48px;border-radius:50%;
-  overflow:hidden;flex-shrink:0;
-  background:var(--warm);
-  border:1px solid var(--border);
-  display:flex;align-items:center;justify-content:center;
-}
-.agent-photo img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
-.agent-initial{font-size:17px;font-weight:600;color:var(--teal);}
-.agent-details{flex:1;min-width:100px;}
-.agent-name{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:3px;letter-spacing:-0.01em;}
-.agent-sub{font-size:11px;font-weight:400;color:var(--ink-muted);letter-spacing:0.02em;}
-/* Quiet verification — no pill */
-.agent-verified{color:var(--ink-muted);font-size:11px;font-weight:400;}
-.btn-contact{
-  display:flex;align-items:center;gap:8px;
-  padding:11px 18px;
-  background:#1A9E50;color:#fff;
-  font-size:13px;font-weight:600;
-  text-decoration:none;border-radius:3px;
-  transition:background 0.2s;white-space:nowrap;flex-shrink:0;
-}
-.btn-contact:hover{background:#168C45;}
-@media(max-width:800px){.btn-contact{display:none;}}
-
-/* TITLE + LOCATION */
-.listing-header{padding:28px 20px 0;}
-.l-type{
-  font-size:10px;font-weight:500;letter-spacing:0.2em;text-transform:uppercase;
-  color:var(--ink-muted);margin-bottom:8px;
-}
-.l-title{
-  font-size:clamp(21px,3.5vw,28px);font-weight:700;
-  color:var(--ink);line-height:1.2;letter-spacing:-0.025em;margin-bottom:12px;
-}
-.l-location{
-  display:flex;align-items:center;gap:6px;
-  font-size:14px;font-weight:400;color:var(--ink-soft);letter-spacing:0.01em;
-}
-
-/* DESCRIPTION — breathing room */
-.l-desc-section{padding:28px 20px;border-top:1px solid var(--border);margin-top:28px;}
-.l-desc{font-size:15px;font-weight:400;color:var(--ink-soft);line-height:2.0;letter-spacing:0.01em;}
-
-
-
-/* SPECS */
-.specs-section{padding:24px 20px;border-bottom:1px solid var(--border);}
-.specs-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}
-.spec-card{
-  padding:16px 8px;
-  background:var(--warm);
-  border:1px solid rgba(26,36,40,0.06);
-  text-align:center;
-  border-radius:3px;
-}
-.spec-val{font-size:22px;font-weight:700;color:var(--ink);line-height:1;letter-spacing:-0.02em;}
-.spec-key{font-size:9px;font-weight:400;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-top:4px;}
-.tags-row{display:flex;gap:6px;flex-wrap:wrap;}
-.tag-pill{
-  font-size:11px;font-weight:400;padding:5px 12px;
-  border-radius:20px;background:var(--white);
-  border:1px solid var(--border);color:var(--ink-soft);
-}
-
-/* LANDMARKS — Nearby label kept for clarity */
-.landmarks-section{padding:24px 20px;border-bottom:1px solid var(--border);}
-.nearby-label{
-  font-size:10px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;
-  color:var(--ink-muted);margin-bottom:14px;
-}
-.landmark-row{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 0;border-bottom:1px solid var(--border);font-size:14px;
-}
-.landmark-row:last-child{border-bottom:none;}
-.landmark-name{color:var(--ink-soft);display:flex;align-items:center;gap:8px;}
-.landmark-name::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--ink-muted);flex-shrink:0;}
-.landmark-dist{color:var(--ink-muted);font-size:13px;font-weight:400;}
-
-/* MEDIA */
-.media-section{border-bottom:1px solid var(--border);}
-.media-grid{display:grid;grid-template-columns:1fr 1fr;min-height:340px;}
-.media-grid.no-video{grid-template-columns:1fr;}
-.media-video{position:relative;background:var(--ink);overflow:hidden;border-right:1px solid var(--border);}
-.media-map{position:relative;background:#D4E4D4;overflow:hidden;border:1px solid var(--border);}
-.video-cover{position:absolute;inset:0;cursor:pointer;z-index:2;}
-.video-cover img{width:100%;height:100%;object-fit:cover;display:block;}
-.video-cover-overlay{
-  position:absolute;inset:0;background:rgba(20,28,32,0.3);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
-  transition:background 0.25s;
-}
-.video-cover-overlay:hover{background:rgba(20,28,32,0.45);}
-.play-btn{
-  width:60px;height:60px;border-radius:50%;
-  border:1.5px solid rgba(255,255,255,0.6);
-  background:rgba(255,255,255,0.1);
-  display:flex;align-items:center;justify-content:center;
-  backdrop-filter:blur(8px);transition:all 0.2s;
-}
-.video-cover-overlay:hover .play-btn{background:var(--teal);border-color:var(--teal);}
-.play-label{font-size:10px;font-weight:500;color:rgba(255,255,255,0.75);letter-spacing:0.1em;text-transform:uppercase;}
-.map-iframe{width:100%;height:100%;border:none;display:block;}
-.map-ph{width:100%;height:100%;background:#D4E4D4;display:flex;align-items:center;justify-content:center;}
-.map-lbl{
-  position:absolute;bottom:8px;left:8px;z-index:2;
-  background:rgba(20,28,32,0.8);color:rgba(255,255,255,0.75);
-  font-size:9px;font-weight:400;letter-spacing:0.12em;text-transform:uppercase;
-  padding:4px 10px;backdrop-filter:blur(8px);pointer-events:none;
-}
-.media-labels{
-  display:grid;grid-template-columns:1fr 1fr;
-  border-top:1px solid var(--border);
-}
-.media-lbl{
-  padding:9px 16px;font-size:9px;font-weight:400;letter-spacing:0.14em;
-  text-transform:uppercase;color:var(--ink-muted);background:var(--warm);
-}
-.media-lbl+.media-lbl{border-left:1px solid var(--border);}
-
-/* DOWNLOAD */
-.dl-section{padding:16px 20px;border-bottom:1px solid var(--border);}
-.btn-dl{
-  display:flex;align-items:center;justify-content:center;gap:8px;
-  width:100%;padding:13px;
-  background:var(--ink);color:#fff;
-  font-size:13px;font-weight:500;
-  text-decoration:none;border-radius:3px;transition:opacity 0.2s;letter-spacing:0.04em;
-}
-.btn-dl:hover{opacity:0.85;}
-
-/* FOOTER */
-.listing-footer{
-  padding:18px 20px 32px;
-  display:flex;align-items:center;justify-content:space-between;
-  flex-wrap:wrap;gap:8px;
-}
-.footer-note{font-size:12px;color:var(--ink-muted);}
-.footer-disc{font-size:11px;color:var(--ink-muted);font-style:italic;}
-
-/* MOBILE */
-@media(max-width:600px){
-  .gallery-stage{height:72vw;min-height:240px;}
-  .media-grid{grid-template-columns:1fr;min-height:auto;}
-  .media-video{min-height:220px;border-right:none;border-bottom:1px solid var(--border);}
-  .media-map{min-height:200px;}
-  .specs-grid{grid-template-columns:repeat(2,1fr);}
-  .price-figure{font-size:28px;}
-  .l-title{font-size:20px;}
-}
-
-/* PREMIUM MOTION — subtle, calm, intentional */
-@keyframes fadeUp{
-  from{opacity:0;transform:translateY(10px);}
-  to{opacity:1;transform:translateY(0);}
-}
-.fade-up{
-  animation:fadeUp 0.45s cubic-bezier(0.4,0,0.2,1) both;
-}
-.fade-up-1{animation-delay:0.05s;}
-.fade-up-2{animation-delay:0.1s;}
-.fade-up-3{animation-delay:0.15s;}
-.fade-up-4{animation-delay:0.2s;}
-.fade-up-5{animation-delay:0.25s;}
-
-/* Image loading — smooth reveal */
-.g-img{transition:opacity 0.45s cubic-bezier(0.4,0,0.2,1);}
-
-/* Spec card hover */
-.spec-card{transition:transform 0.2s ease,box-shadow 0.2s ease;}
-.spec-card:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(26,36,40,0.06);}
-
-/* Landmark row hover */
-.landmark-row{transition:background 0.15s ease;border-radius:3px;padding-left:4px;padding-right:4px;}
-.landmark-row:hover{background:var(--warm);}
-
-/* Tag pill hover */
-.tag-pill{transition:all 0.15s ease;}
-.tag-pill:hover{border-color:var(--teal);color:var(--teal);}
-
-@media(prefers-reduced-motion:reduce){
-  .fade-up,.g-img,.spec-card,.landmark-row,.tag-pill{animation:none;transition:none;}
-}
-</style>
-</head>
-<body>
-
-<div class="loading-screen" id="loading">
-  <div class="loading-dot"></div>
-</div>
-
-<div id="page" style="display:none;">
-
-<!-- NAV -->
-<nav>
-  <a href="index.html" class="nav-logo">
-    <svg width="28" height="24" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision">
-      <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
-      <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
-    </svg>
-    <span class="nav-wordmark">Pintag</span>
-  </a>
-  <a href="listings.html" class="nav-back">
-    ← <span class="lo-i">ລາຍການ</span><span class="en-i">Listings</span><span class="zh-i">房源</span>
-  </a>
-</nav>
-
-<!-- STICKY WA -->
-<div class="sticky-wa">
-  <a href="#" id="sticky-wa-link" target="_blank">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-    <span id="sticky-wa-text">WhatsApp</span>
-  </a>
-</div>
-
-<!-- GALLERY -->
-<div class="gallery">
-  <div class="gallery-stage" id="g-stage">
-    <div class="gallery-no-img" id="g-no-img">
-      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-6 4 6"/></svg>
-    </div>
-    <div class="gallery-ui">
-      <span class="g-counter" id="g-counter" style="display:none;"></span>
-      <div style="display:flex;align-items:flex-end;gap:10px;pointer-events:all;">
-        <button onclick="shareList()" class="g-share-btn" title="Share">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-        </button>
-        <span class="g-status">
-          <span class="s-dot"></span>
-          <span id="s-text">Available</span>
-        </span>
+      <div class="loader-cluster">
+        <div class="loader-bead"></div>
+        <div class="loader-bead"></div>
+        <div class="loader-bead"></div>
       </div>
+
+      <p>
+        <span class="lo-i">ກຳລັງໂຫຼດ...</span>
+        <span class="en-i">Loading...</span>
+        <span class="zh-i">加载中...</span>
+      </p>
+
     </div>
-  </div>
-  <button class="g-btn prev" id="g-prev" onclick="gPrev(event)" style="display:none;">‹</button>
-  <button class="g-btn next" id="g-next" onclick="gNext(event)" style="display:none;">›</button>
-  <!-- Progress bar — replaces thumbnail strip -->
-  <div class="gallery-progress" id="g-progress" style="display:none;"></div>
-</div>
 
-<!-- LANGUAGE TABS -->
-<div class="lang-tabs">
-  <button class="lang-tab active" data-lang="lo" onclick="setLang('lo',this)">ລາວ</button>
-  <button class="lang-tab" data-lang="en" onclick="setLang('en',this)">English</button>
-  <button class="lang-tab" data-lang="zh" onclick="setLang('zh',this)">中文</button>
-</div>
-
-<div class="content">
-
-  <!-- PRICE -->
-  <div class="price-section fade-up fade-up-1">
-    <p class="price-type" id="pb-type"></p>
-    <p class="price-figure" id="pb-price"></p>
   </div>
 
-  <!-- AGENT — calm, credible, prominent -->
-  <div class="agent-row fade-up fade-up-2">
-    <div class="agent-photo" id="agent-photo">
-      <span class="agent-initial" id="agent-initial">?</span>
-    </div>
-    <div class="agent-details">
-      <p class="agent-name" id="agent-name-el">Agent</p>
-      <p class="agent-sub">Pintag · ວຽງຈັນ</p>
-    </div>
-    <a href="#" id="btn-contact" target="_blank" class="btn-contact">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-      <span id="contact-label">WhatsApp</span>
-    </a>
-  </div>
-
-  <!-- TITLE + LOCATION -->
-  <div class="listing-header fade-up fade-up-3">
-    <p class="l-type" id="l-type"></p>
-    <h1 class="l-title" id="l-title"></h1>
-    <p class="l-location">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7A9098" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
-      <span id="l-loc"></span>
-    </p>
-  </div>
-
-  <!-- DESCRIPTION -->
-  <div class="l-desc-section fade-up fade-up-4">
-    <div class="l-desc" id="l-desc"></div>
-  </div>
-
-
-
-  <!-- SPECS -->
-  <div class="specs-section" id="specs-section" style="display:none;">
-    <div class="specs-grid" id="specs-grid"></div>
-    <div class="tags-row" id="tags-row"></div>
-  </div>
-
-  <!-- LANDMARKS — "Nearby" label kept for clarity -->
-  <div class="landmarks-section" id="landmarks-section" style="display:none;">
-    <p class="nearby-label">
-      <span class="lo-i">ໃກ້ຄຽງ</span><span class="en-i">Nearby</span><span class="zh-i">周边</span>
-    </p>
-    <div id="landmarks-list"></div>
-  </div>
-
-  <!-- VIDEO + MAP -->
-  <div class="media-section">
-    <div class="media-grid">
-      <div class="media-video" id="video-box" style="display:none;">
-      </div>
-      <div class="media-map">
-        <iframe id="map-frame" src="about:blank" frameborder="0" allowfullscreen loading="lazy" class="map-iframe" style="display:none;width:100%;height:100%;min-height:200px;"></iframe>
-        <div id="map-ph" class="map-ph" style="min-height:200px;">
-          <p style="color:#7A9098;font-size:13px;">📍</p>
-        </div>
-        <div class="map-lbl" id="map-lbl"></div>
-      </div>
-    </div>
-    <div class="media-labels">
-      <p class="media-lbl"><span class="lo-i">ວິດີໂອ</span><span class="en-i">Video</span><span class="zh-i">视频</span></p>
-      <p class="media-lbl"><span class="lo-i">ແຜນທີ່</span><span class="en-i">Map</span><span class="zh-i">地图</span></p>
-    </div>
-  </div>
-
-  <!-- DOWNLOAD -->
-  <div class="dl-section" id="dl-section" style="display:none;">
-    <a href="#" id="dl-btn" target="_blank" class="btn-dl">
-      ↓ <span class="lo-i">ດາວໂຫຼດວິດີໂອ (Pintag)</span><span class="en-i">Download Video (Pintag)</span><span class="zh-i">下载视频 (Pintag)</span>
-    </a>
-  </div>
-
-  <!-- FOOTER -->
-  <div class="listing-footer">
-    <p class="footer-note" id="footer-note"></p>
-    <p class="footer-disc">
-      <span class="lo-i">ຂໍ້ມູນໂດຍ Agent</span>
-      <span class="en-i">Info by agent · Pintag does not verify</span>
-      <span class="zh-i">信息由经纪人提供</span>
-    </p>
-  </div>
-</div>
 </div>
 
 <script>
-const SB='https://eoladhcljbpbhnrmmpev.supabase.co';
-const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
-const BASE='https://pintag-cyrora.github.io/pintag';
-const slug=new URLSearchParams(location.search).get('slug');
-let imgs=[],idx=0;
+const BASE_DB =
+  'https://eoladhcljbpbhnrmmpev.supabase.co';
 
-// ── NORMALIZE — defensive data layer ──
-function normalizeProperty(p){
-  if(!p||typeof p!=='object') return null;
-  return {
-    ...p,
-    images: Array.isArray(p.images) ? p.images : (typeof p.images==='string' ? tryParseJSON(p.images) : []),
-    landmarks: Array.isArray(p.landmarks) ? p.landmarks : (typeof p.landmarks==='string' ? tryParseJSON(p.landmarks) : []),
-    title_en: p.title_en||'',
-    title_lo: p.title_lo||'',
-    title_zh: p.title_zh||'',
-    desc_en: p.desc_en||'',
-    desc_lo: p.desc_lo||'',
-    desc_zh: p.desc_zh||'',
-    district_en: p.district_en||'',
-    district_lo: p.district_lo||'',
-    district_zh: p.district_zh||'',
-    price_display: p.price_display||'',
-    agent_name: p.agent_name||'Agent',
-    whatsapp: p.whatsapp||'',
-    status: p.status||'available',
-    transaction_type: p.transaction_type||'for_sale',
-    slug: p.slug||''
-  };
+const SEC_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+
+let propertyContext = null;
+
+/* ---------------------------------- */
+/* URL PARAM */
+/* ---------------------------------- */
+
+function fetchUrlParamSlug() {
+
+  return new URLSearchParams(
+    window.location.search
+  ).get('slug');
 }
 
-function tryParseJSON(str){
-  try{ const r=JSON.parse(str); return Array.isArray(r)?r:[]; }catch(e){ return []; }
+/* ---------------------------------- */
+/* LANGUAGE */
+/* ---------------------------------- */
+
+function getCurrentLang() {
+
+  const body = document.body;
+
+  if (!body) return 'lo';
+
+  if (body.classList.contains('lang-en')) {
+    return 'en';
+  }
+
+  if (body.classList.contains('lang-zh')) {
+    return 'zh';
+  }
+
+  return 'lo';
 }
 
-// Sanitize agent-entered text before innerHTML injection
-function safeText(str){
-  const d=document.createElement('div');
-  d.textContent=str||'';
-  return d.innerHTML;
-}
+function setLang(
+  targetLanguageCode,
+  contextBtnElement
+) {
 
-// ── AUTO AGENT PHOTO by name ──
-function getAgentPhoto(name){
-  if(!name) return null;
-  const n=name.toLowerCase().trim();
-  const map={
-    'keomany':'agent-keomany.jpg',
-    'tik':'agent-tik.jpg',
-    'ທິກ':'agent-tik.jpg',
-    'ແກ້ວມະນີ':'agent-keomany.jpg',
-  };
-  if(map[n]) return BASE+'/'+map[n];
-  for(const k in map){ if(n.includes(k)||k.includes(n)) return BASE+'/'+map[k]; }
-  return null;
-}
+  document.body.classList.remove(
+    'lang-en',
+    'lang-zh'
+  );
 
-// ── LOAD ──
-function showError(loading, isTimeout){
-  const msg = isTimeout
-    ? 'ການໂຫຼດໃຊ້ເວລາດົນເກີນໄປ · Connection timed out'
-    : 'ບໍ່ສາມາດໂຫຼດໄດ້ · Unable to load listing';
-  loading.innerHTML =
-    '<div style="padding:40px 24px;text-align:center;font-family:DM Sans,sans-serif;max-width:320px;margin:0 auto;">' +
-      '<p style="color:#7A9098;font-size:14px;line-height:1.7;margin-bottom:20px;">'+msg+'</p>' +
-      '<button onclick="location.reload()" style="padding:10px 24px;background:#2D8C8C;color:#fff;border:none;border-radius:3px;font-size:14px;font-family:DM Sans,sans-serif;cursor:pointer;margin-bottom:12px;display:block;width:100%;">↺ ລອງໃໝ່ · Retry</button>' +
-      '<a href="listings.html" style="color:#7A9098;font-size:13px;text-decoration:none;display:block;">← ກັບຄືນ · Back to listings</a>' +
-    '</div>';
-}
+  if (targetLanguageCode !== 'lo') {
 
-async function loadProperty(){
-  const loading=document.getElementById('loading');
-  const page=document.getElementById('page');
-  const controller=new AbortController();
-  const timer=setTimeout(function(){
-    controller.abort();
-  }, 8000);
-  try{
-    if(!slug) throw new Error('No slug');
-    const r=await fetch(
-      SB+'/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&limit=1',
-      { headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}, signal:controller.signal }
+    document.body.classList.add(
+      'lang-' + targetLanguageCode
     );
-    clearTimeout(timer);
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const d=await r.json();
-    if(!d||!d[0]) throw new Error('Not found');
-    const p=normalizeProperty(d[0]);
-    if(!p) throw new Error('Invalid data');
-    render(p);
-    loading.style.display='none';
-    page.style.display='block';
-  }catch(err){
-    clearTimeout(timer);
-    console.error('Pintag load error:',err.message);
-    const isTimeout = err.name==='AbortError';
-    showError(loading, isTimeout);
+  }
+
+  document
+    .querySelectorAll('.lang-btn')
+    .forEach(btn =>
+      btn.classList.remove('active')
+    );
+
+  contextBtnElement.classList.add(
+    'active'
+  );
+
+  if (propertyContext) {
+    buildMockupLayout();
   }
 }
 
-function fmtDate(s){
-  if(!s) return '';
-  try{
-    const d=new Date(s);
-    const m=['ມ.ກ','ກ.ພ','ມ.ນ','ເ.ສ','ພ.ພ','ມິ.ຖ','ກ.ລ','ສ.ຫ','ກ.ຍ','ຕ.ລ','ພ.ຈ','ທ.ວ'];
-    return d.getDate()+' '+m[d.getMonth()]+' '+d.getFullYear();
-  }catch(e){ return ''; }
-}
+/* ---------------------------------- */
+/* FETCH */
+/* ---------------------------------- */
 
-function render(p){
-  try{
-    document.title='Pintag · '+(p.title_en||p.title_lo||'Property');
-    const txLo=p.transaction_type==='for_sale'?'ຂາຍ':'ໃຫ້ເຊົ່າ';
-    const txEn=p.transaction_type==='for_sale'?'For Sale':'For Rent';
-    const txZh=p.transaction_type==='for_sale'?'出售':'租房';
-    const waN=p.whatsapp.replace(/[^0-9]/g,'');
-    const waM=encodeURIComponent('ສະບາຍດີ, ຂ້ອຍເຫັນລາຍການ Pintag: '+(p.title_en||'')+'  — ຢາກສອບຖາມ');
-    const waU='https://wa.me/'+waN+'?text='+waM;
-    const agName=p.agent_name;
+async function requestPropertyData() {
 
-    // Gallery
-    imgs=Array.isArray(p.images)?p.images:[];
-    const stage=document.getElementById('g-stage');
-    if(imgs.length){
-      document.getElementById('g-no-img').style.display='none';
-      imgs.forEach(function(src,i){
-        const img=document.createElement('img');
-        img.className='g-img'+(i===0?' active':'');
-        img.src=src;
-        img.alt='Photo '+(i+1);
-        img.loading=i===0?'eager':'lazy';
-        img.decoding='async';
-        stage.insertBefore(img,stage.querySelector('.gallery-ui'));
-      });
-      if(imgs.length>1){
-        document.getElementById('g-counter').style.display='block';
-        document.getElementById('g-counter').textContent='1 / '+imgs.length;
-        document.getElementById('g-prev').style.display='flex';
-        document.getElementById('g-next').style.display='flex';
-        const pb=document.getElementById('g-progress');
-        pb.style.display='flex';
-        imgs.forEach(function(_,i){
-          const bar=document.createElement('div');
-          bar.className='g-bar'+(i===0?' active':'');
-          bar.onclick=function(){ goTo(i); };
-          pb.appendChild(bar);
-        });
-      }
-      let tx=0;
-      stage.addEventListener('touchstart',function(e){ tx=e.touches[0].clientX; },{passive:true});
-      stage.addEventListener('touchend',function(e){
-        const dx=e.changedTouches[0].clientX-tx;
-        if(Math.abs(dx)>40){ dx<0?gNext():gPrev(); }
-      },{passive:true});
-    }
+  const slug =
+    fetchUrlParamSlug();
 
-    // Status
-    const st=p.status==='available'?
-      '<span class="lo-i">ວ່າງ</span><span class="en-i">Available</span><span class="zh-i">可用</span>':
-      (p.status||'');
-    document.getElementById('s-text').innerHTML=st;
+  const wrapper =
+    document.getElementById(
+      'view-target'
+    );
 
-    // Lang tabs
-    document.querySelectorAll('.lang-tab').forEach(function(tab){
-      const l=tab.dataset.lang;
-      if(l==='en'&&!p.title_en&&!p.desc_en) tab.style.display='none';
-      if(l==='zh'&&!p.title_zh&&!p.desc_zh) tab.style.display='none';
-    });
+  if (!wrapper) {
+    console.error(
+      'Missing #view-target'
+    );
+    return;
+  }
 
-    // Price
-    document.getElementById('pb-type').innerHTML=
-      '<span class="lo-i">'+txLo+'</span><span class="en-i">'+txEn+'</span><span class="zh-i">'+txZh+'</span>';
-    const pe=document.getElementById('pb-price');
-    if(p.price_display){ pe.textContent=p.price_display; }
-    else{ pe.className='price-on-req'; pe.innerHTML='<span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span>'; }
+  if (!slug) {
 
-    // Agent
-    document.getElementById('agent-name-el').textContent = agName;
+    const msg = {
+      lo:'ບໍ່ພົບລະຫັດລາຍການ',
+      en:'Missing listing reference',
+      zh:'缺少房源编号'
+    };
 
-    var av = document.getElementById('agent-photo');
-    var fallbackInitial = agName.charAt(0).toUpperCase();
-    var photoUrl = getAgentPhoto(agName) || p.agent_photo_url || null;
+    wrapper.innerHTML = `
+      <div class="loader-stage">
+        <h3>${msg[getCurrentLang()]}</h3>
+      </div>
+    `;
 
-    av.innerHTML = '<span class="agent-initial">' + fallbackInitial + '</span>';
+    return;
+  }
 
-    if(photoUrl){
-      var img = document.createElement('img');
-      img.src = photoUrl;
-      img.alt = agName;
-      img.style.cssText = 'width:100%;height:100%;object-fit:cover;object-position:top center;display:block;';
-      img.onerror = function(){
-        this.onerror = null;
-        av.innerHTML = '<span class="agent-initial">' + fallbackInitial + '</span>';
+  try {
+
+    const cleanSlug =
+      encodeURIComponent(
+        slug.trim()
+      );
+
+    const response =
+      await fetch(
+        `${BASE_DB}/rest/v1/properties?slug=eq.${cleanSlug}&select=*`,
+        {
+          headers:{
+            apikey:SEC_KEY,
+            Authorization:
+              'Bearer ' + SEC_KEY
+          }
+        }
+      );
+
+    const payload =
+      await response.json();
+
+    console.log(payload);
+
+    if (
+      !payload ||
+      !payload.length
+    ) {
+
+      const msg = {
+        lo:'ບໍ່ພົບລາຍການນີ້',
+        en:'Listing not found',
+        zh:'未找到该房源'
       };
-      av.replaceChildren(img);
-    }
-    document.getElementById('btn-contact').href=waU;
-    document.getElementById('contact-label').textContent='ຕິດຕໍ່ '+agName;
-    document.getElementById('sticky-wa-link').href=waU;
-    document.getElementById('sticky-wa-text').textContent='ຕິດຕໍ່ '+agName+' · WhatsApp';
 
-    // Title + location
-    document.getElementById('l-type').innerHTML=
-      '<span class="lo-i">'+txLo+'</span><span class="en-i">'+txEn+'</span><span class="zh-i">'+txZh+'</span>';
-    document.getElementById('l-title').innerHTML=
-      '<span class="lo-i">'+(p.title_lo||p.title_en)+'</span><span class="en-i">'+p.title_en+'</span><span class="zh-i">'+(p.title_zh||p.title_en)+'</span>';
-    document.getElementById('l-loc').innerHTML=
-      '<span class="lo-i">'+(p.district_lo||'')+', ວຽງຈັນ</span><span class="en-i">'+(p.district_en||'')+', Vientiane</span><span class="zh-i">'+(p.district_zh||'')+', 万象</span>';
+      wrapper.innerHTML = `
+        <div class="loader-stage">
+          <h3>${msg[getCurrentLang()]}</h3>
+        </div>
+      `;
 
-    // Description
-    document.getElementById('l-desc').innerHTML=
-      '<span class="lo">'+safeText(p.desc_lo||p.desc_en)+'</span><span class="en">'+safeText(p.desc_en)+'</span><span class="zh">'+safeText(p.desc_zh||p.desc_en)+'</span>';
-
-    // Specs
-    var sg=document.getElementById('specs-grid');
-    var si=[];
-    if(p.bedrooms) si.push({v:p.bedrooms,k:'<span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">Beds</span><span class="zh-i">卧室</span>'});
-    if(p.bathrooms) si.push({v:p.bathrooms,k:'<span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">Baths</span><span class="zh-i">浴室</span>'});
-    if(p.sqm) si.push({v:p.sqm,k:'SQM'});
-    if(p.floors) si.push({v:p.floors,k:'<span class="lo-i">ຊັ້ນ</span><span class="en-i">Floors</span><span class="zh-i">层</span>'});
-    if(si.length){
-      document.getElementById('specs-section').style.display='block';
-      sg.style.gridTemplateColumns='repeat('+Math.min(si.length,4)+',1fr)';
-      si.forEach(function(s){ sg.innerHTML+='<div class="spec-card"><p class="spec-val">'+s.v+'</p><p class="spec-key">'+s.k+'</p></div>'; });
-      var tags=[];
-      if(p.furnished==='fully') tags.push('<span class="lo-i">ເຄື່ອງເຟີນີເຈີຄົບ</span><span class="en-i">Fully Furnished</span><span class="zh-i">全配家具</span>');
-      if(p.furnished==='partially') tags.push('<span class="lo-i">ບາງສ່ວນ</span><span class="en-i">Part Furnished</span><span class="zh-i">部分家具</span>');
-      if(p.parking) tags.push('<span class="lo-i">ທີ່ຈອດລົດ ✓</span><span class="en-i">Parking ✓</span><span class="zh-i">停车位 ✓</span>');
-      if(p.pool) tags.push('<span class="lo-i">ສະລອຍນ້ຳ ✓</span><span class="en-i">Pool ✓</span><span class="zh-i">泳池 ✓</span>');
-      var tr=document.getElementById('tags-row');
-      tags.forEach(function(t){ tr.innerHTML+='<span class="tag-pill">'+t+'</span>'; });
+      return;
     }
 
-    // Landmarks — safe forEach
-    if(p.landmarks.length){
-      document.getElementById('landmarks-section').style.display='block';
-      var ll=document.getElementById('landmarks-list');
-      p.landmarks.forEach(function(l){
-        if(!l||typeof l!=='object') return;
-        ll.innerHTML+='<div class="landmark-row"><span class="landmark-name"><span class="lo-i">'+(l.name_lo||l.name_en||'')+'</span><span class="en-i">'+(l.name_en||l.name_lo||'')+'</span><span class="zh-i">'+(l.name_zh||l.name_en||'')+'</span></span><span class="landmark-dist">'+(l.distance||'')+'</span></div>';
-      });
-    }
+    propertyContext =
+      payload[0];
 
-    // Video
-    var vb=document.getElementById('video-box');
-    var vu=p.video_url||(p.video_drive_id?'https://drive.google.com/file/d/'+p.video_drive_id+'/view':null);
-    if(vu){
-      vb.style.display='block';
-      var isTT=vu.includes('tiktok.com');
-      var th=imgs[0]||'';
-      var pl=isTT?'<span class="lo-i">ເບິ່ງໃນ TikTok ↗</span><span class="en-i">Watch on TikTok ↗</span><span class="zh-i">在TikTok观看 ↗</span>':'<span class="lo-i">ຫຼິ້ນວິດີໂອ</span><span class="en-i">Play Video</span><span class="zh-i">播放视频</span>';
-      vb.style.position='relative';
-      // Build video cover using DOM — avoids URL quote escaping fragility
-      var cover=document.createElement('div');
-      cover.className='video-cover';
-      var videoUrl=vu; // capture for closure
-      cover.onclick=function(){ playVid(this,videoUrl); };
-      if(th){
-        var tImg=document.createElement('img');
-        tImg.src=th; tImg.alt='';
-        tImg.style.cssText='width:100%;height:100%;object-fit:cover;display:block;';
-        cover.appendChild(tImg);
-      } else {
-        var tDiv=document.createElement('div');
-        tDiv.style.cssText='width:100%;height:100%;min-height:200px;background:#1A2428;';
-        cover.appendChild(tDiv);
-      }
-      var overlay=document.createElement('div');
-      overlay.className='video-cover-overlay';
-      overlay.innerHTML='<div class="play-btn"><svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div><span class="play-label">'+pl+'</span>';
-      cover.appendChild(overlay);
-      var vec=document.createElement('div');
-      vec.id='vec'; vec.style.cssText='position:absolute;inset:0;display:none;';
-      vb.innerHTML='';
-      vb.appendChild(cover);
-      vb.appendChild(vec);
-      // Show media labels
-      document.querySelector('.media-labels').style.display='grid';
-    } else {
-      // No video — make map full width
-      var mg=document.querySelector('.media-grid');
-      if(mg) mg.style.gridTemplateColumns='1fr';
-      var ml=document.querySelector('.media-lbl+.media-lbl');
-      if(ml) ml.style.display='none';
-    }
+    buildMockupLayout();
 
-    // Map
-    if(p.map_embed_url){
-      var mf=document.getElementById('map-frame');
-      mf.src=p.map_embed_url;
-      mf.style.display='block';
-      document.getElementById('map-ph').style.display='none';
-      document.getElementById('map-lbl').innerHTML=
-        '<span class="lo-i">'+(p.district_lo||'')+'</span><span class="en-i">'+(p.district_en||'')+'</span><span class="zh-i">'+(p.district_zh||'')+'</span>';
-    }
+  } catch(err) {
 
-    // Download
-    var du=p.download_url||(p.video_drive_id?'https://drive.google.com/uc?export=download&id='+p.video_drive_id:null);
-    if(du){
-      document.getElementById('dl-section').style.display='block';
-      var durl=du;
-      var m=du.match(/[-\w]{25,}/);
-      if(du.includes('drive.google.com')&&m) durl='https://drive.google.com/uc?export=download&id='+m[0];
-      document.getElementById('dl-btn').href=durl;
-    }
+    console.error(err);
 
-    // Footer
-    document.getElementById('footer-note').textContent=agName+' · Pintag · '+fmtDate(p.created_at);
-
-  }catch(err){
-    console.error('Pintag render error:',err.message,err.stack);
-    document.getElementById('loading').innerHTML='<div style="padding:40px 24px;text-align:center;font-family:DM Sans,sans-serif;"><p style="color:#7A9098;font-size:14px;margin-bottom:16px;">Unable to display listing</p><a href="listings.html" style="color:#2D8C8C;font-size:14px;text-decoration:none;">← Back to listings</a></div>';
-    document.getElementById('loading').style.display='flex';
-    document.getElementById('page').style.display='none';
+    wrapper.innerHTML = `
+      <div class="loader-stage">
+        <h3>Error loading property</h3>
+      </div>
+    `;
   }
 }
 
-// ── GALLERY NAV ──
-function goTo(i){
-  if(!imgs.length) return;
-  document.querySelectorAll('.g-img')[idx] && document.querySelectorAll('.g-img')[idx].classList.remove('active');
-  document.querySelectorAll('.g-bar')[idx] && document.querySelectorAll('.g-bar')[idx].classList.remove('active');
-  idx=(i+imgs.length)%imgs.length;
-  document.querySelectorAll('.g-img')[idx] && document.querySelectorAll('.g-img')[idx].classList.add('active');
-  document.querySelectorAll('.g-bar')[idx] && document.querySelectorAll('.g-bar')[idx].classList.add('active');
-  document.getElementById('g-counter').textContent=(idx+1)+' / '+imgs.length;
-}
-function gNext(e){ if(e)e.stopPropagation(); goTo(idx+1); }
-function gPrev(e){ if(e)e.stopPropagation(); goTo(idx-1); }
-document.getElementById('g-stage').addEventListener('click',function(){ if(imgs.length>1) gNext(); });
-document.addEventListener('keydown',function(e){
-  if(e.key==='ArrowRight') gNext();
-  if(e.key==='ArrowLeft') gPrev();
-});
+/* ---------------------------------- */
+/* BUILD PAGE */
+/* ---------------------------------- */
 
-// ── VIDEO ──
-function playVid(cover,url){
-  if(url.includes('tiktok.com')){ window.open(url,'_blank'); return; }
-  var h=getEmbed(url); if(!h) return;
-  var c=document.getElementById('vec');
-  c.innerHTML=h; c.style.cssText='display:block;position:absolute;inset:0;';
-  var f=c.querySelector('iframe,video');
-  if(f) f.style.cssText='width:100%;height:100%;position:absolute;inset:0;border:none;';
-  cover.style.display='none';
+function buildMockupLayout() {
+
+  const container =
+    document.getElementById(
+      'view-target'
+    );
+
+  if (!container) return;
+
+  const lang =
+    getCurrentLang();
+
+  const data =
+    propertyContext;
+
+  const resolvedTitle =
+    data[`title_${lang}`] ||
+    data.title_en ||
+    data.title_lo ||
+    '';
+
+  const resolvedDesc =
+    data[`description_${lang}`] ||
+    data.description_en ||
+    data.description_lo ||
+    '';
+
+  const resolvedDistrict =
+    data[`district_${lang}`] ||
+    data.district_en ||
+    '';
+
+  const txLabels = {
+    sale:{
+      lo:'ຂາຍ',
+      en:'For Sale',
+      zh:'出售'
+    },
+    rent:{
+      lo:'ໃຫ້ເຊົ່າ',
+      en:'For Rent',
+      zh:'租房'
+    }
+  };
+
+  const isSale =
+    data.transaction_type ===
+      'for_sale' ||
+    data.transaction_type ===
+      'sale';
+
+  const txTag =
+    isSale
+      ? txLabels.sale[lang]
+      : txLabels.rent[lang];
+
+  const imagesArray =
+    Array.isArray(data.images)
+      ? data.images
+      : [];
+
+  /* ---------------------------------- */
+  /* GALLERY */
+  /* ---------------------------------- */
+
+  let mosaicContainerMarkup =
+    '';
+
+  if (imagesArray.length) {
+
+    let sideImagesMarkup =
+      '';
+
+    const secondary =
+      imagesArray.slice(1,3);
+
+    if (!secondary.length) {
+
+      sideImagesMarkup += `
+        <div class="mosaic-sub-img">
+          <img src="${imagesArray[0]}" alt="">
+        </div>
+      `;
+
+      sideImagesMarkup += `
+        <div class="mosaic-sub-img">
+          <img src="${imagesArray[0]}" alt="">
+        </div>
+      `;
+
+    } else {
+
+      secondary.forEach(imgSrc => {
+
+        sideImagesMarkup += `
+          <div
+            class="mosaic-sub-img"
+            onclick="shiftFocusHero('${imgSrc}')">
+
+            <img
+              src="${imgSrc}"
+              alt="">
+
+          </div>
+        `;
+      });
+    }
+
+    mosaicContainerMarkup = `
+      <div class="mosaic-gallery">
+
+        <div
+          class="mosaic-main"
+          id="primary-hero-frame">
+
+          <img
+            src="${imagesArray[0]}"
+            alt="">
+
+        </div>
+
+        <div class="mosaic-sidebar">
+          ${sideImagesMarkup}
+        </div>
+
+      </div>
+    `;
+  }
+
+  /* ---------------------------------- */
+  /* VIDEO + MAP */
+/* ---------------------------------- */
+
+  let standaloneMediaMarkup =
+    '';
+
+  if (
+    data.video_url ||
+    data.map_url
+  ) {
+
+    standaloneMediaMarkup += `
+      <div class="divider"></div>
+
+      <div class="asset-stack">
+    `;
+
+    if (data.video_url) {
+
+      const parsedFrame =
+        generateEmbeddedVideoFrame(
+          data.video_url
+        );
+
+      if (parsedFrame) {
+
+        standaloneMediaMarkup += `
+          <div>
+
+            <p class="section-caption">
+              Video
+            </p>
+
+            <div class="asset-iframe-wrapper">
+              ${parsedFrame}
+            </div>
+
+          </div>
+        `;
+      }
+    }
+
+    if (data.map_url) {
+
+      standaloneMediaMarkup += `
+        <div>
+
+          <p class="section-caption">
+            Map
+          </p>
+
+          <div class="asset-iframe-wrapper">
+
+            <iframe
+              src="${data.map_url}"
+              loading="lazy"
+              allowfullscreen>
+            </iframe>
+
+          </div>
+
+        </div>
+      `;
+    }
+
+    standaloneMediaMarkup += `
+      </div>
+    `;
+  }
+
+  /* ---------------------------------- */
+  /* WHATSAPP */
+/* ---------------------------------- */
+
+  const waText =
+    encodeURIComponent(
+      resolvedTitle +
+      ' (' +
+      window.location.href +
+      ')'
+    );
+
+  const directWhatsAppUrl =
+    `https://wa.me/${
+      data.agent_phone ||
+      '85620542966655'
+    }?text=${waText}`;
+
+  /* ---------------------------------- */
+  /* PAGE */
+/* ---------------------------------- */
+
+  container.innerHTML = `
+
+    ${mosaicContainerMarkup}
+
+    <div class="columns-grid">
+
+      <div class="stream-content">
+
+        <div class="info-header">
+
+          <span class="info-tag">
+            ${txTag}
+            ·
+            ${data.property_type || ''}
+          </span>
+
+          <h1 class="info-title">
+            ${resolvedTitle}
+          </h1>
+
+          <div class="info-location">
+            ${resolvedDistrict}
+            ${resolvedDistrict ? ',' : ''}
+            Vientiane
+          </div>
+
+        </div>
+
+        ${
+          resolvedDesc
+          ? `
+            <div class="divider"></div>
+
+            <div>
+
+              <p class="section-caption">
+                Overview
+              </p>
+
+              <p class="body-narrative">
+                ${resolvedDesc}
+              </p>
+
+            </div>
+          `
+          : ''
+        }
+
+        ${standaloneMediaMarkup}
+
+      </div>
+
+      <div class="sticky-sidebar">
+
+        <div class="sticky-card">
+
+          <p class="card-price-label">
+            Price
+          </p>
+
+          ${
+            data.price_display
+            ? `
+              <p class="card-price-value">
+                ${data.price_display}
+              </p>
+            `
+            : `
+              <p class="card-price-negotiable">
+                Contact Agent
+              </p>
+            `
+          }
+
+          <div class="card-metrics">
+
+            ${
+              data.bedrooms
+              ? `
+                <div class="metric-row">
+
+                  <span class="metric-label">
+                    Bedrooms
+                  </span>
+
+                  <span class="metric-value">
+                    ${data.bedrooms}
+                  </span>
+
+                </div>
+              `
+              : ''
+            }
+
+            ${
+              data.bathrooms
+              ? `
+                <div class="metric-row">
+
+                  <span class="metric-label">
+                    Bathrooms
+                  </span>
+
+                  <span class="metric-value">
+                    ${data.bathrooms}
+                  </span>
+
+                </div>
+              `
+              : ''
+            }
+
+            ${
+              data.sqm
+              ? `
+                <div class="metric-row">
+
+                  <span class="metric-label">
+                    Area
+                  </span>
+
+                  <span class="metric-value">
+                    ${data.sqm} m²
+                  </span>
+
+                </div>
+              `
+              : ''
+            }
+
+          </div>
+
+          <div class="action-box">
+
+            <a
+              href="${directWhatsAppUrl}"
+              target="_blank"
+              class="btn-primary btn-whatsapp">
+
+              WhatsApp
+
+            </a>
+
+            <button
+              class="btn-primary btn-outline"
+              onclick="triggerNativeShareChannel()">
+
+              Share Listing
+
+            </button>
+
+          </div>
+
+          ${
+            data.agent_name
+            ? `
+              <div class="card-agent">
+
+                <img
+                  class="agent-pfp"
+                  src="${data.agent_photo || ''}"
+                  onerror="this.src='https://placehold.co/100x100/EDE8DF/7A9098?text=P'"
+                  alt="">
+
+                <div class="agent-info-stack">
+
+                  <span class="agent-subtitle">
+                    Agent
+                  </span>
+
+                  <span class="agent-username">
+                    ${data.agent_name}
+                  </span>
+
+                </div>
+
+              </div>
+            `
+            : ''
+          }
+
+        </div>
+
+      </div>
+
+    </div>
+  `;
 }
-function getEmbed(url){
-  var yt=url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
-  if(yt) return '<iframe src="https://www.youtube.com/embed/'+yt[1]+'?rel=0" frameborder="0" allowfullscreen allow="autoplay;picture-in-picture"></iframe>';
-  if(url.includes('facebook.com')) return '<iframe src="https://www.facebook.com/plugins/video.php?href='+encodeURIComponent(url)+'&show_text=false&mute=0" frameborder="0" allowfullscreen allow="autoplay;clipboard-write;encrypted-media;picture-in-picture;web-share"></iframe>';
-  var dr=url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if(dr) return '<iframe src="https://drive.google.com/file/d/'+dr[1]+'/preview" frameborder="0" allow="autoplay" allowfullscreen></iframe>';
-  var vi=url.match(/vimeo\.com\/(\d+)/);
-  if(vi) return '<iframe src="https://player.vimeo.com/video/'+vi[1]+'" frameborder="0" allowfullscreen></iframe>';
+
+/* ---------------------------------- */
+/* HERO SWAP */
+/* ---------------------------------- */
+
+function shiftFocusHero(
+  imageSource
+) {
+
+  const currentHeroImg =
+    document.querySelector(
+      '#primary-hero-frame img'
+    );
+
+  if (currentHeroImg) {
+
+    currentHeroImg.src =
+      imageSource;
+  }
+}
+
+/* ---------------------------------- */
+/* VIDEO EMBED */
+/* ---------------------------------- */
+
+function generateEmbeddedVideoFrame(
+  url
+) {
+
+  if (!url) return null;
+
+  if (
+    url.includes(
+      'youtube.com/embed/'
+    )
+  ) {
+
+    return `
+      <iframe
+        src="${url}"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
+  if (
+    url.includes(
+      'youtube.com/watch?v='
+    )
+  ) {
+
+    const id =
+      url
+        .split('v=')[1]
+        ?.split('&')[0];
+
+    return `
+      <iframe
+        src="https://www.youtube.com/embed/${id}"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
+  if (
+    url.includes(
+      'youtu.be/'
+    )
+  ) {
+
+    const id =
+      url
+        .split('youtu.be/')[1]
+        ?.split('?')[0];
+
+    return `
+      <iframe
+        src="https://www.youtube.com/embed/${id}"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
+  if (
+    url.includes(
+      'facebook.com'
+    )
+  ) {
+
+    return `
+      <iframe
+        src="https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
+  const driveMatch =
+    url.match(
+      /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/
+    );
+
+  if (driveMatch) {
+
+    return `
+      <iframe
+        src="https://drive.google.com/file/d/${driveMatch[1]}/preview"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
   return null;
 }
 
-// ── SHARE ──
-async function shareList(){
-  var titleEl=document.getElementById('l-title');
-  var title=titleEl?titleEl.textContent:'Pintag';
-  var url=window.location.href;
-  if(navigator.share){
-    try{ await navigator.share({title:title,url:url}); }catch(e){}
+/* ---------------------------------- */
+/* SHARE */
+/* ---------------------------------- */
+
+async function triggerNativeShareChannel() {
+
+  if (navigator.share) {
+
+    try {
+
+      await navigator.share({
+        title:'Pintag',
+        url:window.location.href
+      });
+
+    } catch(err) {
+
+      console.error(err);
+    }
+
   } else {
-    try{
-      await navigator.clipboard.writeText(url);
-      var btn=document.querySelector('.g-share-btn');
-      if(btn){ btn.style.background='rgba(45,140,140,0.5)'; setTimeout(function(){ btn.style.background=''; },1500); }
-    }catch(e){}
+
+    try {
+
+      await navigator.clipboard.writeText(
+        window.location.href
+      );
+
+      alert('Link copied');
+
+    } catch(err) {
+
+      console.error(err);
+    }
   }
 }
 
-// ── LANGUAGE ──
-function setLang(lang,btn){
-  document.body.className=lang==='lo'?'':'lang-'+lang;
-  document.querySelectorAll('.lang-tab').forEach(function(b){ b.classList.remove('active'); });
-  btn.classList.add('active');
-}
+/* ---------------------------------- */
+/* INIT */
+/* ---------------------------------- */
 
-loadProperty();
-
+window.addEventListener(
+  'DOMContentLoaded',
+  () => {
+    requestPropertyData();
+  }
+);
 </script>
-</body>
-</html>
