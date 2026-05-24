@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pintag · ລາຍການທັງໝົດ</title>
+<title>Pintag · ລາຍລະອຽດອະສັງຫາ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -11,14 +11,14 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
 :root{
-  --teal:#2D8C8C;--teal-light:#38A8A8;--teal-dim:rgba(45,140,140,0.05);
+  --teal:#2D8C8C;--teal-light:#38A8A8;
   --ink:#1C2B32;--ink-soft:#3D5058;--ink-muted:#7A9098;
   --warm:#F7F3EC;--warm-deep:#EDE8DF;--white:#FFFFFF;
-  --border:rgba(26,36,40,0.06);--border-teal:rgba(45,140,140,0.12);
+  --border:rgba(26,36,40,0.06);--wa:#1A9E50;
 }
-body{font-family:'DM Sans',sans-serif;font-weight:400;font-size:15px;line-height:1.7;background:var(--warm);color:var(--ink);-webkit-font-smoothing:antialiased;}
+body{font-family:'DM Sans',sans-serif;font-weight:400;font-size:15px;line-height:1.75;background:var(--warm);color:var(--ink);-webkit-font-smoothing:antialiased;}
 
-/* MULTI-LANGUAGE DECOUPLING STACK */
+/* LANGUAGE TOGGLE CHANNELS */
 .lo{display:block;}.en{display:none;}.zh{display:none;}
 .lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
 body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
@@ -26,107 +26,97 @@ body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}body.lang-en
 body.lang-zh .lo{display:none;}body.lang-zh .en{display:none;}body.lang-zh .zh{display:block;}
 body.lang-zh .lo-i{display:none;}body.lang-zh .en-i{display:none;}body.lang-zh .zh-i{display:inline;}
 
-/* FIXED NAVIGATION IDENTITY */
+/* FIXED HEAD BAR */
 nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(255,255,255,0.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(26,36,40,0.05);}
 .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
 .nav-wordmark{font-size:18px;font-weight:800;color:var(--ink);letter-spacing:-0.02em;line-height:1;}
 .nav-right{display:flex;align-items:center;gap:16px;}
 .lang-switcher{display:flex;gap:4px;background:var(--warm);padding:3px;border-radius:20px;border:1px solid var(--border);}
-.lang-btn{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:700;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:12px;transition:all 0.2s;}
+.lang-btn{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:700;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:12px;}
 .lang-btn.active{background:var(--ink);color:var(--white);}
-.nav-home{font-size:12px;font-weight:600;color:var(--ink-muted);text-decoration:none;letter-spacing:0.04em;text-transform:uppercase;}
-.nav-home:hover{color:var(--ink);}
+.nav-back{font-size:12px;font-weight:600;color:var(--ink-muted);text-decoration:none;letter-spacing:0.04em;text-transform:uppercase;}
 
-/* CORE WRAPPER CONTROLLER */
-.g-wrap{max-width:1140px;margin:54px auto 0;background:var(--white);min-height:calc(100vh - 54px);box-shadow:0 0 40px rgba(28,43,50,0.02);position:relative;}
+/* CORE EDITORIAL FRAMEWORK (MAXED AT 1200PX FOR ULTRA-WIDE DISPLAYS) */
+.g-wrap{max-width:1200px;margin:54px auto 0;background:var(--white);min-height:calc(100vh - 54px);padding:32px 32px 60px 32px;}
 
-/* BRANDED EDITORIAL HEADER */
-.page-header{background:var(--white);border-bottom:1px solid var(--border);padding:50px 40px 0;}
-.page-title{font-size:36px;font-weight:800;color:var(--ink);letter-spacing:-0.03em;line-height:1.2;margin-bottom:6px;}
-.page-count{font-size:13px;font-weight:500;color:var(--ink-muted);margin-bottom:32px;letter-spacing:0.02em;}
+/* MOSAIC GALLERY INTERFACE (MATCHING MOCKUP SPATIAL GRID) */
+.mosaic-gallery{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;margin-bottom:40px;border-radius:16px;overflow:hidden;}
+.mosaic-main{width:100%;aspect-ratio:4/3;background:var(--warm-deep);overflow:hidden;}
+.mosaic-main img{width:100%;height:100%;object-fit:cover;display:block;}
+.mosaic-sidebar{display:grid;grid-template-rows:repeat(2,1fr);gap:12px;}
+.mosaic-sub-img{width:100%;height:100%;background:var(--warm-deep);overflow:hidden;cursor:pointer;}
+.mosaic-sub-img img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity 0.2s;}
+.mosaic-sub-img:hover img{opacity:0.85;}
 
-/* PREMIUM MINIMALIST FILTER TRACK */
-.filters{display:flex;gap:6px;padding-bottom:24px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
-.filters::-webkit-scrollbar{display:none;}
-.filter-btn{
-  font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;
-  padding:8px 20px;border-radius:6px;
-  border:1px solid var(--border);background:var(--white);color:var(--ink-soft);
-  cursor:pointer;white-space:nowrap;transition:all 0.2s cubic-bezier(0.16,1,0.3,1);
-}
-.filter-btn.active{background:var(--ink);color:var(--white);border-color:var(--ink);font-weight:700;}
-.filter-btn:hover:not(.active){background:var(--warm);color:var(--ink);border-color:var(--warm-deep);}
+/* SPLIT CORE SYSTEM */
+.columns-grid{display:grid;grid-template-columns:1fr 380px;gap:64px;align-items:start;}
 
-/* DYNAMIC PROPERTY FRAMEWORK ARCHITECTURE */
-.page-content{padding:40px;}
-.listings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:44px 24px;}
+/* LEFT STREAM INFORMATION FLOW */
+.stream-content{display:flex;flex-direction:column;}
+.info-header{margin-bottom:32px;}
+.info-tag{font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--teal);margin-bottom:10px;display:block;}
+.info-title{font-size:36px;font-weight:800;color:var(--ink);letter-spacing:-0.03em;line-height:1.2;margin-bottom:12px;}
+.info-location{font-size:15px;font-weight:400;color:var(--ink-soft);display:flex;align-items:center;gap:6px;}
+.info-location svg{stroke:var(--teal);flex-shrink:0;}
 
-/* PREMIUM MINIMAL CARDS */
-.prop-card{background:var(--white);text-decoration:none;display:block;position:relative;transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);}
-.prop-card-img{position:relative;width:100%;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:var(--warm-deep);border:1px solid var(--border);}
-.prop-card-img img{width:100%;height:100%;object-fit:cover;object-position:center center;display:block;transition:transform 0.6s cubic-bezier(0.16,1,0.3,1);}
-.prop-card:hover .prop-card-img img{transform:scale(1.025);}
-.prop-card-no-img{width:100%;height:100%;background:linear-gradient(135deg,var(--warm-deep),var(--warm));}
+/* SEPARATOR LINES */
+.divider{height:1px;background:var(--border);width:100%;margin:32px 0;}
 
-/* EMBEDDED GEOMETRIC BADGES */
-.card-badge{position:absolute;z-index:10;padding:5px 12px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 2px 10px rgba(0,0,0,0.03);}
-.card-status{top:12px;left:12px;background:rgba(255,255,255,0.92);color:var(--ink);}
-.card-featured{top:12px;right:12px;background:rgba(28,43,50,0.82);color:var(--white);}
+/* PROPERTY PROFILE DETAILS */
+.section-caption{font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink);margin-bottom:18px;}
+.body-narrative{font-size:15.5px;color:var(--ink-soft);line-height:1.8;white-space:pre-line;}
 
-/* TYPOGRAPHIC DETAILS LAYER — CALIBRATED EYE FLOW */
-.prop-card-body{padding:16px 2px 0;}
-.card-tag{font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;display:block;}
+/* EMBEDDED DYNAMIC ASSETS */
+.asset-stack{display:flex;flex-direction:column;gap:32px;}
+.asset-iframe-wrapper{position:relative;width:100%;aspect-ratio:16/9;background:var(--warm-deep);border-radius:12px;overflow:hidden;border:1px solid var(--border);}
+.asset-iframe-wrapper iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;}
 
-/* Dominant Anchor: Elegant size, tight line height, strong presentation */
-.card-title{
-  font-size:19px;
-  font-weight:700;
-  color:var(--ink);
-  letter-spacing:-0.015em;
-  line-height:1.35;
-  margin-bottom:6px;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
-}
+/* RIGHT STICKY PROPERTY CARD */
+.sticky-sidebar{position:sticky;top:86px;height:fit-content;}
+.sticky-card{background:var(--white);border:1px solid var(--border);border-radius:16px;padding:32px;box-shadow:0 12px 44px rgba(28,43,50,0.03);}
 
-/* Softer Location Presentation */
-.card-loc{font-size:13px;font-weight:400;color:var(--ink-muted);margin-bottom:12px;display:flex;align-items:center;gap:5px;}
-.card-loc svg{stroke:var(--ink-muted);opacity:0.7;flex-shrink:0;}
+.card-price-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-muted);margin-bottom:6px;}
+.card-price-value{font-size:32px;font-weight:800;color:var(--ink);letter-spacing:-0.02em;line-height:1.1;margin-bottom:24px;}
+.card-price-negotiable{font-size:18px;font-weight:700;color:var(--ink-muted);margin-bottom:24px;}
 
-/* Spatial Details Layer (Subdued to allow title dominance) */
-.card-specs{display:flex;gap:14px;margin-bottom:16px;padding:2px 0;border-top:1px solid rgba(26,36,40,0.03);padding-top:10px;}
-.card-spec{font-size:12px;color:var(--ink-muted);font-weight:400;}
-.card-spec span{font-weight:600;color:var(--ink-soft);}
+/* PROPERTY METRIC PARAMS LIST */
+.card-metrics{display:flex;flex-direction:column;gap:14px;margin-bottom:28px;}
+.metric-row{display:flex;justify-content:between;align-items:center;font-size:14px;border-bottom:1px dashed var(--border);padding-bottom:10px;}
+.metric-row:last-child{border-bottom:none;padding-bottom:0;}
+.metric-label{color:var(--ink-muted);font-weight:400;}
+.metric-value{color:var(--ink);font-weight:700;margin-left:auto;}
 
-/* Institutional Restraint Price: Quiet, elegant anchor layout */
-.card-price{
-  font-size:17px;
-  font-weight:700;
-  color:var(--ink);
-  letter-spacing:-0.01em;
-  line-height:1.1;
-  margin-top:4px;
-}
-.card-price-req{font-size:13px;font-weight:500;color:var(--ink-muted);font-style:normal;margin-top:4px;}
-.card-divider{height:1px;background:var(--border);margin:14px 0 10px;}
-.card-agent{font-size:11px;font-weight:600;color:var(--ink-muted);letter-spacing:0.02em;}
+/* UTILITY ACTIONS */
+.action-box{display:flex;flex-direction:column;gap:10px;}
+.btn-primary{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:15px;border-radius:30px;font-size:14.5px;font-weight:700;text-decoration:none;border:none;cursor:pointer;transition:all 0.2s;}
+.btn-whatsapp{background:var(--wa);color:var(--white);box-shadow:0 4px 14px rgba(26,158,80,0.18);}
+.btn-whatsapp:hover{background:#168C45;transform:translateY(-1px);}
+.btn-outline{background:transparent;color:var(--ink-soft);border:1px solid var(--border);}
+.btn-outline:hover{background:var(--warm);color:var(--ink);}
 
-/* UTILITY LOADERS AND CORES */
-.state-center{text-align:center;padding:100px 24px;color:var(--ink-muted);}
-.state-title{font-size:20px;font-weight:700;color:var(--ink);letter-spacing:-0.02em;margin-bottom:6px;}
-.loading-dots{display:flex;gap:6px;justify-content:center;margin-bottom:16px;}
-.loading-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:dotPulse 1.2s ease-in-out infinite;}
-.loading-dot:nth-child(2){animation-delay:0.2s;}
-.loading-dot:nth-child(3){animation-delay:0.4s;}
-@keyframes dotPulse{0%,100%{opacity:0.25;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
+/* INTEGRATED AGENT BADGE PACK */
+.card-agent{display:flex;align-items:center;gap:14px;margin-top:24px;padding-top:24px;border-top:1px solid var(--border);}
+.agent-pfp{width:44px;height:44px;border-radius:50%;object-fit:cover;background:var(--warm-deep);border:1px solid var(--border);}
+.agent-info-stack{display:flex;flex-direction:column;gap:1px;}
+.agent-subtitle{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--teal);}
+.agent-username{font-size:14.5px;font-weight:700;color:var(--ink);}
 
-.page-footer{padding:40px 24px;text-align:center;background:var(--white);border-top:1px solid var(--border);}
-.page-footer p{font-size:12px;color:var(--ink-muted);letter-spacing:0.04em;}
+/* ANIMATING LOADER */
+.loader-stage{text-align:center;padding:140px 24px;color:var(--ink-muted);grid-column:1/-1;}
+.loader-cluster{display:flex;gap:6px;justify-content:center;margin-bottom:16px;}
+.loader-bead{width:8px;height:8px;border-radius:50%;background:var(--teal);animation:beadWave 1.2s ease-in-out infinite;}
+.loader-bead:nth-child(2){animation-delay:0.15s;}
+.loader-bead:nth-child(3){animation-delay:0.3s;}
+@keyframes beadWave{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
 
-@media(max-width:768px){
-  .listings-grid{grid-template-columns:1fr;gap:44px;}
-  .page-header{padding:32px 20px 0;}
-  .page-content{padding:32px 20px;}
-  .page-title{font-size:28px;}
+/* RESPONSIBLENESS CONTROLS */
+@media(max-width:960px){
+  .g-wrap{padding:16px 16px 40px 16px;}
+  .mosaic-gallery{grid-template-columns:1fr;gap:8px;border-radius:12px;}
+  .mosaic-sidebar{display:none;} /* Simplify grid layout context for tight mobile screens */
+  .columns-grid{grid-template-columns:1fr;gap:40px;}
+  .sticky-sidebar{position:relative;top:0;}
+  .info-title{font-size:26px;}
 }
 </style>
 </head>
@@ -146,161 +136,218 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
       <button class="lang-btn" onclick="setLang('en',this)">EN</button>
       <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
     </div>
-    <a href="index.html" class="nav-home">← <span class="lo-i">ໜ้าຫຼັກ</span><span class="en-i">Home</span><span class="zh-i">首页</span></a>
+    <a href="listings.html" class="nav-back">← <span class="lo-i">ກັບຄືນ</span><span class="en-i">Back</span><span class="zh-i">返回</span></a>
   </div>
 </nav>
 
 <div class="g-wrap">
-  <div class="page-header">
-    <h1 class="page-title">
-      <span class="lo-i">ລາຍການທັງໝົດ</span>
-      <span class="en-i">All Listings</span>
-      <span class="zh-i">所有房源</span>
-    </h1>
-    <p class="page-count" id="count-text">Loading...</p>
-    
-    <div class="filters" id="filters">
-      <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">
-        <span class="lo-i">ທັງໝົດ</span><span class="en-i">All</span><span class="zh-i">全部</span>
-      </button>
-      <button class="filter-btn" data-filter="for_sale" onclick="setFilter('for_sale',this)">
-        <span class="lo-i">ຂາຍ</span><span class="en-i">For Sale</span><span class="zh-i">出售</span>
-      </button>
-      <button class="filter-btn" data-filter="for_rent" onclick="setFilter('for_rent',this)">
-        <span class="lo-i">ໃຫ້ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">租房</span>
-      </button>
-      <button class="filter-btn" data-filter="house" onclick="setFilter('house',this)">
-        <span class="lo-i">ເຮືອນ</span><span class="en-i">House</span><span class="zh-i">住宅</span>
-      </button>
-      <button class="filter-btn" data-filter="villa" onclick="setFilter('villa',this)">
-        <span class="lo-i">ວິລລ່າ</span><span class="en-i">Villa</span><span class="zh-i">别墅</span>
-      </button>
-      <button class="filter-btn" data-filter="apartment" onclick="setFilter('apartment',this)">
-        <span class="lo-i">ອາພາດເມັນ</span><span class="en-i">Apartment</span><span class="zh-i">公寓</span>
-      </button>
-      <button class="filter-btn" data-filter="land" onclick="setFilter('land',this)">
-        <span class="lo-i">ທີ່ດິນ</span><span class="en-i">Land</span><span class="zh-i">土地</span>
-      </button>
+  <div id="view-target">
+    <div class="loader-stage">
+      <div class="loader-cluster"><div class="loader-bead"></div><div class="loader-bead"></div><div class="loader-bead"></div></div>
+      <p>Configuring Structural Layout Profile...</p>
     </div>
   </div>
-
-  <div class="page-content">
-    <div id="listings-container" class="listings-grid">
-      <div style="grid-column:1/-1;" class="state-center">
-        <div class="loading-dots"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>
-        <p class="lo-i">ກຳລັງໂຫຼດ...</p><p class="en-i">Loading...</p><p class="zh-i">加载中...</p>
-      </div>
-    </div>
-  </div>
-
-  <div class="page-footer"><p>Pintag · pintag.io</p></div>
 </div>
 
 <script>
-const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const BASE_DB = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SEC_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 
-let allProperties = [];
-let currentFilter = 'all';
+let propertyContext = null;
 
-async function loadListings() {
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/properties?order=is_featured.desc,created_at.desc`, {
-      headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
-    });
-    allProperties = await res.json();
-    renderListings();
-  } catch(e) {
-    const container = document.getElementById('listings-container');
-    container.innerHTML = `<div style="grid-column:1/-1;" class="state-center"><p class="state-title lo-i">ເກີດຂໍ້ຜິດພາດ</p><p class="state-title en-i">Error loading data</p></div>`;
-  }
+function fetchUrlParamSlug() {
+  return new URLSearchParams(window.location.search).get('slug');
 }
 
-function setFilter(filter, btn) {
-  currentFilter = filter;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderListings();
-}
-
-function renderListings() {
-  const filtered = currentFilter === 'all' ? allProperties : allProperties.filter(p =>
-    p.transaction_type === currentFilter || p.property_type === currentFilter
-  );
-  const lang = document.body.className === 'lang-en' ? 'en' : document.body.className === 'lang-zh' ? 'zh' : 'lo';
-  const countText = document.getElementById('count-text');
-  countText.innerHTML = `<span class="lo-i">${filtered.length} ລາຍການ · ວຽງຈັນ</span><span class="en-i">${filtered.length} listings · Vientiane</span><span class="zh-i">${filtered.length} 个房源 · 万象</span>`;
-
-  const container = document.getElementById('listings-container');
-  if (!filtered.length) {
-    container.innerHTML = `<div style="grid-column:1/-1;" class="state-center"><p class="state-title lo-i">ບໍ່ມີລາຍການ</p><p class="state-title en-i">No listings found</p><p class="state-title zh-i">暂无房源</p><p class="lo-i">ລອງປ່ຽນໂຕກອງ</p><p class="en-i">Try a different filter</p><p class="zh-i">尝试其他筛选条件</p></div>`;
+async function requestPropertyData() {
+  const slug = fetchUrlParamSlug();
+  const wrapper = document.getElementById('view-target');
+  if(!slug) {
+    wrapper.innerHTML = `<div class="loader-stage"><h3>Missing Reference Slug</h3></div>`;
     return;
   }
+  try {
+    const response = await fetch(`${BASE_DB}/rest/v1/properties?slug=eq.${encodeURIComponent(slug)}&select=*`, {
+      headers: { 'apikey': SEC_KEY, 'Authorization': 'Bearer ' + SEC_KEY }
+    });
+    const package = await response.json();
+    if(!package || !package.length) {
+      wrapper.innerHTML = `<div class="loader-stage"><h3>Profile Matrix Not Found</h3></div>`;
+      return;
+    }
+    propertyContext = package[0];
+    buildMockupLayout();
+  } catch(err) {
+    wrapper.innerHTML = `<div class="loader-stage"><h3>System Communications Exception</h3></div>`;
+  }
+}
 
-  container.innerHTML = '';
-  filtered.forEach(p => {
-    const card = document.createElement('a');
-    card.className = 'prop-card';
-    card.href = `listing.html?slug=${p.slug}`;
+function buildMockupLayout() {
+  const container = document.getElementById('view-target');
+  const activeLanguage = document.body.className === 'lang-en' ? 'en' : document.body.className === 'lang-zh' ? 'zh' : 'lo';
+  const data = propertyContext;
 
-    const title = p[`title_${lang}`] || p.title_en;
-    const district = p[`district_${lang}`] || p.district_en || '';
+  const resolvedTitle = data[`title_${activeLanguage}`] || data.title_en || data.title_lo;
+  const resolvedDesc = data[`description_${activeLanguage}`] || data.description_en || data.description_lo || '';
+  const resolvedDistrict = data[`district_${activeLanguage}`] || data.district_en || '';
+  
+  let structuralTxTag = '';
+  if(data.transaction_type === 'for_sale' || data.transaction_type === 'sale') {
+    structuralTxTag = activeLanguage === 'en' ? 'For Sale' : activeLanguage === 'zh' ? '出售' : 'ຂາຍ';
+  } else {
+    structuralTxTag = activeLanguage === 'en' ? 'For Rent' : activeLanguage === 'zh' ? '租房' : 'ໃຫ້ເຊົ່າ';
+  }
+
+  // RECONSTRUCT EXACT MOCKUP ASYMMETRIC IMAGE MOSAIC
+  const imagesArray = data.images && data.images.length ? data.images : [];
+  let mosaicContainerMarkup = '';
+  if(imagesArray.length) {
+    let sideImagesMarkup = '';
+    // Pull indices 1 and 2 for the stacked side column
+    const secondaryImages = imagesArray.slice(1, 3);
+    secondaryImages.forEach((imgSrc) => {
+      sideImagesMarkup += `<div class="mosaic-sub-img" onclick="shiftFocusHero('${imgSrc}')"><img src="${imgSrc}" alt=""></div>`;
+    });
     
-    let txLabelText = '';
-    if(p.transaction_type === 'for_sale' || p.transaction_type === 'sale') {
-      txLabelText = lang === 'en' ? 'For Sale' : lang === 'zh' ? '出售' : 'ຂາຍ';
-    } else {
-      txLabelText = lang === 'en' ? 'For Rent' : lang === 'zh' ? '租房' : 'ໃຫ້ເຊົ່າ';
+    // If the image array only has 1 image, duplicate it to maintain architectural layout consistency
+    if(secondaryImages.length === 0) {
+      sideImagesMarkup += `<div class="mosaic-sub-img"><img src="${imagesArray[0]}" alt=""></div>`;
+      sideImagesMarkup += `<div class="mosaic-sub-img"><img src="${imagesArray[0]}" alt=""></div>`;
+    } else if(secondaryImages.length === 1) {
+      sideImagesMarkup += `<div class="mosaic-sub-img"><img src="${imagesArray[0]}" alt=""></div>`;
     }
 
-    let statusText = '';
-    if(p.status === 'available') {
-      statusText = lang === 'en' ? 'Available' : lang === 'zh' ? '可售' : 'ວ່າງ';
-    } else if(p.status === 'sold') {
-      statusText = lang === 'en' ? 'Sold' : lang === 'zh' ? '已售' : 'ຂາຍແລ້ວ';
-    } else if(p.status === 'rented') {
-      statusText = lang === 'en' ? 'Rented' : lang === 'zh' ? '已租' : 'ເຊົ່າແລ້ວ';
-    } else {
-      statusText = p.status || '';
-    }
-
-    const imgHtml = (p.images && p.images.length > 0) ? `<img src="${p.images[0]}" alt="" loading="lazy">` : `<div class="prop-card-no-img"></div>`;
-    
-    const specsHtml = [
-      p.bedrooms ? `<span class="card-spec"><span>${p.bedrooms}</span> ${lang === 'en' ? 'beds' : lang === 'zh' ? '卧' : 'ຫ້ອງນອນ'}</span>` : '',
-      p.bathrooms ? `<span class="card-spec"><span>${p.bathrooms}</span> ${lang === 'en' ? 'baths' : lang === 'zh' ? '浴' : 'ຫ້ອງນ້ຳ'}</span>` : '',
-      p.sqm ? `<span class="card-spec"><span>${p.sqm}</span> m²</span>` : ''
-    ].filter(Boolean).join('');
-
-    card.innerHTML = `
-      <div class="prop-card-img">
-        ${imgHtml}
-        <span class="card-badge card-status">${statusText}</span>
-        ${p.is_featured ? `<span class="card-badge card-featured">${lang === 'en' ? 'Featured' : lang === 'zh' ? '推荐' : 'ແນະນຳ'}</span>` : ''}
-      </div>
-      <div class="prop-card-body">
-        <span class="card-tag">${txLabelText} · ${p.property_type || ''}</span>
-        <h2 class="card-title">${title}</h2>
-        <div class="card-loc">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-          ${district}, <span>${lang === 'en' ? 'Vientiane' : lang === 'zh' ? '万象' : 'ວຽງຈັນ'}</span>
-        </div>
-        ${specsHtml ? `<div class="card-specs">${specsHtml}</div>` : ''}
-        ${p.price_display ? `<p class="card-price">${p.price_display}</p>` : `<p class="card-price-req"><span>${lang === 'en' ? 'Price on request' : lang === 'zh' ? '价格面议' : 'ສອບຖາມລາຄາ'}</span></p>`}
-        ${p.agent_name ? `<div class="card-divider"></div><p class="card-agent">${p.agent_name} · Pintag</p>` : ''}
+    mosaicContainerMarkup = `
+      <div class="mosaic-gallery">
+        <div class="mosaic-main" id="primary-hero-frame"><img src="${imagesArray[0]}" alt=""></div>
+        <div class="mosaic-sidebar">${sideImagesMarkup}</div>
       </div>`;
-    container.appendChild(card);
-  });
+  }
+
+  // EXTRACTION SYSTEM FOR MEDIA CHANNELS
+  let standaloneMediaMarkup = '';
+  if(data.video_url || data.map_url) {
+    standaloneMediaMarkup += `<div class="divider"></div><div class="asset-stack">`;
+    if(data.video_url) {
+      const parsedFrame = generateEmbeddedVideoFrame(data.video_url);
+      if(parsedFrame) {
+        standaloneMediaMarkup += `<div><p class="section-caption">${activeLanguage==='en'?'Video Presentation':'ວິດີໂອນຳສະເໜີ'}</p><div class="asset-iframe-wrapper">${parsedFrame}</div></div>`;
+      }
+    }
+    if(data.map_url) {
+      standaloneMediaMarkup += `<div><p class="section-caption">${activeLanguage==='en'?'Location Maps':'ແຜນທີ່ຕັ້ງ'}</p><div class="asset-iframe-wrapper"><iframe src="${data.map_url}" allowfullscreen="" loading="lazy"></iframe></div></div>`;
+    }
+    standaloneMediaMarkup += `</div>`;
+  }
+
+  const directWhatsAppUrl = `https://wa.me/${data.agent_phone || '85620542966655'}?text=${encodeURIComponent('ສະບາຍດີ, ຂ້ອຍສົນໃຈອະສັງຫາລາຍການນີ້: ' + resolvedTitle + ' (' + window.location.href + ')')}`;
+
+  container.innerHTML = `
+    ${mosaicContainerMarkup}
+
+    <div class="columns-grid">
+      <div class="stream-content">
+        <div class="info-header">
+          <span class="info-tag">${structuralTxTag} · ${data.property_type || 'Real Estate'}</span>
+          <h1 class="info-title">${resolvedTitle}</h1>
+          <div class="info-location">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+            ${resolvedDistrict}, ${activeLanguage === 'en' ? 'Vientiane' : 'ວຽງຈັນ'}
+          </div>
+        </div>
+        
+        ${resolvedDesc ? `
+          <div class="divider"></div>
+          <div>
+            <p class="section-caption">${activeLanguage==='en'?'Overview Descriptions':'ລາຍລະອຽດອະສັງຫາ'}</p>
+            <p class="body-narrative">${resolvedDesc}</p>
+          </div>
+        ` : ''}
+        
+        ${standaloneMediaMarkup}
+      </div>
+
+      <div class="sticky-sidebar">
+        <div class="sticky-card">
+          <p class="card-price-label">${activeLanguage === 'en' ? 'Valuation Price' : 'ມູນຄ່າອະສັງຫາ'}</p>
+          ${data.price_display ? `<p class="card-price-value">${data.price_display}</p>` : `<p class="card-price-negotiable">${activeLanguage === 'en' ? 'Inquire for Pricing' : 'ສອບຖາມລາຄາ'}</p>`}
+          
+          <div class="card-metrics">
+            ${data.bedrooms ? `<div class="metric-row"><span class="metric-label">${activeLanguage==='en'?'Bedrooms':'ຫ້ອງນອນ'}</span><span class="metric-value">${data.bedrooms}</span></div>` : ''}
+            ${data.bathrooms ? `<div class="metric-row"><span class="metric-label">${activeLanguage==='en'?'Bathrooms':'ຫ້ອງນ້ຳ'}</span><span class="metric-value">${data.bathrooms}</span></div>` : ''}
+            ${data.sqm ? `<div class="metric-row"><span class="metric-label">${activeLanguage==='en'?'Total Area':'ເນື້ອທີ່ທັງໝົດ'}</span><span class="metric-value">${data.sqm} m²</span></div>` : ''}
+            ${data.property_type ? `<div class="metric-row"><span class="metric-label">${activeLanguage==='en'?'Property Typology':'ປະເພດອະສັງຫາ'}</span><span class="metric-value" style="text-transform:capitalize;">${data.property_type}</span></div>` : ''}
+          </div>
+
+          <div class="action-box">
+            <a href="${directWhatsAppUrl}" target="_blank" class="btn-primary btn-whatsapp">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block;vertical-align:middle;margin-top:-2px;"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              Inquire via WhatsApp
+            </a>
+            <button class="btn-primary btn-outline" onclick="triggerNativeShareChannel()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-top:-2px;"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+              Share Property Link
+            </button>
+          </div>
+
+          ${data.agent_name ? `
+            <div class="card-agent">
+              <img class="agent-pfp" src="${data.agent_photo || 'https://eoladhcljbpbhnrmmpev.supabase.co/storage/v1/object/public/properties/agent-placeholder.png'}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23EDE8DF%22/><text x=%2250%25%22 y=%2255%25%22 font-family=%22sans-serif%22 font-size=%2232%22 fill=%22%237A9098%22 text-anchor=%22middle%22>P</text></svg>'">
+              <div class="agent-info-stack">
+                <span class="agent-subtitle">Assigned Representative</span>
+                <span class="agent-username">${data.agent_name}</span>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    </div>`;
 }
 
-function setLang(lang, btn) {
-  document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
-  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderListings();
+function shiftFocusHero(imageSource) {
+  const currentHeroImg = document.querySelector('#primary-hero-frame img');
+  if(currentHeroImg) currentHeroImg.src = imageSource;
 }
 
-loadListings();
+function generateEmbeddedVideoFrame(url) {
+  if(!url) return null;
+  if(url.includes('youtube.com/embed/')) return `<iframe src="${url}" frameborder="0" allowfullscreen allow="autoplay;encrypted-media"></iframe>`;
+  if(url.includes('youtube.com/watch?v=')) {
+    const id = url.split('v=')[1]?.split('&')[0];
+    return `<iframe src="https://www.youtube.com/embed/${id}" frameborder="0" allowfullscreen allow="autoplay;encrypted-media"></iframe>`;
+  }
+  if(url.includes('youtu.be/')) {
+    const id = url.split('youtu.be/')[1]?.split('?')[0];
+    return `<iframe src="https://www.youtube.com/embed/${id}" frameborder="0" allowfullscreen allow="autoplay;encrypted-media"></iframe>`;
+  }
+  if(url.includes('facebook.com')) {
+    return `<iframe src="https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&mute=0" frameborder="0" allowfullscreen allow="autoplay;clipboard-write;encrypted-media;picture-in-picture;web-share"></iframe>`;
+  }
+  const driveMatch = url.match(/drive\.google\.com\\/file\\/d\\/([a-zA-Z0-9_-]+)/) || url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if(driveMatch) return `<iframe src="https://drive.google.com/file/d/${driveMatch[1]}/preview" frameborder="0" allow="autoplay" allowfullscreen></iframe>`;
+  return null;
+}
+
+async function triggerNativeShareChannel(){
+  const dynamicTitle = propertyContext ? (propertyContext.title_lo || propertyContext.title_en) : 'Pintag Asset';
+  if (navigator.share) {
+    try { await navigator.share({ title: dynamicTitle, url: window.location.href }); } catch(err){}
+  } else {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      alert('Property reference URL copied cleanly to clipboard.');
+    } catch(err){}
+  }
+}
+
+function setLang(targetLanguageCode, contextBtnElement) {
+  document.body.className = targetLanguageCode === 'lo' ? '' : 'lang-' + targetLanguageCode;
+  document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+  contextBtnElement.classList.add('active');
+  if(propertyContext) buildMockupLayout();
+}
+
+requestPropertyData();
 </script>
 </body>
 </html>
