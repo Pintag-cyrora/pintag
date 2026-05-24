@@ -1,781 +1,387 @@
-<!-- MAIN CONTENT WRAPPER -->
-<div class="g-wrap">
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pintag · ລາຍລະອຽດອະສັງຫາ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+:root{
+  --teal:#2D8C8C;--teal-light:#38A8A8;
+  --ink:#1C2B32;--ink-soft:#3D5058;--ink-muted:#7A9098;
+  --warm:#F7F3EC;--warm-deep:#EDE8DF;--white:#FFFFFF;
+  --border:rgba(26,36,40,0.06);--wa:#1A9E50;
+}
+body{font-family:'DM Sans',sans-serif;font-weight:400;font-size:15px;line-height:1.75;background:var(--warm);color:var(--ink);-webkit-font-smoothing:antialiased;}
 
-  <!-- REQUIRED TARGET -->
-  <div id="view-target">
+/* LANGUAGE TOGGLE CHANNELS */
+.lo{display:block;}.en{display:none;}.zh{display:none;}
+.lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
+body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
+body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}body.lang-en .zh-i{display:none;}
+body.lang-zh .lo{display:none;}body.lang-zh .en{display:none;}body.lang-zh .zh{display:block;}
+body.lang-zh .lo-i{display:none;}body.lang-zh .en-i{display:none;}body.lang-zh .zh-i{display:inline;}
 
-    <!-- LOADER -->
-    <div class="loader-stage">
+/* FIXED HEAD BAR */
+nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(255,255,255,0.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(26,36,40,0.05);}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
+.nav-wordmark{font-size:18px;font-weight:800;color:var(--ink);letter-spacing:-0.02em;line-height:1;}
+.nav-right{display:flex;align-items:center;gap:16px;}
+.lang-switcher{display:flex;gap:4px;background:var(--warm);padding:3px;border-radius:20px;border:1px solid var(--border);}
+.lang-btn{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:700;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:12px;}
+.lang-btn.active{background:var(--ink);color:var(--white);}
+.nav-back{font-size:12px;font-weight:600;color:var(--ink-muted);text-decoration:none;letter-spacing:0.04em;text-transform:uppercase;}
 
-      <div class="loader-cluster">
-        <div class="loader-bead"></div>
-        <div class="loader-bead"></div>
-        <div class="loader-bead"></div>
-      </div>
+/* CORE EDITORIAL FRAMEWORK */
+.g-wrap{max-width:1200px;margin:54px auto 0;background:var(--white);min-height:calc(100vh - 54px);padding:32px 32px 60px 32px;}
 
-      <p>
-        <span class="lo-i">ກຳລັງໂຫຼດ...</span>
-        <span class="en-i">Loading...</span>
-        <span class="zh-i">加载中...</span>
-      </p>
+/* MOSAIC GALLERY INTERFACE */
+.mosaic-gallery{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;margin-bottom:40px;border-radius:16px;overflow:hidden;}
+.mosaic-main{width:100%;aspect-ratio:4/3;background:var(--warm-deep);overflow:hidden;}
+.mosaic-main img{width:100%;height:100%;object-fit:cover;display:block;}
+.mosaic-sidebar{display:grid;grid-template-rows:repeat(2,1fr);gap:12px;}
+.mosaic-sub-img{width:100%;height:100%;background:var(--warm-deep);overflow:hidden;cursor:pointer;}
+.mosaic-sub-img img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity 0.2s;}
+.mosaic-sub-img:hover img{opacity:0.85;}
 
+/* SPLIT CORE SYSTEM */
+.columns-grid{display:grid;grid-template-columns:1fr 380px;gap:64px;align-items:start;}
+
+/* LEFT STREAM */
+.stream-content{display:flex;flex-direction:column;}
+.info-header{margin-bottom:32px;}
+.info-tag{font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--teal);margin-bottom:10px;display:block;}
+.info-title{font-size:36px;font-weight:800;color:var(--ink);letter-spacing:-0.03em;line-height:1.2;margin-bottom:12px;}
+.info-location{font-size:15px;font-weight:400;color:var(--ink-soft);display:flex;align-items:center;gap:6px;}
+.info-location svg{stroke:var(--teal);flex-shrink:0;}
+
+.divider{height:1px;background:var(--border);width:100%;margin:32px 0;}
+.section-caption{font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink);margin-bottom:18px;}
+.body-narrative{font-size:15.5px;color:var(--ink-soft);line-height:1.8;white-space:pre-line;}
+
+/* EMBEDDED ASSETS */
+.asset-stack{display:flex;flex-direction:column;gap:32px;}
+.asset-iframe-wrapper{position:relative;width:100%;aspect-ratio:16/9;background:var(--warm-deep);border-radius:12px;overflow:hidden;border:1px solid var(--border);}
+.asset-iframe-wrapper iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;}
+
+/* RIGHT STICKY CARD */
+.sticky-sidebar{position:sticky;top:86px;height:fit-content;}
+.sticky-card{background:var(--white);border:1px solid var(--border);border-radius:16px;padding:32px;box-shadow:0 12px 44px rgba(28,43,50,0.03);}
+
+.card-price-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-muted);margin-bottom:6px;}
+.card-price-value{font-size:32px;font-weight:800;color:var(--ink);letter-spacing:-0.02em;line-height:1.1;margin-bottom:24px;}
+.card-price-negotiable{font-size:18px;font-weight:700;color:var(--ink-muted);margin-bottom:24px;}
+
+/* PROPERTY METRICS — fixed justify-content */
+.card-metrics{display:flex;flex-direction:column;gap:14px;margin-bottom:28px;}
+.metric-row{display:flex;justify-content:space-between;align-items:center;font-size:14px;border-bottom:1px dashed var(--border);padding-bottom:10px;}
+.metric-row:last-child{border-bottom:none;padding-bottom:0;}
+.metric-label{color:var(--ink-muted);font-weight:400;}
+.metric-value{color:var(--ink);font-weight:700;margin-left:auto;}
+
+/* ACTIONS */
+.action-box{display:flex;flex-direction:column;gap:10px;}
+.btn-primary{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:15px;border-radius:30px;font-size:14.5px;font-weight:700;text-decoration:none;border:none;cursor:pointer;transition:all 0.2s;}
+.btn-whatsapp{background:var(--wa);color:var(--white);box-shadow:0 4px 14px rgba(26,158,80,0.18);}
+.btn-whatsapp:hover{background:#168C45;transform:translateY(-1px);}
+.btn-outline{background:transparent;color:var(--ink-soft);border:1px solid var(--border);}
+.btn-outline:hover{background:var(--warm);color:var(--ink);}
+
+/* AGENT BADGE */
+.card-agent{display:flex;align-items:center;gap:14px;margin-top:24px;padding-top:24px;border-top:1px solid var(--border);}
+.agent-pfp{width:44px;height:44px;border-radius:50%;object-fit:cover;background:var(--warm-deep);border:1px solid var(--border);}
+.agent-info-stack{display:flex;flex-direction:column;gap:1px;}
+.agent-subtitle{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--teal);}
+.agent-username{font-size:14.5px;font-weight:700;color:var(--ink);}
+
+/* LOADER */
+.loader-stage{text-align:center;padding:140px 24px;color:var(--ink-muted);grid-column:1/-1;}
+.loader-cluster{display:flex;gap:6px;justify-content:center;margin-bottom:16px;}
+.loader-bead{width:8px;height:8px;border-radius:50%;background:var(--teal);animation:beadWave 1.2s ease-in-out infinite;}
+.loader-bead:nth-child(2){animation-delay:0.15s;}
+.loader-bead:nth-child(3){animation-delay:0.3s;}
+@keyframes beadWave{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
+
+/* RESPONSIVE */
+@media(max-width:960px){
+  .g-wrap{padding:16px 16px 40px 16px;}
+  .mosaic-gallery{grid-template-columns:1fr;gap:8px;border-radius:12px;}
+  .mosaic-sidebar{display:none;}
+  .columns-grid{grid-template-columns:1fr;gap:40px;}
+  .sticky-sidebar{position:relative;top:0;}
+  .info-title{font-size:26px;}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">
+    <svg width="24" height="20" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision" style="display:block;">
+      <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
+      <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
+    </svg>
+    <span class="nav-wordmark">Pintag</span>
+  </a>
+  <div class="nav-right">
+    <div class="lang-switcher">
+      <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
+      <button class="lang-btn" onclick="setLang('en',this)">EN</button>
+      <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
     </div>
-
+    <a href="listings.html" class="nav-back">← <span class="lo-i">ກັບຄືນ</span><span class="en-i">Back</span><span class="zh-i">返回</span></a>
   </div>
+</nav>
 
+<div class="g-wrap">
+  <div id="view-target">
+    <div class="loader-stage">
+      <div class="loader-cluster"><div class="loader-bead"></div><div class="loader-bead"></div><div class="loader-bead"></div></div>
+      <p><span class="lo-i">ກຳລັງໂຫຼດ...</span><span class="en-i">Loading...</span><span class="zh-i">加载中...</span></p>
+    </div>
+  </div>
 </div>
 
 <script>
-const BASE_DB =
-  'https://eoladhcljbpbhnrmmpev.supabase.co';
-
-const SEC_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const BASE_DB = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SEC_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 
 let propertyContext = null;
 
-/* ---------------------------------- */
-/* URL PARAM */
-/* ---------------------------------- */
-
 function fetchUrlParamSlug() {
-
-  return new URLSearchParams(
-    window.location.search
-  ).get('slug');
+  return new URLSearchParams(window.location.search).get('slug');
 }
 
-/* ---------------------------------- */
-/* LANGUAGE */
-/* ---------------------------------- */
-
 function getCurrentLang() {
-
-  const body = document.body;
-
-  if (!body) return 'lo';
-
-  if (body.classList.contains('lang-en')) {
-    return 'en';
-  }
-
-  if (body.classList.contains('lang-zh')) {
-    return 'zh';
-  }
-
+  if (document.body.classList.contains('lang-en')) return 'en';
+  if (document.body.classList.contains('lang-zh')) return 'zh';
   return 'lo';
 }
 
-function setLang(
-  targetLanguageCode,
-  contextBtnElement
-) {
-
-  document.body.classList.remove(
-    'lang-en',
-    'lang-zh'
-  );
-
-  if (targetLanguageCode !== 'lo') {
-
-    document.body.classList.add(
-      'lang-' + targetLanguageCode
-    );
-  }
-
-  document
-    .querySelectorAll('.lang-btn')
-    .forEach(btn =>
-      btn.classList.remove('active')
-    );
-
-  contextBtnElement.classList.add(
-    'active'
-  );
-
-  if (propertyContext) {
-    buildMockupLayout();
-  }
-}
-
-/* ---------------------------------- */
-/* FETCH */
-/* ---------------------------------- */
-
 async function requestPropertyData() {
-
-  const slug =
-    fetchUrlParamSlug();
-
-  const wrapper =
-    document.getElementById(
-      'view-target'
-    );
-
-  if (!wrapper) {
-    console.error(
-      'Missing #view-target'
-    );
-    return;
-  }
-
+  const slug = fetchUrlParamSlug();
+  const wrapper = document.getElementById('view-target');
   if (!slug) {
-
-    const msg = {
-      lo:'ບໍ່ພົບລະຫັດລາຍການ',
-      en:'Missing listing reference',
-      zh:'缺少房源编号'
-    };
-
-    wrapper.innerHTML = `
-      <div class="loader-stage">
-        <h3>${msg[getCurrentLang()]}</h3>
-      </div>
-    `;
-
+    const msg = { lo: 'ບໍ່ພົບລະຫັດລາຍການ', en: 'Missing listing reference', zh: '缺少房源编号' };
+    wrapper.innerHTML = `<div class="loader-stage"><h3>${msg[getCurrentLang()]}</h3></div>`;
     return;
   }
-
   try {
-
-    const cleanSlug =
-      encodeURIComponent(
-        slug.trim()
-      );
-
-    const response =
-      await fetch(
-        `${BASE_DB}/rest/v1/properties?slug=eq.${cleanSlug}&select=*`,
-        {
-          headers:{
-            apikey:SEC_KEY,
-            Authorization:
-              'Bearer ' + SEC_KEY
-          }
-        }
-      );
-
-    const payload =
-      await response.json();
-
-    console.log(payload);
-
-    if (
-      !payload ||
-      !payload.length
-    ) {
-
-      const msg = {
-        lo:'ບໍ່ພົບລາຍການນີ້',
-        en:'Listing not found',
-        zh:'未找到该房源'
-      };
-
-      wrapper.innerHTML = `
-        <div class="loader-stage">
-          <h3>${msg[getCurrentLang()]}</h3>
-        </div>
-      `;
-
+    const response = await fetch(`${BASE_DB}/rest/v1/properties?slug=eq.${encodeURIComponent(slug)}&select=*`, {
+      headers: { 'apikey': SEC_KEY, 'Authorization': 'Bearer ' + SEC_KEY }
+    });
+    const payload = await response.json();
+    if (!payload || !payload.length) {
+      const msg = { lo: 'ບໍ່ພົບລາຍການນີ້', en: 'Listing not found', zh: '未找到该房源' };
+      wrapper.innerHTML = `<div class="loader-stage"><h3>${msg[getCurrentLang()]}</h3></div>`;
       return;
     }
-
-    propertyContext =
-      payload[0];
-
+    propertyContext = payload[0];
     buildMockupLayout();
-
-  } catch(err) {
-
-    console.error(err);
-
-    wrapper.innerHTML = `
-      <div class="loader-stage">
-        <h3>Error loading property</h3>
-      </div>
-    `;
+  } catch (err) {
+    const msg = { lo: 'ເກີດຂໍ້ຜິດພາດ ກະລຸນາລອງໃໝ່', en: 'Something went wrong, please try again', zh: '出现错误，请重试' };
+    wrapper.innerHTML = `<div class="loader-stage"><h3>${msg[getCurrentLang()]}</h3></div>`;
   }
 }
 
-/* ---------------------------------- */
-/* BUILD PAGE */
-/* ---------------------------------- */
-
 function buildMockupLayout() {
+  const container = document.getElementById('view-target');
+  const lang = getCurrentLang();
+  const data = propertyContext;
 
-  const container =
-    document.getElementById(
-      'view-target'
-    );
-
-  if (!container) return;
-
-  const lang =
-    getCurrentLang();
-
-  const data =
-    propertyContext;
-
-  const resolvedTitle =
-    data[`title_${lang}`] ||
-    data.title_en ||
-    data.title_lo ||
-    '';
-
-  const resolvedDesc =
-    data[`description_${lang}`] ||
-    data.description_en ||
-    data.description_lo ||
-    '';
-
-  const resolvedDistrict =
-    data[`district_${lang}`] ||
-    data.district_en ||
-    '';
+  const resolvedTitle = data[`title_${lang}`] || data.title_en || data.title_lo;
+  const resolvedDesc = data[`description_${lang}`] || data.description_en || data.description_lo || '';
+  const resolvedDistrict = data[`district_${lang}`] || data.district_en || '';
 
   const txLabels = {
-    sale:{
-      lo:'ຂາຍ',
-      en:'For Sale',
-      zh:'出售'
-    },
-    rent:{
-      lo:'ໃຫ້ເຊົ່າ',
-      en:'For Rent',
-      zh:'租房'
-    }
+    sale: { lo: 'ຂາຍ', en: 'For Sale', zh: '出售' },
+    rent: { lo: 'ໃຫ້ເຊົ່າ', en: 'For Rent', zh: '租房' }
   };
+  const isSale = data.transaction_type === 'for_sale' || data.transaction_type === 'sale';
+  const txTag = isSale ? txLabels.sale[lang] : txLabels.rent[lang];
 
-  const isSale =
-    data.transaction_type ===
-      'for_sale' ||
-    data.transaction_type ===
-      'sale';
-
-  const txTag =
-    isSale
-      ? txLabels.sale[lang]
-      : txLabels.rent[lang];
-
-  const imagesArray =
-    Array.isArray(data.images)
-      ? data.images
-      : [];
-
-  /* ---------------------------------- */
-  /* GALLERY */
-  /* ---------------------------------- */
-
-  let mosaicContainerMarkup =
-    '';
-
+  // MOSAIC — fixed: only use images[0] as fallback filler, not duplicated main
+  const imagesArray = data.images && data.images.length ? data.images : [];
+  let mosaicContainerMarkup = '';
   if (imagesArray.length) {
-
-    let sideImagesMarkup =
-      '';
-
-    const secondary =
-      imagesArray.slice(1,3);
-
-    if (!secondary.length) {
-
-      sideImagesMarkup += `
-        <div class="mosaic-sub-img">
-          <img src="${imagesArray[0]}" alt="">
-        </div>
-      `;
-
-      sideImagesMarkup += `
-        <div class="mosaic-sub-img">
-          <img src="${imagesArray[0]}" alt="">
-        </div>
-      `;
-
+    let sideImagesMarkup = '';
+    const secondary = imagesArray.slice(1, 3);
+    if (secondary.length === 0) {
+      // Only one image — show it in side slots as plain display (no click swap needed)
+      sideImagesMarkup += `<div class="mosaic-sub-img"><img src="${imagesArray[0]}" alt=""></div>`;
+      sideImagesMarkup += `<div class="mosaic-sub-img"><img src="${imagesArray[0]}" alt=""></div>`;
+    } else if (secondary.length === 1) {
+      sideImagesMarkup += `<div class="mosaic-sub-img" onclick="shiftFocusHero('${secondary[0]}')"><img src="${secondary[0]}" alt=""></div>`;
+      sideImagesMarkup += `<div class="mosaic-sub-img"><img src="${secondary[0]}" alt=""></div>`;
     } else {
-
       secondary.forEach(imgSrc => {
-
-        sideImagesMarkup += `
-          <div
-            class="mosaic-sub-img"
-            onclick="shiftFocusHero('${imgSrc}')">
-
-            <img
-              src="${imgSrc}"
-              alt="">
-
-          </div>
-        `;
+        sideImagesMarkup += `<div class="mosaic-sub-img" onclick="shiftFocusHero('${imgSrc}')"><img src="${imgSrc}" alt=""></div>`;
       });
     }
-
     mosaicContainerMarkup = `
       <div class="mosaic-gallery">
-
-        <div
-          class="mosaic-main"
-          id="primary-hero-frame">
-
-          <img
-            src="${imagesArray[0]}"
-            alt="">
-
-        </div>
-
-        <div class="mosaic-sidebar">
-          ${sideImagesMarkup}
-        </div>
-
-      </div>
-    `;
+        <div class="mosaic-main" id="primary-hero-frame"><img src="${imagesArray[0]}" alt=""></div>
+        <div class="mosaic-sidebar">${sideImagesMarkup}</div>
+      </div>`;
   }
 
-  /* ---------------------------------- */
-  /* VIDEO + MAP */
-/* ---------------------------------- */
-
-  let standaloneMediaMarkup =
-    '';
-
-  if (
-    data.video_url ||
-    data.map_url
-  ) {
-
-    standaloneMediaMarkup += `
-      <div class="divider"></div>
-
-      <div class="asset-stack">
-    `;
-
+  // MEDIA EMBEDS
+  let standaloneMediaMarkup = '';
+  if (data.video_url || data.map_url) {
+    const videoLabel = { lo: 'ວິດີໂອນຳສະເໜີ', en: 'Video Presentation', zh: '视频介绍' };
+    const mapLabel = { lo: 'ແຜນທີ່ຕັ້ງ', en: 'Location', zh: '位置地图' };
+    standaloneMediaMarkup += `<div class="divider"></div><div class="asset-stack">`;
     if (data.video_url) {
-
-      const parsedFrame =
-        generateEmbeddedVideoFrame(
-          data.video_url
-        );
-
+      const parsedFrame = generateEmbeddedVideoFrame(data.video_url);
       if (parsedFrame) {
-
-        standaloneMediaMarkup += `
-          <div>
-
-            <p class="section-caption">
-              Video
-            </p>
-
-            <div class="asset-iframe-wrapper">
-              ${parsedFrame}
-            </div>
-
-          </div>
-        `;
+        standaloneMediaMarkup += `<div><p class="section-caption">${videoLabel[lang]}</p><div class="asset-iframe-wrapper">${parsedFrame}</div></div>`;
       }
     }
-
     if (data.map_url) {
-
-      standaloneMediaMarkup += `
-        <div>
-
-          <p class="section-caption">
-            Map
-          </p>
-
-          <div class="asset-iframe-wrapper">
-
-            <iframe
-              src="${data.map_url}"
-              loading="lazy"
-              allowfullscreen>
-            </iframe>
-
-          </div>
-
-        </div>
-      `;
+      standaloneMediaMarkup += `<div><p class="section-caption">${mapLabel[lang]}</p><div class="asset-iframe-wrapper"><iframe src="${data.map_url}" allowfullscreen="" loading="lazy"></iframe></div></div>`;
     }
-
-    standaloneMediaMarkup += `
-      </div>
-    `;
+    standaloneMediaMarkup += `</div>`;
   }
 
-  /* ---------------------------------- */
-  /* WHATSAPP */
-/* ---------------------------------- */
+  const waText = encodeURIComponent(
+    (lang === 'en' ? 'Hi, I am interested in this property: ' :
+     lang === 'zh' ? '您好，我对这个房源感兴趣：' :
+     'ສະບາຍດີ, ຂ້ອຍສົນໃຈອະສັງຫາລາຍການນີ້: ') +
+    resolvedTitle + ' (' + window.location.href + ')'
+  );
+  const directWhatsAppUrl = `https://wa.me/${data.agent_phone || '85620542966655'}?text=${waText}`;
 
-  const waText =
-    encodeURIComponent(
-      resolvedTitle +
-      ' (' +
-      window.location.href +
-      ')'
-    );
-
-  const directWhatsAppUrl =
-    `https://wa.me/${
-      data.agent_phone ||
-      '85620542966655'
-    }?text=${waText}`;
-
-  /* ---------------------------------- */
-  /* PAGE */
-/* ---------------------------------- */
+  const waLabel = { lo: 'ສອບຖາມຜ່ານ WhatsApp', en: 'Inquire via WhatsApp', zh: '通过WhatsApp咨询' };
+  const shareLabel = { lo: 'ແຊຣ໌ລາຍການນີ້', en: 'Share Property', zh: '分享房源' };
+  const priceLabel = { lo: 'ມູນຄ່າອະສັງຫາ', en: 'Price', zh: '价格' };
+  const inquireLabel = { lo: 'ສອບຖາມລາຄາ', en: 'Inquire for Pricing', zh: '询价' };
+  const overviewLabel = { lo: 'ລາຍລະອຽດອະສັງຫາ', en: 'Overview', zh: '房源详情' };
+  const bedsLabel = { lo: 'ຫ້ອງນອນ', en: 'Bedrooms', zh: '卧室' };
+  const bathsLabel = { lo: 'ຫ້ອງນ້ຳ', en: 'Bathrooms', zh: '卫生间' };
+  const areaLabel = { lo: 'ເນື້ອທີ່ທັງໝົດ', en: 'Total Area', zh: '总面积' };
+  const typeLabel = { lo: 'ປະເພດອະສັງຫາ', en: 'Property Type', zh: '房产类型' };
+  const agentLabel = { lo: 'ຕົວແທນ', en: 'Agent', zh: '经纪人' };
+  const cityLabel = { lo: 'ວຽງຈັນ', en: 'Vientiane', zh: '万象' };
 
   container.innerHTML = `
-
     ${mosaicContainerMarkup}
-
     <div class="columns-grid">
-
       <div class="stream-content">
-
         <div class="info-header">
-
-          <span class="info-tag">
-            ${txTag}
-            ·
-            ${data.property_type || ''}
-          </span>
-
-          <h1 class="info-title">
-            ${resolvedTitle}
-          </h1>
-
+          <span class="info-tag">${txTag} · ${data.property_type || ''}</span>
+          <h1 class="info-title">${resolvedTitle}</h1>
           <div class="info-location">
-            ${resolvedDistrict}
-            ${resolvedDistrict ? ',' : ''}
-            Vientiane
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+            ${resolvedDistrict}${resolvedDistrict ? ', ' : ''}${cityLabel[lang]}
           </div>
-
         </div>
-
-        ${
-          resolvedDesc
-          ? `
-            <div class="divider"></div>
-
-            <div>
-
-              <p class="section-caption">
-                Overview
-              </p>
-
-              <p class="body-narrative">
-                ${resolvedDesc}
-              </p>
-
-            </div>
-          `
-          : ''
-        }
-
+        ${resolvedDesc ? `
+          <div class="divider"></div>
+          <div>
+            <p class="section-caption">${overviewLabel[lang]}</p>
+            <p class="body-narrative">${resolvedDesc}</p>
+          </div>` : ''}
         ${standaloneMediaMarkup}
-
       </div>
 
       <div class="sticky-sidebar">
-
         <div class="sticky-card">
-
-          <p class="card-price-label">
-            Price
-          </p>
-
-          ${
-            data.price_display
-            ? `
-              <p class="card-price-value">
-                ${data.price_display}
-              </p>
-            `
-            : `
-              <p class="card-price-negotiable">
-                Contact Agent
-              </p>
-            `
-          }
+          <p class="card-price-label">${priceLabel[lang]}</p>
+          ${data.price_display
+            ? `<p class="card-price-value">${data.price_display}</p>`
+            : `<p class="card-price-negotiable">${inquireLabel[lang]}</p>`}
 
           <div class="card-metrics">
-
-            ${
-              data.bedrooms
-              ? `
-                <div class="metric-row">
-
-                  <span class="metric-label">
-                    Bedrooms
-                  </span>
-
-                  <span class="metric-value">
-                    ${data.bedrooms}
-                  </span>
-
-                </div>
-              `
-              : ''
-            }
-
-            ${
-              data.bathrooms
-              ? `
-                <div class="metric-row">
-
-                  <span class="metric-label">
-                    Bathrooms
-                  </span>
-
-                  <span class="metric-value">
-                    ${data.bathrooms}
-                  </span>
-
-                </div>
-              `
-              : ''
-            }
-
-            ${
-              data.sqm
-              ? `
-                <div class="metric-row">
-
-                  <span class="metric-label">
-                    Area
-                  </span>
-
-                  <span class="metric-value">
-                    ${data.sqm} m²
-                  </span>
-
-                </div>
-              `
-              : ''
-            }
-
+            ${data.bedrooms ? `<div class="metric-row"><span class="metric-label">${bedsLabel[lang]}</span><span class="metric-value">${data.bedrooms}</span></div>` : ''}
+            ${data.bathrooms ? `<div class="metric-row"><span class="metric-label">${bathsLabel[lang]}</span><span class="metric-value">${data.bathrooms}</span></div>` : ''}
+            ${data.sqm ? `<div class="metric-row"><span class="metric-label">${areaLabel[lang]}</span><span class="metric-value">${data.sqm} m²</span></div>` : ''}
+            ${data.property_type ? `<div class="metric-row"><span class="metric-label">${typeLabel[lang]}</span><span class="metric-value" style="text-transform:capitalize;">${data.property_type}</span></div>` : ''}
           </div>
 
           <div class="action-box">
-
-            <a
-              href="${directWhatsAppUrl}"
-              target="_blank"
-              class="btn-primary btn-whatsapp">
-
-              WhatsApp
-
+            <a href="${directWhatsAppUrl}" target="_blank" class="btn-primary btn-whatsapp">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              ${waLabel[lang]}
             </a>
-
-            <button
-              class="btn-primary btn-outline"
-              onclick="triggerNativeShareChannel()">
-
-              Share Listing
-
+            <button class="btn-primary btn-outline" onclick="triggerNativeShareChannel()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+              ${shareLabel[lang]}
             </button>
-
           </div>
 
-          ${
-            data.agent_name
-            ? `
-              <div class="card-agent">
-
-                <img
-                  class="agent-pfp"
-                  src="${data.agent_photo || ''}"
-                  onerror="this.src='https://placehold.co/100x100/EDE8DF/7A9098?text=P'"
-                  alt="">
-
-                <div class="agent-info-stack">
-
-                  <span class="agent-subtitle">
-                    Agent
-                  </span>
-
-                  <span class="agent-username">
-                    ${data.agent_name}
-                  </span>
-
-                </div>
-
+          ${data.agent_name ? `
+            <div class="card-agent">
+              <img class="agent-pfp"
+                src="${data.agent_photo || ''}"
+                onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect width=%22100%22 height=%22100%22 fill=%22%23EDE8DF%22/><text x=%2250%25%22 y=%2255%25%22 font-family=%22sans-serif%22 font-size=%2232%22 fill=%22%237A9098%22 text-anchor=%22middle%22>P</text></svg>'"
+                alt="">
+              <div class="agent-info-stack">
+                <span class="agent-subtitle">${agentLabel[lang]}</span>
+                <span class="agent-username">${data.agent_name}</span>
               </div>
-            `
-            : ''
-          }
-
+            </div>` : ''}
         </div>
-
       </div>
-
-    </div>
-  `;
+    </div>`;
 }
 
-/* ---------------------------------- */
-/* HERO SWAP */
-/* ---------------------------------- */
-
-function shiftFocusHero(
-  imageSource
-) {
-
-  const currentHeroImg =
-    document.querySelector(
-      '#primary-hero-frame img'
-    );
-
-  if (currentHeroImg) {
-
-    currentHeroImg.src =
-      imageSource;
-  }
+function shiftFocusHero(imageSource) {
+  const currentHeroImg = document.querySelector('#primary-hero-frame img');
+  if (currentHeroImg) currentHeroImg.src = imageSource;
 }
 
-/* ---------------------------------- */
-/* VIDEO EMBED */
-/* ---------------------------------- */
-
-function generateEmbeddedVideoFrame(
-  url
-) {
-
+function generateEmbeddedVideoFrame(url) {
   if (!url) return null;
-
-  if (
-    url.includes(
-      'youtube.com/embed/'
-    )
-  ) {
-
-    return `
-      <iframe
-        src="${url}"
-        frameborder="0"
-        allowfullscreen>
-      </iframe>
-    `;
+  if (url.includes('youtube.com/embed/')) {
+    return `<iframe src="${url}" frameborder="0" allowfullscreen allow="autoplay;encrypted-media"></iframe>`;
   }
-
-  if (
-    url.includes(
-      'youtube.com/watch?v='
-    )
-  ) {
-
-    const id =
-      url
-        .split('v=')[1]
-        ?.split('&')[0];
-
-    return `
-      <iframe
-        src="https://www.youtube.com/embed/${id}"
-        frameborder="0"
-        allowfullscreen>
-      </iframe>
-    `;
+  if (url.includes('youtube.com/watch?v=')) {
+    const id = url.split('v=')[1]?.split('&')[0];
+    return `<iframe src="https://www.youtube.com/embed/${id}" frameborder="0" allowfullscreen allow="autoplay;encrypted-media"></iframe>`;
   }
-
-  if (
-    url.includes(
-      'youtu.be/'
-    )
-  ) {
-
-    const id =
-      url
-        .split('youtu.be/')[1]
-        ?.split('?')[0];
-
-    return `
-      <iframe
-        src="https://www.youtube.com/embed/${id}"
-        frameborder="0"
-        allowfullscreen>
-      </iframe>
-    `;
+  if (url.includes('youtu.be/')) {
+    const id = url.split('youtu.be/')[1]?.split('?')[0];
+    return `<iframe src="https://www.youtube.com/embed/${id}" frameborder="0" allowfullscreen allow="autoplay;encrypted-media"></iframe>`;
   }
-
-  if (
-    url.includes(
-      'facebook.com'
-    )
-  ) {
-
-    return `
-      <iframe
-        src="https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}"
-        frameborder="0"
-        allowfullscreen>
-      </iframe>
-    `;
+  if (url.includes('facebook.com')) {
+    return `<iframe src="https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false&mute=0" frameborder="0" allowfullscreen allow="autoplay;clipboard-write;encrypted-media;picture-in-picture;web-share"></iframe>`;
   }
-
-  const driveMatch =
-    url.match(
-      /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/
-    );
-
+  // Fixed: single clean regex for Google Drive
+  const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (driveMatch) {
-
-    return `
-      <iframe
-        src="https://drive.google.com/file/d/${driveMatch[1]}/preview"
-        frameborder="0"
-        allowfullscreen>
-      </iframe>
-    `;
+    return `<iframe src="https://drive.google.com/file/d/${driveMatch[1]}/preview" frameborder="0" allow="autoplay" allowfullscreen></iframe>`;
   }
-
   return null;
 }
 
-/* ---------------------------------- */
-/* SHARE */
-/* ---------------------------------- */
-
 async function triggerNativeShareChannel() {
-
+  const lang = getCurrentLang();
+  const dynamicTitle = propertyContext
+    ? (propertyContext[`title_${lang}`] || propertyContext.title_lo || propertyContext.title_en)
+    : 'Pintag';
+  const copied = { lo: 'ລິ້ງຖືກຄັດລອກແລ້ວ', en: 'Link copied to clipboard', zh: '链接已复制' };
   if (navigator.share) {
-
-    try {
-
-      await navigator.share({
-        title:'Pintag',
-        url:window.location.href
-      });
-
-    } catch(err) {
-
-      console.error(err);
-    }
-
+    try { await navigator.share({ title: dynamicTitle, url: window.location.href }); } catch (err) {}
   } else {
-
     try {
-
-      await navigator.clipboard.writeText(
-        window.location.href
-      );
-
-      alert('Link copied');
-
-    } catch(err) {
-
-      console.error(err);
-    }
+      await navigator.clipboard.writeText(window.location.href);
+      alert(copied[lang]);
+    } catch (err) {}
   }
 }
 
-/* ---------------------------------- */
-/* INIT */
-/* ---------------------------------- */
+function setLang(targetLanguageCode, contextBtnElement) {
+  document.body.className = targetLanguageCode === 'lo' ? '' : 'lang-' + targetLanguageCode;
+  document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+  contextBtnElement.classList.add('active');
+  if (propertyContext) buildMockupLayout();
+}
 
-window.addEventListener(
-  'DOMContentLoaded',
-  () => {
-    requestPropertyData();
-  }
-);
+requestPropertyData();
 </script>
+</body>
+</html>
