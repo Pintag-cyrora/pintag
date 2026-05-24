@@ -3,244 +3,299 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pintag · Spatial Listing Infrastructure for Agents</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Noto+Sans+Lao:wght@300;400;500;700&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet">
+<title>Pintag · ສຳລັບຕົວແທນ</title>
+<meta name="description" content="ຊ່ວຍໃຫ້ການນຳສະເໜີອະສັງຫາຂອງທ່ານ ດູດີ ແລະ ໜ້າເຊື່ອຖື">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preload" as="image" href="https://pintag-cyrora.github.io/pintag/pintag-interior.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{background-color:#0B0F12;color:#F9F6F0;-webkit-font-smoothing:antialiased;}
-body{font-family:'DM Sans','Noto Sans Lao',sans-serif;}
+:root{
+  --teal:#2D8C8C;--teal-light:#38A8A8;
+  --ink:#1C2B32;--ink-soft:#3D5058;--ink-muted:#7A9098;
+  --warm:#F7F3EC;--warm-deep:#EDE8DF;--white:#FFFFFF;
+  --border:rgba(26,36,40,0.07);--wa:#1A9E50;
+}
+body{font-family:'DM Sans',sans-serif;font-weight:400;background:var(--white);color:var(--ink);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
 
-/* NAV / FIXED HEADER ARCHITECTURE */
-nav {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 300;
-  height: 64px; display: flex; align-items: center; justify-content: space-between;
-  padding: 0 40px; background: rgba(11, 15, 18, 0.85);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(249, 246, 240, 0.04);
-}
-.nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: #F9F6F0; }
-.nav-wordmark { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; }
-.nav-right { display: flex; align-items: center; gap: 24px; }
-.nav-link {
-  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 400;
-  color: #F9F6F0; opacity: 0.4; text-decoration: none; letter-spacing: 0.08em;
-  text-transform: uppercase; transition: opacity 0.3s;
-}
-.nav-link:hover, .nav-link.active { opacity: 1; }
+/* NAV - Clean Minimal Identity */
+nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(255,255,255,0.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(26,36,40,0.05);}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
+.nav-wordmark{font-size:18px;font-weight:800;color:var(--ink);letter-spacing:-0.02em;line-height:1;}
+.nav-right{display:flex;align-items:center;gap:16px;}
+.nav-link{font-size:12px;font-weight:600;color:var(--ink-muted);text-decoration:none;letter-spacing:0.04em;text-transform:uppercase;transition:color 0.2s;}
+.nav-link:hover,.nav-link.active{color:var(--ink);}
 
-/* LOADING SCREEN STATE */
-.loading-screen {
-  display: flex; align-items: center; justify-content: center;
-  position: fixed; inset: 0; background: #0B0F12; z-index: 400;
+/* LOADING */
+.loading-screen{display:flex;align-items:center;justify-content:center;height:100vh;background:var(--warm);}
+.loading-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:ldot 1.2s ease-in-out infinite;}
+@keyframes ldot{0%,100%{opacity:0.25;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
+
+/* ── EDITORIAL LIGHT HERO ── */
+.hero{
+  margin-top:54px;
+  height:calc(100vh - 54px);
+  min-height:520px;max-height:760px;
+  position:relative;background:var(--warm);
+  display:flex;align-items:center;justify-content:flex-start;
+  overflow:hidden;
 }
-.loading-indicator {
-  font-family: 'JetBrains Mono', monospace; font-size: 10px;
-  letter-spacing: 0.16em; opacity: 0.3; text-transform: uppercase;
+.hero-bg-img{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;object-position:center center;
+  z-index:1;
+}
+.hero-bg-fallback{position:absolute;inset:0;z-index:0;background:var(--warm);}
+
+/* Premium Soft Mask - Protects legibility without turning the space dark */
+.hero-gradient{
+  position:absolute;inset:0;z-index:2;
+  background: linear-gradient(
+    to right,
+    rgba(247, 243, 236, 0.95) 0%,
+    rgba(247, 243, 236, 0.75) 40%,
+    rgba(247, 243, 236, 0.2) 100__%
+  );
 }
 
-/* HERO SECTION (Aspirational Light meets Spatial Telemetry) */
-.hero {
-  position: relative; height: 75vh; min-height: 520px;
-  display: flex; align-items: flex-end; padding: 60px 40px;
-  overflow: hidden; border-bottom: 1px solid rgba(249, 246, 240, 0.04);
-  margin-top: 64px;
+.hero-content{
+  position:relative;z-index:3;
+  padding:0 40px;width:100%;max-width:1240px;margin:0 auto;
 }
-.hero-bg-img {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; object-position: center center;
-  filter: grayscale(10%) contrast(96%); opacity: 0.55; z-index: 1;
+.hero-text-block {
+  max-width: 520px;
+  padding: 32px;
+  border-radius: 24px;
+  /* Localized typographic isolation shield */
+  background: radial-gradient(circle at left, rgba(247, 243, 236, 0.9) 0%, rgba(247, 243, 236, 0) 100%);
 }
-.hero-gradient {
-  position: absolute; inset: 0; z-index: 2;
-  background: linear-gradient(to top, #0B0F12 0%, rgba(11,15,18,0.4) 60%, rgba(11,15,18,0.1) 100%);
+.hero-eyebrow{font-size:11px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:var(--teal);margin-bottom:16px;display:block;}
+.hero-title{
+  font-size:clamp(32px, 5.5vw, 48px);font-weight:800;
+  color:var(--ink);letter-spacing:-0.03em;line-height:1.15;
+  margin-bottom:14px;
 }
-.hero-telemetry {
-  position: absolute; top: 40px; right: 40px; z-index: 3;
-  font-family: 'JetBrains Mono', monospace; font-size: 10px;
-  letter-spacing: 0.12em; opacity: 0.25; text-align: right;
+.hero-title em{font-style:normal;color:var(--teal);}
+.hero-sub{font-size:16px;font-weight:400;color:var(--ink-soft);line-height:1.6;margin-bottom:28px;}
+.btn-hero{
+  display:inline-flex;align-items:center;gap:12px;
+  padding:15px 28px;background:var(--ink);color:var(--white);
+  font-size:14px;font-weight:600;text-decoration:none;border-radius:30px;
+  transition:all 0.2s ease;
 }
-.hero-content { position: relative; z-index: 3; width: 100%; max-width: 680px; }
-.hero-eyebrow {
-  font-family: 'JetBrains Mono', monospace; font-size: 10px;
-  letter-spacing: 0.14em; text-transform: uppercase; color: #0A666A;
-  margin-bottom: 16px; display: block;
+.btn-hero:hover{
+  background:var(--teal);
+  box-shadow:0 4px 20px rgba(45, 140, 140, 0.25);
 }
-.hero-title {
-  font-size: clamp(32px, 5vw, 48px); font-weight: 700;
-  letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 16px;
-}
-.hero-title em { font-style: normal; color: #0A666A; }
-.hero-sub { font-size: 16px; font-weight: 400; color: #A0AEC0; line-height: 1.6; max-width: 440px; }
 
-/* STATEMENT STRIP */
-.statement-block { padding: 80px 40px; border-bottom: 1px solid rgba(249, 246, 240, 0.04); background: #0E1317; }
-.statement-inner { max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; }
-.statement-text { font-size: 24px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.4; color: #F9F6F0; }
-.statement-text em { font-style: normal; color: #0A666A; }
-.statement-sub { font-size: 15px; font-weight: 400; color: #7A9098; line-height: 1.7; }
-
-/* ROSTER SYSTEM (Structured Network, Minimal Telemetry Rows) */
-.roster-section { padding: 100px 40px; max-width: 1240px; margin: 0 auto; }
-.section-header-telemetry {
-  display: flex; justify-content: space-between; align-items: baseline;
-  border-bottom: 1px solid rgba(249, 246, 240, 0.08); padding-bottom: 16px; margin-bottom: 32px;
+/* ── STATEMENT — warm, grounded ── */
+.statement-block{padding:60px 40px;background:var(--warm);border-bottom:1px solid var(--border);}
+.statement-inner{max-width:1160px;margin:0 auto;}
+.statement-text{
+  font-size:clamp(20px,3.5vw,26px);font-weight:700;
+  color:var(--ink);letter-spacing:-0.02em;line-height:1.4;max-width:640px;
 }
-.roster-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.4; }
-.roster-list { display: flex; flex-direction: column; }
-.roster-card {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 24px 0; border-bottom: 1px solid rgba(249, 246, 240, 0.04);
-  text-decoration: none; color: inherit; transition: all 0.4s ease;
+.statement-text em{font-style:normal;color:var(--teal);}
+.statement-sub{margin-top:14px;font-size:15px;font-weight:400;color:var(--ink-soft);line-height:1.7;max-width:480px;}
+
+/* ── BOUTIQUE AGENT ROSTER ── */
+.roster-section{padding:60px 40px 40px;max-width:1160px;margin:0 auto;}
+.roster-label{font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:32px;display:block;}
+
+.roster-list{display:flex;flex-direction:column;gap:1px;background:var(--border);}
+.roster-card{
+  display:flex;align-items:center;gap:24px;
+  padding:24px 16px;
+  background:var(--white);
+  text-decoration:none;
+  transition:all 0.2s;
 }
-.roster-card:hover { transform: translateX(4px); border-bottom-color: rgba(249, 246, 240, 0.15); }
-.roster-left-meta { display: flex; align-items: center; gap: 32px; }
-.roster-portrait {
-  width: 64px; height: 64px; border-radius: 50%; overflow: hidden;
-  background: #1C242C; filter: grayscale(100%); transition: filter 0.4s;
+.roster-card:hover{background:var(--warm);transform:translateX(4px);}
+.roster-portrait{
+  width:76px;height:76px;
+  border-radius:50%;overflow:hidden;
+  flex-shrink:0;
+  background:var(--warm-deep);
+  border:1px solid var(--border);
 }
-.roster-card:hover .roster-portrait { filter: grayscale(0%); }
-.roster-portrait img { width: 100%; height: 100%; object-fit: cover; }
-.roster-portrait-initial { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 600; color: #0A666A; background: #151B22; }
-.roster-details { display: flex; flex-direction: column; gap: 4px; }
-.roster-name { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
-.roster-bio { font-size: 13px; color: #7A9098; line-height: 1.5; }
-.roster-right-meta { display: flex; align-items: center; gap: 40px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
-.roster-status { font-size: 9px; letter-spacing: 0.1em; color: #0A666A; padding: 2px 8px; border: 1px solid rgba(10, 102, 106, 0.3); border-radius: 10px; }
-.roster-count { opacity: 0.4; }
-.roster-arrow { opacity: 0.3; transition: transform 0.3s; }
-.roster-card:hover .roster-arrow { transform: translateX(4px); opacity: 1; color: #0A666A; }
+.roster-portrait img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
+.roster-portrait-initial{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:var(--teal);}
+.roster-info{flex:1;min-width:0;}
+.roster-credential{font-size:9px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:var(--teal);margin-bottom:4px;display:block;}
+.roster-name{font-size:20px;font-weight:700;color:var(--ink);letter-spacing:-0.025em;line-height:1.2;margin-bottom:4px;}
+.roster-bio{font-size:14px;font-weight:400;color:var(--ink-soft);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.roster-meta{text-align:right;flex-shrink:0;}
+.roster-count{font-size:12px;font-weight:500;color:var(--ink-muted);display:block;margin-bottom:4px;}
+.roster-arrow{font-size:16px;color:var(--ink-soft);transition:transform 0.2s;}
+.roster-card:hover .roster-arrow {transform: translateX(2px);}
 
-/* HORIZONTAL VISUAL ATMOSPHERE STRIP */
-.listing-strip-section { padding: 40px 0; background: #0E1317; border-top: 1px solid rgba(249, 246, 240, 0.04); border-bottom: 1px solid rgba(249, 246, 240, 0.04); }
-.listing-strip { display: flex; gap: 16px; overflow-x: auto; padding: 0 40px; scrollbar-width: none; }
-.listing-strip::-webkit-scrollbar { display: none; }
-.strip-card { flex-shrink: 0; width: 300px; display: block; text-decoration: none; border-radius: 2px; overflow: hidden; position: relative; aspect-ratio: 4/5; background: #151B22; }
-.strip-card img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(15%) contrast(96%); transition: transform 0.8s ease; }
-.strip-card:hover img { transform: scale(1.02); }
-.strip-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(11,15,18,0.85) 0%, transparent 60%); }
-.strip-price { position: absolute; bottom: 20px; left: 20px; font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 400; color: #F9F6F0; letter-spacing: -0.01em; }
+/* ── LISTING STRIP ── */
+.listing-strip-section{padding:40px 0 60px 40px;background:var(--white);border-top:1px solid var(--border);}
+.listing-strip{display:flex;gap:16px;overflow-x:auto;padding-right:40px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.listing-strip::-webkit-scrollbar{display:none;}
+.strip-card{flex-shrink:0;width:45vw;max-width:290px;display:block;text-decoration:none;border-radius:6px;overflow:hidden;background:var(--warm);transition:transform 0.25s ease;}
+.strip-card:hover{transform:translateY(-4px);}
+.strip-img{aspect-ratio:3/4;overflow:hidden;position:relative;}
+.strip-img img{width:100%;height:100%;object-fit:cover;object-position:center center;display:block;transition:transform 0.5s ease;}
+.strip-card:hover .strip-img img{transform:scale(1.04);}
+.strip-img-ph{width:100%;height:100%;background:linear-gradient(135deg,#EDE8DF,#F7F3EC);}
+.strip-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(28,43,50,0.4) 0%,transparent 60%);}
+.strip-price{position:absolute;bottom:14px;left:16px;font-size:18px;font-weight:700;color:var(--white);letter-spacing:-0.02em;}
 
-/* PILLARS ARCHITECTURE */
-.pillars { padding: 100px 40px; max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
-.pillar { display: flex; flex-direction: column; gap: 16px; }
-.pillar-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #0A666A; letter-spacing: 0.1em; }
-.pillar-title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
-.pillar-body { font-size: 14px; color: #7A9098; line-height: 1.6; font-weight: 300; }
+/* ── TYPOGRAPHY MOMENT — Quiet Editorial Break ── */
+.typo-moment{padding:100px 40px;background:var(--warm);text-align:center;border-top:1px solid var(--border);}
+.typo-inner{max-width:480px;margin:0 auto;}
+.typo-main{font-size:clamp(24px,4vw,36px);font-weight:700;color:var(--ink);letter-spacing:-0.03em;line-height:1.3;}
+.typo-main em{font-style:normal;color:var(--teal);}
 
-/* RESTRAINED CLOSING INTELLIGENCE OVERLAY */
-.final-cta { padding: 120px 40px; background: #0E1317; border-top: 1px solid rgba(249, 246, 240, 0.04); text-align: center; }
-.cta-inner { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 24px; }
-.cta-title { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
-.cta-sub { font-size: 15px; color: #7A9098; line-height: 1.6; font-weight: 300; }
-.btn-cta {
-  display: inline-flex; align-items: center; gap: 12px; padding: 16px 32px;
-  background: #0A666A; color: #F9F6F0; font-size: 13px; font-weight: 600;
-  text-decoration: none; border-radius: 30px; letter-spacing: 0.04em;
-  transition: background 0.3s;
-}
-.btn-cta:hover { background: #084D50; }
-.cta-wa-note { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #7A9098; opacity: 0.5; }
+/* ── PILLARS ── */
+.pillars{padding:60px 40px;max-width:1160px;margin:0 auto;}
+.pillar{padding:24px 0;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:24px;}
+.pillar:last-child{border-bottom:none;}
+.pillar-num{font-size:12px;font-weight:700;letter-spacing:0.14em;color:var(--teal);flex-shrink:0;width:28px;}
+.pillar-title{font-size:16px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin-bottom:6px;}
+.pillar-body{font-size:14px;font-weight:400;color:var(--ink-soft);line-height:1.65;}
 
-.page-footer { padding: 40px; text-align: center; border-top: 1px solid rgba(249, 246, 240, 0.04); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #7A9098; opacity: 0.4; }
+/* ── FINAL CTA ── */
+.final-cta{padding:80px 40px;background:var(--warm);text-align:center;border-top:1px solid var(--border);}
+.cta-inner{max-width:480px;margin:0 auto;}
+.cta-eyebrow{font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--teal);margin-bottom:16px;display:block;}
+.cta-title{font-size:clamp(24px,4vw,32px);font-weight:800;color:var(--ink);letter-spacing:-0.03em;line-height:1.25;margin-bottom:12px;}
+.cta-sub{font-size:15px;font-weight:400;color:var(--ink-soft);line-height:1.65;margin-bottom:24px;}
+.btn-cta{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:16px;background:var(--wa);color:var(--white);font-size:15px;font-weight:600;text-decoration:none;border-radius:30px;box-shadow:0 4px 20px rgba(26,158,80,0.15);transition:all 0.2s;}
+.btn-cta:hover{background:#168C45;transform:translateY(-1px);}
+.cta-wa-note{font-size:13px;font-weight:400;color:var(--ink-muted);line-height:1.6;margin-top:14px;}
 
-@media(max-width:900px) {
-  .statement-inner, .pillars { grid-template-columns: 1fr; gap: 32px; }
-  .roster-right-meta { gap: 20px; }
-}
-@media(max-width:600px) {
-  nav { padding: 0 20px; }
-  .hero { padding: 40px 20px; }
-  .statement-block, .roster-section, .pillars, .final-cta { padding: 60px 20px; }
-  .roster-card { flex-direction: column; align-items: flex-start; gap: 16px; }
-  .roster-right-meta { width: 100%; justify-content: space-between; border-top: 1px solid rgba(249, 246, 240, 0.04); padding-top: 12px; }
-  .listing-strip { padding: 0 20px; }
+.page-footer{padding:32px 40px;text-align:center;border-top:1px solid var(--border);background:var(--white);}
+.page-footer p{font-size:12px;color:var(--ink-muted);letter-spacing:0.04em;}
+
+/* MOTION */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+.fu{animation:fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;}
+.fu1{animation-delay:0s;}.fu2{animation-delay:0.1s;}.fu3{animation-delay:0.2s;}.fu4{animation-delay:0.3s;}
+@media(prefers-reduced-motion:reduce){.fu{animation:none;}}
+
+@media(max-width:768px){
+  .hero{align-items:flex-end;}
+  .hero-gradient{
+    background: linear-gradient(to top, rgba(247, 243, 236, 0.98) 0%, rgba(247, 243, 236, 0.85) 50%, rgba(247, 243, 236, 0) 100%);
+  }
+  .hero-content{padding:0 20px 40px;}
+  .hero-text-block{padding:0;background:transparent;}
+  .statement-block{padding:44px 20px;}
+  .roster-section{padding:44px 20px 24px;}
+  .pillars{padding:44px 20px;}
+  .final-cta{padding:56px 20px;}
+  .typo-moment{padding:72px 20px;}
+  .listing-strip-section{padding:32px 0 40px 20px;}
+  .strip-card{width:72vw;}
+  .roster-card{gap:16px;padding:20px 8px;}
+  .roster-portrait{width:64px;height:64px;}
+  .roster-name{font-size:18px;}
 }
 </style>
 </head>
 <body>
-
-<div class="loading-screen" id="loading">
-  <div class="loading-indicator">SYS.INDEXING // CONNECTING_DATAMESH</div>
-</div>
-
+<div class="loading-screen" id="loading"><div class="loading-dot"></div></div>
 <div id="page" style="display:none;">
 
 <nav>
   <a href="index.html" class="nav-logo">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="7.25" cy="4" r="2" fill="#0A666A" />
-      <path d="M7.25,7.5 V21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
-      <path d="M7.25,8 H12.5 C15.2,8 16.8,9.8 16.8,12.2 C16.8,14.6 15.2,16.4 12.5,16.4 H7.25" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+    <svg width="24" height="20" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision" style="display:block;">
+      <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
+      <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
     </svg>
     <span class="nav-wordmark">Pintag</span>
   </a>
   <div class="nav-right">
     <a href="listings.html" class="nav-link">Listings</a>
-    <a href="for-agents.html" class="nav-link active">Workspace</a>
+    <a href="for-agents.html" class="nav-link active">Agents</a>
   </div>
 </nav>
 
-<div class="hero">
-  <img class="hero-bg-img" id="hero-bg" src="https://pintag-cyrora.github.io/pintag/pintag-interior.png" alt="">
+<div class="hero fu fu1">
+  <img class="hero-bg-img" id="hero-bg"
+    src="https://pintag-cyrora.github.io/pintag/pintag-interior.png"
+    alt="" loading="eager"
+    onerror="this.src='https://pintag-cyrora.github.io/pintag/pintag-villa.png'">
+  <div class="hero-bg-fallback"></div>
   <div class="hero-gradient"></div>
-  <div class="hero-telemetry">MAP.GRID // ZONE_LAO_VTE<br>SYS.STATUS // OPERATIONAL</div>
+  
   <div class="hero-content">
-    <span class="hero-eyebrow">WORKSPACE INFRASTRUCTURE</span>
-    <h1 class="hero-title">ຄວາມໜ້າເຊື່ອຖື ເລີ່ມຈາກ<br><em>ການນຳສະເໜີທີ່ຊັດເຈນ</em></h1>
-    <p class="hero-sub">Map-indexed property management engineered for specialized agents in Laos.</p>
+    <div class="hero-text-block">
+      <span class="hero-eyebrow">Pintag · ສຳລັບຕົວແທນ</span>
+      <h1 class="hero-title">ຄວາມໜ້າເຊື່ອຖື<br>ເລີ່ມຈາກ<br><em>ການນຳສະເໜີທີ່ດີ</em></h1>
+      <p class="hero-sub">Trust begins with premium, spatial presentation.</p>
+      <a href="#contact" class="btn-hero">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        ສອບຖາມກ່ຽວກັບ Pintag
+      </a>
+    </div>
   </div>
 </div>
 
-<div class="statement-block">
+<div class="statement-block fu fu2">
   <div class="statement-inner">
-    <p class="statement-text">Facebook ແລະ TikTok ສ້າງຄວາມສົນໃຈ.<br><em>Pintag ປ່ຽນຄວາມສົນໃຈໃຫ້ກາຍເປັນຄວາມໜ້າເຊື່ອຖື.</em></p>
-    <p class="statement-sub">A pristine digital interface designed to handle properties as spatial assets rather than temporal social media posts.</p>
+    <p class="statement-text">Facebook ແລະ TikTok ສ້າງຄວາມສົນໃຈ.<br><em>Pintag ຊ່ວຍໃຫ້ການນຳສະເໜີຂອງທ່ານດູດີ ແລະ ໜ້າເຊື່ອຖື.</em></p>
+    <p class="statement-sub">ໃຫ້ເຮົາເປັນສ່ວນໜຶ່ງໃນການນຳສະເໜີອະສັງຫາຂອງທ່ານ.</p>
   </div>
 </div>
 
-<div class="roster-section">
-  <div class="section-header-telemetry">
-    <span class="roster-label">NETWORK_INDEX // ACTIVE_AGENTS</span>
-    <span class="roster-label" style="opacity:0.2;">VTE_METRO</span>
-  </div>
+<div class="roster-section fu fu3">
+  <span class="roster-label">ຕົວແທນນາຍໜ້າຊັ້ນນຳ</span>
   <div class="roster-list" id="roster-list">
     </div>
 </div>
 
-<div class="listing-strip-section">
+<div class="listing-strip-section fu fu3">
   <div class="listing-strip" id="listing-strip"></div>
 </div>
 
-<div class="pillars">
+<div class="typo-moment">
+  <div class="typo-inner">
+    <p class="typo-main">การນຳສະເໜີທີ່ດີ<br><em>ສ້າງຄວາມໄວ້ວາງໃຈ</em></p>
+  </div>
+</div>
+
+<div class="pillars fu fu4">
   <div class="pillar">
-    <span class="pillar-num">01 // SPATIAL</span>
-    <p class="pillar-title">ການນຳສະເໜີທີ່ທັນສະໄໝ</p>
-    <p class="pillar-body">Every asset receives clean geometric mapping coordinates, explicit parameter matrices, and uncompromised imagery.</p>
+    <span class="pillar-num">01</span>
+    <div>
+      <p class="pillar-title">ການນຳສະເໜີທີ່ທັນສະໄໝ</p>
+      <p class="pillar-body">ຮູບພາບ, ແຜນທີ່, ລາຄາ, WhatsApp — ທຸກລາຍການໄດ້ຮັບໜ້າລາຍການທີ່ຄົບຖ້ວນ.</p>
+    </div>
   </div>
   <div class="pillar">
-    <span class="pillar-num">02 // INTEGRATION</span>
-    <p class="pillar-title">ໂປຣໄຟລ໌ທີ່ດູດີ ແລະ ໜ້າເຊື່ອຖື</p>
-    <p class="pillar-body">A single, immutable spatial index link displaying your entire active catalog. Designed to be shared effortlessly across networks.</p>
+    <span class="pillar-num">02</span>
+    <div>
+      <p class="pillar-title">ໂປຣໄຟລ໌ທີ່ດູດີ ແລະ ໜ້າເຊື່ອຖື</p>
+      <p class="pillar-body">ລິ້ງດຽວ ສະແດງທຸກລາຍການຂອງທ່ານ. ແຊຣ໌ໄດ້ທຸກທີ່. ດູດີທັນທີ.</p>
+    </div>
   </div>
   <div class="pillar">
-    <span class="pillar-num">03 // RESTYLED</span>
-    <p class="pillar-title">ຄວາມໜ້າເຊື່ອຖື ເລີ່ມຈາກຄວາມໃສ່ໃຈ</p>
-    <p class="pillar-body">Instant data transparency. Before users click, they encounter architectural layout clarity, eliminating baseline transaction friction.</p>
+    <span class="pillar-num">03</span>
+    <div>
+      <p class="pillar-title">ຄວາມໜ້າເຊື່ອຖື ເລີ່ມຈາກຄວາມໃສ່ໃຈ</p>
+      <p class="pillar-body">ສົ່ງລິ້ງດຽו — ຜູ້ຊື້ເຫັນຮູບ ແລະ ລາຄາທັນທີ ກ່ອນຄລິກ.</p>
+    </div>
   </div>
 </div>
 
 <div class="final-cta" id="contact">
   <div class="cta-inner">
-    <h2 class="cta-title">Deploy your inventory onto the grid</h2>
-    <p class="cta-sub">ບໍ່ມີຄ່າໃຊ້ຈ່າຍ ແລະ ບໍ່ມີຄວາມຊັບຊ້ອນດ້ານເຕັກໂນໂລຊີ. We configure your spatial portfolio interface directly.</p>
-    <a href="https://wa.me/85620542966655?text=ສະບາຍດີ%2C%20ຂ້ອຍຢາກຮູ້ກ່ຽກັບ%20Pintag%20ສຳລັບຕົວແທນ" target="_blank" class="btn-cta">
-      Connect via WhatsApp Architecture ➔
+    <span class="cta-eyebrow">ເລີ່ມຕົ້ນໄດ້ເລີຍ</span>
+    <h2 class="cta-title">ໃຫ້ Pintag ຊ່ວຍ<br>ຄັດສັນການນຳສະເໜີ<br>ຂອງທ່ານ</h2>
+    <p class="cta-sub">ບໍ່ມີຄ່າໃຊ້ຈ່າຍ. ບໍ່ຕ້ອງມີຄວາມຮູ້ດ້ານເຕັກໂນໂລຊີ.</p>
+    <a href="https://wa.me/85620542966655?text=ສະບາຍດີ%2C%20ຂ້ອຍຢາກຮູ້ກ່ຽວກັບ%20Pintag%20ສຳລັບຕົວແທນ" target="_blank" class="btn-cta">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      ຕິດຕໍ່ Pintag · WhatsApp
     </a>
-    <span class="cta-wa-note">INITIALIZATION_PORTAL // +856 20 54296655</span>
+    <p class="cta-wa-note">ທັກຫາເຮົາໃນ WhatsApp — ເຮົາຈະຊ່ວຍຕັ້ງໂປຣໄຟລ໌ໃຫ້ທ່ານ<br>ບໍ່ມີຄ່າໃຊ້ຈ່າຍ. ບໍ່ຕ້ອງມີຄວາມຮູ້ດ້ານເຕັກໂນໂລຊີ.</p>
   </div>
 </div>
 
-<div class="page-footer">pintag.io · workspace_v1.0.4</div>
+<div class="page-footer"><p>Pintag · pintag.io</p></div>
 </div>
 
 <script>
@@ -285,29 +340,26 @@ function renderRoster(agents,byAgent){
     card.href='agent.html?slug='+encodeURIComponent(a.slug||'');
     card.className='roster-card';
 
-    var leftMeta=document.createElement('div'); leftMeta.className='roster-left-meta';
-    
-    var port=document.createElement('div'); port.className='roster-portrait';
+    var port=document.createElement('div');port.className='roster-portrait';
     if(a.photo_url){
-      var pi=document.createElement('img'); pi.alt='';
+      var pi=document.createElement('img');pi.alt='';
       pi.onerror=function(){this.onerror=null;port.innerHTML='<div class="roster-portrait-initial">'+initial+'</div>';};
-      pi.src=a.photo_url; port.appendChild(pi);
+      pi.src=a.photo_url;port.appendChild(pi);
     } else {
       port.innerHTML='<div class="roster-portrait-initial">'+initial+'</div>';
     }
-    leftMeta.appendChild(port);
+    card.appendChild(port);
 
-    var details=document.createElement('div'); details.className='roster-details';
-    var nm=document.createElement('p'); nm.className='roster-name'; nm.textContent=a.name_lo||a.name_en||'Agent'; details.appendChild(nm);
-    var bi=document.createElement('p'); bi.className='roster-bio'; bi.textContent=bio; details.appendChild(bi);
-    leftMeta.appendChild(details);
-    card.appendChild(leftMeta);
+    var info=document.createElement('div');info.className='roster-info';
+    if(a.is_verified){var vc=document.createElement('span');vc.className='roster-credential';vc.textContent='VERIFIED AGENT';info.appendChild(vc);}
+    var nm=document.createElement('p');nm.className='roster-name';nm.textContent=a.name_lo||a.name_en||'Agent';info.appendChild(nm);
+    var bi=document.createElement('p');bi.className='roster-bio';bi.textContent=bio;info.appendChild(bi);
+    card.appendChild(info);
 
-    var rightMeta=document.createElement('div'); rightMeta.className='roster-right-meta';
-    if(a.is_verified){var vc=document.createElement('span'); vc.className='roster-status'; vc.textContent='VERIFIED'; rightMeta.appendChild(vc);}
-    if(count){var ct=document.createElement('span'); ct.className='roster-count'; ct.textContent=String(count).padStart(2,'0')+'_ASSETS'; rightMeta.appendChild(ct);}
-    var arr=document.createElement('span'); arr.className='roster-arrow'; arr.textContent='→'; rightMeta.appendChild(arr);
-    card.appendChild(rightMeta);
+    var meta=document.createElement('div');meta.className='roster-meta';
+    if(count){var ct=document.createElement('span');ct.className='roster-count';ct.textContent=count+' ລາຍການ';meta.appendChild(ct);}
+    var arr=document.createElement('span');arr.className='roster-arrow';arr.textContent='→';meta.appendChild(arr);
+    card.appendChild(meta);
 
     list.appendChild(card);
   });
@@ -319,17 +371,15 @@ function renderStrip(listings){
   listings.forEach(function(p){
     var imgs=Array.isArray(p.images)?p.images:[];
     var thumb=imgs[0]||'';
-    if(!thumb) return;
-    
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug||'');
     card.className='strip-card';
-    
-    var si=document.createElement('img'); si.src=thumb; si.alt=''; si.loading='lazy'; card.appendChild(si);
-    var ov=document.createElement('div'); ov.className='strip-overlay'; card.appendChild(ov);
-    if(p.price_display){var pr=document.createElement('span'); pr.className='strip-price'; pr.textContent=p.price_display; card.appendChild(pr);}
-    
-    strip.appendChild(card);
+    var imgDiv=document.createElement('div');imgDiv.className='strip-img';
+    if(thumb){var si=document.createElement('img');si.src=thumb;si.alt='';si.loading='lazy';si.decoding='async';imgDiv.appendChild(si);}
+    else{var ph=document.createElement('div');ph.className='strip-img-ph';imgDiv.appendChild(ph);}
+    var ov=document.createElement('div');ov.className='strip-overlay';imgDiv.appendChild(ov);
+    if(p.price_display){var pr=document.createElement('span');pr.className='strip-price';pr.textContent=p.price_display;imgDiv.appendChild(pr);}
+    card.appendChild(imgDiv);strip.appendChild(card);
   });
 }
 
