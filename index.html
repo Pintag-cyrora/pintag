@@ -4,17 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag · ວຽງຈັນ</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Noto+Sans+Lao:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;overflow:hidden;}
-body{font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;}
+html,body{height:100%;overflow:hidden;background-color:#0B0F12;}
+body{font-family:'DM Sans','Noto Sans Lao',sans-serif;-webkit-font-smoothing:antialiased;}
 
 .lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
 body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}
 body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
 
-/* FULL SCREEN SPLIT */
+/* SPLIT SCREEN SYSTEM */
 .split{
   display:grid;
   grid-template-columns:1fr 1fr;
@@ -22,7 +22,7 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
   position:relative;
 }
 
-/* EACH PANEL */
+/* CONTAINER ARCHITECTURE */
 .panel{
   position:relative;
   overflow:hidden;
@@ -32,195 +32,232 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
   flex-direction:column;
   align-items:center;
   justify-content:center;
-  transition:flex 0.5s cubic-bezier(0.4,0,0.2,1);
+  transition:all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.panel:hover{flex:1.15;}
 
-/* BACKGROUND PHOTOS */
+/* BACKGROUND PHOTOS & RESTRAINED FALLBACKS */
 .panel-bg{
   position:absolute;inset:0;
   background-size:cover;
   background-position:center;
-  transition:transform 0.6s cubic-bezier(0.4,0,0.2,1);
+  filter: grayscale(12%) contrast(92%);
+  transition:transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 0;
 }
-.panel:hover .panel-bg{transform:scale(1.04);}
+.panel:hover .panel-bg{transform:scale(1.03);}
 
-/* BUYER panel - property photo */
 .panel-buyer .panel-bg{
+  background-color: #EFECE6;
   background-image:url('pintag-villa.png');
   background-position:center 60%;
 }
-/* AGENT panel - interior/balcony */
 .panel-agent .panel-bg{
+  background-color: #151B22;
   background-image:url('pintag-interior.png');
   background-position:center 40%;
 }
 
-/* OVERLAYS */
+/* BRAND SYSTEM COLOR OVERLAYS */
 .panel-buyer .panel-overlay{
   position:absolute;inset:0;
-  background:linear-gradient(135deg, rgba(15,25,30,0.78) 0%, rgba(15,25,30,0.65) 100%);
-  transition:background 0.4s;
+  background: rgba(249, 246, 240, 0.84); /* Premium Bone/Off-White Consumer Tint */
+  mix-blend-mode: multiply;
+  transition: background 0.5s ease;
+  z-index: 1;
+}
+.panel-buyer-darken {
+  position:absolute;inset:0;
+  background: linear-gradient(to bottom, rgba(17,22,27,0.3) 0%, rgba(17,22,27,0.05) 100%);
+  z-index: 2;
 }
 .panel-agent .panel-overlay{
   position:absolute;inset:0;
-  background:linear-gradient(135deg, rgba(20,65,65,0.82) 0%, rgba(30,90,90,0.7) 100%);
-  transition:background 0.4s;
+  background: rgba(11, 15, 18, 0.88); /* Deep Charcoal/Slate Professional Workspace Tint */
+  transition: background 0.5s ease;
+  z-index: 1;
 }
-.panel-buyer:hover .panel-overlay{background:linear-gradient(135deg, rgba(15,25,30,0.6) 0%, rgba(15,25,30,0.45) 100%);}
-.panel-agent:hover .panel-overlay{background:linear-gradient(135deg, rgba(20,65,65,0.65) 0%, rgba(30,90,90,0.5) 100%);}
+.panel-buyer:hover .panel-overlay{background: rgba(249, 246, 240, 0.76);}
+.panel-agent:hover .panel-overlay{background: rgba(11, 15, 18, 0.82);}
 
-/* DIVIDER LINE */
+/* GEOMETRIC TOPOGRAPHICAL VECTOR BACKGROUND LAYER */
+.topo-layer {
+  position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' viewBox='0 0 800 600'%3E%3Cpath d='M-100,100 C100,150 200,50 400,120 C600,190 700,80 900,150 M-100,200 C100,250 150,130 350,220 C550,310 650,180 900,250 M-100,300 C150,320 250,220 450,320 C650,420 750,290 900,350' fill='none' stroke='%230A666A' stroke-width='1' stroke-opacity='0.12'/%3E%3C/svg%3E");
+  background-size: cover;
+  z-index: 3;
+  pointer-events: none;
+}
+.panel-buyer .topo-layer { filter: invert(0.18); }
+
+/* SEPARATION STRUCTURAL DIVIDER */
 .divider{
   position:absolute;
   left:50%;top:0;bottom:0;
-  width:2px;
-  background:linear-gradient(to bottom, transparent, rgba(255,255,255,0.25), rgba(255,255,255,0.35), rgba(255,255,255,0.25), transparent);
+  width:1px;
+  background: rgba(17, 22, 27, 0.08);
   z-index:10;
   pointer-events:none;
 }
 
-/* GOLD TOP RULE */
-.gold-rule{
-  position:absolute;top:0;left:0;right:0;
-  height:3px;
-  background:linear-gradient(to right, transparent, #B8960C 20%, #D4AF37 50%, #B8960C 80%, transparent);
-  z-index:20;
-  pointer-events:none;
-}
-
-/* CONTENT */
 .panel-content{
-  position:relative;z-index:2;
+  position:relative;z-index:4;
   display:flex;flex-direction:column;
   align-items:center;
-  gap:20px;
+  gap:24px;
   padding:40px 32px;
   text-align:center;
 }
 
-/* BIG ICON */
+/* DESIGN DNA GLYPH CONTAINERS */
 .panel-icon-wrap{
-  width:100px;height:100px;
-  border-radius:50%;
+  width:84px;height:84px;
   display:flex;align-items:center;justify-content:center;
-  border:2px solid rgba(255,255,255,0.25);
-  background:rgba(255,255,255,0.08);
-  transition:all 0.3s;
-  backdrop-filter:blur(8px);
+  border-radius: 20px;
+  transition:all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.panel:hover .panel-icon-wrap{
-  transform:scale(1.08);
-  background:rgba(255,255,255,0.15);
-  border-color:rgba(255,255,255,0.45);
+.panel-buyer .panel-icon-wrap {
+  border: 1px solid rgba(17, 22, 27, 0.1);
+  background: rgba(17, 22, 27, 0.03);
 }
-.panel-agent .panel-icon-wrap{
-  border-color:rgba(56,168,168,0.5);
-  background:rgba(56,168,168,0.15);
+.panel-agent .panel-icon-wrap {
+  border: 1px solid rgba(249, 246, 240, 0.08);
+  background: rgba(249, 246, 240, 0.03);
+}
+.panel-buyer:hover .panel-icon-wrap{
+  transform: translateY(-4px);
+  background: rgba(17, 22, 27, 0.06);
+  border-color: rgba(17, 22, 27, 0.2);
 }
 .panel-agent:hover .panel-icon-wrap{
-  background:rgba(56,168,168,0.28);
-  border-color:#38A8A8;
+  transform: translateY(-4px);
+  background: rgba(10, 102, 106, 0.2);
+  border-color: #0A666A;
 }
 
-/* BIG LABEL */
+/* TYPOGRAPHY HIERARCHY SYSTEM */
 .panel-label{
-  font-size:clamp(42px,8vw,80px);
-  font-weight:700;
-  color:#fff;
-  letter-spacing:-0.03em;
-  line-height:1;
-  text-shadow:0 2px 20px rgba(0,0,0,0.3);
+  font-family: 'Noto Sans Lao', 'DM Sans', sans-serif;
+  font-size: clamp(36px, 5vw, 52px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
-.panel-agent .panel-label{color:#fff;}
+.panel-buyer .panel-label { color: #11161B; }
+.panel-agent .panel-label { color: #F9F6F0; }
 
-/* SUBLABEL */
 .panel-sublabel{
-  font-size:clamp(13px,2vw,17px);
-  font-weight:300;
-  color:rgba(255,255,255,0.55);
-  letter-spacing:0.06em;
-  text-transform:uppercase;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
 }
+.panel-buyer .panel-sublabel { color: #11161B; }
+.panel-agent .panel-sublabel { color: #F9F6F0; }
 
-/* ARROW */
+/* RESTRAINED LAYOUT ACTIONS */
 .panel-cta{
-  display:flex;align-items:center;gap:10px;
-  font-size:13px;font-weight:500;
-  color:rgba(255,255,255,0.5);
-  letter-spacing:0.1em;text-transform:uppercase;
-  margin-top:8px;
-  transition:all 0.3s;
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:12px;font-weight:600;
+  letter-spacing:0.08em;text-transform:uppercase;
+  padding: 12px 24px;
+  border-radius: 12px;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.panel:hover .panel-cta{color:rgba(255,255,255,0.9);}
-.panel-agent .panel-cta{color:rgba(56,168,168,0.6);}
-.panel-agent:hover .panel-cta{color:#38A8A8;}
-.cta-line{width:32px;height:1px;background:currentColor;transition:width 0.3s;}
-.panel:hover .cta-line{width:52px;}
+.panel-buyer .panel-cta {
+  background: #11161B; color: #F9F6F0;
+}
+.panel-agent .panel-cta {
+  background: rgba(249, 246, 240, 0.06); color: #F9F6F0;
+  border: 1px solid rgba(249, 246, 240, 0.1);
+}
+.panel-buyer:hover .panel-cta, .panel-agent:hover .panel-cta {
+  background: #0A666A;
+  border-color: #0A666A;
+  color: #F9F6F0;
+  transform: scale(1.02);
+}
 
-/* LOGO + LANG - TOP CENTER */
-.top-nav{
-  position:absolute;top:0;left:0;right:0;
-  z-index:30;
-  display:flex;align-items:center;justify-content:space-between;
-  padding:20px 28px;
-  pointer-events:none;
+/* REFRACTORED TOP NAVIGATION ARCHEOLOGY */
+.top-nav {
+  position: absolute; top: 0; left: 0; right: 0;
+  z-index: 30;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 28px 32px;
+  pointer-events: none;
 }
-.logo{
-  display:flex;align-items:center;gap:10px;
-  pointer-events:all;
-}
-.logo-text{font-size:20px;font-weight:600;color:#fff;letter-spacing:-0.02em;}
-.lang-switcher{
-  display:flex;gap:2px;
-  background:rgba(0,0,0,0.25);
-  border:1px solid rgba(255,255,255,0.15);
-  border-radius:4px;padding:3px;
-  backdrop-filter:blur(12px);
-  pointer-events:all;
-}
-.lang-btn{
-  font-size:11px;font-weight:500;padding:5px 10px;
-  border:none;background:transparent;color:rgba(255,255,255,0.55);
-  cursor:pointer;border-radius:3px;transition:all 0.2s;
-  font-family:'DM Sans',sans-serif;
-}
-.lang-btn.active{background:rgba(255,255,255,0.18);color:#fff;}
 
-/* BOTTOM TAG */
+/* CONSUMER BRAND BLOCK: Permanently locked to dark charcoal over the bone panel */
+.logo {
+  display: flex; align-items: center; gap: 12px;
+  pointer-events: all;
+  color: #11161B;
+}
+
+.logo-text-container {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+/* ENTERPRISE SWITCHER BLOCK: Permanently locked to light bone over the dark workspace panel */
+.lang-switcher {
+  display: flex; gap: 4px;
+  background: rgba(249, 246, 240, 0.05);
+  border: 1px solid rgba(249, 246, 240, 0.1);
+  border-radius: 8px; padding: 4px;
+  backdrop-filter: blur(20px);
+  pointer-events: all;
+}
+.lang-btn {
+  font-size: 11px; font-weight: 600; padding: 6px 12px;
+  border: none; background: transparent; 
+  color: #F9F6F0; opacity: 0.4;
+  cursor: pointer; border-radius: 6px; transition: all 0.2s;
+  font-family: 'DM Sans', sans-serif;
+}
+.lang-btn.active {
+  background: #F9F6F0; color: #11161B; opacity: 1;
+}
+
 .bottom-tag{
-  position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+  position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
   z-index:30;
-  font-size:10px;font-weight:300;letter-spacing:0.2em;text-transform:uppercase;
-  color:rgba(255,255,255,0.18);
+  font-size:10px;font-weight:500;letter-spacing:0.15em;text-transform:uppercase;
+  color: rgba(17, 22, 27, 0.35);
   white-space:nowrap;pointer-events:none;
 }
 
-/* MOBILE */
-@media(max-width:600px){
-  .split{grid-template-columns:1fr;grid-template-rows:1fr 1fr;}
-  .divider{left:0;right:0;top:50%;bottom:auto;width:100%;height:2px;background:linear-gradient(to right, transparent, rgba(255,255,255,0.3), transparent);}
-  .panel:hover{flex:1.1;}
-  .panel-label{font-size:clamp(38px,12vw,64px);}
-  .top-nav{padding:14px 16px;}
-  .panel-icon-wrap{width:80px;height:80px;}
-  .panel-content{gap:14px;padding:28px 20px;}
+/* CLEAN COMPACT MEDIA OVERRIDES FOR MOBILE STACKING */
+@media(max-width:768px) {
+  .split { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  .divider { left: 0; right: 0; top: 50%; bottom: auto; width: 100%; height: 1px; background: rgba(17, 22, 27, 0.08); }
+  .top-nav { padding: 20px; }
+  .bottom-tag { display: none; }
+  .panel-label { font-size: 36px; }
+  .panel-icon-wrap { width: 72px; height: 72px; }
+  .panel-content { gap: 16px; padding: 24px; }
+  
+  /* On phones, the switcher joins the logo over the top bone panel—force uniform dark mode mechanics */
+  .logo { color: #11161B !important; }
+  .lang-switcher {
+    background: rgba(17, 22, 27, 0.06) !important;
+    border-color: rgba(17, 22, 27, 0.08) !important;
+  }
+  .lang-btn { color: #11161B !important; opacity: 0.4; }
+  .lang-btn.active { background: #11161B !important; color: #F9F6F0 !important; opacity: 1; }
 }
 </style>
 </head>
 <body>
 
-<!-- GOLD RULE -->
-<div class="gold-rule"></div>
-
-<!-- TOP NAV -->
 <div class="top-nav">
   <div class="logo">
-    <svg width="30" height="30" viewBox="0 0 40 40" fill="none">
-      <circle cx="12" cy="9" r="7.5" fill="#38A8A8"/>
-      <circle cx="25" cy="14" r="3.5" fill="#0D1F26" opacity="0.9"/>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: block; overflow: visible;">
+      <circle cx="7.25" cy="4" r="2" fill="#0A666A" />
+      <path d="M7.25,7.5 V21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+      <path d="M7.25,8 H12.5 C15.2,8 16.8,9.8 16.8,12.2 C16.8,14.6 15.2,16.4 12.5,16.4 H7.25" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
-    <span class="logo-text">Pintag</span>
+    <span class="logo-text-container">Pintag</span>
   </div>
   <div class="lang-switcher">
     <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
@@ -229,70 +266,60 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
   </div>
 </div>
 
-<!-- SPLIT PANELS -->
 <div class="split">
-
-  <!-- DIVIDER -->
   <div class="divider"></div>
 
-  <!-- BUYER -->
   <a href="listings.html" class="panel panel-buyer">
     <div class="panel-bg"></div>
+    <div class="panel-buyer-darken"></div>
     <div class="panel-overlay"></div>
+    <div class="topo-layer"></div>
     <div class="panel-content">
       <div class="panel-icon-wrap">
-        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-          <polyline points="9,22 9,12 15,12 15,22"/>
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#11161B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 10l9-6 9 6v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/>
+          <path d="M9 21v-8h6v8"/>
         </svg>
       </div>
       <p class="panel-label">ຜູ້ຊື້</p>
       <p class="panel-sublabel">
-        <span class="lo-i">ຊອກຫາເຮືອນ</span>
+        <span class="lo-i">ຊອກຫາເຮືອນ ແລະ ຄອນໂດ</span>
         <span class="en-i">Find a Property</span>
         <span class="zh-i">找房源</span>
       </p>
       <div class="panel-cta">
-        <span class="cta-line"></span>
-        <span class="lo-i">ເບິ່ງລາຍການ</span>
-        <span class="en-i">Browse listings</span>
-        <span class="zh-i">浏览房源</span>
-        <span class="cta-line"></span>
+        <span class="lo-i">ເບິ່ງລາຍການ ➔</span>
+        <span class="en-i">Browse listings ➔</span>
+        <span class="zh-i">浏览房源 ➔</span>
       </div>
     </div>
   </a>
 
-  <!-- AGENT -->
   <a href="for-agents.html" class="panel panel-agent">
     <div class="panel-bg"></div>
     <div class="panel-overlay"></div>
+    <div class="topo-layer"></div>
     <div class="panel-content">
       <div class="panel-icon-wrap">
-        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#38A8A8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
-          <circle cx="12" cy="7" r="4"/>
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F9F6F0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21v-2a3 3 0 0 0-3-3H8a3 3 0 0 0-3 3v2"/>
+          <circle cx="12" cy="8" r="4"/>
         </svg>
       </div>
       <p class="panel-label">ຜູ້ຂາຍ</p>
       <p class="panel-sublabel">
-        <span class="lo-i">Agent · ນາຍໜ້າ</span>
+        <span class="lo-i">Agent · ນາຍໜ້າອະສັງຫາ</span>
         <span class="en-i">List Your Property</span>
         <span class="zh-i">发布房源</span>
       </p>
       <div class="panel-cta">
-        <span class="cta-line"></span>
-        <span class="lo-i">ລົງປະກາດ</span>
-        <span class="en-i">Get started</span>
-        <span class="zh-i">立即发布</span>
-        <span class="cta-line"></span>
+        <span class="lo-i">ລົງປະກາດ ➔</span>
+        <span class="en-i">Get started ➔</span>
+        <span class="zh-i">立即发布 ➔</span>
       </div>
     </div>
   </a>
-
 </div>
-
-<!-- BOTTOM -->
-<div class="bottom-tag">pintag.io · ວຽງຈັນ · Vientiane · 万象</div>
 
 <script>
 function setLang(lang,btn){
