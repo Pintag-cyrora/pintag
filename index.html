@@ -35,12 +35,10 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
   transition:all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* BACKGROUND PHOTOS & RESTRAINED FALLBACKS */
+/* BACKGROUND PHOTOS WITH ADJUSTED POSITIONING TO MITIGATE CROPPING */
 .panel-bg{
   position:absolute;inset:0;
   background-size:cover;
-  background-position:center;
-  filter: grayscale(12%) contrast(92%);
   transition:transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 0;
 }
@@ -49,35 +47,35 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
 .panel-buyer .panel-bg{
   background-color: #EFECE6;
   background-image:url('pintag-villa.png');
-  background-position:center 60%;
+  background-position: center bottom; /* Pushes the dark roof structure down to expose more vertical landscape space */
 }
 .panel-agent .panel-bg{
   background-color: #151B22;
   background-image:url('pintag-interior.png');
-  background-position:center 40%;
+  background-position: center center;
 }
 
-/* BRAND SYSTEM COLOR OVERLAYS */
+/* BRAND SYSTEM OVERLAYS */
 .panel-buyer .panel-overlay{
   position:absolute;inset:0;
-  background: rgba(249, 246, 240, 0.84); /* Premium Bone/Off-White Consumer Tint */
+  background: rgba(249, 246, 240, 0.78);
   mix-blend-mode: multiply;
   transition: background 0.5s ease;
   z-index: 1;
 }
 .panel-buyer-darken {
   position:absolute;inset:0;
-  background: linear-gradient(to bottom, rgba(17,22,27,0.3) 0%, rgba(17,22,27,0.05) 100%);
+  background: linear-gradient(to bottom, rgba(17,22,27,0.2) 0%, rgba(17,22,27,0.02) 100%);
   z-index: 2;
 }
 .panel-agent .panel-overlay{
   position:absolute;inset:0;
-  background: rgba(11, 15, 18, 0.88); /* Deep Charcoal/Slate Professional Workspace Tint */
+  background: rgba(11, 15, 18, 0.82);
   transition: background 0.5s ease;
   z-index: 1;
 }
-.panel-buyer:hover .panel-overlay{background: rgba(249, 246, 240, 0.76);}
-.panel-agent:hover .panel-overlay{background: rgba(11, 15, 18, 0.82);}
+.panel-buyer:hover .panel-overlay{background: rgba(249, 246, 240, 0.68);}
+.panel-agent:hover .panel-overlay{background: rgba(11, 15, 18, 0.74);}
 
 /* GEOMETRIC TOPOGRAPHICAL VECTOR BACKGROUND LAYER */
 .topo-layer {
@@ -103,16 +101,17 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
   position:relative;z-index:4;
   display:flex;flex-direction:column;
   align-items:center;
-  gap:24px;
+  gap:20px;
   padding:40px 32px;
   text-align:center;
+  max-width: 420px; /* Prevents text elements from blowing out on wide panels */
 }
 
 /* DESIGN DNA GLYPH CONTAINERS */
 .panel-icon-wrap{
-  width:84px;height:84px;
+  width:80px;height:80px;
   display:flex;align-items:center;justify-content:center;
-  border-radius: 20px;
+  border-radius: 50%; /* Rounded matching the aesthetic adjustments in your mock layout buttons */
   transition:all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .panel-buyer .panel-icon-wrap {
@@ -137,82 +136,96 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
 /* TYPOGRAPHY HIERARCHY SYSTEM */
 .panel-label{
   font-family: 'Noto Sans Lao', 'DM Sans', sans-serif;
-  font-size: clamp(36px, 5vw, 52px);
+  font-size: clamp(38px, 4.5vw, 48px);
   font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
 }
 .panel-buyer .panel-label { color: #11161B; }
 .panel-agent .panel-label { color: #F9F6F0; }
 
 .panel-sublabel{
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 400;
-  letter-spacing: 0.04em;
-  opacity: 0.75;
+  line-height: 1.5;
+  margin-bottom: 8px;
+  opacity: 0.8;
 }
-.panel-buyer .panel-sublabel { color: #11161B; }
-.panel-agent .panel-sublabel { color: #F9F6F0; }
+.panel-buyer .panel-sublabel { color: #4A5560; }
+.panel-agent .panel-sublabel { color: #A0AEC0; }
 
-/* RESTRAINED LAYOUT ACTIONS */
+/* RESTRAINED LAYOUT ACTIONS WITH EMBEDDED TEAL BRAND STYLES */
 .panel-cta{
-  display:inline-flex;align-items:center;gap:8px;
-  font-size:12px;font-weight:600;
-  letter-spacing:0.08em;text-transform:uppercase;
-  padding: 12px 24px;
-  border-radius: 12px;
+  display:inline-flex;align-items:center;gap:10px;
+  font-size:13px;font-weight:600;
+  letter-spacing:0.04em;
+  padding: 14px 28px;
+  border-radius: 30px; /* Pill layout parameters mirroring your web application screen assets */
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  text-decoration: none;
 }
 .panel-buyer .panel-cta {
-  background: #11161B; color: #F9F6F0;
+  background: #0A666A; color: #F9F6F0;
 }
 .panel-agent .panel-cta {
-  background: rgba(249, 246, 240, 0.06); color: #F9F6F0;
-  border: 1px solid rgba(249, 246, 240, 0.1);
+  background: transparent; color: #F9F6F0;
+  border: 1px solid rgba(249, 246, 240, 0.3);
 }
-.panel-buyer:hover .panel-cta, .panel-agent:hover .panel-cta {
+.panel-buyer:hover .panel-cta {
+  background: #084D50;
+  transform: translateY(-2px);
+}
+.panel-agent:hover .panel-cta {
   background: #0A666A;
   border-color: #0A666A;
-  color: #F9F6F0;
-  transform: scale(1.02);
+  transform: translateY(-2px);
 }
 
-/* REFRACTORED TOP NAVIGATION ARCHEOLOGY */
-.top-nav {
-  position: absolute; top: 0; left: 0; right: 0;
+/* FLOATING BRAND MONOLITH CAPSULE (SOLUTION 3) */
+.top-nav-container {
+  position: absolute;
+  top: 24px; left: 50%; transform: translateX(-50%);
   z-index: 30;
+  width: calc(100% - 48px);
+  max-width: 1200px;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 28px 32px;
   pointer-events: none;
 }
 
-/* CONSUMER BRAND BLOCK: Permanently locked to dark charcoal over the bone panel */
-.logo {
+.logo-capsule {
   display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px;
+  background: rgba(249, 246, 240, 0.85);
+  border: 1px solid rgba(17, 22, 27, 0.06);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-radius: 30px;
   pointer-events: all;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
   color: #11161B;
 }
-
 .logo-text-container {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.03em;
 }
 
-/* ENTERPRISE SWITCHER BLOCK: Permanently locked to light bone over the dark workspace panel */
-.lang-switcher {
-  display: flex; gap: 4px;
-  background: rgba(249, 246, 240, 0.05);
-  border: 1px solid rgba(249, 246, 240, 0.1);
-  border-radius: 8px; padding: 4px;
-  backdrop-filter: blur(20px);
+.lang-switcher-capsule {
+  background: rgba(11, 15, 18, 0.85);
+  border: 1px solid rgba(249, 246, 240, 0.06);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-radius: 30px; padding: 4px;
   pointer-events: all;
+  display: flex; gap: 2px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
 }
 .lang-btn {
-  font-size: 11px; font-weight: 600; padding: 6px 12px;
+  font-size: 11px; font-weight: 600; padding: 8px 14px;
   border: none; background: transparent; 
-  color: #F9F6F0; opacity: 0.4;
-  cursor: pointer; border-radius: 6px; transition: all 0.2s;
+  color: #F9F6F0; opacity: 0.5;
+  cursor: pointer; border-radius: 20px; transition: all 0.2s;
   font-family: 'DM Sans', sans-serif;
 }
 .lang-btn.active {
@@ -223,43 +236,44 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
   position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
   z-index:30;
   font-size:10px;font-weight:500;letter-spacing:0.15em;text-transform:uppercase;
-  color: rgba(17, 22, 27, 0.35);
+  color: rgba(17, 22, 27, 0.4);
   white-space:nowrap;pointer-events:none;
 }
 
-/* CLEAN COMPACT MEDIA OVERRIDES FOR MOBILE STACKING */
-@media(max-width:768px) {
-  .split { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-  .divider { left: 0; right: 0; top: 50%; bottom: auto; width: 100%; height: 1px; background: rgba(17, 22, 27, 0.08); }
-  .top-nav { padding: 20px; }
+/* CLEAN MOBILE STACKING PARAMETERS */
+@media(max-width:768px){
+  .split{grid-template-columns:1fr;grid-template-rows:1fr 1fr;}
+  .divider{left:0;right:0;top:50%;bottom:auto;width:100%;height:1px;background:rgba(17, 22, 27, 0.08);}
+  .panel-content{gap:14px;padding:24px;}
+  .panel-label{font-size:34px;}
+  .panel-icon-wrap{width:68px;height:68px;}
   .bottom-tag { display: none; }
-  .panel-label { font-size: 36px; }
-  .panel-icon-wrap { width: 72px; height: 72px; }
-  .panel-content { gap: 16px; padding: 24px; }
   
-  /* On phones, the switcher joins the logo over the top bone panel—force uniform dark mode mechanics */
-  .logo { color: #11161B !important; }
-  .lang-switcher {
-    background: rgba(17, 22, 27, 0.06) !important;
-    border-color: rgba(17, 22, 27, 0.08) !important;
+  .top-nav-container {
+    top: 16px; width: calc(100% - 32px);
+    flex-direction: row; justify-content: space-between;
   }
-  .lang-btn { color: #11161B !important; opacity: 0.4; }
-  .lang-btn.active { background: #11161B !important; color: #F9F6F0 !important; opacity: 1; }
+  .logo-capsule { padding: 8px 14px; }
+  .logo-text-container { font-size: 18px; }
+  .lang-btn { padding: 6px 10px; font-size: 10px; }
 }
 </style>
 </head>
 <body>
 
-<div class="top-nav">
-  <div class="logo">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: block; overflow: visible;">
-      <circle cx="7.25" cy="4" r="2" fill="#0A666A" />
-      <path d="M7.25,7.5 V21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
-      <path d="M7.25,8 H12.5 C15.2,8 16.8,9.8 16.8,12.2 C16.8,14.6 15.2,16.4 12.5,16.4 H7.25" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>
-    <span class="logo-text-container">Pintag</span>
+<div class="top-nav-container">
+  <div class="logo-capsule">
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: block; overflow: visible;">
+        <circle cx="7.25" cy="4" r="2" fill="#0A666A" />
+        <path d="M7.25,7.5 V21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+        <path d="M7.25,8 H12.5 C15.2,8 16.8,9.8 16.8,12.2 C16.8,14.6 15.2,16.4 12.5,16.4 H7.25" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <span class="logo-text-container">Pintag</span>
+    </div>
   </div>
-  <div class="lang-switcher">
+
+  <div class="lang-switcher-capsule">
     <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
     <button class="lang-btn" onclick="setLang('en',this)">EN</button>
     <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
@@ -276,7 +290,7 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
     <div class="topo-layer"></div>
     <div class="panel-content">
       <div class="panel-icon-wrap">
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#11161B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#11161B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 10l9-6 9 6v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/>
           <path d="M9 21v-8h6v8"/>
         </svg>
@@ -301,7 +315,7 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
     <div class="topo-layer"></div>
     <div class="panel-content">
       <div class="panel-icon-wrap">
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F9F6F0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F9F6F0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M19 21v-2a3 3 0 0 0-3-3H8a3 3 0 0 0-3 3v2"/>
           <circle cx="12" cy="8" r="4"/>
         </svg>
@@ -320,6 +334,8 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
     </div>
   </a>
 </div>
+
+<div class="bottom-tag">pintag.io · ວຽງຈັນ · Vientiane</div>
 
 <script>
 function setLang(lang,btn){
