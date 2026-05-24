@@ -41,69 +41,72 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .g-wrap{max-width:1140px;margin:54px auto 0;background:var(--white);min-height:calc(100vh - 54px);box-shadow:0 0 40px rgba(28,43,50,0.02);position:relative;}
 
 /* BRANDED EDITORIAL HEADER */
-.page-header{background:var(--white);border-bottom:1px solid var(--border);padding:40px 40px 0;}
-.page-title{font-size:32px;font-weight:800;color:var(--ink);letter-spacing:-0.03em;line-height:1.2;margin-bottom:6px;}
-.page-count{font-size:13px;font-weight:500;color:var(--ink-muted);margin-bottom:28px;letter-spacing:0.02em;}
+.page-header{background:var(--white);border-bottom:1px solid var(--border);padding:50px 40px 0;}
+.page-title{font-size:36px;font-weight:800;color:var(--ink);letter-spacing:-0.03em;line-height:1.2;margin-bottom:6px;}
+.page-count{font-size:13px;font-weight:500;color:var(--ink-muted);margin-bottom:32px;letter-spacing:0.02em;}
 
-/* MINIMAL HORIZONTAL FILTERS TRACK */
-.filters{display:flex;gap:8px;padding-bottom:20px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+/* PREMIUM MINIMALIST FILTER TRACK */
+.filters{display:flex;gap:6px;padding-bottom:24px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .filters::-webkit-scrollbar{display:none;}
 .filter-btn{
-  font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;padding:8px 18px;border-radius:24px;
-  border:1px solid var(--border);background:var(--warm);color:var(--ink-soft);
+  font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;
+  padding:8px 20px;border-radius:6px;
+  border:1px solid var(--border);background:var(--white);color:var(--ink-soft);
   cursor:pointer;white-space:nowrap;transition:all 0.2s cubic-bezier(0.16,1,0.3,1);
 }
-.filter-btn.active{background:var(--ink);color:var(--white);border-color:var(--ink);}
-.filter-btn:hover:not(.active){background:var(--warm-deep);color:var(--ink);}
+.filter-btn.active{background:var(--ink);color:var(--white);border-color:var(--ink);font-weight:700;}
+.filter-btn:hover:not(.active){background:var(--warm);color:var(--ink);border-color:var(--warm-deep);}
 
 /* DYNAMIC PROPERTY FRAMEWORK ARCHITECTURE */
 .page-content{padding:40px;}
-.listings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:32px 24px;}
+.listings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:44px 24px;}
 
 /* PREMIUM MINIMAL CARDS */
 .prop-card{background:var(--white);text-decoration:none;display:block;position:relative;transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);}
-.prop-card-img{position:relative;width:100%;aspect-ratio:4/3;border-radius:16px;overflow:hidden;background:var(--warm-deep);border:1px solid var(--border);}
+.prop-card-img{position:relative;width:100%;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:var(--warm-deep);border:1px solid var(--border);}
 .prop-card-img img{width:100%;height:100%;object-fit:cover;object-position:center center;display:block;transition:transform 0.6s cubic-bezier(0.16,1,0.3,1);}
-.prop-card:hover .prop-card-img img{transform:scale(1.03);}
+.prop-card:hover .prop-card-img img{transform:scale(1.025);}
 .prop-card-no-img{width:100%;height:100%;background:linear-gradient(135deg,var(--warm-deep),var(--warm));}
 
 /* EMBEDDED GEOMETRIC BADGES */
 .card-badge{position:absolute;z-index:10;padding:5px 12px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 2px 10px rgba(0,0,0,0.03);}
-.card-status{top:12px;left:12px;background:rgba(255,255,255,0.9);color:var(--ink);}
-.card-featured{top:12px;right:12px;background:rgba(28,43,50,0.78);color:var(--white);}
+.card-status{top:12px;left:12px;background:rgba(255,255,255,0.92);color:var(--ink);}
+.card-featured{top:12px;right:12px;background:rgba(28,43,50,0.82);color:var(--white);}
 
-/* TYPOGRAPHIC DETAILS LAYER — REALIGNED TYPOGRAPHY GRAVITY */
-.prop-card-body{padding:16px 4px 0;}
-.card-tag{font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--teal);margin-bottom:6px;display:block;}
+/* TYPOGRAPHIC DETAILS LAYER — CALIBRATED EYE FLOW */
+.prop-card-body{padding:16px 2px 0;}
+.card-tag{font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;display:block;}
 
-/* Elevated sophistication: bumped to 20px, tighter tracking, confident editorial presence */
+/* Dominant Anchor: Elegant size, tight line height, strong presentation */
 .card-title{
-  font-size:20px;
+  font-size:19px;
   font-weight:700;
   color:var(--ink);
-  letter-spacing:-0.02em;
-  line-height:1.3;
+  letter-spacing:-0.015em;
+  line-height:1.35;
   margin-bottom:6px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
 }
 
-.card-loc{font-size:13px;font-weight:500;color:var(--ink-muted);margin-bottom:12px;display:flex;align-items:center;gap:6px;}
-.card-loc svg{stroke:var(--teal);flex-shrink:0;}
+/* Softer Location Presentation */
+.card-loc{font-size:13px;font-weight:400;color:var(--ink-muted);margin-bottom:12px;display:flex;align-items:center;gap:5px;}
+.card-loc svg{stroke:var(--ink-muted);opacity:0.7;flex-shrink:0;}
 
-/* SPATIAL LABELS METRICS */
-.card-specs{display:flex;gap:16px;margin-bottom:14px;padding:2px 0;}
-.card-spec{font-size:12px;color:var(--ink-muted);font-weight:500;}
-.card-spec span{font-weight:700;color:var(--ink);}
+/* Spatial Details Layer (Subdued to allow title dominance) */
+.card-specs{display:flex;gap:14px;margin-bottom:16px;padding:2px 0;border-top:1px solid rgba(26,36,40,0.03);padding-top:10px;}
+.card-spec{font-size:12px;color:var(--ink-muted);font-weight:400;}
+.card-spec span{font-weight:600;color:var(--ink-soft);}
 
-/* Recalibrated price contrast: dropped to 19px with medium-weight elegance, letting the property command gravity */
+/* Institutional Restraint Price: Quiet, elegant anchor layout */
 .card-price{
-  font-size:19px;
-  font-weight:600;
-  color:var(--ink-soft);
+  font-size:17px;
+  font-weight:700;
+  color:var(--ink);
   letter-spacing:-0.01em;
   line-height:1.1;
+  margin-top:4px;
 }
-.card-price-req{font-size:13px;font-weight:600;color:var(--ink-muted);font-style:normal;}
+.card-price-req{font-size:13px;font-weight:500;color:var(--ink-muted);font-style:normal;margin-top:4px;}
 .card-divider{height:1px;background:var(--border);margin:14px 0 10px;}
 .card-agent{font-size:11px;font-weight:600;color:var(--ink-muted);letter-spacing:0.02em;}
 
@@ -120,12 +123,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .page-footer p{font-size:12px;color:var(--ink-muted);letter-spacing:0.04em;}
 
 @media(max-width:768px){
-  .listings-grid{grid-template-columns:1fr;gap:40px;}
-  .page-header{padding:28px 20px 0;}
-  .page-content{padding:28px 20px;}
-  .page-title{font-size:26px;}
-  .card-title{font-size:19px;}
-  .card-price{font-size:18px;}
+  .listings-grid{grid-template-columns:1fr;gap:44px;}
+  .page-header{padding:32px 20px 0;}
+  .page-content{padding:32px 20px;}
+  .page-title{font-size:28px;}
 }
 </style>
 </head>
@@ -145,7 +146,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
       <button class="lang-btn" onclick="setLang('en',this)">EN</button>
       <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
     </div>
-    <a href="index.html" class="nav-home">← <span class="lo-i">ໜ້າຫຼັກ</span><span class="en-i">Home</span><span class="zh-i">首页</span></a>
+    <a href="index.html" class="nav-home">← <span class="lo-i">ໜ้าຫຼັກ</span><span class="en-i">Home</span><span class="zh-i">首页</span></a>
   </div>
 </nav>
 
@@ -281,7 +282,7 @@ function renderListings() {
         <span class="card-tag">${txLabelText} · ${p.property_type || ''}</span>
         <h2 class="card-title">${title}</h2>
         <div class="card-loc">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
           ${district}, <span>${lang === 'en' ? 'Vientiane' : lang === 'zh' ? '万象' : 'ວຽງຈັນ'}</span>
         </div>
         ${specsHtml ? `<div class="card-specs">${specsHtml}</div>` : ''}
