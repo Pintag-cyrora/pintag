@@ -1,3 +1,30 @@
+<!-- MAIN CONTENT WRAPPER -->
+<div class="g-wrap">
+
+  <!-- REQUIRED TARGET -->
+  <div id="view-target">
+
+    <!-- LOADER -->
+    <div class="loader-stage">
+
+      <div class="loader-cluster">
+        <div class="loader-bead"></div>
+        <div class="loader-bead"></div>
+        <div class="loader-bead"></div>
+      </div>
+
+      <p>
+        <span class="lo-i">ກຳລັງໂຫຼດ...</span>
+        <span class="en-i">Loading...</span>
+        <span class="zh-i">加载中...</span>
+      </p>
+
+    </div>
+
+  </div>
+
+</div>
+
 <script>
 const BASE_DB =
   'https://eoladhcljbpbhnrmmpev.supabase.co';
@@ -12,6 +39,7 @@ let propertyContext = null;
 /* ---------------------------------- */
 
 function fetchUrlParamSlug() {
+
   return new URLSearchParams(
     window.location.search
   ).get('slug');
@@ -49,6 +77,7 @@ function setLang(
   );
 
   if (targetLanguageCode !== 'lo') {
+
     document.body.classList.add(
       'lang-' + targetLanguageCode
     );
@@ -70,7 +99,7 @@ function setLang(
 }
 
 /* ---------------------------------- */
-/* FETCH PROPERTY */
+/* FETCH */
 /* ---------------------------------- */
 
 async function requestPropertyData() {
@@ -82,6 +111,13 @@ async function requestPropertyData() {
     document.getElementById(
       'view-target'
     );
+
+  if (!wrapper) {
+    console.error(
+      'Missing #view-target'
+    );
+    return;
+  }
 
   if (!slug) {
 
@@ -121,6 +157,8 @@ async function requestPropertyData() {
 
     const payload =
       await response.json();
+
+    console.log(payload);
 
     if (
       !payload ||
@@ -169,6 +207,8 @@ function buildMockupLayout() {
     document.getElementById(
       'view-target'
     );
+
+  if (!container) return;
 
   const lang =
     getCurrentLang();
@@ -291,8 +331,8 @@ function buildMockupLayout() {
   }
 
   /* ---------------------------------- */
-  /* EMBEDS */
-  /* ---------------------------------- */
+  /* VIDEO + MAP */
+/* ---------------------------------- */
 
   let standaloneMediaMarkup =
     '';
@@ -304,6 +344,7 @@ function buildMockupLayout() {
 
     standaloneMediaMarkup += `
       <div class="divider"></div>
+
       <div class="asset-stack">
     `;
 
@@ -362,7 +403,7 @@ function buildMockupLayout() {
 
   /* ---------------------------------- */
   /* WHATSAPP */
-  /* ---------------------------------- */
+/* ---------------------------------- */
 
   const waText =
     encodeURIComponent(
@@ -379,8 +420,8 @@ function buildMockupLayout() {
     }?text=${waText}`;
 
   /* ---------------------------------- */
-  /* RENDER */
-  /* ---------------------------------- */
+  /* PAGE */
+/* ---------------------------------- */
 
   container.innerHTML = `
 
@@ -403,11 +444,9 @@ function buildMockupLayout() {
           </h1>
 
           <div class="info-location">
-
             ${resolvedDistrict}
             ${resolvedDistrict ? ',' : ''}
             Vientiane
-
           </div>
 
         </div>
@@ -587,6 +626,7 @@ function shiftFocusHero(
     );
 
   if (currentHeroImg) {
+
     currentHeroImg.src =
       imageSource;
   }
@@ -707,6 +747,7 @@ async function triggerNativeShareChannel() {
       });
 
     } catch(err) {
+
       console.error(err);
     }
 
@@ -721,6 +762,7 @@ async function triggerNativeShareChannel() {
       alert('Link copied');
 
     } catch(err) {
+
       console.error(err);
     }
   }
