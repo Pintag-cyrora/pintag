@@ -91,29 +91,39 @@ nav{
 }
 .panel:hover .panel-bg{transform:scale(1.035);}
 
-/* buyer — warm exterior */
+/* buyer — warm exterior luxury residential */
 .panel-buyer .panel-bg{
-  background-image:url("https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1400&q=80&auto=format&fit=crop");
-  background-position:center 65%;
+  background-image:url("https://images.unsplash.com/photo-1613977257363-707ba9348227?w=1400&q=85&auto=format&fit=crop");
+  background-position:center 55%;
 }
-/* agent — calm interior */
+/* agent — warm exterior, matched tone */
 .panel-agent .panel-bg{
-  background-image:url("https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1400&q=80&auto=format&fit=crop");
-  background-position:center 40%;
+  background-image:url("https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1400&q=85&auto=format&fit=crop");
+  background-position:center 50%;
 }
 
 .panel-overlay{
   position:absolute;inset:0;
-  transition:opacity 0.4s;
+  transition:opacity 0.5s ease;
 }
 .panel-buyer .panel-overlay{
-  background:linear-gradient(to bottom, rgba(10,18,22,0.28) 0%, rgba(10,18,22,0.62) 60%, rgba(10,18,22,0.72) 100%);
+  background:linear-gradient(
+    to bottom,
+    rgba(8,14,18,0.18) 0%,
+    rgba(8,14,18,0.42) 45%,
+    rgba(8,14,18,0.68) 100%
+  );
 }
 .panel-agent .panel-overlay{
-  background:linear-gradient(to bottom, rgba(10,22,22,0.22) 0%, rgba(12,50,50,0.60) 60%, rgba(10,40,40,0.72) 100%);
+  background:linear-gradient(
+    to bottom,
+    rgba(8,14,18,0.18) 0%,
+    rgba(8,14,18,0.40) 45%,
+    rgba(8,14,18,0.66) 100%
+  );
 }
-.panel-buyer:hover .panel-overlay{opacity:0.8;}
-.panel-agent:hover .panel-overlay{opacity:0.85;}
+.panel-buyer:hover .panel-overlay{opacity:0.82;}
+.panel-agent:hover .panel-overlay{opacity:0.82;}
 
 /* vertical divider */
 .hero-divider{
@@ -136,15 +146,15 @@ nav{
   padding:0 28px;
 }
 .panel-label{
-  font-size:clamp(52px,9vw,96px);
-  font-weight:700;color:#fff;
-  letter-spacing:-0.04em;line-height:0.9;
-  text-shadow:0 2px 24px rgba(0,0,0,0.25);
+  font-size:clamp(36px,5.5vw,54px);
+  font-weight:300;color:#fff;
+  letter-spacing:-0.01em;line-height:1.05;
+  text-shadow:0 1px 18px rgba(0,0,0,0.22);
 }
 .panel-sublabel{
-  font-size:clamp(12px,1.4vw,15px);
-  font-weight:300;color:rgba(255,255,255,0.62);
-  letter-spacing:0.05em;
+  font-size:clamp(11px,1.2vw,13px);
+  font-weight:300;color:rgba(255,255,255,0.52);
+  letter-spacing:0.07em;text-transform:uppercase;
 }
 .panel-cta{
   display:inline-flex;align-items:center;gap:10px;
@@ -179,24 +189,23 @@ nav{
 /* ─── LOCATION BAND ───────────────────────────────────── */
 .location-band{
   background:#F7F3EC;
-  border-bottom:1px solid rgba(26,32,36,0.07);
-  padding:20px 40px;
-  display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:14px 40px 12px;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
   text-align:center;
 }
 .location-pin-row{
   display:flex;align-items:center;gap:6px;
-  font-size:13px;font-weight:500;color:#2D8C8C;
+  font-size:12.5px;font-weight:500;color:#2D8C8C;
 }
 .location-tagline{
-  font-size:13px;font-weight:300;color:#8C9598;
+  font-size:12px;font-weight:300;color:#8C9598;
   letter-spacing:0.01em;
 }
 
 /* ─── FEATURED SECTION ───────────────────────────────── */
 .featured-section{
   max-width:1280px;margin:0 auto;
-  padding:48px 40px 64px;
+  padding:28px 40px 64px;
 }
 .featured-header{
   display:flex;align-items:flex-end;justify-content:space-between;
@@ -226,67 +235,85 @@ nav{
 .card-grid{
   display:grid;
   grid-template-columns:repeat(4,1fr);
-  gap:20px;
+  gap:16px;
 }
 .prop-card{
   display:block;text-decoration:none;color:inherit;
-  background:#fff;border-radius:3px;
-  border:1px solid rgba(26,32,36,0.07);
+  background:transparent;
+  border-radius:3px;
   overflow:hidden;
-  transition:box-shadow 0.3s,transform 0.3s;
+  position:relative;
+  transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
 }
-.prop-card:hover{
-  box-shadow:0 6px 28px rgba(26,32,36,0.08);
-  transform:translateY(-2px);
-}
+.prop-card:hover{transform:translateY(-3px);}
+
 .card-img{
-  position:relative;aspect-ratio:4/3;overflow:hidden;
-  background:#EDE8E0;
+  position:relative;aspect-ratio:3/4;overflow:hidden;
+  background:#EDE8E0;border-radius:3px;
 }
 .card-img img{
   width:100%;height:100%;object-fit:cover;display:block;
-  transition:transform 0.6s cubic-bezier(0.16,1,0.3,1);
+  transition:transform 0.7s cubic-bezier(0.16,1,0.3,1);
 }
 .prop-card:hover .card-img img{transform:scale(1.04);}
 .card-img-placeholder{
   width:100%;height:100%;
-  background:linear-gradient(145deg,#E8E3DB,#D8D3CB);
+  background:linear-gradient(145deg,#E0DBD3,#CEC9C1);
 }
+
+/* bottom gradient overlay — where metadata lives */
+.card-img::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(
+    to bottom,
+    transparent 30%,
+    rgba(8,12,16,0.55) 70%,
+    rgba(8,12,16,0.82) 100%
+  );
+  pointer-events:none;border-radius:3px;
+}
+
 .card-badge{
-  position:absolute;top:10px;left:10px;
-  font-size:8px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;
-  padding:3px 8px;border-radius:2px;color:#fff;
-  backdrop-filter:blur(6px);
+  position:absolute;top:11px;left:11px;z-index:3;
+  font-size:8px;font-weight:400;letter-spacing:0.09em;text-transform:uppercase;
+  padding:3px 8px;border-radius:2px;color:rgba(255,255,255,0.9);
+  background:rgba(255,255,255,0.14);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,0.18);
 }
-.badge-sale{background:rgba(148,116,4,0.65);}
-.badge-rent{background:rgba(55,72,78,0.65);}
 .card-heart{
-  position:absolute;top:9px;right:9px;
+  position:absolute;top:10px;right:10px;z-index:3;
   width:28px;height:28px;border-radius:50%;
   background:rgba(255,255,255,0.82);
   backdrop-filter:blur(4px);border:none;cursor:pointer;
   display:flex;align-items:center;justify-content:center;
 }
-.card-body{padding:14px 15px 16px;}
+
+/* metadata — overlaid on image */
+.card-body{
+  position:absolute;bottom:0;left:0;right:0;z-index:2;
+  padding:14px 14px 16px;
+}
 .card-price-row{
   display:flex;align-items:baseline;gap:4px;
-  margin-bottom:6px;
+  margin-bottom:4px;
 }
 .card-price{
-  font-size:16px;font-weight:600;color:#1A2024;
+  font-size:15px;font-weight:500;color:#fff;
   letter-spacing:-0.01em;line-height:1;
 }
-.card-price-unit{font-size:11px;font-weight:400;color:#8C9598;}
+.card-price-unit{font-size:11px;font-weight:300;color:rgba(255,255,255,0.65);}
 .card-loc{
   display:flex;align-items:center;gap:4px;
-  font-size:11px;color:#8C9598;margin-bottom:9px;
+  font-size:10.5px;color:rgba(255,255,255,0.6);margin-bottom:7px;
 }
+.card-loc svg{opacity:0.7;}
 .card-specs{
-  display:flex;gap:12px;
+  display:flex;gap:10px;
 }
 .card-spec{
   display:flex;align-items:center;gap:3px;
-  font-size:11px;color:#8C9598;
+  font-size:10.5px;color:rgba(255,255,255,0.55);
 }
 
 /* loading shimmer */
@@ -309,24 +336,24 @@ nav{
 
 /* ─── RESPONSIVE ─────────────────────────────────────────── */
 @media(max-width:1000px){
-  .card-grid{grid-template-columns:repeat(2,1fr);gap:16px;}
+  .card-grid{grid-template-columns:repeat(2,1fr);gap:14px;}
 }
 @media(max-width:700px){
   nav{padding:0 16px;}
   .nav-center{gap:18px;}
-  .hero{height:52vh;min-height:320px;}
-  .panel-label{font-size:clamp(42px,12vw,70px);}
-  .featured-section{padding:36px 16px 48px;}
-  .card-grid{grid-template-columns:repeat(2,1fr);gap:14px;}
-  .location-band{padding:16px 20px;}
+  .hero{height:52vh;min-height:300px;}
+  .panel-label{font-size:clamp(30px,9vw,46px);}
+  .featured-section{padding:24px 16px 48px;}
+  .card-grid{grid-template-columns:repeat(2,1fr);gap:12px;}
+  .location-band{padding:12px 20px 10px;}
   .featured-header{flex-direction:column;align-items:flex-start;gap:10px;}
 }
 @media(max-width:480px){
-  .hero{grid-template-columns:1fr;grid-template-rows:1fr 1fr;height:62vh;}
-  .hero-divider{left:0;right:0;top:50%;bottom:auto;width:100%;height:1px;background:linear-gradient(to right,transparent,rgba(255,255,255,0.25),transparent);}
-  .panel:hover{flex:1.05;}
-  .panel{padding-bottom:36px;}
-  .card-grid{grid-template-columns:1fr;gap:14px;}
+  .hero{grid-template-columns:1fr;grid-template-rows:1fr 1fr;height:60vh;}
+  .hero-divider{left:0;right:0;top:50%;bottom:auto;width:100%;height:1px;background:linear-gradient(to right,transparent,rgba(255,255,255,0.2),transparent);}
+  .panel:hover{flex:1.04;}
+  .panel{padding-bottom:32px;}
+  .card-grid{grid-template-columns:1fr 1fr;gap:10px;}
 }
 </style>
 </head>
@@ -348,7 +375,7 @@ nav{
   </div>
   <div class="nav-right">
     <a href="for-agents.html" class="nav-agent-btn">
-      <span class="lo-i">ເં້ສູ່ລະບົ</span>
+      <span class="lo-i">ເຂົ້າສູ່ລະບົບ</span>
       <span class="en-i">Agent login</span>
       <span class="zh-i">经纪登录</span>
     </a>
@@ -367,9 +394,9 @@ nav{
     <div class="panel-bg"></div>
     <div class="panel-overlay"></div>
     <div class="panel-content">
-      <p class="panel-label">ຜູ້જື້</p>
+      <p class="panel-label">ຜູ້ຊື້</p>
       <p class="panel-sublabel">
-        <span class="lo-i">ણື້ ເણື້ ດິນ</span>
+        <span class="lo-i">ຊື້ ເຊົ່າ ດິນ</span>
         <span class="en-i">Buy &middot; Rent &middot; Land</span>
         <span class="zh-i">购房 &middot; 租房 &middot; 土地</span>
       </p>
@@ -387,7 +414,7 @@ nav{
     <div class="panel-bg"></div>
     <div class="panel-overlay"></div>
     <div class="panel-content">
-      <p class="panel-label">ຜູ້ંາຍ</p>
+      <p class="panel-label">ຜູ້ຂາຍ</p>
       <p class="panel-sublabel">
         <span class="lo-i">Agent &middot; ນາຍໜ້າ</span>
         <span class="en-i">List Your Property</span>
@@ -412,7 +439,7 @@ nav{
     <span class="zh-i">万象，老挝</span>
   </div>
   <p class="location-tagline">
-    <span class="lo-i">ເં້ສູ່ທຸກທຳເລີຍ. ເລືອກສິ່ງທີ່ໃຊ້ສຳຄັນ.</span>
+    <span class="lo-i">ເຂົ້າສູ່ທຸກທຳເລ. ເລືອກສິ່ງທີ່ໃຊ້ສຳຄັນ.</span>
     <span class="en-i">Explore every opportunity. Find what matters.</span>
     <span class="zh-i">探索每一个机遇。找到所需。</span>
   </p>
@@ -428,12 +455,12 @@ nav{
         <span class="zh-i">精选房源</span>
       </p>
       <h2 class="featured-title">
-        <span class="lo-i">ຊັບສິນໜ້າສຸດ</span>
+        <span class="lo-i">ຊັບສິນຫຼ້າສຸດ</span>
         <span class="en-i">Latest Properties</span>
         <span class="zh-i">最新房源</span>
       </h2>
       <p class="featured-sub">
-        <span class="lo-i">ເລືອກກັບທີ່ມີຄຸນມະພາບ ຈາກທຳເລີຍແທ້</span>
+        <span class="lo-i">ເລືອກກັບທີ່ມີຄຸນນະພາບ ຈາກທຳເລີຍແທ້</span>
         <span class="en-i">Curated quality from verified agents</span>
         <span class="zh-i">经认证经纪颉选优质房源</span>
       </p>
@@ -496,7 +523,7 @@ function renderCards(props, lang) {
 
   const txL = {
     sale: { lo: 'ຂາຍ', en: 'Sale', zh: '出售' },
-    rent: { lo: 'ເચື້', en: 'Rent', zh: '租房' }
+    rent: { lo: 'ເຊົ່າ', en: 'Rent', zh: '租房' }
   };
   const perMo = { lo: '/ ເດືອນ', en: '/ mo', zh: '/ 月' };
   const cityL = { lo: 'ວຽງຈັນ', en: 'Vientiane', zh: '万象' };
