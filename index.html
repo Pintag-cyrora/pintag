@@ -7,257 +7,377 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;overflow:hidden;}
-body{font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;}
+html{scroll-behavior:smooth;}
+body{
+  font-family:"DM Sans",sans-serif;-webkit-font-smoothing:antialiased;
+  background:#F7F3EC;color:#1A2024;
+  overflow-x:hidden;
+}
 
+/* ─── LANGUAGE ───────────────────────────────────────────── */
 .lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
 body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}
 body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
 
-/* FULL SCREEN SPLIT */
-.split{
+/* ─── NAV ──────────────────────────────────────────────── */
+nav{
+  height:56px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 40px;
+  background:#F7F3EC;
+  border-bottom:1px solid rgba(26,32,36,0.07);
+  position:relative;z-index:100;
+}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
+.logo-text{
+  font-size:15px;font-weight:600;color:#1A2024;
+  letter-spacing:-0.01em;
+}
+.nav-center{
+  display:flex;align-items:center;gap:32px;
+}
+.nav-lang-item{
+  font-size:12px;font-weight:400;color:#8C9598;
+  cursor:pointer;border:none;background:none;
+  font-family:"DM Sans",sans-serif;
+  padding:0;letter-spacing:0.02em;
+  transition:color 0.2s;
+}
+.nav-lang-item.active{color:#1A2024;font-weight:500;}
+.nav-lang-item:hover{color:#1A2024;}
+.nav-right{display:flex;align-items:center;gap:12px;}
+.nav-agent-btn{
+  display:flex;align-items:center;gap:7px;
+  background:#1A2024;color:#fff;
+  padding:8px 18px;border-radius:4px;
+  font-size:12px;font-weight:500;
+  text-decoration:none;letter-spacing:0.02em;
+  transition:background 0.2s;
+}
+.nav-agent-btn:hover{background:#2D3C42;}
+.nav-menu-icon{
+  width:36px;height:36px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:5px;cursor:pointer;border:none;background:none;padding:4px;
+}
+.nav-menu-icon span{
+  display:block;width:20px;height:1.5px;
+  background:#1A2024;border-radius:1px;
+}
+
+/* ─── HERO ─────────────────────────────────────────────── */
+.hero{
   display:grid;
   grid-template-columns:1fr 1fr;
-  height:100vh;
-  position:relative;
-}
-
-/* EACH PANEL */
-.panel{
+  height:58vh;min-height:360px;max-height:560px;
   position:relative;
   overflow:hidden;
-  cursor:pointer;
-  text-decoration:none;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  transition:flex 0.5s cubic-bezier(0.4,0,0.2,1);
 }
-.panel:hover{flex:1.15;}
 
-/* BACKGROUND PHOTOS */
+/* panels */
+.panel{
+  position:relative;overflow:hidden;
+  cursor:pointer;text-decoration:none;
+  display:flex;align-items:flex-end;justify-content:center;
+  padding-bottom:52px;
+  transition:flex 0.55s cubic-bezier(0.4,0,0.2,1);
+  flex:1;
+}
+.panel:hover{flex:1.1;}
+
 .panel-bg{
   position:absolute;inset:0;
-  background-size:cover;
-  background-position:center;
-  transition:transform 0.6s cubic-bezier(0.4,0,0.2,1);
+  background-size:cover;background-position:center;
+  transition:transform 0.7s cubic-bezier(0.16,1,0.3,1);
 }
-.panel:hover .panel-bg{transform:scale(1.04);}
+.panel:hover .panel-bg{transform:scale(1.035);}
 
-/* BUYER panel - property photo */
+/* buyer — warm exterior */
 .panel-buyer .panel-bg{
-  background-image:url('pintag-villa.png');
-  background-position:center 60%;
+  background-image:url("https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1400&q=80&auto=format&fit=crop");
+  background-position:center 65%;
 }
-/* AGENT panel - interior/balcony */
+/* agent — calm interior */
 .panel-agent .panel-bg{
-  background-image:url('pintag-interior.png');
+  background-image:url("https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1400&q=80&auto=format&fit=crop");
   background-position:center 40%;
 }
 
-/* OVERLAYS */
-.panel-buyer .panel-overlay{
+.panel-overlay{
   position:absolute;inset:0;
-  background:linear-gradient(135deg, rgba(15,25,30,0.78) 0%, rgba(15,25,30,0.65) 100%);
-  transition:background 0.4s;
+  transition:opacity 0.4s;
+}
+.panel-buyer .panel-overlay{
+  background:linear-gradient(to bottom, rgba(10,18,22,0.28) 0%, rgba(10,18,22,0.62) 60%, rgba(10,18,22,0.72) 100%);
 }
 .panel-agent .panel-overlay{
-  position:absolute;inset:0;
-  background:linear-gradient(135deg, rgba(20,65,65,0.82) 0%, rgba(30,90,90,0.7) 100%);
-  transition:background 0.4s;
+  background:linear-gradient(to bottom, rgba(10,22,22,0.22) 0%, rgba(12,50,50,0.60) 60%, rgba(10,40,40,0.72) 100%);
 }
-.panel-buyer:hover .panel-overlay{background:linear-gradient(135deg, rgba(15,25,30,0.6) 0%, rgba(15,25,30,0.45) 100%);}
-.panel-agent:hover .panel-overlay{background:linear-gradient(135deg, rgba(20,65,65,0.65) 0%, rgba(30,90,90,0.5) 100%);}
+.panel-buyer:hover .panel-overlay{opacity:0.8;}
+.panel-agent:hover .panel-overlay{opacity:0.85;}
 
-/* DIVIDER LINE */
-.divider{
-  position:absolute;
-  left:50%;top:0;bottom:0;
-  width:2px;
-  background:linear-gradient(to bottom, transparent, rgba(255,255,255,0.25), rgba(255,255,255,0.35), rgba(255,255,255,0.25), transparent);
-  z-index:10;
-  pointer-events:none;
-}
-
-/* GOLD TOP RULE */
-.gold-rule{
-  position:absolute;top:0;left:0;right:0;
-  height:3px;
-  background:linear-gradient(to right, transparent, #B8960C 20%, #D4AF37 50%, #B8960C 80%, transparent);
-  z-index:20;
-  pointer-events:none;
+/* vertical divider */
+.hero-divider{
+  position:absolute;left:50%;top:0;bottom:0;
+  width:1px;z-index:10;pointer-events:none;
+  background:linear-gradient(to bottom,
+    transparent 0%,
+    rgba(255,255,255,0.18) 20%,
+    rgba(255,255,255,0.28) 50%,
+    rgba(255,255,255,0.18) 80%,
+    transparent 100%);
 }
 
-/* CONTENT */
+/* panel content */
 .panel-content{
   position:relative;z-index:2;
   display:flex;flex-direction:column;
-  align-items:center;
-  gap:20px;
-  padding:40px 32px;
+  align-items:center;gap:12px;
+  text-align:center;
+  padding:0 28px;
+}
+.panel-label{
+  font-size:clamp(52px,9vw,96px);
+  font-weight:700;color:#fff;
+  letter-spacing:-0.04em;line-height:0.9;
+  text-shadow:0 2px 24px rgba(0,0,0,0.25);
+}
+.panel-sublabel{
+  font-size:clamp(12px,1.4vw,15px);
+  font-weight:300;color:rgba(255,255,255,0.62);
+  letter-spacing:0.05em;
+}
+.panel-cta{
+  display:inline-flex;align-items:center;gap:10px;
+  padding:10px 22px;
+  border:1px solid rgba(255,255,255,0.32);
+  border-radius:2px;
+  font-size:12px;font-weight:400;
+  color:rgba(255,255,255,0.82);
+  letter-spacing:0.06em;
+  transition:all 0.3s;
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  background:rgba(255,255,255,0.06);
+  margin-top:4px;
+}
+.panel:hover .panel-cta{
+  background:rgba(255,255,255,0.14);
+  border-color:rgba(255,255,255,0.55);
+  color:#fff;
+}
+.panel-agent .panel-cta{
+  border-color:rgba(56,168,168,0.45);
+  color:rgba(160,220,220,0.85);
+}
+.panel-agent:hover .panel-cta{
+  background:rgba(56,168,168,0.14);
+  border-color:#38A8A8;
+  color:#5DCFCF;
+}
+.cta-arrow{transition:transform 0.3s;}
+.panel:hover .cta-arrow{transform:translateX(4px);}
+
+/* ─── LOCATION BAND ───────────────────────────────────── */
+.location-band{
+  background:#F7F3EC;
+  border-bottom:1px solid rgba(26,32,36,0.07);
+  padding:20px 40px;
+  display:flex;flex-direction:column;align-items:center;gap:5px;
   text-align:center;
 }
+.location-pin-row{
+  display:flex;align-items:center;gap:6px;
+  font-size:13px;font-weight:500;color:#2D8C8C;
+}
+.location-tagline{
+  font-size:13px;font-weight:300;color:#8C9598;
+  letter-spacing:0.01em;
+}
 
-/* BIG ICON */
-.panel-icon-wrap{
-  width:100px;height:100px;
-  border-radius:50%;
+/* ─── FEATURED SECTION ───────────────────────────────── */
+.featured-section{
+  max-width:1280px;margin:0 auto;
+  padding:48px 40px 64px;
+}
+.featured-header{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  margin-bottom:32px;
+}
+.featured-title-block{}
+.featured-eyebrow{
+  font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;
+  color:#2D8C8C;margin-bottom:6px;opacity:0.8;
+}
+.featured-title{
+  font-size:22px;font-weight:400;color:#1A2024;
+  letter-spacing:-0.01em;line-height:1.2;
+}
+.featured-sub{
+  font-size:12px;font-weight:300;color:#8C9598;margin-top:4px;
+}
+.featured-view-all{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;font-weight:400;color:#2D8C8C;
+  text-decoration:none;letter-spacing:0.02em;
+  transition:gap 0.2s;flex-shrink:0;
+}
+.featured-view-all:hover{gap:9px;}
+
+/* ─── CARD GRID ─────────────────────────────────────────── */
+.card-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:20px;
+}
+.prop-card{
+  display:block;text-decoration:none;color:inherit;
+  background:#fff;border-radius:3px;
+  border:1px solid rgba(26,32,36,0.07);
+  overflow:hidden;
+  transition:box-shadow 0.3s,transform 0.3s;
+}
+.prop-card:hover{
+  box-shadow:0 6px 28px rgba(26,32,36,0.08);
+  transform:translateY(-2px);
+}
+.card-img{
+  position:relative;aspect-ratio:4/3;overflow:hidden;
+  background:#EDE8E0;
+}
+.card-img img{
+  width:100%;height:100%;object-fit:cover;display:block;
+  transition:transform 0.6s cubic-bezier(0.16,1,0.3,1);
+}
+.prop-card:hover .card-img img{transform:scale(1.04);}
+.card-img-placeholder{
+  width:100%;height:100%;
+  background:linear-gradient(145deg,#E8E3DB,#D8D3CB);
+}
+.card-badge{
+  position:absolute;top:10px;left:10px;
+  font-size:8px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;
+  padding:3px 8px;border-radius:2px;color:#fff;
+  backdrop-filter:blur(6px);
+}
+.badge-sale{background:rgba(148,116,4,0.65);}
+.badge-rent{background:rgba(55,72,78,0.65);}
+.card-heart{
+  position:absolute;top:9px;right:9px;
+  width:28px;height:28px;border-radius:50%;
+  background:rgba(255,255,255,0.82);
+  backdrop-filter:blur(4px);border:none;cursor:pointer;
   display:flex;align-items:center;justify-content:center;
-  border:2px solid rgba(255,255,255,0.25);
-  background:rgba(255,255,255,0.08);
-  transition:all 0.3s;
-  backdrop-filter:blur(8px);
 }
-.panel:hover .panel-icon-wrap{
-  transform:scale(1.08);
-  background:rgba(255,255,255,0.15);
-  border-color:rgba(255,255,255,0.45);
+.card-body{padding:14px 15px 16px;}
+.card-price-row{
+  display:flex;align-items:baseline;gap:4px;
+  margin-bottom:6px;
 }
-.panel-agent .panel-icon-wrap{
-  border-color:rgba(56,168,168,0.5);
-  background:rgba(56,168,168,0.15);
+.card-price{
+  font-size:16px;font-weight:600;color:#1A2024;
+  letter-spacing:-0.01em;line-height:1;
 }
-.panel-agent:hover .panel-icon-wrap{
-  background:rgba(56,168,168,0.28);
-  border-color:#38A8A8;
+.card-price-unit{font-size:11px;font-weight:400;color:#8C9598;}
+.card-loc{
+  display:flex;align-items:center;gap:4px;
+  font-size:11px;color:#8C9598;margin-bottom:9px;
 }
-
-/* BIG LABEL */
-.panel-label{
-  font-size:clamp(42px,8vw,80px);
-  font-weight:700;
-  color:#fff;
-  letter-spacing:-0.03em;
-  line-height:1;
-  text-shadow:0 2px 20px rgba(0,0,0,0.3);
+.card-specs{
+  display:flex;gap:12px;
 }
-.panel-agent .panel-label{color:#fff;}
-
-/* SUBLABEL */
-.panel-sublabel{
-  font-size:clamp(13px,2vw,17px);
-  font-weight:300;
-  color:rgba(255,255,255,0.55);
-  letter-spacing:0.06em;
-  text-transform:uppercase;
+.card-spec{
+  display:flex;align-items:center;gap:3px;
+  font-size:11px;color:#8C9598;
 }
 
-/* ARROW */
-.panel-cta{
-  display:flex;align-items:center;gap:10px;
-  font-size:13px;font-weight:500;
-  color:rgba(255,255,255,0.5);
-  letter-spacing:0.1em;text-transform:uppercase;
-  margin-top:8px;
-  transition:all 0.3s;
+/* loading shimmer */
+.card-shimmer{
+  background:linear-gradient(90deg,#EDE8E0 25%,#E4E0D8 50%,#EDE8E0 75%);
+  background-size:200% 100%;
+  animation:shimmer 1.4s infinite;
 }
-.panel:hover .panel-cta{color:rgba(255,255,255,0.9);}
-.panel-agent .panel-cta{color:rgba(56,168,168,0.6);}
-.panel-agent:hover .panel-cta{color:#38A8A8;}
-.cta-line{width:32px;height:1px;background:currentColor;transition:width 0.3s;}
-.panel:hover .cta-line{width:52px;}
+@keyframes shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+.shimmer-card{
+  background:#fff;border-radius:3px;
+  border:1px solid rgba(26,32,36,0.07);overflow:hidden;
+}
+.shimmer-img{aspect-ratio:4/3;width:100%;}
+.shimmer-body{padding:14px 15px;}
+.shimmer-line{height:12px;border-radius:2px;margin-bottom:8px;}
+.shimmer-line.wide{width:70%;}
+.shimmer-line.mid{width:50%;}
+.shimmer-line.short{width:35%;}
 
-/* LOGO + LANG - TOP CENTER */
-.top-nav{
-  position:absolute;top:0;left:0;right:0;
-  z-index:30;
-  display:flex;align-items:center;justify-content:space-between;
-  padding:20px 28px;
-  pointer-events:none;
+/* ─── RESPONSIVE ─────────────────────────────────────────── */
+@media(max-width:1000px){
+  .card-grid{grid-template-columns:repeat(2,1fr);gap:16px;}
 }
-.logo{
-  display:flex;align-items:center;gap:10px;
-  pointer-events:all;
+@media(max-width:700px){
+  nav{padding:0 16px;}
+  .nav-center{gap:18px;}
+  .hero{height:52vh;min-height:320px;}
+  .panel-label{font-size:clamp(42px,12vw,70px);}
+  .featured-section{padding:36px 16px 48px;}
+  .card-grid{grid-template-columns:repeat(2,1fr);gap:14px;}
+  .location-band{padding:16px 20px;}
+  .featured-header{flex-direction:column;align-items:flex-start;gap:10px;}
 }
-.logo-text{font-size:20px;font-weight:600;color:#fff;letter-spacing:-0.02em;}
-.lang-switcher{
-  display:flex;gap:2px;
-  background:rgba(0,0,0,0.25);
-  border:1px solid rgba(255,255,255,0.15);
-  border-radius:4px;padding:3px;
-  backdrop-filter:blur(12px);
-  pointer-events:all;
-}
-.lang-btn{
-  font-size:11px;font-weight:500;padding:5px 10px;
-  border:none;background:transparent;color:rgba(255,255,255,0.55);
-  cursor:pointer;border-radius:3px;transition:all 0.2s;
-  font-family:'DM Sans',sans-serif;
-}
-.lang-btn.active{background:rgba(255,255,255,0.18);color:#fff;}
-
-/* BOTTOM TAG */
-.bottom-tag{
-  position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
-  z-index:30;
-  font-size:10px;font-weight:300;letter-spacing:0.2em;text-transform:uppercase;
-  color:rgba(255,255,255,0.18);
-  white-space:nowrap;pointer-events:none;
-}
-
-/* MOBILE */
-@media(max-width:600px){
-  .split{grid-template-columns:1fr;grid-template-rows:1fr 1fr;}
-  .divider{left:0;right:0;top:50%;bottom:auto;width:100%;height:2px;background:linear-gradient(to right, transparent, rgba(255,255,255,0.3), transparent);}
-  .panel:hover{flex:1.1;}
-  .panel-label{font-size:clamp(38px,12vw,64px);}
-  .top-nav{padding:14px 16px;}
-  .panel-icon-wrap{width:80px;height:80px;}
-  .panel-content{gap:14px;padding:28px 20px;}
+@media(max-width:480px){
+  .hero{grid-template-columns:1fr;grid-template-rows:1fr 1fr;height:62vh;}
+  .hero-divider{left:0;right:0;top:50%;bottom:auto;width:100%;height:1px;background:linear-gradient(to right,transparent,rgba(255,255,255,0.25),transparent);}
+  .panel:hover{flex:1.05;}
+  .panel{padding-bottom:36px;}
+  .card-grid{grid-template-columns:1fr;gap:14px;}
 }
 </style>
 </head>
 <body>
 
-<!-- GOLD RULE -->
-<div class="gold-rule"></div>
-
-<!-- TOP NAV -->
-<div class="top-nav">
-  <div class="logo">
-    <svg width="30" height="30" viewBox="0 0 40 40" fill="none">
-      <circle cx="12" cy="9" r="7.5" fill="#38A8A8"/>
-      <circle cx="25" cy="14" r="3.5" fill="#0D1F26" opacity="0.9"/>
+<!-- NAV -->
+<nav>
+  <a href="index.html" class="nav-logo">
+    <svg width="28" height="24" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision">
+      <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
+      <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
     </svg>
     <span class="logo-text">Pintag</span>
+  </a>
+  <div class="nav-center">
+    <button class="nav-lang-item active" onclick="setLang('lo',this)">ລາວ</button>
+    <button class="nav-lang-item" onclick="setLang('en',this)">EN</button>
+    <button class="nav-lang-item" onclick="setLang('zh',this)">中文</button>
   </div>
-  <div class="lang-switcher">
-    <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
-    <button class="lang-btn" onclick="setLang('en',this)">EN</button>
-    <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
+  <div class="nav-right">
+    <a href="for-agents.html" class="nav-agent-btn">
+      <span class="lo-i">ເં້ສູ່ລະບົ</span>
+      <span class="en-i">Agent login</span>
+      <span class="zh-i">经纪登录</span>
+    </a>
+    <button class="nav-menu-icon" aria-label="Menu">
+      <span></span><span></span>
+    </button>
   </div>
-</div>
+</nav>
 
-<!-- SPLIT PANELS -->
-<div class="split">
-
-  <!-- DIVIDER -->
-  <div class="divider"></div>
+<!-- HERO SPLIT -->
+<section class="hero">
+  <div class="hero-divider"></div>
 
   <!-- BUYER -->
   <a href="listings.html" class="panel panel-buyer">
     <div class="panel-bg"></div>
     <div class="panel-overlay"></div>
     <div class="panel-content">
-      <div class="panel-icon-wrap">
-        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-          <polyline points="9,22 9,12 15,12 15,22"/>
-        </svg>
-      </div>
-      <p class="panel-label">ຜູ້ຊື້</p>
+      <p class="panel-label">ຜູ້જື້</p>
       <p class="panel-sublabel">
-        <span class="lo-i">ຊອກຫາເຮືອນ</span>
-        <span class="en-i">Find a Property</span>
-        <span class="zh-i">找房源</span>
+        <span class="lo-i">ણື້ ເણື້ ດິນ</span>
+        <span class="en-i">Buy &middot; Rent &middot; Land</span>
+        <span class="zh-i">购房 &middot; 租房 &middot; 土地</span>
       </p>
       <div class="panel-cta">
-        <span class="cta-line"></span>
         <span class="lo-i">ເບິ່ງລາຍການ</span>
         <span class="en-i">Browse listings</span>
         <span class="zh-i">浏览房源</span>
-        <span class="cta-line"></span>
+        <svg class="cta-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </div>
     </div>
   </a>
@@ -267,39 +387,152 @@ body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
     <div class="panel-bg"></div>
     <div class="panel-overlay"></div>
     <div class="panel-content">
-      <div class="panel-icon-wrap">
-        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#38A8A8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
-          <circle cx="12" cy="7" r="4"/>
-        </svg>
-      </div>
-      <p class="panel-label">ຜູ້ຂາຍ</p>
+      <p class="panel-label">ຜູ້ંາຍ</p>
       <p class="panel-sublabel">
-        <span class="lo-i">Agent · ນາຍໜ້າ</span>
+        <span class="lo-i">Agent &middot; ນາຍໜ້າ</span>
         <span class="en-i">List Your Property</span>
         <span class="zh-i">发布房源</span>
       </p>
       <div class="panel-cta">
-        <span class="cta-line"></span>
         <span class="lo-i">ລົງປະກາດ</span>
         <span class="en-i">Get started</span>
         <span class="zh-i">立即发布</span>
-        <span class="cta-line"></span>
+        <svg class="cta-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </div>
     </div>
   </a>
+</section>
 
+<!-- LOCATION BAND -->
+<div class="location-band">
+  <div class="location-pin-row">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+    <span class="lo-i">ວຽງຈັນ, ປະເທດລາວ</span>
+    <span class="en-i">Vientiane, Laos</span>
+    <span class="zh-i">万象，老挝</span>
+  </div>
+  <p class="location-tagline">
+    <span class="lo-i">ເં້ສູ່ທຸກທຳເລີຍ. ເລືອກສິ່ງທີ່ໃຊ້ສຳຄັນ.</span>
+    <span class="en-i">Explore every opportunity. Find what matters.</span>
+    <span class="zh-i">探索每一个机遇。找到所需。</span>
+  </p>
 </div>
 
-<!-- BOTTOM -->
-<div class="bottom-tag">pintag.io · ວຽງຈັນ · Vientiane · 万象</div>
+<!-- FEATURED LISTINGS -->
+<section class="featured-section">
+  <div class="featured-header">
+    <div class="featured-title-block">
+      <p class="featured-eyebrow">
+        <span class="lo-i">ຊັບສິນແນະນຳ</span>
+        <span class="en-i">Featured</span>
+        <span class="zh-i">精选房源</span>
+      </p>
+      <h2 class="featured-title">
+        <span class="lo-i">ຊັບສິນໜ້າສຸດ</span>
+        <span class="en-i">Latest Properties</span>
+        <span class="zh-i">最新房源</span>
+      </h2>
+      <p class="featured-sub">
+        <span class="lo-i">ເລືອກກັບທີ່ມີຄຸນມະພາບ ຈາກທຳເລີຍແທ້</span>
+        <span class="en-i">Curated quality from verified agents</span>
+        <span class="zh-i">经认证经纪颉选优质房源</span>
+      </p>
+    </div>
+    <a href="listings.html" class="featured-view-all">
+      <span class="lo-i">ເບິ່ງທັງຫມດ</span>
+      <span class="en-i">View all</span>
+      <span class="zh-i">查看全部</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </a>
+  </div>
+  <div id="card-grid" class="card-grid">
+    <!-- shimmer placeholders -->
+    <div class="shimmer-card"><div class="shimmer-img card-shimmer"></div><div class="shimmer-body"><div class="shimmer-line wide card-shimmer"></div><div class="shimmer-line mid card-shimmer"></div><div class="shimmer-line short card-shimmer"></div></div></div>
+    <div class="shimmer-card"><div class="shimmer-img card-shimmer"></div><div class="shimmer-body"><div class="shimmer-line wide card-shimmer"></div><div class="shimmer-line mid card-shimmer"></div><div class="shimmer-line short card-shimmer"></div></div></div>
+    <div class="shimmer-card"><div class="shimmer-img card-shimmer"></div><div class="shimmer-body"><div class="shimmer-line wide card-shimmer"></div><div class="shimmer-line mid card-shimmer"></div><div class="shimmer-line short card-shimmer"></div></div></div>
+    <div class="shimmer-card"><div class="shimmer-img card-shimmer"></div><div class="shimmer-body"><div class="shimmer-line wide card-shimmer"></div><div class="shimmer-line mid card-shimmer"></div><div class="shimmer-line short card-shimmer"></div></div></div>
+  </div>
+</section>
 
 <script>
-function setLang(lang,btn){
-  document.body.className=lang==='lo'?'':'lang-'+lang;
-  document.querySelectorAll('.lang-btn').forEach(b=>b.classList.remove('active'));
+const SB_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+
+function setLang(lang, btn) {
+  document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
+  document.querySelectorAll('.nav-lang-item').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  renderCards(window._props || [], lang);
 }
+
+function getCurrentLang() {
+  if (document.body.classList.contains('lang-en')) return 'en';
+  if (document.body.classList.contains('lang-zh')) return 'zh';
+  return 'lo';
+}
+
+async function loadFeatured() {
+  try {
+    const res = await fetch(SB_URL + '/rest/v1/properties?order=is_featured.desc,created_at.desc&limit=4&select=*', {
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+    });
+    const data = await res.json();
+    window._props = data;
+    renderCards(data, getCurrentLang());
+  } catch(e) {
+    document.getElementById('card-grid').innerHTML = '';
+  }
+}
+
+function renderCards(props, lang) {
+  const grid = document.getElementById('card-grid');
+  if (!props || !props.length) { grid.innerHTML = ''; return; }
+
+  const BED_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v16M2 12h20M22 4v16M6 12V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"/></svg>';
+  const BATH_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>';
+  const SQM_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>';
+  const PIN_SVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+  const HEART_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2024" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+
+  const txL = {
+    sale: { lo: 'ຂາຍ', en: 'Sale', zh: '出售' },
+    rent: { lo: 'ເચື້', en: 'Rent', zh: '租房' }
+  };
+  const perMo = { lo: '/ ເດືອນ', en: '/ mo', zh: '/ 月' };
+  const cityL = { lo: 'ວຽງຈັນ', en: 'Vientiane', zh: '万象' };
+
+  grid.innerHTML = props.map(p => {
+    const title = p['title_' + lang] || p.title_en || '';
+    const district = p['district_' + lang] || p.district_en || '';
+    const isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
+    const tx = isSale ? txL.sale[lang] : txL.rent[lang];
+    const badgeClass = isSale ? 'badge-sale' : 'badge-rent';
+    const imgHtml = (p.images && p.images.length)
+      ? '<img src="' + p.images[0] + '" alt="" loading="lazy">'
+      : '<div class="card-img-placeholder"></div>';
+    const specs = [];
+    if (p.bedrooms) specs.push('<span class="card-spec">' + BED_SVG + ' ' + p.bedrooms + '</span>');
+    if (p.bathrooms) specs.push('<span class="card-spec">' + BATH_SVG + ' ' + p.bathrooms + '</span>');
+    if (p.sqm) specs.push('<span class="card-spec">' + SQM_SVG + ' ' + p.sqm + '</span>');
+    const priceUnit = (!isSale && p.price_display) ? '<span class="card-price-unit">' + perMo[lang] + '</span>' : '';
+    return '<a href="listing.html?slug=' + encodeURIComponent(p.slug) + '" class="prop-card">' +
+      '<div class="card-img">' +
+        imgHtml +
+        '<span class="card-badge ' + badgeClass + '">' + tx + '</span>' +
+        '<button class="card-heart" onclick="event.preventDefault()">' + HEART_SVG + '</button>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<div class="card-price-row">' +
+          '<span class="card-price">' + (p.price_display || '—') + '</span>' + priceUnit +
+        '</div>' +
+        '<div class="card-loc">' + PIN_SVG + (district ? district + ', ' : '') + cityL[lang] + '</div>' +
+        (specs.length ? '<div class="card-specs">' + specs.join('') + '</div>' : '') +
+      '</div>' +
+    '</a>';
+  }).join('');
+}
+
+loadFeatured();
 </script>
 </body>
 </html>
