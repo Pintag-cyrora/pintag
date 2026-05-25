@@ -317,7 +317,6 @@ function initMobileGalleryScroll(){
   if(!track||!dc)return;var dots=dc.querySelectorAll('.mg-dot');if(!dots.length)return;
   track.addEventListener('scroll',function(){var w=track.offsetWidth;if(!w)return;var idx=Math.round(track.scrollLeft/w);dots.forEach(function(d,i){d.classList.toggle('active',i===idx);});},{passive:true});
 }
-}
 function shiftDesktopHero(src,thumbEl){
   var img=document.getElementById('dg-hero-img');
   var frame=document.getElementById('dg-hero-frame');
