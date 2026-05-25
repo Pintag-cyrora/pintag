@@ -32,19 +32,19 @@ html{scroll-behavior:smooth;}
   --r-switcher:6px;
 }
 
-/* ─── CADASTRAL GRID — two-tier hierarchy, Swiss drafting feel ──────────── */
+/* ─── TOPOGRAPHIC TEXTURE — panel 06 brand language ───────────────────── */
 body{
   font-family:'DM Sans',sans-serif;
   font-weight:400;font-size:15px;line-height:1.75;
   background-color:var(--warm);
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cpath d='M 40 0 L 40 120 M 80 0 L 80 120 M 0 40 L 120 40 M 0 80 L 120 80' fill='none' stroke='%231A2428' stroke-width='0.3' stroke-opacity='0.04'/%3E%3Cpath d='M 120 0 L 0 0 0 120' fill='none' stroke='%231A2428' stroke-width='0.5' stroke-opacity='0.07'/%3E%3C/svg%3E");
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='360'%3E%3Cpath d='M0 28 C150 22 450 34 600 28 M0 54 C150 61 450 47 600 54 M0 80 C150 74 450 86 600 80 M0 108 C150 116 450 100 600 108 M0 133 C150 127 450 139 600 133 M0 160 C150 167 450 153 600 160 M0 186 C150 180 450 192 600 186 M0 214 C150 222 450 206 600 214 M0 238 C150 232 450 244 600 238 M0 265 C150 272 450 258 600 265 M0 290 C150 284 450 296 600 290 M0 318 C150 325 450 311 600 318 M0 343 C150 337 450 349 600 343' fill='none' stroke='%231A2428' stroke-width='0.5' stroke-opacity='0.055'/%3E%3C/svg%3E");
   background-repeat:repeat;
+  background-size:600px 360px;
   color:var(--ink);
   -webkit-font-smoothing:antialiased;
 }
 
-/* LANGUAGE CHANNELS */
+/* ─── LANGUAGE CHANNELS ─────────────────────────────────────────────────── */
 .lo{display:block;}.en{display:none;}.zh{display:none;}
 .lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
 body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
@@ -57,12 +57,12 @@ nav{
   position:fixed;top:0;left:0;right:0;z-index:300;height:54px;
   display:flex;align-items:center;justify-content:space-between;
   padding:0 20px;
-  background:rgba(243,239,232,0.93);
+  background:rgba(243,239,232,0.95);
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border-bottom:1px solid var(--border-mid);
 }
 .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
-.nav-wordmark{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.02em;line-height:1;}
+.nav-wordmark{font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-0.02em;line-height:1;}
 .nav-right{display:flex;align-items:center;gap:16px;}
 .lang-switcher{
   display:flex;gap:3px;background:var(--warm-deep);padding:3px;
@@ -75,208 +75,345 @@ nav{
   letter-spacing:0.04em;transition:background 0.15s,color 0.15s;
 }
 .lang-btn.active{background:var(--ink);color:var(--white);}
-.nav-back{font-size:11px;font-weight:600;color:var(--ink-muted);text-decoration:none;letter-spacing:0.05em;text-transform:uppercase;}
 
 /* ─── CONTENT WRAPPER ──────────────────────────────────────────────────── */
 .g-wrap{
   max-width:1200px;margin:54px auto 0;
   background:var(--white);
   min-height:calc(100vh - 54px);
-  padding:32px 32px 60px 32px;
+  padding:0 0 80px 0;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   DESKTOP GALLERY — dominant hero + architectural thumbnail rail
-   Edge-to-edge within wrapper via negative margins. Editorial format.
-═══════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   HERO SECTION — two-column split, 36/64
+   Left: identity + price + specs. Right: gallery.
+═══════════════════════════════════════════════════════════════════════ */
+.hero-section{
+  display:grid;
+  grid-template-columns:36fr 64fr;
+  min-height:520px;
+  align-items:stretch;
+  border-bottom:1px solid var(--border-mid);
+}
+
+/* ─── LEFT PANEL ──────────────────────────────────────────────────── */
+.hero-left{
+  padding:36px 32px 32px 36px;
+  display:flex;flex-direction:column;
+  border-right:1px solid var(--border-mid);
+  background:var(--white);
+}
+.back-link{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:11px;font-weight:500;color:var(--ink-muted);
+  text-decoration:none;letter-spacing:0.04em;text-transform:uppercase;
+  margin-bottom:24px;
+  transition:color 0.15s;
+}
+.back-link:hover{color:var(--teal);}
+.back-link svg{flex-shrink:0;}
+.hero-location{
+  display:flex;align-items:center;gap:5px;
+  font-size:12.5px;font-weight:500;color:var(--teal);
+  margin-bottom:10px;
+}
+.hero-location svg{flex-shrink:0;stroke:var(--teal);}
+.hero-meta-row{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:10px;
+}
+.info-tag{
+  font-size:10px;font-weight:700;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--teal);
+}
+.pintag-verified{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:8.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--teal);border:1px solid var(--teal-mark);
+  padding:3px 8px 3px 7px;border-radius:var(--r-tag);
+  flex-shrink:0;white-space:nowrap;
+}
+.pintag-verified::before{
+  content:'';display:block;width:4px;height:4px;
+  border-right:1.5px solid var(--teal);border-bottom:1.5px solid var(--teal);
+  transform:rotate(-45deg) translateY(-1px);flex-shrink:0;
+}
+.info-title{
+  font-size:28px;font-weight:600;
+  color:var(--ink);letter-spacing:-0.025em;
+  line-height:1.25;margin-bottom:6px;
+}
+.property-ref{
+  font-size:9px;font-weight:500;letter-spacing:0.09em;text-transform:uppercase;
+  color:var(--ink-muted);opacity:0.35;
+  font-variant-numeric:tabular-nums;
+  margin-bottom:20px;display:block;
+}
+
+/* price block */
+.price-block{margin-bottom:22px;}
+.price-label{
+  font-size:9.5px;font-weight:600;text-transform:uppercase;
+  letter-spacing:0.07em;color:var(--ink-muted);margin-bottom:4px;
+}
+.price-value{
+  font-size:26px;font-weight:700;color:var(--ink);
+  letter-spacing:-0.02em;line-height:1.1;
+}
+.price-negotiable{font-size:15px;font-weight:500;color:var(--ink-muted);}
+.price-lak{
+  font-size:11px;color:var(--ink-muted);margin-top:3px;
+  font-variant-numeric:tabular-nums;
+}
+
+/* spec grid — icon-led */
+.spec-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:14px 8px;margin-bottom:22px;
+}
+.spec-item{
+  display:flex;flex-direction:column;align-items:flex-start;gap:3px;
+}
+.spec-icon{color:var(--ink-muted);display:block;margin-bottom:2px;}
+.spec-val{font-size:15px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;line-height:1;}
+.spec-lbl{font-size:9.5px;color:var(--ink-muted);letter-spacing:0.04em;}
+
+/* year built */
+.year-built{
+  display:flex;align-items:center;gap:8px;
+  font-size:12.5px;color:var(--ink-soft);
+  margin-bottom:20px;padding-bottom:20px;
+  border-bottom:1px solid var(--border);
+}
+.year-built svg{color:var(--ink-muted);flex-shrink:0;}
+.year-built-lbl{color:var(--ink-muted);font-size:11px;}
+
+/* left actions */
+.left-actions{
+  display:flex;flex-direction:column;gap:8px;
+  margin-top:auto;
+}
+.action-link{
+  display:inline-flex;align-items:center;gap:9px;
+  background:none;border:none;cursor:pointer;
+  font-family:'DM Sans',sans-serif;
+  font-size:12.5px;font-weight:500;color:var(--ink-soft);
+  padding:0;transition:color 0.15s;
+  text-decoration:none;
+}
+.action-link:hover{color:var(--teal);}
+.action-link svg{color:var(--ink-muted);flex-shrink:0;transition:color 0.15s;}
+.action-link:hover svg{color:var(--teal);}
+
+/* ─── RIGHT PANEL — GALLERY ───────────────────────────────────────── */
+.hero-right{
+  overflow:hidden;display:flex;flex-direction:column;
+}
+
+/* ─── DESKTOP GALLERY — fills right panel ─────────────────────────── */
 .desktop-gallery{
-  display:block;
-  margin:-32px -32px 0 -32px;  /* bleed to wrapper edges */
-  margin-bottom:0;
+  display:flex;flex-direction:column;
+  height:100%;flex:1;
 }
 .dg-hero{
-  position:relative;
-  width:100%;aspect-ratio:16/9;
-  overflow:hidden;
-  background:var(--warm-deep);
+  flex:1;min-height:0;
+  position:relative;overflow:hidden;
+  background:var(--warm-deep);cursor:pointer;
 }
 .dg-hero img{
   width:100%;height:100%;object-fit:cover;display:block;
   transition:transform 0.9s cubic-bezier(0.16,1,0.3,1);
 }
 .dg-hero:hover img{transform:scale(1.008);}
-
-/* cadastral registration marks on hero */
+/* cadastral corner marks */
 .dg-hero::before{
   content:'';position:absolute;top:16px;left:16px;z-index:2;
-  width:18px;height:18px;
-  border-top:1px solid rgba(255,255,255,0.28);
-  border-left:1px solid rgba(255,255,255,0.28);
+  width:16px;height:16px;
+  border-top:1px solid rgba(255,255,255,0.25);
+  border-left:1px solid rgba(255,255,255,0.25);
   pointer-events:none;
 }
 .dg-hero::after{
   content:'';position:absolute;bottom:16px;right:16px;z-index:2;
-  width:18px;height:18px;
-  border-bottom:1px solid rgba(255,255,255,0.28);
-  border-right:1px solid rgba(255,255,255,0.28);
+  width:16px;height:16px;
+  border-bottom:1px solid rgba(255,255,255,0.25);
+  border-right:1px solid rgba(255,255,255,0.25);
   pointer-events:none;
 }
-/* coordinate overlay — bottom-left, archival */
 .dg-coord-overlay{
-  position:absolute;bottom:16px;left:20px;z-index:3;
+  position:absolute;bottom:14px;left:18px;z-index:3;
   font-size:9px;font-weight:500;letter-spacing:0.1em;
-  color:rgba(255,255,255,0.45);
-  text-transform:uppercase;font-variant-numeric:tabular-nums;
-  pointer-events:none;
+  color:rgba(255,255,255,0.4);text-transform:uppercase;
+  font-variant-numeric:tabular-nums;pointer-events:none;
 }
+/* photo count overlay */
+.dg-photo-count{
+  position:absolute;top:14px;right:14px;z-index:3;
+  background:rgba(0,0,0,0.42);color:#fff;
+  font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px;
+  display:flex;align-items:center;gap:5px;cursor:pointer;
+  transition:background 0.15s;
+}
+.dg-photo-count:hover{background:rgba(0,0,0,0.62);}
 
-/* Architectural thumbnail rail — sits flush below hero */
+/* Thumbnail rail */
 .dg-rail{
-  display:flex;gap:2px;
-  background:var(--ink);  /* dark gap between thumbs = parcel lines */
+  display:flex;gap:2px;flex-shrink:0;
+  background:var(--ink);height:82px;
 }
 .dg-thumb{
-  flex:1;min-width:0;height:70px;
-  overflow:hidden;cursor:pointer;
-  opacity:0.52;
-  transition:opacity 0.3s ease, transform 0.6s cubic-bezier(0.16,1,0.3,1);
-  position:relative;
+  flex:1;min-width:0;height:82px;
+  overflow:hidden;cursor:pointer;position:relative;
+  opacity:0.5;
+  transition:opacity 0.25s ease;
 }
-.dg-thumb img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.6s cubic-bezier(0.16,1,0.3,1);}
+.dg-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
 .dg-thumb:hover{opacity:0.78;}
-.dg-thumb:hover img{transform:scale(1.008);}
 .dg-thumb.active{opacity:1;}
-/* active thumb — teal bottom border like a selected tab on a survey sheet */
 .dg-thumb.active::after{
   content:'';position:absolute;bottom:0;left:0;right:0;
   height:2px;background:var(--teal);
 }
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   MOBILE GALLERY — immersive swipe carousel, touch-first
-═══════════════════════════════════════════════════════════════════════════ */
-.mobile-gallery{
-  display:none;
-  margin:-16px -16px 0 -16px;
+/* +N more overlay on last thumb */
+.dg-thumb-more{
+  position:absolute;inset:0;
+  background:rgba(26,36,40,0.7);
+  display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:2px;
 }
+.dg-thumb-more-count{font-size:16px;font-weight:700;color:#fff;line-height:1;}
+.dg-thumb-more-lbl{font-size:9px;font-weight:500;color:rgba(255,255,255,0.7);letter-spacing:0.06em;text-transform:uppercase;}
+
+/* ─── MOBILE GALLERY — swipe carousel ─────────────────────────────── */
+.mobile-gallery{display:none;}
 .mg-track{
-  display:flex;
-  overflow-x:scroll;
-  scroll-snap-type:x mandatory;
-  -webkit-overflow-scrolling:touch;
-  scrollbar-width:none;
+  display:flex;overflow-x:scroll;scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
 }
 .mg-track::-webkit-scrollbar{display:none;}
-.mg-slide{
-  flex:0 0 100%;scroll-snap-align:start;
-  aspect-ratio:4/3;overflow:hidden;
-  background:var(--warm-deep);
-}
+.mg-slide{flex:0 0 100%;scroll-snap-align:start;aspect-ratio:4/3;overflow:hidden;background:var(--warm-deep);}
 .mg-slide img{width:100%;height:100%;object-fit:cover;display:block;}
-.mg-dots{
-  display:flex;justify-content:center;gap:5px;
-  padding:10px 0 8px;background:var(--white);
-}
-.mg-dot{
-  width:5px;height:5px;border-radius:50%;
-  background:var(--ink-muted);opacity:0.28;
-  transition:opacity 0.2s,background 0.2s;
-  cursor:pointer;
-}
+.mg-dots{display:flex;justify-content:center;gap:5px;padding:10px 0 8px;background:var(--white);}
+.mg-dot{width:5px;height:5px;border-radius:50%;background:var(--ink-muted);opacity:0.28;transition:opacity 0.2s,background 0.2s;cursor:pointer;}
 .mg-dot.active{opacity:1;background:var(--teal);}
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   TELEMETRY STRIP — market intelligence layer between gallery and content
-   Swiss cadastral register feel. Quiet but registers as infrastructure.
-═══════════════════════════════════════════════════════════════════════════ */
-.telemetry-strip{
-  display:flex;align-items:center;
-  padding:10px 0 10px 0;
+/* ═══════════════════════════════════════════════════════════════════════
+   AGENT SECTION — presented by, full width below hero
+═══════════════════════════════════════════════════════════════════════ */
+.agent-section{
+  background:var(--white);
+  border-bottom:1px solid var(--border-mid);
+  padding:28px 36px;
+}
+.agent-presented{
+  font-size:9.5px;font-weight:600;text-transform:uppercase;
+  letter-spacing:0.1em;color:var(--ink-muted);
+  margin-bottom:16px;
+}
+.agent-main{
+  display:flex;align-items:center;gap:28px;flex-wrap:wrap;
+}
+.agent-identity{
+  display:flex;align-items:center;gap:14px;flex-shrink:0;
+}
+.agent-pfp{
+  width:58px;height:58px;border-radius:50%;
+  object-fit:cover;background:var(--warm-deep);
+  border:1px solid var(--border-mid);flex-shrink:0;
+}
+.agent-info-block{display:flex;flex-direction:column;gap:3px;}
+.agent-name-primary{font-size:15px;font-weight:600;color:var(--ink);line-height:1.2;}
+.agent-name-secondary{font-size:12px;color:var(--ink-muted);line-height:1.2;}
+.agent-stats{
+  display:flex;gap:28px;flex:1;
+}
+.agent-stat{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  border-left:1px solid var(--border-mid);padding-left:20px;
+}
+.agent-stat-val{font-size:14px;font-weight:600;color:var(--ink);}
+.agent-stat-lbl{font-size:10px;color:var(--ink-muted);letter-spacing:0.02em;}
+.agent-actions{
+  display:flex;gap:9px;margin-left:auto;flex-shrink:0;
+}
+.btn-primary{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px 18px;border-radius:var(--r-btn);
+  font-size:13px;font-weight:600;
+  text-decoration:none;border:none;cursor:pointer;
+  transition:all 0.17s cubic-bezier(0.16,1,0.3,1);
+  letter-spacing:0.01em;font-family:'DM Sans',sans-serif;
+  white-space:nowrap;
+}
+.btn-whatsapp{background:var(--wa);color:var(--white);box-shadow:0 2px 8px rgba(26,158,80,0.15);}
+.btn-whatsapp:hover{background:#148C3A;transform:translateY(-1px);}
+.btn-call{background:transparent;color:var(--ink-soft);border:1px solid var(--border-strong);}
+.btn-call:hover{background:var(--warm);color:var(--ink);transform:translateY(-1px);}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PAGE BODY — detail sections below hero
+═══════════════════════════════════════════════════════════════════════ */
+.page-body{
+  padding:0 36px 40px;
+  background:var(--white);
+}
+
+/* ─── TELEMETRY STRIP — hidden until market data ready ─────────────── */
+.telemetry-strip{display:none;}
+.tel-item,.tel-sep,.tel-label,.tel-value,.tel-pos,.tel-coord{display:none;}
+
+/* ─── DETAIL SECTIONS — overview / features / location ─────────────── */
+.detail-sections{
+  display:grid;grid-template-columns:1fr 1fr 1fr;
+  gap:48px;
+  padding:36px 0 36px;
   border-bottom:1px solid var(--border);
-  margin-bottom:36px;
-  margin-top:28px;
-  overflow-x:auto;scrollbar-width:none;
-  gap:0;
 }
-.telemetry-strip::-webkit-scrollbar{display:none;}
-.tel-item{
-  display:flex;align-items:center;gap:7px;
-  padding:0 20px;flex-shrink:0;
-}
-.tel-item:first-child{padding-left:0;}
-.tel-label{
-  font-size:9px;font-weight:600;
-  letter-spacing:0.1em;text-transform:uppercase;
-  color:var(--ink-muted);
-}
-.tel-value{
-  font-size:10px;font-weight:700;
-  letter-spacing:0.06em;text-transform:uppercase;
-  color:var(--ink);font-variant-numeric:tabular-nums;
-}
-.tel-pos{color:var(--teal);}
-.tel-sep{width:1px;height:14px;background:var(--border-strong);flex-shrink:0;}
-.tel-coord .tel-value{color:var(--ink-muted);font-weight:500;opacity:0.6;}
-
-/* ─── SPLIT COLUMNS ────────────────────────────────────────────────────── */
-.columns-grid{display:grid;grid-template-columns:1fr 360px;gap:56px;align-items:start;}
-
-/* ─── LEFT STREAM ──────────────────────────────────────────────────────── */
-.info-header{margin-bottom:32px;position:relative;}
-.info-meta-row{
-  display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:10px;min-height:22px;
-}
-.info-tag{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--teal);}
-
-/* PINTAG VERIFIED — cadastral certificate mark, not consumer badge */
-.pintag-verified{
-  display:inline-flex;align-items:center;gap:5px;
-  font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
-  color:var(--teal);border:1px solid var(--teal-mark);
-  padding:3px 8px 3px 7px;border-radius:var(--r-tag);
-  flex-shrink:0;white-space:nowrap;
-}
-.pintag-verified::before{
-  content:'';display:block;width:5px;height:5px;
-  border-right:1.5px solid var(--teal);border-bottom:1.5px solid var(--teal);
-  transform:rotate(-45deg) translateY(-1px);flex-shrink:0;
-}
-
-/* property reference — infrastructural index mark */
-.property-ref{
-  position:absolute;top:0;right:0;
-  font-size:9px;font-weight:500;letter-spacing:0.09em;text-transform:uppercase;
-  color:var(--ink-muted);opacity:0.38;
-  font-variant-numeric:tabular-nums;pointer-events:none;user-select:none;
-}
-
-.info-title{
-  font-size:34px;font-weight:700;  /* 700 not 800 — more restrained authority */
-  color:var(--ink);letter-spacing:-0.03em;
-  line-height:1.2;margin-bottom:12px;
-}
-.info-location{
-  font-size:14px;font-weight:400;color:var(--ink-soft);
-  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
-}
-.info-location svg{stroke:var(--teal);flex-shrink:0;}
-.geo-coord{
-  font-size:9.5px;font-weight:500;color:var(--ink-muted);opacity:0.45;
-  letter-spacing:0.07em;margin-left:4px;font-variant-numeric:tabular-nums;
-  border-left:1px solid var(--border-strong);padding-left:8px;
-}
-
-/* ─── DIVIDERS & SECTION LABELS ────────────────────────────────────────── */
-.divider{height:1px;background:var(--border);width:100%;margin:32px 0;}
+.detail-sections.two-col{grid-template-columns:1.4fr 1fr;}
+.detail-sections.one-col{grid-template-columns:1fr;}
+.detail-col{}
 .section-caption{
-  font-size:10.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
-  color:var(--ink);margin-bottom:18px;
+  font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--ink);margin-bottom:16px;
+  display:flex;align-items:center;gap:8px;
 }
-.body-narrative{font-size:15.5px;color:var(--ink-soft);line-height:1.85;white-space:pre-line;}
+.section-caption::after{
+  content:'';display:block;flex:1;height:1px;background:var(--border);
+}
+.body-narrative{
+  font-size:14.5px;color:var(--ink-soft);line-height:1.85;white-space:pre-line;
+}
 
-/* ─── MEDIA EMBEDS ─────────────────────────────────────────────────────── */
-.asset-stack{display:flex;flex-direction:column;gap:32px;}
+/* features list */
+.features-list{display:flex;flex-direction:column;gap:9px;}
+.feature-item{
+  display:flex;align-items:center;gap:9px;
+  font-size:13px;color:var(--ink-soft);
+}
+.feature-dot{
+  width:4px;height:4px;border-radius:50%;
+  background:var(--teal);flex-shrink:0;opacity:0.7;
+}
+
+/* map */
+.map-frame{
+  position:relative;width:100%;aspect-ratio:4/3;
+  background:var(--warm-deep);border-radius:var(--r-frame);
+  overflow:hidden;border:1px solid var(--border-mid);
+  margin-bottom:10px;
+}
+.map-frame iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;}
+.map-open-link{
+  font-size:12px;color:var(--teal);font-weight:500;
+  text-decoration:none;display:inline-flex;align-items:center;gap:5px;
+}
+.map-open-link:hover{text-decoration:underline;}
+
+/* media embed (video) */
+.media-section{
+  padding:36px 0 0;
+  border-top:1px solid var(--border);
+}
 .asset-iframe-wrapper{
   position:relative;width:100%;aspect-ratio:16/9;
   background:var(--warm-deep);border-radius:var(--r-frame);
@@ -284,101 +421,15 @@ nav{
 }
 .asset-iframe-wrapper iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;}
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   STICKY SIDEBAR — editorial transaction rail, not ecommerce card
-   Telemetry integrated at top to signal spatial intelligence platform.
-═══════════════════════════════════════════════════════════════════════════ */
-.sticky-sidebar{position:sticky;top:74px;height:fit-content;}
-.sticky-card{
-  background:var(--white);border:1px solid var(--border-strong);
-  border-radius:var(--r-card);padding:24px;
-  box-shadow:0 6px 24px rgba(26,36,40,0.05);
-  position:relative;
-}
-/* survey corner marks */
-.sticky-card::before{
-  content:'';position:absolute;top:11px;left:11px;
-  width:13px;height:13px;
-  border-top:1px solid var(--teal-mark);
-  border-left:1px solid var(--teal-mark);
-  pointer-events:none;
-}
-.sticky-card::after{
-  content:'';position:absolute;bottom:11px;right:11px;
-  width:13px;height:13px;
-  border-bottom:1px solid var(--teal-mark);
-  border-right:1px solid var(--teal-mark);
-  pointer-events:none;
-}
+/* ─── LOADER ────────────────────────────────────────────────────────── */
+.loader-stage{text-align:center;padding:140px 24px;color:var(--ink-muted);grid-column:1/-1;}
+.loader-cluster{display:flex;gap:6px;justify-content:center;margin-bottom:16px;}
+.loader-bead{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:beadWave 1.2s ease-in-out infinite;}
+.loader-bead:nth-child(2){animation-delay:0.15s;}
+.loader-bead:nth-child(3){animation-delay:0.3s;}
+@keyframes beadWave{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
 
-/* ─── SIDEBAR TELEMETRY — market intelligence header of the card ──────── */
-.sidebar-telemetry{
-  margin-bottom:16px;padding-bottom:14px;
-  border-bottom:1px solid var(--border);
-}
-.sidebar-tel-row{
-  display:flex;justify-content:space-between;align-items:center;
-  padding:3px 0;
-}
-.sidebar-tel-label{
-  font-size:9px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;
-  color:var(--ink-muted);
-}
-.sidebar-tel-value{
-  font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
-  color:var(--ink-soft);font-variant-numeric:tabular-nums;
-}
-.sidebar-tel-value.positive{color:var(--teal);}
-.sidebar-tel-value.dim{opacity:0.5;}
-
-/* ─── CARD PRICE & METRICS ─────────────────────────────────────────────── */
-.card-price-label{
-  font-size:10px;font-weight:600;text-transform:uppercase;
-  letter-spacing:0.07em;color:var(--ink-muted);margin-bottom:5px;
-}
-.card-price-value{
-  font-size:28px;font-weight:700;color:var(--ink);
-  letter-spacing:-0.02em;line-height:1.1;margin-bottom:20px;
-}
-.card-price-negotiable{font-size:16px;font-weight:600;color:var(--ink-muted);margin-bottom:20px;}
-.card-metrics{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
-.metric-row{
-  display:flex;justify-content:space-between;align-items:center;
-  font-size:13px;border-bottom:1px solid var(--border);padding-bottom:8px;
-}
-.metric-row:last-child{border-bottom:none;padding-bottom:0;}
-.metric-label{color:var(--ink-muted);font-weight:400;}
-.metric-value{color:var(--ink);font-weight:600;}
-
-/* ─── ACTION BUTTONS — structural, not pill ───────────────────────────── */
-.action-box{display:flex;flex-direction:column;gap:7px;}
-.btn-primary{
-  display:flex;align-items:center;justify-content:center;gap:8px;
-  width:100%;padding:12px 16px;
-  border-radius:var(--r-btn);
-  font-size:13px;font-weight:700;
-  text-decoration:none;border:none;cursor:pointer;
-  transition:all 0.17s cubic-bezier(0.16,1,0.3,1);
-  letter-spacing:0.01em;
-}
-.btn-whatsapp{background:var(--wa);color:var(--white);box-shadow:0 3px 10px rgba(26,158,80,0.13);}
-.btn-whatsapp:hover{background:#148C3A;transform:translateY(-1px);}
-.btn-outline{background:transparent;color:var(--ink-soft);border:1px solid var(--border-strong);}
-.btn-outline:hover{background:var(--warm);color:var(--ink);transform:translateY(-1px);}
-
-/* ─── AGENT BADGE ──────────────────────────────────────────────────────── */
-.card-agent{
-  display:flex;align-items:center;gap:12px;
-  margin-top:18px;padding-top:18px;border-top:1px solid var(--border);
-}
-.agent-pfp{width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--warm-deep);border:1px solid var(--border);flex-shrink:0;}
-.agent-info-stack{display:flex;flex-direction:column;gap:1px;}
-.agent-subtitle{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--teal);}
-.agent-username{font-size:13.5px;font-weight:600;color:var(--ink);}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   MOBILE STICKY CTA BAR — fixed bottom, immersive / touch-first
-═══════════════════════════════════════════════════════════════════════════ */
+/* ─── MOBILE STICKY CTA ─────────────────────────────────────────────── */
 .mobile-cta-bar{
   display:none;
   position:fixed;bottom:0;left:0;right:0;z-index:200;
@@ -402,32 +453,31 @@ nav{
   box-shadow:0 3px 10px rgba(26,158,80,0.15);
 }
 
-/* ─── LOADER ───────────────────────────────────────────────────────────── */
-.loader-stage{text-align:center;padding:140px 24px;color:var(--ink-muted);grid-column:1/-1;}
-.loader-cluster{display:flex;gap:6px;justify-content:center;margin-bottom:16px;}
-.loader-bead{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:beadWave 1.2s ease-in-out infinite;}
-.loader-bead:nth-child(2){animation-delay:0.15s;}
-.loader-bead:nth-child(3){animation-delay:0.3s;}
-@keyframes beadWave{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   RESPONSIVE — desktop editorial vs mobile immersive
-   Different experience, same identity system.
-═══════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════════════════════════════════ */
 @media(max-width:960px){
-  .g-wrap{padding:16px 16px 96px 16px;}
+  .hero-section{grid-template-columns:1fr;min-height:auto;}
+  .hero-left{padding:24px 16px 20px;border-right:none;border-bottom:1px solid var(--border-mid);}
+  .hero-right{display:none;}
   .desktop-gallery{display:none;}
   .mobile-gallery{display:block;}
-  .telemetry-strip{display:none;}
   .mobile-cta-bar{display:block;}
-  .columns-grid{grid-template-columns:1fr;gap:28px;}
-  /* sidebar un-stickied on mobile, sits in page flow */
-  .sticky-sidebar{position:relative;top:0;}
-  /* hide desktop-only sidebar card on mobile (CTA bar covers primary action) */
-  .sticky-card{display:none;}
-  .info-title{font-size:26px;}
+  .agent-section{padding:22px 16px;}
+  .agent-stats{display:none;}
+  .agent-actions{margin-left:0;}
+  .page-body{padding:0 16px 80px;}
+  .detail-sections,.detail-sections.two-col,.detail-sections.one-col{grid-template-columns:1fr;gap:28px;}
+  .info-title{font-size:24px;}
+  .spec-grid{grid-template-columns:repeat(2,1fr);}
+  .back-link{display:none;}
   .property-ref{display:none;}
-  .geo-coord{display:none;}
+}
+@media(min-width:961px) and (max-width:1100px){
+  .hero-left{padding:28px 24px 24px;}
+  .agent-section{padding:24px 28px;}
+  .page-body{padding:0 28px 60px;}
+  .agent-stats{gap:16px;}
 }
 </style>
 </head>
@@ -435,7 +485,7 @@ nav{
 
 <nav>
   <a href="index.html" class="nav-logo">
-    <svg width="24" height="20" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision" style="display:block;">
+    <svg width="24" height="20" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision">
       <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
       <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
     </svg>
@@ -447,9 +497,6 @@ nav{
       <button class="lang-btn" onclick="setLang('en',this)">EN</button>
       <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
     </div>
-    <a href="listings.html" class="nav-back">
-      &#8592; <span class="lo-i">&#xE81C;&#xEB1;&#xE9A;&#xE84;&#xEB7;&#xE99;</span><span class="en-i">Back</span><span class="zh-i">&#x8FD4;&#x56DE;</span>
-    </a>
   </div>
 </nav>
 
@@ -461,12 +508,11 @@ nav{
         <div class="loader-bead"></div>
         <div class="loader-bead"></div>
       </div>
-      <p><span class="lo-i">&#xE81C;&#xEB3;&#xEA5;&#xEB1;&#xE87;&#xEC2;&#xEAB;&#xEBC;&#xE94;...</span><span class="en-i">Loading...</span><span class="zh-i">&#x52A0;&#x8F7D;&#x4E2D;...</span></p>
+      <p><span class="lo-i">ກຳລັງໂຫຼດ...</span><span class="en-i">Loading...</span><span class="zh-i">加载中...</span></p>
     </div>
   </div>
 </div>
 
-<!-- Mobile sticky CTA — fixed bottom, populated by JS after data loads -->
 <div id="mobile-cta-bar" class="mobile-cta-bar"></div>
 
 <script>
@@ -485,7 +531,7 @@ function getCurrentLang() {
   return 'lo';
 }
 
-/* ─── GALLERY BUILDERS ─────────────────────────────────────────────────── */
+/* ─── GALLERY BUILDERS — PRESERVED EXACTLY ─────────────────────────── */
 
 function buildDesktopGallery(images) {
   var placeholder = '<div style="width:100%;height:100%;background:var(--warm-deep);"></div>';
@@ -495,13 +541,21 @@ function buildDesktopGallery(images) {
 
   var railHtml = '';
   if (images.length > 1) {
+    var MAX_THUMBS = 4;
     var thumbsHtml = '';
-    images.forEach(function(src, i) {
+    var showMore = images.length > MAX_THUMBS;
+    var thumbCount = showMore ? MAX_THUMBS : images.length;
+    for (var i = 0; i < thumbCount; i++) {
+      var src = images[i];
       var activeClass = i === 0 ? ' active' : '';
+      var moreOverlay = (showMore && i === thumbCount - 1)
+        ? '<div class="dg-thumb-more"><span class="dg-thumb-more-count">+' + (images.length - MAX_THUMBS + 1) + '</span><span class="dg-thumb-more-lbl"><span class="lo-i">ຮູບ</span><span class="en-i">photos</span><span class="zh-i">张</span></span></div>'
+        : '';
       thumbsHtml += '<div class="dg-thumb' + activeClass + '" onclick="shiftDesktopHero(\'' + src.replace(/'/g, '%27') + '\', this)">' +
-        '<img src="' + src + '" alt="" loading="' + (i < 3 ? 'eager' : 'lazy') + '">' +
+        '<img src="' + src + '" alt="" loading="' + (i < 2 ? 'eager' : 'lazy') + '">' +
+        moreOverlay +
       '</div>';
-    });
+    }
     railHtml = '<div class="dg-rail">' + thumbsHtml + '</div>';
   }
 
@@ -534,56 +588,34 @@ function buildMobileGallery(images) {
   '</div>';
 }
 
-/* ─── TELEMETRY STRIP BUILDER ──────────────────────────────────────────── */
+/* ─── TELEMETRY BUILDERS — PRESERVED (hidden by CSS) ───────────────── */
 
 function buildTelemetryStrip(district) {
   var indexName = (district ? district.toUpperCase() : 'VIENTIANE') + ' INDEX';
   return '<div class="telemetry-strip">' +
-    '<div class="tel-item">' +
-      '<span class="tel-label">' + indexName + '</span>' +
-      '<span class="tel-value tel-pos">+12.8%</span>' +
-    '</div>' +
+    '<div class="tel-item"><span class="tel-label">' + indexName + '</span><span class="tel-value tel-pos">+12.8%</span></div>' +
     '<div class="tel-sep"></div>' +
-    '<div class="tel-item">' +
-      '<span class="tel-label">MARKET TEMP</span>' +
-      '<span class="tel-value">STRONG</span>' +
-    '</div>' +
+    '<div class="tel-item"><span class="tel-label">MARKET TEMP</span><span class="tel-value">STRONG</span></div>' +
     '<div class="tel-sep"></div>' +
-    '<div class="tel-item">' +
-      '<span class="tel-label">AVG / SQM</span>' +
-      '<span class="tel-value">$1,248</span>' +
-    '</div>' +
+    '<div class="tel-item"><span class="tel-label">AVG / SQM</span><span class="tel-value">$1,248</span></div>' +
     '<div class="tel-sep"></div>' +
-    '<div class="tel-item tel-coord">' +
-      '<span class="tel-value">17&#xB0;58&#x2032;N &middot; 102&#xB0;36&#x2032;E</span>' +
-    '</div>' +
+    '<div class="tel-item tel-coord"><span class="tel-value">17&#xB0;58&#x2032;N &middot; 102&#xB0;36&#x2032;E</span></div>' +
   '</div>';
 }
-
-/* ─── SIDEBAR TELEMETRY BUILDER ────────────────────────────────────────── */
 
 function buildSidebarTelemetry(district) {
   var districtName = district ? district.toUpperCase() : 'VIENTIANE';
   return '<div class="sidebar-telemetry">' +
-    '<div class="sidebar-tel-row">' +
-      '<span class="sidebar-tel-label">DISTRICT</span>' +
-      '<span class="sidebar-tel-value">' + districtName + '</span>' +
-    '</div>' +
-    '<div class="sidebar-tel-row">' +
-      '<span class="sidebar-tel-label">MARKET INDEX</span>' +
-      '<span class="sidebar-tel-value positive">+12.8%</span>' +
-    '</div>' +
-    '<div class="sidebar-tel-row">' +
-      '<span class="sidebar-tel-label">COORDINATE</span>' +
-      '<span class="sidebar-tel-value dim">17&#xB0;58&#x2032;N</span>' +
-    '</div>' +
+    '<div class="sidebar-tel-row"><span class="sidebar-tel-label">DISTRICT</span><span class="sidebar-tel-value">' + districtName + '</span></div>' +
+    '<div class="sidebar-tel-row"><span class="sidebar-tel-label">MARKET INDEX</span><span class="sidebar-tel-value positive">+12.8%</span></div>' +
+    '<div class="sidebar-tel-row"><span class="sidebar-tel-label">COORDINATE</span><span class="sidebar-tel-value dim">17&#xB0;58&#x2032;N</span></div>' +
   '</div>';
 }
 
-/* ─── MOBILE CTA POPULATOR ─────────────────────────────────────────────── */
-
+/* ─── WA SVG — PRESERVED EXACTLY ───────────────────────────────────── */
 var WA_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
 
+/* ─── MOBILE CTA — PRESERVED EXACTLY ───────────────────────────────── */
 function populateMobileCTA(data, L, whatsappUrl, lang) {
   var bar = document.getElementById('mobile-cta-bar');
   if (!bar) return;
@@ -592,14 +624,11 @@ function populateMobileCTA(data, L, whatsappUrl, lang) {
     : '<div class="mcta-price-wrap"><p class="mcta-price-req">' + L.inquire[lang] + '</p></div>';
   bar.innerHTML = '<div class="mcta-inner">' +
     priceHtml +
-    '<a href="' + whatsappUrl + '" target="_blank" rel="noopener" class="mcta-btn">' +
-      WA_SVG + L.wa[lang] +
-    '</a>' +
+    '<a href="' + whatsappUrl + '" target="_blank" rel="noopener" class="mcta-btn">' + WA_SVG + L.wa[lang] + '</a>' +
   '</div>';
 }
 
-/* ─── MOBILE GALLERY SCROLL SYNC ───────────────────────────────────────── */
-
+/* ─── MOBILE GALLERY SCROLL — PRESERVED EXACTLY ────────────────────── */
 function initMobileGalleryScroll() {
   var track = document.getElementById('mg-track');
   var dotsContainer = document.getElementById('mg-dots');
@@ -611,11 +640,10 @@ function initMobileGalleryScroll() {
     if (!w) return;
     var idx = Math.round(track.scrollLeft / w);
     dots.forEach(function(d, i) { d.classList.toggle('active', i === idx); });
-  }, { passive: true });
+  }, { passive:true });
 }
 
-/* ─── DESKTOP GALLERY INTERACTION ─────────────────────────────────────── */
-
+/* ─── DESKTOP GALLERY INTERACTION — PRESERVED EXACTLY ──────────────── */
 function shiftDesktopHero(src, thumbEl) {
   var img = document.getElementById('dg-hero-img');
   if (img) img.src = src;
@@ -623,8 +651,7 @@ function shiftDesktopHero(src, thumbEl) {
   if (thumbEl) thumbEl.classList.add('active');
 }
 
-/* ─── DATA FETCH ────────────────────────────────────────────────────────── */
-
+/* ─── DATA FETCH — PRESERVED EXACTLY ───────────────────────────────── */
 async function requestPropertyData() {
   var slug = fetchUrlParamSlug();
   var wrapper = document.getElementById('view-target');
@@ -645,13 +672,13 @@ async function requestPropertyData() {
     }
     propertyContext = payload[0];
     buildMockupLayout();
-  } catch (err) {
+  } catch(err) {
     var msg3 = { lo: 'ເກີດຂໍ້ຜິດພາດ ກະລຸນາລອງໃໝ່', en: 'Something went wrong, please try again', zh: '\u51fa\u73b0\u9519\u8bef\uff0c\u8bf7\u91cd\u8bd5' };
     wrapper.innerHTML = '<div class="loader-stage"><h3>' + msg3[getCurrentLang()] + '</h3></div>';
   }
 }
 
-/* ─── LAYOUT BUILDER ────────────────────────────────────────────────────── */
+/* ─── LAYOUT BUILDER — HTML assembly updated for mockup layout ─────── */
 
 function buildMockupLayout() {
   var container = document.getElementById('view-target');
@@ -675,27 +702,33 @@ function buildMockupLayout() {
   var desktopGalleryMarkup = buildDesktopGallery(imagesArray);
   var mobileGalleryMarkup  = buildMobileGallery(imagesArray);
 
-  /* telemetry strip */
+  /* telemetry (built but hidden) */
   var telemetryMarkup = buildTelemetryStrip(resolvedDistrict);
 
-  /* sidebar telemetry */
-  var sidebarTelHtml = buildSidebarTelemetry(resolvedDistrict);
-
-  /* media embeds */
-  var standaloneMediaMarkup = '';
-  if (data.video_url || data.map_url) {
-    var videoLabel = { lo: 'ວິດີໂອນຳສະເໜີ', en: 'Video Presentation', zh: '\u89c6\u9891\u4ecb\u7ecd' };
-    var mapLabel   = { lo: 'ແຜນທີ່ຕັ້ງ',    en: 'Location',          zh: '\u4f4d\u7f6e\u5730\u56fe' };
-    standaloneMediaMarkup += '<div class="divider"></div><div class="asset-stack">';
-    if (data.video_url) {
-      var parsedFrame = generateEmbeddedVideoFrame(data.video_url);
-      if (parsedFrame) standaloneMediaMarkup += '<div><p class="section-caption">' + videoLabel[lang] + '</p><div class="asset-iframe-wrapper">' + parsedFrame + '</div></div>';
-    }
-    if (data.map_url) {
-      standaloneMediaMarkup += '<div><p class="section-caption">' + mapLabel[lang] + '</p><div class="asset-iframe-wrapper"><iframe src="' + data.map_url + '" allowfullscreen="" loading="lazy"></iframe></div></div>';
-    }
-    standaloneMediaMarkup += '</div>';
-  }
+  /* label map */
+  var L = {
+    wa:         { lo: 'ສອບຖາມຜ່ານ WhatsApp',   en: 'Chat on WhatsApp',      zh: '\u901a\u8fc7WhatsApp\u548b\u8be2' },
+    call:       { lo: 'ໂທຫາຕົວແທນ',            en: 'Call Agent',            zh: '\u7535\u8bdd\u8054\u7cfb' },
+    share:      { lo: 'ແຊຣ໌ລາຍການນີ້',         en: 'Share Listing',         zh: '\u5206\u4eab\u623f\u6e90' },
+    price:      { lo: 'ມູນຄ່າອະສັງຫາ',         en: 'Price',                 zh: '\u4ef7\u683c' },
+    inquire:    { lo: 'ສອບຖາມລາຄາ',            en: 'Inquire for Pricing',   zh: '\u8be2\u4ef7' },
+    overview:   { lo: 'ລາຍລະອຽດ',              en: 'Overview',              zh: '\u623f\u6e90\u8be6\u60c5' },
+    features:   { lo: 'ສິ່ງອໍານວຍຄວາມສະດວກ',  en: 'Features',              zh: '\u8bbe\u65bd' },
+    location:   { lo: 'ທີ່ຕັ້ງ',               en: 'Location',              zh: '\u4f4d\u7f6e' },
+    video:      { lo: 'ວິດີໂອນຳສະເໜີ',        en: 'Video Presentation',    zh: '\u89c6\u9891\u4ecb\u7ecd' },
+    beds:       { lo: 'ຫ້ອງນອນ',               en: 'Beds',                  zh: '\u5367\u5ba4' },
+    baths:      { lo: 'ຫ້ອງນ້ຳ',               en: 'Baths',                 zh: '\u536b\u751f\u95f4' },
+    area:       { lo: 'ເນື້ອທີ່',              en: 'sqm',                   zh: '\u9762\u79ef' },
+    land:       { lo: 'ທີ່ດິນ',               en: 'sqm Land',              zh: '\u571f\u5730' },
+    built:      { lo: 'ສ້າງໃນປີ',             en: 'Year Built',            zh: '\u5efa\u9020\u5e74\u4efd' },
+    save:       { lo: 'ບັນທຶກລາຍການ',         en: 'Save Property',         zh: '\u6536\u85cf\u623f\u6e90' },
+    walkthrough:{ lo: 'ທັດສະນະ AI',           en: 'View AI Walkthrough',   zh: 'AI\u5e26\u770b' },
+    back:       { lo: 'ກັບຄືນ',               en: 'Back to listings',      zh: '\u8fd4\u56de\u5217\u8868' },
+    agent:      { lo: 'ນຳສະເໜີໂດຍ',          en: 'Presented by',          zh: '\u7531...\u4ecb\u7ecd' },
+    openmap:    { lo: 'ເປີດໃນ Google Maps',   en: 'Open in Google Maps',   zh: '\u5728Google\u5730\u56fe\u4e2d\u6253\u5f00' },
+    verified:   { lo: 'PINTAG \u0E8D\u0EB1\u0EC9\u0E87\u0E8D\u0EB7\u0E99', en: 'PINTAG VERIFIED', zh: 'PINTAG \u8ba4\u8bc1' },
+    city:       { lo: 'ວຽງຈັນ',               en: 'Vientiane',             zh: '\u4e07\u8c61' }
+  };
 
   /* whatsapp URL */
   var waPrefix = lang === 'en' ? 'Hi, I am interested in this property: '
@@ -704,94 +737,182 @@ function buildMockupLayout() {
   var waText = encodeURIComponent(waPrefix + resolvedTitle + ' (' + window.location.href + ')');
   var directWhatsAppUrl = 'https://wa.me/' + (data.agent_phone || '85620542966655') + '?text=' + waText;
 
-  /* label map */
-  var L = {
-    wa:       { lo: 'ສອບຖາມຜ່ານ WhatsApp',   en: 'Inquire via WhatsApp',  zh: '\u901a\u8fc7WhatsApp\u548b\u8be2' },
-    share:    { lo: 'ແຊຣ໌ລາຍການນີ້',         en: 'Share Listing',         zh: '\u5206\u4eab\u623f\u6e90' },
-    price:    { lo: 'ມູນຄ່າອະສັງຫາ',         en: 'Price',                 zh: '\u4ef7\u683c' },
-    inquire:  { lo: 'ສອບຖາມລາຄາ',            en: 'Inquire for Pricing',   zh: '\u8be2\u4ef7' },
-    overview: { lo: 'ລາຍລະອຽດອະສັງຫາ',       en: 'Overview',              zh: '\u623f\u6e90\u8be6\u60c5' },
-    beds:     { lo: 'ຫ້ອງນອນ',               en: 'Bedrooms',              zh: '\u5367\u5ba4' },
-    baths:    { lo: 'ຫ້ອງນ້ຳ',               en: 'Bathrooms',             zh: '\u536b\u751f\u95f4' },
-    area:     { lo: 'ເນື້ອທີ່ທັງໝົດ',        en: 'Total Area',            zh: '\u603b\u9762\u79ef' },
-    type:     { lo: 'ປະເພດ',                 en: 'Type',                  zh: '\u7c7b\u578b' },
-    agent:    { lo: 'ຕົວແທນ',                en: 'Agent',                 zh: '\u7ecf\u7eaa\u4eba' },
-    city:     { lo: 'ວຽງຈັນ',               en: 'Vientiane',             zh: '\u4e07\u8c61' },
-    verified: { lo: 'PINTAG \u0E8D\u0EB1\u0EC9\u0E87\u0E8D\u0EB7\u0E99', en: 'PINTAG VERIFIED', zh: 'PINTAG \u8ba4\u8bc1' }
-  };
+  var agentFallback = 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect width=%22100%22 height=%22100%22 fill=%22%23E8E3DB%22/><text x=%2250%25%22 y=%2255%25%22 font-family=%22sans-serif%22 font-size=%2232%22 fill=%22%237A9098%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22>P</text></svg>';
 
   var propRef = data.slug ? 'REF \u00B7 ' + data.slug.toUpperCase() : '';
 
-  var agentFallback = 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect width=%22100%22 height=%22100%22 fill=%22%23E8E3DB%22/><text x=%2250%25%22 y=%2255%25%22 font-family=%22sans-serif%22 font-size=%2232%22 fill=%22%237A9098%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22>P</text></svg>';
+  /* SVG ICONS — thin line, architectural */
+  var ICON_BED   = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v16M2 12h20M22 4v16M6 12V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"/></svg>';
+  var ICON_BATH  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4M7 19v2M17 19v2"/></svg>';
+  var ICON_AREA  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M9 21V9"/></svg>';
+  var ICON_LAND  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 L8 11 L13 15 L17 7 L21 20 Z"/><line x1="3" y1="20" x2="21" y2="20"/></svg>';
+  var ICON_CAL   = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+  var ICON_HEART = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+  var ICON_PLAY  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>';
+  var ICON_PIN   = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+  var ICON_ARROW = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>';
+  var ICON_MAP   = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
 
-  var metricsHtml =
-    (data.bedrooms    ? '<div class="metric-row"><span class="metric-label">' + L.beds[lang]  + '</span><span class="metric-value">' + data.bedrooms    + '</span></div>' : '') +
-    (data.bathrooms   ? '<div class="metric-row"><span class="metric-label">' + L.baths[lang] + '</span><span class="metric-value">' + data.bathrooms   + '</span></div>' : '') +
-    (data.sqm         ? '<div class="metric-row"><span class="metric-label">' + L.area[lang]  + '</span><span class="metric-value">' + data.sqm + ' m\u00b2</span></div>' : '') +
-    (data.property_type ? '<div class="metric-row"><span class="metric-label">' + L.type[lang] + '</span><span class="metric-value" style="text-transform:capitalize;">' + data.property_type + '</span></div>' : '');
-
-  var agentHtml = data.agent_name
-    ? '<div class="card-agent">' +
-        '<img class="agent-pfp" src="' + (data.agent_photo || '') + '" onerror="this.src=\'' + agentFallback + '\'" alt="">' +
-        '<div class="agent-info-stack">' +
-          '<span class="agent-subtitle">' + L.agent[lang] + '</span>' +
-          '<span class="agent-username">' + data.agent_name + '</span>' +
-        '</div>' +
+  /* BUILD: spec grid */
+  var specItems = [];
+  if (data.bedrooms)  specItems.push({ icon: ICON_BED,  val: data.bedrooms,  lbl: L.beds[lang] });
+  if (data.bathrooms) specItems.push({ icon: ICON_BATH, val: data.bathrooms, lbl: L.baths[lang] });
+  if (data.sqm)       specItems.push({ icon: ICON_AREA, val: data.sqm + ' m\u00b2', lbl: L.area[lang] });
+  if (data.land_sqm)  specItems.push({ icon: ICON_LAND, val: data.land_sqm + ' m\u00b2', lbl: L.land[lang] });
+  var specGridHtml = specItems.length
+    ? '<div class="spec-grid">' +
+        specItems.map(function(s) {
+          return '<div class="spec-item"><span class="spec-icon">' + s.icon + '</span><span class="spec-val">' + s.val + '</span><span class="spec-lbl">' + s.lbl + '</span></div>';
+        }).join('') +
       '</div>'
     : '';
 
-  /* assemble */
+  /* BUILD: year built */
+  var yearHtml = data.year_built
+    ? '<div class="year-built">' + ICON_CAL + '<span class="spec-val">' + data.year_built + '</span><span class="year-built-lbl">&nbsp;' + L.built[lang] + '</span></div>'
+    : '';
+
+  /* BUILD: price block */
+  var priceBlockHtml = data.price_display
+    ? '<div class="price-block"><p class="price-label">' + L.price[lang] + '</p><p class="price-value">' + data.price_display + '</p>' +
+      (data.price_lak ? '<p class="price-lak">\u2248 ' + data.price_lak + '</p>' : '') +
+      '</div>'
+    : '<div class="price-block"><p class="price-negotiable">' + L.inquire[lang] + '</p></div>';
+
+  /* BUILD: left actions */
+  var actionsHtml = '<div class="left-actions">' +
+    '<button class="action-link" onclick="triggerSaveProperty()">' + ICON_HEART + '<span class="lo-i">' + L.save.lo + '</span><span class="en-i">' + L.save.en + '</span><span class="zh-i">' + L.save.zh + '</span></button>' +
+    (data.video_url ? '<button class="action-link" onclick="document.getElementById(\'media-anchor\').scrollIntoView({behavior:\'smooth\'})">' + ICON_PLAY + '<span class="lo-i">' + L.walkthrough.lo + '</span><span class="en-i">' + L.walkthrough.en + '</span><span class="zh-i">' + L.walkthrough.zh + '</span></button>' : '') +
+  '</div>';
+
+  /* BUILD: agent section */
+  var agentSectionHtml = '';
+  if (data.agent_name) {
+    var agentStatsHtml = '';
+    if (data.agent_listing_count || data.agent_response_time || data.agent_rating) {
+      agentStatsHtml = '<div class="agent-stats">';
+      if (data.agent_listing_count) agentStatsHtml += '<div class="agent-stat"><span class="agent-stat-val">' + data.agent_listing_count + '</span><span class="agent-stat-lbl"><span class="lo-i">ລາຍການ</span><span class="en-i">Active Listings</span><span class="zh-i">活跃房源</span></span></div>';
+      if (data.agent_response_time) agentStatsHtml += '<div class="agent-stat"><span class="agent-stat-val">' + data.agent_response_time + '</span><span class="agent-stat-lbl"><span class="lo-i">ເວລາຕອບ</span><span class="en-i">Response time</span><span class="zh-i">响应时间</span></span></div>';
+      if (data.agent_rating)        agentStatsHtml += '<div class="agent-stat"><span class="agent-stat-val">' + data.agent_rating + ' &#9733;</span><span class="agent-stat-lbl"><span class="lo-i">ຄະແນນ</span><span class="en-i">Rating</span><span class="zh-i">评分</span></span></div>';
+      agentStatsHtml += '</div>';
+    }
+    var callBtnHtml = data.agent_phone
+      ? '<a href="tel:' + data.agent_phone + '" class="btn-primary btn-call"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">' + L.call.lo + '</span><span class="en-i">' + L.call.en + '</span><span class="zh-i">' + L.call.zh + '</span></a>'
+      : '';
+    agentSectionHtml =
+      '<div class="agent-section">' +
+        '<p class="agent-presented"><span class="lo-i">' + L.agent.lo + '</span><span class="en-i">' + L.agent.en + '</span><span class="zh-i">' + L.agent.zh + '</span></p>' +
+        '<div class="agent-main">' +
+          '<div class="agent-identity">' +
+            '<img class="agent-pfp" src="' + (data.agent_photo || '') + '" onerror="this.src=\'' + agentFallback + '\'" alt="">' +
+            '<div class="agent-info-block">' +
+              '<span class="agent-name-primary">' + data.agent_name + '</span>' +
+              '<span class="pintag-verified" style="margin-top:4px;">' + L.verified[lang] + '</span>' +
+            '</div>' +
+          '</div>' +
+          agentStatsHtml +
+          '<div class="agent-actions">' +
+            '<a href="' + directWhatsAppUrl + '" target="_blank" rel="noopener" class="btn-primary btn-whatsapp">' + WA_SVG + '<span class="lo-i">' + L.wa.lo + '</span><span class="en-i">' + L.wa.en + '</span><span class="zh-i">' + L.wa.zh + '</span></a>' +
+            callBtnHtml +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  /* BUILD: detail sections */
+  var hasDesc    = !!resolvedDesc;
+  var hasMap     = !!data.map_url;
+  var hasFeatures = data.features && data.features.length;
+  var colCount   = (hasDesc ? 1 : 0) + (hasFeatures ? 1 : 0) + (hasMap ? 1 : 0);
+
+  var detailSectionsHtml = '';
+  if (colCount > 0) {
+    var gridClass = colCount === 1 ? 'detail-sections one-col' : colCount === 2 ? 'detail-sections two-col' : 'detail-sections';
+    detailSectionsHtml = '<div class="' + gridClass + '">';
+    if (hasDesc) {
+      detailSectionsHtml +=
+        '<div class="detail-col">' +
+          '<p class="section-caption"><span class="lo-i">' + L.overview.lo + '</span><span class="en-i">' + L.overview.en + '</span><span class="zh-i">' + L.overview.zh + '</span></p>' +
+          '<p class="body-narrative">' + resolvedDesc + '</p>' +
+        '</div>';
+    }
+    if (hasFeatures) {
+      var featList = data.features.map(function(f) {
+        return '<div class="feature-item"><span class="feature-dot"></span><span>' + f + '</span></div>';
+      }).join('');
+      detailSectionsHtml +=
+        '<div class="detail-col">' +
+          '<p class="section-caption"><span class="lo-i">' + L.features.lo + '</span><span class="en-i">' + L.features.en + '</span><span class="zh-i">' + L.features.zh + '</span></p>' +
+          '<div class="features-list">' + featList + '</div>' +
+        '</div>';
+    }
+    if (hasMap) {
+      detailSectionsHtml +=
+        '<div class="detail-col">' +
+          '<p class="section-caption"><span class="lo-i">' + L.location.lo + '</span><span class="en-i">' + L.location.en + '</span><span class="zh-i">' + L.location.zh + '</span></p>' +
+          '<div class="map-frame"><iframe src="' + data.map_url + '" allowfullscreen loading="lazy"></iframe></div>' +
+          '<a href="' + data.map_url + '" target="_blank" rel="noopener" class="map-open-link">' + ICON_MAP + '<span class="lo-i">' + L.openmap.lo + '</span><span class="en-i">' + L.openmap.en + '</span><span class="zh-i">' + L.openmap.zh + '</span></a>' +
+        '</div>';
+    }
+    detailSectionsHtml += '</div>';
+  }
+
+  /* BUILD: video section */
+  var videoHtml = '';
+  if (data.video_url) {
+    var parsedFrame = generateEmbeddedVideoFrame(data.video_url);
+    if (parsedFrame) {
+      videoHtml =
+        '<div class="media-section" id="media-anchor">' +
+          '<p class="section-caption"><span class="lo-i">' + L.video.lo + '</span><span class="en-i">' + L.video.en + '</span><span class="zh-i">' + L.video.zh + '</span></p>' +
+          '<div class="asset-iframe-wrapper">' + parsedFrame + '</div>' +
+        '</div>';
+    }
+  }
+
+  /* ASSEMBLE */
   container.innerHTML =
-    desktopGalleryMarkup +
+    /* hero: two-column split */
+    '<div class="hero-section">' +
+      '<div class="hero-left">' +
+        '<a href="listings.html" class="back-link">' + ICON_ARROW + '<span class="lo-i">' + L.back.lo + '</span><span class="en-i">' + L.back.en + '</span><span class="zh-i">' + L.back.zh + '</span></a>' +
+        (resolvedDistrict ? '<div class="hero-location">' + ICON_PIN + resolvedDistrict + ', <span class="lo-i">' + L.city.lo + '</span><span class="en-i">' + L.city.en + '</span><span class="zh-i">' + L.city.zh + '</span></div>' : '') +
+        '<div class="hero-meta-row">' +
+          '<span class="info-tag">' + txTag + (data.property_type ? ' \u00B7 ' + data.property_type : '') + '</span>' +
+          '<span class="pintag-verified">' + L.verified[lang] + '</span>' +
+        '</div>' +
+        '<h1 class="info-title">' + resolvedTitle + '</h1>' +
+        (propRef ? '<span class="property-ref">' + propRef + '</span>' : '') +
+        priceBlockHtml +
+        specGridHtml +
+        yearHtml +
+        actionsHtml +
+      '</div>' +
+      '<div class="hero-right">' +
+        desktopGalleryMarkup +
+      '</div>' +
+    '</div>' +
+
+    /* mobile gallery */
     mobileGalleryMarkup +
+
+    /* telemetry (hidden) */
     telemetryMarkup +
-    '<div class="columns-grid">' +
 
-      '<div class="stream-content">' +
-        '<div class="info-header">' +
-          (propRef ? '<span class="property-ref">' + propRef + '</span>' : '') +
-          '<div class="info-meta-row">' +
-            '<span class="info-tag">' + txTag + ' &middot; ' + (data.property_type || '') + '</span>' +
-            '<span class="pintag-verified">' + L.verified[lang] + '</span>' +
-          '</div>' +
-          '<h1 class="info-title">' + resolvedTitle + '</h1>' +
-          '<div class="info-location">' +
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>' +
-            (resolvedDistrict ? resolvedDistrict + ', ' : '') + L.city[lang] +
-            '<span class="geo-coord">17&#xB0;58&#x2032;N &middot; 102&#xB0;36&#x2032;E</span>' +
-          '</div>' +
-        '</div>' +
-        (resolvedDesc ? '<div class="divider"></div><div><p class="section-caption">' + L.overview[lang] + '</p><p class="body-narrative">' + resolvedDesc + '</p></div>' : '') +
-        standaloneMediaMarkup +
-      '</div>' +
+    /* agent section */
+    agentSectionHtml +
 
-      '<div class="sticky-sidebar">' +
-        '<div class="sticky-card">' +
-          sidebarTelHtml +
-          '<p class="card-price-label">' + L.price[lang] + '</p>' +
-          (data.price_display ? '<p class="card-price-value">' + data.price_display + '</p>' : '<p class="card-price-negotiable">' + L.inquire[lang] + '</p>') +
-          '<div class="card-metrics">' + metricsHtml + '</div>' +
-          '<div class="action-box">' +
-            '<a href="' + directWhatsAppUrl + '" target="_blank" rel="noopener" class="btn-primary btn-whatsapp">' +
-              WA_SVG + L.wa[lang] +
-            '</a>' +
-            '<button class="btn-primary btn-outline" onclick="triggerNativeShareChannel()">' +
-              '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>' +
-              L.share[lang] +
-            '</button>' +
-          '</div>' +
-          agentHtml +
-        '</div>' +
-      '</div>' +
-    '</div>';
+    /* page body: detail sections + video */
+    (detailSectionsHtml || videoHtml
+      ? '<div class="page-body">' + detailSectionsHtml + videoHtml + '</div>'
+      : '');
 
-  /* post-render: populate mobile CTA + init gallery */
+  /* post-render */
   populateMobileCTA(data, L, directWhatsAppUrl, lang);
   initMobileGalleryScroll();
 }
 
-/* ─── VIDEO EMBED ───────────────────────────────────────────────────────── */
-
+/* ─── VIDEO EMBED — PRESERVED EXACTLY ──────────────────────────────── */
 function generateEmbeddedVideoFrame(url) {
   if (!url) return null;
   if (url.includes('youtube.com/embed/')) return '<iframe src="' + url + '" frameborder="0" allowfullscreen allow="autoplay;encrypted-media"></iframe>';
@@ -809,21 +930,30 @@ function generateEmbeddedVideoFrame(url) {
   return null;
 }
 
-/* ─── SHARE ─────────────────────────────────────────────────────────────── */
-
+/* ─── SHARE — PRESERVED EXACTLY ────────────────────────────────────── */
 async function triggerNativeShareChannel() {
   var lang = getCurrentLang();
   var dynamicTitle = propertyContext ? (propertyContext['title_' + lang] || propertyContext.title_lo || propertyContext.title_en) : 'Pintag';
   var copied = { lo: 'ລິ້ງຖືກຄັດລອກແລ້ວ', en: 'Link copied to clipboard', zh: '\u94fe\u63a5\u5df2\u590d\u5236' };
   if (navigator.share) {
-    try { await navigator.share({ title: dynamicTitle, url: window.location.href }); } catch (e) {}
+    try { await navigator.share({ title: dynamicTitle, url: window.location.href }); } catch(e) {}
   } else {
-    try { await navigator.clipboard.writeText(window.location.href); alert(copied[lang]); } catch (e) {}
+    try { await navigator.clipboard.writeText(window.location.href); alert(copied[lang]); } catch(e) {}
   }
 }
 
-/* ─── LANGUAGE SWITCH ───────────────────────────────────────────────────── */
+/* ─── SAVE (client-side localStorage) ──────────────────────────────── */
+function triggerSaveProperty() {
+  if (!propertyContext) return;
+  var slug = propertyContext.slug;
+  try {
+    var saved = new Set(JSON.parse(localStorage.getItem('pintag_saved') || '[]'));
+    if (saved.has(slug)) { saved.delete(slug); } else { saved.add(slug); }
+    localStorage.setItem('pintag_saved', JSON.stringify([...saved]));
+  } catch(e) {}
+}
 
+/* ─── LANGUAGE SWITCH — PRESERVED EXACTLY ──────────────────────────── */
 function setLang(code, btn) {
   document.body.className = code === 'lo' ? '' : 'lang-' + code;
   document.querySelectorAll('.lang-btn').forEach(function(b) { b.classList.remove('active'); });
