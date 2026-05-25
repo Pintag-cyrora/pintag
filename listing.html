@@ -76,17 +76,28 @@ nav{
 .hero-right{overflow:hidden;display:flex;flex-direction:column;}
 .desktop-gallery{display:flex;flex-direction:column;height:100%;}
 .dg-hero{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--warm-deep);cursor:pointer;}
-.dg-hero img{width:100%;height:100%;object-fit: contain;
-background:#ECE7DF;display:block;transition:transform 1s cubic-bezier(0.16,1,0.3,1);}
+.dg-hero img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 1s cubic-bezier(0.16,1,0.3,1),opacity 0.3s;}
 .dg-hero:hover img{transform:scale(1.012);}
+
+/* ── SMART FIT — architectural composition preservation ────────────────
+   Applied by JS when crop would exceed ~18% of image height.
+   Warm stone fill replaces letterbox black.
+   Hover zoom suppressed for contained images (would reveal fill edges).
+─────────────────────────────────────────────────────────────────────── */
+.dg-hero.sf-active{background:#EDE8E0;}
+.dg-hero.sf-active img{object-fit:contain;object-position:center center;}
+.dg-hero.sf-active:hover img{transform:none;}
+
+/* Mobile smart-fit */
+.mg-slide.sf-active{background:#EDE8E0;}
+.mg-slide.sf-active img{object-fit:contain;object-position:center center;}
 .dg-hero::before{content:"";position:absolute;top:16px;left:16px;z-index:2;width:16px;height:16px;border-top:1px solid rgba(255,255,255,0.22);border-left:1px solid rgba(255,255,255,0.22);pointer-events:none;}
 .dg-coord{position:absolute;bottom:14px;left:18px;z-index:3;font-size:8.5px;font-weight:500;letter-spacing:0.1em;color:rgba(255,255,255,0.38);text-transform:uppercase;font-variant-numeric:tabular-nums;pointer-events:none;}
 .dg-view-all{position:absolute;top:14px;right:14px;z-index:4;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(26,36,40,0.12);border-radius:20px;padding:7px 14px;font-size:12px;font-weight:500;color:var(--ink);cursor:pointer;font-family:"DM Sans",sans-serif;transition:background 0.15s;}
 .dg-view-all:hover{background:rgba(255,255,255,1);}
 .dg-rail{display:flex;gap:2px;flex-shrink:0;background:var(--ink);height:88px;}
 .dg-thumb{flex:1;min-width:0;height:88px;overflow:hidden;cursor:pointer;position:relative;opacity:0.46;transition:opacity 0.25s;}
-.dg-thumb img{width:100%;height:100%;object-fit: contain;
-background:#ECE7DF;;display:block;}
+.dg-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
 .dg-thumb:hover{opacity:0.76;}
 .dg-thumb.active{opacity:1;}
 .dg-thumb.active::after{content:"";position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--teal);}
@@ -97,16 +108,14 @@ background:#ECE7DF;;display:block;}
 .mg-track{display:flex;overflow-x:scroll;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .mg-track::-webkit-scrollbar{display:none;}
 .mg-slide{flex:0 0 100%;scroll-snap-align:start;aspect-ratio:4/3;overflow:hidden;background:var(--warm-deep);}
-.mg-slide img{width:100%;height:100%;object-fit: contain;
-background:#ECE7DF;;display:block;}
+.mg-slide img{width:100%;height:100%;object-fit:cover;display:block;}
 .mg-dots{display:flex;justify-content:center;gap:5px;padding:10px 0 8px;background:var(--white);}
 .mg-dot{width:5px;height:5px;border-radius:50%;background:var(--ink-muted);opacity:0.28;transition:opacity 0.2s,background 0.2s;cursor:pointer;}
 .mg-dot.active{opacity:1;background:var(--teal);}
 .agent-band{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:32px;padding:24px 40px;border-bottom:1px solid var(--border-mid);background:var(--white);}
 .agent-presented{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--ink-muted);margin-bottom:12px;}
 .agent-identity{display:flex;align-items:center;gap:14px;}
-.agent-pfp{width:60px;height:60px;border-radius:50%;object-fit: contain;
-background:#ECE7DF;;background:var(--warm-deep);border:1px solid var(--border-mid);flex-shrink:0;}
+.agent-pfp{width:60px;height:60px;border-radius:50%;object-fit:cover;background:var(--warm-deep);border:1px solid var(--border-mid);flex-shrink:0;}
 .agent-name-en{font-size:15px;font-weight:600;color:var(--ink);line-height:1.2;margin-bottom:2px;}
 .agent-name-lo{font-size:12.5px;color:var(--ink-muted);line-height:1.2;margin-bottom:5px;}
 .agent-stats-row{display:flex;align-items:center;gap:28px;justify-content:center;}
@@ -249,14 +258,14 @@ function fetchUrlParamSlug(){return new URLSearchParams(window.location.search).
 function getCurrentLang(){if(document.body.classList.contains('lang-en'))return 'en';if(document.body.classList.contains('lang-zh'))return 'zh';return 'lo';}
 function buildDesktopGallery(images){
   var placeholder='<div style="width:100%;height:100%;background:var(--warm-deep);"></div>';
-  var heroInner=images.length?'<img src="'+images[0]+'" alt="" id="dg-hero-img" loading="eager">':placeholder;
+  var heroInner=images.length?'<img src="'+images[0]+'" alt="" id="dg-hero-img" loading="eager" onload="applySmartFitHero()">':placeholder;
   var railHtml='';
   if(images.length>1){
     var MAX=4;var showMore=images.length>MAX;var cnt=showMore?MAX:images.length;var thumbsHtml='';
     for(var i=0;i<cnt;i++){
       var src=images[i];var ac=i===0?' active':'';
       var ov=(showMore&&i===cnt-1)?'<div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(images.length-MAX+1)+'</span><span class="dg-thumb-overflow-lbl"><span class="lo-i">ຮູບ</span><span class="en-i">photos</span><span class="zh-i">张</span></span></div>':'';
-      thumbsHtml += '<div class="dg-thumb'+ac+'" onclick="shiftDesktopHero(\''+src.replace(/'/g,"%27")+'\',this)"><img src="'+src+'" alt="" loading="'+(i<2?'eager':'lazy')+'">'+ov+'</div>';
+      thumbsHtml+='<div class="dg-thumb'+ac+'" onclick="shiftDesktopHero('+src.replace(/'/g,'%27')+',this)"><img src="'+src+'" alt="" loading="'+(i<2?'eager':'lazy')+'">'+ov+'</div>';
     }
     railHtml='<div class="dg-rail">'+thumbsHtml+'</div>';
   }
@@ -265,7 +274,10 @@ function buildDesktopGallery(images){
 }
 function buildMobileGallery(images){
   if(!images.length)return '<div class="mobile-gallery"><div class="mg-track"><div class="mg-slide"><div style="width:100%;height:100%;background:var(--warm-deep);"></div></div></div></div>';
-  var slides='';images.forEach(function(src){slides+='<div class="mg-slide"><img src="'+src+'" alt="" loading="lazy"></div>';});
+  var slides='';
+  images.forEach(function(src,i){
+    slides+='<div class="mg-slide" id="mg-slide-'+i+'"><img src="'+src+'" alt="" loading="lazy" data-slide-idx="'+i+'" onload="applySmartFitSlide(this)"></div>';
+  });
   var dots='';if(images.length>1)images.forEach(function(_,i){dots+='<div class="mg-dot'+(i===0?' active':'')+'" data-index="'+i+'"></div>';});
   return '<div class="mobile-gallery"><div class="mg-track" id="mg-track">'+slides+'</div>'+(dots?'<div class="mg-dots" id="mg-dots">'+dots+'</div>':'')+'</div>';
 }
@@ -282,8 +294,53 @@ function initMobileGalleryScroll(){
   if(!track||!dc)return;var dots=dc.querySelectorAll('.mg-dot');if(!dots.length)return;
   track.addEventListener('scroll',function(){var w=track.offsetWidth;if(!w)return;var idx=Math.round(track.scrollLeft/w);dots.forEach(function(d,i){d.classList.toggle('active',i===idx);});},{passive:true});
 }
+/* ── SMART FIT SYSTEM ─────────────────────────────────────────────────
+   Calculates how much content would be lost with object-fit:cover.
+   Switches to contain + warm-fill when crop exceeds ~18% of image height.
+   Threshold is intentionally conservative: only triggers for clearly
+   problematic proportions (portrait, near-square in a wide container).
+─────────────────────────────────────────────────────────────────────── */
+function applySmartFit(imgEl,containerEl){
+  if(!imgEl||!imgEl.naturalWidth||!imgEl.naturalHeight)return;
+  var cW=containerEl.offsetWidth;var cH=containerEl.offsetHeight;
+  if(!cW||!cH)return;
+  var imgR=imgEl.naturalWidth/imgEl.naturalHeight;
+  var conR=cW/cH;
+  /* With cover: if image is narrower than container, scale to fill width.
+     Crop fraction = how much of the scaled-image height exceeds container. */
+  var cropFraction=0;
+  if(imgR<conR){
+    var scaledH=cW/imgR;
+    cropFraction=(scaledH-cH)/scaledH;
+  }
+  /* Apply smart-fit when more than 18% would be cropped top+bottom */
+  if(cropFraction>0.18){
+    containerEl.classList.add('sf-active');
+  } else {
+    containerEl.classList.remove('sf-active');
+  }
+}
+function applySmartFitHero(){
+  var img=document.getElementById('dg-hero-img');
+  var frame=document.getElementById('dg-hero-frame');
+  if(img&&frame)applySmartFit(img,frame);
+}
+function applySmartFitSlide(imgEl){
+  if(!imgEl)return;
+  var slide=imgEl.parentElement;
+  if(slide)applySmartFit(imgEl,slide);
+}
 function shiftDesktopHero(src,thumbEl){
-  var img=document.getElementById('dg-hero-img');if(img)img.src=src;
+  var img=document.getElementById('dg-hero-img');
+  var frame=document.getElementById('dg-hero-frame');
+  if(img){
+    /* Reset fit before loading so there's no flash of wrong state */
+    if(frame)frame.classList.remove('sf-active');
+    img.src=src;
+    img.onload=function(){applySmartFit(img,frame);};
+    /* Handle cached images that fire no onload */
+    if(img.complete&&img.naturalWidth)applySmartFit(img,frame);
+  }
   document.querySelectorAll('.dg-thumb').forEach(function(t){t.classList.remove('active');});
   if(thumbEl)thumbEl.classList.add('active');
 }
