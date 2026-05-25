@@ -14,7 +14,14 @@
   --border:rgba(26,36,40,0.08);--border-mid:rgba(26,36,40,0.10);
   --r-card:14px;
 }
-body{font-family:'DM Sans',sans-serif;font-weight:400;font-size:15px;line-height:1.7;background:var(--warm);color:var(--ink);-webkit-font-smoothing:antialiased;}
+body{
+  font-family:'DM Sans',sans-serif;font-weight:400;font-size:15px;line-height:1.7;
+  background-color:var(--warm);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='360'%3E%3Cpath d='M0 28 C150 22 450 34 600 28 M0 54 C150 61 450 47 600 54 M0 80 C150 74 450 86 600 80 M0 108 C150 116 450 100 600 108 M0 133 C150 127 450 139 600 133 M0 160 C150 167 450 153 600 160 M0 186 C150 180 450 192 600 186 M0 214 C150 222 450 206 600 214 M0 238 C150 232 450 244 600 238 M0 265 C150 272 450 258 600 265 M0 290 C150 284 450 296 600 290 M0 318 C150 325 450 311 600 318 M0 343 C150 337 450 349 600 343' fill='none' stroke='%231A2428' stroke-width='0.5' stroke-opacity='0.055'/%3E%3C/svg%3E");
+  background-repeat:repeat;
+  background-size:600px 360px;
+  color:var(--ink);-webkit-font-smoothing:antialiased;
+}
 
 /* LANG */
 .lo{display:block;}.en{display:none;}.zh{display:none;}
@@ -43,8 +50,11 @@ nav{
 /* PAGE HEADER */
 .page-header{background:var(--white);border-bottom:1px solid var(--border);padding:24px 24px 0;}
 .page-header-inner{max-width:1100px;margin:0 auto;}
-.page-title{font-size:clamp(20px,4vw,30px);font-weight:600;color:var(--ink);letter-spacing:-0.02em;margin-bottom:4px;}
-.page-count{font-size:13px;color:var(--ink-muted);margin-bottom:14px;}
+.page-title-wrap{margin-bottom:4px;}
+.page-title-bar{display:block;width:24px;height:2px;background:var(--teal);margin-bottom:10px;border-radius:1px;}
+.page-title{font-size:clamp(20px,4vw,30px);font-weight:600;color:var(--ink);letter-spacing:-0.02em;display:inline;}
+.page-title-dot{display:inline-block;width:6px;height:6px;background:var(--teal);border-radius:50%;margin-left:4px;vertical-align:middle;position:relative;top:-2px;}
+.page-count{font-size:13px;color:var(--ink-muted);margin-bottom:14px;margin-top:5px;}
 
 /* TRUST STRIP */
 .trust-strip{
@@ -105,7 +115,26 @@ nav{
   overflow:hidden;
 }
 .prop-card:hover{transform:translateY(-3px);box-shadow:0 10px 32px rgba(26,36,40,0.08);}
-.prop-card.is-featured{grid-column:span 2;}
+.prop-card.is-featured{grid-column:span 2;background:var(--ink);border-color:transparent;}
+.prop-card.is-featured:hover{box-shadow:0 10px 40px rgba(26,36,40,0.22);}
+
+/* DARK FEATURED CARD — brand panel 07 signature */
+.prop-card.is-featured .card-tag{color:var(--teal-light);}
+.prop-card.is-featured .card-title{color:#fff;}
+.prop-card.is-featured .card-loc{color:rgba(255,255,255,0.45);}
+.prop-card.is-featured .card-loc svg{stroke:var(--teal-light);}
+.prop-card.is-featured .card-spec{color:rgba(255,255,255,0.55);}
+.prop-card.is-featured .card-spec span{color:rgba(255,255,255,0.9);}
+.prop-card.is-featured .card-price{color:#fff;}
+.prop-card.is-featured .card-price-req{color:rgba(255,255,255,0.45);}
+.prop-card.is-featured .card-divider{background:rgba(255,255,255,0.07);}
+.prop-card.is-featured .agent-name{color:rgba(255,255,255,0.45);}
+.prop-card.is-featured .agent-platform{color:var(--teal-light);}
+.prop-card.is-featured .agent-avatar{background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.08);color:rgba(255,255,255,0.4);}
+.prop-card.is-featured .heart-btn{background:rgba(255,255,255,0.12);}
+.prop-card.is-featured .heart-btn:hover{background:rgba(255,255,255,0.22);}
+.prop-card.is-featured .heart-btn svg{stroke:rgba(255,255,255,0.7);}
+.prop-card.is-featured .heart-btn.saved svg{stroke:#E05050;fill:#E05050;}
 
 /* IMAGE */
 .prop-card-img{
@@ -243,11 +272,14 @@ nav{
 
 <div class="page-header">
   <div class="page-header-inner">
-    <h1 class="page-title">
-      <span class="lo-i">ຊັບສິນໃນວຽງຈັນ</span>
-      <span class="en-i">Properties in Vientiane</span>
-      <span class="zh-i">万象房源</span>
-    </h1>
+    <div class="page-title-wrap">
+      <span class="page-title-bar"></span>
+      <h1 class="page-title">
+        <span class="lo-i">ຊັບສິນໃນວຽງຈັນ</span>
+        <span class="en-i">Properties in Vientiane</span>
+        <span class="zh-i">万象房源</span>
+      </h1><span class="page-title-dot"></span>
+    </div>
     <p class="page-count" id="count-text">
       <span class="lo-i">ກຳລັງໂຫຼດ...</span>
       <span class="en-i">Loading...</span>
