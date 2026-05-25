@@ -1,368 +1,628 @@
 <!DOCTYPE html>
+
 <html lang="lo">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pintag · Spatial Real Estate Intelligence</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Noto+Sans+Lao:wght@300;400;500;700&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet">
+<title>Pintag · ວຽງຈັນ</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
 <style>
-:root {
-  --teal: #2D8C8C;
-  --ink: #1C2B32;
-  --ink-soft: #3D5058;
-  --warm: #F7F3EC;
-  --white: #FFFFFF;
+:root{
+  --bg:#F6F2EA;
+  --surface:rgba(255,255,255,0.62);
+  --ink:#182126;
+  --muted:#6E777B;
+  --line:rgba(24,33,38,0.08);
+  --teal:#2D8C8C;
 }
 
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;overflow:hidden;background-color:var(--warm);}
-body{font-family:'DM Sans','Noto Sans Lao',sans-serif;-webkit-font-smoothing:antialiased;}
 
-/* Dynamic Typography Utilities */
-.lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
-body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}
-body.lang-zh .lo-i{display:none;}body.lang-zh .zh-i{display:inline;}
-
-/* VERIFIABLE GIS METADATA TELEMETRY */
-.telemetry-node {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  position: absolute;
-  z-index: 5;
-  pointer-events: none;
-  opacity: 0.4;
-  color: var(--ink-soft);
-  transition: opacity 0.6s ease;
+html,body{
+  min-height:100%;
+  background:var(--bg);
 }
-.tel-t-l { top: 100px; left: 40px; }
-.tel-b-l { bottom: 40px; left: 40px; }
-.tel-t-r { top: 100px; right: 40px; }
-.tel-b-r { bottom: 40px; right: 40px; }
 
-/* SPLIT SCREEN SYSTEM */
-.split{
+body{
+  font-family:'DM Sans','Noto Sans Lao',sans-serif;
+  -webkit-font-smoothing:antialiased;
+  color:var(--ink);
+
+  background-image:
+  radial-gradient(circle at top left, rgba(45,140,140,0.03), transparent 22%),
+  radial-gradient(circle at bottom right, rgba(24,33,38,0.02), transparent 26%),
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='600'%3E%3Cg fill='none' stroke='%23182126' stroke-width='0.4' stroke-opacity='0.04'%3E%3Cpath d='M0 60 C240 46 960 74 1200 60'/%3E%3Cpath d='M0 120 C240 136 960 104 1200 120'/%3E%3Cpath d='M0 180 C240 164 960 194 1200 180'/%3E%3Cpath d='M0 240 C240 256 960 224 1200 240'/%3E%3Cpath d='M0 300 C240 286 960 314 1200 300'/%3E%3Cpath d='M0 360 C240 376 960 344 1200 360'/%3E%3C/svg%3E");
+}
+
+img{
+  display:block;
+}
+
+button{
+  font-family:inherit;
+}
+
+.lo-i{display:inline;}
+.en-i,.zh-i{display:none;}
+
+body.lang-en .lo-i{display:none;}
+body.lang-en .en-i{display:inline;}
+
+body.lang-zh .lo-i{display:none;}
+body.lang-zh .zh-i{display:inline;}
+
+/* NAV */
+.nav{
+  position:fixed;
+  top:0;
+  left:0;
+  right:0;
+  z-index:100;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  padding:22px 34px;
+
+  background:rgba(246,242,234,0.74);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+
+  border-bottom:1px solid rgba(24,33,38,0.04);
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+
+  text-decoration:none;
+  color:var(--ink);
+}
+
+.brand-dot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:var(--teal);
+}
+
+.brand-word{
+  font-size:18px;
+  font-weight:600;
+  letter-spacing:-0.03em;
+}
+
+.nav-right{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+
+.lang-switch{
+  display:flex;
+  align-items:center;
+  gap:6px;
+
+  padding:5px;
+
+  border:1px solid rgba(24,33,38,0.06);
+  border-radius:999px;
+
+  background:rgba(255,255,255,0.55);
+}
+
+.lang-btn{
+  border:none;
+  background:none;
+  padding:9px 14px;
+  border-radius:999px;
+  font-size:12px;
+  color:var(--muted);
+  cursor:pointer;
+  transition:.2s ease;
+}
+
+.lang-btn.active{
+  background:var(--ink);
+  color:#fff;
+}
+
+/* HERO */
+.hero{
+  padding:104px 20px 26px;
+}
+
+.hero-grid{
+  position:relative;
+
   display:grid;
   grid-template-columns:1fr 1fr;
-  height:100vh;
-  position:relative;
-  background-color: var(--warm);
+
+  min-height:76vh;
+
+  overflow:hidden;
+  border-radius:30px;
+
+  background:#EAE4DB;
+
+  box-shadow:
+  0 12px 40px rgba(24,33,38,0.05),
+  0 2px 8px rgba(24,33,38,0.03);
 }
 
-/* CONTAINER ARCHITECTURE */
-.panel{
+.hero-divider{
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:50%;
+  width:1px;
+  z-index:4;
+
+  background:rgba(255,255,255,0.14);
+}
+
+.hero-panel{
   position:relative;
   overflow:hidden;
-  cursor:pointer;
   text-decoration:none;
+  color:#fff;
+}
+
+.hero-image{
+  position:absolute;
+  inset:0;
+
+  background-size:cover;
+  background-position:center;
+
+  transform:scale(1.02);
+  transition:transform 1s ease;
+}
+
+.hero-panel:hover .hero-image{
+  transform:scale(1.05);
+}
+
+.hero-left .hero-image{
+  background-image:url('https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=1800&auto=format&fit=crop');
+}
+
+.hero-right .hero-image{
+  background-image:url('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?q=80&w=1800&auto=format&fit=crop');
+}
+
+.hero-panel::after{
+  content:"";
+  position:absolute;
+  inset:0;
+
+  background:linear-gradient(
+    180deg,
+    rgba(10,14,18,0.18) 0%,
+    rgba(10,14,18,0.46) 100%
+  );
+}
+
+.hero-content{
+  position:relative;
+  z-index:5;
+
+  height:100%;
+
   display:flex;
   flex-direction:column;
   align-items:center;
   justify-content:center;
-  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), filter 0.6s ease;
-}
 
-/* THE EQUALIZED PREMIUM CROSS-DIM SYSTEM
-   Instead of turning dark, the inactive side fades out elegantly into the cream background background.
-*/
-.split:has(.panel:hover) .panel:not(:hover) {
-  opacity: 0.45;
-  filter: saturate(70%) contrast(95%);
-}
-.split:has(.panel:hover) .panel:not(:hover) .telemetry-node {
-  opacity: 0.1;
-}
-
-/* BACKGROUND IMAGES WITH HIGH-RESTRAINT GLIDE */
-.panel-bg{
-  position:absolute;inset:0;
-  background-size:cover;
-  transition:transform 1.5s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 0;
-}
-.panel:hover .panel-bg{
-  transform: scale(1.02);
-}
-
-.panel-buyer .panel-bg{
-  background-image:url('pintag-villa.png');
-  background-position: center center;
-}
-.panel-agent .panel-bg{
-  background-image:url('pintag-interior.png');
-  background-position: center center;
-}
-
-/* PREMIUM LIGHT MASKS - Matches the clean, bright villa aesthetic on both sides */
-.panel-overlay{
-  position:absolute;inset:0;
-  /* Soft elegant cream wash that acts as text protection without making the page look dark */
-  background: linear-gradient(to bottom, rgba(247, 243, 236, 0.25) 0%, rgba(247, 243, 236, 0.55) 50%, rgba(247, 243, 236, 0.75) 100%);
-  transition: background 0.6s ease;
-  z-index: 1;
-}
-
-/* GEOMETRIC TOPOGRAPHICAL CONTOURS */
-.topo-layer {
-  position: absolute; inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' viewBox='0 0 800 600'%3E%3Cpath d='M-100,100 C100,150 200,50 400,120 C600,190 700,80 900,150 M-100,200 C100,250 150,130 350,220 C550,310 650,180 900,250 M-100,300 C150,320 250,220 450,320 C650,420 750,290 900,350' fill='none' stroke='%232D8C8C' stroke-width='1.2' stroke-opacity='0.15'/%3E%3C/svg%3E");
-  background-size: cover;
-  z-index: 3;
-  pointer-events: none;
-  opacity: 0.7;
-}
-
-/* ARCHITECTURAL DIVISION SYSTEM */
-.divider{
-  position:absolute;
-  left:50%;top:0;bottom:0;
-  width:1px;
-  background: rgba(28, 43, 50, 0.08);
-  z-index:10;
-  pointer-events:none;
-}
-
-/* CONTENT CONTAINER WITH INTEGRATED LAYER INSULATION */
-.panel-content{
-  position:relative;z-index:4;
-  display:flex;flex-direction:column;
-  align-items:center;
-  gap:16px;
-  padding:40px 32px;
   text-align:center;
-  max-width: 440px;
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  
-  /* Creates a beautiful localized readability cushion behind the text elements */
-  background: radial-gradient(circle, rgba(247, 243, 236, 0.85) 0%, rgba(247, 243, 236, 0) 70%);
-  border-radius: 40px;
-}
-.split:has(.panel:hover) .panel:not(:hover) .panel-content {
-  transform: scale(0.98);
+
+  padding:72px;
 }
 
-/* PREMIUM BRANDED GLYPHS - Matches your dark ink identity */
-.panel-icon-svg {
-  stroke: var(--ink);
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), stroke 0.4s ease;
-}
-.panel:hover .panel-icon-svg {
-  transform: translateY(-2px);
-  stroke: var(--teal);
+.hero-kicker{
+  font-size:11px;
+  letter-spacing:0.18em;
+  text-transform:uppercase;
+  color:rgba(255,255,255,0.62);
+  margin-bottom:20px;
 }
 
-/* ALIGNED EDITORIAL TYPOGRAPHY - Ink black text matching your design mockups */
-.panel-label{
-  font-family: 'Noto Sans Lao', 'DM Sans', sans-serif;
-  font-size: clamp(42px, 4.5vw, 54px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-  color: var(--ink);
+.hero-title{
+  font-size:clamp(60px,7vw,96px);
+  line-height:0.92;
+  font-weight:700;
+  letter-spacing:-0.07em;
+
+  margin-bottom:18px;
 }
 
-.panel-sublabel{
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 1.6;
-  color: var(--ink-soft);
-  max-width: 320px;
+.hero-desc{
+  max-width:420px;
+
+  font-size:16px;
+  line-height:1.8;
+
+  color:rgba(255,255,255,0.78);
+
+  margin-bottom:28px;
 }
 
-/* BUTTON SYSTEM - Grounded premium buttons */
-.panel-cta{
-  display:inline-flex;align-items:center;gap:10px;
-  font-size:13px;font-weight:600;
-  letter-spacing:0.04em;
-  padding: 14px 28px;
-  border-radius: 30px;
-  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  text-decoration: none;
-  margin-top: 8px;
-}
-.panel-buyer .panel-cta {
-  background: var(--ink); color: var(--white);
-}
-.panel-agent .panel-cta {
-  background: transparent; color: var(--ink);
-  border: 1px solid rgba(28, 43, 50, 0.3);
-}
-.panel:hover .panel-cta {
-  background: var(--teal);
-  border-color: var(--teal);
-  color: var(--white);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(45, 140, 140, 0.2);
+.hero-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+
+  padding:15px 28px;
+
+  border-radius:999px;
+
+  border:1px solid rgba(255,255,255,0.16);
+
+  background:rgba(255,255,255,0.12);
+
+  backdrop-filter:blur(12px);
+
+  font-size:14px;
+  font-weight:500;
+
+  transition:.25s ease;
 }
 
-/* FLOATING NAVIGATION CAPSULES */
-.top-nav-container {
-  position: absolute;
-  top: 28px; left: 50%; transform: translateX(-50%);
-  z-index: 30;
-  width: calc(100% - 56px);
-  max-width: 1240px;
-  display: flex; align-items: center; justify-content: space-between;
-  pointer-events: none;
+.hero-panel:hover .hero-btn{
+  transform:translateY(-1px);
+  background:rgba(255,255,255,0.18);
 }
 
-.logo-capsule {
-  display: flex; align-items: center;
-  padding: 10px 22px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(26, 36, 40, 0.05);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border-radius: 30px;
-  pointer-events: all;
-  box-shadow: 0 4px 24px rgba(28, 43, 50, 0.04);
-}
-.logo {
-  display: flex; align-items: center; gap: 10px;
-  color: var(--ink);
-}
-.logo-text-container {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
+/* SECTION */
+.section{
+  padding:14px 34px 72px;
 }
 
-.lang-switcher-capsule {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(26, 36, 40, 0.05);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border-radius: 30px; padding: 4px;
-  pointer-events: all;
-  display: flex; gap: 2px;
-  box-shadow: 0 4px 24px rgba(28, 43, 50, 0.04);
-}
-.lang-btn {
-  font-size: 11px; font-weight: 600; padding: 8px 14px;
-  border: none; background: transparent; 
-  color: var(--ink); opacity: 0.4;
-  cursor: pointer; border-radius: 20px; transition: all 0.2s;
-  font-family: 'DM Sans', sans-serif;
-}
-.lang-btn.active {
-  background: var(--ink); color: var(--white); opacity: 1;
+.section-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+
+  margin-bottom:28px;
 }
 
-.bottom-tag{
-  position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
-  z-index:30;
-  font-family: 'JetBrains Mono', monospace;
-  font-size:10px;font-weight:500;letter-spacing:0.12em;
-  color: var(--ink-soft);
-  opacity: 0.3;
-  white-space:nowrap;pointer-events:none;
+.section-title{
+  font-size:34px;
+  font-weight:300;
+  letter-spacing:-0.03em;
+  margin-bottom:8px;
 }
 
-/* RESPONSIVE LAYOUT */
-@media(max-width:768px){
-  .split{grid-template-columns:1fr;grid-template-rows:1fr 1fr;}
-  .divider{display: none;}
-  .panel-content{gap:12px;padding:24px; background: radial-gradient(circle, rgba(247, 243, 236, 0.9) 0%, rgba(247, 243, 236, 0.4) 100%);}
-  .panel-label{font-size:36px;}
-  .bottom-tag, .telemetry-node { display: none; }
-  
-  .split:has(.panel:hover) .panel:not(:hover) { opacity: 0.6; }
-  
-  .top-nav-container {
-    top: 16px; width: calc(100% - 32px);
-    flex-direction: row; justify-content: space-between;
+.section-sub{
+  font-size:15px;
+  color:var(--muted);
+}
+
+.view-link{
+  text-decoration:none;
+  color:var(--ink);
+  font-size:14px;
+}
+
+/* CARDS */
+.cards{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:22px;
+}
+
+.card{
+  display:block;
+  overflow:hidden;
+
+  text-decoration:none;
+  color:inherit;
+
+  border-radius:22px;
+
+  background:rgba(255,255,255,0.72);
+
+  border:1px solid rgba(24,33,38,0.05);
+
+  backdrop-filter:blur(10px);
+
+  transition:.28s ease;
+}
+
+.card:hover{
+  transform:translateY(-3px);
+  box-shadow:0 14px 30px rgba(24,33,38,0.06);
+}
+
+.card-image{
+  aspect-ratio:4/3;
+  overflow:hidden;
+}
+
+.card-image img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  transition:transform .8s ease;
+}
+
+.card:hover img{
+  transform:scale(1.04);
+}
+
+.card-body{
+  padding:16px;
+}
+
+.card-tag{
+  font-size:10px;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin-bottom:10px;
+}
+
+.card-title{
+  font-size:18px;
+  line-height:1.4;
+  letter-spacing:-0.02em;
+  margin-bottom:10px;
+}
+
+.card-meta{
+  font-size:14px;
+  color:var(--muted);
+  margin-bottom:12px;
+}
+
+.card-price{
+  font-size:22px;
+  font-weight:500;
+  letter-spacing:-0.03em;
+}
+
+/* RESPONSIVE */
+@media(max-width:1024px){
+  .hero-grid{
+    grid-template-columns:1fr;
   }
-  .logo-capsule { padding: 8px 16px; }
-  .logo-text-container { font-size: 18px; }
-  .lang-btn { padding: 6px 12px; font-size: 10px; }
+
+  .hero-divider{
+    display:none;
+  }
+
+  .cards{
+    grid-template-columns:repeat(2,1fr);
+  }
+}
+
+@media(max-width:640px){
+  .nav{
+    padding:18px;
+  }
+
+  .hero{
+    padding:88px 14px 20px;
+  }
+
+  .hero-grid{
+    border-radius:24px;
+  }
+
+  .hero-content{
+    padding:48px 26px;
+    min-height:52vh;
+  }
+
+  .hero-title{
+    font-size:58px;
+  }
+
+  .section{
+    padding:6px 18px 60px;
+  }
+
+  .section-title{
+    font-size:28px;
+  }
+
+  .cards{
+    grid-template-columns:1fr;
+    gap:18px;
+  }
 }
 </style>
+
 </head>
+
 <body>
 
-<div class="top-nav-container">
-  <div class="logo-capsule">
-    <div class="logo">
-      <svg width="24" height="20" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision" style="display:block;">
-        <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
-        <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
-      </svg>
-      <span class="logo-text-container">Pintag</span>
+<nav class="nav">
+  <a href="index.html" class="brand">
+    <div class="brand-dot"></div>
+    <div class="brand-word">Pintag</div>
+  </a>
+
+  <div class="nav-right">
+    <div class="lang-switch">
+      <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
+      <button class="lang-btn" onclick="setLang('en',this)">EN</button>
+      <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
     </div>
   </div>
+</nav>
 
-  <div class="lang-switcher-capsule">
-    <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
-    <button class="lang-btn" onclick="setLang('en',this)">EN</button>
-    <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
+<section class="hero">
+  <div class="hero-grid">
+
+```
+<div class="hero-divider"></div>
+
+<a href="listings.html?type=buy" class="hero-panel hero-left">
+  <div class="hero-image"></div>
+
+  <div class="hero-content">
+    <div class="hero-kicker">PINTAG SPATIAL INDEX</div>
+
+    <h1 class="hero-title">
+      <span class="lo-i">ຊື້</span>
+      <span class="en-i">Buy</span>
+      <span class="zh-i">购买</span>
+    </h1>
+
+    <div class="hero-desc">
+      <span class="lo-i">ບ້ານ ແລະ ຊັບສິນຄຸນນະພາບ ໃນເມືອງວຽງຈັນ</span>
+      <span class="en-i">Curated properties across Vientiane.</span>
+      <span class="zh-i">探索万象精选房产。</span>
+    </div>
+
+    <div class="hero-btn">
+      <span class="lo-i">ເບິ່ງຊັບສິນ</span>
+      <span class="en-i">Explore</span>
+      <span class="zh-i">查看房源</span>
+      →
+    </div>
+  </div>
+</a>
+
+<a href="listings.html?type=rent" class="hero-panel hero-right">
+  <div class="hero-image"></div>
+
+  <div class="hero-content">
+    <div class="hero-kicker">PINTAG SPATIAL INDEX</div>
+
+    <h1 class="hero-title">
+      <span class="lo-i">ເຊົ່າ</span>
+      <span class="en-i">Rent</span>
+      <span class="zh-i">租赁</span>
+    </h1>
+
+    <div class="hero-desc">
+      <span class="lo-i">ບ້ານ ແລະ ຄອນໂດ ສຳລັບການໃຊ້ຊີວິດໃນວຽງຈັນ</span>
+      <span class="en-i">Rental homes and residences for modern living.</span>
+      <span class="zh-i">探索万象高品质租赁住宅。</span>
+    </div>
+
+    <div class="hero-btn">
+      <span class="lo-i">ເບິ່ງລາຍການ</span>
+      <span class="en-i">Browse</span>
+      <span class="zh-i">浏览</span>
+      →
+    </div>
+  </div>
+</a>
+```
+
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <div>
+      <div class="section-title">
+        <span class="lo-i">ຊັບສິນແນະນຳ</span>
+        <span class="en-i">Selected Properties</span>
+        <span class="zh-i">精选房源</span>
+      </div>
+
+```
+  <div class="section-sub">
+    <span class="lo-i">ຄັດເລືອກຊັບສິນໃນວຽງຈັນ</span>
+    <span class="en-i">A curated view into Vientiane living.</span>
+    <span class="zh-i">探索万象高品质居住体验。</span>
   </div>
 </div>
 
-<div class="split">
-  <div class="divider"></div>
+<a href="listings.html" class="view-link">
+  <span class="lo-i">ເບິ່ງທັງໝົດ →</span>
+  <span class="en-i">View all →</span>
+  <span class="zh-i">查看全部 →</span>
+</a>
+```
 
-  <a href="listings.html" class="panel panel-buyer">
-    <div class="telemetry-node tel-t-l">LOC.INDEX // 17.9757° N, 102.6331° E</div>
-    <div class="telemetry-node tel-b-l">VTE.CORE // VERIFIED_INVENTORY</div>
-    
-    <div class="panel-bg"></div>
-    <div class="panel-overlay"></div>
-    <div class="topo-layer"></div>
-    <div class="panel-content">
-      <svg class="panel-icon-svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-        <circle cx="12" cy="10" r="3" />
-      </svg>
-      <p class="panel-label">ຜູ້ຊື້</p>
-      <p class="panel-sublabel">
-        <span class="lo-i">ຊອກຫາເຮືອນ ແລະ ຄອນໂດ ຜ່ານລະບົບແຜນທີ່</span>
-        <span class="en-i">Map-indexed property search.</span>
-        <span class="zh-i">地图索引房源搜索。</span>
-      </p>
-      <div class="panel-cta">
-        <span class="lo-i">ເບິ່ງລາຍການ ➔</span>
-        <span class="en-i">Browse listings ➔</span>
-        <span class="zh-i">浏览房源 ➔</span>
-      </div>
-    </div>
-  </a>
+  </div>
 
-  <a href="for-agents.html" class="panel panel-agent">
-    <div class="telemetry-node tel-t-r">MAP.GRID // ZONE_LAO_VTE_METRO</div>
-    <div class="telemetry-node tel-b-r">PARCEL.ID // ACTIVE_INDEXING</div>
+  <div class="cards">
 
-    <div class="panel-bg"></div>
-    <div class="panel-overlay"></div>
-    <div class="topo-layer"></div>
-    <div class="panel-content">
-      <svg class="panel-icon-svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-        <line x1="12" y1="22.08" x2="12" y2="12"/>
-      </svg>
-      <p class="panel-label">ຜູ້ຂາຍ</p>
-      <p class="panel-sublabel">
-        <span class="lo-i">ລະບົບແຜນທີ່ ແລະ ການຈັດການຂໍ້ມູນ ສໍາລັບນາຍໜ້າ</span>
-        <span class="en-i">Spatial listing infrastructure for agents.</span>
-        <span class="zh-i">经纪人空间房源基础设施。</span>
-      </p>
-      <div class="panel-cta">
-        <span class="lo-i">ລົງປະກາດ ➔</span>
-        <span class="en-i">Get started ➔</span>
-        <span class="zh-i">立即发布 ➔</span>
-      </div>
-    </div>
-  </a>
-</div>
+```
+<a href="listing.html" class="card">
+  <div class="card-image">
+    <img src="https://images.unsplash.com/photo-1600607687644-c7171b42498f?q=80&w=1200&auto=format&fit=crop" alt="">
+  </div>
 
-<div class="bottom-tag">pintag.io · core_v1.0.7</div>
+  <div class="card-body">
+    <div class="card-tag">VILLA</div>
+    <div class="card-title">Modern Pool Villa Near That Luang</div>
+    <div class="card-meta">ສີສັດຕະນາກ · ວຽງຈັນ</div>
+    <div class="card-price">$550,000</div>
+  </div>
+</a>
+
+<a href="listing.html" class="card">
+  <div class="card-image">
+    <img src="https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?q=80&w=1200&auto=format&fit=crop" alt="">
+  </div>
+
+  <div class="card-body">
+    <div class="card-tag">CONDO</div>
+    <div class="card-title">Quiet Residence in Chanthabouly</div>
+    <div class="card-meta">ຈັນທະບູລີ · ວຽງຈັນ</div>
+    <div class="card-price">$1,200/mo</div>
+  </div>
+</a>
+
+<a href="listing.html" class="card">
+  <div class="card-image">
+    <img src="https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?q=80&w=1200&auto=format&fit=crop" alt="">
+  </div>
+
+  <div class="card-body">
+    <div class="card-tag">HOUSE</div>
+    <div class="card-title">Architectural Home with Garden</div>
+    <div class="card-meta">ໂພນສີນວນ · ວຽງຈັນ</div>
+    <div class="card-price">$430,000</div>
+  </div>
+</a>
+
+<a href="listing.html" class="card">
+  <div class="card-image">
+    <img src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=1200&auto=format&fit=crop" alt="">
+  </div>
+
+  <div class="card-body">
+    <div class="card-tag">RENTAL</div>
+    <div class="card-title">Warm Minimal Apartment Interior</div>
+    <div class="card-meta">ໄຊເສດຖາ · ວຽງຈັນ</div>
+    <div class="card-price">$850/mo</div>
+  </div>
+</a>
+```
+
+  </div>
+</section>
 
 <script>
-function setLang(lang,btn){
-  document.body.className=lang==='lo'?'':'lang-'+lang;
-  document.querySelectorAll('.lang-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
+function setLang(lang,el){
+  document.body.classList.remove('lang-en','lang-zh');
+
+  if(lang==='en'){
+    document.body.classList.add('lang-en');
+  }
+
+  if(lang==='zh'){
+    document.body.classList.add('lang-zh');
+  }
+
+  document.querySelectorAll('.lang-btn').forEach(function(btn){
+    btn.classList.remove('active');
+  });
+
+  el.classList.add('active');
 }
 </script>
+
 </body>
 </html>
