@@ -252,7 +252,7 @@ function buildDesktopGallery(images){
     for(var i=0;i<cnt;i++){
       var src=images[i];var ac=i===0?' active':'';
       var ov=(showMore&&i===cnt-1)?'<div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(images.length-MAX+1)+'</span><span class="dg-thumb-overflow-lbl"><span class="lo-i">ຮູບ</span><span class="en-i">photos</span><span class="zh-i">张</span></span></div>':'';
-      thumbsHtml+='<div class="dg-thumb'+ac+'" onclick="shiftDesktopHero('+src.replace(/'/g,'%27')+',this)"><img src="'+src+'" alt="" loading="'+(i<2?'eager':'lazy')+'">'+ov+'</div>';
+      thumbsHtml += '<div class="dg-thumb'+ac+'" onclick="shiftDesktopHero(\''+src.replace(/'/g,"%27")+'\',this)"><img src="'+src+'" alt="" loading="'+(i<2?'eager':'lazy')+'">'+ov+'</div>';
     }
     railHtml='<div class="dg-rail">'+thumbsHtml+'</div>';
   }
