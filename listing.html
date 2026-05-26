@@ -25,6 +25,15 @@ window.addEventListener('error', function(e){
     return true;
   }
 }, true);
+
+function renderNearbyLandmarks(items){
+  var container = document.getElementById('landmarks-container');
+  if(!container || !Array.isArray(items)) return;
+  container.innerHTML = items.map(function(item){
+    return '<div class="landmark-item"><div class="landmark-icon">'+(item.icon||'📍')+'</div><div><div class="landmark-name">'+item.name+'</div><div class="landmark-distance">'+item.distance+'</div></div></div>';
+  }).join('');
+}
+
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -231,7 +240,6 @@ nav{
   .hero-right,.desktop-gallery{display:none;}
   .mobile-gallery{display:block;}
   .mobile-cta-bar{display:block;}
-  .g-wrap{padding-bottom:80px;}
   .agent-band{grid-template-columns:1fr;gap:16px;padding:20px 16px;}
   .agent-stats-row{justify-content:flex-start;}
   .agent-ctas{flex-direction:row;}
@@ -252,6 +260,197 @@ nav{
   .similar-section{padding:32px 28px 44px;}
   .media-section{padding:32px 28px;}
 }
+
+/* ===== PREMIUM REFINEMENTS ===== */
+.hero-section{
+  display:grid;
+  grid-template-columns:320px 1fr;
+  min-height:620px;
+  align-items:start;
+  border-bottom:1px solid var(--border-mid);
+  background:linear-gradient(to bottom,#fff,#fdfbf8);
+}
+.hero-left{
+  padding:32px 26px;
+  border-right:1px solid rgba(26,36,40,0.06);
+  background:rgba(255,255,255,0.92);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+}
+.hero-right{
+  padding-left:2px;
+}
+@media(min-width:961px){
+  .hero-left{
+    position:sticky;
+    top:92px;
+    align-self:start;
+  }
+}
+.highlight-pills{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:20px 0 14px;
+}
+.highlight-pill{
+  background:rgba(45,140,140,0.08);
+  color:var(--teal);
+  padding:6px 12px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:500;
+  border:1px solid rgba(45,140,140,0.12);
+}
+.sidebar-insight{
+  font-size:13px;
+  color:var(--ink-muted);
+  line-height:1.8;
+  margin-top:12px;
+  padding-top:16px;
+  border-top:1px solid var(--border);
+}
+.location-context-section{
+  margin-top:10px;
+  background:#FCFAF7;
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+  padding:44px 40px;
+}
+.location-context-grid{
+  display:grid;
+  grid-template-columns:340px 1fr;
+  gap:34px;
+  align-items:start;
+}
+.location-landmarks{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+#landmarks-container{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.landmark-item{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  padding:14px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(255,255,255,0.74);
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;
+}
+.landmark-item:hover{
+  transform:translateY(-2px);
+  border-color:rgba(45,140,140,0.16);
+  box-shadow:0 10px 28px rgba(26,36,40,0.05);
+}
+.landmark-icon{
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  background:rgba(45,140,140,0.08);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+  font-size:16px;
+}
+.landmark-name{
+  font-size:13px;
+  font-weight:600;
+  color:var(--ink);
+  margin-bottom:2px;
+}
+.landmark-distance{
+  font-size:11px;
+  color:var(--ink-muted);
+}
+.location-map-card{
+  background:#FAF7F2;
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:12px;
+  overflow:hidden;
+}
+.map-frame{
+  width:100%;
+  height:360px;
+  border-radius:12px;
+  overflow:hidden;
+  border:1px solid var(--border);
+  background:var(--warm-deep);
+}
+.map-frame iframe{
+  width:100%;
+  height:100%;
+  border:0;
+  display:block;
+}
+.similar-section{
+  padding:44px 40px 54px;
+  border-top:1px solid var(--border);
+  background:linear-gradient(to bottom,#fff,#fcfaf7);
+}
+.similar-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:24px;
+}
+.sim-card{
+  background:var(--white);
+  border:1px solid var(--border-mid);
+  border-radius:16px;
+  overflow:hidden;
+  text-decoration:none;
+  transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;
+}
+.sim-card:hover{
+  transform:translateY(-3px);
+  border-color:rgba(26,36,40,0.12);
+  box-shadow:0 14px 30px rgba(0,0,0,0.05);
+}
+.sim-card-img img{
+  transition:transform .55s cubic-bezier(.16,1,.3,1);
+}
+.sim-card:hover .sim-card-img img{
+  transform:scale(1.04);
+}
+.sim-body{
+  padding:15px 15px 18px;
+}
+.sim-title{
+  font-size:13px;
+  font-weight:600;
+  margin-bottom:5px;
+}
+.sim-price{
+  font-size:16px;
+}
+@media(max-width:960px){
+  .location-context-section{
+    padding:30px 16px;
+  }
+  .location-context-grid{
+    grid-template-columns:1fr;
+    gap:22px;
+  }
+  .map-frame{
+    height:240px;
+  }
+  .similar-grid{
+    grid-template-columns:1fr;
+  }
+  .hero-section{
+    grid-template-columns:1fr;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -290,7 +489,60 @@ nav{
       <p><span class="lo-i">ກຳລັງໂຫຼດ...</span><span class="en-i">Loading...</span><span class="zh-i">加载中...</span></p>
     </div>
   </div>
-  <div id="similar-section" class="similar-section">
+  
+<section class="location-context-section">
+  <div class="location-context-grid">
+    <div class="location-landmarks">
+      <h3 class="section-label">
+        <span class="lo-i">ສະຖານທີ່ໃກ້ຄຽງ</span>
+        <span class="en-i">Nearby Landmarks</span>
+        <span class="zh-i">周边地点</span>
+      </h3>
+      <div id="landmarks-container">
+        <div class="landmark-item">
+          <div class="landmark-icon">🏫</div>
+          <div>
+            <div class="landmark-name">VIS International School</div>
+            <div class="landmark-distance">8 min drive</div>
+          </div>
+        </div>
+        <div class="landmark-item">
+          <div class="landmark-icon">☕</div>
+          <div>
+            <div class="landmark-name">Joma Bakery Café</div>
+            <div class="landmark-distance">5 min drive</div>
+          </div>
+        </div>
+        <div class="landmark-item">
+          <div class="landmark-icon">🏥</div>
+          <div>
+            <div class="landmark-name">Alliance International Medical Centre</div>
+            <div class="landmark-distance">7 min drive</div>
+          </div>
+        </div>
+        <div class="landmark-item">
+          <div class="landmark-icon">🛍️</div>
+          <div>
+            <div class="landmark-name">Parkson Lifestyle Mall</div>
+            <div class="landmark-distance">10 min drive</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="location-map-card">
+      <div class="map-frame">
+        <iframe
+          src="https://maps.google.com/maps?q=Vientiane&t=&z=13&ie=UTF8&iwloc=&output=embed"
+          loading="lazy"
+          allowfullscreen
+          referrerpolicy="no-referrer-when-downgrade">
+        </iframe>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="similar-section" class="similar-section">
     <div class="similar-header">
       <span class="similar-title"><span class="lo-i">ອະສັງຫາໃກ້ຄຽງ</span><span class="en-i">Similar Properties</span><span class="zh-i">相似房源</span></span>
       <a href="listings.html" class="similar-view-all"><span class="lo-i">ເບິ່ງທັງໝົດ</span><span class="en-i">View all</span><span class="zh-i">查看全部</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></a>
@@ -327,7 +579,6 @@ nav{
 
 var BASE_DB = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 var SEC_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
-
 // ── State ─────────────────────────────────────────────────────────
 var propertyContext = null;
 var similarCache    = null;   // Persists across lang switches — no re-fetch on setLang
@@ -472,7 +723,6 @@ function getCurrentLang(){
 // FIX #11: setLang no longer calls fetchSimilarProperties —
 // uses similarCache instead, avoiding a network hit per lang switch
 function setLang(lang, btn){
-  localStorage.setItem('pintag_lang', lang);
   document.body.classList.remove('lang-lo','lang-en','lang-zh');
   document.body.classList.add('lang-' + lang);
   if(btn){
@@ -487,13 +737,6 @@ function setLang(lang, btn){
 
 // ── DOMContentLoaded entry point ──────────────────────────────────
 window.addEventListener('DOMContentLoaded', function(){
-  // Restore saved language preference
-  var savedLang = localStorage.getItem('pintag_lang');
-  if(savedLang && ['lo','en','zh'].indexOf(savedLang) > -1){
-    var matchBtn = document.querySelector('.lang-btn[onclick*="\''+savedLang+'\'"]');
-    setLang(savedLang, matchBtn);
-  }
-
   var slug = getParam('slug');
   if(!slug){
     PT.err('No slug in URL — expected ?slug=property-name or #property-name');
@@ -503,47 +746,6 @@ window.addEventListener('DOMContentLoaded', function(){
   PT.log('Loading property', { slug: slug });
   fetchProperty(slug);
 });
-
-// ── normalizePropertyData — sanitizes ALL Supabase fields before render ──
-// Prevents runtime crashes from malformed JSON, wrong types, nulls inside arrays.
-function normalizePropertyData(d){
-  if(!d || typeof d !== 'object' || Array.isArray(d)) return {};
-
-  // ── images: must be array of non-empty strings ──────────────────
-  if(!Array.isArray(d.images)) d.images = [];
-  d.images = d.images.filter(function(v){ return typeof v === 'string' && v.trim(); });
-
-  // ── amenities: must be array of strings (reject objects, nulls) ─
-  if(!Array.isArray(d.amenities)) d.amenities = [];
-  d.amenities = d.amenities.filter(function(v){ return typeof v === 'string' && v.trim(); });
-
-  // ── features: must be array of plain objects (reject strings, arrays, nulls) ─
-  if(!Array.isArray(d.features)) d.features = [];
-  d.features = d.features.filter(function(v){
-    return v !== null && typeof v === 'object' && !Array.isArray(v);
-  });
-
-  // ── scalar string fields: coerce nulls to '' ────────────────────
-  var strFields = [
-    'title_lo','title_en','title_zh',
-    'description_lo','description_en','description_zh',
-    'district_lo','district_en','district_zh',
-    'price_display','price_lak','transaction_type',
-    'agent_name','agent_name_lo','agent_phone','agent_whatsapp','agent_photo',
-    'agent_response_time','map_embed_url','map_open_url','video_embed_url'
-  ];
-  strFields.forEach(function(k){
-    if(d[k] != null && typeof d[k] !== 'string') d[k] = String(d[k]);
-    if(d[k] == null) d[k] = '';
-  });
-
-  // ── numeric fields: coerce or null out ──────────────────────────
-  ['bedrooms','bathrooms','sqm','parking_spaces','year_built','agent_listing_count','agent_rating'].forEach(function(k){
-    if(d[k] != null && isNaN(Number(d[k]))) d[k] = null;
-  });
-
-  return d;
-}
 
 // ── FIX #2: fetchProperty — guarded, logged, render-safe ─────────
 async function fetchProperty(slug){
@@ -563,17 +765,8 @@ async function fetchProperty(slug){
       return;
     }
 
-    // ── RAW Supabase inspection — open DevTools console to see this ─
-    console.group('[Pintag] RAW Supabase row');
-    console.log('images   :', data[0].images);
-    console.log('amenities:', data[0].amenities);
-    console.log('features :', data[0].features);
-    console.log('map_embed:', data[0].map_embed_url);
-    console.log('video    :', data[0].video_embed_url);
-    console.groupEnd();
-
-    propertyContext = normalizePropertyData(data[0]);
-    PT.log('Loaded + normalized', { id: propertyContext.id, title: propertyContext.title_en });
+    propertyContext = data[0];
+    PT.log('Loaded', { id: propertyContext.id, title: propertyContext.title_en });
 
     // FIX #2: buildMockupLayout wrapped in try/catch — never whites the page
     try {
@@ -713,18 +906,8 @@ function buildMockupLayout(){
   var isSale = data.transaction_type === 'for_sale' || data.transaction_type === 'sale';
   var imagesArray = (Array.isArray(data.images) ? data.images : []).filter(function(u){ return u && typeof u === 'string'; });
 
-  // ── Gallery — isolated so a broken image array can't kill the page ─
-  console.log('[Pintag] IMAGES (post-normalize):', data.images);
-  var desktopGalleryMarkup = '';
-  var mobileGalleryMarkup  = '';
-  try {
-    desktopGalleryMarkup = buildDesktopGallery(imagesArray);
-    mobileGalleryMarkup  = buildMobileGallery(imagesArray);
-  } catch(e){
-    console.error('[Pintag] GALLERY RENDER FAILED', e);
-    desktopGalleryMarkup = '<div class="desktop-gallery"><div class="dg-hero"><div class="sim-no-img"></div></div></div>';
-    mobileGalleryMarkup  = '';
-  }
+  var desktopGalleryMarkup = buildDesktopGallery(imagesArray);
+  var mobileGalleryMarkup  = buildMobileGallery(imagesArray);
 
   var L = {
     wa      : {lo:'ສອບຖາມຜ່ານ WhatsApp', en:'Chat on WhatsApp',          zh:'通过WhatsApp咨询'},
@@ -737,11 +920,7 @@ function buildMockupLayout(){
     mapOpen : {lo:'ເປີດໃນ Google Maps',    en:'Open in Google Maps',      zh:'在谷歌地图中打开'},
     verified: {lo:'ກວດສອບແລ້ວ',            en:'Verified',                 zh:'平台已核验'},
     inquire : {lo:'ສອບຖາມລາຄາ',            en:'Inquire for price',        zh:'意向询价'},
-    year    : {lo:'ປີທີ່ສ້າງສຳເລັດ',       en:'Year built',               zh:'建成岁次'},
-    beds    : {lo:'ຫ້ອງນອນ',               en:'BEDROOMS',                 zh:'卧室'},
-    baths   : {lo:'ຫ້ອງນ້ຳ',               en:'BATHROOMS',                zh:'卫浴'},
-    area    : {lo:'ພື້ນທີ່',                en:'AREA',                     zh:'面积'},
-    parking : {lo:'ທີ່ຈອດລົດ',             en:'PARKING',                  zh:'车位'}
+    year    : {lo:'ປີທີ່ສ້າງສຳເລັດ',       en:'Year built',               zh:'建成岁次'}
   };
 
   var I = {
@@ -771,10 +950,10 @@ function buildMockupLayout(){
 
   // ── Specs ───────────────────────────────────────────────────────
   var specsHtml = '';
-  if(data.bedrooms)       specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.bed +'</span><span class="spec-val">'+esc(String(data.bedrooms))      +'</span><span class="spec-lbl">'+L.beds[lang]+'</span></div>';
-  if(data.bathrooms)      specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.bath+'</span><span class="spec-val">'+esc(String(data.bathrooms))     +'</span><span class="spec-lbl">'+L.baths[lang]+'</span></div>';
-  if(data.sqm)            specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.sqm +'</span><span class="spec-val">'+esc(String(data.sqm))+' m²</span><span class="spec-lbl">'+L.area[lang]+'</span></div>';
-  if(data.parking_spaces) specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.car +'</span><span class="spec-val">'+esc(String(data.parking_spaces))+'</span><span class="spec-lbl">'+L.parking[lang]+'</span></div>';
+  if(data.bedrooms)       specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.bed +'</span><span class="spec-val">'+esc(String(data.bedrooms))      +'</span><span class="spec-lbl">BEDROOMS</span></div>';
+  if(data.bathrooms)      specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.bath+'</span><span class="spec-val">'+esc(String(data.bathrooms))     +'</span><span class="spec-lbl">BATHROOMS</span></div>';
+  if(data.sqm)            specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.sqm +'</span><span class="spec-val">'+esc(String(data.sqm))           +'&#13217;</span><span class="spec-lbl">AREA</span></div>';
+  if(data.parking_spaces) specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.car +'</span><span class="spec-val">'+esc(String(data.parking_spaces))+'</span><span class="spec-lbl">PARKING</span></div>';
 
   var yearHtml = data.year_built
     ? '<div class="year-row"><span class="year-row-lbl">'+L.year[lang]+'</span><span class="agent-stat-icon">'+I.cal+'</span><strong>'+esc(String(data.year_built))+'</strong></div>'
@@ -791,91 +970,81 @@ function buildMockupLayout(){
   var waUrl = cleanPhone ? 'https://wa.me/'+cleanPhone+'?text='+waMessage : '#';
 
   // ── Agent block ─────────────────────────────────────────────────
-  var agentHtml = '';
-  try {
-    var statsHtml = '';
-    if(data.agent_listing_count || data.agent_response_time || data.agent_rating){
-      statsHtml = '<div class="agent-stats-row">';
-      if(data.agent_listing_count) statsHtml += '<div class="agent-stat"><span class="agent-stat-icon">'+I.home+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_listing_count))+'</span><span class="agent-stat-lbl"><span class="lo-i">ລາຍການ</span><span class="en-i">Active Listings</span><span class="zh-i">活跃房源</span></span></div></div>';
-      if(data.agent_response_time) statsHtml += '<div class="agent-stat"><span class="agent-stat-icon">'+I.bolt+'</span><div class="agent-stat-body"><span class="agent-stat-val"><span class="lo-i">ຕອບໄວ</span><span class="en-i">Responds</span><span class="zh-i">响应</span></span><span class="agent-stat-lbl">'+esc(data.agent_response_time)+'</span></div></div>';
-      if(data.agent_rating)        statsHtml += '<div class="agent-stat"><span class="agent-stat-icon">'+I.star+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_rating))+'</span><span class="agent-stat-lbl"><span class="lo-i">ຄະແນນ</span><span class="en-i">Rating</span><span class="zh-i">评分</span></span></div></div>';
-      statsHtml += '</div>';
-    }
-    var callBtn = data.agent_phone
-      ? '<a href="tel:'+esc(data.agent_phone)+'" class="btn-primary btn-call"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>'
-      : '';
-    var agentPhotoSrc = data.agent_photo ? esc(data.agent_photo) : agentFallback;
-    agentHtml = (
-      '<div class="agent-band" id="agent-band-anchor">'+
-      '<div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p>'+
-      '<div class="agent-identity">'+
-      '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" onerror="handleImageError(this)" alt="Agent">'+
-      '<div><div class="agent-name-en">'+esc(data.agent_name||'')+'</div>'+(data.agent_name_lo?'<div class="agent-name-lo">'+esc(data.agent_name_lo)+'</div>':'')+'</div>'+
-      '</div></div>'+
-      statsHtml+
-      '<div class="agent-ctas">'+
-      '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
-      callBtn+
-      '</div></div>'
-    );
-  } catch(e){ console.error('[Pintag] AGENT RENDER FAILED', e); agentHtml = ''; }
+  var statsHtml = '';
+  if(data.agent_listing_count || data.agent_response_time || data.agent_rating){
+    statsHtml = '<div class="agent-stats-row">';
+    if(data.agent_listing_count) statsHtml += '<div class="agent-stat"><span class="agent-stat-icon">'+I.home+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_listing_count))+'</span><span class="agent-stat-lbl"><span class="lo-i">ລາຍການ</span><span class="en-i">Active Listings</span><span class="zh-i">活跃房源</span></span></div></div>';
+    if(data.agent_response_time) statsHtml += '<div class="agent-stat"><span class="agent-stat-icon">'+I.bolt+'</span><div class="agent-stat-body"><span class="agent-stat-val"><span class="lo-i">ຕອບໄວ</span><span class="en-i">Responds</span><span class="zh-i">响应</span></span><span class="agent-stat-lbl">'+esc(data.agent_response_time)+'</span></div></div>';
+    if(data.agent_rating)        statsHtml += '<div class="agent-stat"><span class="agent-stat-icon">'+I.star+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_rating))+'</span><span class="agent-stat-lbl"><span class="lo-i">ຄະແນນ</span><span class="en-i">Rating</span><span class="zh-i">评分</span></span></div></div>';
+    statsHtml += '</div>';
+  }
+
+  // FIX #12 + #15: tel href escaped, rel added
+  var callBtn = data.agent_phone
+    ? '<a href="tel:'+esc(data.agent_phone)+'" class="btn-primary btn-call"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>'
+    : '';
+
+  // FIX #12: agent_photo escaped; FIX #15: noopener on wa link
+  var agentPhotoSrc = esc(data.agent_photo || agentFallback);
+  var agentHtml = (
+    '<div class="agent-band" id="agent-band-anchor">'+
+    '<div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p>'+
+    '<div class="agent-identity">'+
+    '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" onerror="handleImageError(this)" alt="Agent">'+
+    '<div><div class="agent-name-en">'+esc(data.agent_name||'')+'</div>'+(data.agent_name_lo?'<div class="agent-name-lo">'+esc(data.agent_name_lo)+'</div>':'')+'</div>'+
+    '</div></div>'+
+    statsHtml+
+    '<div class="agent-ctas">'+
+    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    callBtn+
+    '</div></div>'
+  );
 
   // ── Amenities ───────────────────────────────────────────────────
   var amenitiesHtml = '';
-  console.log('[Pintag] AMENITIES (post-normalize):', data.amenities);
-  try {
-    if(data.amenities.length){
+  if(Array.isArray(data.amenities)){
+    var validAmenities = data.amenities.filter(Boolean);
+    if(validAmenities.length){
       amenitiesHtml = '<div><span class="section-label">'+L.amenities[lang]+'</span><div class="amenity-row">';
-      data.amenities.forEach(function(am){
+      validAmenities.forEach(function(am){
+        if(!am) return;
         var resAm = resolveAmenityData(am, lang);
         amenitiesHtml += '<div class="amenity-item"><div class="amenity-icon">'+resAm.icon+'</div>'+esc(resAm.label)+'</div>';
       });
       amenitiesHtml += '</div></div>';
     }
-  } catch(e){ console.error('[Pintag] AMENITY RENDER FAILED', e); amenitiesHtml = ''; }
+  }
 
   // ── Features ────────────────────────────────────────────────────
   var featuresHtml = '';
-  console.log('[Pintag] FEATURES (post-normalize):', data.features);
-  try {
-    if(data.features.length){
+  if(Array.isArray(data.features)){
+    var validFeatures = data.features.filter(Boolean);
+    if(validFeatures.length){
       featuresHtml = '<div><span class="section-label">'+L.features[lang]+'</span><div class="features-list">';
-      data.features.forEach(function(ft){
-        // ft is guaranteed a plain object by normalizePropertyData
-        var label = esc(
-          (typeof ft['label_'+lang] === 'string' ? ft['label_'+lang] : '') ||
-          (typeof ft.label_en === 'string' ? ft.label_en : '') ||
-          (typeof ft.name === 'string' ? ft.name : '')
-        );
-        if(!label) return; // skip feature with no usable label
+      validFeatures.forEach(function(ft){
+        if(!ft) return;
+        var label = esc(ft['label_'+lang] || ft.label_en || ft.name || '');
         featuresHtml += '<div class="feature-item"><div class="feature-item-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>'+label+'</div>';
       });
       featuresHtml += '</div></div>';
     }
-  } catch(e){ console.error('[Pintag] FEATURE RENDER FAILED', e); featuresHtml = ''; }
+  }
 
-  // ── Map — URL validated before iframe injection ─────────────────
+  // ── Map — FIX #18: URL validated before iframe injection ────────
   var mapHtml = '';
-  console.log('[Pintag] MAP URL:', data.map_embed_url);
-  try {
-    if(isSafeUrl(data.map_embed_url)){
-      mapHtml = '<div class="detail-wrap" style="padding-top:0;padding-bottom:40px;"><span class="section-label">'+L.location[lang]+'</span><div class="map-frame"><iframe src="'+esc(data.map_embed_url)+'" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div>';
-      if(isSafeUrl(data.map_open_url)) mapHtml += '<a href="'+esc(data.map_open_url)+'" target="_blank" rel="noopener noreferrer" class="map-open-link">'+I.map+' '+L.mapOpen[lang]+'</a>';
-      mapHtml += '</div>';
-    }
-  } catch(e){ console.error('[Pintag] MAP RENDER FAILED', e); mapHtml = ''; }
+  if(isSafeUrl(data.map_embed_url)){
+    mapHtml = '<div class="detail-wrap" style="padding-top:0;padding-bottom:40px;"><span class="section-label">'+L.location[lang]+'</span><div class="map-frame"><iframe src="'+esc(data.map_embed_url)+'" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div>';
+    if(isSafeUrl(data.map_open_url)) mapHtml += '<a href="'+esc(data.map_open_url)+'" target="_blank" rel="noopener noreferrer" class="map-open-link">'+I.map+' '+L.mapOpen[lang]+'</a>';
+    mapHtml += '</div>';
+  }
 
-  // ── Video — URL validated before iframe injection ────────────────
+  // ── Video — FIX #18: URL validated before iframe injection ──────
   var mediaHtml = '';
-  console.log('[Pintag] VIDEO URL:', data.video_embed_url);
-  try {
-    if(isSafeUrl(data.video_embed_url)){
-      mediaHtml = '<div class="media-section"><span class="section-label">'+I.play+' '+L.video[lang]+'</span><div class="asset-iframe-wrapper"><iframe src="'+esc(data.video_embed_url)+'" allowfullscreen sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div></div>';
-    }
-  } catch(e){ console.error('[Pintag] VIDEO RENDER FAILED', e); mediaHtml = ''; }
+  if(isSafeUrl(data.video_embed_url)){
+    mediaHtml = '<div class="media-section"><span class="section-label">'+I.play+' '+L.video[lang]+'</span><div class="asset-iframe-wrapper"><iframe src="'+esc(data.video_embed_url)+'" allowfullscreen sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div></div>';
+  }
 
-  // default (.detail-grid) = 3-col; two-col = desc + one sidebar; one-col = desc only
-  var gridColumnsClass = (amenitiesHtml && featuresHtml) ? '' : (amenitiesHtml || featuresHtml) ? 'two-col' : 'one-col';
+  var gridColumnsClass = (amenitiesHtml && featuresHtml) ? 'two-col' : 'one-col';
 
   var layout = (
     '<div class="hero-section">'+
@@ -890,7 +1059,8 @@ function buildMockupLayout(){
     '<div class="left-actions">'+
     '<button class="action-link">'+I.heart+' <span class="lo-i">ບັນທຶກ</span><span class="en-i">Save property</span><span class="zh-i">收藏房源</span></button>'+
     '<span class="pintag-verified">'+L.verified[lang]+'</span>'+
-    '</div></div>'+
+    '</div></div>
+<div class="highlight-pills"><span class="highlight-pill">Embassy District</span><span class="highlight-pill">Quiet Neighborhood</span><span class="highlight-pill">Near International Schools</span><span class="highlight-pill">Family Friendly</span></div><div class="sidebar-insight">Curated residential setting with calm streets, international conveniences, and easy access to Vientiane city destinations.</div>'+
     '<div class="hero-right">'+desktopGalleryMarkup+'</div>'+
     '</div>'+
     mobileGalleryMarkup+
