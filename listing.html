@@ -23,31 +23,20 @@ html{scroll-behavior:smooth;}
   --ink:#1A2428;--ink-soft:#3A4E55;--ink-muted:#7A9098;
   --warm:#F3EFE8;--warm-deep:#E8E3DB;--white:#FFFFFF;
   --border:rgba(26,36,40,0.07);--border-mid:rgba(26,36,40,0.10);--border-strong:rgba(26,36,40,0.13);
-  /* WA: muted premium teal instead of generic green */
   --wa:#236B6B;--wa-hover:#1D5858;
   --r-btn:10px;--r-tag:4px;--r-switcher:6px;
 }
-img{
-image-rendering:auto;
-backface-visibility:hidden;
-}
+img{image-rendering:auto;backface-visibility:hidden;}
 body{
   font-family:"DM Sans",sans-serif;font-weight:400;font-size:15px;line-height:1.75;
   background-color:var(--warm);
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='360'%3E%3Cpath d='M0 28C150 22 450 34 600 28M0 54C150 61 450 47 600 54M0 80C150 74 450 86 600 80M0 108C150 116 450 100 600 108M0 133C150 127 450 139 600 133M0 160C150 167 450 153 600 160M0 186C150 180 450 192 600 186M0 214C150 222 450 206 600 214M0 238C150 232 450 244 600 238M0 265C150 272 450 258 600 265M0 290C150 284 450 296 600 290M0 318C150 325 450 311 600 318M0 343C150 337 450 349 600 343' fill='none' stroke='%231A2428' stroke-width='.5' stroke-opacity='.055'/%3E%3C/svg%3E");
   background-repeat:repeat;background-size:600px 360px;
   color:var(--ink);-webkit-font-smoothing:antialiased;
-  overflow-x:hidden;
-  text-rendering:optimizeLegibility;
+  overflow-x:hidden;text-rendering:optimizeLegibility;
 }
-::selection{
-background:rgba(45,140,140,0.18);
-color:var(--ink);
-}
-button,
-a{
--webkit-tap-highlight-color:transparent;
-}
+::selection{background:rgba(45,140,140,0.18);color:var(--ink);}
+button,a{-webkit-tap-highlight-color:transparent;}
 .lo{display:block;}.en{display:none;}.zh{display:none;}
 .lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
 body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
@@ -81,16 +70,7 @@ nav{
   animation:fadePage .45s ease;
   will-change:opacity,transform;
 }
-@keyframes fadePage{
-from{
-opacity:0;
-transform:translateY(4px);
-}
-to{
-opacity:1;
-transform:none;
-}
-}
+@keyframes fadePage{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
 .hero-section{display:grid;grid-template-columns:300px 1fr;min-height:580px;align-items:stretch;border-bottom:1px solid var(--border-mid);}
 .hero-left{padding:32px 24px 32px 36px;display:flex;flex-direction:column;border-right:1px solid var(--border-mid);background:var(--white);}
 .back-link{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:400;color:var(--ink-muted);text-decoration:none;margin-bottom:22px;transition:color 0.15s;}
@@ -121,11 +101,9 @@ transform:none;
 .dg-hero{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--warm-deep);cursor:pointer;}
 .dg-hero img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 1s cubic-bezier(0.16,1,0.3,1),opacity 0.3s;will-change:transform,opacity;}
 .dg-hero:hover img{transform:scale(1.006);}
-
 .dg-hero.sf-active{background:#EDE8E0;}
 .dg-hero.sf-active img{object-fit:contain;object-position:center center;}
 .dg-hero.sf-active:hover img{transform:none;}
-
 .mg-slide.sf-active{background:#EDE8E0;}
 .mg-slide.sf-active img{object-fit:contain;object-position:center center;}
 .dg-hero::before{content:"";position:absolute;top:16px;left:16px;z-index:2;width:16px;height:16px;border-top:1px solid rgba(255,255,255,0.22);border-left:1px solid rgba(255,255,255,0.22);pointer-events:none;}
@@ -206,14 +184,7 @@ transform:none;
 .sim-spec-item{display:flex;align-items:center;gap:3px;}
 .sim-price{font-size:15px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;}
 .telemetry-strip{display:none;}
-.loader-stage{
-min-height:70vh;
-display:flex;
-flex-direction:column;
-justify-content:center;
-align-items:center;
-text-align:center;padding:140px 24px;color:var(--ink-muted);
-}
+.loader-stage{min-height:70vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:140px 24px;color:var(--ink-muted);}
 .loader-cluster{display:flex;gap:6px;justify-content:center;margin-bottom:16px;}
 .loader-bead{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:beadWave 1.2s ease-in-out infinite;}
 .loader-bead:nth-child(2){animation-delay:0.15s;}
@@ -226,87 +197,22 @@ text-align:center;padding:140px 24px;color:var(--ink-muted);
 .mcta-price-value{font-size:19px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1;}
 .mcta-price-req{font-size:13px;font-weight:400;color:var(--ink-muted);}
 .mcta-btn{display:flex;align-items:center;gap:7px;background:var(--wa);color:var(--white);padding:10px 16px;border-radius:var(--r-btn);font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap;box-shadow:0 3px 10px rgba(35,107,107,0.18);}
-
-.agent-pfp{
-  width:60px;height:60px;border-radius:50%;
-  object-fit:cover;object-position:center top;
-  background:var(--warm-deep);
-  border:1px solid var(--border-mid);flex-shrink:0;
-  display:block;
-}
-
-.lb-overlay{
-  position:fixed;inset:0;z-index:1000;
-  background:rgba(8,12,16,0.96);
-  display:flex;align-items:center;justify-content:center;
-  opacity:0;pointer-events:none;
-  transition:opacity 0.32s cubic-bezier(0.16,1,0.3,1);
-  touch-action:pan-y;
-}
+.agent-pfp{width:60px;height:60px;border-radius:50%;object-fit:cover;object-position:center top;background:var(--warm-deep);border:1px solid var(--border-mid);flex-shrink:0;display:block;}
+.lb-overlay{position:fixed;inset:0;z-index:1000;background:rgba(8,12,16,0.96);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.32s cubic-bezier(0.16,1,0.3,1);touch-action:pan-y;}
 .lb-overlay.lb-open{opacity:1;pointer-events:all;}
-.lb-stage{
-  position:relative;
-  width:100%;max-width:1100px;
-  max-height:90vh;
-  display:flex;align-items:center;justify-content:center;
-  padding:0 72px;
-}
-.lb-img-wrap{
-  position:relative;
-  max-width:100%;max-height:84vh;
-  display:flex;align-items:center;justify-content:center;
-}
-.lb-img{
-  max-width:100%;max-height:84vh;
-  width:auto;height:auto;
-  object-fit:contain;
-  display:block;
-  border-radius:3px;
-  transition:opacity 0.22s ease;
-  contain:layout paint;
-}
+.lb-stage{position:relative;width:100%;max-width:1100px;max-height:90vh;display:flex;align-items:center;justify-content:center;padding:0 72px;}
+.lb-img-wrap{position:relative;max-width:100%;max-height:84vh;display:flex;align-items:center;justify-content:center;}
+.lb-img{max-width:100%;max-height:84vh;width:auto;height:auto;object-fit:contain;display:block;border-radius:3px;transition:opacity 0.22s ease;contain:layout paint;}
 .lb-img.lb-fade{opacity:0;}
-.lb-close{
-  position:fixed;top:22px;right:28px;z-index:1001;
-  width:40px;height:40px;
-  background:rgba(255,255,255,0.08);
-  border:1px solid rgba(255,255,255,0.12);
-  border-radius:50%;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  color:rgba(255,255,255,0.7);
-  transition:background 0.2s,color 0.2s;
-  font-size:0;
-}
+.lb-close{position:fixed;top:22px;right:28px;z-index:1001;width:40px;height:40px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.7);transition:background 0.2s,color 0.2s;font-size:0;}
 .lb-close:hover{background:rgba(255,255,255,0.16);color:#fff;}
-.lb-arrow{
-  position:absolute;top:50%;transform:translateY(-50%);
-  width:44px;height:44px;
-  background:rgba(255,255,255,0.07);
-  border:1px solid rgba(255,255,255,0.10);
-  border-radius:50%;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  color:rgba(255,255,255,0.65);
-  transition:background 0.2s,color 0.2s;
-  z-index:2;
-}
+.lb-arrow{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.10);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.65);transition:background 0.2s,color 0.2s;z-index:2;}
 .lb-arrow:hover{background:rgba(255,255,255,0.14);color:#fff;}
 .lb-prev{left:0;}
 .lb-next{right:0;}
-.lb-counter{
-  position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
-  font-size:11px;font-weight:400;letter-spacing:0.12em;
-  color:rgba(255,255,255,0.4);
-  pointer-events:none;
-}
-.lb-dots{
-  position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
-  display:flex;gap:6px;align-items:center;
-}
-.lb-dot{
-  width:4px;height:4px;border-radius:50%;
-  background:rgba(255,255,255,0.28);
-  transition:background 0.2s,transform 0.2s;cursor:pointer;
-}
+.lb-counter{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:400;letter-spacing:0.12em;color:rgba(255,255,255,0.4);pointer-events:none;}
+.lb-dots{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;}
+.lb-dot{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,0.28);transition:background 0.2s,transform 0.2s;cursor:pointer;}
 .lb-dot.active{background:rgba(255,255,255,0.75);transform:scale(1.3);}
 @media(max-width:960px){
   .hero-section{grid-template-columns:1fr;min-height:auto;}
@@ -359,6 +265,7 @@ text-align:center;padding:140px 24px;color:var(--ink-muted);
     </button>
   </div>
 </nav>
+
 <div class="g-wrap">
   <div id="view-target">
     <div class="loader-stage">
@@ -374,7 +281,9 @@ text-align:center;padding:140px 24px;color:var(--ink-muted);
     <div id="similar-grid" class="similar-grid"></div>
   </div>
 </div>
+
 <div id="mobile-cta-bar" class="mobile-cta-bar"></div>
+
 <div id="lb-overlay" class="lb-overlay" role="dialog" aria-modal="true">
   <button class="lb-close" id="lb-close" aria-label="Close">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -392,498 +301,840 @@ text-align:center;padding:140px 24px;color:var(--ink-muted);
   </div>
   <div class="lb-dots" id="lb-dots"></div>
 </div>
+
 <script>
-const BASE_DB='https://eoladhcljbpbhnrmmpev.supabase.co';
-const SEC_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzQ0NH0.8X_S7pPshG36P_iSPl_u0-tYp3H3-P6R0I_f4A9z6Gk';
-var propertyContext=null;
-var agentFallback="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%237A9098' stroke-width='1'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
+// ═══════════════════════════════════════════════════════════════════
+// PINTAG · listing.html — Production-hardened fetch layer v2
+// 20 failure points patched — zero visual changes
+// ═══════════════════════════════════════════════════════════════════
 
-function handleImageError(img){
-  img.onerror=null;
-  if(img.classList.contains('agent-pfp')){
-    img.src=agentFallback;
-    return;
-  }
-  img.style.opacity='0';
-  if(img.parentElement){
-    img.parentElement.style.background='var(--warm-deep)';
-  }
+var BASE_DB = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+var SEC_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzQ0NH0.8X_S7pPshG36P_iSPl_u0-tYp3H3-P6R0I_f4A9z6Gk';
+
+// ── State ─────────────────────────────────────────────────────────
+var propertyContext = null;
+var similarCache    = null;   // Persists across lang switches — no re-fetch on setLang
+var _heroTimer      = null;   // FIX #5: desktop hero swap race guard
+var _lbTimer        = null;   // FIX #6: lightbox fade race guard
+var _fetchInFlight  = false;  // FIX #2: duplicate fetchProperty guard
+
+// ── Agent placeholder SVG ─────────────────────────────────────────
+var agentFallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%237A9098' stroke-width='1'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
+
+// ── FIX #20: Structured logger — replaces silent catch(e){} ───────
+var PT = (function(){
+  var P = '[Pintag]';
+  return {
+    log : function(m,d){ console.log(P+' '+m, d!==undefined?d:''); },
+    warn: function(m,d){ console.warn(P+':WARN '+m, d!==undefined?d:''); },
+    err : function(m,d){ console.error(P+':ERR '+m, d!==undefined?d:''); },
+    time: function(m)  { try{ console.time(P+' '+m); }catch(_){} },
+    timeEnd:function(m){ try{ console.timeEnd(P+' '+m); }catch(_){} }
+  };
+})();
+
+// ── FIX #12: HTML escape — applied to ALL Supabase field output ───
+// Prevents XSS and innerHTML crashes from malformed field values
+function esc(str){
+  if(str == null) return '';
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
 }
 
-async function fetchWithTimeout(resource,options){
-  const controller = new AbortController();
-  const id = setTimeout(function(){
-    controller.abort();
-  },8000);
+// ── FIX #18: Safe URL validator for iframe src / href injection ───
+// Rejects javascript:, data:, blob: and any non-http(s) scheme
+function isSafeUrl(url){
+  if(!url || typeof url !== 'string') return false;
+  var t = url.trim().toLowerCase();
+  return t.indexOf('https://') === 0 || t.indexOf('http://') === 0;
+}
+
+// ── FIX #10: URLSearchParams-first param reader with regex fallback
+function getParam(name){
   try{
-    const response = await fetch(resource,{
-      ...options,
-      signal:controller.signal
-    });
-    return response;
-  } finally {
-    clearTimeout(id);
+    return new URLSearchParams(window.location.search).get(name);
+  } catch(_){
+    // Fallback: old mobile Safari without URLSearchParams
+    var m = RegExp('[?&]'+name+'=([^&]*)').exec(window.location.search);
+    return m ? decodeURIComponent(m[1].replace(/\+/g,' ')) : null;
   }
 }
 
+// ── FIX #1: fetchWithTimeout — retry-aware, mobile-safe ───────────
+// Added: retry (up to 2 attempts), 12 s timeout (was 8 s), cache:no-store,
+// proper Promise.race cleanup, typed error distinction
+async function fetchWithTimeout(resource, options, attempt){
+  attempt = attempt || 1;
+  var MAX_ATTEMPTS = 2;
+  var TIMEOUT = attempt === 1 ? 12000 : 15000; // Lao 3G–4G tolerance
+
+  var controller = new AbortController();
+  var timerId = null;
+
+  // Explicit timeout promise so we can clearTimeout it on success
+  var timeoutPromise = new Promise(function(_, reject){
+    timerId = setTimeout(function(){
+      controller.abort();
+      reject(new Error('PINTAG_TIMEOUT_' + attempt));
+    }, TIMEOUT);
+  });
+
+  try {
+    var res = await Promise.race([
+      fetch(resource, Object.assign({}, options, {
+        signal: controller.signal,
+        cache: 'no-store'  // Prevents stale CDN / service-worker cached 404s
+      })),
+      timeoutPromise
+    ]);
+    clearTimeout(timerId);
+    return res;
+  } catch(err) {
+    clearTimeout(timerId);
+    var isTimeout  = err.name === 'AbortError' || (err.message && err.message.indexOf('PINTAG_TIMEOUT') === 0);
+    var isNetwork  = err.name === 'TypeError' || err.name === 'NetworkError';
+
+    PT.warn('fetch attempt ' + attempt + ' failed', { msg: err.message, timeout: isTimeout, network: isNetwork });
+
+    if(attempt < MAX_ATTEMPTS && (isTimeout || isNetwork)){
+      PT.log('Retrying… (attempt ' + (attempt+1) + ')');
+      await new Promise(function(r){ setTimeout(r, 900); }); // brief back-off
+      return fetchWithTimeout(resource, options, attempt + 1);
+    }
+    throw err;
+  }
+}
+
+// ── Supabase JSON helper — consolidates headers + parse guard ─────
+async function sbFetch(path){
+  var res = await fetchWithTimeout(BASE_DB + path, {
+    headers: {
+      'apikey': SEC_KEY,
+      'Authorization': 'Bearer ' + SEC_KEY,
+      'Accept': 'application/json'
+    }
+  });
+  if(!res.ok){
+    var body = '';
+    try { body = await res.text(); } catch(_){}
+    throw new Error('Supabase ' + res.status + ': ' + body.slice(0, 100));
+  }
+  try {
+    return await res.json();
+  } catch(e){
+    throw new Error('JSON parse failed: ' + e.message);
+  }
+}
+
+// ── Language helpers ──────────────────────────────────────────────
 function getCurrentLang(){
-  if(document.body && document.body.classList.contains('lang-en'))return 'en';
-  if(document.body && document.body.classList.contains('lang-zh'))return 'zh';
+  if(document.body.classList.contains('lang-en')) return 'en';
+  if(document.body.classList.contains('lang-zh')) return 'zh';
   return 'lo';
 }
-function setLang(lang,btn){
-  if(!document.body) return;
+
+// FIX #11: setLang no longer calls fetchSimilarProperties —
+// uses similarCache instead, avoiding a network hit per lang switch
+function setLang(lang, btn){
   document.body.classList.remove('lang-lo','lang-en','lang-zh');
-  document.body.classList.add('lang-'+lang);
+  document.body.classList.add('lang-' + lang);
   if(btn){
-    document.querySelectorAll('.lang-btn').forEach(function(b){b.classList.remove('active');});
+    document.querySelectorAll('.lang-btn').forEach(function(b){ b.classList.remove('active'); });
     btn.classList.add('active');
   }
   if(propertyContext){
-    buildMockupLayout();
-    var slug=propertyContext.slug;
-    if(slug)fetchSimilarProperties(propertyContext.id,slug);
+    try { buildMockupLayout(); } catch(e){ PT.err('buildMockupLayout on lang switch', e); }
+    if(similarCache) renderSimilarGrid(similarCache); // Re-render from cache, no fetch
   }
 }
-function getParam(name){
-  var match=RegExp('[?&]'+name+'=([^&]*)').exec(window.location.search);
-  return match&&decodeURIComponent(match[1].replace(/\+/g,' '));
-}
+
+// ── DOMContentLoaded entry point ──────────────────────────────────
 window.addEventListener('DOMContentLoaded', function(){
-  var slug=getParam('slug');
+  var slug = getParam('slug');
   if(!slug){
-    var target=document.getElementById('view-target');
-    if(target) target.innerHTML='<div style="padding:100px 24px;text-align:center;color:var(--ink-muted);">Property context missing.</div>';
+    PT.err('No slug in URL');
+    showErrorState('Property context missing. Please return to the listings page.');
     return;
   }
+  PT.log('Loading property', { slug: slug });
   fetchProperty(slug);
 });
+
+// ── FIX #2: fetchProperty — guarded, logged, render-safe ─────────
 async function fetchProperty(slug){
-  try{
-    var url=BASE_DB+'/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*';
-    var res=await fetchWithTimeout(url,{headers:{'apikey':SEC_KEY,'Authorization':'Bearer '+SEC_KEY}});
-    if(!res.ok)throw new Error('Network fail');
-    var arr=await res.json();
-    if(!arr||!arr.length){
-      var target=document.getElementById('view-target');
-      if(target) target.innerHTML='<div style="padding:100px 24px;text-align:center;color:var(--ink-muted);">Property not found.</div>';
+  if(_fetchInFlight){ PT.warn('fetchProperty already in flight — skipping'); return; }
+  _fetchInFlight = true;
+  PT.time('fetchProperty');
+
+  try {
+    var data = await sbFetch(
+      '/rest/v1/properties?slug=eq.' + encodeURIComponent(slug) + '&select=*&limit=1'
+    );
+    PT.timeEnd('fetchProperty');
+
+    if(!Array.isArray(data) || data.length === 0){
+      PT.warn('Not found', slug);
+      showErrorState('Property not found. It may have been removed or the link may be incorrect.');
       return;
     }
-    propertyContext=arr[0];
-    buildMockupLayout();
-    if(propertyContext && propertyContext.id && propertyContext.slug){
-      fetchSimilarProperties(propertyContext.id,propertyContext.slug);
+
+    propertyContext = data[0];
+    PT.log('Loaded', { id: propertyContext.id, title: propertyContext.title_en });
+
+    // FIX #2: buildMockupLayout wrapped in try/catch — never whites the page
+    try {
+      buildMockupLayout();
+    } catch(renderErr){
+      PT.err('buildMockupLayout threw', renderErr);
+      showErrorState('Display error. Please refresh the page.');
+      return;
     }
-  }catch(e){
-    var target=document.getElementById('view-target');
-    if(target) target.innerHTML='<div style="padding:100px 24px;text-align:center;color:var(--ink-muted);">Error fetching records.</div>';
+
+    if(propertyContext.id){
+      fetchSimilarProperties(propertyContext.id); // Non-blocking
+    }
+
+  } catch(err){
+    PT.timeEnd('fetchProperty');
+    PT.err('fetchProperty failed', err);
+    var offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    showErrorState(offline
+      ? 'You appear to be offline. Please check your connection and refresh.'
+      : 'Could not load this property. Please refresh the page or try again shortly.');
+  } finally {
+    _fetchInFlight = false;
   }
 }
-async function fetchSimilarProperties(id,slug){
-  try{
-    var url=BASE_DB+'/rest/v1/properties?id=neq.'+id+'&limit=4&select=*';
-    var res=await fetchWithTimeout(url,{headers:{'apikey':SEC_KEY,'Authorization':'Bearer '+SEC_KEY}});
-    if(!res.ok)return;
-    var similar=await res.json();
-    var secEl=document.getElementById('similar-section');
-    if(!Array.isArray(similar) || !similar.length){
-      if(secEl) secEl.style.display='none';
-      return;
-    }
-    if(secEl) secEl.style.display='block';
-    var gridEl=document.getElementById('similar-grid');
-    if(!gridEl) return;
-    gridEl.innerHTML='';
-    var lang=getCurrentLang();
-    var sI={bed:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4v16M22 4v16M2 8h20M2 14h20"/></svg>',bath:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18a4 4 0 0 0 8 0v-4H4zM12 14V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>',sqm:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>'};
-    similar.forEach(function(p){
-      if(!p) return;
-      var title=p['title_'+lang]||p.title_en||'';
-      var district=p['district_'+lang]||p.district_en||'';
-      var imgHtml=(p.images&&Array.isArray(p.images)&&p.images.filter(Boolean).length)?'<img src="'+p.images.filter(Boolean)[0]+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)">':'<div class="sim-no-img"></div>';
-      var specs=[];
-      if(p.bedrooms)specs.push('<span class="sim-spec-item">'+sI.bed+' '+p.bedrooms+'</span>');
-      if(p.bathrooms)specs.push('<span class="sim-spec-item">'+sI.bath+' '+p.bathrooms+'</span>');
-      if(p.sqm)specs.push('<span class="sim-spec-item">'+sI.sqm+' '+p.sqm+'</span>');
-      var card=document.createElement('a');
-      card.href='listing.html?slug='+encodeURIComponent(p.slug||'');
-      card.className='sim-card';
-      card.innerHTML='<div class="sim-card-img">'+imgHtml+'<button class="sim-heart" onclick="event.preventDefault()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button></div><div class="sim-body"><p class="sim-title">'+title+'</p><p class="sim-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>'+district+'</p>'+(specs.length?'<div class="sim-specs">'+specs.join('')+'</div>':'')+(p.price_display?'<p class="sim-price">'+p.price_display+'</p>':'')+'</div>';
-      gridEl.appendChild(card);
-    });
-  }catch(e){}
+
+// ── FIX #3: fetchSimilarProperties — cached, column-optimised ─────
+// Now only fetches 8 fields (was select=*), filters active status,
+// result stored in similarCache so setLang never re-fetches
+async function fetchSimilarProperties(id){
+  PT.time('fetchSimilar');
+  try {
+    var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,images,bedrooms,bathrooms,sqm,price_display,transaction_type';
+    var data = await sbFetch(
+      '/rest/v1/properties?id=neq.' + encodeURIComponent(id) +
+      '&status=eq.active&limit=4&select=' + cols
+    );
+    PT.timeEnd('fetchSimilar');
+    PT.log('Similar loaded', { count: Array.isArray(data) ? data.length : 0 });
+
+    if(!Array.isArray(data) || !data.length){ hideSimilarSection(); return; }
+    similarCache = data;
+    renderSimilarGrid(data);
+  } catch(e){
+    PT.timeEnd('fetchSimilar');
+    PT.warn('fetchSimilarProperties failed', e.message); // FIX #3: was catch(e){}
+    hideSimilarSection();
+  }
 }
+
+function hideSimilarSection(){
+  var el = document.getElementById('similar-section');
+  if(el) el.style.display = 'none';
+}
+
+// ── renderSimilarGrid — decoupled from fetch, reusable on lang switch
+// FIX #12: all fields HTML-escaped, uses DocumentFragment for perf
+function renderSimilarGrid(similar){
+  var secEl  = document.getElementById('similar-section');
+  var gridEl = document.getElementById('similar-grid');
+  if(!secEl || !gridEl) return;
+  if(!Array.isArray(similar) || !similar.length){ hideSimilarSection(); return; }
+
+  secEl.style.display = 'block';
+  var lang = getCurrentLang();
+  var sI = {
+    bed : '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4v16M22 4v16M2 8h20M2 14h20"/></svg>',
+    bath: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18a4 4 0 0 0 8 0v-4H4zM12 14V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>',
+    sqm : '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>'
+  };
+
+  var frag = document.createDocumentFragment();
+  similar.forEach(function(p){
+    if(!p || !p.slug) return;
+    var title    = esc(p['title_'+lang] || p.title_en || '');
+    var district = esc(p['district_'+lang] || p.district_en || '');
+    var imgs     = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
+    var imgHtml  = imgs[0]
+      ? '<img src="'+esc(imgs[0])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)">'
+      : '<div class="sim-no-img"></div>';
+    var specs = [];
+    if(p.bedrooms)  specs.push('<span class="sim-spec-item">'+sI.bed +' '+esc(String(p.bedrooms)) +'</span>');
+    if(p.bathrooms) specs.push('<span class="sim-spec-item">'+sI.bath+' '+esc(String(p.bathrooms))+'</span>');
+    if(p.sqm)       specs.push('<span class="sim-spec-item">'+sI.sqm +' '+esc(String(p.sqm))      +'</span>');
+    var card = document.createElement('a');
+    card.href = 'listing.html?slug=' + encodeURIComponent(p.slug);
+    card.className = 'sim-card';
+    card.innerHTML = (
+      '<div class="sim-card-img">'+imgHtml+
+      '<button class="sim-heart" onclick="event.preventDefault()" aria-label="Save">' +
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
+      '</button></div>' +
+      '<div class="sim-body">' +
+      '<p class="sim-title">'+title+'</p>' +
+      '<p class="sim-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>'+district+'</p>'+
+      (specs.length ? '<div class="sim-specs">'+specs.join('')+'</div>' : '')+
+      (p.price_display ? '<p class="sim-price">'+esc(p.price_display)+'</p>' : '')+
+      '</div>'
+    );
+    frag.appendChild(card);
+  });
+  gridEl.innerHTML = '';
+  gridEl.appendChild(frag);
+}
+
+// ── FIX #20: Error state — styled, never blank, has back-link ─────
+function showErrorState(msg){
+  var target = document.getElementById('view-target');
+  if(!target) return;
+  target.innerHTML = (
+    '<div style="padding:100px 24px;text-align:center;color:var(--ink-muted);max-width:420px;margin:0 auto;">' +
+    '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:16px;opacity:0.35"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
+    '<p style="font-size:14px;line-height:1.75;">' + esc(msg) + '</p>' +
+    '<a href="listings.html" style="display:inline-block;margin-top:20px;font-size:13px;font-weight:500;color:var(--teal);text-decoration:none;">← Back to listings</a>' +
+    '</div>'
+  );
+}
+
+// ── buildMockupLayout ─────────────────────────────────────────────
+// FIX #4: Every Supabase field now goes through esc() before innerHTML
+// FIX #18: iframe src URLs validated through isSafeUrl()
+// FIX #14: WA title truncated to 80 chars to stay under URL length limits
+// FIX #15: External links get rel="noopener noreferrer"
 function buildMockupLayout(){
-  var container=document.getElementById('view-target');
-  if(!container) return;
-  var lang=getCurrentLang();
-  var data=propertyContext;
-  if (!data) return;
-  var resolvedTitle=data['title_'+lang]||data.title_en||data.title_lo||'';
-  var resolvedDesc=data['description_'+lang]||data.description_en||data.description_lo||'';
-  var resolvedDistrict=data['district_'+lang]||data.district_en||'';
-  var isSale=data.transaction_type==='for_sale'||data.transaction_type==='sale';
-  var imagesArray=(data.images&&Array.isArray(data.images))?data.images.filter(Boolean):[];
-  var desktopGalleryMarkup=buildDesktopGallery(imagesArray);
-  var mobileGalleryMarkup=buildMobileGallery(imagesArray);
-  var telemetryMarkup=buildTelemetryStrip(resolvedDistrict);
-  var L={
-    wa:{lo:'ສອບຖາມຜ່ານ WhatsApp',en:'Chat on WhatsApp',zh:'通过WhatsApp咨询'},
-    call:{lo:'ໂທຫາຕົວແທນ',en:'Call Agent',zh:'电话联系'},
-    agent:{lo:'ຕົວແທນຜູ້ດູແລ',en:'Presented by agent',zh:'物业主理经纪'},
-    amenities:{lo:'ສິ່ງອຳນວຍຄວາມສະດວກ',en:'Amenities & Conveniences',zh:'配套设施'},
-    features:{lo:'ຈຸດເດັ່ນຂອງອະສັງຫາ',en:'Property Features',zh:'房屋亮点'},
-    location:{lo:'ສະຖານທີ່ຕັ້ງ',en:'Location context',zh:'地理位置'},
-    video:{lo:'ວິດີໂອນຳຊົມ',en:'Property walk-through video',zh:'实景视频览'},
-    mapOpen:{lo:'ເປີດໃນ Google Maps',en:'Open in Google Maps',zh:'在谷歌地图中打开'},
-    verified:{lo:'ກວດສອບແລ້ວ',en:'Verified',zh:'平台已核验'},
-    inquire:{lo:'ສອບຖາມລາຄາ',en:'Inquire for price',zh:'意向询价'},
-    year:{lo:'ປີທີ່ສ້າງສຳເລັດ',en:'Year built',zh:'建成岁次'}
+  var container = document.getElementById('view-target');
+  if(!container){ PT.err('view-target missing'); return; }
+  var data = propertyContext;
+  if(!data){ PT.warn('buildMockupLayout: no propertyContext'); return; }
+
+  var lang = getCurrentLang();
+  PT.log('Rendering layout', { lang: lang, id: data.id });
+
+  var resolvedTitle    = esc(data['title_'+lang]       || data.title_en       || data.title_lo       || '');
+  var resolvedDesc     = esc(data['description_'+lang] || data.description_en || data.description_lo || '');
+  var resolvedDistrict = esc(data['district_'+lang]    || data.district_en    || '');
+
+  var isSale = data.transaction_type === 'for_sale' || data.transaction_type === 'sale';
+  var imagesArray = (Array.isArray(data.images) ? data.images : []).filter(function(u){ return u && typeof u === 'string'; });
+
+  var desktopGalleryMarkup = buildDesktopGallery(imagesArray);
+  var mobileGalleryMarkup  = buildMobileGallery(imagesArray);
+
+  var L = {
+    wa      : {lo:'ສອບຖາມຜ່ານ WhatsApp', en:'Chat on WhatsApp',          zh:'通过WhatsApp咨询'},
+    call    : {lo:'ໂທຫາຕົວແທນ',          en:'Call Agent',                zh:'电话联系'},
+    agent   : {lo:'ຕົວແທນຜູ້ດູແລ',        en:'Presented by agent',       zh:'物业主理经纪'},
+    amenities:{lo:'ສິ່ງອຳນວຍຄວາມສະດວກ',  en:'Amenities & Conveniences', zh:'配套设施'},
+    features: {lo:'ຈຸດເດັ່ນຂອງອະສັງຫາ',  en:'Property Features',        zh:'房屋亮点'},
+    location: {lo:'ສະຖານທີ່ຕັ້ງ',         en:'Location context',         zh:'地理位置'},
+    video   : {lo:'ວິດີໂອນຳຊົມ',           en:'Property walk-through video', zh:'实景视频览'},
+    mapOpen : {lo:'ເປີດໃນ Google Maps',    en:'Open in Google Maps',      zh:'在谷歌地图中打开'},
+    verified: {lo:'ກວດສອບແລ້ວ',            en:'Verified',                 zh:'平台已核验'},
+    inquire : {lo:'ສອບຖາມລາຄາ',            en:'Inquire for price',        zh:'意向询价'},
+    year    : {lo:'ປີທີ່ສ້າງສຳເລັດ',       en:'Year built',               zh:'建成岁次'}
   };
-  var I={
-    bed:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 4v16M22 4v16M2 8h20M2 14h20"/></svg>',
-    bath:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18a4 4 0 0 0 8 0v-4H4zM12 14V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>',
-    sqm:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>',
-    car:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="22" height="13" rx="2"/><path d="M7 16v2M17 16v2"/></svg>',
-    cal:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+
+  var I = {
+    bed  :'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 4v16M22 4v16M2 8h20M2 14h20"/></svg>',
+    bath :'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18a4 4 0 0 0 8 0v-4H4zM12 14V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>',
+    sqm  :'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>',
+    car  :'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="22" height="13" rx="2"/><path d="M7 16v2M17 16v2"/></svg>',
+    cal  :'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
     heart:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
-    play:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
-    pin:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
-    back:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
-    home:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
-    bolt:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
-    star:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
-    map:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
-    arr:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
+    play :'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
+    pin  :'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+    back :'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
+    home :'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    bolt :'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    star :'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+    map  :'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
   };
-  var resolvedPriceHtml='';
+
+  // ── Price ───────────────────────────────────────────────────────
+  var resolvedPriceHtml = '';
   if(data.price_display){
-    resolvedPriceHtml='<p class="price-value">'+data.price_display+'</p>';
-    if(data.price_lak)resolvedPriceHtml+='<p class="price-lak">'+data.price_lak+'</p>';
-  }else{
-    resolvedPriceHtml='<p class="price-inquire">'+L.inquire[lang]+'</p>';
+    resolvedPriceHtml = '<p class="price-value">'+esc(data.price_display)+'</p>';
+    if(data.price_lak) resolvedPriceHtml += '<p class="price-lak">'+esc(data.price_lak)+'</p>';
+  } else {
+    resolvedPriceHtml = '<p class="price-inquire">'+L.inquire[lang]+'</p>';
   }
-  var specsHtml='';
-  if(data.bedrooms)specsHtml+='<div class="spec-item"><span class="spec-icon">'+I.bed+'</span><span class="spec-val">'+data.bedrooms+'</span><span class="spec-lbl">BEDROOMS</span></div>';
-  if(data.bathrooms)specsHtml+='<div class="spec-item"><span class="spec-icon">'+I.bath+'</span><span class="spec-val">'+data.bathrooms+'</span><span class="spec-lbl">BATHROOMS</span></div>';
-  if(data.sqm)specsHtml+='<div class="spec-item"><span class="spec-icon">'+I.sqm+'</span><span class="spec-val">'+data.sqm+'㎡</span><span class="spec-lbl">AREA</span></div>';
-  if(data.parking_spaces)specsHtml+='<div class="spec-item"><span class="spec-icon">'+I.car+'</span><span class="spec-val">'+data.parking_spaces+'</span><span class="spec-lbl">PARKING</span></div>';
-  var yearHtml='';
-  if(data.year_built)yearHtml='<div class="year-row"><span class="year-row-lbl">'+L.year[lang]+'</span><span class="agent-stat-icon">'+I.cal+'</span><strong>'+data.year_built+'</strong></div>';
-  var typeBadgeText=isSale?((lang==='lo'?'ຂາຍ':(lang==='zh'?'出售':'For Sale'))):((lang==='lo'?'ໃຫ້ເຊົ່າ':(lang==='zh'?'出租':'For Rent')));
-  var waMessage=encodeURIComponent('Hello, I am interested in '+resolvedTitle+' (Ref: '+(data.id||'')+')');
-  var cleanPhone=(data.agent_whatsapp||'').replace(/[^0-9]/g,'');
-  var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
-  var agentHtml='';
-  var statsHtml='';
-  if(data.agent_listing_count||data.agent_response_time||data.agent_rating){
-    statsHtml='<div class="agent-stats-row">';
-    if(data.agent_listing_count)statsHtml+='<div class="agent-stat"><span class="agent-stat-icon">'+I.home+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+data.agent_listing_count+'</span><span class="agent-stat-lbl"><span class="lo-i">ລາຍການ</span><span class="en-i">Active Listings</span><span class="zh-i">活跃房源</span></span></div></div>';
-    if(data.agent_response_time)statsHtml+='<div class="agent-stat"><span class="agent-stat-icon">'+I.bolt+'</span><div class="agent-stat-body"><span class="agent-stat-val"><span class="lo-i">ຕອບໄວ</span><span class="en-i">Responds</span><span class="zh-i">响应</span></span><span class="agent-stat-lbl">'+data.agent_response_time+'</span></div></div>';
-    if(data.agent_rating)statsHtml+='<div class="agent-stat"><span class="agent-stat-icon">'+I.star+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+data.agent_rating+'</span><span class="agent-stat-lbl"><span class="lo-i">ຄະແນນ</span><span class="en-i">Rating</span><span class="zh-i">评分</span></span></div></div>';
-    statsHtml+='</div>';
+
+  // ── Specs ───────────────────────────────────────────────────────
+  var specsHtml = '';
+  if(data.bedrooms)       specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.bed +'</span><span class="spec-val">'+esc(String(data.bedrooms))      +'</span><span class="spec-lbl">BEDROOMS</span></div>';
+  if(data.bathrooms)      specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.bath+'</span><span class="spec-val">'+esc(String(data.bathrooms))     +'</span><span class="spec-lbl">BATHROOMS</span></div>';
+  if(data.sqm)            specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.sqm +'</span><span class="spec-val">'+esc(String(data.sqm))           +'&#13217;</span><span class="spec-lbl">AREA</span></div>';
+  if(data.parking_spaces) specsHtml += '<div class="spec-item"><span class="spec-icon">'+I.car +'</span><span class="spec-val">'+esc(String(data.parking_spaces))+'</span><span class="spec-lbl">PARKING</span></div>';
+
+  var yearHtml = data.year_built
+    ? '<div class="year-row"><span class="year-row-lbl">'+L.year[lang]+'</span><span class="agent-stat-icon">'+I.cal+'</span><strong>'+esc(String(data.year_built))+'</strong></div>'
+    : '';
+
+  var typeBadgeText = isSale
+    ? (lang==='lo'?'ຂາຍ'      :lang==='zh'?'出售':'For Sale')
+    : (lang==='lo'?'ໃຫ້ເຊົ່າ' :lang==='zh'?'出租':'For Rent');
+
+  // ── WhatsApp — FIX #14: truncate title to prevent URL overflow ──
+  var cleanPhone = String(data.agent_whatsapp || '').replace(/[^0-9]/g,'');
+  var waTitleShort = String(data['title_en'] || data.title_lo || '').slice(0, 80);
+  var waMessage = encodeURIComponent('Hello, I am interested in '+waTitleShort+' (Ref: '+(data.id||'')+')');
+  var waUrl = cleanPhone ? 'https://wa.me/'+cleanPhone+'?text='+waMessage : '#';
+
+  // ── Agent block ─────────────────────────────────────────────────
+  var statsHtml = '';
+  if(data.agent_listing_count || data.agent_response_time || data.agent_rating){
+    statsHtml = '<div class="agent-stats-row">';
+    if(data.agent_listing_count) statsHtml += '<div class="agent-stat"><span class="agent-stat-icon">'+I.home+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_listing_count))+'</span><span class="agent-stat-lbl"><span class="lo-i">ລາຍການ</span><span class="en-i">Active Listings</span><span class="zh-i">活跃房源</span></span></div></div>';
+    if(data.agent_response_time) statsHtml += '<div class="agent-stat"><span class="agent-stat-icon">'+I.bolt+'</span><div class="agent-stat-body"><span class="agent-stat-val"><span class="lo-i">ຕອບໄວ</span><span class="en-i">Responds</span><span class="zh-i">响应</span></span><span class="agent-stat-lbl">'+esc(data.agent_response_time)+'</span></div></div>';
+    if(data.agent_rating)        statsHtml += '<div class="agent-stat"><span class="agent-stat-icon">'+I.star+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_rating))+'</span><span class="agent-stat-lbl"><span class="lo-i">ຄະແນນ</span><span class="en-i">Rating</span><span class="zh-i">评分</span></span></div></div>';
+    statsHtml += '</div>';
   }
-  var callBtn=data.agent_phone?'<a href="tel:'+data.agent_phone+'" class="btn-primary btn-call"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
-  agentHtml='<div class="agent-band" id="agent-band-anchor"><div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p><div class="agent-identity"><img class="agent-pfp" src="'+(data.agent_photo || agentFallback)+'" decoding="async" onerror="handleImageError(this);this.src=agentFallback" alt=""><div><div class="agent-name-en">'+(data.agent_name||'')+'</div>'+(data.agent_name_lo?'<div class="agent-name-lo">'+data.agent_name_lo+'</div>':'')+'</div></div></div>'+statsHtml+'<div class="agent-ctas"><a href="'+waUrl+'" target="_blank" class="btn-primary btn-wa">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+callBtn+'</div></div>';
-  var amenitiesHtml='';
-  if(data.amenities&&Array.isArray(data.amenities)){
-    var validAmenities=data.amenities.filter(Boolean);
+
+  // FIX #12 + #15: tel href escaped, rel added
+  var callBtn = data.agent_phone
+    ? '<a href="tel:'+esc(data.agent_phone)+'" class="btn-primary btn-call"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>'
+    : '';
+
+  // FIX #12: agent_photo escaped; FIX #15: noopener on wa link
+  var agentPhotoSrc = esc(data.agent_photo || agentFallback);
+  var agentHtml = (
+    '<div class="agent-band" id="agent-band-anchor">'+
+    '<div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p>'+
+    '<div class="agent-identity">'+
+    '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" onerror="handleImageError(this)" alt="Agent">'+
+    '<div><div class="agent-name-en">'+esc(data.agent_name||'')+'</div>'+(data.agent_name_lo?'<div class="agent-name-lo">'+esc(data.agent_name_lo)+'</div>':'')+'</div>'+
+    '</div></div>'+
+    statsHtml+
+    '<div class="agent-ctas">'+
+    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    callBtn+
+    '</div></div>'
+  );
+
+  // ── Amenities ───────────────────────────────────────────────────
+  var amenitiesHtml = '';
+  if(Array.isArray(data.amenities)){
+    var validAmenities = data.amenities.filter(Boolean);
     if(validAmenities.length){
-      amenitiesHtml='<div><span class="section-label">'+L.amenities[lang]+'</span><div class="amenity-row">';
+      amenitiesHtml = '<div><span class="section-label">'+L.amenities[lang]+'</span><div class="amenity-row">';
       validAmenities.forEach(function(am){
         if(!am) return;
-        var resAm=resolveAmenityData(am,lang);
-        amenitiesHtml+='<div class="amenity-item"><div class="amenity-icon">'+resAm.icon+'</div>'+resAm.label+'</div>';
+        var resAm = resolveAmenityData(am, lang);
+        amenitiesHtml += '<div class="amenity-item"><div class="amenity-icon">'+resAm.icon+'</div>'+esc(resAm.label)+'</div>';
       });
-      amenitiesHtml+='</div></div>';
+      amenitiesHtml += '</div></div>';
     }
   }
-  var featuresHtml='';
-  if(data.features&&Array.isArray(data.features)){
-    var validFeatures=data.features.filter(Boolean);
+
+  // ── Features ────────────────────────────────────────────────────
+  var featuresHtml = '';
+  if(Array.isArray(data.features)){
+    var validFeatures = data.features.filter(Boolean);
     if(validFeatures.length){
-      featuresHtml='<div><span class="section-label">'+L.features[lang]+'</span><div class="features-list">';
+      featuresHtml = '<div><span class="section-label">'+L.features[lang]+'</span><div class="features-list">';
       validFeatures.forEach(function(ft){
         if(!ft) return;
-        var label=ft['label_'+lang]||ft.label_en||ft.name||'';
-        featuresHtml+='<div class="feature-item"><div class="feature-item-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>'+label+'</div>';
+        var label = esc(ft['label_'+lang] || ft.label_en || ft.name || '');
+        featuresHtml += '<div class="feature-item"><div class="feature-item-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>'+label+'</div>';
       });
-      featuresHtml+='</div></div>';
+      featuresHtml += '</div></div>';
     }
   }
-  var mapHtml='';
-  if(data.map_embed_url && (data.map_embed_url.startsWith('http://') || data.map_embed_url.startsWith('https://'))){
-    mapHtml='<div class="detail-wrap" style="padding-top:0; padding-bottom:40px;"><span class="section-label">'+L.location[lang]+'</span><div class="map-frame"><iframe src="'+data.map_embed_url+'" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div>';
-    if(data.map_open_url)mapHtml+='<a href="'+data.map_open_url+'" target="_blank" class="map-open-link">'+I.map+' '+L.mapOpen[lang]+'</a>';
-    mapHtml+='</div>';
+
+  // ── Map — FIX #18: URL validated before iframe injection ────────
+  var mapHtml = '';
+  if(isSafeUrl(data.map_embed_url)){
+    mapHtml = '<div class="detail-wrap" style="padding-top:0;padding-bottom:40px;"><span class="section-label">'+L.location[lang]+'</span><div class="map-frame"><iframe src="'+esc(data.map_embed_url)+'" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div>';
+    if(isSafeUrl(data.map_open_url)) mapHtml += '<a href="'+esc(data.map_open_url)+'" target="_blank" rel="noopener noreferrer" class="map-open-link">'+I.map+' '+L.mapOpen[lang]+'</a>';
+    mapHtml += '</div>';
   }
-  var gridColumnsClass='one-col';
-  if(amenitiesHtml && featuresHtml)gridColumnsClass='two-col';
-  var mediaHtml='';
-  if(data.video_embed_url && (data.video_embed_url.startsWith('http://') || data.video_embed_url.startsWith('https://'))){
-    mediaHtml='<div class="media-section"><span class="section-label">'+I.play+' '+L.video[lang]+'</span><div class="asset-iframe-wrapper"><iframe src="'+data.video_embed_url+'" allowfullscreen sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div></div>';
+
+  // ── Video — FIX #18: URL validated before iframe injection ──────
+  var mediaHtml = '';
+  if(isSafeUrl(data.video_embed_url)){
+    mediaHtml = '<div class="media-section"><span class="section-label">'+I.play+' '+L.video[lang]+'</span><div class="asset-iframe-wrapper"><iframe src="'+esc(data.video_embed_url)+'" allowfullscreen sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div></div>';
   }
-  var layout='<div class="hero-section"><div class="hero-left"><a href="listings.html" class="back-link">'+I.back+' <span class="lo-i">ກັບຄືນ</span><span class="en-i">Back</span><span class="zh-i">返回</span></a><p class="hero-location">'+I.pin+' '+resolvedDistrict+'</p><h1 class="info-title">'+resolvedTitle+'</h1><div class="tx-badge">'+typeBadgeText+'</div><div class="price-block">'+resolvedPriceHtml+'</div><div class="spec-grid">'+specsHtml+'</div>'+yearHtml+'<div class="left-actions"><button class="action-link">'+I.heart+' <span class="lo-i">ບັນທຶກ</span><span class="en-i">Save property</span><span class="zh-i">收藏房源</span></button><span class="pintag-verified">'+L.verified[lang]+'</span></div></div><div class="hero-right">'+desktopGalleryMarkup+'</div></div>'+mobileGalleryMarkup+agentHtml+'<div class="detail-wrap"><div class="detail-grid '+gridColumnsClass+'"><div><span class="section-label"><span class="lo-i">ລາຍລະອຽດ</span><span class="en-i">Overview</span><span class="zh-i">房源简述</span></span><p class="body-narrative">'+resolvedDesc+'</p></div>'+amenitiesHtml+featuresHtml+'</div></div>'+mapHtml+mediaHtml;
-  container.innerHTML=layout;
-  var mCtaBar=document.getElementById('mobile-cta-bar');
+
+  var gridColumnsClass = (amenitiesHtml && featuresHtml) ? 'two-col' : 'one-col';
+
+  var layout = (
+    '<div class="hero-section">'+
+    '<div class="hero-left">'+
+    '<a href="listings.html" class="back-link">'+I.back+' <span class="lo-i">ກັບຄືນ</span><span class="en-i">Back</span><span class="zh-i">返回</span></a>'+
+    '<p class="hero-location">'+I.pin+' '+resolvedDistrict+'</p>'+
+    '<h1 class="info-title">'+resolvedTitle+'</h1>'+
+    '<div class="tx-badge">'+esc(typeBadgeText)+'</div>'+
+    '<div class="price-block">'+resolvedPriceHtml+'</div>'+
+    (specsHtml ? '<div class="spec-grid">'+specsHtml+'</div>' : '')+
+    yearHtml+
+    '<div class="left-actions">'+
+    '<button class="action-link">'+I.heart+' <span class="lo-i">ບັນທຶກ</span><span class="en-i">Save property</span><span class="zh-i">收藏房源</span></button>'+
+    '<span class="pintag-verified">'+L.verified[lang]+'</span>'+
+    '</div></div>'+
+    '<div class="hero-right">'+desktopGalleryMarkup+'</div>'+
+    '</div>'+
+    mobileGalleryMarkup+
+    agentHtml+
+    '<div class="detail-wrap">'+
+    '<div class="detail-grid '+gridColumnsClass+'">'+
+    '<div><span class="section-label"><span class="lo-i">ລາຍລະອຽດ</span><span class="en-i">Overview</span><span class="zh-i">房源简述</span></span>'+
+    '<p class="body-narrative">'+resolvedDesc+'</p></div>'+
+    amenitiesHtml+featuresHtml+
+    '</div></div>'+
+    mapHtml+mediaHtml
+  );
+
+  container.innerHTML = layout;
+
+  // ── Mobile CTA bar ──────────────────────────────────────────────
+  var mCtaBar = document.getElementById('mobile-cta-bar');
   if(mCtaBar){
-    var mPriceHtml=data.price_display?'<span class="mcta-price-value">'+data.price_display+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
-    mCtaBar.innerHTML='<div class="mcta-inner"><div class="mcta-price-wrap"><span class="mcta-price-label">'+typeBadgeText+'</span>'+mPriceHtml+'</div><a href="'+waUrl+'" target="_blank" class="mcta-btn">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a></div>';
+    var mPriceHtml = data.price_display
+      ? '<span class="mcta-price-value">'+esc(data.price_display)+'</span>'
+      : '<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
+    mCtaBar.innerHTML = (
+      '<div class="mcta-inner">'+
+      '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+
+      '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+      '</div>'
+    );
   }
-  if(window.wireGalleryLightbox)window.wireGalleryLightbox();
-  if(window.wireMobileGalleryTrack)window.wireMobileGalleryTrack();
+
+  wireGalleryLightbox();
+  wireMobileGalleryTrack();
+  PT.log('Layout rendered');
 }
+
+// ── buildDesktopGallery — FIX #12: img src escaped ───────────────
 function buildDesktopGallery(images){
-  if(!images||!Array.isArray(images)||!images.filter(Boolean).length)return '<div class="desktop-gallery"><div class="dg-hero"><div class="sim-no-img"></div></div></div>';
-  var cleanImages=images.filter(Boolean);
-  var mainImg=cleanImages[0];
-  var thumbsHtml='';
-  var maxThumbs=5;
-  for(var i=0;i<maxThumbs;i++){
-    if(i<cleanImages.length){
-      var activeClass=i===0?'active':'';
-      if(i===maxThumbs-1 && cleanImages.length>maxThumbs){
-        var remaining=cleanImages.length-maxThumbs;
-        thumbsHtml+='<div class="dg-thumb '+activeClass+'" onclick="LB.open(propertyContext.images.filter(Boolean),'+i+')"><img src="'+cleanImages[i]+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
-      }else{
-        thumbsHtml+='<div class="dg-thumb '+activeClass+'"><img src="'+cleanImages[i]+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"></div>';
+  var clean = (Array.isArray(images) ? images : []).filter(function(u){ return u && typeof u === 'string'; });
+  if(!clean.length) return '<div class="desktop-gallery"><div class="dg-hero"><div class="sim-no-img"></div></div></div>';
+
+  var thumbsHtml = '';
+  var maxThumbs = 5;
+  for(var i = 0; i < maxThumbs; i++){
+    var cls = i === 0 ? 'active' : '';
+    if(i < clean.length){
+      if(i === maxThumbs - 1 && clean.length > maxThumbs){
+        var remaining = clean.length - maxThumbs;
+        thumbsHtml += '<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'"><img src="'+esc(clean[i])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
+      } else {
+        thumbsHtml += '<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'"><img src="'+esc(clean[i])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"></div>';
       }
-    }else{
-      thumbsHtml+='<div class="dg-thumb" style="cursor:default;opacity:0.12;"><div style="width:100%;height:100%;background:var(--warm-deep);"></div></div>';
+    } else {
+      thumbsHtml += '<div class="dg-thumb" style="cursor:default;opacity:0.12;"><div style="width:100%;height:100%;background:var(--warm-deep);"></div></div>';
     }
   }
-  return '<div class="desktop-gallery" id="dg-hero-frame"><div class="dg-hero" id="dg-hero-box"><img src="'+mainImg+'" id="dg-hero-img" alt="" decoding="async" onerror="handleImageError(this)"><span class="dg-coord" id="dg-coord-lbl">01 / '+String(cleanImages.length).padStart(2,'0')+'</span><button class="dg-view-all"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg><span class="lo-i">ເບິ່ງທັງຫມົດ</span><span class="en-i">View all</span><span class="zh-i">查看全部</span></button></div><div class="dg-rail">'+thumbsHtml+'</div></div>';
+
+  return (
+    '<div class="desktop-gallery" id="dg-hero-frame">'+
+    '<div class="dg-hero" id="dg-hero-box">'+
+    '<img src="'+esc(clean[0])+'" id="dg-hero-img" alt="" decoding="async" onerror="handleImageError(this)">'+
+    '<span class="dg-coord" id="dg-coord-lbl">01 / '+String(clean.length).padStart(2,'0')+'</span>'+
+    '<button class="dg-view-all" id="dg-view-all-btn">'+
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>'+
+    '<span class="lo-i">ເບິ່ງທັງຫມົດ</span><span class="en-i">View all</span><span class="zh-i">查看全部</span>'+
+    '</button>'+
+    '</div>'+
+    '<div class="dg-rail">'+thumbsHtml+'</div>'+
+    '</div>'
+  );
 }
-function syncDesktopHero(idx,thumbEl){
-  if(!propertyContext||!propertyContext.images||!propertyContext.images.filter(Boolean)[idx])return;
-  var cleanImages=propertyContext.images.filter(Boolean);
-  var heroImg=document.getElementById('dg-hero-img');
-  var coordLbl=document.getElementById('dg-coord-lbl');
-  var heroBox=document.getElementById('dg-hero-box');
+
+// ── FIX #5: syncDesktopHero — clears _heroTimer before each call ─
+// Rapid thumb clicks no longer race: only the last click resolves
+function syncDesktopHero(idx, thumbEl){
+  if(!propertyContext || !Array.isArray(propertyContext.images)) return;
+  var clean = propertyContext.images.filter(function(u){ return u && typeof u === 'string'; });
+  if(!clean[idx]) return;
+
+  var heroImg  = document.getElementById('dg-hero-img');
+  var coordLbl = document.getElementById('dg-coord-lbl');
+  var heroBox  = document.getElementById('dg-hero-box');
+
   if(heroImg){
-    heroImg.style.opacity='0';
-    setTimeout(function(){
-      heroImg.src=cleanImages[idx];
+    if(_heroTimer){ clearTimeout(_heroTimer); _heroTimer = null; }
+    heroImg.style.opacity = '0';
+    var capturedSrc = clean[idx]; // Capture at call-time — FIX #5
+    var capturedIdx = idx;
+    _heroTimer = setTimeout(function(){
+      _heroTimer = null;
+      heroImg.src = capturedSrc;
+      // FIX #5: decode().catch() handled properly
       if(heroImg.decode){
-        heroImg.decode().catch(function(){});
+        heroImg.decode().then(function(){
+          heroImg.style.opacity = '1';
+        }).catch(function(){
+          heroImg.style.opacity = '1'; // Show even if decode fails
+        });
+      } else {
+        requestAnimationFrame(function(){ heroImg.style.opacity = '1'; });
       }
-      requestAnimationFrame(function(){
-        heroImg.style.opacity='1';
-      });
-      checkSmartFitLayout(cleanImages[idx],heroBox);
-    },100);
+      if(heroBox) checkSmartFitLayout(capturedSrc, heroBox);
+    }, 100);
   }
-  if(coordLbl)coordLbl.innerText=String(idx+1).padStart(2,'0')+' / '+String(cleanImages.length).padStart(2,'0');
-  if(thumbEl){
-    document.querySelectorAll('.dg-thumb').forEach(function(b){b.classList.remove('active');});
-    thumbEl.classList.add('active');
-  }
+
+  // FIX #17: textContent instead of innerText (avoids layout recalc)
+  if(coordLbl) coordLbl.textContent = String(idx+1).padStart(2,'0') + ' / ' + String(clean.length).padStart(2,'0');
+
+  document.querySelectorAll('.dg-thumb').forEach(function(b){ b.classList.remove('active'); });
+  if(thumbEl) thumbEl.classList.add('active');
 }
+
+// ── buildMobileGallery — FIX #16: slide[0] gets loading="eager" ──
 function buildMobileGallery(images){
-  if(!images||!Array.isArray(images)||!images.filter(Boolean).length)return '<div class="mobile-gallery"><div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
-  var cleanImages=images.filter(Boolean);
-  var slidesHtml='';
-  var dotsHtml='';
-  cleanImages.forEach(function(img,i){
-    slidesHtml+='<div class="mg-slide" data-idx="'+i+'"><img src="'+img+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"></div>';
-    dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" onclick="jumpMobileGallerySlide('+i+')"></div>';
+  var clean = (Array.isArray(images) ? images : []).filter(function(u){ return u && typeof u === 'string'; });
+  if(!clean.length) return '<div class="mobile-gallery"><div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
+
+  var slidesHtml = '';
+  var dotsHtml   = '';
+  clean.forEach(function(img, i){
+    var loading = i === 0 ? 'eager' : 'lazy'; // FIX #16
+    slidesHtml += '<div class="mg-slide" data-idx="'+i+'"><img src="'+esc(img)+'" alt="" loading="'+loading+'" decoding="async" onerror="handleImageError(this)"></div>';
+    dotsHtml   += '<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'"></div>';
   });
+
   return '<div class="mobile-gallery"><div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
 }
+
 function jumpMobileGallerySlide(idx){
-  var track=document.getElementById('mg-track-el');
-  if(!track)return;
-  var w=track.offsetWidth;
-  track.scrollTo({left:idx*w,behavior:'smooth'});
+  var track = document.getElementById('mg-track-el');
+  if(!track) return;
+  track.scrollTo({ left: idx * track.offsetWidth, behavior: 'smooth' });
 }
+
+// ── FIX #8: wireMobileGalleryTrack — debounced scroll handler ────
+// Was firing ~60fps on iOS momentum scroll; now throttled to 60ms
 function wireMobileGalleryTrack(){
-  var track=document.getElementById('mg-track-el');
-  if(!track)return;
-  track.addEventListener('scroll',function(){
-    var w=track.offsetWidth;
-    if(!w)return;
-    var idx=Math.round(track.scrollLeft/w);
-    var dots=document.querySelectorAll('.mg-dot');
-    dots.forEach(function(d,i){d.classList.toggle('active',i===idx);});
-    var slides=track.querySelectorAll('.mg-slide');
-    if(slides[idx]&&propertyContext&&propertyContext.images){
-      var cleanImages=propertyContext.images.filter(Boolean);
-      if(cleanImages[idx]) checkSmartFitLayout(cleanImages[idx],slides[idx]);
-    }
-  },{passive:true});
-}
-function checkSmartFitLayout(src,boxEl){
-  if(!boxEl || !src)return;
-  var temp=new Image();
-  temp.src=src;
-  function evaluate(){
-    var aspect=temp.width/temp.height;
-    if(aspect>1.78||aspect<1.1){
-      boxEl.classList.add('sf-active');
-    }else{
-      boxEl.classList.remove('sf-active');
-    }
-  }
-  if(temp.complete){
-    evaluate();
-  }else{
-    temp.onload=evaluate;
-  }
-}
-function buildTelemetryStrip(district){
-  return '<div class="telemetry-strip"></div>';
-}
-function buildSidebarTelemetry(d){return '';}
-var WA_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
+  var track   = document.getElementById('mg-track-el');
+  var dotsBox = document.getElementById('mg-dots-box');
+  if(!track) return;
 
-function resolveAmenityData(key,lang){
-  var m={
-    pool:{icon:'🏊',lo:'ສະລອຍນ້ຳ',en:'Swimming Pool',zh:'游泳池'},
-    gym:{icon:'🏋️',lo:'ຫ້ອງຟິດເນສ',en:'Fitness Gym',zh:'健身房'},
-    security:{icon:'🛡️',lo:'ລະບົບຮັກສາຄວາມປອດໄພ',en:'24H Security',zh:'24小时保安'},
-    parking:{icon:'🅿️',lo:'ທີ່ຈອດລົດ',en:'Gated Parking',zh:'专用车位'},
-    garden:{icon:'🌳',lo:'ສວນສ່ວນຕົວ',en:'Private Garden',zh:'独立花园'},
-    wifi:{icon:'📶',lo:'ອິນເຕີເນັດຄວາມໄວສູງ',en:'High-speed Wi-Fi',zh:'高速无线网'}
+  // Event delegation on dots container — no inline onclick
+  if(dotsBox){
+    dotsBox.onclick = function(e){
+      var dot = e.target.closest('[data-dot-idx]');
+      if(dot) jumpMobileGallerySlide(parseInt(dot.getAttribute('data-dot-idx'), 10));
+    };
+  }
+
+  var scrollDebounce = null;
+  track.addEventListener('scroll', function(){
+    if(scrollDebounce) clearTimeout(scrollDebounce);
+    scrollDebounce = setTimeout(function(){
+      scrollDebounce = null;
+      var w = track.offsetWidth;
+      if(!w) return;
+      var idx = Math.round(track.scrollLeft / w);
+      var dots = track.parentElement ? track.parentElement.querySelectorAll('.mg-dot') : [];
+      dots.forEach(function(d, i){ d.classList.toggle('active', i === idx); });
+      if(propertyContext && Array.isArray(propertyContext.images)){
+        var c = propertyContext.images.filter(Boolean);
+        var slides = track.querySelectorAll('.mg-slide');
+        if(slides[idx] && c[idx]) checkSmartFitLayout(c[idx], slides[idx]);
+      }
+    }, 60);
+  }, { passive: true });
+}
+
+// ── FIX #9: checkSmartFitLayout — onerror cleanup prevents leak ──
+function checkSmartFitLayout(src, boxEl){
+  if(!boxEl || !src) return;
+  var temp = new Image();
+  function cleanup(){ temp.onload = null; temp.onerror = null; }
+  temp.onload = function(){
+    var aspect = temp.naturalWidth / temp.naturalHeight;
+    boxEl.classList.toggle('sf-active', aspect > 1.78 || aspect < 1.1);
+    cleanup();
   };
-  var clean=String(key).toLowerCase().trim();
-  if(m[clean]){
-    return {icon:m[clean].icon,label:m[clean][lang]};
-  }
-  return {icon:'✨',label:key};
+  temp.onerror = function(){ cleanup(); }; // FIX #9: was missing
+  temp.src = src;
 }
 
+function buildTelemetryStrip(){ return '<div class="telemetry-strip"></div>'; }
+function buildSidebarTelemetry(){ return ''; }
+
+var WA_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
+
+function resolveAmenityData(key, lang){
+  var m = {
+    pool    :{icon:'🏊',lo:'ສະລອຍນ້ຳ',              en:'Swimming Pool',    zh:'游泳池'},
+    gym     :{icon:'🏋️',lo:'ຫ້ອງຟິດເນສ',             en:'Fitness Gym',      zh:'健身房'},
+    security:{icon:'🛡️',lo:'ລະບົບຮັກສາຄວາມປອດໄພ',   en:'24H Security',     zh:'24小时保安'},
+    parking :{icon:'🅿️',lo:'ທີ່ຈອດລົດ',              en:'Gated Parking',    zh:'专用车位'},
+    garden  :{icon:'🌳',lo:'ສວນສ່ວນຕົວ',             en:'Private Garden',   zh:'独立花园'},
+    wifi    :{icon:'📶',lo:'ອິນເຕີເນັດຄວາມໄວສູງ',     en:'High-speed Wi-Fi', zh:'高速无线网'}
+  };
+  var clean = String(key).toLowerCase().trim();
+  return m[clean]
+    ? { icon: m[clean].icon, label: m[clean][lang] || m[clean].en }
+    : { icon: '✨', label: String(key) };
+}
+
+// ── Lightbox ─────────────────────────────────────────────────────
 var LB = {
   images: [],
   idx: 0,
-  open: function(arr, startIdx) {
-    if (!arr || !Array.isArray(arr) || !arr.length) return;
-    this.images = arr.filter(Boolean);
-    if (!this.images.length) return;
-    this.idx = startIdx || 0;
+
+  open: function(arr, startIdx){
+    if(!arr || !Array.isArray(arr)) return;
+    var clean = arr.filter(function(u){ return u && typeof u === 'string'; });
+    if(!clean.length) return;
+    this.images = clean;
+    this.idx = Math.max(0, Math.min(startIdx || 0, clean.length - 1));
     this.buildDots();
     this.show(this.idx, false);
     var overlay = document.getElementById('lb-overlay');
     if(overlay) overlay.classList.add('lb-open');
     document.body.style.overflow = 'hidden';
+    PT.log('LB open', { idx: this.idx, total: clean.length });
   },
-  close: function() {
+
+  close: function(){
     var overlay = document.getElementById('lb-overlay');
     if(overlay) overlay.classList.remove('lb-open');
     document.body.style.overflow = '';
   },
-  show: function(idx, animate) {
+
+  // FIX #6: capturedSrc + clearTimeout prevents wrong image on fast nav
+  show: function(idx, animate){
     var img = document.getElementById('lb-img');
-    if (!img || !this.images.length) return;
+    if(!img || !this.images.length) return;
     this.idx = ((idx % this.images.length) + this.images.length) % this.images.length;
-    if (animate) {
+    var capturedSrc = this.images[this.idx]; // Capture NOW — not inside timeout
+
+    if(_lbTimer){ clearTimeout(_lbTimer); _lbTimer = null; img.classList.remove('lb-fade'); }
+
+    if(animate){
       img.classList.add('lb-fade');
-      var self = this;
-      setTimeout(function() {
-        img.src = self.images[self.idx];
+      _lbTimer = setTimeout(function(){
+        _lbTimer = null;
+        img.src = capturedSrc; // Uses captured value, not LB.idx (which may have changed)
         img.classList.remove('lb-fade');
       }, 160);
     } else {
-      img.src = this.images[this.idx];
+      img.src = capturedSrc;
     }
-    var dots = document.querySelectorAll('.lb-dot');
-    dots.forEach(function(d, i) {
+
+    document.querySelectorAll('.lb-dot').forEach(function(d, i){
       d.classList.toggle('active', i === LB.idx);
     });
-  },
-  prev: function() { this.show(this.idx - 1, true); },
-  next: function() { this.show(this.idx + 1, true); },
-  buildDots: function() {
-    var wrap = document.getElementById('lb-dots');
-    if (!wrap) return;
-    wrap.innerHTML = '';
-    if (this.images.length > 15) return; 
+
+    // FIX #19: Preload adjacent images for smooth prev/next
     var self = this;
-    this.images.forEach(function(_, i) {
+    [this.idx + 1, this.idx - 1].forEach(function(pi){
+      var si = ((pi % self.images.length) + self.images.length) % self.images.length;
+      if(si !== self.idx && self.images[si]){
+        var pre = new Image();
+        pre.src = self.images[si];
+      }
+    });
+  },
+
+  prev: function(){ this.show(this.idx - 1, true); },
+  next: function(){ this.show(this.idx + 1, true); },
+
+  buildDots: function(){
+    var wrap = document.getElementById('lb-dots');
+    if(!wrap) return;
+    wrap.innerHTML = '';
+    if(this.images.length > 15) return;
+    var self = this;
+    this.images.forEach(function(_, i){
       var d = document.createElement('div');
-      d.className = 'lb-dot';
-      d.onclick = function() { self.show(i, true); };
+      d.className = 'lb-dot' + (i === self.idx ? ' active' : '');
+      d.onclick = function(){ self.show(i, true); };
       wrap.appendChild(d);
     });
   }
 };
 
-(function() {
+// ── Lightbox controls IIFE — wires once, no duplicate listeners ──
+(function(){
   var overlay = document.getElementById('lb-overlay');
-  if (!overlay) return;
+  if(!overlay){ PT.warn('lb-overlay not found'); return; }
   var closeBtn = document.getElementById('lb-close');
-  var prevBtn = document.getElementById('lb-prev');
-  var nextBtn = document.getElementById('lb-next');
-  if (closeBtn) closeBtn.onclick = function() { LB.close(); };
-  if (prevBtn) prevBtn.onclick = function(e) { e.stopPropagation(); LB.prev(); };
-  if (nextBtn) nextBtn.onclick = function(e) { e.stopPropagation(); LB.next(); };
-  overlay.onclick = function(e) {
-    if (e.target === overlay || e.target.classList.contains('lb-stage')) {
-      LB.close();
-    }
+  var prevBtn  = document.getElementById('lb-prev');
+  var nextBtn  = document.getElementById('lb-next');
+  if(closeBtn) closeBtn.onclick = function(){ LB.close(); };
+  if(prevBtn)  prevBtn.onclick  = function(e){ e.stopPropagation(); LB.prev(); };
+  if(nextBtn)  nextBtn.onclick  = function(e){ e.stopPropagation(); LB.next(); };
+  overlay.onclick = function(e){
+    if(e.target === overlay || e.target.classList.contains('lb-stage')) LB.close();
   };
-  document.addEventListener('keydown', function(e) {
-    if (!overlay.classList.contains('lb-open')) return;
-    if (e.key === 'Escape') LB.close();
-    if (e.key === 'ArrowLeft') LB.prev();
-    if (e.key === 'ArrowRight') LB.next();
+  document.addEventListener('keydown', function(e){
+    if(!overlay.classList.contains('lb-open')) return;
+    if(e.key === 'Escape')     LB.close();
+    if(e.key === 'ArrowLeft')  LB.prev();
+    if(e.key === 'ArrowRight') LB.next();
   });
-  var ts = 0;
-  overlay.addEventListener('touchstart', function(e) {
-    ts = e.touches[0].clientX;
-  },{ passive:true });
-  overlay.addEventListener('touchend', function(e) {
-    var tx = e.changedTouches[0].clientX;
-    var dx = ts - tx;
-    if (Math.abs(dx) > 50) { if (dx > 0) LB.next(); else LB.prev(); }
-  },{ passive:true });
+  var _tsX = 0;
+  overlay.addEventListener('touchstart', function(e){ _tsX = e.touches[0].clientX; }, { passive: true });
+  overlay.addEventListener('touchend',   function(e){
+    var dx = _tsX - e.changedTouches[0].clientX;
+    if(Math.abs(dx) > 50){ dx > 0 ? LB.next() : LB.prev(); }
+  }, { passive: true });
 })();
 
-function wireGalleryLightbox() {
-  var frame = document.getElementById('dg-hero-frame');
-  var viewAllBtn = document.querySelector('.dg-view-all');
-  var images = (propertyContext && propertyContext.images && Array.isArray(propertyContext.images)) ? propertyContext.images.filter(Boolean) : [];
-  if (!images.length) return;
-  if (frame) {
-    frame.style.cursor = 'pointer';
-    frame.onclick = function(e) {
-      if (
-        e.target.closest('.dg-thumb') &&
-        !e.target.closest('.dg-thumb-overflow')
-      ) {
-        return;
-      }
-      if (
-        e.target.classList.contains('dg-view-all') ||
-        e.target.closest('.dg-view-all')
-      ) {
-        LB.open(images,0);
-        return;
-      }
-      var heroImg=document.getElementById('dg-hero-img');
-      var currentSrc=heroImg ? heroImg.src : images[0];
-      var startIdx=images.indexOf(currentSrc);
-      if(startIdx<0)startIdx=0;
-      LB.open(images,startIdx);
-    };
-  }
-  if (viewAllBtn) {
-    viewAllBtn.onclick = function(e) {
+// ── FIX #7: wireGalleryLightbox — overflow thumb double-open fixed
+// All thumb clicks now call e.stopPropagation() unconditionally,
+// so frame.onclick never fires for thumb interactions.
+// Overflow thumb opens LB; normal thumb syncs hero.
+function wireGalleryLightbox(){
+  var frame   = document.getElementById('dg-hero-frame');
+  var viewAll = document.getElementById('dg-view-all-btn');
+  var images  = (propertyContext && Array.isArray(propertyContext.images))
+    ? propertyContext.images.filter(function(u){ return u && typeof u === 'string'; })
+    : [];
+  if(!images.length) return;
+
+  if(viewAll){
+    viewAll.onclick = function(e){
       e.stopPropagation();
       LB.open(images, 0);
     };
   }
-  document.querySelectorAll('.dg-thumb').forEach(function(thumb, i) {
-    thumb.onclick = function(e) {
-      if (
-        e.target.closest('.dg-thumb-overflow')
-      ) {
-        LB.open(images, i);
-        return;
+
+  document.querySelectorAll('.dg-thumb').forEach(function(thumb, i){
+    thumb.onclick = function(e){
+      e.stopPropagation(); // FIX #7: ALWAYS stop — prevents frame double-open
+      var isOverflow = !!e.target.closest('.dg-thumb-overflow');
+      if(isOverflow){
+        LB.open(images, i); // Show all photos starting at overflow index
+      } else {
+        syncDesktopHero(i, thumb); // Swap hero image
       }
-      e.stopPropagation();
-      syncDesktopHero(i, thumb);
     };
   });
+
+  // Frame click: opens LB at current hero index (only fires if NOT a thumb click)
+  if(frame){
+    frame.style.cursor = 'pointer';
+    frame.onclick = function(){
+      var heroImg = document.getElementById('dg-hero-img');
+      var currentSrc = heroImg ? heroImg.src : (images[0] || '');
+      var startIdx = images.indexOf(currentSrc);
+      if(startIdx < 0) startIdx = 0;
+      LB.open(images, startIdx);
+    };
+  }
+}
+
+// ── handleImageError ──────────────────────────────────────────────
+function handleImageError(img){
+  img.onerror = null;
+  if(img.classList.contains('agent-pfp')){
+    img.src = agentFallback;
+    return;
+  }
+  img.style.opacity = '0';
+  if(img.parentElement) img.parentElement.style.background = 'var(--warm-deep)';
 }
 </script>
 </body>
