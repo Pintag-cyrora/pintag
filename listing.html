@@ -96,7 +96,15 @@ nav{
 .back-link{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:400;color:var(--ink-muted);text-decoration:none;margin-bottom:22px;transition:color 0.15s;}
 .back-link:hover{color:var(--teal);}
 .hero-location{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--teal);margin-bottom:12px;}
-.info-title{font-size:28px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1.22;margin-bottom:14px;overflow-wrap:anywhere;}
+.info-title{
+  font-size:clamp(32px,2.6vw,48px);
+  font-weight:600;
+  color:var(--ink);
+  letter-spacing:-0.03em;
+  line-height:1.12;
+  margin-bottom:18px;
+  overflow-wrap:anywhere;
+}
 .tx-badge{display:inline-block;padding:3px 11px;border:1px solid rgba(45,140,140,0.28);border-radius:20px;font-size:10.5px;font-weight:400;color:var(--teal);background:rgba(45,140,140,0.04);margin-bottom:20px;width:fit-content;letter-spacing:0.02em;}
 .price-block{margin-bottom:0;}
 .price-value{font-size:26px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1.1;}
@@ -1043,13 +1051,7 @@ function buildMockupLayout(){
   }
 
   // ── Map — FIX #18: URL validated before iframe injection ────────
-  var mapHtml = '';
-  if(isSafeUrl(data.map_embed_url)){
-    mapHtml = '<div class="detail-wrap" style="padding-top:0;padding-bottom:40px;"><span class="section-label">'+L.location[lang]+'</span><div class="map-frame"><iframe src="'+esc(data.map_embed_url)+'" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe></div>';
-    if(isSafeUrl(data.map_open_url)) mapHtml += '<a href="'+esc(data.map_open_url)+'" target="_blank" rel="noopener noreferrer" class="map-open-link">'+I.map+' '+L.mapOpen[lang]+'</a>';
-    mapHtml += '</div>';
-  }
-
+  
   // ── Video — FIX #18: URL validated before iframe injection ──────
   var mediaHtml = '';
   if(isSafeUrl(data.video_embed_url)){
