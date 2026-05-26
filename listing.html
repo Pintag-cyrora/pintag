@@ -14,7 +14,18 @@
 <meta name="theme-color" content="#F3EFE8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin>
+<script>
+// Suppress cross-origin "Script error." noise from Google Fonts / external iframes.
+// These are sanitised by the browser for privacy and are not actionable.
+window.addEventListener('error', function(e){
+  if(e.message === 'Script error.' || e.message === 'Script error'){
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return true;
+  }
+}, true);
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
@@ -245,7 +256,12 @@ nav{
 <body>
 <nav>
   <a href="index.html" class="nav-logo">
-    <svg width="22" height="18" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision"><circle cx="11" cy="10" r="8.5" fill="#38A8A8"/><circle cx="27" cy="14" r="3.5" fill="#1C2B32"/></svg>
+    <svg width="26" height="24" viewBox="0 0 26 24" fill="none" shape-rendering="geometricPrecision">
+      <!-- Large teal dot — the location pin / brand mark, sits above the P -->
+      <circle cx="8" cy="8" r="7.5" fill="#38A8A8"/>
+      <!-- Small ink dot — the i-dot, positioned lower-right -->
+      <circle cx="20" cy="15" r="3" fill="#1C2B32"/>
+    </svg>
     <span class="nav-wordmark">Pintag</span>
   </a>
   <div class="nav-links">
@@ -353,15 +369,28 @@ function isSafeUrl(url){
   return t.indexOf('https://') === 0 || t.indexOf('http://') === 0;
 }
 
-// ── FIX #10: URLSearchParams-first param reader with regex fallback
+// ── FIX #10 + HASH ROUTING: reads ?slug= AND #slug (old Cyrora format) ──
+// Cyrora used hash routing: listing.html#slug-name
+// New format uses query params: listing.html?slug=slug-name
+// Handles both so any existing links still work.
 function getParam(name){
+  // 1. Query string: listing.html?slug=value
   try{
-    return new URLSearchParams(window.location.search).get(name);
+    var qVal = new URLSearchParams(window.location.search).get(name);
+    if(qVal && qVal.trim()) return qVal.trim();
   } catch(_){
-    // Fallback: old mobile Safari without URLSearchParams
     var m = RegExp('[?&]'+name+'=([^&]*)').exec(window.location.search);
-    return m ? decodeURIComponent(m[1].replace(/\+/g,' ')) : null;
+    if(m && m[1]){
+      var q2 = decodeURIComponent(m[1].replace(/\+/g,' ')).trim();
+      if(q2) return q2;
+    }
   }
+  // 2. Hash routing fallback: listing.html#slug-value (old Cyrora links)
+  if(name === 'slug'){
+    var hash = (window.location.hash || '').replace(/^#/,'').trim();
+    if(hash) return decodeURIComponent(hash);
+  }
+  return null;
 }
 
 // ── FIX #1: fetchWithTimeout — retry-aware, mobile-safe ───────────
@@ -386,8 +415,8 @@ async function fetchWithTimeout(resource, options, attempt){
   try {
     var res = await Promise.race([
       fetch(resource, Object.assign({}, options, {
-        signal: controller.signal,
-        cache: 'no-store'  // Prevents stale CDN / service-worker cached 404s
+        signal: controller.signal
+        // No Cache-Control header — would trigger CORS preflight on Supabase
       })),
       timeoutPromise
     ]);
@@ -411,11 +440,13 @@ async function fetchWithTimeout(resource, options, attempt){
 
 // ── Supabase JSON helper — consolidates headers + parse guard ─────
 async function sbFetch(path){
+  // NOTE: Do NOT add Cache-Control or Pragma headers here.
+  // Non-safelisted headers trigger a CORS preflight OPTIONS request
+  // that Supabase's CDN drops, causing every fetch to fail with TypeError.
   var res = await fetchWithTimeout(BASE_DB + path, {
     headers: {
       'apikey': SEC_KEY,
-      'Authorization': 'Bearer ' + SEC_KEY,
-      'Accept': 'application/json'
+      'Authorization': 'Bearer ' + SEC_KEY
     }
   });
   if(!res.ok){
@@ -456,8 +487,8 @@ function setLang(lang, btn){
 window.addEventListener('DOMContentLoaded', function(){
   var slug = getParam('slug');
   if(!slug){
-    PT.err('No slug in URL');
-    showErrorState('Property context missing. Please return to the listings page.');
+    PT.err('No slug in URL — expected ?slug=property-name or #property-name');
+    showErrorState('No property selected. Please navigate from the listings page, or check that the link includes a valid property reference.');
     return;
   }
   PT.log('Loading property', { slug: slug });
