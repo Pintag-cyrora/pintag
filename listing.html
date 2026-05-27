@@ -222,25 +222,81 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .lb-dots{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;}
 .lb-dot{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,0.28);transition:background 0.2s,transform 0.2s;cursor:pointer;}
 .lb-dot.active{background:rgba(255,255,255,0.75);transform:scale(1.3);}
-/* Responsive */
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE — intentional responsive overrides, max-width:768px
+   Desktop layout and spacing completely unchanged above this.
+   ═══════════════════════════════════════════════════════════════ */
 @media(max-width:960px){
-  .hero-section{grid-template-columns:1fr;min-height:auto;}
-  .hero-left{padding:22px 18px 20px;border-right:none;border-bottom:1px solid var(--border-mid);}
-  .hero-right,.desktop-gallery{display:none;}
-  .mobile-gallery{display:block;}
-  .mobile-cta-bar{display:block;}
-  .agent-band{grid-template-columns:1fr;gap:16px;padding:20px 18px;}
-  .agent-stats-row{justify-content:flex-start;}
-  .agent-ctas{flex-direction:row;}
-  .detail-wrap{padding:28px 18px 0;}
-  .detail-grid{grid-template-columns:1fr;gap:28px;padding-bottom:28px;}
-  .similar-section{padding:28px 18px 48px;}
-  .similar-grid{grid-template-columns:1fr;gap:16px;}
-  .media-section{padding:24px 18px;}
-  .info-title{font-size:26px;}
+  /* Nav — hide desktop-only elements */
   .nav-links{display:none;}
   .nav-cta{display:none;}
   .back-link{display:none;}
+  /* Hero — collapse to single column, show mobile gallery */
+  .hero-section{grid-template-columns:1fr;min-height:auto;}
+  .hero-left{padding:20px 16px 18px;border-right:none;border-bottom:1px solid var(--border-mid);}
+  .hero-right,.desktop-gallery{display:none;}
+  .mobile-gallery{display:block;}
+  .mobile-cta-bar{display:block;}
+  /* Agent band — single column, tighter */
+  .agent-band{grid-template-columns:1fr;gap:14px;padding:18px 16px;}
+  .agent-stats-row{justify-content:flex-start;gap:20px;flex-wrap:wrap;}
+  .agent-ctas{flex-direction:row;gap:8px;}
+  .agent-ctas .btn-primary{flex:1;padding:10px 14px;font-size:13px;}
+  /* Detail — single column, tighter section spacing */
+  .detail-wrap{padding:22px 16px 0;}
+  .detail-grid{grid-template-columns:1fr;gap:0;padding-bottom:0;}
+  /* Each column gets its own border + padding instead of grid gap */
+  .detail-grid > div{padding:20px 0;border-bottom:1px solid var(--border);}
+  .detail-grid > div:last-child{border-bottom:none;padding-bottom:18px;}
+  /* Collapse empty detail columns (e.g. when no features stored) — keeps mobile
+     rhythm clean. Desktop unaffected: empty placeholder divs still occupy their
+     grid track to preserve the 1.8fr / 1fr / 0.9fr ratio. */
+  .detail-grid > div:empty{display:none;}
+  /* Typography hierarchy — slightly tighter on mobile */
+  .info-title{font-size:24px;line-height:1.12;margin-bottom:8px;}
+  .property-highlight{font-size:12.5px;margin-bottom:16px;}
+  .price-value{font-size:24px;}
+  .section-label{margin-bottom:12px;}
+  .body-narrative{font-size:13.5px;line-height:1.85;}
+  /* Spec grid — tighter vertical rhythm */
+  .spec-grid{gap:14px 8px;margin:18px 0 0;}
+  /* Year row — tighter */
+  .year-row{margin-top:16px;padding-top:16px;}
+  /* Highlight pills — slightly tighter top margin */
+  .highlight-pills{margin:16px 0 0;}
+  .sidebar-insight{margin-top:12px;font-size:12px;}
+  /* Left actions — less vertical weight */
+  .left-actions{padding-top:16px;gap:10px;}
+  /* Amenity row — tighter wrap */
+  .amenity-row{gap:12px 14px;margin-top:18px;padding-top:14px;}
+  /* Feature items — slightly tighter */
+  .feature-item{padding:9px 0;font-size:12.5px;}
+  /* Map — significantly smaller, not dominant */
+  .map-frame{height:240px;border-radius:10px;}
+  /* Nearby — tighter list spacing */
+  .nearby-list{gap:6px;margin-top:14px;padding-top:14px;}
+  .nearby-item{font-size:12px;}
+  .nearby-icon{width:28px;height:28px;font-size:12px;}
+  /* Similar section — single column, tight */
+  .similar-section{padding:22px 16px 72px;}
+  .similar-header{margin-bottom:16px;}
+  .similar-title{font-size:16px;}
+  .similar-grid{grid-template-columns:1fr;gap:14px;}
+  /* Similar cards — horizontal layout on mobile for better scanning */
+  .sim-card{display:grid;grid-template-columns:130px 1fr;border-radius:12px;}
+  .sim-card-img{aspect-ratio:auto;height:100%;min-height:118px;border-radius:0;}
+  .sim-card-img img{height:100%;}
+  .sim-heart{width:26px;height:26px;top:6px;right:6px;}
+  .sim-body{padding:12px 13px 14px;}
+  .sim-title{font-size:13px;margin-bottom:3px;}
+  .sim-loc{margin-bottom:5px;}
+  .sim-specs{margin-bottom:6px;}
+  .sim-price{font-size:15px;}
+  /* Media section */
+  .media-section{padding:20px 16px;}
+  /* Mobile CTA bar — ensure full-width buttons, safe area */
+  .mcta-price-value{font-size:18px;}
+  .mcta-btn{padding:9px 16px;font-size:13px;}
 }
 @media(min-width:961px) and (max-width:1100px){
   .hero-section{grid-template-columns:340px 1fr;}
