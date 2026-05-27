@@ -659,15 +659,17 @@ async function saveProperty(){
 
       });
 
-  if(error){
+if(error){
 
-    console.error(error);
+  console.error(error);
 
-    statusText.innerText =
-      'ບັນທຶກບໍ່ສຳເລັດ';
+  alert(JSON.stringify(error));
 
-    return;
-  }
+  statusText.innerText =
+    error.message;
+
+  return;
+}
 
   statusText.innerText =
     'ບັນທຶກສຳເລັດ';
