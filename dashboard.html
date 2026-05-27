@@ -1,15 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Pintag Agent Dashboard</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <style>
+
 *{
   margin:0;
   padding:0;
@@ -97,8 +101,15 @@ body{
   color:#fff;
 }
 
-.logout{
+.logout-btn{
   margin-top:40px;
+  border:none;
+  background:none;
+  cursor:pointer;
+  color:#A24B4B;
+  font-size:14px;
+  font-weight:600;
+  font-family:"DM Sans",sans-serif;
 }
 
 /* MAIN */
@@ -126,12 +137,6 @@ body{
   font-size:14px;
 }
 
-.top-actions{
-  display:flex;
-  align-items:center;
-  gap:12px;
-}
-
 .btn{
   border:none;
   cursor:pointer;
@@ -149,11 +154,6 @@ body{
 
 .btn-primary:hover{
   background:var(--teal-soft);
-}
-
-.btn-secondary{
-  background:#fff;
-  border:1px solid var(--line);
 }
 
 /* STATS */
@@ -281,6 +281,11 @@ body{
   color:#A24B4B;
 }
 
+.empty{
+  color:var(--muted);
+  font-size:14px;
+}
+
 /* MOBILE */
 
 @media(max-width:960px){
@@ -343,13 +348,12 @@ body{
   }
 
 }
+
 </style>
 </head>
 <body>
 
 <div class="dashboard">
-
-  <!-- SIDEBAR -->
 
   <aside class="sidebar">
 
@@ -360,143 +364,252 @@ body{
 
     <nav class="nav">
       <a href="#" class="active">Dashboard</a>
-      <a href="#">My Listings</a>
-      <a href="#">Add Property</a>
-      <a href="#">Analytics</a>
-      <a href="#">Messages</a>
-      <a href="#">Profile</a>
     </nav>
 
-    <div class="logout">
-      <a href="#" class="nav-link">Logout</a>
-    </div>
+    <button class="logout-btn" onclick="logout()">
+      Logout
+    </button>
 
   </aside>
-
-  <!-- MAIN -->
 
   <main class="main">
 
     <div class="topbar">
 
       <div class="welcome">
-        <h1>Welcome back</h1>
+        <h1 id="welcome-name">Welcome back</h1>
         <p>Manage your listings and inquiries</p>
       </div>
 
-      <div class="top-actions">
-        <button class="btn btn-secondary">Analytics</button>
-        <button class="btn btn-primary">+ Add Property</button>
-      </div>
+      <button class="btn btn-primary">
+        + Add Property
+      </button>
 
     </div>
-
-    <!-- STATS -->
 
     <div class="stats">
 
       <div class="stat-card">
         <div class="stat-label">Active Listings</div>
-        <div class="stat-value">12</div>
+        <div class="stat-value" id="listing-count">0</div>
       </div>
 
       <div class="stat-card">
-        <div class="stat-label">Monthly Views</div>
-        <div class="stat-value">8.4K</div>
+        <div class="stat-label">Published</div>
+        <div class="stat-value" id="published-count">0</div>
       </div>
 
       <div class="stat-card">
-        <div class="stat-label">Inquiries</div>
-        <div class="stat-value">41</div>
+        <div class="stat-label">For Sale</div>
+        <div class="stat-value" id="sale-count">0</div>
       </div>
 
       <div class="stat-card">
-        <div class="stat-label">Saved Properties</div>
-        <div class="stat-value">93</div>
+        <div class="stat-label">For Rent</div>
+        <div class="stat-value" id="rent-count">0</div>
       </div>
 
     </div>
-
-    <!-- LISTINGS -->
 
     <section class="section">
 
       <div class="section-head">
         <h2>My Listings</h2>
-        <button class="btn btn-secondary">View All</button>
       </div>
 
-      <div class="listings">
-
-        <!-- CARD -->
-
-        <div class="card">
-
-          <div class="card-img">
-            <img src="https://images.unsplash.com/photo-1600585154526-990dced4db0d?q=80&w=1200&auto=format&fit=crop" alt="">
-          </div>
-
-          <div class="card-body">
-
-            <div class="card-location">
-              Sisattanak, Vientiane
-            </div>
-
-            <div class="card-title">
-              Luxury Modern Villa With Private Pool
-            </div>
-
-            <div class="card-price">
-              $320,000
-            </div>
-
-            <div class="card-actions">
-              <button class="card-btn edit-btn">Edit</button>
-              <button class="card-btn delete-btn">Delete</button>
-            </div>
-
-          </div>
-
-        </div>
-
-        <!-- CARD -->
-
-        <div class="card">
-
-          <div class="card-img">
-            <img src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?q=80&w=1200&auto=format&fit=crop" alt="">
-          </div>
-
-          <div class="card-body">
-
-            <div class="card-location">
-              Thongkang, Vientiane
-            </div>
-
-            <div class="card-title">
-              Elegant Family Home Near International School
-            </div>
-
-            <div class="card-price">
-              $1,800/mo
-            </div>
-
-            <div class="card-actions">
-              <button class="card-btn edit-btn">Edit</button>
-              <button class="card-btn delete-btn">Delete</button>
-            </div>
-
-          </div>
-
-        </div>
-
-      </div>
+      <div class="listings" id="listings"></div>
 
     </section>
 
   </main>
 
 </div>
+
+<script>
+
+const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+
+const supabaseClient = supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
+
+async function initDashboard(){
+
+  const {
+    data:{ user }
+  } = await supabaseClient.auth.getUser();
+
+  if(!user){
+    window.location.href = 'agent-login.html';
+    return;
+  }
+
+  const { data: agent } = await supabaseClient
+    .from('agents')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+
+  if(agent){
+    document.getElementById('welcome-name').innerText =
+      `Welcome back, ${agent.name_en || 'Agent'}`;
+  }
+
+  const { data: properties, error } = await supabaseClient
+    .from('properties')
+    .select('*')
+    .eq('agent_id', user.id)
+    .order('created_at', { ascending:false });
+
+  if(error){
+    console.error(error);
+    return;
+  }
+
+  renderStats(properties);
+  renderListings(properties);
+
+}
+
+function renderStats(properties){
+
+  const total = properties.length;
+
+  const published = properties.filter(p =>
+    p.status === 'active'
+  ).length;
+
+  const sale = properties.filter(p =>
+    p.transaction_type === 'for_sale'
+  ).length;
+
+  const rent = properties.filter(p =>
+    p.transaction_type === 'for_rent'
+  ).length;
+
+  document.getElementById('listing-count').innerText = total;
+  document.getElementById('published-count').innerText = published;
+  document.getElementById('sale-count').innerText = sale;
+  document.getElementById('rent-count').innerText = rent;
+
+}
+
+function renderListings(properties){
+
+  const container = document.getElementById('listings');
+
+  if(!properties.length){
+
+    container.innerHTML = `
+      <div class="empty">
+        No listings yet.
+      </div>
+    `;
+
+    return;
+  }
+
+  container.innerHTML = properties.map(property => {
+
+    const image =
+      property.images &&
+      property.images.length
+      ? property.images[0]
+      : 'https://placehold.co/1200x800';
+
+    return `
+
+      <div class="card">
+
+        <div class="card-img">
+          <img src="${image}">
+        </div>
+
+        <div class="card-body">
+
+          <div class="card-location">
+            ${property.district_en || ''}
+          </div>
+
+          <div class="card-title">
+            ${property.title_en || property.title_lo || 'Untitled'}
+          </div>
+
+          <div class="card-price">
+            ${property.price_display || ''}
+          </div>
+
+          <div class="card-actions">
+
+            <button
+              class="card-btn edit-btn"
+              onclick="editListing('${property.slug}')"
+            >
+              Edit
+            </button>
+
+            <button
+              class="card-btn delete-btn"
+              onclick="deleteListing('${property.id}')"
+            >
+              Delete
+            </button>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    `;
+
+  }).join('');
+
+}
+
+function editListing(slug){
+
+  window.location.href =
+    `edit-listing.html?slug=${slug}`;
+
+}
+
+async function deleteListing(id){
+
+  const confirmed =
+    confirm('Delete this listing?');
+
+  if(!confirmed) return;
+
+  const { error } = await supabaseClient
+    .from('properties')
+    .delete()
+    .eq('id', id);
+
+  if(error){
+    alert('Could not delete listing');
+    return;
+  }
+
+  location.reload();
+
+}
+
+async function logout(){
+
+  await supabaseClient.auth.signOut();
+
+  window.location.href =
+    'agent-login.html';
+
+}
+
+initDashboard();
+
+</script>
 
 </body>
 </html>
