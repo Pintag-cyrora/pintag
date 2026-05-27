@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pintag Agent Login</title>
+
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+}
+
+body{
+  font-family:"DM Sans",sans-serif;
+  background:#F3EFE8;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+.login-card{
+  width:100%;
+  max-width:420px;
+  background:white;
+  border-radius:20px;
+  padding:32px 24px;
+  border:1px solid rgba(0,0,0,0.06);
+  box-shadow:0 10px 40px rgba(0,0,0,0.04);
+}
+
+.logo{
+  text-align:center;
+  margin-bottom:28px;
+}
+
+.logo h1{
+  font-size:28px;
+  font-weight:700;
+  color:#1A2428;
+  letter-spacing:-0.03em;
+}
+
+.logo p{
+  margin-top:6px;
+  color:#7A9098;
+  font-size:14px;
+}
+
+.form-group{
+  margin-bottom:16px;
+}
+
+label{
+  display:block;
+  margin-bottom:7px;
+  font-size:13px;
+  font-weight:600;
+  color:#1A2428;
+}
+
+input{
+  width:100%;
+  height:48px;
+  border:1px solid rgba(0,0,0,0.1);
+  border-radius:12px;
+  padding:0 14px;
+  font-size:14px;
+  font-family:"DM Sans",sans-serif;
+  outline:none;
+}
+
+input:focus{
+  border-color:#2D8C8C;
+}
+
+button{
+  width:100%;
+  height:50px;
+  border:none;
+  border-radius:12px;
+  background:#2D8C8C;
+  color:white;
+  font-size:14px;
+  font-weight:600;
+  font-family:"DM Sans",sans-serif;
+  cursor:pointer;
+  margin-top:8px;
+}
+
+button:hover{
+  background:#236B6B;
+}
+
+.switch{
+  text-align:center;
+  margin-top:18px;
+  font-size:13px;
+  color:#7A9098;
+}
+
+.switch span{
+  color:#2D8C8C;
+  cursor:pointer;
+  font-weight:600;
+}
+
+.message{
+  margin-top:16px;
+  font-size:13px;
+  text-align:center;
+}
+
+.success{
+  color:#236B6B;
+}
+
+.error{
+  color:#D94C4C;
+}
+</style>
+</head>
+<body>
+
+<div class="login-card">
+
+  <div class="logo">
+    <h1>Pintag</h1>
+    <p>Agent Portal</p>
+  </div>
+
+  <div class="form-group">
+    <label>Email</label>
+    <input type="email" id="email" placeholder="agent@email.com">
+  </div>
+
+  <div class="form-group">
+    <label>Password</label>
+    <input type="password" id="password" placeholder="••••••••">
+  </div>
+
+  <button id="auth-btn">Login</button>
+
+  <div class="switch">
+    <span id="toggle-mode">Create account instead</span>
+  </div>
+
+  <div id="message" class="message"></div>
+
+</div>
+
+<script>
+const SUPABASE_URL = 'PASTE_YOUR_URL';
+const SUPABASE_KEY = 'PASTE_YOUR_ANON_KEY';
+
+const supabaseClient = supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
+
+let signupMode = false;
+
+const authBtn = document.getElementById('auth-btn');
+const toggleMode = document.getElementById('toggle-mode');
+const message = document.getElementById('message');
+
+toggleMode.addEventListener('click', () => {
+
+  signupMode = !signupMode;
+
+  authBtn.textContent = signupMode
+    ? 'Create Account'
+    : 'Login';
+
+  toggleMode.textContent = signupMode
+    ? 'Back to login'
+    : 'Create account instead';
+
+  message.innerHTML = '';
+});
+
+authBtn.addEventListener('click', async () => {
+
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value.trim();
+
+  if(!email || !password){
+    showError('Please fill all fields');
+    return;
+  }
+
+  authBtn.disabled = true;
+  authBtn.textContent = 'Please wait...';
+
+  try{
+
+    if(signupMode){
+
+      const { error } = await supabaseClient.auth.signUp({
+        email,
+        password
+      });
+
+      if(error){
+        showError(error.message);
+      }else{
+        showSuccess('Account created. You can now login.');
+      }
+
+    }else{
+
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if(error){
+        showError(error.message);
+      }else{
+        window.location.href = 'dashboard.html';
+      }
+
+    }
+
+  }catch(err){
+    showError('Something went wrong');
+  }
+
+  authBtn.disabled = false;
+
+  authBtn.textContent = signupMode
+    ? 'Create Account'
+    : 'Login';
+});
+
+function showError(text){
+  message.className = 'message error';
+  message.textContent = text;
+}
+
+function showSuccess(text){
+  message.className = 'message success';
+  message.textContent = text;
+}
+</script>
+
+</body>
+</html>
