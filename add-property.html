@@ -31,7 +31,37 @@
   --danger:#B45B5B;
   --radius:22px;
 }
+<div class="delete-modal" id="deleteModal">
 
+  <div class="delete-box">
+
+    <h3>Delete Listing?</h3>
+
+    <p>
+      This action cannot be undone.
+    </p>
+
+    <div class="delete-actions">
+
+      <button
+        class="cancel-btn"
+        onclick="closeDeleteModal()"
+      >
+        Cancel
+      </button>
+
+      <button
+        class="confirm-btn"
+        onclick="confirmDelete()"
+      >
+        Delete
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
 body{
   background:var(--bg);
   font-family:"Noto Sans Lao",sans-serif;
@@ -172,7 +202,59 @@ body{
   background:#EFE7E4;
   color:var(--danger);
 }
+.delete-modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.4);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:999;
+  padding:20px;
+}
 
+.delete-box{
+  background:#fff;
+  width:100%;
+  max-width:380px;
+  border-radius:24px;
+  padding:26px;
+}
+
+.delete-box h3{
+  font-size:24px;
+  margin-bottom:10px;
+}
+
+.delete-box p{
+  color:#7C8B92;
+  line-height:1.6;
+  margin-bottom:22px;
+}
+
+.delete-actions{
+  display:flex;
+  gap:12px;
+}
+
+.cancel-btn,
+.confirm-btn{
+  flex:1;
+  border:none;
+  border-radius:16px;
+  padding:16px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.cancel-btn{
+  background:#F3F1EE;
+}
+
+.confirm-btn{
+  background:#B45B5B;
+  color:#fff;
+}
 .status-text{
   margin-top:18px;
   font-size:14px;
@@ -239,9 +321,10 @@ body{
 
       <div class="upload-box">
 
-        <div class="upload-text">
-          ອັບໂຫລດຫຼາຍຮູບໄດ້
-        </div>
+     <div class="upload-text">
+  ອັບໂຫລດຫຼາຍຮູບໄດ້<br>
+  ຮູບທຳອິດຈະເປັນຮູບໜ້າປົກ
+</div>
 
         <input
           type="file"
@@ -423,18 +506,33 @@ body{
 
     <!-- STATUS -->
 
-    <div class="section">
+<div class="section">
 
-      <div class="section-title">
-        ສະຖານະ
-      </div>
+  <div class="section-title">
+    ສະຖານະ
+  </div>
 
-      <select class="select" id="status">
-        <option value="active">published</option>
-        <option value="draft">draft</option>
-      </select>
+  <select class="select" id="status">
 
-    </div>
+    <option value="published">
+      Published
+    </option>
+
+    <option value="draft">
+      Draft
+    </option>
+
+    <option value="sold">
+      Sold
+    </option>
+
+    <option value="rented">
+      Rented
+    </option>
+
+  </select>
+
+</div>
 
     <!-- BUTTONS -->
 
@@ -475,7 +573,38 @@ const supabaseClient =
     SUPABASE_URL,
     SUPABASE_KEY
   );
+let deleteId = null;
 
+function openDeleteModal(id){
+
+  deleteId = id;
+
+  document.getElementById(
+    'deleteModal'
+  ).style.display = 'flex';
+
+}
+
+function closeDeleteModal(){
+
+  document.getElementById(
+    'deleteModal'
+  ).style.display = 'none';
+
+}
+
+async function confirmDelete(){
+
+  if(!deleteId) return;
+
+  await supabaseClient
+    .from('properties')
+    .delete()
+    .eq('id',deleteId);
+
+  location.reload();
+
+}
 const imageInput =
   document.getElementById('images');
 
@@ -511,12 +640,87 @@ imageInput.addEventListener('change',function(e){
   });
 
 });
+async function compressImage(file){
 
+  return new Promise((resolve)=>{
+
+    const reader = new FileReader();
+
+    reader.readAsDataURL(file);
+
+    reader.onload = function(event){
+
+      const img = new Image();
+
+      img.src = event.target.result;
+
+      img.onload = function(){
+
+        const canvas =
+          document.createElement('canvas');
+
+        const MAX_WIDTH = 1600;
+
+        let width = img.width;
+        let height = img.height;
+
+        if(width > MAX_WIDTH){
+
+          height *= MAX_WIDTH / width;
+          width = MAX_WIDTH;
+
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx =
+          canvas.getContext('2d');
+
+        ctx.drawImage(
+          img,
+          0,
+          0,
+          width,
+          height
+        );
+
+        canvas.toBlob(
+
+          (blob)=>{
+
+            resolve(
+              new File(
+                [blob],
+                file.name,
+                {
+                  type:'image/jpeg'
+                }
+              )
+            );
+
+          },
+
+          'image/jpeg',
+          0.78
+
+        );
+
+      };
+
+    };
+
+  });
+
+}
 async function uploadImages(){
 
   const uploadedUrls = [];
 
-  for(const file of selectedFiles){
+  for(let file of selectedFiles){
+
+  file =
+    await compressImage(file);
 
     const fileName =
       Date.now() + '-' + file.name;
