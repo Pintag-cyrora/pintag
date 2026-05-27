@@ -590,10 +590,14 @@ function renderListings(properties){
 
 }
 
-function editListing(slug){
+function editListing(id){
+
+  console.log(id);
 
   window.location.href =
-    `edit-listing.html?slug=${slug}`;
+    `edit-property.html?id=${id}`;
+
+}
 
 }
 
