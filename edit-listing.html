@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -29,26 +29,26 @@
   --muted:#7C8B92;
   --teal:#4C9494;
   --danger:#B45B5B;
-  --radius:26px;
+  --radius:28px;
 }
 
 body{
-  font-family:'Noto Sans Lao','DM Sans',sans-serif;
+  font-family:'Noto Sans Lao',sans-serif;
   background:var(--bg);
   color:var(--text);
-  padding:28px 18px 120px;
+  padding:24px 16px 120px;
 }
 
 .topbar{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  margin-bottom:26px;
+  margin-bottom:24px;
 }
 
 .page-title{
-  font-size:54px;
-  line-height:0.95;
+  font-size:42px;
+  line-height:1;
   font-weight:700;
   letter-spacing:-0.04em;
 }
@@ -56,37 +56,31 @@ body{
 .back-btn{
   text-decoration:none;
   color:var(--teal);
-  font-size:18px;
-  font-weight:600;
+  font-weight:700;
 }
 
 .section{
-  background:var(--panel);
-  border-radius:34px;
-  padding:26px;
+  background:#fff;
+  border-radius:30px;
+  padding:24px;
   border:1px solid var(--line);
-  margin-bottom:20px;
+  margin-bottom:18px;
 }
 
 .section-title{
-  font-size:28px;
+  font-size:24px;
   font-weight:700;
-  margin-bottom:24px;
-}
-
-.grid{
-  display:grid;
-  gap:18px;
+  margin-bottom:20px;
 }
 
 .field{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
+  margin-bottom:18px;
 }
 
 label{
-  font-size:16px;
+  display:block;
+  margin-bottom:10px;
+  font-size:15px;
   font-weight:700;
 }
 
@@ -96,44 +90,30 @@ label{
   width:100%;
   border:1px solid #E4DED7;
   background:#FAF8F5;
-  border-radius:22px;
+  border-radius:20px;
   padding:18px;
-  font-size:18px;
+  font-size:16px;
   font-family:inherit;
   color:var(--text);
 }
 
 .textarea{
-  min-height:180px;
-  resize:vertical;
-}
-
-.upload-box{
-  border:2px dashed #D8D1C8;
-  border-radius:26px;
-  padding:28px;
-  background:#FBFAF8;
-}
-
-.upload-text{
-  color:var(--muted);
-  line-height:1.8;
-  margin-bottom:18px;
+  min-height:160px;
+  resize:none;
 }
 
 .preview-grid{
   display:grid;
-  grid-template-columns:repeat(2,1fr);
+  grid-template-columns:1fr 1fr;
   gap:12px;
-  margin-top:20px;
+  margin-top:18px;
 }
 
 .preview{
   position:relative;
-  border-radius:20px;
-  overflow:hidden;
   aspect-ratio:1/1;
-  background:#EEE;
+  overflow:hidden;
+  border-radius:20px;
 }
 
 .preview img{
@@ -156,26 +136,38 @@ label{
   cursor:pointer;
 }
 
-.checkbox-grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:14px;
+.upload-box{
+  border:2px dashed #DDD5CC;
+  border-radius:24px;
+  padding:24px;
+  background:#FBFAF8;
 }
 
-.check{
+.upload-text{
+  color:var(--muted);
+  line-height:1.8;
+  margin-bottom:16px;
+}
+
+.features{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+
+.feature{
   background:#F7F3EE;
   border-radius:18px;
-  padding:18px;
+  padding:16px;
   display:flex;
   align-items:center;
-  gap:12px;
-  font-size:17px;
+  gap:10px;
 }
 
 .actions{
   display:flex;
-  gap:14px;
-  margin-top:26px;
+  gap:12px;
+  margin-top:24px;
 }
 
 .save-btn,
@@ -183,11 +175,11 @@ label{
   flex:1;
   border:none;
   border-radius:22px;
-  padding:20px;
-  font-size:20px;
+  padding:18px;
+  font-size:17px;
   font-weight:700;
-  cursor:pointer;
   font-family:inherit;
+  cursor:pointer;
 }
 
 .save-btn{
@@ -203,7 +195,7 @@ label{
 .status-text{
   margin-top:16px;
   color:var(--muted);
-  font-size:15px;
+  font-size:14px;
 }
 
 .delete-modal{
@@ -226,14 +218,14 @@ label{
 }
 
 .delete-box h3{
-  font-size:26px;
+  font-size:24px;
   margin-bottom:10px;
 }
 
 .delete-box p{
   color:var(--muted);
   line-height:1.7;
-  margin-bottom:24px;
+  margin-bottom:22px;
 }
 
 .delete-actions{
@@ -246,11 +238,10 @@ label{
   flex:1;
   border:none;
   border-radius:18px;
-  padding:18px;
-  font-size:17px;
+  padding:16px;
+  font-size:16px;
   font-weight:700;
   cursor:pointer;
-  font-family:inherit;
 }
 
 .cancel-btn{
@@ -260,18 +251,6 @@ label{
 .confirm-btn{
   background:var(--danger);
   color:#fff;
-}
-
-@media(max-width:720px){
-
-  .page-title{
-    font-size:44px;
-  }
-
-  .checkbox-grid{
-    grid-template-columns:1fr;
-  }
-
 }
 
 </style>
@@ -297,34 +276,19 @@ label{
     ຂໍ້ມູນຫຼັກ
   </div>
 
-  <div class="grid">
+  <div class="field">
+    <label>ຫົວຂໍ້</label>
+    <input type="text" class="input" id="title">
+  </div>
 
-    <div class="field">
-      <label>ຫົວຂໍ້</label>
-      <input
-        type="text"
-        class="input"
-        id="title"
-      >
-    </div>
+  <div class="field">
+    <label>ລາຄາ</label>
+    <input type="text" class="input" id="price">
+  </div>
 
-    <div class="field">
-      <label>ລາຄາ</label>
-      <input
-        type="text"
-        class="input"
-        id="price"
-      >
-    </div>
-
-    <div class="field">
-      <label>ລາຍລະອຽດ</label>
-      <textarea
-        class="textarea"
-        id="description"
-      ></textarea>
-    </div>
-
+  <div class="field">
+    <label>ລາຍລະອຽດ</label>
+    <textarea class="textarea" id="description"></textarea>
   </div>
 
 </div>
@@ -335,26 +299,14 @@ label{
     ສະຖານທີ່
   </div>
 
-  <div class="grid">
+  <div class="field">
+    <label>ເມືອງ</label>
+    <input type="text" class="input" id="district">
+  </div>
 
-    <div class="field">
-      <label>ເມືອງ</label>
-      <input
-        type="text"
-        class="input"
-        id="district"
-      >
-    </div>
-
-    <div class="field">
-      <label>ບ້ານ</label>
-      <input
-        type="text"
-        class="input"
-        id="village"
-      >
-    </div>
-
+  <div class="field">
+    <label>ບ້ານ</label>
+    <input type="text" class="input" id="village">
   </div>
 
 </div>
@@ -394,26 +346,26 @@ label{
     ສິ່ງອຳນວຍຄວາມສະດວກ
   </div>
 
-  <div class="checkbox-grid">
+  <div class="features">
 
-    <label class="check">
-      <input type="checkbox" value="wifi">
+    <label class="feature">
+      <input type="checkbox" value="furnished">
       ເຟີນີເຈີ
     </label>
 
-    <label class="check">
+    <label class="feature">
       <input type="checkbox" value="pool">
       ສະລອຍນ້ຳ
     </label>
 
-    <label class="check">
+    <label class="feature">
       <input type="checkbox" value="parking">
       ບ່ອນຈອດລົດ
     </label>
 
-    <label class="check">
+    <label class="feature">
       <input type="checkbox" value="security">
-      ລະບົບຄວາມປອດໄພ
+      ຄວາມປອດໄພ
     </label>
 
   </div>
@@ -464,10 +416,7 @@ label{
 
   </div>
 
-  <div
-    class="status-text"
-    id="statusText"
-  ></div>
+  <div class="status-text" id="statusText"></div>
 
 </div>
 
@@ -509,7 +458,7 @@ const SUPABASE_URL =
 'https://eoladhcljbpbhnrmmpev.supabase.co';
 
 const SUPABASE_KEY =
-'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+'PASTE_YOUR_REAL_ANON_KEY';
 
 const supabaseClient =
 supabase.createClient(
@@ -615,34 +564,22 @@ async function loadProperty(){
 
   }
 
-  document.getElementById(
-    'title'
-  ).value =
+  document.getElementById('title').value =
   data.title_en || '';
 
-  document.getElementById(
-    'price'
-  ).value =
+  document.getElementById('price').value =
   data.price_display || '';
 
-  document.getElementById(
-    'description'
-  ).value =
+  document.getElementById('description').value =
   data.description_lo || '';
 
-  document.getElementById(
-    'district'
-  ).value =
-  data.district_en || '';
+  document.getElementById('district').value =
+  data.district_lo || '';
 
-  document.getElementById(
-    'village'
-  ).value =
+  document.getElementById('village').value =
   data.village_lo || '';
 
-  document.getElementById(
-    'status'
-  ).value =
+  document.getElementById('status').value =
   data.status || 'published';
 
   existingImages =
@@ -707,10 +644,9 @@ async function uploadImages(){
 
   }
 
-  const uploaded =
-  [];
+  const uploaded = [];
 
-  for(let file of files){p
+  for(let file of files){
 
     file =
       await compressImage(file);
@@ -766,9 +702,21 @@ async function saveProperty(){
   const images =
     await uploadImages();
 
+  const amenities =
+    Array.from(
+      document.querySelectorAll(
+        '.feature input:checked'
+      )
+    ).map(el=>el.value);
+
   const payload = {
 
     title_en:
+      document.getElementById(
+        'title'
+      ).value,
+
+    title_lo:
       document.getElementById(
         'title'
       ).value,
@@ -783,6 +731,16 @@ async function saveProperty(){
         'description'
       ).value,
 
+    description_en:
+      document.getElementById(
+        'description'
+      ).value,
+
+    district_lo:
+      document.getElementById(
+        'district'
+      ).value,
+
     district_en:
       document.getElementById(
         'district'
@@ -793,10 +751,17 @@ async function saveProperty(){
         'village'
       ).value,
 
+    village_en:
+      document.getElementById(
+        'village'
+      ).value,
+
     status:
       document.getElementById(
         'status'
       ).value,
+
+    amenities,
 
     images
 
