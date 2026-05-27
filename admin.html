@@ -15,8 +15,6 @@
   --red:#C0392B;--green:#1E6B45;--gold:#B8860B;
 }
 body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);color:var(--ink);line-height:1.6;}
-
-/* ── LOGIN ── */
 #login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ink);}
 .login-box{width:100%;max-width:360px;padding:48px 40px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);text-align:center;}
 .login-logo{font-size:22px;font-weight:600;color:#fff;margin-bottom:6px;}
@@ -26,8 +24,6 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .login-btn{width:100%;padding:13px;background:var(--teal);color:#fff;border:none;font-size:14px;font-weight:500;cursor:pointer;border-radius:3px;font-family:'DM Sans',sans-serif;transition:background 0.2s;}
 .login-btn:hover{background:var(--teal-light);}
 .login-error{color:#e74c3c;font-size:13px;margin-top:8px;display:none;}
-
-/* ── NAV ── */
 #admin-screen{display:none;}
 .admin-nav{background:var(--ink);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
 .admin-nav-logo{font-size:16px;font-weight:600;color:#fff;}
@@ -39,21 +35,16 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .btn-logout{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);}
 .btn-logout:hover{background:rgba(255,255,255,0.15);}
 .admin-body{max-width:960px;margin:0 auto;padding:32px 24px;}
-
-/* ── TABS ── */
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:28px;}
 .tab{padding:10px 20px;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:var(--ink-muted);transition:all 0.2s;background:none;border-top:none;border-left:none;border-right:none;font-family:'DM Sans',sans-serif;}
 .tab.active{color:var(--teal);border-bottom-color:var(--teal);}
-
-/* ── LISTINGS TABLE ── */
 .listings-table{width:100%;border-collapse:collapse;background:var(--white);}
 .listings-table th{text-align:left;font-size:10px;font-weight:500;letter-spacing:0.15em;text-transform:uppercase;color:var(--ink-muted);padding:10px 14px;background:var(--warm);border-bottom:1px solid var(--border);}
 .listings-table td{padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px;color:var(--ink-soft);vertical-align:middle;}
 .listings-table tr:last-child td{border-bottom:none;}
 .listings-table tr:hover td{background:rgba(45,140,140,0.02);}
 .status-badge{display:inline-block;font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;padding:3px 8px;border-radius:2px;}
-.status-available{background:rgba(30,107,69,0.1);color:var(--green);}
-.status-active{background:rgba(30,107,69,0.1);color:var(--green);}
+.status-available,.status-active{background:rgba(30,107,69,0.1);color:var(--green);}
 .status-sold{background:rgba(192,57,43,0.1);color:var(--red);}
 .status-rented{background:rgba(154,98,0,0.1);color:#9A6200;}
 .status-under_offer{background:rgba(45,140,140,0.1);color:var(--teal);}
@@ -63,8 +54,6 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .btn-delete{background:rgba(192,57,43,0.08);color:var(--red);border:1px solid rgba(192,57,43,0.2);}
 .btn-delete:hover{background:rgba(192,57,43,0.15);}
 .btn-view{background:var(--teal-dim);color:var(--teal);border:1px solid var(--teal-border);}
-
-/* ── FORM ── */
 #form-panel{display:none;}
 .form-header{display:flex;align-items:center;gap:12px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border);}
 .form-header h2{font-size:20px;font-weight:600;color:var(--ink);}
@@ -93,20 +82,17 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .form-message{padding:12px 16px;border-radius:4px;font-size:13px;margin-top:12px;display:none;}
 .form-message.success{background:rgba(30,107,69,0.08);color:var(--green);border:1px solid rgba(30,107,69,0.2);}
 .form-message.error{background:rgba(192,57,43,0.06);color:var(--red);border:1px solid rgba(192,57,43,0.2);}
-
-/* ── CHECKBOX GRID ── */
-.check-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:4px;}
+/* Checkbox grid */
+.check-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:8px;margin-top:4px;}
 .check-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:all 0.15s;background:var(--white);user-select:none;}
 .check-item:hover{border-color:var(--teal-border);background:var(--teal-dim);}
-.check-item input[type=checkbox]{display:none;}
 .check-item.checked{border-color:var(--teal);background:var(--teal-dim);}
 .check-dot{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--border-mid);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.15s;background:#fff;}
 .check-item.checked .check-dot{background:var(--teal);border-color:var(--teal);}
-.check-item.checked .check-dot::after{content:"";width:8px;height:8px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpolyline points='1.5,5 4,7.5 8.5,2.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;}
+.check-item.checked .check-dot::after{content:"";display:block;width:8px;height:8px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpolyline points='1.5,5 4,7.5 8.5,2.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;}
 .check-label{font-size:12.5px;color:var(--ink-soft);line-height:1.3;}
 .check-item.checked .check-label{color:var(--ink);font-weight:500;}
-
-/* ── TAG PILLS ── */
+/* Tag pills */
 .tag-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
 .tag-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border:1px solid var(--border);border-radius:999px;cursor:pointer;font-size:12px;font-weight:400;color:var(--ink-muted);transition:all 0.15s;background:var(--white);user-select:none;}
 .tag-pill:hover{border-color:var(--teal-border);color:var(--teal);}
@@ -119,17 +105,15 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .tag-custom-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border:1px solid var(--teal);background:var(--teal-dim);border-radius:999px;font-size:12px;color:var(--teal);font-weight:500;}
 .tag-custom-pill button{background:none;border:none;cursor:pointer;color:var(--teal);font-size:14px;line-height:1;padding:0;margin-left:2px;opacity:0.6;}
 .tag-custom-pill button:hover{opacity:1;}
-
-/* ── NEARBY REPEATER ── */
+/* Nearby repeater */
 .nearby-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
-.nearby-row{display:grid;grid-template-columns:auto 1fr 120px auto;gap:8px;align-items:center;}
-.nearby-icon-input{width:44px;padding:9px 8px;border:1px solid var(--border);border-radius:4px;font-size:18px;text-align:center;font-family:'DM Sans',sans-serif;background:var(--white);}
+.nearby-row{display:grid;grid-template-columns:44px 1fr 120px auto;gap:8px;align-items:center;}
+.nearby-icon-input{width:44px;padding:9px 6px;border:1px solid var(--border);border-radius:4px;font-size:18px;text-align:center;font-family:'DM Sans',sans-serif;background:var(--white);}
 .btn-add-row{font-size:12px;font-weight:500;color:var(--teal);background:var(--teal-dim);border:1px dashed var(--teal-border);padding:9px 14px;cursor:pointer;border-radius:4px;font-family:'DM Sans',sans-serif;transition:all 0.2s;width:100%;}
 .btn-add-row:hover{background:rgba(45,140,140,0.15);}
 .btn-remove{background:rgba(192,57,43,0.07);color:var(--red);border:1px solid rgba(192,57,43,0.15);padding:8px 10px;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;flex-shrink:0;}
 .btn-remove:hover{background:rgba(192,57,43,0.14);}
-
-/* ── IMAGE UPLOAD ── */
+/* Image upload */
 .upload-zone{border:2px dashed var(--teal-border);border-radius:4px;padding:28px 20px;text-align:center;cursor:pointer;background:var(--warm);transition:all 0.2s;}
 .upload-zone:hover,.upload-zone.drag-over{border-color:var(--teal);background:var(--teal-dim);}
 .upload-progress-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
@@ -146,23 +130,19 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .image-preview-item.is-cover .img-cover-btn{background:rgba(184,134,11,0.9);color:#fff;}
 .img-cover-badge{position:absolute;bottom:4px;right:4px;background:rgba(184,134,11,0.9);color:#fff;font-size:8px;font-weight:600;letter-spacing:0.06em;padding:2px 5px;border-radius:2px;text-transform:uppercase;}
 .cover-hint{font-size:11px;color:var(--ink-muted);margin-top:6px;}
-
-/* ── LOADING / EMPTY ── */
 .loading{text-align:center;padding:48px;color:var(--ink-muted);font-size:14px;}
 .empty{text-align:center;padding:48px;color:var(--ink-muted);}
 .empty-title{font-size:16px;font-weight:500;margin-bottom:8px;color:var(--ink);}
-
 @media(max-width:640px){
   .form-grid,.form-grid-3{grid-template-columns:1fr;}
   .form-full{grid-column:1;}
-  .nearby-row{grid-template-columns:auto 1fr auto;}
+  .nearby-row{grid-template-columns:44px 1fr auto;}
   .check-grid{grid-template-columns:1fr 1fr;}
 }
 </style>
 </head>
 <body>
 
-<!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
     <p class="login-logo">Pintag</p>
@@ -173,7 +153,6 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
   </div>
 </div>
 
-<!-- ADMIN -->
 <div id="admin-screen">
   <nav class="admin-nav">
     <p class="admin-nav-logo">Pintag <span>Admin</span></p>
@@ -184,76 +163,94 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
   </nav>
 
   <div class="admin-body">
-
-    <!-- LISTINGS PANEL -->
     <div id="listings-panel">
-      <div class="tabs">
-        <button class="tab active">All Listings</button>
-      </div>
+      <div class="tabs"><button class="tab active">All Listings</button></div>
       <div id="listings-container"><div class="loading">Loading listings...</div></div>
     </div>
 
-    <!-- FORM PANEL -->
     <div id="form-panel">
       <div class="form-header">
-        <a class="form-back" onclick="showListings()">← Back</a>
+        <a class="form-back" onclick="showListings()">&#8592; Back</a>
         <h2 id="form-title">New Listing</h2>
       </div>
 
       <form id="listing-form" onsubmit="saveListing(event)">
         <input type="hidden" id="edit-id" value="">
 
-        <!-- ① BASIC INFO -->
+        <!-- BASIC INFO -->
         <div class="form-section">
-          <p class="form-section-title">① Basic Information</p>
+          <p class="form-section-title">&#9312; Basic Information</p>
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Property Type <span class="required">*</span></label>
               <select class="form-select" id="f-type" required>
                 <option value="">Select type</option>
-                <option value="house">House · ເຮືອນ</option>
-                <option value="villa">Villa · ວິລລ່າ</option>
-                <option value="apartment">Apartment · ອາພາດເມັນ</option>
-                <option value="townhouse">Townhouse · ຫ້ອງແຖວ</option>
-                <option value="land">Land · ທີ່ດິນ</option>
-                <option value="commercial">Commercial · ການຄ້າ</option>
+                <option value="house">House</option>
+                <option value="villa">Villa</option>
+                <option value="apartment">Apartment</option>
+                <option value="townhouse">Townhouse</option>
+                <option value="land">Land</option>
+                <option value="commercial">Commercial</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Property Style</label>
+              <select class="form-select" id="f-style">
+                <option value="">Not specified</option>
+                <option value="modern">Modern</option>
+                <option value="luxury">Luxury</option>
+                <option value="minimalist">Minimalist</option>
+                <option value="family">Family</option>
+                <option value="colonial">Colonial</option>
+                <option value="resort">Resort</option>
+                <option value="investment">Investment</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">Transaction <span class="required">*</span></label>
               <select class="form-select" id="f-transaction" required>
                 <option value="">Select</option>
-                <option value="for_sale">For Sale · ຂາຍ</option>
-                <option value="for_rent">For Rent · ໃຫ້ເຊົ່າ</option>
+                <option value="for_sale">For Sale</option>
+                <option value="for_rent">For Rent</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">Status</label>
               <select class="form-select" id="f-status">
-                <option value="active">Active · ໃຊ້ງານ</option>
-                <option value="available">Available · ວ່າງ</option>
+                <option value="active">Active</option>
+                <option value="available">Available</option>
                 <option value="under_offer">Under Offer</option>
-                <option value="sold">Sold · ຂາຍແລ້ວ</option>
-                <option value="rented">Rented · ເຊົ່າແລ້ວ</option>
+                <option value="sold">Sold</option>
+                <option value="rented">Rented</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">Price Display</label>
-              <input class="form-input" id="f-price" type="text" placeholder="$550,000 · or leave blank for on request">
+              <input class="form-input" id="f-price" type="text" placeholder="$550,000 or leave blank">
             </div>
             <div class="form-group">
-              <label class="form-label">Featured Listing?</label>
+              <label class="form-label">Land Title</label>
+              <select class="form-select" id="f-land-title">
+                <option value="">Not specified</option>
+                <option value="hard_title">Hard Title</option>
+                <option value="soft_title">Soft Title</option>
+                <option value="leasehold">Leasehold</option>
+                <option value="company_ownership">Company Ownership</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Featured?</label>
               <select class="form-select" id="f-featured">
                 <option value="false">No</option>
-                <option value="true">Yes — show on homepage</option>
+                <option value="true">Yes</option>
               </select>
             </div>
           </div>
         </div>
 
-        <!-- ② TITLE + HIGHLIGHT -->
+        <!-- TITLE + HIGHLIGHT -->
         <div class="form-section">
-          <p class="form-section-title">② Title &amp; Highlight</p>
+          <p class="form-section-title">&#9313; Title &amp; Highlight</p>
           <div class="form-grid">
             <div class="form-group form-full">
               <label class="form-label">Title (English) <span class="required">*</span></label>
@@ -265,22 +262,22 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             </div>
             <div class="form-group form-full">
               <label class="form-label">Title (Chinese)</label>
-              <input class="form-input" id="f-title-zh" type="text" placeholder="现代别墅带泳池">
+              <input class="form-input" id="f-title-zh" type="text" placeholder="&#29616;&#20195;&#21035;&#22885;&#24102;&#27836;&#27744;">
             </div>
             <div class="form-group form-full">
-              <label class="form-label">Property Highlight <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— Short emotional subtitle shown under title</span></label>
+              <label class="form-label">Property Highlight <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Short emotional subtitle shown below title</span></label>
               <textarea class="form-textarea" id="f-highlight" rows="2" maxlength="160" oninput="updateCharCount(this,'highlight-count',160)" placeholder="Contemporary villa with embassy-area privacy and resort-inspired outdoor living."></textarea>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">
-                <p class="form-hint">Renders below the title on the listing page. Aim for 1 vivid sentence.</p>
+                <p class="form-hint">1 vivid sentence. Aim for emotional positioning.</p>
                 <span class="char-count" id="highlight-count">0 / 160</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- ③ DESCRIPTION -->
+        <!-- DESCRIPTION -->
         <div class="form-section">
-          <p class="form-section-title">③ Description</p>
+          <p class="form-section-title">&#9314; Description</p>
           <div class="form-grid">
             <div class="form-group form-full">
               <label class="form-label">Description (English)</label>
@@ -292,14 +289,14 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             </div>
             <div class="form-group form-full">
               <label class="form-label">Description (Chinese)</label>
-              <textarea class="form-textarea" id="f-desc-zh" rows="3" placeholder="中文描述..."></textarea>
+              <textarea class="form-textarea" id="f-desc-zh" rows="3" placeholder="&#20013;&#25991;&#25551;&#36848;..."></textarea>
             </div>
           </div>
         </div>
 
-        <!-- ④ PROPERTY DETAILS -->
+        <!-- PROPERTY DETAILS -->
         <div class="form-section">
-          <p class="form-section-title">④ Property Details</p>
+          <p class="form-section-title">&#9315; Property Details</p>
           <div class="form-grid-3">
             <div class="form-group">
               <label class="form-label">Bedrooms</label>
@@ -341,43 +338,40 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           </div>
         </div>
 
-        <!-- ⑤ FEATURES -->
+        <!-- FEATURES -->
         <div class="form-section">
-          <p class="form-section-title">⑤ Features <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— Shown in the editorial features list</span></p>
-          <div class="check-grid" id="features-grid">
-            <!-- populated by JS -->
-          </div>
+          <p class="form-section-title">&#9316; Features <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Editorial list on the listing page</span></p>
+          <div class="check-grid" id="features-grid"></div>
         </div>
 
-        <!-- ⑥ AMENITIES -->
+        <!-- AMENITIES -->
         <div class="form-section">
-          <p class="form-section-title">⑥ Amenities <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— Quick-scan icon row below description</span></p>
-          <div class="check-grid" id="amenities-grid">
-            <!-- populated by JS -->
-          </div>
+          <p class="form-section-title">&#9317; Amenities <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Quick-scan icon row below description</span></p>
+          <div class="check-grid" id="amenities-grid"></div>
         </div>
 
-        <!-- ⑦ LOCATION -->
+        <!-- LOCATION -->
         <div class="form-section">
-          <p class="form-section-title">⑦ Location</p>
+          <p class="form-section-title">&#9318; Location</p>
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">District <span class="required">*</span></label>
-              <select class="form-select" id="f-district" onchange="autofillDistrict(this.value)" required>
+              <select class="form-select" id="f-district" required>
                 <option value="">Select district</option>
-                <option value="Sisattanak">Sisattanak · ສີສັດຕະນາກ</option>
-                <option value="Saysettha">Saysettha · ໄຊເສດຖາ</option>
-                <option value="Chanthabouly">Chanthabouly · ຈັນທະບູລີ</option>
-                <option value="Sikhottabong">Sikhottabong · ສີໂຄດຕະບອງ</option>
-                <option value="Xaythany">Xaythany · ໄຊທານີ</option>
-                <option value="Hadxaifong">Hadxaifong · ຫາດຊາຍຟອງ</option>
-                <option value="Naxaithong">Naxaithong · ນາຊາຍທອງ</option>
+                <option value="Sisattanak">Sisattanak &#x0EAA;&#x0EB5;&#x0EAA;&#x0EB1;&#x0E94;&#x0E95;&#x0EB0;&#x0E99;&#x0EB2;&#x0A01;</option>
+                <option value="Saysettha">Saysettha &#x0EC4;&#x0EAB;&#x0EC0;&#x0EAA;&#x0E94;&#x0E96;&#x0EB2;</option>
+                <option value="Chanthabouly">Chanthabouly &#x0E88;&#x0EB1;&#x0E99;&#x0E97;&#x0EB0;&#x0EA1;&#x0EB9;&#x0EA5;&#x0EB5;</option>
+                <option value="Sikhottabong">Sikhottabong &#x0EAA;&#x0EB5;&#x0EC2;&#x0E84;&#x0E94;&#x0E95;&#x0EB0;&#x0EA1;&#x0ECD;&#x0E87;</option>
+                <option value="Xaythany">Xaythany &#x0EC4;&#x0EAB;&#x0E97;&#x0EB2;&#x0E99;&#x0EB5;</option>
+                <option value="Hadxaifong">Hadxaifong &#x0EAB;&#x0EB2;&#x0E94;&#x0E8A;&#x0EB2;&#x0EA2;&#x0EB8;&#x0E9D;&#x0ECD;&#x0E87;</option>
+                <option value="Naxaithong">Naxaithong &#x0E99;&#x0EB2;&#x0E8A;&#x0EB2;&#x0EA2;&#x0E97;&#x0ECD;&#x0E87;</option>
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Village <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">ໝູ່ບ້ານ</span></label>
-              <input class="form-input" id="f-village" type="text" placeholder="Thongkang · ທ່ອງຄ້ານ">
-              <p class="form-hint">Shows as "Thongkang, Sisattanak" on listing page</p>
+              <label class="form-label">Village</label>
+              <input class="form-input" id="f-village" type="text" placeholder="Thongkang" list="village-suggestions" autocomplete="off">
+              <datalist id="village-suggestions"></datalist>
+              <p class="form-hint">Shows as "Village, District" on listing page</p>
             </div>
             <div class="form-group">
               <label class="form-label">Latitude</label>
@@ -388,55 +382,51 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <input class="form-input" id="f-lng" type="text" placeholder="102.6331">
             </div>
             <div class="form-group form-full">
-              <label class="form-label">Google Maps Embed URL <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— overrides coordinates if filled</span></label>
+              <label class="form-label">Google Maps Embed URL</label>
               <input class="form-input" id="f-map" type="text" placeholder="https://maps.google.com/maps?q=...">
-              <p class="form-hint">Maps → Share → Embed a map → copy the src="" URL</p>
+              <p class="form-hint">Maps &#8594; Share &#8594; Embed a map &#8594; copy the src="" URL. Overrides coordinates if filled.</p>
             </div>
           </div>
-
-          <!-- NEARBY PLACES -->
           <p class="form-section-sub">Nearby Places</p>
           <div id="nearby-list" class="nearby-list"></div>
           <button type="button" class="btn-add-row" onclick="addNearby()">+ Add nearby place</button>
         </div>
 
-        <!-- ⑧ PRESENTATION -->
+        <!-- PRESENTATION -->
         <div class="form-section">
-          <p class="form-section-title">⑧ Presentation</p>
-
-          <p class="form-section-sub">Highlight Pills <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— Shown in sidebar as teal pills</span></p>
+          <p class="form-section-title">&#9319; Presentation</p>
+          <p class="form-section-sub">Highlight Pills <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Teal pills shown in listing sidebar</span></p>
           <div class="tag-grid" id="highlights-preset"></div>
           <div class="tag-grid" id="highlights-custom" style="margin-top:8px;"></div>
           <div class="tag-custom-row" style="margin-top:8px;">
             <input class="tag-custom-input" id="custom-tag-input" type="text" placeholder="Add custom tag...">
             <button type="button" class="tag-add-btn" onclick="addCustomTag()">+ Add</button>
           </div>
-
-          <p class="form-section-sub" style="margin-top:24px;">Neighborhood Insight <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— Short contextual paragraph below pills</span></p>
-          <textarea class="form-textarea" id="f-neighborhood" rows="2" maxlength="220" oninput="updateCharCount(this,'neighborhood-count',220)" placeholder="Quiet embassy-area neighborhood close to international schools and Vientiane's best cafés."></textarea>
+          <p class="form-section-sub" style="margin-top:24px;">Neighborhood Insight <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Context paragraph below pills</span></p>
+          <textarea class="form-textarea" id="f-neighborhood" rows="2" maxlength="220" oninput="updateCharCount(this,'neighborhood-count',220)" placeholder="Quiet embassy-area neighborhood close to international schools and Vientiane's best caf&#233;s."></textarea>
           <div style="display:flex;justify-content:space-between;margin-top:3px;">
             <p class="form-hint">Shown in the left sidebar of the listing page.</p>
             <span class="char-count" id="neighborhood-count">0 / 220</span>
           </div>
         </div>
 
-        <!-- ⑨ MEDIA -->
+        <!-- MEDIA -->
         <div class="form-section">
-          <p class="form-section-title">⑨ Photos &amp; Video</p>
+          <p class="form-section-title">&#9320; Photos &amp; Video</p>
           <div class="form-group">
             <label class="form-label">Property Images</label>
             <div class="upload-zone" id="upload-zone" onclick="document.getElementById('img-file-input').click()">
               <input type="file" id="img-file-input" multiple accept="image/*" style="display:none;" onchange="handleImageUpload(this.files)">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
               <p style="font-size:13px;font-weight:500;color:var(--ink);margin-top:8px;">Click to upload photos</p>
-              <p style="font-size:11px;color:var(--ink-muted);margin-top:3px;">JPG, PNG, WebP · Max 10MB each · Multiple files</p>
+              <p style="font-size:11px;color:var(--ink-muted);margin-top:3px;">JPG, PNG, WebP &middot; Max 10MB each</p>
             </div>
             <div id="upload-progress" style="display:none;margin-top:8px;">
               <div class="upload-progress-bar"><div class="upload-progress-fill" id="progress-fill"></div></div>
               <p class="upload-status" id="upload-status">Uploading...</p>
             </div>
             <div id="image-preview-grid" class="image-preview-grid"></div>
-            <p class="cover-hint">★ Click the star on any photo to set it as the hero/cover image.</p>
+            <p class="cover-hint">&#9733; Click the star on any photo to set it as the hero/cover image.</p>
             <input type="hidden" id="f-images" value="[]">
           </div>
           <div class="form-grid" style="margin-top:18px;">
@@ -445,15 +435,15 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <input class="form-input" id="f-video" type="text" placeholder="YouTube, TikTok, or Facebook embed URL">
             </div>
             <div class="form-group form-full">
-              <label class="form-label">Download URL <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— Watermarked video</span></label>
-              <input class="form-input" id="f-download-url" type="text" placeholder="Google Drive link">
+              <label class="form-label">Download URL</label>
+              <input class="form-input" id="f-download-url" type="text" placeholder="Google Drive link for watermarked video">
             </div>
           </div>
         </div>
 
-        <!-- ⑩ AGENT -->
+        <!-- AGENT -->
         <div class="form-section">
-          <p class="form-section-title">⑩ Agent Contact</p>
+          <p class="form-section-title">&#9321; Agent Contact</p>
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Agent Name</label>
@@ -463,13 +453,17 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <label class="form-label">Agent Name (Lao)</label>
               <input class="form-input" id="f-agent-lo" type="text" placeholder="ສຸດໄຊ ແກ້ວວິໄລ">
             </div>
+            <div class="form-group form-full">
+              <label class="form-label">Agent Title <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Professional role shown below name</span></label>
+              <input class="form-input" id="f-agent-title" type="text" placeholder="Luxury Property Consultant">
+            </div>
             <div class="form-group">
               <label class="form-label">Agent Photo URL</label>
               <input class="form-input" id="f-agent-photo" type="text" placeholder="https://...">
               <p class="form-hint">pintag-cyrora.github.io/pintag/agent-keomany.jpg</p>
             </div>
             <div class="form-group">
-              <label class="form-label">WhatsApp Number</label>
+              <label class="form-label">WhatsApp</label>
               <input class="form-input" id="f-whatsapp" type="text" placeholder="+8562055546963">
             </div>
             <div class="form-group">
@@ -477,7 +471,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <input class="form-input" id="f-phone" type="text" placeholder="+856 20...">
             </div>
             <div class="form-group">
-              <label class="form-label">Rating (e.g. 4.9)</label>
+              <label class="form-label">Rating</label>
               <input class="form-input" id="f-rating" type="text" placeholder="4.9">
             </div>
             <div class="form-group">
@@ -496,10 +490,8 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           <button type="button" class="btn-cancel" onclick="showListings()">Cancel</button>
         </div>
         <div class="form-message" id="form-message"></div>
-
       </form>
     </div>
-
   </div>
 </div>
 
@@ -509,97 +501,125 @@ const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 const ADMIN_PASSWORD = 'pintag2025'; // !! CHANGE THIS !!
 
-// ── DISTRICT AUTO-FILL MAP ──────────────────────────────────────
-const DISTRICT_MAP = {
-  'Sisattanak' : { lo:'ສີສັດຕະນາກ',       zh:'西沙塔纳克' },
-  'Saysettha'  : { lo:'ໄຊເສດຖາ',           zh:'赛色塔'      },
-  'Chanthabouly':{ lo:'ຈັນທະບູລີ',         zh:'占塔布里'    },
-  'Sikhottabong':{ lo:'ສີໂຄດຕະບອງ',        zh:'西科塔蓬'    },
-  'Xaythany'   : { lo:'ໄຊທານີ',            zh:'赛塔尼'      },
-  'Hadxaifong' : { lo:'ຫາດຊາຍຟອງ',        zh:'哈赛丰'      },
-  'Naxaithong' : { lo:'ນາຊາຍທອງ',          zh:'纳赛通'      }
+// ══════════════════════════════════════════════════════════════════
+// PINTAG TAXONOMY — single source of truth (mirrored in listing.html)
+// ══════════════════════════════════════════════════════════════════
+const FEATURES={
+  pool:             {en:'Pool',                    lo:'ສະລອຍນ້ຳ',              zh:'游泳池'    },
+  garden:           {en:'Private Garden',          lo:'ສວນສ່ວນຕົວ',           zh:'私家花园'  },
+  balcony:          {en:'Balcony',                 lo:'ລະບຽງ',                 zh:'阳台'      },
+  security:         {en:'24/7 Security',           lo:'ລະບົບຮັກສາຄວາມປອດໄພ', zh:'全天保安'  },
+  smart_home:       {en:'Smart Home',              lo:'ສະມາດໂຮມ',             zh:'智能家居'  },
+  pet_friendly:     {en:'Pet Friendly',            lo:'ອະນຸຍາດສັດລ້ຽງ',       zh:'允许宠物'  },
+  gym:              {en:'Fitness Gym',             lo:'ຫ້ອງຟິດເນສ',            zh:'健身房'    },
+  elevator:         {en:'Elevator',                lo:'ລິຟ',                   zh:'电梯'      },
+  rooftop:          {en:'Rooftop',                 lo:'ດາດຟ້າ',                zh:'屋顶花园'  },
+  solar_power:      {en:'Solar Power',             lo:'ໂຊລາເຊລ',               zh:'太阳能'    },
+  office_room:      {en:'Office Room',             lo:'ຫ້ອງອອຟຟິດ',            zh:'办公室'    },
+  maid_room:        {en:'Maid Room',               lo:'ຫ້ອງຄົນໃຊ້',            zh:'佣人房'    },
+  jacuzzi:          {en:'Jacuzzi',                 lo:'ຈາກູຊີ',                zh:'按摩浴缸'  },
+  ac:               {en:'Air Conditioning',        lo:'ລະບົບແອ',               zh:'空调'      },
+  river_view:       {en:'River View',              lo:'ວິວແມ່ນ້ຳ',             zh:'河景'      },
+  mountain_view:    {en:'Mountain View',           lo:'ວິວພູ',                  zh:'山景'      },
+  european_kitchen: {en:'European Kitchen',        lo:'ເຮືອນຄົວສໄຕລ໌ເອີຣົບ', zh:'欧式厨房'  },
+  living_room:      {en:'Spacious Living Room',    lo:'ຫ້ອງຮັບແຂກກ້ວາງ',      zh:'宽敞客厅'  },
+  walk_in_closet:   {en:'Walk-in Closet',          lo:'ຫ້ອງເກັບເຄື່ອງ',       zh:'步入式衣柜'},
+  storage_room:     {en:'Storage Room',            lo:'ຫ້ອງເກັບຂອງ',          zh:'储藏室'    },
+  water_pump:       {en:'Water Heater & Pump',     lo:'ເຄື່ອງສູບນ້ຳ',          zh:'热水器水泵'},
+  covered_parking:  {en:'Covered Parking',         lo:'ທີ່ຈອດລົດ',             zh:'有盖停车'  }
 };
-function autofillDistrict(en) {
-  // district_lo and district_zh are derived — no separate inputs needed
-  // stored at save time from the map
+const AMENITIES={
+  pool:      {en:'Pool',          lo:'ສະລອຍນ້ຳ',    zh:'游泳池',  icon:'🏊'},
+  parking:   {en:'Parking',       lo:'ທີ່ຈອດລົດ',   zh:'停车位',  icon:'🅿️'},
+  security:  {en:'Security',      lo:'ລະບົບຮັກສາ',  zh:'保安',    icon:'🛡️'},
+  wifi:      {en:'Wi-Fi',         lo:'ອິນເຕີເນັດ',   zh:'无线网络',icon:'📶'},
+  gym:       {en:'Gym',           lo:'ຫ້ອງຟິດເນສ',  zh:'健身房',  icon:'🏋️'},
+  furnished: {en:'Furnished',     lo:'ເຄື່ອງເຟີນີຈ', zh:'带家具',  icon:'🛋️'},
+  balcony:   {en:'Balcony',       lo:'ລະບຽງ',       zh:'阳台',    icon:'🌅'},
+  elevator:  {en:'Elevator',      lo:'ລິຟ',          zh:'电梯',    icon:'🛗'},
+  rooftop:   {en:'Rooftop',       lo:'ດາດຟ້າ',      zh:'屋顶',    icon:'🌆'},
+  smart:     {en:'Smart Home',    lo:'ສະມາດໂຮມ',    zh:'智能家居',icon:'🏡'},
+  ac:        {en:'Air Con',       lo:'ລະບົບແອ',     zh:'空调',    icon:'❄️'},
+  solar:     {en:'Solar',         lo:'ໂຊລາ',        zh:'太阳能',  icon:'☀️'},
+  generator: {en:'Generator',     lo:'ເຄື່ອງສຳຮອງ', zh:'发电机',  icon:'⚡'},
+  bbq:       {en:'BBQ Area',      lo:'ບ່ອນ BBQ',    zh:'烧烤区',  icon:'🔥'},
+  tennis:    {en:'Tennis',        lo:'ເທັນນິດ',      zh:'网球场',  icon:'🎾'},
+  garden:    {en:'Garden',        lo:'ສວນ',          zh:'花园',    icon:'🌳'}
+};
+const HIGHLIGHTS={
+  embassy_district: {en:'Embassy District',          lo:'ເຂດສະຖານທູດ',         zh:'使馆区'     },
+  near_intl_school: {en:'Near International School', lo:'ໃກ້ໂຮງຮຽນນານາຊາດ',  zh:'近国际学校' },
+  quiet_street:     {en:'Quiet Street',              lo:'ຖະໜົນສະຫງົບ',        zh:'安静街道'   },
+  walkable:         {en:'Walkable Area',             lo:'ພື້ນທີ່ຍ່ຽງໄດ້',      zh:'步行区'     },
+  near_cafe:        {en:'Near Café',                 lo:'ໃກ້ຮ້ານກາເຟ',        zh:'近咖啡馆'   },
+  riverfront:       {en:'Riverfront',                lo:'ຕິດແມ່ນ້ຳ',           zh:'河畔'       },
+  family_friendly:  {en:'Family Friendly',           lo:'ເໝາະສຳລັບຄອບຄົວ',   zh:'适合家庭'   },
+  investment_area:  {en:'Investment Area',           lo:'ພື້ນທີ່ລົງທຶນ',       zh:'投资区'     },
+  city_centre:      {en:'City Centre',               lo:'ໃຈກາງເມືອງ',         zh:'市中心'     },
+  airport_access:   {en:'Airport Access',            lo:'ໃກ້ສະໜາມບິນ',        zh:'近机场'     },
+  near_hospital:    {en:'Near Hospital',             lo:'ໃກ້ໂຮງໝໍ',           zh:'近医院'     },
+  expat_community:  {en:'Expat Community',           lo:'ຊຸມຊົນຕ່າງປະເທດ',    zh:'外籍社区'   }
+};
+
+// ── DISTRICT AUTO-FILL ──────────────────────────────────────────
+const DISTRICT_MAP={
+  'Sisattanak' :{lo:'ສີສັດຕະນາກ',       zh:'西沙塔纳克'},
+  'Saysettha'  :{lo:'ໄຊເສດຖາ',           zh:'赛色塔'     },
+  'Chanthabouly':{lo:'ຈັນທະບູລີ',        zh:'占塔布里'   },
+  'Sikhottabong':{lo:'ສີໂຄດຕະບອງ',       zh:'西科塔蓬'   },
+  'Xaythany'   :{lo:'ໄຊທານີ',            zh:'赛塔尼'     },
+  'Hadxaifong' :{lo:'ຫາດຊາຍຟອງ',        zh:'哈赛丰'     },
+  'Naxaithong' :{lo:'ນາຊາຍທອງ',          zh:'纳赛通'     }
+};
+
+// ── Normalize any value to canonical registry key ────────────────
+// "Pool" → "pool", "Smart Home" → "smart_home", "POOL " → "pool"
+function normalizeToKey(value, registry) {
+  if (!value) return null;
+  const v = String(value).trim();
+  if (registry[v]) return v;
+  const norm = v.toLowerCase().replace(/[\s&\/\-]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
+  if (registry[norm]) return norm;
+  for (const k in registry) {
+    if (registry[k].en && registry[k].en.toLowerCase() === v.toLowerCase()) return k;
+  }
+  return norm; // best-effort even if not in registry
 }
 
-// ── FEATURES DEFINITIONS ────────────────────────────────────────
-const FEATURES_OPTIONS = [
-  'Pool','Garden','Balcony','Security',
-  'Smart Home','Pet Friendly','Gym','Elevator',
-  'Rooftop','Solar Power','Office Room','Maid Room',
-  'Jacuzzi','Air Conditioning','River View','Mountain View',
-  'European Kitchen','Spacious Living Room','Walk-in Closet',
-  'Storage Room','Water Heater & Pump','Covered Parking'
-];
-
-// ── AMENITIES DEFINITIONS ───────────────────────────────────────
-const AMENITIES_OPTIONS = [
-  { key:'pool',       label:'Pool'          },
-  { key:'parking',    label:'Parking'       },
-  { key:'security',   label:'Security'      },
-  { key:'wifi',       label:'Wi-Fi'         },
-  { key:'gym',        label:'Gym'           },
-  { key:'furnished',  label:'Furnished'     },
-  { key:'balcony',    label:'Balcony'       },
-  { key:'elevator',   label:'Elevator'      },
-  { key:'rooftop',    label:'Rooftop'       },
-  { key:'smart',      label:'Smart Home'    },
-  { key:'ac',         label:'Air Con'       },
-  { key:'solar',      label:'Solar'         },
-  { key:'generator',  label:'Generator'     },
-  { key:'bbq',        label:'BBQ Area'      },
-  { key:'tennis',     label:'Tennis'        },
-  { key:'garden',     label:'Garden'        }
-];
-
-// ── HIGHLIGHT PRESETS ────────────────────────────────────────────
-const HIGHLIGHT_PRESETS = [
-  'Embassy District','Near International School',
-  'Quiet Street','Walkable Area',
-  'Near Café','Riverfront',
-  'Family Friendly','Investment Area',
-  'City Centre','Airport Access',
-  'Near Hospital','Expat Community'
-];
-
-// ── INIT CHECK GRIDS ────────────────────────────────────────────
-function initCheckGrid(containerId, options, isKeys) {
+// ── Check grids ──────────────────────────────────────────────────
+function initCheckGrid(containerId, registry) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  const items = isKeys ? options.map(o => ({ key: o.key, label: o.label }))
-                       : options.map(s => ({ key: s, label: s }));
-  el.innerHTML = items.map(item => `
-    <div class="check-item" data-key="${item.key}" onclick="toggleCheck(this,'${containerId}')">
+  el.innerHTML = Object.entries(registry).map(([key, def]) =>
+    `<div class="check-item" data-key="${key}" onclick="toggleCheck(this)">
       <div class="check-dot"></div>
-      <span class="check-label">${item.label}</span>
-    </div>`).join('');
+      <span class="check-label">${def.en}</span>
+    </div>`
+  ).join('');
 }
-
-function toggleCheck(el, gridId) {
-  el.classList.toggle('checked');
+function toggleCheck(el) { el.classList.toggle('checked'); }
+function getCheckedKeys(containerId) {
+  return Array.from(document.querySelectorAll(`#${containerId} .check-item.checked`)).map(el => el.dataset.key);
 }
-
-function getChecked(containerId) {
-  return Array.from(document.querySelectorAll(`#${containerId} .check-item.checked`))
-    .map(el => el.dataset.key);
-}
-
-function setChecked(containerId, values) {
+// Backward compat: accepts both normalized keys AND legacy display strings
+function setChecked(containerId, values, registry) {
   if (!Array.isArray(values)) return;
+  const normalizedIn = registry
+    ? values.map(v => normalizeToKey(v, registry)).filter(Boolean)
+    : values;
   document.querySelectorAll(`#${containerId} .check-item`).forEach(el => {
-    el.classList.toggle('checked', values.includes(el.dataset.key));
+    el.classList.toggle('checked', normalizedIn.includes(el.dataset.key));
   });
 }
 
-// ── INIT HIGHLIGHT TAGS ─────────────────────────────────────────
+// ── Highlight pills ──────────────────────────────────────────────
 let customTags = [];
 function initHighlightPresets() {
   const el = document.getElementById('highlights-preset');
   if (!el) return;
-  el.innerHTML = HIGHLIGHT_PRESETS.map(t => `
-    <span class="tag-pill" data-tag="${t}" onclick="toggleTagPill(this)">${t}</span>`).join('');
+  el.innerHTML = Object.entries(HIGHLIGHTS).map(([key, def]) =>
+    `<span class="tag-pill" data-key="${key}" onclick="toggleTagPill(this)">${def.en}</span>`
+  ).join('');
 }
 function toggleTagPill(el) { el.classList.toggle('active'); }
 function addCustomTag() {
@@ -610,35 +630,42 @@ function addCustomTag() {
   renderCustomTags();
   input.value = '';
 }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'custom-tag-input') {
+    e.preventDefault(); addCustomTag();
+  }
+});
 function renderCustomTags() {
   const el = document.getElementById('highlights-custom');
-  el.innerHTML = customTags.map((t,i) => `
-    <span class="tag-custom-pill">${t}
-      <button type="button" onclick="removeCustomTag(${i})">×</button>
-    </span>`).join('');
+  el.innerHTML = customTags.map((t, i) =>
+    `<span class="tag-custom-pill">${t}<button type="button" onclick="removeCustomTag(${i})">×</button></span>`
+  ).join('');
 }
-function removeCustomTag(i) {
-  customTags.splice(i,1);
-  renderCustomTags();
-}
+function removeCustomTag(i) { customTags.splice(i,1); renderCustomTags(); }
 function getHighlights() {
-  const preset = Array.from(document.querySelectorAll('#highlights-preset .tag-pill.active')).map(el => el.dataset.tag);
+  const preset = Array.from(document.querySelectorAll('#highlights-preset .tag-pill.active')).map(el => el.dataset.key);
   return [...preset, ...customTags];
 }
+// Backward compat: handles keys AND legacy display strings
 function setHighlights(values) {
   if (!Array.isArray(values)) return;
   customTags = [];
-  document.querySelectorAll('#highlights-preset .tag-pill').forEach(el => {
-    const isPreset = HIGHLIGHT_PRESETS.includes(el.dataset.tag);
-    if (isPreset && values.includes(el.dataset.tag)) el.classList.add('active');
-    else el.classList.remove('active');
+  const knownKeys = Object.keys(HIGHLIGHTS);
+  document.querySelectorAll('#highlights-preset .tag-pill').forEach(el => el.classList.remove('active'));
+  values.forEach(v => {
+    const key = normalizeToKey(v, HIGHLIGHTS);
+    if (key && knownKeys.includes(key)) {
+      const pill = document.querySelector(`#highlights-preset [data-key="${key}"]`);
+      if (pill) pill.classList.add('active');
+    } else {
+      // Not in presets — preserve as custom tag (use original display value)
+      customTags.push(v);
+    }
   });
-  // custom tags = anything not in presets
-  customTags = values.filter(v => !HIGHLIGHT_PRESETS.includes(v));
   renderCustomTags();
 }
 
-// ── CHAR COUNT ──────────────────────────────────────────────────
+// ── Char count ───────────────────────────────────────────────────
 function updateCharCount(el, countId, max) {
   const n = el.value.length;
   const counter = document.getElementById(countId);
@@ -647,7 +674,7 @@ function updateCharCount(el, countId, max) {
   counter.className = 'char-count' + (n > max ? ' over-limit' : n > max * 0.85 ? ' near-limit' : '');
 }
 
-// ── NEARBY PLACES ───────────────────────────────────────────────
+// ── Nearby places ────────────────────────────────────────────────
 function addNearby(data) {
   const list = document.getElementById('nearby-list');
   const row = document.createElement('div');
@@ -665,12 +692,27 @@ function getNearbyPlaces() {
     const name = row.querySelector('.np-name').value.trim();
     const dist = row.querySelector('.np-dist').value.trim();
     const icon = row.querySelector('.nearby-icon-input').value.trim();
-    if (name) places.push({ name, name_en: name, name_lo: name, name_zh: name, icon: icon || '📍', distance: dist });
+    if (name) places.push({name, name_en:name, name_lo:name, name_zh:name, icon:icon||'📍', distance:dist});
   });
   return places;
 }
 
-// ── AUTH ─────────────────────────────────────────────────────────
+// ── Village autocomplete — populated from existing listings ──────
+async function loadVillageSuggestions() {
+  const STATIC = ['Thongkang','Nongbone','Donkoi','Phonsinuan','Thongsangnang','Phonethan','Somsamai','Mixay','Hom','Phonxai','Natane','Sisangvone'];
+  try {
+    const data = await sbApi('GET','properties?select=village_en&not.village_en.is=null&limit=200');
+    const fromDB = Array.isArray(data) ? data.map(p => p.village_en).filter(Boolean) : [];
+    const all = [...new Set([...fromDB, ...STATIC])].sort();
+    const dl = document.getElementById('village-suggestions');
+    if (dl) dl.innerHTML = all.map(v => `<option value="${v}">`).join('');
+  } catch(e) {
+    const dl = document.getElementById('village-suggestions');
+    if (dl) dl.innerHTML = STATIC.map(v => `<option value="${v}">`).join('');
+  }
+}
+
+// ── AUTH ──────────────────────────────────────────────────────────
 function login() {
   const pw = document.getElementById('password-input').value;
   if (pw === ADMIN_PASSWORD) {
@@ -689,15 +731,15 @@ if (sessionStorage.getItem('pintag-admin')) {
   loadListings();
 }
 
-// ── SUPABASE ─────────────────────────────────────────────────────
+// ── SUPABASE ──────────────────────────────────────────────────────
 async function sbApi(method, path, body) {
   const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
     method,
-    headers: {
-      'apikey': SUPABASE_ANON,
-      'Authorization': 'Bearer ' + SUPABASE_ANON,
-      'Content-Type': 'application/json',
-      'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal'
+    headers:{
+      'apikey':SUPABASE_ANON,
+      'Authorization':'Bearer '+SUPABASE_ANON,
+      'Content-Type':'application/json',
+      'Prefer':method==='POST'?'return=representation':'return=minimal'
     },
     body: body ? JSON.stringify(body) : undefined
   });
@@ -706,11 +748,11 @@ async function sbApi(method, path, body) {
   return text ? JSON.parse(text) : true;
 }
 
-// ── LISTINGS ─────────────────────────────────────────────────────
+// ── LISTINGS ──────────────────────────────────────────────────────
 async function loadListings() {
   const container = document.getElementById('listings-container');
   container.innerHTML = '<div class="loading">Loading...</div>';
-  const data = await sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,agent_name,bedrooms,district_en');
+  const data = await sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,agent_name,district_en');
   if (!data || data.length === 0) {
     container.innerHTML = '<div class="empty"><p class="empty-title">No listings yet</p><p>Click "+ New Listing" to add your first property.</p></div>';
     return;
@@ -718,7 +760,7 @@ async function loadListings() {
   let html = '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
   data.forEach(p => {
     html += `<tr>
-      <td><strong style="color:var(--ink);font-weight:500;">${p.title_en}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}</td>
+      <td><strong style="color:var(--ink);font-weight:500;">${p.title_en||'—'}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}</td>
       <td style="color:var(--ink-muted)">${p.district_en||'—'}</td>
       <td>${p.price_display||'<em style="color:var(--ink-muted)">On request</em>'}</td>
       <td>${p.agent_name||'—'}</td>
@@ -726,7 +768,7 @@ async function loadListings() {
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="action-btn btn-edit" onclick="editListing('${p.id}')">Edit</button>
         <a class="action-btn btn-view" href="listing.html?slug=${p.slug}" target="_blank">View</a>
-        <button class="action-btn btn-delete" onclick="deleteListing('${p.id}','${(p.title_en||'').replace(/'/g,'&apos;')}')">Delete</button>
+        <button class="action-btn btn-delete" onclick="deleteListing('${p.id}','${(p.title_en||'').replace(/'/g,"&apos;")}')">Delete</button>
       </td>
     </tr>`;
   });
@@ -734,13 +776,12 @@ async function loadListings() {
   container.innerHTML = html;
 }
 
-// ── FORM ─────────────────────────────────────────────────────────
+// ── FORM SHOW/HIDE ────────────────────────────────────────────────
 function showListings() {
   document.getElementById('listings-panel').style.display = 'block';
   document.getElementById('form-panel').style.display = 'none';
   loadListings();
 }
-
 function showForm(id) {
   document.getElementById('listings-panel').style.display = 'none';
   document.getElementById('form-panel').style.display = 'block';
@@ -751,29 +792,33 @@ function showForm(id) {
     document.getElementById('listing-form').reset();
     document.getElementById('nearby-list').innerHTML = '';
     addNearby();
-    setChecked('features-grid', []);
-    setChecked('amenities-grid', []);
+    setChecked('features-grid', [], FEATURES);
+    setChecked('amenities-grid', [], AMENITIES);
     setHighlights([]);
     customTags = [];
     populateExistingImages([]);
-    ['highlight-count','neighborhood-count'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = '0 / ' + (id === 'highlight-count' ? '160' : '220');
+    ['highlight-count','neighborhood-count'].forEach(cid => {
+      const el = document.getElementById(cid);
+      if (el) el.textContent = '0 / ' + (cid === 'highlight-count' ? '160' : '220');
     });
   }
+  loadVillageSuggestions();
 }
 
+// ── EDIT ──────────────────────────────────────────────────────────
 async function editListing(id) {
   showForm(id);
-  const data = await sbApi('GET',`properties?id=eq.${id}&limit=1`);
+  const data = await sbApi('GET', `properties?id=eq.${id}&limit=1`);
   if (!data || !data[0]) return;
   const p = data[0];
 
   // Basic
   document.getElementById('f-type').value        = p.property_type || '';
+  document.getElementById('f-style').value       = p.property_style || '';
   document.getElementById('f-transaction').value = p.transaction_type || '';
   document.getElementById('f-status').value      = p.status || 'active';
   document.getElementById('f-price').value       = p.price_display || '';
+  document.getElementById('f-land-title').value  = p.land_title_type || '';
   document.getElementById('f-featured').value    = String(p.is_featured || false);
 
   // Title + highlight
@@ -782,7 +827,7 @@ async function editListing(id) {
   document.getElementById('f-title-zh').value    = p.title_zh || '';
   const hlField = document.getElementById('f-highlight');
   hlField.value = p.property_highlight || '';
-  updateCharCount(hlField, 'highlight-count', 160);
+  updateCharCount(hlField,'highlight-count',160);
 
   // Description
   document.getElementById('f-desc-en').value     = p.description_en || p.desc_en || '';
@@ -799,9 +844,12 @@ async function editListing(id) {
   document.getElementById('f-parking-spaces').value = p.parking_spaces || '';
   document.getElementById('f-furnished').value    = p.furnished || '';
 
-  // Features + amenities
-  setChecked('features-grid', Array.isArray(p.features) ? p.features.map(f => typeof f === 'string' ? f : (f.label_en || f.name || '')) : []);
-  setChecked('amenities-grid', Array.isArray(p.amenities) ? p.amenities : []);
+  // Features + amenities — backward compat via normalizeToKey
+  const rawFeatures = Array.isArray(p.features)
+    ? p.features.map(f => typeof f === 'string' ? f : (f.key || f.label_en || f.name || ''))
+    : [];
+  setChecked('features-grid', rawFeatures, FEATURES);
+  setChecked('amenities-grid', Array.isArray(p.amenities) ? p.amenities : [], AMENITIES);
 
   // Location
   document.getElementById('f-district').value    = p.district_en || '';
@@ -816,11 +864,11 @@ async function editListing(id) {
   if (nearbyArr.length) nearbyArr.forEach(n => addNearby(n));
   else addNearby();
 
-  // Presentation
+  // Presentation — backward compat via normalizeToKey
   setHighlights(Array.isArray(p.highlights) ? p.highlights : []);
   const nbField = document.getElementById('f-neighborhood');
   nbField.value = p.neighborhood_description || '';
-  updateCharCount(nbField, 'neighborhood-count', 220);
+  updateCharCount(nbField,'neighborhood-count',220);
 
   // Media
   populateExistingImages(p.images || []);
@@ -830,6 +878,7 @@ async function editListing(id) {
   // Agent
   document.getElementById('f-agent').value        = p.agent_name || '';
   document.getElementById('f-agent-lo').value     = p.agent_name_lo || '';
+  document.getElementById('f-agent-title').value  = p.agent_title || '';
   document.getElementById('f-agent-photo').value  = p.agent_photo || p.agent_photo_url || '';
   document.getElementById('f-whatsapp').value     = p.agent_whatsapp || p.whatsapp || '';
   document.getElementById('f-phone').value        = p.agent_phone || '';
@@ -838,7 +887,7 @@ async function editListing(id) {
   document.getElementById('f-response-time').value = p.agent_response_time || '';
 }
 
-// ── SAVE ─────────────────────────────────────────────────────────
+// ── SAVE ──────────────────────────────────────────────────────────
 async function saveListing(e) {
   e.preventDefault();
   const btn = document.getElementById('submit-btn');
@@ -849,13 +898,10 @@ async function saveListing(e) {
   const districtMap = DISTRICT_MAP[districtEn] || {};
   const village = document.getElementById('f-village').value.trim();
 
-  // Features: stored as TEXT[] of display strings
-  const features = getChecked('features-grid');
-  // Amenities: stored as TEXT[] of normalized keys
-  const amenities = getChecked('amenities-grid');
-  // Highlights
-  const highlights = getHighlights();
-  // Nearby places
+  // Normalize arrays — guarantee clean keys on every save
+  const features  = getCheckedKeys('features-grid');  // already keys from data-key
+  const amenities = getCheckedKeys('amenities-grid'); // already keys from data-key
+  const highlights = getHighlights();                  // keys for presets, raw for custom
   const nearbyPlaces = getNearbyPlaces();
 
   const titleEn = document.getElementById('f-title-en').value.trim();
@@ -866,25 +912,20 @@ async function saveListing(e) {
   const lng = parseFloat(document.getElementById('f-lng').value) || null;
 
   const body = {
-    // Basic
     property_type:     document.getElementById('f-type').value || null,
+    property_style:    document.getElementById('f-style').value || null,
     transaction_type:  document.getElementById('f-transaction').value || null,
     status:            document.getElementById('f-status').value || 'active',
     price_display:     document.getElementById('f-price').value.trim() || null,
+    land_title_type:   document.getElementById('f-land-title').value || null,
     is_featured:       document.getElementById('f-featured').value === 'true',
-
-    // Title + highlight
     title_en:          titleEn,
     title_lo:          document.getElementById('f-title-lo').value.trim() || null,
     title_zh:          document.getElementById('f-title-zh').value.trim() || null,
     property_highlight:document.getElementById('f-highlight').value.trim() || null,
-
-    // Description
     description_en:    document.getElementById('f-desc-en').value.trim() || null,
     description_lo:    document.getElementById('f-desc-lo').value.trim() || null,
     description_zh:    document.getElementById('f-desc-zh').value.trim() || null,
-
-    // Details
     bedrooms:          parseInt(document.getElementById('f-bedrooms').value) || null,
     bathrooms:         parseInt(document.getElementById('f-bathrooms').value) || null,
     sqm:               parseInt(document.getElementById('f-sqm').value) || null,
@@ -893,12 +934,8 @@ async function saveListing(e) {
     year_built:        parseInt(document.getElementById('f-year-built').value) || null,
     parking_spaces:    parseInt(document.getElementById('f-parking-spaces').value) || null,
     furnished:         document.getElementById('f-furnished').value || null,
-
-    // Features + amenities
     features:          features.length ? features : null,
     amenities:         amenities.length ? amenities : null,
-
-    // Location
     district_en:       districtEn || null,
     district_lo:       districtMap.lo || null,
     district_zh:       districtMap.zh || null,
@@ -909,20 +946,15 @@ async function saveListing(e) {
     latitude:          lat,
     longitude:         lng,
     map_embed_url:     document.getElementById('f-map').value.trim() || null,
-
-    // Nearby + presentation
     nearby_places:     nearbyPlaces.length ? nearbyPlaces : null,
     highlights:        highlights.length ? highlights : null,
     neighborhood_description: document.getElementById('f-neighborhood').value.trim() || null,
-
-    // Media
     images:            JSON.parse(document.getElementById('f-images').value || '[]'),
     video_embed_url:   document.getElementById('f-video').value.trim() || null,
     download_url:      document.getElementById('f-download-url').value.trim() || null,
-
-    // Agent
     agent_name:          document.getElementById('f-agent').value.trim() || null,
     agent_name_lo:       document.getElementById('f-agent-lo').value.trim() || null,
+    agent_title:         document.getElementById('f-agent-title').value.trim() || null,
     agent_photo:         document.getElementById('f-agent-photo').value.trim() || null,
     agent_whatsapp:      document.getElementById('f-whatsapp').value.trim() || null,
     agent_phone:         document.getElementById('f-phone').value.trim() || null,
@@ -942,7 +974,6 @@ async function saveListing(e) {
 
   btn.disabled = false;
   btn.textContent = 'Save Listing';
-
   const msg = document.getElementById('form-message');
   if (result) {
     msg.className = 'form-message success';
@@ -956,16 +987,16 @@ async function saveListing(e) {
   }
 }
 
-// ── DELETE ───────────────────────────────────────────────────────
+// ── DELETE ────────────────────────────────────────────────────────
 async function deleteListing(id, title) {
   if (!confirm(`Delete "${title}"?\n\nThis cannot be undone.`)) return;
   await sbApi('DELETE', `properties?id=eq.${id}`);
   loadListings();
 }
 
-// ── IMAGE UPLOAD ─────────────────────────────────────────────────
-const SB_UPLOAD_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SB_UPLOAD_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+// ── IMAGE UPLOAD ──────────────────────────────────────────────────
+const SB_UPLOAD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 let uploadedImages = [];
 
 const zone = document.getElementById('upload-zone');
@@ -974,7 +1005,6 @@ if (zone) {
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleImageUpload(e.dataTransfer.files); });
 }
-
 async function handleImageUpload(files) {
   if (!files || files.length === 0) return;
   const progress = document.getElementById('upload-progress');
@@ -983,79 +1013,62 @@ async function handleImageUpload(files) {
   progress.style.display = 'block';
   const fileArr = Array.from(files);
   let completed = 0;
-
   for (const file of fileArr) {
     if (file.size > 10 * 1024 * 1024) { status.textContent = `${file.name} too large (max 10MB)`; continue; }
     status.textContent = `Uploading ${file.name}...`;
     const ext = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     try {
-      const res = await fetch(`${SB_UPLOAD_URL}/storage/v1/object/property-images/${fileName}`, {
-        method: 'POST',
-        headers: { 'apikey': SB_UPLOAD_ANON, 'Authorization': 'Bearer ' + SB_UPLOAD_ANON, 'Content-Type': file.type || 'image/jpeg', 'x-upsert': 'true' },
-        body: file
+      const res = await fetch(`${SB_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
+        method:'POST',
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':file.type||'image/jpeg','x-upsert':'true'},
+        body:file
       });
       if (res.ok) {
-        const url = `${SB_UPLOAD_URL}/storage/v1/object/public/property-images/${fileName}`;
-        uploadedImages.push(url);
+        uploadedImages.push(`${SB_UPLOAD}/storage/v1/object/public/property-images/${fileName}`);
         completed++;
-        fill.style.width = `${(completed / fileArr.length) * 100}%`;
+        fill.style.width = `${(completed/fileArr.length)*100}%`;
         refreshImageGrid();
         status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
-      } else {
-        status.textContent = `Error uploading ${file.name}`;
-      }
-    } catch (err) {
-      status.textContent = `Error: ${err.message}`;
-    }
+      } else { status.textContent = `Error uploading ${file.name}`; }
+    } catch(err) { status.textContent = `Error: ${err.message}`; }
   }
-  setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
+  setTimeout(() => { progress.style.display='none'; fill.style.width='0%'; }, 2000);
 }
-
 function setCoverImage(url) {
-  // Move selected url to index 0
   uploadedImages = [url, ...uploadedImages.filter(u => u !== url)];
   refreshImageGrid();
-  updateImagesField();
 }
-
 function removeImage(url) {
   uploadedImages = uploadedImages.filter(u => u !== url);
   refreshImageGrid();
-  updateImagesField();
 }
-
 function refreshImageGrid() {
   const grid = document.getElementById('image-preview-grid');
   grid.innerHTML = '';
   uploadedImages.forEach((url, i) => {
     const isCover = i === 0;
+    const safeUrl = url.replace(/'/g,'%27');
     const div = document.createElement('div');
     div.className = 'image-preview-item' + (isCover ? ' is-cover' : '');
-    div.dataset.url = url;
     div.innerHTML = `
       <img src="${url}" alt="Photo ${i+1}">
-      <button class="img-cover-btn" onclick="setCoverImage('${url.replace(/'/g,'%27')}')" type="button" title="Set as cover">★</button>
-      <button class="img-remove" onclick="removeImage('${url.replace(/'/g,'%27')}')" type="button">×</button>
-      <span class="img-order">${i + 1}</span>
+      <button class="img-cover-btn" onclick="setCoverImage('${safeUrl}')" type="button" title="Set as cover">&#9733;</button>
+      <button class="img-remove" onclick="removeImage('${safeUrl}')" type="button">&#215;</button>
+      <span class="img-order">${i+1}</span>
       ${isCover ? '<span class="img-cover-badge">Cover</span>' : ''}`;
     grid.appendChild(div);
   });
-  updateImagesField();
-}
-
-function updateImagesField() {
   document.getElementById('f-images').value = JSON.stringify(uploadedImages);
 }
-
 function populateExistingImages(images) {
   uploadedImages = images || [];
   refreshImageGrid();
 }
 
-// ── INIT ─────────────────────────────────────────────────────────
-initCheckGrid('features-grid', FEATURES_OPTIONS, false);
-initCheckGrid('amenities-grid', AMENITIES_OPTIONS, true);
+// ── INIT ──────────────────────────────────────────────────────────
+initCheckGrid('features-grid', FEATURES);
+initCheckGrid('amenities-grid', AMENITIES);
 initHighlightPresets();
 </script>
 </body>
