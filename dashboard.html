@@ -254,7 +254,13 @@ body{
   font-weight:700;
   margin-bottom:14px;
 }
-
+.listing-stats{
+  display:flex;
+  gap:16px;
+  margin-top:14px;
+  color:#7C8B92;
+  font-size:13px;
+}
 .card-actions{
   display:flex;
   gap:10px;
@@ -541,7 +547,21 @@ function renderListings(properties){
           <div class="card-price">
             ${property.price_display || ''}
           </div>
+<div class="listing-stats">
 
+  <span>
+    👁 ${property.views || 0}
+  </span>
+
+  <span>
+    💬 ${property.inquiries || 0}
+  </span>
+
+  <span>
+    ❤ ${property.saves || 0}
+  </span>
+
+</div>
           <div class="card-actions">
 
             <button
