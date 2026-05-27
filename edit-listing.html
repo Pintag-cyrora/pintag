@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<title>Edit Listing · Pintag</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+}
+
+:root{
+  --bg:#F3EFE8;
+  --panel:#FFFFFF;
+  --line:rgba(26,36,40,0.08);
+  --text:#1A2428;
+  --muted:#7A9098;
+  --teal:#2D8C8C;
+  --radius:18px;
+}
+
+body{
+  font-family:"DM Sans",sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  padding:24px;
+}
+
+.wrapper{
+  max-width:760px;
+  margin:auto;
+}
+
+.topbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:28px;
+}
+
+h1{
+  font-size:32px;
+  font-weight:700;
+  letter-spacing:-0.04em;
+}
+
+.back{
+  text-decoration:none;
+  color:var(--teal);
+  font-weight:600;
+}
+
+.form{
+  background:#fff;
+  border-radius:24px;
+  border:1px solid var(--line);
+  padding:24px;
+}
+
+.group{
+  margin-bottom:20px;
+}
+
+label{
+  display:block;
+  margin-bottom:10px;
+  font-size:14px;
+  font-weight:600;
+}
+
+input,
+textarea,
+select{
+  width:100%;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:14px;
+  font-family:"DM Sans",sans-serif;
+  font-size:15px;
+  background:#fff;
+}
+
+textarea{
+  min-height:140px;
+  resize:vertical;
+}
+
+.actions{
+  margin-top:28px;
+  display:flex;
+  gap:12px;
+}
+
+button{
+  border:none;
+  cursor:pointer;
+  border-radius:14px;
+  padding:14px 18px;
+  font-family:"DM Sans",sans-serif;
+  font-weight:600;
+}
+
+.save-btn{
+  background:var(--teal);
+  color:#fff;
+}
+
+.delete-btn{
+  background:#F5ECEC;
+  color:#A24B4B;
+}
+
+.status{
+  margin-top:18px;
+  font-size:14px;
+  color:var(--muted);
+}
+
+</style>
+</head>
+<body>
+
+<div class="wrapper">
+
+  <div class="topbar">
+    <h1>Edit Listing</h1>
+
+    <a href="dashboard.html" class="back">
+      ← Back
+    </a>
+  </div>
+
+  <div class="form">
+
+    <div class="group">
+      <label>Title</label>
+      <input type="text" id="title">
+    </div>
+
+    <div class="group">
+      <label>Price</label>
+      <input type="text" id="price">
+    </div>
+
+    <div class="group">
+      <label>District</label>
+      <input type="text" id="district">
+    </div>
+
+    <div class="group">
+      <label>Description</label>
+      <textarea id="description"></textarea>
+    </div>
+
+    <div class="group">
+      <label>Status</label>
+
+      <select id="status">
+        <option value="active">Published</option>
+        <option value="draft">Draft</option>
+      </select>
+    </div>
+
+    <div class="actions">
+
+      <button
+        class="save-btn"
+        onclick="saveListing()"
+      >
+        Save Changes
+      </button>
+
+      <button
+        class="delete-btn"
+        onclick="deleteListing()"
+      >
+        Delete
+      </button>
+
+    </div>
+
+    <div class="status" id="statusText"></div>
+
+  </div>
+
+</div>
+
+<script>
+
+const SUPABASE_URL =
+  'https://eoladhcljbpbhnrmmpev.supabase.co';
+
+const SUPABASE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+
+const supabaseClient =
+  supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+  );
+
+const params =
+  new URLSearchParams(window.location.search);
+
+const slug = params.get('slug');
+
+let propertyId = null;
+
+async function loadListing(){
+
+  const {
+    data:{ user }
+  } = await supabaseClient.auth.getUser();
+
+  if(!user){
+    window.location.href =
+      'agent-login.html';
+    return;
+  }
+
+  const { data: property, error } =
+    await supabaseClient
+      .from('properties')
+      .select('*')
+      .eq('slug', slug)
+      .eq('agent_id', user.id)
+      .single();
+
+  if(error || !property){
+
+    document.body.innerHTML = `
+      <div style="padding:40px;font-family:DM Sans;">
+        Listing not found.
+      </div>
+    `;
+
+    return;
+  }
+
+  propertyId = property.id;
+
+  document.getElementById('title').value =
+    property.title_en || '';
+
+  document.getElementById('price').value =
+    property.price_display || '';
+
+  document.getElementById('district').value =
+    property.district_en || '';
+
+  document.getElementById('description').value =
+    property.description_en || '';
+
+  document.getElementById('status').value =
+    property.status || 'active';
+
+}
+
+async function saveListing(){
+
+  const title =
+    document.getElementById('title').value;
+
+  const price =
+    document.getElementById('price').value;
+
+  const district =
+    document.getElementById('district').value;
+
+  const description =
+    document.getElementById('description').value;
+
+  const status =
+    document.getElementById('status').value;
+
+  const { error } =
+    await supabaseClient
+      .from('properties')
+      .update({
+        title_en:title,
+        price_display:price,
+        district_en:district,
+        description_en:description,
+        status:status
+      })
+      .eq('id', propertyId);
+
+  if(error){
+
+    document.getElementById('statusText')
+      .innerText = 'Could not save';
+
+    console.error(error);
+
+    return;
+  }
+
+  document.getElementById('statusText')
+    .innerText = 'Saved successfully';
+
+}
+
+async function deleteListing(){
+
+  const confirmed =
+    confirm('Delete this listing?');
+
+  if(!confirmed) return;
+
+  const { error } =
+    await supabaseClient
+      .from('properties')
+      .delete()
+      .eq('id', propertyId);
+
+  if(error){
+
+    alert('Could not delete');
+
+    return;
+  }
+
+  window.location.href =
+    'dashboard.html';
+
+}
+
+loadListing();
+
+</script>
+
+</body>
+</html>
