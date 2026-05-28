@@ -897,6 +897,9 @@ async function saveListing(e) {
   const districtEn = document.getElementById('f-district').value;
   const districtMap = DISTRICT_MAP[districtEn] || {};
   const village = document.getElementById('f-village').value.trim();
+  const editId = document.getElementById('edit-id').value;
+
+console.log('EDIT ID:', editId);
 
   // Normalize arrays — guarantee clean keys on every save
   const features  = getCheckedKeys('features-grid');  // already keys from data-key
