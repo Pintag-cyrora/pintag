@@ -734,16 +734,26 @@ if (sessionStorage.getItem('pintag-admin')) {
 // ── SUPABASE ──────────────────────────────────────────────────────
 async function sbApi(method, path, body) {
   try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON,
+      'Authorization': 'Bearer ' + SUPABASE_ANON
+    };
+    
+    // Prefer header for POST/PATCH
+    if (method === 'POST') headers['Prefer'] = 'return=representation';
+    if (method === 'PATCH') headers['Prefer'] = 'return=minimal';
+    
+    console.log('sbApi call:', { method, path, headersSet: Object.keys(headers) });
+    
     const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
       method,
-      headers:{
-        'apikey':SUPABASE_ANON,
-        'Authorization':'Bearer '+SUPABASE_ANON,
-        'Content-Type':'application/json',
-        'Prefer':method==='POST'?'return=representation':'return=minimal'
-      },
+      headers,
       body: body ? JSON.stringify(body) : undefined
     });
+    
+    console.log('Response status:', res.status, 'ok:', res.ok);
+    
     if (!res.ok) {
       const errText = await res.text();
       console.error('Supabase error:', res.status, errText);
