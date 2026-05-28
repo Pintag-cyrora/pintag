@@ -733,19 +733,35 @@ if (sessionStorage.getItem('pintag-admin')) {
 
 // ── SUPABASE ──────────────────────────────────────────────────────
 async function sbApi(method, path, body) {
-  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
-    method,
-    headers:{
-      'apikey':SUPABASE_ANON,
-      'Authorization':'Bearer '+SUPABASE_ANON,
-      'Content-Type':'application/json',
-      'Prefer':method==='POST'?'return=representation':'return=minimal'
-    },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  if (method === 'DELETE' || (method === 'PATCH' && res.status === 204)) return true;
-  const text = await res.text();
-  return text ? JSON.parse(text) : true;
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+      method,
+      headers:{
+        'apikey':SUPABASE_ANON,
+        'Authorization':'Bearer '+SUPABASE_ANON,
+        'Content-Type':'application/json',
+        'Prefer':method==='POST'?'return=representation':'return=minimal'
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('Supabase error:', res.status, errText);
+      try {
+        const errJson = JSON.parse(errText);
+        console.error('Error details:', errJson);
+        throw new Error('Supabase ' + res.status + ': ' + (errJson.message || errJson.details || errText));
+      } catch (parseErr) {
+        throw new Error('Supabase ' + res.status + ': ' + errText);
+      }
+    }
+    if (method === 'DELETE' || (method === 'PATCH' && res.status === 204)) return true;
+    const text = await res.text();
+    return text ? JSON.parse(text) : true;
+  } catch (err) {
+    console.error('sbApi error:', err.message);
+    throw err;
+  }
 }
 
 // ── LISTINGS ──────────────────────────────────────────────────────
@@ -897,9 +913,6 @@ async function saveListing(e) {
   const districtEn = document.getElementById('f-district').value;
   const districtMap = DISTRICT_MAP[districtEn] || {};
   const village = document.getElementById('f-village').value.trim();
-  const editId = document.getElementById('edit-id').value;
-
-console.log('EDIT ID:', editId);
 
   // Normalize arrays — guarantee clean keys on every save
   const features  = getCheckedKeys('features-grid');  // already keys from data-key
@@ -942,10 +955,7 @@ console.log('EDIT ID:', editId);
     district_en:       districtEn || null,
     district_lo:       districtMap.lo || null,
     district_zh:       districtMap.zh || null,
-    village:           village || null,
     village_en:        village || null,
-    village_lo:        village || null,
-    village_zh:        village || null,
     latitude:          lat,
     longitude:         lng,
     map_embed_url:     document.getElementById('f-map').value.trim() || null,
@@ -966,13 +976,26 @@ console.log('EDIT ID:', editId);
     agent_response_time: document.getElementById('f-response-time').value.trim() || null
   };
 
+  console.log('Saving listing with data:', body);
+
   const editId = document.getElementById('edit-id').value;
   let result;
-  if (editId) {
-    result = await sbApi('PATCH', `properties?id=eq.${editId}`, body);
-  } else {
-    body.slug = slug;
-    result = await sbApi('POST', 'properties', body);
+  try {
+    if (editId) {
+      result = await sbApi('PATCH', `properties?id=eq.${editId}`, body);
+    } else {
+      body.slug = slug;
+      result = await sbApi('POST', 'properties', body);
+    }
+  } catch (err) {
+    console.error('Save failed:', err);
+    btn.disabled = false;
+    btn.textContent = 'Save Listing';
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message error';
+    msg.textContent = '✗ Error saving: ' + err.message;
+    msg.style.display = 'block';
+    return;
   }
 
   btn.disabled = false;
