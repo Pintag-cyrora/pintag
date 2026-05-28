@@ -244,14 +244,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   .agent-ctas .btn-primary{flex:1;padding:10px 14px;font-size:13px;}
   /* Detail — single column, tighter section spacing */
   .detail-wrap{padding:22px 16px 0;}
-  .detail-grid{grid-template-columns:1fr;gap:0;padding-bottom:0;}
+  .detail-grid{grid-template-columns:1fr;gap:0;padding-bottom:0;overflow:hidden;}
   /* Each column gets its own border + padding instead of grid gap */
-  .detail-grid > div{padding:20px 0;border-bottom:1px solid var(--border);}
+  .detail-grid > div{padding:20px 0;border-bottom:1px solid var(--border);min-width:0;}
   .detail-grid > div:last-child{border-bottom:none;padding-bottom:18px;}
-  /* Collapse empty detail columns (e.g. when no features stored) — keeps mobile
-     rhythm clean. Desktop unaffected: empty placeholder divs still occupy their
-     grid track to preserve the 1.8fr / 1fr / 0.9fr ratio. */
-  .detail-grid > div:empty{display:none;}
   /* Typography hierarchy — slightly tighter on mobile */
   .info-title{font-size:24px;line-height:1.12;margin-bottom:8px;}
   .property-highlight{font-size:12.5px;margin-bottom:16px;}
@@ -282,11 +278,21 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   .similar-header{margin-bottom:16px;}
   .similar-title{font-size:16px;}
   .similar-grid{grid-template-columns:1fr;gap:14px;}
-  /* Similar cards — horizontal layout on mobile for better scanning */
-  .sim-card{display:grid;grid-template-columns:130px 1fr;border-radius:12px;}
-  .sim-card-img{aspect-ratio:auto;height:100%;min-height:118px;border-radius:0;}
-  .sim-card-img img{height:100%;}
-  .sim-heart{width:26px;height:26px;top:6px;right:6px;}
+  /* Similar cards — stacked layout for mobile readability */
+  .sim-card{
+    display:block;
+  }
+  .sim-card-img{
+    aspect-ratio:16/10;
+    min-height:auto;
+    width:100%;
+  }
+  .sim-card-img img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+  }
+  .sim-heart{width:28px;height:28px;top:8px;right:8px;}
   .sim-body{padding:12px 13px 14px;}
   .sim-title{font-size:13px;margin-bottom:3px;}
   .sim-loc{margin-bottom:5px;}
@@ -396,6 +402,13 @@ var similarCache    = null;
 var _heroTimer      = null;
 var _lbTimer        = null;
 var _fetchInFlight  = false;
+
+// Handle image load errors gracefully
+function handleImageError(img) {
+  if(!img) return;
+  img.style.opacity = '0.5';
+  img.style.background = 'var(--warm-deep)';
+}
 
 
 // ══════════════════════════════════════════════════════════════════
