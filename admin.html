@@ -1035,6 +1035,8 @@ async function deleteListing(id, title) {
 // ── IMAGE UPLOAD ──────────────────────────────────────────────────
 const SB_UPLOAD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const ACCEPTED_IMG_EXTS = new Set(['jpg','jpeg','png','webp']);
+const ACCEPTED_MIME_TYPES_IMG = new Set(['image/jpeg','image/jpg','image/png','image/webp']);
 let uploadedImages = [];
 
 const zone = document.getElementById('upload-zone');
@@ -1053,8 +1055,12 @@ async function handleImageUpload(files) {
   let completed = 0;
   for (const file of fileArr) {
     if (file.size > 10 * 1024 * 1024) { status.textContent = `${file.name} too large (max 10MB)`; continue; }
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!ACCEPTED_IMG_EXTS.has(ext) && !ACCEPTED_MIME_TYPES_IMG.has(file.type)) {
+      status.textContent = `${file.name}: only JPG, PNG, and WebP files are accepted`;
+      continue;
+    }
     status.textContent = `Uploading ${file.name}...`;
-    const ext = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     try {
       const res = await fetch(`${SB_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
