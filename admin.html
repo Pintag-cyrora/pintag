@@ -931,7 +931,9 @@ async function saveListing(e) {
   const nearbyPlaces = getNearbyPlaces();
 
   const titleEn = document.getElementById('f-title-en').value.trim();
-  const slugBase = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
+  // FIX: if titleEn is Lao/Chinese-only or blank, slugBase becomes '' which
+  // produced the invalid slug '-123456'.  Fall back to 'property' instead.
+  const slugBase = (titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60)) || 'property';
   const slug = slugBase + '-' + Date.now().toString().slice(-6);
 
   const lat = parseFloat(document.getElementById('f-lat').value) || null;
