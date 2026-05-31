@@ -54,9 +54,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .nav-link{font-size:13px;color:var(--ink-soft);text-decoration:none;transition:color 0.15s;}
 .nav-link:hover{color:var(--ink);}
 .nav-right{display:flex;align-items:center;gap:14px;flex-shrink:0;}
-.lang-switcher{display:flex;gap:3px;background:var(--warm-deep);padding:3px;border-radius:var(--r-switcher);border:1px solid var(--border-mid);}
-.lang-btn{font-family:"DM Sans",sans-serif;font-size:10px;font-weight:700;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:var(--r-tag);letter-spacing:0.04em;transition:background 0.15s,color 0.15s;}
-.lang-btn.active{background:var(--ink);color:var(--white);}
+.lang-switcher{display:flex;gap:3px;background:var(--warm-deep);padding:3px;border-radius:100px;border:1px solid var(--border-mid);}
+.lang-btn{font-family:"DM Sans",sans-serif;font-size:10px;font-weight:700;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:100px;letter-spacing:0.04em;transition:background 0.15s,color 0.15s;}
+.lang-btn.active{background:var(--teal);color:var(--white);}
 .nav-cta{display:flex;align-items:center;gap:7px;background:var(--teal);color:var(--white);padding:7px 16px;border-radius:var(--r-btn);font-size:12.5px;font-weight:600;text-decoration:none;border:none;cursor:pointer;font-family:"DM Sans",sans-serif;transition:background 0.15s;white-space:nowrap;}
 .nav-cta:hover{background:var(--teal-light);}
 .g-wrap{max-width:1280px;margin-top:calc(52px + env(safe-area-inset-top));margin-left:auto;margin-right:auto;background:var(--white);min-height:calc(100vh - 54px);animation:fadePage .45s ease;will-change:opacity,transform;}
@@ -91,7 +91,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .action-link:hover{color:var(--teal);}
 .action-link:hover svg{stroke:var(--teal);}
 .action-link svg{transition:stroke 0.18s;}
-.pintag-verified{display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);border:1px solid var(--teal-mark);padding:3px 8px;border-radius:var(--r-tag);white-space:nowrap;width:fit-content;}
+.pintag-verified{display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);border:1px solid var(--teal-mark);padding:3px 10px;border-radius:100px;white-space:nowrap;width:fit-content;}
 .pintag-verified::before{content:"";display:block;width:4px;height:4px;border-right:1.5px solid var(--teal);border-bottom:1.5px solid var(--teal);transform:rotate(-45deg) translateY(-1px);flex-shrink:0;}
 /* Gallery */
 .desktop-gallery{display:flex;flex-direction:column;height:100%;}
@@ -181,8 +181,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .similar-view-all{font-size:12.5px;font-weight:500;color:var(--teal);text-decoration:none;display:flex;align-items:center;gap:4px;transition:gap 0.15s;}
 .similar-view-all:hover{gap:7px;}
 .similar-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;}
-.sim-card{background:var(--white);border:1px solid var(--border-mid);border-radius:16px;overflow:hidden;text-decoration:none;transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;display:block;}
-.sim-card:hover{transform:translateY(-3px);border-color:rgba(26,36,40,0.11);box-shadow:0 16px 36px rgba(0,0,0,0.05);}
+.sim-card{background:var(--white);border:1px solid var(--border-mid);border-radius:16px;overflow:hidden;text-decoration:none;box-shadow:0 2px 8px rgba(26,36,40,0.05);transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;display:block;}
+.sim-card:hover{transform:translateY(-3px);border-color:rgba(45,140,140,0.18);box-shadow:0 12px 36px rgba(0,0,0,0.09);}
 .sim-card-img{position:relative;aspect-ratio:16/10;overflow:hidden;background:var(--warm-deep);}
 .sim-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .6s cubic-bezier(.16,1,.3,1);}
 .sim-card:hover .sim-card-img img{transform:scale(1.04);}
