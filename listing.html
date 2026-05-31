@@ -420,6 +420,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   <div class="lb-dots" id="lb-dots"></div>
 </div>
 
+<script type="module" src="js/content-gen.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // PINTAG · listing.html v4 — fully dynamic, no hardcoded content
@@ -793,7 +794,8 @@ function buildMockupLayout(){
   PT.log('Rendering',{lang:lang,id:data.id});
 
   var resolvedTitle    = esc(data['title_'+lang]       || data.title_en    || data.title_lo    || '');
-  var resolvedDesc     = esc(data['description_'+lang] || data.description_en || data.description_lo || '');
+  var rawDesc          = data['description_'+lang] || data.description_en || data.description_lo || '';
+  var resolvedDesc     = rawDesc ? esc(rawDesc) : (typeof ContentGen !== 'undefined' ? esc(ContentGen.generateOverview(data, lang)) : '');
   var resolvedDistrict = esc(data['district_'+lang]    || data.district_en  || '');
 
   // Village + district — "Thongkang, Sisattanak" style hyperlocal label
@@ -817,6 +819,7 @@ function buildMockupLayout(){
     call   :{lo:'ໂທຫາຕົວແທນ',en:'Call Agent',zh:'电话联系'},
     agent  :{lo:'ຕົວແທນຜູ້ດູແລ',en:'Presented by agent',zh:'物业主理经纪'},
     overview:{lo:'ພາບລວມ',en:'Overview',zh:'房源概述'},
+    neighborhood:{lo:'ຊຸມຊົນ',en:'Neighbourhood',zh:'周边介绍'},
     features:{lo:'ຈຸດເດັ່ນ',en:'Features',zh:'房屋亮点'},
     location:{lo:'ສະຖານທີ່ຕັ້ງ',en:'Location',zh:'地理位置'},
     nearby :{lo:'ສະຖານທີ່ໃກ້ຄຽງ',en:'Nearby',zh:'周边'},
@@ -940,11 +943,18 @@ function buildMockupLayout(){
     amenityRowHtml+='</div>';
   }
 
+  var neighborhoodText = data.neighborhood_description || data.area_insight ||
+    (typeof ContentGen !== 'undefined' ? ContentGen.generateNeighborhoodInsight(data, lang) : '');
+  var neighborhoodHtml = neighborhoodText && neighborhoodText.trim()
+    ? '<div style="margin-top:28px;"><span class="section-label">'+L.neighborhood[lang]+'</span><p class="body-narrative">'+esc(neighborhoodText.trim())+'</p></div>'
+    : '';
+
   var overviewColHtml=(
     '<div>'+
     '<span class="section-label">'+L.overview[lang]+'</span>'+
     '<p class="body-narrative">'+resolvedDesc+'</p>'+
     amenityRowHtml+
+    neighborhoodHtml+
     '</div>'
   );
 
@@ -1106,16 +1116,22 @@ function buildMockupLayout(){
     layout  :{lo:'ໂຄງສ້າງ',en:'Layout',zh:'格局'}
   };
   var hi = [];
-  var hiLoc = resolvedVillage || resolvedDistrict;
-  if(hiLoc) hi.push({k:KICK.location[lang]||KICK.location.en, v:esc(hiLoc)});
-  if(styleRaw){
-    var sLbl = STYLE_LABELS[styleKey] ? (STYLE_LABELS[styleKey][lang]||STYLE_LABELS[styleKey].en) : styleRaw;
-    hi.push({k:KICK.setting[lang]||KICK.setting.en, v:esc(sLbl)});
-  }
-  if(data.sqm) hi.push({k:KICK.space[lang]||KICK.space.en, v:esc(String(data.sqm))+' m²'});
-  if(data.bedrooms){
-    var bedWord = lang==='lo'?' ຫ້ອງນອນ':lang==='zh'?' 间卧室':(data.bedrooms>1?' Bedrooms':' Bedroom');
-    hi.push({k:KICK.layout[lang]||KICK.layout.en, v:esc(String(data.bedrooms))+bedWord});
+  if (typeof ContentGen !== 'undefined') {
+    ContentGen.generateHighlightItems(data, lang).forEach(function(item) {
+      hi.push({ k: item.kicker, v: esc(item.value) });
+    });
+  } else {
+    var hiLoc = resolvedVillage || resolvedDistrict;
+    if(hiLoc) hi.push({k:KICK.location[lang]||KICK.location.en, v:esc(hiLoc)});
+    if(styleRaw){
+      var sLbl = STYLE_LABELS[styleKey] ? (STYLE_LABELS[styleKey][lang]||STYLE_LABELS[styleKey].en) : styleRaw;
+      hi.push({k:KICK.setting[lang]||KICK.setting.en, v:esc(sLbl)});
+    }
+    if(data.sqm) hi.push({k:KICK.space[lang]||KICK.space.en, v:esc(String(data.sqm))+' m²'});
+    if(data.bedrooms){
+      var bedWord = lang==='lo'?' ຫ້ອງນອນ':lang==='zh'?' 间卧室':(data.bedrooms>1?' Bedrooms':' Bedroom');
+      hi.push({k:KICK.layout[lang]||KICK.layout.en, v:esc(String(data.bedrooms))+bedWord});
+    }
   }
   var propertyHighlightsHtml = '';
   if(hi.length >= 2){
