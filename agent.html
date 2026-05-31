@@ -80,7 +80,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .hero-portrait img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
 .hero-portrait-initial{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:var(--teal);}
 .hero-text{}
-.hero-credential{font-size:9px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;display:block;}
 .hero-name{
   font-size:clamp(28px,6vw,40px);font-weight:800;
   color:var(--ink);letter-spacing:-0.04em;line-height:1.0;
@@ -149,6 +148,38 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
   .agent-contact-wrap,.portfolio-wrap{padding-left:20px;padding-right:20px;}
   .portfolio-grid{gap:10px;}
 }
+/* COMPANY ROW */
+.hero-company{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:400;color:var(--ink-soft);margin-top:4px;margin-bottom:16px;}
+/* STATS ROW */
+.hero-stats{display:flex;gap:28px;flex-wrap:wrap;padding:16px 0;border-top:1px solid var(--border);margin-top:16px;}
+.hero-stat{display:flex;flex-direction:column;gap:2px;}
+.hero-stat-val{font-size:20px;font-weight:700;color:var(--ink);letter-spacing:-0.03em;line-height:1;}
+.hero-stat-lbl{font-size:10px;color:var(--ink-muted);letter-spacing:0.04em;}
+/* SOCIAL BUTTONS */
+.social-btns{display:flex;gap:10px;margin-top:12px;}
+.btn-fb{display:flex;align-items:center;justify-content:center;gap:7px;flex:1;padding:12px 16px;background:#1877F2;color:#fff;font-size:13px;font-weight:500;text-decoration:none;border-radius:8px;white-space:nowrap;transition:background 0.2s;font-family:'DM Sans',sans-serif;}
+.btn-fb:hover{background:#1464D8;}
+.btn-email{display:flex;align-items:center;justify-content:center;gap:7px;flex:1;padding:12px 16px;background:transparent;color:var(--ink-soft);font-size:13px;font-weight:500;text-decoration:none;border:1px solid rgba(26,36,40,0.14);border-radius:8px;white-space:nowrap;transition:background 0.2s,border-color 0.2s;font-family:'DM Sans',sans-serif;}
+.btn-email:hover{background:var(--warm);border-color:rgba(26,36,40,0.22);}
+/* PORTFOLIO HEADER */
+.portfolio-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px;}
+.portfolio-eyebrow{font-size:9px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--teal);margin-bottom:6px;display:block;}
+.portfolio-title{font-size:20px;font-weight:700;color:var(--ink);letter-spacing:-0.025em;}
+.portfolio-view-all{font-size:12px;font-weight:500;color:var(--teal);text-decoration:none;display:flex;align-items:center;gap:3px;white-space:nowrap;transition:gap 0.15s;}
+.portfolio-view-all:hover{gap:6px;}
+/* CARD IMPROVEMENTS */
+.p-img{aspect-ratio:4/3;overflow:hidden;background:var(--warm);border-radius:14px;position:relative;}
+.p-img img{width:100%;height:100%;object-fit:cover;object-position:center 45%;display:block;transition:transform 0.5s cubic-bezier(0.4,0,0.2,1);}
+.p-card:hover .p-img img{transform:scale(1.03);}
+.p-badge{position:absolute;top:10px;left:10px;font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:3px 10px;border-radius:100px;color:#fff;}
+.p-badge-featured{background:rgba(45,140,140,0.85);}
+.p-badge-new{background:rgba(26,36,40,0.75);}
+.p-specs{font-size:11px;color:var(--ink-muted);display:flex;gap:10px;flex-wrap:wrap;margin-top:3px;margin-bottom:4px;}
+.p-view{font-size:12px;font-weight:500;color:var(--teal);display:inline-flex;align-items:center;gap:3px;margin-top:5px;text-decoration:none;transition:gap 0.15s;}
+.p-view:hover{gap:6px;}
+/* VERIFIED BADGE */
+.hero-credential{font-size:9px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;display:none;align-items:center;gap:5px;}
+.hero-credential-check{width:14px;height:14px;border-radius:50%;background:var(--teal);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -175,9 +206,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
       <div class="hero-portrait-initial" id="hero-initial">?</div>
     </div>
     <div class="hero-text">
-      <span class="hero-credential" id="hero-credential" style="display:none;">VERIFIED AGENT</span>
+      <span class="hero-credential" id="hero-credential">
+  <span class="hero-credential-check"><svg width="8" height="8" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+  VERIFIED AGENT
+</span>
       <h1 class="hero-name" id="hero-name">—</h1>
       <p class="hero-role" id="hero-role">Property Advisor · ວຽງຈັນ</p>
+      <p class="hero-company" id="hero-company" style="display:none;"></p>
+      <div class="hero-stats" id="hero-stats" style="display:none;"></div>
       <p class="hero-bio" id="hero-bio" style="display:none;"></p>
     </div>
   </div>
@@ -189,12 +225,20 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
     <svg width="17" height="17" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
     <span id="wa-label">ຢາກຮູ້ເພີ່ມເຕີມ? ທັກໄດ້ເລີຍ</span>
   </a>
+  <div class="social-btns" id="social-btns"></div>
 </div>
 
 <div class="soft-sep"></div>
 
 <!-- PORTFOLIO -->
 <div class="portfolio-wrap fu fu3">
+  <div class="portfolio-header" id="portfolio-header" style="display:none;">
+    <div>
+      <span class="portfolio-eyebrow" id="portfolio-eyebrow"></span>
+      <span class="portfolio-title" id="portfolio-title">ລາຍການ</span>
+    </div>
+    <a href="listings.html" id="portfolio-view-all" class="portfolio-view-all">ເບິ່ງທັງໝົດ <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></a>
+  </div>
   <div class="portfolio-grid" id="portfolio-grid"></div>
 </div>
 
@@ -258,16 +302,12 @@ async function load(){
     clearTimeout(t);
     if(!r.ok) throw new Error('HTTP '+r.status);
     var ag=await r.json();
-    console.log('Resolved slug:', slug);
-    console.log('Agent object:', ag);
     if(!ag||!ag[0]) throw new Error('Agent not found');
     var a=ag[0];
-    console.log('Agent ID:', a.id);
     var r2=await fetch(
-      SB+'/rest/v1/properties?agent_id=eq.'+encodeURIComponent(a.id)+'&order=is_featured.desc,created_at.desc&select=slug,title_lo,title_en,price_display,district_lo,district_en,images,transaction_type,is_featured',
+      SB+'/rest/v1/properties?agent_id=eq.'+encodeURIComponent(a.id)+'&order=is_featured.desc,created_at.desc&select=slug,title_lo,title_en,price_display,district_lo,district_en,images,transaction_type,is_featured,bedrooms,bathrooms,sqm',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var listings=await r2.json();
-    console.log('Listings returned:', listings);
     if(!Array.isArray(listings)) listings=[];
     render(a,listings);
     document.getElementById('loading').style.display='none';
@@ -293,7 +333,7 @@ function render(a,listings){
   }
 
   // Credential
-  if(a.is_verified) document.getElementById('hero-credential').style.display='block';
+  if(a.is_verified) document.getElementById('hero-credential').style.display='inline-flex';
 
   // Name
   document.getElementById('hero-name').textContent=a.name_lo||a.name_en||'Agent';

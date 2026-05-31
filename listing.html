@@ -54,9 +54,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .nav-link{font-size:13px;color:var(--ink-soft);text-decoration:none;transition:color 0.15s;}
 .nav-link:hover{color:var(--ink);}
 .nav-right{display:flex;align-items:center;gap:14px;flex-shrink:0;}
-.lang-switcher{display:flex;gap:3px;background:var(--warm-deep);padding:3px;border-radius:100px;border:1px solid var(--border-mid);}
-.lang-btn{font-family:"DM Sans",sans-serif;font-size:10px;font-weight:700;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:100px;letter-spacing:0.04em;transition:background 0.15s,color 0.15s;}
-.lang-btn.active{background:var(--teal);color:var(--white);}
+.lang-switcher{display:flex;gap:3px;background:var(--warm-deep);padding:3px;border-radius:var(--r-switcher);border:1px solid var(--border-mid);}
+.lang-btn{font-family:"DM Sans",sans-serif;font-size:10px;font-weight:700;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:var(--r-tag);letter-spacing:0.04em;transition:background 0.15s,color 0.15s;}
+.lang-btn.active{background:var(--ink);color:var(--white);}
+.nav-icon-action{display:none;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:"DM Sans",sans-serif;font-size:12px;font-weight:400;color:var(--ink-soft);padding:6px 8px;border-radius:6px;transition:background 0.15s,color 0.15s;}
+.nav-icon-action:hover{background:rgba(26,36,40,0.06);color:var(--ink);}
+.nav-icon-action.saved svg{stroke:#D94040;fill:#D94040;}
+.nav-icon-label{letter-spacing:0.01em;}
+@media(min-width:961px){.nav-icon-action{display:flex;}}
 .nav-cta{display:flex;align-items:center;gap:7px;background:var(--teal);color:var(--white);padding:7px 16px;border-radius:var(--r-btn);font-size:12.5px;font-weight:600;text-decoration:none;border:none;cursor:pointer;font-family:"DM Sans",sans-serif;transition:background 0.15s;white-space:nowrap;}
 .nav-cta:hover{background:var(--teal-light);}
 .g-wrap{max-width:1280px;margin-top:calc(52px + env(safe-area-inset-top));margin-left:auto;margin-right:auto;background:var(--white);min-height:calc(100vh - 54px);animation:fadePage .45s ease;will-change:opacity,transform;}
@@ -91,7 +96,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .action-link:hover{color:var(--teal);}
 .action-link:hover svg{stroke:var(--teal);}
 .action-link svg{transition:stroke 0.18s;}
-.pintag-verified{display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);border:1px solid var(--teal-mark);padding:3px 10px;border-radius:100px;white-space:nowrap;width:fit-content;}
+.pintag-verified{display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);border:1px solid var(--teal-mark);padding:3px 8px;border-radius:var(--r-tag);white-space:nowrap;width:fit-content;}
 .pintag-verified::before{content:"";display:block;width:4px;height:4px;border-right:1.5px solid var(--teal);border-bottom:1.5px solid var(--teal);transform:rotate(-45deg) translateY(-1px);flex-shrink:0;}
 /* Gallery */
 .desktop-gallery{display:flex;flex-direction:column;height:100%;}
@@ -180,9 +185,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .similar-title{font-size:19px;font-weight:600;color:var(--ink);letter-spacing:-0.025em;}
 .similar-view-all{font-size:12.5px;font-weight:500;color:var(--teal);text-decoration:none;display:flex;align-items:center;gap:4px;transition:gap 0.15s;}
 .similar-view-all:hover{gap:7px;}
-.similar-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;}
-.sim-card{background:var(--white);border:1px solid var(--border-mid);border-radius:16px;overflow:hidden;text-decoration:none;box-shadow:0 2px 8px rgba(26,36,40,0.05);transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;display:block;}
-.sim-card:hover{transform:translateY(-3px);border-color:rgba(45,140,140,0.18);box-shadow:0 12px 36px rgba(0,0,0,0.09);}
+.similar-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;}
+.sim-card{background:var(--white);border:1px solid var(--border-mid);border-radius:16px;overflow:hidden;text-decoration:none;transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;display:block;}
+.sim-card:hover{transform:translateY(-3px);border-color:rgba(26,36,40,0.11);box-shadow:0 16px 36px rgba(0,0,0,0.05);}
 .sim-card-img{position:relative;aspect-ratio:16/10;overflow:hidden;background:var(--warm-deep);}
 .sim-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .6s cubic-bezier(.16,1,.3,1);}
 .sim-card:hover .sim-card-img img{transform:scale(1.04);}
@@ -352,6 +357,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
     <a href="listings.html" class="nav-link"><span class="lo-i">ລາຍການ</span><span class="en-i">Listings</span><span class="zh-i">房源</span></a>
   </div>
   <div class="nav-right">
+    <button class="nav-icon-action" id="nav-save-btn" onclick="toggleSaveListing()" aria-label="Save listing">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      <span class="nav-icon-label">Save</span>
+    </button>
+    <button class="nav-icon-action" onclick="shareListing()" aria-label="Share listing">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      <span class="nav-icon-label">Share</span>
+    </button>
     <div class="lang-switcher">
       <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
       <button class="lang-btn" onclick="setLang('en',this)">EN</button>
@@ -1388,6 +1401,26 @@ function handleImageError(img){
   if(img.classList.contains('agent-pfp')){img.src=agentFallback;return;}
   img.style.opacity='0';
   if(img.parentElement)img.parentElement.style.background='var(--warm-deep)';
+}
+function toggleSaveListing(){
+  var slug=new URLSearchParams(location.search).get('slug')||'';
+  if(!slug)return;
+  var saved;
+  try{saved=new Set(JSON.parse(localStorage.getItem('pintag_saved')||'[]'));}catch(e){saved=new Set();}
+  if(saved.has(slug)){saved.delete(slug);}else{saved.add(slug);}
+  try{localStorage.setItem('pintag_saved',JSON.stringify([...saved]));}catch(e){}
+  var btn=document.getElementById('nav-save-btn');
+  if(btn)btn.classList.toggle('saved',saved.has(slug));
+}
+function shareListing(){
+  if(navigator.share){
+    navigator.share({title:document.title,url:location.href}).catch(function(){});
+  } else {
+    navigator.clipboard.writeText(location.href).then(function(){
+      var btn=document.querySelector('[onclick="shareListing()"]');
+      if(btn){var orig=btn.querySelector('.nav-icon-label').textContent;btn.querySelector('.nav-icon-label').textContent='Copied!';setTimeout(function(){btn.querySelector('.nav-icon-label').textContent=orig;},1800);}
+    }).catch(function(){});
+  }
 }
 </script>
 </body>
