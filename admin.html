@@ -501,6 +501,16 @@ const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 const ADMIN_PASSWORD = 'pintag2025'; // !! CHANGE THIS !!
 
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function isSafeUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  var t = url.trim().toLowerCase();
+  return t.indexOf('https://') === 0 || t.indexOf('http://') === 0;
+}
+
 // ══════════════════════════════════════════════════════════════════
 // PINTAG TAXONOMY — single source of truth (mirrored in listing.html)
 // ══════════════════════════════════════════════════════════════════
@@ -638,7 +648,7 @@ document.addEventListener('keydown', e => {
 function renderCustomTags() {
   const el = document.getElementById('highlights-custom');
   el.innerHTML = customTags.map((t, i) =>
-    `<span class="tag-custom-pill">${t}<button type="button" onclick="removeCustomTag(${i})">×</button></span>`
+    `<span class="tag-custom-pill">${escHtml(t)}<button type="button" onclick="removeCustomTag(${i})">×</button></span>`
   ).join('');
 }
 function removeCustomTag(i) { customTags.splice(i,1); renderCustomTags(); }
@@ -680,9 +690,9 @@ function addNearby(data) {
   const row = document.createElement('div');
   row.className = 'nearby-row';
   row.innerHTML = `
-    <input class="nearby-icon-input" type="text" placeholder="☕" value="${data ? (data.icon||'') : ''}" maxlength="2">
-    <input class="form-input np-name" type="text" placeholder="Joma Bakery Café" value="${data ? (data.name||data.name_en||'') : ''}">
-    <input class="form-input np-dist" type="text" placeholder="5 min drive" value="${data ? (data.distance||'') : ''}">
+    <input class="nearby-icon-input" type="text" placeholder="☕" value="${data ? escHtml(data.icon||'') : ''}" maxlength="2">
+    <input class="form-input np-name" type="text" placeholder="Joma Bakery Café" value="${data ? escHtml(data.name||data.name_en||'') : ''}">
+    <input class="form-input np-dist" type="text" placeholder="5 min drive" value="${data ? escHtml(data.distance||'') : ''}">
     <button type="button" class="btn-remove" onclick="this.parentElement.remove()">×</button>`;
   list.appendChild(row);
 }
@@ -705,10 +715,10 @@ async function loadVillageSuggestions() {
     const fromDB = Array.isArray(data) ? data.map(p => p.village_en).filter(Boolean) : [];
     const all = [...new Set([...fromDB, ...STATIC])].sort();
     const dl = document.getElementById('village-suggestions');
-    if (dl) dl.innerHTML = all.map(v => `<option value="${v}">`).join('');
+    if (dl) dl.innerHTML = all.map(v => `<option value="${escHtml(v)}">`).join('');
   } catch(e) {
     const dl = document.getElementById('village-suggestions');
-    if (dl) dl.innerHTML = STATIC.map(v => `<option value="${v}">`).join('');
+    if (dl) dl.innerHTML = STATIC.map(v => `<option value="${escHtml(v)}">`).join('');
   }
 }
 
@@ -775,6 +785,32 @@ async function sbApi(method, path, body) {
 }
 
 // ── LISTINGS ──────────────────────────────────────────────────────
+function buildListingRow(p) {
+  const safeId     = escHtml(String(p.id || ''));
+  const safeTitle  = escHtml(p.title_en || '—');
+  const safeSlug   = encodeURIComponent(p.slug || '');
+  const safeDist   = escHtml(p.district_en || '—');
+  const safePrice  = p.price_display ? escHtml(p.price_display) : '<em style="color:var(--ink-muted)">On request</em>';
+  const safeAgent  = escHtml(p.agent_name || '—');
+  const safeStatus = escHtml(p.status || '');
+  const safeTitleAttr = escHtml(p.title_en || '');
+  const featuredBadge = p.is_featured
+    ? ' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>'
+    : '';
+  return `<tr>
+    <td><strong style="color:var(--ink);font-weight:500;">${safeTitle}</strong>${featuredBadge}</td>
+    <td style="color:var(--ink-muted)">${safeDist}</td>
+    <td>${safePrice}</td>
+    <td>${safeAgent}</td>
+    <td><span class="status-badge status-${safeStatus}">${safeStatus}</span></td>
+    <td style="display:flex;gap:6px;align-items:center;">
+      <button class="action-btn btn-edit" onclick="editListing('${safeId}')">Edit</button>
+      <a class="action-btn btn-view" href="listing.html?slug=${safeSlug}" target="_blank">View</a>
+      <button class="action-btn btn-delete" onclick="deleteListing('${safeId}','${safeTitleAttr}')">Delete</button>
+    </td>
+  </tr>`;
+}
+
 async function loadListings() {
   const container = document.getElementById('listings-container');
   container.innerHTML = '<div class="loading">Loading...</div>';
@@ -784,20 +820,7 @@ async function loadListings() {
     return;
   }
   let html = '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
-  data.forEach(p => {
-    html += `<tr>
-      <td><strong style="color:var(--ink);font-weight:500;">${p.title_en||'—'}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}</td>
-      <td style="color:var(--ink-muted)">${p.district_en||'—'}</td>
-      <td>${p.price_display||'<em style="color:var(--ink-muted)">On request</em>'}</td>
-      <td>${p.agent_name||'—'}</td>
-      <td><span class="status-badge status-${p.status}">${p.status}</span></td>
-      <td style="display:flex;gap:6px;align-items:center;">
-        <button class="action-btn btn-edit" onclick="editListing('${p.id}')">Edit</button>
-        <a class="action-btn btn-view" href="listing.html?slug=${p.slug}" target="_blank">View</a>
-        <button class="action-btn btn-delete" onclick="deleteListing('${p.id}','${(p.title_en||'').replace(/'/g,"&apos;")}')">Delete</button>
-      </td>
-    </tr>`;
-  });
+  data.forEach(p => { html += buildListingRow(p); });
   html += '</tbody></table>';
   container.innerHTML = html;
 }
@@ -931,7 +954,9 @@ async function saveListing(e) {
   const nearbyPlaces = getNearbyPlaces();
 
   const titleEn = document.getElementById('f-title-en').value.trim();
-  const slugBase = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
+  // FIX: if titleEn is Lao/Chinese-only or blank, slugBase becomes '' which
+  // produced the invalid slug '-123456'.  Fall back to 'property' instead.
+  const slugBase = (titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60)) || 'property';
   const slug = slugBase + '-' + Date.now().toString().slice(-6);
 
   const lat = parseFloat(document.getElementById('f-lat').value) || null;
@@ -1033,6 +1058,8 @@ async function deleteListing(id, title) {
 // ── IMAGE UPLOAD ──────────────────────────────────────────────────
 const SB_UPLOAD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const ACCEPTED_IMG_EXTS = new Set(['jpg','jpeg','png','webp']);
+const ACCEPTED_MIME_TYPES_IMG = new Set(['image/jpeg','image/jpg','image/png','image/webp']);
 let uploadedImages = [];
 
 const zone = document.getElementById('upload-zone');
@@ -1051,8 +1078,12 @@ async function handleImageUpload(files) {
   let completed = 0;
   for (const file of fileArr) {
     if (file.size > 10 * 1024 * 1024) { status.textContent = `${file.name} too large (max 10MB)`; continue; }
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!ACCEPTED_IMG_EXTS.has(ext) && !ACCEPTED_MIME_TYPES_IMG.has(file.type)) {
+      status.textContent = `${file.name}: only JPG, PNG, and WebP files are accepted`;
+      continue;
+    }
     status.textContent = `Uploading ${file.name}...`;
-    const ext = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     try {
       const res = await fetch(`${SB_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
@@ -1083,16 +1114,37 @@ function refreshImageGrid() {
   const grid = document.getElementById('image-preview-grid');
   grid.innerHTML = '';
   uploadedImages.forEach((url, i) => {
+    if (!isSafeUrl(url)) return;
     const isCover = i === 0;
-    const safeUrl = url.replace(/'/g,'%27');
     const div = document.createElement('div');
     div.className = 'image-preview-item' + (isCover ? ' is-cover' : '');
-    div.innerHTML = `
-      <img src="${url}" alt="Photo ${i+1}">
-      <button class="img-cover-btn" onclick="setCoverImage('${safeUrl}')" type="button" title="Set as cover">&#9733;</button>
-      <button class="img-remove" onclick="removeImage('${safeUrl}')" type="button">&#215;</button>
-      <span class="img-order">${i+1}</span>
-      ${isCover ? '<span class="img-cover-badge">Cover</span>' : ''}`;
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = 'Photo ' + (i + 1);
+    const coverBtn = document.createElement('button');
+    coverBtn.className = 'img-cover-btn';
+    coverBtn.type = 'button';
+    coverBtn.title = 'Set as cover';
+    coverBtn.innerHTML = '&#9733;';
+    coverBtn.onclick = () => setCoverImage(url);
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'img-remove';
+    removeBtn.type = 'button';
+    removeBtn.innerHTML = '&#215;';
+    removeBtn.onclick = () => removeImage(url);
+    const order = document.createElement('span');
+    order.className = 'img-order';
+    order.textContent = String(i + 1);
+    div.appendChild(img);
+    div.appendChild(coverBtn);
+    div.appendChild(removeBtn);
+    div.appendChild(order);
+    if (isCover) {
+      const badge = document.createElement('span');
+      badge.className = 'img-cover-badge';
+      badge.textContent = 'Cover';
+      div.appendChild(badge);
+    }
     grid.appendChild(div);
   });
   document.getElementById('f-images').value = JSON.stringify(uploadedImages);

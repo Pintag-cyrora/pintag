@@ -413,6 +413,17 @@ nav{
 const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function isSafeUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  var t = url.trim().toLowerCase();
+  return t.indexOf('https://') === 0 || t.indexOf('http://') === 0;
+}
+
 let allProperties = [];
 let currentFilter = 'all';
 let currentSort = 'newest';
@@ -460,29 +471,30 @@ function getBadgeHtml(p, lang, isFeaturedCard) {
 
 function getAgentHtml(p) {
   if (!p.agent_name) return '';
-  var initials = (p.agent_name.trim().charAt(0) || 'P');
-  var avatarInner = p.agent_photo
-    ? '<img src="' + p.agent_photo + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+  var safeName = escHtml(p.agent_name);
+  var initials = escHtml(p.agent_name.trim().charAt(0) || 'P');
+  var avatarInner = (p.agent_photo && isSafeUrl(p.agent_photo))
+    ? '<img src="' + escHtml(p.agent_photo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
     : initials;
   return '<div class="card-divider"></div>' +
     '<div class="card-agent">' +
       '<div class="agent-avatar">' + avatarInner + '</div>' +
       '<div>' +
-        '<div class="agent-name">' + p.agent_name + '</div>' +
+        '<div class="agent-name">' + safeName + '</div>' +
         '<div class="agent-platform">ຕົວແທນ Pintag</div>' +
       '</div>' +
     '</div>';
 }
 
-function sortProperties(arr) {
+function sortProperties(arr, sortMode) {
   var copy = arr.slice();
-  if (currentSort === 'featured')  return copy.sort(function(a,b){ return (b.is_featured?1:0)-(a.is_featured?1:0); });
-  if (currentSort === 'price_asc') return copy.sort(function(a,b){
+  if (sortMode === 'featured')  return copy.sort(function(a,b){ return (b.is_featured?1:0)-(a.is_featured?1:0); });
+  if (sortMode === 'price_asc') return copy.sort(function(a,b){
     var pa = parseFloat((a.price_display||'').replace(/[^0-9.]/g,''))||0;
     var pb = parseFloat((b.price_display||'').replace(/[^0-9.]/g,''))||0;
     return pa-pb;
   });
-  if (currentSort === 'price_desc') return copy.sort(function(a,b){
+  if (sortMode === 'price_desc') return copy.sort(function(a,b){
     var pa = parseFloat((a.price_display||'').replace(/[^0-9.]/g,''))||0;
     var pb = parseFloat((b.price_display||'').replace(/[^0-9.]/g,''))||0;
     return pb-pa;
@@ -516,10 +528,14 @@ function setSort(val) {
 }
 
 function renderListings() {
+  // FIX: normalise legacy 'sale'/'rent' values before comparing, so that
+  // properties stored with the old short form still match the filter buttons
+  // 'for_sale' and 'for_rent'.  See js/filters.js for the extracted module.
   var filtered = currentFilter === 'all' ? allProperties : allProperties.filter(function(p){
-    return p.transaction_type === currentFilter || p.property_type === currentFilter;
+    var txNorm = p.transaction_type === 'sale' ? 'for_sale' : p.transaction_type === 'rent' ? 'for_rent' : (p.transaction_type || '');
+    return txNorm === currentFilter || p.property_type === currentFilter;
   });
-  var sorted = sortProperties(filtered);
+  var sorted = sortProperties(filtered, currentSort);
   var lang = getCurrentLang();
   var saved = getSavedSet();
   var n = filtered.length;
@@ -556,8 +572,8 @@ function renderListings() {
     if (isFeaturedCard) { featuredUsed = true; card.className = 'prop-card is-featured'; }
     else { card.className = 'prop-card'; }
 
-    var title    = p['title_'    + lang] || p.title_en    || '';
-    var district = p['district_' + lang] || p.district_en || '';
+    var title    = escHtml(p['title_'    + lang] || p.title_en    || '');
+    var district = escHtml(p['district_' + lang] || p.district_en || '');
     var isSale   = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
 
     var txLabel = {
@@ -597,7 +613,7 @@ function renderListings() {
     ].filter(Boolean).join('');
 
     var priceHtml = p.price_display
-      ? '<p class="card-price">' + p.price_display + '</p>'
+      ? '<p class="card-price">' + escHtml(p.price_display) + '</p>'
       : '<p class="card-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
 
     card.innerHTML =
