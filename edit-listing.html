@@ -466,6 +466,16 @@ supabase.createClient(
   SUPABASE_KEY
 );
 
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function isSafeUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  var t = url.trim().toLowerCase();
+  return t.indexOf('https://') === 0 || t.indexOf('http://') === 0;
+}
+
 const propertyId =
 new URLSearchParams(
   window.location.search
@@ -601,22 +611,22 @@ function renderPreviews(){
   existingImages.forEach(
     (url,index)=>{
 
-      grid.innerHTML += `
-      
-      <div class="preview">
+      if(!isSafeUrl(url)) return;
 
-        <img src="${url}">
+      const wrap = document.createElement('div');
+      wrap.className = 'preview';
 
-        <button
-          class="remove-img"
-          onclick="removeImage(${index})"
-        >
-          ×
-        </button>
+      const img = document.createElement('img');
+      img.src = url;
 
-      </div>
+      const btn = document.createElement('button');
+      btn.className = 'remove-img';
+      btn.textContent = '×';
+      btn.onclick = () => removeImage(index);
 
-      `;
+      wrap.appendChild(img);
+      wrap.appendChild(btn);
+      grid.appendChild(wrap);
 
     }
   );
