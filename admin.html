@@ -147,9 +147,10 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
   <div class="login-box">
     <p class="login-logo">Pintag</p>
     <p class="login-sub">Admin Panel</p>
-    <input type="password" class="login-input" id="password-input" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()">
+    <input type="email" class="login-input" id="email-input" placeholder="Admin email" style="margin-bottom:10px;">
+    <input type="password" class="login-input" id="password-input" placeholder="Password" onkeydown="if(event.key==='Enter')login()">
     <button class="login-btn" onclick="login()">Sign In</button>
-    <p class="login-error" id="login-error">Incorrect password</p>
+    <p class="login-error" id="login-error">Incorrect email or password</p>
   </div>
 </div>
 
@@ -723,31 +724,43 @@ async function loadVillageSuggestions() {
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────
-function login() {
-  const pw = document.getElementById('password-input').value;
-  if (pw === ADMIN_PASSWORD) {
-    sessionStorage.setItem('pintag-admin','1');
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('admin-screen').style.display = 'block';
-    loadListings();
-  } else {
+const ADMIN_ID = '013a9981-f778-472e-a171-92d50ac88d58';
+
+async function login() {
+  const email = document.getElementById('email-input').value.trim();
+  const pw    = document.getElementById('password-input').value;
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password: pw });
+  if (error || !data.user || data.user.id !== ADMIN_ID) {
+    await supabaseClient.auth.signOut();
     document.getElementById('login-error').style.display = 'block';
+    return;
   }
-}
-function logout() { sessionStorage.removeItem('pintag-admin'); location.reload(); }
-if (sessionStorage.getItem('pintag-admin')) {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('admin-screen').style.display = 'block';
   loadListings();
 }
+async function logout() {
+  await supabaseClient.auth.signOut();
+  location.reload();
+}
+(async () => {
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (user && user.id === ADMIN_ID) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('admin-screen').style.display = 'block';
+    loadListings();
+  }
+})();
 
 // ── SUPABASE ──────────────────────────────────────────────────────
 async function sbApi(method, path, body) {
   try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const token = session ? session.access_token : SUPABASE_ANON;
     const headers = {
       'Content-Type': 'application/json',
       'apikey': SUPABASE_ANON,
-      'Authorization': 'Bearer ' + SUPABASE_ANON
+      'Authorization': 'Bearer ' + token
     };
     
     // Prefer header for POST/PATCH
