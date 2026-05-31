@@ -830,7 +830,14 @@ async function confirmDelete(){
 
 }
 
-loadProperty();
+(async () => {
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) {
+    window.location.href = 'agent-login.html';
+    return;
+  }
+  loadProperty();
+})();
 
 </script>
 

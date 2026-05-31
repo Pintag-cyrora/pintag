@@ -500,8 +500,6 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
-const ADMIN_PASSWORD = 'pintag2025'; // !! CHANGE THIS !!
-
 function escHtml(str) {
   if (str == null) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -766,17 +764,13 @@ async function sbApi(method, path, body) {
     // Prefer header for POST/PATCH
     if (method === 'POST') headers['Prefer'] = 'return=representation';
     if (method === 'PATCH') headers['Prefer'] = 'return=minimal';
-    
-    console.log('sbApi call:', { method, path, headersSet: Object.keys(headers) });
-    
+
     const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined
     });
-    
-    console.log('Response status:', res.status, 'ok:', res.ok);
-    
+
     if (!res.ok) {
       const errText = await res.text();
       console.error('Supabase error:', res.status, errText);
@@ -1023,8 +1017,6 @@ async function saveListing(e) {
     agent_listing_count: parseInt(document.getElementById('f-listing-count').value) || null,
     agent_response_time: document.getElementById('f-response-time').value.trim() || null
   };
-
-  console.log('Saving listing with data:', body);
 
   const editId = document.getElementById('edit-id').value;
   let result;
