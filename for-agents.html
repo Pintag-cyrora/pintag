@@ -172,6 +172,36 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
   .roster-portrait{width:60px;height:60px;}
   .roster-name{font-size:18px;}
 }
+
+/* LISTING STRIP — landscape cards with body */
+.listing-strip-section{padding:32px 0 40px;background:var(--white);border-top:1px solid var(--border);}
+.strip-section-inner{padding:0 24px;}
+.strip-section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.strip-section-label{font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink-muted);}
+.strip-arrows{display:flex;gap:6px;}
+.strip-arrow{width:32px;height:32px;border-radius:50%;border:1px solid rgba(26,36,40,0.12);background:var(--white);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);transition:background 0.2s,border-color 0.2s;flex-shrink:0;}
+.strip-arrow:hover{background:var(--warm);border-color:rgba(26,36,40,0.22);}
+.listing-strip{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;}
+.listing-strip::-webkit-scrollbar{display:none;}
+.strip-card{flex-shrink:0;width:260px;display:block;text-decoration:none;transition:transform 0.25s ease;}
+.strip-card:hover{transform:translateY(-2px);}
+.strip-img{aspect-ratio:16/10;overflow:hidden;position:relative;border-radius:12px;background:var(--warm-deep);}
+.strip-img img{width:100%;height:100%;object-fit:cover;object-position:center 45%;display:block;transition:transform 0.5s ease;}
+.strip-card:hover .strip-img img{transform:scale(1.03);}
+.strip-img-ph{width:100%;height:100%;background:linear-gradient(135deg,#C4D0CB,#ADBFB8);}
+.strip-badge{position:absolute;top:8px;left:8px;font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;padding:3px 9px;border-radius:100px;color:#fff;}
+.strip-badge-sale{background:rgba(45,140,140,0.82);}
+.strip-badge-rent{background:rgba(55,72,78,0.82);}
+.strip-body{padding:10px 2px 0;}
+.strip-price{font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-0.02em;line-height:1;margin-bottom:3px;}
+.strip-loc{font-size:11px;color:var(--ink-muted);margin-bottom:3px;display:flex;align-items:center;gap:4px;}
+.strip-specs{font-size:11px;color:var(--ink-muted);display:flex;gap:8px;flex-wrap:wrap;}
+
+/* STATEMENT — 2-column on desktop */
+@media(min-width:600px){
+  .statement-inner{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start;}
+  .statement-sub{margin-top:0;max-width:none;}
+}
 </style>
 </head>
 <body>
@@ -223,8 +253,21 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
     </div>
 </div>
 
-<div class="listing-strip-section fu fu3">
-  <div class="listing-strip" id="listing-strip"></div>
+<div class="listing-strip-section">
+  <div class="strip-section-inner">
+    <div class="strip-section-header">
+      <span class="strip-section-label">ລາຍການລ່າສຸດຈາກຕົວແທນ</span>
+      <div class="strip-arrows">
+        <button class="strip-arrow" id="strip-prev" aria-label="Previous" onclick="scrollStrip(-1)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button class="strip-arrow" id="strip-next" aria-label="Next" onclick="scrollStrip(1)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="listing-strip" id="listing-strip" style="padding-left:24px;padding-right:24px;"></div>
 </div>
 
 <div class="typo-moment">
@@ -285,7 +328,7 @@ async function load(){
     var agents=await r1.json();
     if(!Array.isArray(agents)) agents=[];
 
-    var r2=await fetch(SB+'/rest/v1/properties?order=is_featured.desc,created_at.desc&select=agent_id,images,slug,price_display,transaction_type',
+    var r2=await fetch(SB+'/rest/v1/properties?order=is_featured.desc,created_at.desc&select=agent_id,images,slug,price_display,transaction_type,district_lo,district_en,bedrooms,bathrooms,sqm',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var listings=await r2.json();
     if(!Array.isArray(listings)) listings=[];
@@ -349,19 +392,53 @@ function renderRoster(agents,byAgent){
 function renderStrip(listings){
   var strip=document.getElementById('listing-strip');
   if(!listings.length){document.querySelector('.listing-strip-section').style.display='none';return;}
-  listings.forEach(function(p){
+  listings.forEach(function(p,i){
     var imgs=Array.isArray(p.images)?p.images:[];
     var thumb=imgs[0]||'';
+    var isSale=p.transaction_type==='for_sale'||p.transaction_type==='sale';
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug||'');
     card.className='strip-card';
+
     var imgDiv=document.createElement('div');imgDiv.className='strip-img';
-    if(thumb){var si=document.createElement('img');si.src=thumb;si.alt='';si.loading='lazy';si.decoding='async';imgDiv.appendChild(si);}
-    else{var ph=document.createElement('div');ph.className='strip-img-ph';imgDiv.appendChild(ph);}
-    var ov=document.createElement('div');ov.className='strip-overlay';imgDiv.appendChild(ov);
-    if(p.price_display){var pr=document.createElement('span');pr.className='strip-price';pr.textContent=p.price_display;imgDiv.appendChild(pr);}
-    card.appendChild(imgDiv);strip.appendChild(card);
+    if(thumb){
+      var si=document.createElement('img');si.src=thumb;si.alt='';
+      si.loading=i<3?'eager':'lazy';si.decoding='async';imgDiv.appendChild(si);
+    } else {
+      var ph=document.createElement('div');ph.className='strip-img-ph';imgDiv.appendChild(ph);
+    }
+    var badge=document.createElement('span');
+    badge.className='strip-badge '+(isSale?'strip-badge-sale':'strip-badge-rent');
+    badge.textContent=isSale?'ຂາຍ':'ເຊົ່າ';
+    imgDiv.appendChild(badge);
+    card.appendChild(imgDiv);
+
+    var body=document.createElement('div');body.className='strip-body';
+    if(p.price_display){
+      var pr=document.createElement('p');pr.className='strip-price';pr.textContent=p.price_display;body.appendChild(pr);
+    }
+    if(p.district_lo||p.district_en){
+      var loc=document.createElement('p');loc.className='strip-loc';
+      loc.innerHTML='<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>';
+      loc.appendChild(document.createTextNode((p.district_lo||p.district_en)+', ວຽງຈັນ'));
+      body.appendChild(loc);
+    }
+    var specParts=[];
+    if(p.bedrooms)specParts.push(p.bedrooms+' Beds');
+    if(p.bathrooms)specParts.push(p.bathrooms+' Baths');
+    if(p.sqm)specParts.push(p.sqm+' sqm');
+    if(specParts.length){
+      var specs=document.createElement('p');specs.className='strip-specs';specs.textContent=specParts.join(' · ');body.appendChild(specs);
+    }
+    card.appendChild(body);
+    strip.appendChild(card);
   });
+}
+
+function scrollStrip(dir){
+  var strip=document.getElementById('listing-strip');
+  if(!strip)return;
+  strip.scrollBy({left:dir*288,behavior:'smooth'});
 }
 
 load();
