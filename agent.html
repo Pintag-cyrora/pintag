@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag · Agent</title>
+<meta name="description" content="Pintag — premium real estate in Laos">
+<meta property="og:site_name" content="Pintag">
+<meta property="og:type" content="profile">
+<meta property="og:title" content="Pintag · Agent">
+<meta property="og:description" content="Premium real estate in Laos">
+<meta property="og:image" content="">
+<meta property="og:url" content="">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Pintag · Agent">
+<meta name="twitter:description" content="Premium real estate in Laos">
+<meta name="twitter:image" content="">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -318,8 +329,40 @@ async function load(){
   }
 }
 
+function setMeta(prop,content){
+  var isName=prop.startsWith('twitter:')||prop==='description';
+  var sel=isName?'meta[name="'+prop+'"]':'meta[property="'+prop+'"]';
+  var el=document.head.querySelector(sel);
+  if(!el){
+    el=document.createElement('meta');
+    el.setAttribute(isName?'name':'property',prop);
+    document.head.appendChild(el);
+  }
+  el.setAttribute('content',content);
+}
+
 function render(a,listings){
-  document.title='Pintag · '+(a.name_en||'Agent');
+  var agentName=a.name_en||a.name_lo||'Agent';
+  document.title='Pintag · '+agentName;
+
+  // Social share preview
+  var pageUrl=location.href;
+  var bio=a.bio_en||a.bio_lo||'';
+  var agency=a.agency_name?agentName+' · '+a.agency_name:agentName;
+  var desc=bio||agency+' — Pintag';
+  var photo=a.photo_url||'';
+  // Ensure photo URL is absolute (Supabase URLs are, but guard just in case)
+  if(photo&&!/^https?:\/\//i.test(photo))photo=location.origin+'/'+photo.replace(/^\//,'');
+  setMeta('og:title','Pintag · '+agentName);
+  setMeta('og:description',desc);
+  setMeta('og:url',pageUrl);
+  setMeta('og:type','profile');
+  if(photo)setMeta('og:image',photo);
+  setMeta('twitter:title','Pintag · '+agentName);
+  setMeta('twitter:description',desc);
+  if(photo)setMeta('twitter:image',photo);
+  setMeta('description',desc);
+
   var initial=(a.name_en||'A').charAt(0).toUpperCase();
 
   // Portrait
