@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -499,7 +500,8 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
-const ADMIN_PASSWORD = 'pintag2025'; // !! CHANGE THIS !!
+const ADMIN_EMAIL   = 'admin@pintag.io';
+const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ══════════════════════════════════════════════════════════════════
 // PINTAG TAXONOMY — single source of truth (mirrored in listing.html)
@@ -572,8 +574,6 @@ const DISTRICT_MAP={
   'Naxaithong' :{lo:'ນາຊາຍທອງ',          zh:'纳赛通'     }
 };
 
-// ── Normalize any value to canonical registry key ────────────────
-// "Pool" → "pool", "Smart Home" → "smart_home", "POOL " → "pool"
 function normalizeToKey(value, registry) {
   if (!value) return null;
   const v = String(value).trim();
@@ -583,10 +583,9 @@ function normalizeToKey(value, registry) {
   for (const k in registry) {
     if (registry[k].en && registry[k].en.toLowerCase() === v.toLowerCase()) return k;
   }
-  return norm; // best-effort even if not in registry
+  return norm;
 }
 
-// ── Check grids ──────────────────────────────────────────────────
 function initCheckGrid(containerId, registry) {
   const el = document.getElementById(containerId);
   if (!el) return;
@@ -601,7 +600,6 @@ function toggleCheck(el) { el.classList.toggle('checked'); }
 function getCheckedKeys(containerId) {
   return Array.from(document.querySelectorAll(`#${containerId} .check-item.checked`)).map(el => el.dataset.key);
 }
-// Backward compat: accepts both normalized keys AND legacy display strings
 function setChecked(containerId, values, registry) {
   if (!Array.isArray(values)) return;
   const normalizedIn = registry
@@ -612,7 +610,6 @@ function setChecked(containerId, values, registry) {
   });
 }
 
-// ── Highlight pills ──────────────────────────────────────────────
 let customTags = [];
 function initHighlightPresets() {
   const el = document.getElementById('highlights-preset');
@@ -646,7 +643,6 @@ function getHighlights() {
   const preset = Array.from(document.querySelectorAll('#highlights-preset .tag-pill.active')).map(el => el.dataset.key);
   return [...preset, ...customTags];
 }
-// Backward compat: handles keys AND legacy display strings
 function setHighlights(values) {
   if (!Array.isArray(values)) return;
   customTags = [];
@@ -658,14 +654,12 @@ function setHighlights(values) {
       const pill = document.querySelector(`#highlights-preset [data-key="${key}"]`);
       if (pill) pill.classList.add('active');
     } else {
-      // Not in presets — preserve as custom tag (use original display value)
       customTags.push(v);
     }
   });
   renderCustomTags();
 }
 
-// ── Char count ───────────────────────────────────────────────────
 function updateCharCount(el, countId, max) {
   const n = el.value.length;
   const counter = document.getElementById(countId);
@@ -674,7 +668,6 @@ function updateCharCount(el, countId, max) {
   counter.className = 'char-count' + (n > max ? ' over-limit' : n > max * 0.85 ? ' near-limit' : '');
 }
 
-// ── Nearby places ────────────────────────────────────────────────
 function addNearby(data) {
   const list = document.getElementById('nearby-list');
   const row = document.createElement('div');
@@ -697,7 +690,6 @@ function getNearbyPlaces() {
   return places;
 }
 
-// ── Village autocomplete — populated from existing listings ──────
 async function loadVillageSuggestions() {
   const STATIC = ['Thongkang','Nongbone','Donkoi','Phonsinuan','Thongsangnang','Phonethan','Somsamai','Mixay','Hom','Phonxai','Natane','Sisangvone'];
   try {
@@ -713,53 +705,51 @@ async function loadVillageSuggestions() {
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────
-function login() {
-  const pw = document.getElementById('password-input').value;
-  if (pw === ADMIN_PASSWORD) {
-    sessionStorage.setItem('pintag-admin','1');
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('admin-screen').style.display = 'block';
-    loadListings();
-  } else {
+async function login() {
+  const pw  = document.getElementById('password-input').value;
+  const btn = document.querySelector('.login-btn');
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  const { error } = await sbClient.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
+  btn.disabled = false;
+  btn.textContent = 'Sign In';
+  if (error) {
     document.getElementById('login-error').style.display = 'block';
+    return;
   }
+  showAdminScreen();
 }
-function logout() { sessionStorage.removeItem('pintag-admin'); location.reload(); }
-if (sessionStorage.getItem('pintag-admin')) {
+async function logout() { await sbClient.auth.signOut(); location.reload(); }
+function showAdminScreen() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('admin-screen').style.display = 'block';
   loadListings();
 }
+sbClient.auth.getSession().then(({ data: { session } }) => {
+  if (session) showAdminScreen();
+});
 
 // ── SUPABASE ──────────────────────────────────────────────────────
 async function sbApi(method, path, body) {
   try {
+    const { data: { session } } = await sbClient.auth.getSession();
+    const token = session ? session.access_token : SUPABASE_ANON;
     const headers = {
       'Content-Type': 'application/json',
       'apikey': SUPABASE_ANON,
-      'Authorization': 'Bearer ' + SUPABASE_ANON
+      'Authorization': 'Bearer ' + token
     };
-    
-    // Prefer header for POST/PATCH
     if (method === 'POST') headers['Prefer'] = 'return=representation';
     if (method === 'PATCH') headers['Prefer'] = 'return=minimal';
-    
-    console.log('sbApi call:', { method, path, headersSet: Object.keys(headers) });
-    
     const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined
     });
-    
-    console.log('Response status:', res.status, 'ok:', res.ok);
-    
     if (!res.ok) {
       const errText = await res.text();
-      console.error('Supabase error:', res.status, errText);
       try {
         const errJson = JSON.parse(errText);
-        console.error('Error details:', errJson);
         throw new Error('Supabase ' + res.status + ': ' + (errJson.message || errJson.details || errText));
       } catch (parseErr) {
         throw new Error('Supabase ' + res.status + ': ' + errText);
@@ -780,7 +770,7 @@ async function loadListings() {
   container.innerHTML = '<div class="loading">Loading...</div>';
   const data = await sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,agent_name,district_en');
   if (!data || data.length === 0) {
-    container.innerHTML = '<div class="empty"><p class="empty-title">No listings yet</p><p>Click "+ New Listing" to add your first property.</p></div>';
+    container.innerHTML = '<div class="empty"><p class="empty-title">No listings yet</p><p>Click "+New Listing" to add your first property.</p></div>';
     return;
   }
   let html = '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
@@ -802,7 +792,6 @@ async function loadListings() {
   container.innerHTML = html;
 }
 
-// ── FORM SHOW/HIDE ────────────────────────────────────────────────
 function showListings() {
   document.getElementById('listings-panel').style.display = 'block';
   document.getElementById('form-panel').style.display = 'none';
@@ -831,14 +820,12 @@ function showForm(id) {
   loadVillageSuggestions();
 }
 
-// ── EDIT ──────────────────────────────────────────────────────────
 async function editListing(id) {
   showForm(id);
   const data = await sbApi('GET', `properties?id=eq.${id}&limit=1`);
   if (!data || !data[0]) return;
   const p = data[0];
 
-  // Basic
   document.getElementById('f-type').value        = p.property_type || '';
   document.getElementById('f-style').value       = p.property_style || '';
   document.getElementById('f-transaction').value = p.transaction_type || '';
@@ -847,7 +834,6 @@ async function editListing(id) {
   document.getElementById('f-land-title').value  = p.land_title_type || '';
   document.getElementById('f-featured').value    = String(p.is_featured || false);
 
-  // Title + highlight
   document.getElementById('f-title-en').value    = p.title_en || '';
   document.getElementById('f-title-lo').value    = p.title_lo || '';
   document.getElementById('f-title-zh').value    = p.title_zh || '';
@@ -855,12 +841,10 @@ async function editListing(id) {
   hlField.value = p.property_highlight || '';
   updateCharCount(hlField,'highlight-count',160);
 
-  // Description
   document.getElementById('f-desc-en').value     = p.description_en || p.desc_en || '';
   document.getElementById('f-desc-lo').value     = p.description_lo || p.desc_lo || '';
   document.getElementById('f-desc-zh').value     = p.description_zh || p.desc_zh || '';
 
-  // Details
   document.getElementById('f-bedrooms').value     = p.bedrooms || '';
   document.getElementById('f-bathrooms').value    = p.bathrooms || '';
   document.getElementById('f-sqm').value          = p.sqm || '';
@@ -870,38 +854,32 @@ async function editListing(id) {
   document.getElementById('f-parking-spaces').value = p.parking_spaces || '';
   document.getElementById('f-furnished').value    = p.furnished || '';
 
-  // Features + amenities — backward compat via normalizeToKey
   const rawFeatures = Array.isArray(p.features)
     ? p.features.map(f => typeof f === 'string' ? f : (f.key || f.label_en || f.name || ''))
     : [];
   setChecked('features-grid', rawFeatures, FEATURES);
   setChecked('amenities-grid', Array.isArray(p.amenities) ? p.amenities : [], AMENITIES);
 
-  // Location
   document.getElementById('f-district').value    = p.district_en || '';
   document.getElementById('f-village').value     = p.village_en || p.village || '';
   document.getElementById('f-lat').value         = p.latitude || '';
   document.getElementById('f-lng').value         = p.longitude || '';
   document.getElementById('f-map').value         = p.map_embed_url || '';
 
-  // Nearby
   document.getElementById('nearby-list').innerHTML = '';
   const nearbyArr = p.nearby_places || p.landmarks || [];
   if (nearbyArr.length) nearbyArr.forEach(n => addNearby(n));
   else addNearby();
 
-  // Presentation — backward compat via normalizeToKey
   setHighlights(Array.isArray(p.highlights) ? p.highlights : []);
   const nbField = document.getElementById('f-neighborhood');
   nbField.value = p.neighborhood_description || '';
   updateCharCount(nbField,'neighborhood-count',220);
 
-  // Media
   populateExistingImages(p.images || []);
   document.getElementById('f-video').value        = p.video_embed_url || p.video_url || '';
   document.getElementById('f-download-url').value = p.download_url || '';
 
-  // Agent
   document.getElementById('f-agent').value        = p.agent_name || '';
   document.getElementById('f-agent-lo').value     = p.agent_name_lo || '';
   document.getElementById('f-agent-title').value  = p.agent_title || '';
@@ -913,7 +891,6 @@ async function editListing(id) {
   document.getElementById('f-response-time').value = p.agent_response_time || '';
 }
 
-// ── SAVE ──────────────────────────────────────────────────────────
 async function saveListing(e) {
   e.preventDefault();
   const btn = document.getElementById('submit-btn');
@@ -924,10 +901,9 @@ async function saveListing(e) {
   const districtMap = DISTRICT_MAP[districtEn] || {};
   const village = document.getElementById('f-village').value.trim();
 
-  // Normalize arrays — guarantee clean keys on every save
-  const features  = getCheckedKeys('features-grid');  // already keys from data-key
-  const amenities = getCheckedKeys('amenities-grid'); // already keys from data-key
-  const highlights = getHighlights();                  // keys for presets, raw for custom
+  const features  = getCheckedKeys('features-grid');
+  const amenities = getCheckedKeys('amenities-grid');
+  const highlights = getHighlights();
   const nearbyPlaces = getNearbyPlaces();
 
   const titleEn = document.getElementById('f-title-en').value.trim();
@@ -986,8 +962,6 @@ async function saveListing(e) {
     agent_response_time: document.getElementById('f-response-time').value.trim() || null
   };
 
-  console.log('Saving listing with data:', body);
-
   const editId = document.getElementById('edit-id').value;
   let result;
   try {
@@ -998,7 +972,6 @@ async function saveListing(e) {
       result = await sbApi('POST', 'properties', body);
     }
   } catch (err) {
-    console.error('Save failed:', err);
     btn.disabled = false;
     btn.textContent = 'Save Listing';
     const msg = document.getElementById('form-message');
@@ -1023,7 +996,6 @@ async function saveListing(e) {
   }
 }
 
-// ── DELETE ────────────────────────────────────────────────────────
 async function deleteListing(id, title) {
   if (!confirm(`Delete "${title}"?\n\nThis cannot be undone.`)) return;
   await sbApi('DELETE', `properties?id=eq.${id}`);
@@ -1055,9 +1027,11 @@ async function handleImageUpload(files) {
     const ext = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     try {
+      const { data: { session: imgSession } } = await sbClient.auth.getSession();
+      const imgToken = imgSession ? imgSession.access_token : SB_KEY;
       const res = await fetch(`${SB_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
         method:'POST',
-        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':file.type||'image/jpeg','x-upsert':'true'},
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+imgToken,'Content-Type':file.type||'image/jpeg','x-upsert':'true'},
         body:file
       });
       if (res.ok) {
