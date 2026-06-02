@@ -699,7 +699,7 @@ function getNearbyPlaces() {
 async function loadVillageSuggestions() {
   const STATIC = ['Thongkang','Nongbone','Donkoi','Phonsinuan','Thongsangnang','Phonethan','Somsamai','Mixay','Hom','Phonxai','Natane','Sisangvone'];
   try {
-    const data = await sbApi('GET','properties?select=village_en&not.village_en.is=null&limit=200');
+    const data = await sbApi('GET','properties?select=village_en&village_en=not.is.null&limit=200');
     const fromDB = Array.isArray(data) ? data.map(p => p.village_en).filter(Boolean) : [];
     const all = [...new Set([...fromDB, ...STATIC])].sort();
     const dl = document.getElementById('village-suggestions');
@@ -711,42 +711,47 @@ async function loadVillageSuggestions() {
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────
+let _adminToken = null;
+
+sbClient.auth.onAuthStateChange((event, session) => {
+  _adminToken = session ? session.access_token : null;
+});
+
 async function login() {
   const pw  = document.getElementById('password-input').value;
   const btn = document.querySelector('.login-btn');
   btn.disabled = true;
   btn.textContent = 'Signing in…';
-  const { error } = await sbClient.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
+  const { data, error } = await sbClient.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
   btn.disabled = false;
   btn.textContent = 'Sign In';
   if (error) {
     document.getElementById('login-error').style.display = 'block';
     return;
   }
+  _adminToken = data.session.access_token;
   showAdminScreen();
 }
-async function logout() { await sbClient.auth.signOut(); location.reload(); }
+async function logout() { _adminToken = null; await sbClient.auth.signOut(); location.reload(); }
 function showAdminScreen() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('admin-screen').style.display = 'block';
   loadListings();
 }
 sbClient.auth.getSession().then(({ data: { session } }) => {
-  if (session) showAdminScreen();
+  if (session) { _adminToken = session.access_token; showAdminScreen(); }
 });
 
 // ── SUPABASE ──────────────────────────────────────────────────────
 async function sbApi(method, path, body) {
   try {
-    const { data: { session } } = await sbClient.auth.getSession();
-    const token = session ? session.access_token : SUPABASE_ANON;
+    const token = _adminToken || SUPABASE_ANON;
     const headers = {
       'Content-Type': 'application/json',
       'apikey': SUPABASE_ANON,
       'Authorization': 'Bearer ' + token
     };
-    if (method === 'POST') headers['Prefer'] = 'return=representation';
-    if (method === 'PATCH') headers['Prefer'] = 'return=minimal';
+    if (method === 'POST' || method === 'PATCH') headers['Prefer'] = 'return=representation';
     const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
       method,
       headers,
@@ -761,9 +766,9 @@ async function sbApi(method, path, body) {
         throw new Error('Supabase ' + res.status + ': ' + errText);
       }
     }
-    if (method === 'DELETE' || (method === 'PATCH' && res.status === 204)) return true;
+    if (method === 'DELETE') return true;
     const text = await res.text();
-    return text ? JSON.parse(text) : true;
+    return text ? JSON.parse(text) : [];
   } catch (err) {
     console.error('sbApi error:', err.message);
     throw err;
@@ -993,14 +998,17 @@ async function saveListing(e) {
   btn.disabled = false;
   btn.textContent = 'Save Listing';
   const msg = document.getElementById('form-message');
-  if (result) {
+  const saved = Array.isArray(result) ? result.length > 0 : !!result;
+  if (saved) {
     msg.className = 'form-message success';
     msg.textContent = editId ? '✓ Listing updated successfully.' : '✓ Listing created successfully.';
     msg.style.display = 'block';
     setTimeout(() => showListings(), 1500);
   } else {
     msg.className = 'form-message error';
-    msg.textContent = '✗ Error saving listing. Please try again.';
+    msg.textContent = editId
+      ? '✗ Save failed — not authorised to edit this listing. Check Supabase RLS policies.'
+      : '✗ Error creating listing. Please try again.';
     msg.style.display = 'block';
   }
 }
@@ -1037,8 +1045,7 @@ async function handleImageUpload(files) {
     const ext = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     try {
-      const { data: { session: imgSession } } = await sbClient.auth.getSession();
-      const imgToken = imgSession ? imgSession.access_token : SB_KEY;
+      const imgToken = _adminToken || SB_KEY;
       const res = await fetch(`${SB_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
         method:'POST',
         headers:{'apikey':SB_KEY,'Authorization':'Bearer '+imgToken,'Content-Type':file.type||'image/jpeg','x-upsert':'true'},
