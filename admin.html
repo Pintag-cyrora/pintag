@@ -574,6 +574,7 @@ const DISTRICT_MAP={
   'Naxaithong' :{lo:'ນາຊາຍທອງ',          zh:'纳赛通'     }
 };
 
+// ── Normalize any value to canonical registry key ────────────────
 function normalizeToKey(value, registry) {
   if (!value) return null;
   const v = String(value).trim();
@@ -586,6 +587,7 @@ function normalizeToKey(value, registry) {
   return norm;
 }
 
+// ── Check grids ──────────────────────────────────────────────────
 function initCheckGrid(containerId, registry) {
   const el = document.getElementById(containerId);
   if (!el) return;
@@ -610,6 +612,7 @@ function setChecked(containerId, values, registry) {
   });
 }
 
+// ── Highlight pills ──────────────────────────────────────────────
 let customTags = [];
 function initHighlightPresets() {
   const el = document.getElementById('highlights-preset');
@@ -660,6 +663,7 @@ function setHighlights(values) {
   renderCustomTags();
 }
 
+// ── Char count ───────────────────────────────────────────────────
 function updateCharCount(el, countId, max) {
   const n = el.value.length;
   const counter = document.getElementById(countId);
@@ -668,6 +672,7 @@ function updateCharCount(el, countId, max) {
   counter.className = 'char-count' + (n > max ? ' over-limit' : n > max * 0.85 ? ' near-limit' : '');
 }
 
+// ── Nearby places ────────────────────────────────────────────────
 function addNearby(data) {
   const list = document.getElementById('nearby-list');
   const row = document.createElement('div');
@@ -690,6 +695,7 @@ function getNearbyPlaces() {
   return places;
 }
 
+// ── Village autocomplete ─────────────────────────────────────────
 async function loadVillageSuggestions() {
   const STATIC = ['Thongkang','Nongbone','Donkoi','Phonsinuan','Thongsangnang','Phonethan','Somsamai','Mixay','Hom','Phonxai','Natane','Sisangvone'];
   try {
@@ -792,6 +798,7 @@ async function loadListings() {
   container.innerHTML = html;
 }
 
+// ── FORM SHOW/HIDE ────────────────────────────────────────────────
 function showListings() {
   document.getElementById('listings-panel').style.display = 'block';
   document.getElementById('form-panel').style.display = 'none';
@@ -820,6 +827,7 @@ function showForm(id) {
   loadVillageSuggestions();
 }
 
+// ── EDIT ──────────────────────────────────────────────────────────
 async function editListing(id) {
   showForm(id);
   const data = await sbApi('GET', `properties?id=eq.${id}&limit=1`);
@@ -891,6 +899,7 @@ async function editListing(id) {
   document.getElementById('f-response-time').value = p.agent_response_time || '';
 }
 
+// ── SAVE ──────────────────────────────────────────────────────────
 async function saveListing(e) {
   e.preventDefault();
   const btn = document.getElementById('submit-btn');
@@ -996,6 +1005,7 @@ async function saveListing(e) {
   }
 }
 
+// ── DELETE ────────────────────────────────────────────────────────
 async function deleteListing(id, title) {
   if (!confirm(`Delete "${title}"?\n\nThis cannot be undone.`)) return;
   await sbApi('DELETE', `properties?id=eq.${id}`);
