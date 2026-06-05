@@ -1,266 +1,354 @@
 #!/usr/bin/env python3
 """
-Generate the Pintag homepage OG image (1200×630px).
-Split layout: left = villa photo, right = dark brand panel with Lao text.
+Pintag OG image generator — "Platform Window" layout
+1200×630 px · JPEG 90q
+
+Layout:
+  • Dark canvas (#1A2428) with subtle dot texture
+  • Floating Pintag listing card (photo panel left + UI info panel right)
+  • Photo thumbnail rail below card (shows gallery richness)
+  • Large Lao headline centred below card
+  • Subtle pintag.io URL
 """
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
-import textwrap, os
+import os
 
-# ── Canvas ─────────────────────────────────────────────────────────────────
+# ── Canvas ────────────────────────────────────────────────────────────────────
 W, H = 1200, 630
-SPLIT = 696          # left panel width (58 %)
 
-# ── Brand colours ──────────────────────────────────────────────────────────
-DARK       = (26,  32,  36)
-DARK_SOFT  = (36,  46,  52)
-WARM       = (247, 243, 236)
-TEAL       = (45,  140, 140)
-TEAL_LIGHT = (56,  168, 168)
-WHITE      = (255, 255, 255)
-WHITE_DIM  = (255, 255, 255, 190)
-GOLD       = (200, 165, 90)
-CREAM      = (243, 239, 232)
+# ── Brand colours ─────────────────────────────────────────────────────────────
+BG       = (26,  32,  36)
+WARM     = (243, 239, 232)
+WARMD    = (228, 223, 214)
+WHITE    = (255, 255, 255)
+TEAL     = (45,  140, 140)
+TEAL_LT  = (56,  168, 168)
+TEAL_DK  = (35,  107, 107)
+INK      = (26,  36,  40)
+SOFT     = (58,  78,  85)
+MUTED    = (122, 144, 152)
 
-# ── Font paths ──────────────────────────────────────────────────────────────
-LAO_B  = "/usr/share/fonts/truetype/noto/NotoSansLao-Bold.ttf"
-LAO_R  = "/usr/share/fonts/truetype/noto/NotoSansLao-Regular.ttf"
-SAN_B  = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-SAN_R  = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+# ── Font paths ─────────────────────────────────────────────────────────────────
+LAO_B = "/usr/share/fonts/truetype/noto/NotoSansLao-Bold.ttf"
+LAO_R = "/usr/share/fonts/truetype/noto/NotoSansLao-Regular.ttf"
+SAN_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+SAN_R = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-def load(path, size):
+def f(path, size):
     return ImageFont.truetype(path, size)
 
-f_logo      = load(SAN_B,  34)
-f_tag       = load(SAN_R,  16)
-f_headline  = load(LAO_B,  52)
-f_sub       = load(LAO_R,  22)
-f_url       = load(SAN_B,  17)
-f_card_t    = load(LAO_R,  18)
-f_card_p    = load(SAN_B,  16)
-f_badge     = load(SAN_B,  13)
-f_small     = load(SAN_R,  14)
+# ── Measurement helpers ────────────────────────────────────────────────────────
+_scratch = ImageDraw.Draw(Image.new("L", (1, 1)))
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
-def text_w(draw, text, font):
-    bb = draw.textbbox((0, 0), text, font=font)
+def tw(text, font):
+    bb = _scratch.textbbox((0, 0), text, font=font)
     return bb[2] - bb[0]
 
-def text_h(draw, text, font):
-    bb = draw.textbbox((0, 0), text, font=font)
+def th(text, font):
+    bb = _scratch.textbbox((0, 0), text, font=font)
     return bb[3] - bb[1]
 
-def draw_rounded_rect(draw, xy, radius, fill):
-    x0, y0, x1, y1 = xy
-    draw.rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=fill)
+# ── Mixed-script text renderer ─────────────────────────────────────────────────
+# NotoSansLao has NO ASCII/Latin glyphs.  Any string mixing Lao + Latin must
+# be drawn segment-by-segment, switching fonts per Unicode block.
 
-def crop_fill(img, target_w, target_h):
-    """Centre-crop an image to exact dimensions."""
-    src_w, src_h = img.size
-    scale = max(target_w / src_w, target_h / src_h)
-    new_w, new_h = int(src_w * scale), int(src_h * scale)
-    img = img.resize((new_w, new_h), Image.LANCZOS)
-    left = (new_w - target_w) // 2
-    top  = (new_h - target_h) // 2
-    return img.crop((left, top, left + target_w, top + target_h))
+def _lao_runs(text):
+    """Yield (segment, is_lao) pairs split at Lao/non-Lao boundaries."""
+    runs, cur, cur_is = [], "", None
+    for ch in text:
+        is_lao = 0x0E80 <= ord(ch) <= 0x0EFF
+        if cur_is is None:
+            cur_is = is_lao
+        if is_lao == cur_is:
+            cur += ch
+        else:
+            runs.append((cur, cur_is))
+            cur, cur_is = ch, is_lao
+    if cur:
+        runs.append((cur, cur_is))
+    return runs
 
-# ── Base canvas ─────────────────────────────────────────────────────────────
-canvas = Image.new("RGB", (W, H), DARK)
+def draw_mixed(draw, x, y, text, f_lao, f_lat, fill, y_lat_offset=0):
+    """Draw mixed Lao/Latin text.  Returns final x."""
+    for seg, is_lao in _lao_runs(text):
+        font = f_lao if is_lao else f_lat
+        seg_y = y if is_lao else y + y_lat_offset
+        draw.text((x, seg_y), seg, font=font, fill=fill)
+        bb = draw.textbbox((x, seg_y), seg, font=font)
+        x += bb[2] - bb[0]
+    return x
 
-# ── LEFT PANEL: property photo ───────────────────────────────────────────────
+def mixed_tw(text, f_lao, f_lat):
+    """Pixel width of mixed-script text."""
+    total = 0
+    for seg, is_lao in _lao_runs(text):
+        font = f_lao if is_lao else f_lat
+        bb = _scratch.textbbox((0, 0), seg, font=font)
+        total += bb[2] - bb[0]
+    return total
+
+# ── Image utilities ────────────────────────────────────────────────────────────
+def crop_fill(img, w, h):
+    scale = max(w / img.width, h / img.height)
+    nw = int(img.width * scale)
+    nh = int(img.height * scale)
+    img = img.resize((nw, nh), Image.LANCZOS)
+    return img.crop(((nw - w) // 2, (nh - h) // 2,
+                     (nw - w) // 2 + w, (nh - h) // 2 + h))
+
+def circle_crop(img, size):
+    img = crop_fill(img.convert("RGB"), size, size)
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, size - 1, size - 1], fill=255)
+    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    out.paste(img.convert("RGBA"), (0, 0), mask)
+    return out
+
+def paste_rgba(base, overlay, pos):
+    tmp = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    tmp.paste(overlay, pos)
+    return Image.alpha_composite(base, tmp)
+
+# ── Card geometry ──────────────────────────────────────────────────────────────
+CX, CY  = 50, 38
+CW, CH  = 1100, 320
+PHOTO_W = int(CW * 0.572)   # 629 px
+INFO_W  = CW - PHOTO_W      # 471 px
+CARD_R  = 12
+
+# ── Base canvas ────────────────────────────────────────────────────────────────
+canvas = Image.new("RGBA", (W, H), (*BG, 255))
+
+# Subtle dot texture on background
+tx = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+td = ImageDraw.Draw(tx)
+for gy in range(0, H, 28):
+    for gx in range(0, W, 28):
+        td.ellipse([gx - 1, gy - 1, gx + 1, gy + 1], fill=(*TEAL, 16))
+canvas = Image.alpha_composite(canvas, tx)
+
+# ── Photo panel ────────────────────────────────────────────────────────────────
 villa = Image.open("/home/user/pintag/pintag-villa.png").convert("RGB")
-villa = crop_fill(villa, SPLIT, H)
-canvas.paste(villa, (0, 0))
+photo = crop_fill(villa, PHOTO_W, CH).convert("RGBA")
 
-# Dark gradient on the right edge of the photo (smooth blend into dark panel)
-grad_w = 160
-for x in range(grad_w):
-    alpha = int(255 * (x / grad_w) ** 0.55)
-    col = (
-        int(DARK[0] * alpha / 255),
-        int(DARK[1] * alpha / 255),
-        int(DARK[2] * alpha / 255),
-    )
-    canvas.paste(
-        Image.new("RGB", (1, H), col),
-        (SPLIT - grad_w + x, 0)
-    )
+# Bottom gradient (dark vignette for text legibility)
+grad = Image.new("RGBA", (PHOTO_W, CH), (0, 0, 0, 0))
+gd   = ImageDraw.Draw(grad)
+fade_top = int(CH * 0.52)
+for y in range(CH - fade_top):
+    a = int(205 * (y / (CH - fade_top)) ** 1.4)
+    gd.rectangle([0, fade_top + y, PHOTO_W, fade_top + y + 1], fill=(0, 0, 0, a))
 
-# Light dark vignette on top + bottom of photo for depth
-for y in range(80):
-    a = int(180 * (1 - y / 80))
-    strip = Image.new("RGB", (SPLIT, 1),
-                      tuple(int(c + (0 - c) * a / 255) for c in DARK))
-    # skip - just use a simple overlay
-for y in range(100):
-    a = int(140 * (1 - y / 100))
-    col = tuple(int(DARK[i] * a / 255 + villa.getpixel((SPLIT // 2, H - 100 + y))[i] * (255 - a) / 255) for i in range(3))
+# Right-edge fade into cream info panel
+for x in range(80):
+    a = int(255 * (x / 80) ** 0.6)
+    gd.rectangle([PHOTO_W - 80 + x, 0, PHOTO_W - 80 + x + 1, CH], fill=(*WARM, a))
 
-# ── RIGHT PANEL: dark brand panel ───────────────────────────────────────────
-rp_x = SPLIT                # panel starts here
-rp_w = W - SPLIT            # 504 px
-pad  = 48                   # horizontal padding
-text_x = rp_x + pad        # text left edge  (=744)
-max_tw = rp_w - pad * 2     # max text width  (=408)
+photo = Image.alpha_composite(photo, grad)
 
-canvas_draw = ImageDraw.Draw(canvas)
-canvas_draw.rectangle([(SPLIT, 0), (W, H)], fill=DARK)
+# White corner bracket  (matches listing.html .dg-hero::before)
+pd = ImageDraw.Draw(photo)
+B, bs = 14, 18
+pd.rectangle([B, B, B + bs, B + 1],  fill=(255, 255, 255, 75))
+pd.rectangle([B, B, B + 1, B + bs],  fill=(255, 255, 255, 75))
 
-# Subtle warm divider line
-canvas_draw.rectangle([(SPLIT, 0), (SPLIT + 1, H)], fill=(60, 80, 90))
+# Photo-count pill  "8 ຮູບ"  — "8 " in SAN_R, "ຮູບ" in LAO_R
+f_pc_lat = f(SAN_R, 11)
+f_pc_lao = f(LAO_R, 11)
+pc_lat, pc_lao = "8 ", "ຮູບ"
+pcw = tw(pc_lat, f_pc_lat) + tw(pc_lao, f_pc_lao) + 18
+pch = 20
+pcx, pcy = PHOTO_W - pcw - 10, 10
+pill = Image.new("RGBA", (pcw, pch), (0, 0, 0, 0))
+ImageDraw.Draw(pill).rounded_rectangle([0, 0, pcw - 1, pch - 1], radius=9,
+                                        fill=(255, 255, 255, 210))
+photo.paste(pill, (pcx, pcy), pill)
+# Draw "8 " and "ຮູບ" separately onto photo
+pill_draw = ImageDraw.Draw(photo)
+x_cur = pcx + 9
+pill_draw.text((x_cur, pcy + 4), pc_lat, font=f_pc_lat, fill=(*INK, 200))
+x_cur += tw(pc_lat, f_pc_lat)
+pill_draw.text((x_cur, pcy + 4), pc_lao, font=f_pc_lao, fill=(*INK, 200))
 
-# ── Pintag logo mark (top of right panel) ────────────────────────────────────
-logo_y = 52
+# Coordinate text  (all-Latin, use SAN_R)
+coord_font = f(SAN_R, 8)
+pd.text((14, CH - 18), "17.9676° N  102.6275° E", font=coord_font,
+        fill=(255, 255, 255, 85))
 
-# Pin circle background
-pin_r   = 18
-pin_cx  = text_x + pin_r
-pin_cy  = logo_y + pin_r - 2
-canvas_draw.ellipse(
-    [pin_cx - pin_r, pin_cy - pin_r, pin_cx + pin_r, pin_cy + pin_r],
-    fill=TEAL
-)
-# Pin letter "P"
-p_char = "P"
-p_w = text_w(canvas_draw, p_char, load(SAN_B, 20))
-canvas_draw.text(
-    (pin_cx - p_w // 2, pin_cy - 12),
-    p_char, font=load(SAN_B, 20), fill=WHITE
-)
+# Location text — pure Lao, double space as separator instead of ·
+loc_font = f(LAO_R, 13)
+pd.text((14, CH - 38), "ວຽງຈັນ  ສາຍລົມ", font=loc_font,
+        fill=(255, 255, 255, 230))
 
-# "Pintag" wordmark
-logo_tx = pin_cx + pin_r + 10
-canvas_draw.text((logo_tx, logo_y), "Pintag", font=f_logo, fill=WHITE)
+# ── Info panel ─────────────────────────────────────────────────────────────────
+info = Image.new("RGBA", (INFO_W, CH), (*WARM, 255))
+ip   = ImageDraw.Draw(info)
+PAD  = 22
 
-# Tagline under logo
-tag_y = logo_y + 44
-canvas_draw.text(
-    (text_x, tag_y),
-    "Real Estate · Laos",
-    font=f_tag,
-    fill=(120, 160, 170)
-)
+# ─ Transaction badge "ຂາຍ"
+tx_f   = f(LAO_R, 11)
+tx_txt = "ຂາຍ"
+txw    = tw(tx_txt, tx_f)
+ip.rounded_rectangle([PAD, 18, PAD + txw + 18, 36], radius=9,
+                     fill=(*TEAL, 16), outline=(*TEAL, 100), width=1)
+ip.text((PAD + 9, 20), tx_txt, font=tx_f, fill=TEAL)
 
-# ── Divider ──────────────────────────────────────────────────────────────────
-div_y = tag_y + 30
-canvas_draw.rectangle(
-    [(text_x, div_y), (text_x + 48, div_y + 2)],
-    fill=TEAL
-)
+# ─ Property title:  "Villa " (SAN_B) + "ດ່ານຊ້ານ" (LAO_B)
+vf  = f(SAN_B, 17)
+tlf = f(LAO_B, 19)
+vw  = tw("Villa ", vf)
+ip.text((PAD,      44), "Villa ",   font=vf,  fill=INK)
+ip.text((PAD + vw, 44), "ດ່ານຊ້ານ", font=tlf, fill=INK)
 
-# ── Headline (Lao, 2 lines) ──────────────────────────────────────────────────
-headline_y = div_y + 22
+# ─ Subtitle — pure Lao only; use Lao word "ສອງ" for "2", no ASCII punctuation
+ip.text((PAD, 71), "ເຮືອນ ສອງ ຊັ້ນ  ຍ່ານສາຍລົມ  ສວນ ແລະ ລານຈອດລົດ",
+        font=f(LAO_R, 12), fill=MUTED)
 
-# "ທຸກຂໍ້ມູນຊັບສິນ"  line 1
-line1 = "ທຸກຂໍ້ມູນຊັບສິນ"
-# "ຢູ່ໃນລິ້ງດຽວ"      line 2
-line2 = "ຢູ່ໃນລິ້ງດຽວ"
+# ─ Price  "$145,000" — SAN_B only (all Latin/digits)
+ip.text((PAD, 92), "$145,000", font=f(SAN_B, 28), fill=INK)
 
-line_h = text_h(canvas_draw, line1, f_headline)
+# ─ Kip equivalent:  "1.17 " (SAN_R) + "ຕື້ ກີບ" (LAO_R)
+kip_lat = "1.17 "
+kip_lao = "ຕື້ ກີບ"
+kf_lat = f(SAN_R, 11)
+kf_lao = f(LAO_R, 11)
+klw = tw(kip_lat, kf_lat)
+ip.text((PAD,       127), kip_lat, font=kf_lat, fill=MUTED)
+ip.text((PAD + klw, 127), kip_lao, font=kf_lao, fill=MUTED)
 
-canvas_draw.text((text_x, headline_y),          line1, font=f_headline, fill=WHITE)
-canvas_draw.text((text_x, headline_y + line_h + 8), line2, font=f_headline, fill=TEAL_LIGHT)
+# ─ Spec grid
+spec_y  = 150
+sv_f    = f(SAN_B, 15)    # values:  pure Latin digits
+sl_f_lo = f(LAO_R, 10)    # Lao labels
+sl_f_la = f(SAN_R, 10)    # Latin labels (m²)
+specs   = [("3", "ຫ້ອງ", False),
+           ("2", "ຫ້ອງນ້ຳ", False),
+           ("220", "m²", True),   # m² — needs SAN font
+           ("2022", "ສ້າງ", False)]
+item_w  = (INFO_W - PAD * 2) // 4
+for i, (val, lbl, lbl_latin) in enumerate(specs):
+    sx = PAD + i * item_w
+    ip.text((sx, spec_y),      val, font=sv_f,                        fill=INK)
+    ip.text((sx, spec_y + 20), lbl, font=sl_f_la if lbl_latin else sl_f_lo, fill=MUTED)
+    if i < 3:
+        sep_x = sx + item_w - 4
+        ip.rectangle([sep_x, spec_y + 2, sep_x + 1, spec_y + 32], fill=(*WARMD, 200))
 
-# ── Sub-description (Lao) ────────────────────────────────────────────────────
-sub_y = headline_y + (line_h + 8) * 2 + 18
-sub1  = "ຮູບພາບ · ວິດີໂອ · ແຜນທີ່ · ຂໍ້ມູນຕິດຕໍ່"
-sub2  = "ທັງໝົດຢູ່ໃນລິ້ງດຽວ"
-canvas_draw.text((text_x, sub_y),      sub1, font=f_sub, fill=(180, 200, 210))
-canvas_draw.text((text_x, sub_y + 32), sub2, font=f_sub, fill=(180, 200, 210))
+# ─ Divider
+div_y = spec_y + 48
+ip.rectangle([PAD, div_y, INFO_W - PAD, div_y + 1], fill=(*WARMD, 255))
 
-# ── Mock listing card ────────────────────────────────────────────────────────
-card_y  = sub_y + 88
-card_h  = 90
-card_w  = max_tw
-card_x  = text_x
-card_img_w = 80
+# ─ Agent row
+agent_y    = div_y + 12
+agent_size = 38
+agent_circ = circle_crop(Image.open("/home/user/pintag/agent-tik.jpg"), agent_size)
+info.paste(agent_circ, (PAD, agent_y), agent_circ)
 
-# Card background
-draw_rounded_rect(
-    canvas_draw,
-    (card_x, card_y, card_x + card_w, card_y + card_h),
-    radius=8,
-    fill=(36, 48, 56)
-)
+ip.text((PAD + agent_size + 10, agent_y + 2),  "Tik",            font=f(SAN_B, 13), fill=SOFT)
+ip.text((PAD + agent_size + 10, agent_y + 18), "Property Agent", font=f(SAN_R, 10), fill=MUTED)
 
-# Card thumbnail
-thumb = Image.open("/home/user/pintag/pintag-interior.png").convert("RGB")
-thumb = crop_fill(thumb, card_img_w, card_h - 16)
-thumb_x = card_x + 10
-thumb_y = card_y + 8
-# round the thumb corners with a mask
-thumb_canvas = Image.new("RGB", thumb.size, (36, 48, 56))
-mask = Image.new("L", thumb.size, 0)
-ImageDraw.Draw(mask).rounded_rectangle([0, 0, thumb.width, thumb.height], radius=5, fill=255)
-thumb_canvas.paste(thumb, (0, 0), mask)
-canvas.paste(thumb_canvas, (thumb_x, thumb_y))
+# PINTAG VERIFIED badge (right-aligned)
+vb_f   = f(SAN_B, 8)
+vb_txt = "PINTAG VERIFIED"
+vbw    = tw(vb_txt, vb_f)
+vbh    = th(vb_txt, vb_f)
+vb_x   = INFO_W - PAD - vbw - 14
+vb_y   = agent_y + 8
+ip.rounded_rectangle([vb_x - 6, vb_y - 4, vb_x + vbw + 6, vb_y + vbh + 4],
+                     radius=3, fill=(*TEAL, 14), outline=(*TEAL, 70), width=1)
+ip.text((vb_x, vb_y), vb_txt, font=vb_f, fill=TEAL)
 
-# Card text
-tx = thumb_x + card_img_w + 12
-ty = card_y + 12
+# ─ Contact buttons
+btn_y = agent_y + agent_size + 14
+wa_f   = f(SAN_B, 11)
+wa_txt = "WhatsApp"
+waw    = tw(wa_txt, wa_f)
+ip.rounded_rectangle([PAD, btn_y, PAD + waw + 24, btn_y + 28],
+                     radius=8, fill=(*TEAL_DK, 255))
+ip.text((PAD + 12, btn_y + 7), wa_txt, font=wa_f, fill=WHITE)
+
+call_lao = "ໂທ"
+call_f   = f(LAO_R, 11)
+callw    = tw(call_lao, call_f)
+call_x   = PAD + waw + 36
+ip.rounded_rectangle([call_x, btn_y, call_x + callw + 24, btn_y + 28],
+                     radius=8, fill=(0, 0, 0, 0), outline=(*SOFT, 100), width=1)
+ip.text((call_x + 12, btn_y + 7), call_lao, font=call_f, fill=SOFT)
+
+# ── Assemble card ──────────────────────────────────────────────────────────────
+card = Image.new("RGBA", (CW, CH), (0, 0, 0, 0))
+card.paste(photo, (0, 0))
+card.paste(info,  (PHOTO_W, 0))
+
+card_mask = Image.new("L", (CW, CH), 0)
+ImageDraw.Draw(card_mask).rounded_rectangle([0, 0, CW - 1, CH - 1], radius=CARD_R, fill=255)
+rounded = Image.new("RGBA", (CW, CH), (0, 0, 0, 0))
+rounded.paste(card, (0, 0), card_mask)
+
+# Drop shadow
+shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+ImageDraw.Draw(shadow).rounded_rectangle(
+    [CX - 8, CY + 8, CX + CW + 8, CY + CH + 12],
+    radius=CARD_R + 6, fill=(0, 0, 0, 55))
+shadow = shadow.filter(ImageFilter.GaussianBlur(20))
+canvas = Image.alpha_composite(canvas, shadow)
+canvas = paste_rgba(canvas, rounded, (CX, CY))
+
+# ── Thumbnail rail (3 photos below card photo, height 52 px) ──────────────────
+RAIL_H = 52
+RAIL_Y = CY + CH + 2
+RAIL_N = 3
+gap    = 2
+tw_    = (PHOTO_W - gap * (RAIL_N - 1)) // RAIL_N  # ~208 px
+
+for i, path in enumerate([
+    "/home/user/pintag/pintag-interior.png",
+    "/home/user/pintag/pintag-exterior.png",
+    "/home/user/pintag/pintag-balcony.png",
+]):
+    thumb = crop_fill(Image.open(path).convert("RGB"), tw_, RAIL_H).convert("RGBA")
+    Image.alpha_composite(thumb, Image.new("RGBA", (tw_, RAIL_H), (0, 0, 0, 80)))
+    tint = Image.new("RGBA", (tw_, RAIL_H), (0, 0, 0, 75))
+    thumb = Image.alpha_composite(thumb, tint)
+    canvas = paste_rgba(canvas, thumb, (CX + i * (tw_ + gap), RAIL_Y))
+
+# Active indicator under first thumbnail
+canvas = paste_rgba(canvas,
+    Image.new("RGBA", (tw_, 2), (*TEAL, 255)),
+    (CX, RAIL_Y + RAIL_H - 2))
+
+# ── Headline ───────────────────────────────────────────────────────────────────
+hl_f  = f(LAO_B, 62)
+hl1   = "ຄົ້ນຫາ ແລະ ນຳສະເໜີ"
+hl2   = "ຊັບສິນໃນລາວ"
+hl1_w = tw(hl1, hl_f)
+hl2_w = tw(hl2, hl_f)
+hl1_h = th(hl1, hl_f)
+hl2_h = th(hl2, hl_f)
+
+HL_Y  = RAIL_Y + RAIL_H + 18
+hl1_x = (W - hl1_w) // 2
+hl2_x = (W - hl2_w) // 2
 
 cd = ImageDraw.Draw(canvas)
-cd.text((tx, ty),      "ວຽງຈັນ · ໂຮງຊານ 3 ຫ້ອງ",
-                        font=f_card_t, fill=(200, 220, 225))
-cd.text((tx, ty + 26), "$145,000",
-                        font=f_card_p, fill=WHITE)
+cd.text((hl1_x, HL_Y),              hl1, font=hl_f, fill=WHITE)
+cd.text((hl2_x, HL_Y + hl1_h + 6), hl2, font=hl_f, fill=TEAL_LT)
 
-# Teal dot + "Pintag listing"
-dot_x = tx
-dot_y = ty + 56
-cd.ellipse([dot_x, dot_y + 3, dot_x + 8, dot_y + 11], fill=TEAL_LIGHT)
-cd.text((dot_x + 14, dot_y), "Verified · pintag.io", font=f_small, fill=(100, 160, 170))
+# ── pintag.io ──────────────────────────────────────────────────────────────────
+url_f    = f(SAN_B, 15)
+url_txt  = "pintag.io"
+url_w    = tw(url_txt, url_f)
+url_y    = HL_Y + hl1_h + 6 + hl2_h + 14
+cd.text(((W - url_w) // 2, url_y), url_txt, font=url_f, fill=(*TEAL, 155))
 
-# ── Bottom bar ───────────────────────────────────────────────────────────────
-bar_y = H - 52
-canvas_draw.rectangle([(SPLIT, bar_y), (W, H)], fill=(20, 26, 30))
-
-# URL
-url_text = "pintag.io"
-url_tw   = text_w(canvas_draw, url_text, f_url)
-canvas_draw.text(
-    (text_x, bar_y + 17),
-    url_text,
-    font=f_url,
-    fill=(100, 160, 170)
-)
-
-# "ແພລດຟອມອະສັງຫາລິມະຊັບ ລາວ" label on the right of bottom bar
-badge_text = "ລາວ · Real Estate Platform"
-bt_w = text_w(canvas_draw, badge_text, f_badge)
-canvas_draw.text(
-    (W - pad - bt_w, bar_y + 19),
-    badge_text,
-    font=f_badge,
-    fill=(80, 110, 120)
-)
-
-# ── Photo corner pill ────────────────────────────────────────────────────────
-# Small "Property · Laos" pill over the photo
-pill_x, pill_y = 24, 24
-pill_text = "Property · Laos"
-pill_tw   = text_w(canvas_draw, pill_text, f_badge)
-draw_rounded_rect(
-    canvas_draw,
-    (pill_x - 10, pill_y - 6, pill_x + pill_tw + 10, pill_y + 20),
-    radius=12,
-    fill=(0, 0, 0, 0)   # won't be semi-transparent with RGB mode
-)
-# Use RGBA for overlay pill
-overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-od = ImageDraw.Draw(overlay)
-od.rounded_rectangle(
-    [pill_x - 10, pill_y - 6, pill_x + pill_tw + 10, pill_y + 20],
-    radius=12,
-    fill=(0, 0, 0, 160)
-)
-canvas_rgba = canvas.convert("RGBA")
-canvas_rgba = Image.alpha_composite(canvas_rgba, overlay)
-canvas = canvas_rgba.convert("RGB")
-canvas_draw = ImageDraw.Draw(canvas)
-canvas_draw.text((pill_x, pill_y), pill_text, font=f_badge, fill=(220, 240, 245))
-
-# ── Save ─────────────────────────────────────────────────────────────────────
-out = "/home/user/pintag/og-homepage.png"
-canvas.save(out, "PNG", optimize=True)
-print(f"Saved {out}  ({os.path.getsize(out)//1024} KB)")
+# ── Save ───────────────────────────────────────────────────────────────────────
+final = canvas.convert("RGB")
+for path, fmt, kw in [
+    ("/home/user/pintag/og-homepage.jpg", "JPEG",
+     {"quality": 90, "optimize": True, "progressive": True}),
+    ("/home/user/pintag/og-homepage.png", "PNG",
+     {"optimize": True}),
+]:
+    final.save(path, fmt, **kw)
+    print(f"{os.path.basename(path)}: {os.path.getsize(path) // 1024} KB")
