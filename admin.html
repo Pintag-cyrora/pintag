@@ -1038,56 +1038,77 @@ async function handleImageUpload(files) {
   const status   = document.getElementById('upload-status');
   progress.style.display = 'block';
   status.style.color = '';
+
+  // Guard: must be authenticated
+  if (!_adminToken) {
+    status.style.color = '#C0392B';
+    status.textContent = 'Not signed in — please refresh and log in again.';
+    return;
+  }
+
   const fileArr = Array.from(files);
   let completed = 0;
+
   for (const file of fileArr) {
     if (file.size > 20 * 1024 * 1024) {
-      status.textContent = `${file.name} is too large (max 20 MB)`;
       status.style.color = '#C0392B';
+      status.textContent = `${file.name} too large (max 20 MB)`;
       continue;
     }
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const ext         = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const fileName    = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
     const contentType = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+    status.style.color = '';
     status.textContent = `Uploading ${file.name}…`;
+
     try {
-      // Use the Supabase JS client — it automatically uses the authenticated session
-      const { data: upData, error: upErr } = await sbClient.storage
-        .from('property-images')
-        .upload(fileName, file, { contentType, upsert: true });
-
-      if (upErr) {
-        status.style.color = '#C0392B';
-        // Surface the real Supabase error message
-        const msg = upErr.message || JSON.stringify(upErr);
-        if (msg.includes('row-level security') || msg.includes('policy') || upErr.statusCode == 403 || upErr.statusCode == 401) {
-          status.textContent = `Permission denied — add an INSERT policy: Supabase → Storage → property-images → Policies → New policy → authenticated users → INSERT → WITH CHECK (true)`;
-        } else if (msg.includes('Bucket not found') || upErr.statusCode == 404) {
-          status.textContent = `Bucket "property-images" not found in Supabase Storage.`;
-        } else {
-          status.textContent = `Upload failed: ${msg}`;
+      const res = await fetch(
+        `${SUPABASE_URL}/storage/v1/object/property-images/${fileName}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey':        SUPABASE_ANON,
+            'Authorization': 'Bearer ' + _adminToken,
+            'Content-Type':  contentType,
+            'x-upsert':      'true'
+          },
+          body: file
         }
-        console.error('Storage upload error:', upErr);
-        continue;
+      );
+
+      if (res.ok) {
+        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
+        uploadedImages.push(publicUrl);
+        completed++;
+        fill.style.width = `${(completed / fileArr.length) * 100}%`;
+        status.style.color = '#166534';
+        status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
+        refreshImageGrid();
+      } else {
+        // Read the full Supabase error body so we can display the exact reason
+        let errBody = '';
+        try { errBody = await res.text(); } catch(_) {}
+        let parsed = null;
+        try { parsed = JSON.parse(errBody); } catch(_) {}
+        const errMsg = parsed ? (parsed.message || parsed.error || errBody) : errBody;
+
+        status.style.color = '#C0392B';
+        if (res.status === 403 || res.status === 401) {
+          status.textContent = `Permission denied (${res.status}) — run this SQL in Supabase: CREATE POLICY "upload" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'property-images');`;
+        } else if (res.status === 404 || (errMsg && errMsg.toLowerCase().includes('not found'))) {
+          status.textContent = `Bucket not found (404) — check the bucket is named exactly "property-images" in Supabase Storage.`;
+        } else {
+          status.textContent = `Upload error ${res.status}: ${errMsg || 'unknown error'}`;
+        }
+        console.error('[Upload]', res.status, errBody);
       }
-
-      // Build the public URL
-      const { data: { publicUrl } } = sbClient.storage
-        .from('property-images')
-        .getPublicUrl(fileName);
-
-      uploadedImages.push(publicUrl);
-      completed++;
-      fill.style.width = `${(completed / fileArr.length) * 100}%`;
-      status.style.color = '#166534';
-      status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
-      refreshImageGrid();
     } catch (err) {
       status.style.color = '#C0392B';
-      status.textContent = `Error: ${err.message}`;
-      console.error('Upload exception:', err);
+      status.textContent = `Network error: ${err.message}`;
+      console.error('[Upload exception]', err);
     }
   }
+
   if (completed > 0 && completed === fileArr.length) {
     setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; status.style.color = ''; }, 2500);
   }
