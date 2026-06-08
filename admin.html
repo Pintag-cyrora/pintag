@@ -1036,33 +1036,67 @@ if (zone) {
 async function handleImageUpload(files) {
   if (!files || files.length === 0) return;
   const progress = document.getElementById('upload-progress');
-  const fill = document.getElementById('progress-fill');
-  const status = document.getElementById('upload-status');
+  const fill     = document.getElementById('progress-fill');
+  const status   = document.getElementById('upload-status');
   progress.style.display = 'block';
+  status.style.color = '';
   const fileArr = Array.from(files);
   let completed = 0;
   for (const file of fileArr) {
-    if (file.size > 10 * 1024 * 1024) { status.textContent = `${file.name} too large (max 10MB)`; continue; }
-    status.textContent = `Uploading ${file.name}...`;
-    const ext = file.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    if (file.size > 20 * 1024 * 1024) {
+      status.textContent = `${file.name} is too large (max 20 MB)`;
+      status.style.color = '#C0392B';
+      continue;
+    }
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const contentType = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+    status.textContent = `Uploading ${file.name}…`;
     try {
       const imgToken = _adminToken || SB_KEY;
       const res = await fetch(`${SB_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
-        method:'POST',
-        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+imgToken,'Content-Type':file.type||'image/jpeg','x-upsert':'true'},
-        body:file
+        method: 'POST',
+        headers: {
+          'apikey': SB_KEY,
+          'Authorization': 'Bearer ' + imgToken,
+          'Content-Type': contentType,
+          'x-upsert': 'true'
+        },
+        body: file
       });
       if (res.ok) {
         uploadedImages.push(`${SB_UPLOAD}/storage/v1/object/public/property-images/${fileName}`);
         completed++;
-        fill.style.width = `${(completed/fileArr.length)*100}%`;
-        refreshImageGrid();
+        fill.style.width = `${(completed / fileArr.length) * 100}%`;
+        status.style.color = '#166534';
         status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
-      } else { status.textContent = `Error uploading ${file.name}`; }
-    } catch(err) { status.textContent = `Error: ${err.message}`; }
+        refreshImageGrid();
+      } else {
+        let errBody = '';
+        try { errBody = await res.text(); } catch(_) {}
+        let hint = '';
+        if (res.status === 400 && errBody.includes('Bucket not found')) {
+          hint = ' — bucket "property-images" does not exist. Create it in Supabase → Storage → New bucket (name: property-images, Public: on).';
+        } else if (res.status === 400 && errBody.includes('not found')) {
+          hint = ' — Storage bucket missing. Go to Supabase → Storage and create a public bucket named "property-images".';
+        } else if (res.status === 403 || res.status === 401) {
+          hint = ' — Permission denied. Check Storage policies for the property-images bucket (INSERT allowed for authenticated users).';
+        } else if (res.status === 404) {
+          hint = ' — Bucket not found. Create a public bucket named "property-images" in Supabase Storage.';
+        }
+        status.style.color = '#C0392B';
+        status.textContent = `Upload failed (${res.status})${hint}`;
+        console.error('Image upload error', res.status, errBody);
+      }
+    } catch (err) {
+      status.style.color = '#C0392B';
+      status.textContent = `Network error: ${err.message}`;
+      console.error('Image upload exception', err);
+    }
   }
-  setTimeout(() => { progress.style.display='none'; fill.style.width='0%'; }, 2000);
+  if (completed === fileArr.length && completed > 0) {
+    setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; status.style.color = ''; }, 2500);
+  }
 }
 function setCoverImage(url) {
   uploadedImages = [url, ...uploadedImages.filter(u => u !== url)];
