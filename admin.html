@@ -1023,8 +1023,6 @@ async function deleteListing(id, title) {
 }
 
 // ── IMAGE UPLOAD ──────────────────────────────────────────────────
-const SB_UPLOAD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 let uploadedImages = [];
 
 const zone = document.getElementById('upload-zone');
@@ -1053,51 +1051,48 @@ async function handleImageUpload(files) {
     const contentType = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
     status.textContent = `Uploading ${file.name}…`;
     try {
-      const imgToken = _adminToken || SB_KEY;
-      const res = await fetch(`${SB_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
-        method: 'POST',
-        headers: {
-          'apikey': SB_KEY,
-          'Authorization': 'Bearer ' + imgToken,
-          'Content-Type': contentType,
-          'x-upsert': 'true'
-        },
-        body: file
-      });
-      if (res.ok) {
-        uploadedImages.push(`${SB_UPLOAD}/storage/v1/object/public/property-images/${fileName}`);
-        completed++;
-        fill.style.width = `${(completed / fileArr.length) * 100}%`;
-        status.style.color = '#166534';
-        status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
-        refreshImageGrid();
-      } else {
-        let errBody = '';
-        try { errBody = await res.text(); } catch(_) {}
-        let hint = '';
-        if (res.status === 400 && errBody.includes('Bucket not found')) {
-          hint = ' — bucket "property-images" does not exist. Create it in Supabase → Storage → New bucket (name: property-images, Public: on).';
-        } else if (res.status === 400 && errBody.includes('not found')) {
-          hint = ' — Storage bucket missing. Go to Supabase → Storage and create a public bucket named "property-images".';
-        } else if (res.status === 403 || res.status === 401) {
-          hint = ' — Permission denied. Check Storage policies for the property-images bucket (INSERT allowed for authenticated users).';
-        } else if (res.status === 404) {
-          hint = ' — Bucket not found. Create a public bucket named "property-images" in Supabase Storage.';
-        }
+      // Use the Supabase JS client — it automatically uses the authenticated session
+      const { data: upData, error: upErr } = await sbClient.storage
+        .from('property-images')
+        .upload(fileName, file, { contentType, upsert: true });
+
+      if (upErr) {
         status.style.color = '#C0392B';
-        status.textContent = `Upload failed (${res.status})${hint}`;
-        console.error('Image upload error', res.status, errBody);
+        // Surface the real Supabase error message
+        const msg = upErr.message || JSON.stringify(upErr);
+        if (msg.includes('row-level security') || msg.includes('policy') || upErr.statusCode == 403 || upErr.statusCode == 401) {
+          status.textContent = `Permission denied — add an INSERT policy: Supabase → Storage → property-images → Policies → New policy → authenticated users → INSERT → WITH CHECK (true)`;
+        } else if (msg.includes('Bucket not found') || upErr.statusCode == 404) {
+          status.textContent = `Bucket "property-images" not found in Supabase Storage.`;
+        } else {
+          status.textContent = `Upload failed: ${msg}`;
+        }
+        console.error('Storage upload error:', upErr);
+        continue;
       }
+
+      // Build the public URL
+      const { data: { publicUrl } } = sbClient.storage
+        .from('property-images')
+        .getPublicUrl(fileName);
+
+      uploadedImages.push(publicUrl);
+      completed++;
+      fill.style.width = `${(completed / fileArr.length) * 100}%`;
+      status.style.color = '#166534';
+      status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
+      refreshImageGrid();
     } catch (err) {
       status.style.color = '#C0392B';
-      status.textContent = `Network error: ${err.message}`;
-      console.error('Image upload exception', err);
+      status.textContent = `Error: ${err.message}`;
+      console.error('Upload exception:', err);
     }
   }
-  if (completed === fileArr.length && completed > 0) {
+  if (completed > 0 && completed === fileArr.length) {
     setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; status.style.color = ''; }, 2500);
   }
 }
+
 function setCoverImage(url) {
   uploadedImages = [url, ...uploadedImages.filter(u => u !== url)];
   refreshImageGrid();
