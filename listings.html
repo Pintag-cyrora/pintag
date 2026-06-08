@@ -168,21 +168,26 @@ nav{
 .ov-br{position:absolute;bottom:12px;right:12px;z-index:2;}
 .ov-bl{position:absolute;bottom:12px;left:12px;z-index:2;}
 
-/* STATUS BADGES — reduced weight */
+/* STATUS BADGES — high-contrast, mobile-first */
 .status-badge{
   display:inline-block;
-  font-size:8px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;
-  padding:3px 8px;border-radius:2px;color:#fff;
+  font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
+  padding:4px 9px;border-radius:3px;color:#fff;
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  box-shadow:0 1px 5px rgba(0,0,0,0.22);
 }
-.badge-curated{background:rgba(45,140,140,0.60);}
-.badge-new{background:rgba(26,32,36,0.60);}
-.badge-sale{background:rgba(148,116,4,0.62);}
-.badge-rent{background:rgba(55,72,78,0.62);}
-.badge-land{background:rgba(80,52,14,0.62);}
-.badge-sold{background:rgba(148,32,32,0.62);}
-.badge-rented{background:rgba(128,88,4,0.62);}
-.badge-offer{background:rgba(38,80,128,0.60);}
+.badge-available{background:rgba(22,101,52,0.92);}
+.badge-curated{background:rgba(45,140,140,0.82);}
+.badge-new{background:rgba(26,32,36,0.82);}
+.badge-sale{background:rgba(148,116,4,0.86);}
+.badge-rent{background:rgba(55,72,78,0.86);}
+.badge-land{background:rgba(80,52,14,0.86);}
+.badge-sold{background:rgba(185,28,28,0.94);}
+.badge-rented{background:rgba(194,65,0,0.92);}
+.badge-offer{background:rgba(30,64,175,0.88);}
+@media(max-width:800px){
+  .status-badge{font-size:10px;padding:5px 10px;border-radius:4px;}
+}
 
 /* HEART BUTTON */
 .heart-btn{
@@ -440,22 +445,19 @@ function toggleSave(slug, e) {
 
 function getBadgeHtml(p, lang, isFeaturedCard) {
   const L = {
-    curated: { lo: 'ຄັດເລືອກ',       en: 'Curated',      zh: '精选' },
-    sale:    { lo: 'ຂາຍ',             en: 'For Sale',     zh: '出售' },
-    rent:    { lo: 'ເຊົ່າ',           en: 'For Rent',     zh: '租房' },
-    land:    { lo: 'ທີ່ດິນ',          en: 'Land',         zh: '土地' },
-    sold:    { lo: 'ຂາຍແລ້ວ',        en: 'Sold',         zh: '已售' },
-    rented:  { lo: 'ເຊົ່າແລ້ວ',      en: 'Rented',       zh: '已租' },
-    offer:   { lo: 'ກຳລັງດຳເນີນ',   en: 'Under Offer',  zh: '洽谈中' }
+    curated:   { lo: 'ຄັດເລືອກ',       en: 'Curated',      zh: '精选'   },
+    available: { lo: 'ວ່າງ',             en: 'Available',    zh: '在售'   },
+    sold:      { lo: 'ຂາຍແລ້ວ',        en: 'Sold',         zh: '已售'   },
+    rented:    { lo: 'ເຊົ່າແລ້ວ',      en: 'Rented',       zh: '已租'   },
+    offer:     { lo: 'ກຳລັງດຳເນີນ',   en: 'Under Offer',  zh: '洽谈中' },
+    land:      { lo: 'ທີ່ດິນ',          en: 'Land',         zh: '土地'   }
   };
-  if (isFeaturedCard)                      return '<span class="status-badge badge-curated">' + L.curated[lang] + '</span>';
-  if (p.status === 'sold')                 return '<span class="status-badge badge-sold">'   + L.sold[lang]    + '</span>';
-  if (p.status === 'rented')               return '<span class="status-badge badge-rented">' + L.rented[lang]  + '</span>';
-  if (p.status === 'under_offer')          return '<span class="status-badge badge-offer">'  + L.offer[lang]   + '</span>';
-  if (p.property_type === 'land')          return '<span class="status-badge badge-land">'   + L.land[lang]    + '</span>';
-  if (p.transaction_type === 'for_rent' || p.transaction_type === 'rent')
-                                           return '<span class="status-badge badge-rent">'   + L.rent[lang]    + '</span>';
-  return                                          '<span class="status-badge badge-sale">'   + L.sale[lang]    + '</span>';
+  if (isFeaturedCard)             return '<span class="status-badge badge-curated">'   + L.curated[lang]   + '</span>';
+  if (p.status === 'sold')        return '<span class="status-badge badge-sold">'      + L.sold[lang]      + '</span>';
+  if (p.status === 'rented')      return '<span class="status-badge badge-rented">'    + L.rented[lang]    + '</span>';
+  if (p.status === 'under_offer') return '<span class="status-badge badge-offer">'     + L.offer[lang]     + '</span>';
+  if (p.property_type === 'land') return '<span class="status-badge badge-land">'      + L.land[lang]      + '</span>';
+  return                                 '<span class="status-badge badge-available">' + L.available[lang] + '</span>';
 }
 
 function getAgentHtml(p) {

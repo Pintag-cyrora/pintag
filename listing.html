@@ -115,7 +115,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .dg-thumb-overflow{position:absolute;inset:0;background:rgba(26,36,40,0.68);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
 .dg-thumb-overflow-n{font-size:18px;font-weight:700;color:#fff;line-height:1;}
 .dg-thumb-overflow-lbl{font-size:9px;font-weight:500;color:rgba(255,255,255,0.7);letter-spacing:0.06em;text-transform:uppercase;}
-.mobile-gallery{display:none;}
+.mobile-gallery{display:none;position:relative;}
 .mg-track{display:flex;overflow-x:scroll;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;touch-action:pan-x pan-y;}
 .mg-track::-webkit-scrollbar{display:none;}
 .mg-slide{flex:0 0 100%;scroll-snap-align:start;aspect-ratio:4/3;overflow:hidden;background:var(--warm-deep);}
@@ -219,6 +219,21 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .loader-bead:nth-child(2){animation-delay:0.15s;}
 .loader-bead:nth-child(3){animation-delay:0.3s;}
 @keyframes beadWave{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
+/* ── PROPERTY STATUS BADGE — detail & gallery overlay ── */
+.prop-status-badge{
+  display:inline-flex;align-items:center;
+  font-size:10px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
+  padding:5px 11px;border-radius:5px;color:#fff;
+  box-shadow:0 2px 8px rgba(0,0,0,0.25);
+}
+.prop-status-available{background:#166534;}
+.prop-status-sold{background:#991B1B;}
+.prop-status-rented{background:#C2410C;}
+.prop-status-offer{background:#1D4ED8;}
+.mg-status-wrap{position:absolute;top:12px;right:12px;z-index:4;pointer-events:none;}
+@media(max-width:960px){
+  .prop-status-badge{font-size:11px;padding:6px 13px;}
+}
 /* Lightbox */
 .lb-overlay{position:fixed;inset:0;z-index:1000;background:rgba(8,12,16,0.96);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.32s cubic-bezier(0.16,1,0.3,1);touch-action:pan-y;}
 .lb-overlay.lb-open{opacity:1;pointer-events:all;}
@@ -506,6 +521,18 @@ function resolveLabel(value,registry,lang){
 
 var agentFallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%237A9098' stroke-width='1'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
 
+function getStatusBadgeHtml(status, lang){
+  var S = {
+    active:       { lo:'ວ່າງ',           en:'Available',   zh:'在售',   cls:'prop-status-available' },
+    sold:         { lo:'ຂາຍແລ້ວ',       en:'Sold',        zh:'已售',   cls:'prop-status-sold'      },
+    rented:       { lo:'ເຊົ່າແລ້ວ',     en:'Rented',      zh:'已租',   cls:'prop-status-rented'    },
+    under_offer:  { lo:'ກຳລັງດຳເນີນ',  en:'Under Offer', zh:'洽谈中', cls:'prop-status-offer'     }
+  };
+  var key = S[status] ? status : 'active';
+  var info = S[key];
+  return '<span class="prop-status-badge '+info.cls+'">'+(info[lang]||info.en)+'</span>';
+}
+
 var PT = (function(){
   var P='[Pintag]';
   return {
@@ -641,7 +668,7 @@ async function fetchProperty(slug){
 async function fetchSimilarProperties(prop){
   PT.time('fetchSimilar');
   var TARGET = 4;
-  var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,images,bedrooms,bathrooms,sqm,price_display,transaction_type';
+  var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,images,bedrooms,bathrooms,sqm,price_display,transaction_type,status';
   var results = [];
 
   // Collected IDs to exclude — always starts with current listing
@@ -736,8 +763,11 @@ function renderSimilarGrid(similar){
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug);
     card.className='sim-card';
+    var simStatusBadge=getStatusBadgeHtml(p.status||'active',lang);
+    var simStatusOverlay='<div style="position:absolute;top:8px;left:8px;z-index:3;pointer-events:none;">'+simStatusBadge+'</div>';
     card.innerHTML=(
       '<div class="sim-card-img">'+imgHtml+
+      simStatusOverlay+
       '<button class="sim-heart" onclick="event.preventDefault()" aria-label="Save">'+
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>'+
       '</button></div>'+
@@ -808,8 +838,9 @@ function buildMockupLayout(){
   var isSale = data.transaction_type==='for_sale'||data.transaction_type==='sale';
   var imagesArray=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';});
 
+  var statusBadgeHtml=getStatusBadgeHtml(data.status||'active',lang);
   var desktopGalleryMarkup=buildDesktopGallery(imagesArray);
-  var mobileGalleryMarkup=buildMobileGallery(imagesArray);
+  var mobileGalleryMarkup=buildMobileGallery(imagesArray,statusBadgeHtml);
 
   var L={
     wa     :{lo:'ສອບຖາມຜ່ານ WhatsApp',en:'Chat on WhatsApp',zh:'通过WhatsApp咨询'},
@@ -1134,7 +1165,10 @@ function buildMockupLayout(){
     '<p class="hero-location">'+I.pin+' '+locationLabel+'</p>'+
     '<h1 class="info-title">'+resolvedTitle+'</h1>'+
     propertyHighlightHtml+
-    '<div class="tx-badge">'+esc(typeBadgeText)+'</div>'+
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:24px;">'+
+    '<span class="tx-badge" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
+    statusBadgeHtml+
+    '</div>'+
     '<div class="price-block">'+resolvedPriceHtml+'</div>'+
     (specsHtml?'<div class="spec-grid">'+specsHtml+'</div>':'')+
     yearHtml+
@@ -1238,16 +1272,17 @@ function syncDesktopHero(idx,thumbEl){
   if(thumbEl)thumbEl.classList.add('active');
 }
 
-function buildMobileGallery(images){
+function buildMobileGallery(images, statusBadgeHtml){
   var clean=(Array.isArray(images)?images:[]).filter(function(u){return u&&typeof u==='string';});
-  if(!clean.length)return '<div class="mobile-gallery"><div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
+  if(!clean.length)return '<div class="mobile-gallery">'+(statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'')+'<div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
   var slidesHtml='',dotsHtml='';
   clean.forEach(function(img,i){
     var loading=i===0?'eager':'lazy';
     slidesHtml+='<div class="mg-slide" data-idx="'+i+'"><img src="'+esc(img)+'" alt="" loading="'+loading+'" decoding="async" onerror="handleImageError(this)"></div>';
     dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'"></div>';
   });
-  return '<div class="mobile-gallery"><div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
+  var overlayHtml=statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'';
+  return '<div class="mobile-gallery">'+overlayHtml+'<div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
 }
 
 function jumpMobileGallerySlide(idx){var t=document.getElementById('mg-track-el');if(!t)return;t.scrollTo({left:idx*t.offsetWidth,behavior:'smooth'});}
