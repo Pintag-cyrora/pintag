@@ -730,6 +730,7 @@ async function login() {
     return;
   }
   _adminToken = data.session.access_token;
+  console.log('[Auth] Signed in, token set, length:', _adminToken.length);
   showAdminScreen();
 }
 async function logout() { _adminToken = null; await sbClient.auth.signOut(); location.reload(); }
@@ -1069,8 +1070,7 @@ async function handleImageUpload(files) {
           headers: {
             'apikey':        SUPABASE_ANON,
             'Authorization': 'Bearer ' + _adminToken,
-            'Content-Type':  contentType,
-            'x-upsert':      'true'
+            'Content-Type':  contentType
           },
           body: file
         }
@@ -1094,7 +1094,8 @@ async function handleImageUpload(files) {
 
         status.style.color = '#C0392B';
         if (res.status === 403 || res.status === 401) {
-          status.textContent = `Permission denied (${res.status}) — run this SQL in Supabase: CREATE POLICY "upload" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'property-images');`;
+          status.textContent = `Upload blocked (${res.status}): ${errMsg || 'permission denied'} — add INSERT policy in Supabase Storage → property-images → Policies (see console for SQL)`;
+          console.error('[Upload] Run this SQL in Supabase:\nCREATE POLICY "Admin upload" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = \'property-images\');\nCREATE POLICY "Admin select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = \'property-images\');');
         } else if (res.status === 404 || (errMsg && errMsg.toLowerCase().includes('not found'))) {
           status.textContent = `Bucket not found (404) — check the bucket is named exactly "property-images" in Supabase Storage.`;
         } else {
