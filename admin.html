@@ -730,6 +730,7 @@ async function login() {
     return;
   }
   _adminToken = data.session.access_token;
+  console.log('[Auth] Signed in, token set, length:', _adminToken.length);
   showAdminScreen();
 }
 async function logout() { _adminToken = null; await sbClient.auth.signOut(); location.reload(); }
@@ -1023,8 +1024,6 @@ async function deleteListing(id, title) {
 }
 
 // ── IMAGE UPLOAD ──────────────────────────────────────────────────
-const SB_UPLOAD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 let uploadedImages = [];
 
 const zone = document.getElementById('upload-zone');
@@ -1036,34 +1035,86 @@ if (zone) {
 async function handleImageUpload(files) {
   if (!files || files.length === 0) return;
   const progress = document.getElementById('upload-progress');
-  const fill = document.getElementById('progress-fill');
-  const status = document.getElementById('upload-status');
+  const fill     = document.getElementById('progress-fill');
+  const status   = document.getElementById('upload-status');
   progress.style.display = 'block';
+  status.style.color = '';
+
+  // Guard: must be authenticated
+  if (!_adminToken) {
+    status.style.color = '#C0392B';
+    status.textContent = 'Not signed in — please refresh and log in again.';
+    return;
+  }
+
   const fileArr = Array.from(files);
   let completed = 0;
+
   for (const file of fileArr) {
-    if (file.size > 10 * 1024 * 1024) { status.textContent = `${file.name} too large (max 10MB)`; continue; }
-    status.textContent = `Uploading ${file.name}...`;
-    const ext = file.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    if (file.size > 20 * 1024 * 1024) {
+      status.style.color = '#C0392B';
+      status.textContent = `${file.name} too large (max 20 MB)`;
+      continue;
+    }
+    const ext         = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const fileName    = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const contentType = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+    status.style.color = '';
+    status.textContent = `Uploading ${file.name}…`;
+
     try {
-      const imgToken = _adminToken || SB_KEY;
-      const res = await fetch(`${SB_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
-        method:'POST',
-        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+imgToken,'Content-Type':file.type||'image/jpeg','x-upsert':'true'},
-        body:file
-      });
+      const res = await fetch(
+        `${SUPABASE_URL}/storage/v1/object/property-images/${fileName}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey':        SUPABASE_ANON,
+            'Authorization': 'Bearer ' + _adminToken,
+            'Content-Type':  contentType
+          },
+          body: file
+        }
+      );
+
       if (res.ok) {
-        uploadedImages.push(`${SB_UPLOAD}/storage/v1/object/public/property-images/${fileName}`);
+        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
+        uploadedImages.push(publicUrl);
         completed++;
-        fill.style.width = `${(completed/fileArr.length)*100}%`;
-        refreshImageGrid();
+        fill.style.width = `${(completed / fileArr.length) * 100}%`;
+        status.style.color = '#166534';
         status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
-      } else { status.textContent = `Error uploading ${file.name}`; }
-    } catch(err) { status.textContent = `Error: ${err.message}`; }
+        refreshImageGrid();
+      } else {
+        // Read the full Supabase error body so we can display the exact reason
+        let errBody = '';
+        try { errBody = await res.text(); } catch(_) {}
+        let parsed = null;
+        try { parsed = JSON.parse(errBody); } catch(_) {}
+        const errMsg = parsed ? (parsed.message || parsed.error || errBody) : errBody;
+
+        status.style.color = '#C0392B';
+        if (res.status === 403 || res.status === 401) {
+          status.textContent = `Upload blocked (${res.status}): ${errMsg || 'permission denied'} — add INSERT policy in Supabase Storage → property-images → Policies (see console for SQL)`;
+          console.error('[Upload] Run this SQL in Supabase:\nCREATE POLICY "Admin upload" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = \'property-images\');\nCREATE POLICY "Admin select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = \'property-images\');');
+        } else if (res.status === 404 || (errMsg && errMsg.toLowerCase().includes('not found'))) {
+          status.textContent = `Bucket not found (404) — check the bucket is named exactly "property-images" in Supabase Storage.`;
+        } else {
+          status.textContent = `Upload error ${res.status}: ${errMsg || 'unknown error'}`;
+        }
+        console.error('[Upload]', res.status, errBody);
+      }
+    } catch (err) {
+      status.style.color = '#C0392B';
+      status.textContent = `Network error: ${err.message}`;
+      console.error('[Upload exception]', err);
+    }
   }
-  setTimeout(() => { progress.style.display='none'; fill.style.width='0%'; }, 2000);
+
+  if (completed > 0 && completed === fileArr.length) {
+    setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; status.style.color = ''; }, 2500);
+  }
 }
+
 function setCoverImage(url) {
   uploadedImages = [url, ...uploadedImages.filter(u => u !== url)];
   refreshImageGrid();

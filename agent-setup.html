@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pintag · Agent Setup</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{--teal:#2D8C8C;--ink:#1A2428;--muted:#7A9098;--warm:#F7F3EC;--border:rgba(26,36,40,0.08);--red:#C0392B;--green:#166534;}
+body{font-family:'Helvetica Neue',Arial,sans-serif;background:var(--warm);color:var(--ink);padding:40px 24px;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:620px;margin:0 auto;}
+h1{font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-bottom:4px;}
+.sub{font-size:13px;color:var(--muted);margin-bottom:28px;}
+.card{background:#fff;border:1px solid var(--border);border-radius:8px;padding:28px;margin-bottom:16px;}
+.card-title{font-size:13px;font-weight:700;letter-spacing:0.03em;color:var(--ink);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+label{display:block;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+input[type=password]{width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:inherit;background:#fff;color:var(--ink);outline:none;}
+input[type=password]:focus{border-color:var(--teal);}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:background 0.18s;width:100%;}
+.btn-primary{background:var(--teal);color:#fff;}
+.btn-primary:hover{background:#269090;}
+.btn-primary:disabled{opacity:0.5;cursor:default;}
+.status-box{margin-top:16px;padding:14px 16px;border-radius:6px;font-size:13px;line-height:1.6;display:none;white-space:pre-wrap;}
+.status-box.success{background:#F0FDF4;border:1px solid #BBF7D0;color:var(--green);display:block;}
+.status-box.error{background:#FEF2F2;border:1px solid #FECACA;color:var(--red);display:block;}
+.step{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid rgba(26,36,40,0.05);}
+.step:last-child{border-bottom:none;}
+.step-icon{width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin-top:1px;}
+.step-icon.wait{background:rgba(26,36,40,0.06);color:var(--muted);}
+.step-icon.spin{background:rgba(45,140,140,0.1);color:var(--teal);}
+.step-icon.ok{background:#DCFCE7;color:var(--green);}
+.step-icon.err{background:#FEE2E2;color:var(--red);}
+.step-text{font-size:13px;color:var(--ink);line-height:1.5;}
+.step-detail{font-size:11px;color:var(--muted);margin-top:2px;}
+.steps{margin-top:8px;}
+.task-section{background:rgba(45,140,140,0.04);border:1px solid rgba(45,140,140,0.12);border-radius:6px;padding:12px 16px;margin-bottom:12px;}
+.task-section h3{font-size:11px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;}
+.task-field{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;}
+.task-field span:first-child{color:var(--muted);}
+.task-field span:last-child{color:var(--ink);font-weight:500;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pintag · Agent Setup</h1>
+  <p class="sub">One-time setup — updates Supabase and assigns listing to agent</p>
+
+  <!-- Preview of what will be done -->
+  <div class="card" id="preview-card">
+    <div class="card-title">What this will do</div>
+    <div class="task-section">
+      <h3>1 · Update Agent Record</h3>
+      <div class="task-field"><span>UUID</span><span>bb7ff815-9db9-41a4-9914-c0f7b97f9046</span></div>
+      <div class="task-field"><span>Slug</span><span>viengkhone-phomthavong</span></div>
+      <div class="task-field"><span>Name (Lao)</span><span>ວຽງຄອນ ພົມທະວົງ</span></div>
+      <div class="task-field"><span>Name (EN)</span><span>Viengkhone Phomthavong</span></div>
+      <div class="task-field"><span>WhatsApp</span><span>02055465929</span></div>
+      <div class="task-field"><span>Verified</span><span>true</span></div>
+      <div class="task-field"><span>Photo</span><span>Upload to Storage → set photo_url</span></div>
+    </div>
+    <div class="task-section">
+      <h3>2 · Assign Listing to Agent</h3>
+      <div class="task-field"><span>Listing slug</span><span>modern-4-bedroom-fully-furnished-house-for-sale-near-sikhai--574108</span></div>
+      <div class="task-field"><span>Sets agent_id</span><span>bb7ff815… (Viengkhone)</span></div>
+      <div class="task-field"><span>Sets agent_name</span><span>Viengkhone Phomthavong</span></div>
+      <div class="task-field"><span>Sets agent_photo</span><span>photo_url (resolved above)</span></div>
+      <div class="task-field"><span>Sets agent_whatsapp</span><span>02055465929</span></div>
+    </div>
+  </div>
+
+  <div class="card" id="login-card">
+    <div class="card-title">Admin Sign-In</div>
+    <div style="margin-bottom:16px;">
+      <label>Admin Password</label>
+      <input type="password" id="pw-input" placeholder="Enter admin password" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" id="run-btn" onclick="runSetup()">
+      Sign In &amp; Run All Steps
+    </button>
+    <div class="status-box error" id="login-error" style="display:none;"></div>
+  </div>
+
+  <div class="card" id="progress-card" style="display:none;">
+    <div class="card-title">Running Setup</div>
+    <div class="steps" id="steps-list"></div>
+    <div class="status-box" id="final-status"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const ADMIN_EMAIL   = 'admin@pintag.io';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+const AGENT_UUID     = 'bb7ff815-9db9-41a4-9914-c0f7b97f9046';
+const AGENT_SLUG     = 'viengkhone-phomthavong';
+const WHATSAPP       = '02055465929';
+const IMAGE_FILENAME = 'agent-viengkhone-phomthavong.jpg';
+const IMAGE_GH_URL   = 'https://pintag-cyrora.github.io/pintag/' + IMAGE_FILENAME;
+const LISTING_SLUG   = 'modern-4-bedroom-fully-furnished-house-for-sale-near-sikhai--574108';
+
+const AGENT_PAYLOAD = {
+  id:          AGENT_UUID,
+  slug:        AGENT_SLUG,
+  name_lo:     'ວຽງຄອນ ພົມທະວົງ',
+  name_en:     'Viengkhone Phomthavong',
+  bio_lo:      'ນາງ ວຽງຄອນ ພົມທະວົງ ເປັນນາຍໜ້າອະສັງຫາລິມະຊັບປະຈຳນະຄອນຫຼວງວຽງຈັນ ທີ່ມີຄວາມຊຳນານໃນດ້ານເຮືອນຢູ່ອາໄສ ທີ່ດິນ ຊັບສິນໃຫ້ເຊົ່າ ແລະ ການລົງທຶນດ້ານອະສັງຫາລິມະຊັບ. ພ້ອມໃຫ້ຄຳປຶກສາ ແລະ ຊ່ວຍເຫຼືອລູກຄ້າໃນການຊື້, ຂາຍ ແລະ ຄົ້ນຫາຊັບສິນທີ່ເໝາະສົມກັບຄວາມຕ້ອງການ.',
+  bio_en:      'Real estate agent based in Vientiane specializing in residential properties, land, rentals, and investment opportunities. Dedicated to helping clients buy, sell, and discover quality properties across Laos.',
+  is_verified: true,
+  languages:   ['Lao', 'English'],
+  agency_name: 'Pintag',
+  whatsapp:    WHATSAPP
+};
+
+var _token   = null;
+var _photoUrl = IMAGE_GH_URL;
+
+// ── Step UI helpers ─────────────────────────────────────────────────
+function addStep(id, text) {
+  var list = document.getElementById('steps-list');
+  var div = document.createElement('div');
+  div.className = 'step';
+  div.id = 'step-' + id;
+  div.innerHTML = '<div class="step-icon wait" id="icon-'+id+'">·</div>' +
+    '<div><div class="step-text">'+text+'</div><div class="step-detail" id="detail-'+id+'"></div></div>';
+  list.appendChild(div);
+}
+function setStepState(id, state, detail) {
+  var icon = document.getElementById('icon-' + id);
+  var det  = document.getElementById('detail-' + id);
+  if(icon) {
+    icon.className = 'step-icon ' + state;
+    icon.textContent = state === 'ok' ? '✓' : state === 'err' ? '✗' : state === 'spin' ? '…' : '·';
+  }
+  if(det && detail) det.textContent = detail;
+}
+
+// ── Supabase REST helper ─────────────────────────────────────────────
+async function sbApi(method, path, body) {
+  const token = _token || SUPABASE_ANON;
+  const headers = {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_ANON,
+    'Authorization': 'Bearer ' + token
+  };
+  if (method === 'POST' || method === 'PATCH') headers['Prefer'] = 'return=representation';
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    method, headers,
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error('HTTP ' + res.status + ': ' + txt.slice(0, 180));
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
+}
+
+// ── Main setup flow ──────────────────────────────────────────────────
+async function runSetup() {
+  const pw = document.getElementById('pw-input').value.trim();
+  if (!pw) {
+    var errEl = document.getElementById('login-error');
+    errEl.textContent = 'Please enter the admin password.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('login-card').style.display = 'none';
+  document.getElementById('progress-card').style.display = 'block';
+
+  // Register all steps upfront so the user sees the full plan
+  addStep('auth',    'Sign in as admin');
+  addStep('photo',   'Upload agent photo to Supabase Storage');
+  addStep('agent',   'Update agent record (UUID: ' + AGENT_UUID + ')');
+  addStep('listing', 'Assign listing to agent');
+  addStep('verify',  'Verify listing assignment');
+
+  try {
+    // ── Step 1: Auth ──────────────────────────────────────────────
+    setStepState('auth', 'spin');
+    const { data: authData, error: authErr } = await sb.auth.signInWithPassword({
+      email: ADMIN_EMAIL, password: pw
+    });
+    if (authErr) throw new Error('Auth failed: ' + authErr.message);
+    _token = authData.session.access_token;
+    setStepState('auth', 'ok', 'Signed in as ' + ADMIN_EMAIL);
+
+    // ── Step 2: Photo upload ──────────────────────────────────────
+    setStepState('photo', 'spin');
+    try {
+      const imgRes = await fetch(IMAGE_GH_URL);
+      if (!imgRes.ok) throw new Error('Could not fetch from GitHub Pages (' + imgRes.status + ')');
+      const blob = await imgRes.blob();
+
+      const uploadRes = await fetch(
+        SUPABASE_URL + '/storage/v1/object/agents/' + IMAGE_FILENAME,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + _token,
+            'apikey': SUPABASE_ANON,
+            'Content-Type': 'image/jpeg',
+            'x-upsert': 'true'
+          },
+          body: blob
+        }
+      );
+
+      if (uploadRes.ok) {
+        _photoUrl = SUPABASE_URL + '/storage/v1/object/public/agents/' + IMAGE_FILENAME;
+        setStepState('photo', 'ok', 'Stored at: ' + _photoUrl);
+      } else {
+        const errTxt = await uploadRes.text();
+        // Storage bucket may not exist; fall back to GitHub Pages URL
+        _photoUrl = IMAGE_GH_URL;
+        setStepState('photo', 'ok', 'Storage unavailable — using GitHub Pages URL');
+      }
+    } catch(e) {
+      _photoUrl = IMAGE_GH_URL;
+      setStepState('photo', 'ok', 'Fallback to GitHub Pages URL (' + e.message.slice(0, 60) + ')');
+    }
+
+    // ── Step 3: Update agent record ───────────────────────────────
+    setStepState('agent', 'spin');
+    const agentPayload = Object.assign({}, AGENT_PAYLOAD, { photo_url: _photoUrl });
+
+    var agentResult = await sbApi('PATCH', 'agents?id=eq.' + AGENT_UUID, agentPayload);
+    if (!Array.isArray(agentResult) || agentResult.length === 0) {
+      // Record doesn't exist yet — upsert
+      agentResult = await sbApi('POST', 'agents?on_conflict=id', agentPayload);
+    }
+    setStepState('agent', 'ok', 'slug=' + AGENT_SLUG + ' · is_verified=true · whatsapp=' + WHATSAPP);
+
+    // ── Step 4: Assign listing to agent ───────────────────────────
+    setStepState('listing', 'spin');
+    const listingPatch = {
+      agent_id:       AGENT_UUID,
+      agent_name:     'Viengkhone Phomthavong',
+      agent_name_lo:  'ວຽງຄອນ ພົມທະວົງ',
+      agent_photo:    _photoUrl,
+      agent_photo_url:_photoUrl,
+      agent_whatsapp: WHATSAPP
+    };
+    const listingResult = await sbApi(
+      'PATCH',
+      'properties?slug=eq.' + encodeURIComponent(LISTING_SLUG),
+      listingPatch
+    );
+    if (!Array.isArray(listingResult) || listingResult.length === 0) {
+      throw new Error('Listing not found or update returned empty — check slug: ' + LISTING_SLUG);
+    }
+    setStepState('listing', 'ok', 'agent_id, agent_name, agent_photo, agent_whatsapp set');
+
+    // ── Step 5: Verify ────────────────────────────────────────────
+    setStepState('verify', 'spin');
+    const check = await sbApi('GET',
+      'properties?slug=eq.' + encodeURIComponent(LISTING_SLUG) +
+      '&select=slug,agent_id,agent_name,agent_photo'
+    );
+    if (Array.isArray(check) && check[0] && check[0].agent_id === AGENT_UUID) {
+      setStepState('verify', 'ok', 'Confirmed: agent_id matches UUID');
+    } else {
+      setStepState('verify', 'err', 'agent_id mismatch — check manually');
+    }
+
+    // ── Done ──────────────────────────────────────────────────────
+    var fin = document.getElementById('final-status');
+    fin.className = 'status-box success';
+    fin.textContent =
+      '✓ All steps complete!\n\n' +
+      'Agent profile:  pintag.io/agents.html?slug=viengkhone-phomthavong\n' +
+      'Listing page:   pintag.io/listing.html?slug=' + LISTING_SLUG + '\n' +
+      'Photo URL:      ' + _photoUrl;
+
+  } catch (err) {
+    var errStep = ['auth','photo','agent','listing','verify'].find(function(s){
+      var el = document.getElementById('icon-' + s);
+      return el && el.classList.contains('spin');
+    });
+    if (errStep) setStepState(errStep, 'err', err.message);
+
+    var fin = document.getElementById('final-status');
+    fin.className = 'status-box error';
+    fin.textContent = '✗ Error: ' + err.message + '\n\nCheck the step that failed above.';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('pw-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') runSetup();
+  });
+});
+</script>
+</body>
+</html>
