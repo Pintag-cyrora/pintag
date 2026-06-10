@@ -1019,32 +1019,39 @@ function buildMockupLayout(){
   // ════════════════════════════════════════════════════════════════
   // maps.app.goo.gl and goo.gl/maps are share links — they block iframe embedding.
   // Only google.com/maps/embed URLs are safe to iframe.
-  function isEmbeddableMap(url){
-    if(!isSafeUrl(url)) return false;
-    var u=url.toLowerCase();
-    return u.indexOf('google.com/maps/embed')!==-1 ||
-           (u.indexOf('maps.google.com')!==-1 && u.indexOf('output=embed')!==-1);
+  // Extract lat/lng from any Google Maps URL format:
+  // google.com/maps/place/Name/@lat,lng,zoom  or  ?q=lat,lng  or  maps.app.goo.gl (no coords)
+  function extractMapCoords(url){
+    if(!url) return null;
+    var m=url.match(/[@/](-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/);
+    if(m) return {lat:m[1],lng:m[2]};
+    m=url.match(/[?&]q=(-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/);
+    if(m) return {lat:m[1],lng:m[2]};
+    return null;
   }
 
   var mapSrc='';
-  if(isEmbeddableMap(data.map_embed_url)){
-    mapSrc=data.map_embed_url;
+  var gmapsHref='';
+
+  // Always use map_embed_url as the Open in Maps button if it's any safe Google Maps URL
+  if(isSafeUrl(data.map_embed_url)) gmapsHref=data.map_embed_url;
+
+  var coords=extractMapCoords(data.map_embed_url);
+  if(coords){
+    mapSrc='https://maps.google.com/maps?q='+coords.lat+','+coords.lng+'&t=&z=16&ie=UTF8&iwloc=&output=embed';
   } else if(data.latitude&&data.longitude){
     mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude)+'&t=&z=15&ie=UTF8&iwloc=&output=embed';
   } else if(data.district_en){
     mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.district_en+', Vientiane, Laos')+'&t=&z=14&ie=UTF8&iwloc=&output=embed';
-  } else {
-    mapSrc='';
   }
 
-  var gmapsHref='';
-  // Use share link as the "Open in Maps" href if present, otherwise build from coords/district
-  if(isSafeUrl(data.map_embed_url) && !isEmbeddableMap(data.map_embed_url)){
-    gmapsHref=data.map_embed_url;
-  } else if(data.latitude&&data.longitude){
-    gmapsHref='https://www.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude);
-  } else if(data.district_en){
-    gmapsHref='https://www.google.com/maps/search/'+encodeURIComponent(data.district_en+', Vientiane, Laos');
+  // Fallback Open in Maps href if no custom URL was provided
+  if(!gmapsHref){
+    if(data.latitude&&data.longitude){
+      gmapsHref='https://www.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude);
+    } else if(data.district_en){
+      gmapsHref='https://www.google.com/maps/search/'+encodeURIComponent(data.district_en+', Vientiane, Laos');
+    }
   }
 
   var mapHtml='';
