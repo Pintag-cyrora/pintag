@@ -436,6 +436,10 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <input class="form-input" id="f-video" type="text" placeholder="Paste any YouTube or TikTok link — auto-converted">
             </div>
             <div class="form-group form-full">
+              <label class="form-label">Facebook Video URL</label>
+              <input class="form-input" id="f-facebook-video" type="text" placeholder="https://www.facebook.com/watch?v=...">
+            </div>
+            <div class="form-group form-full">
               <label class="form-label">Download URL</label>
               <input class="form-input" id="f-download-url" type="text" placeholder="Google Drive link for watermarked video">
             </div>
@@ -891,8 +895,9 @@ async function editListing(id) {
   updateCharCount(nbField,'neighborhood-count',220);
 
   populateExistingImages(p.images || []);
-  document.getElementById('f-video').value        = p.video_embed_url || p.video_url || '';
-  document.getElementById('f-download-url').value = p.download_url || '';
+  document.getElementById('f-video').value          = p.video_embed_url || p.video_url || '';
+  document.getElementById('f-facebook-video').value = p.facebook_video_url || '';
+  document.getElementById('f-download-url').value   = p.download_url || '';
 
   document.getElementById('f-agent').value        = p.agent_name || '';
   document.getElementById('f-agent-lo').value     = p.agent_name_lo || '';
@@ -966,6 +971,7 @@ async function saveListing(e) {
     images:            JSON.parse(document.getElementById('f-images').value || '[]'),
     video_embed_url:   document.getElementById('f-video').value.trim() || null,
     video_url:         document.getElementById('f-video').value.trim() || null,
+    facebook_video_url:document.getElementById('f-facebook-video').value.trim() || null,
     download_url:      document.getElementById('f-download-url').value.trim() || null,
     agent_name:          document.getElementById('f-agent').value.trim() || null,
     agent_name_lo:       document.getElementById('f-agent-lo').value.trim() || null,
