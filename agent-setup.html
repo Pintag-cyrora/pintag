@@ -7,85 +7,154 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-:root{--teal:#2D8C8C;--ink:#1A2428;--muted:#7A9098;--warm:#F7F3EC;--border:rgba(26,36,40,0.08);--red:#C0392B;--green:#166534;}
-body{font-family:'Helvetica Neue',Arial,sans-serif;background:var(--warm);color:var(--ink);padding:40px 24px;-webkit-font-smoothing:antialiased;}
-.wrap{max-width:620px;margin:0 auto;}
+:root{--teal:#2D8C8C;--ink:#1A2428;--muted:#7A9098;--warm:#F7F3EC;--border:rgba(26,36,40,0.1);--red:#C0392B;--green:#166534;}
+body{font-family:'Helvetica Neue',Arial,sans-serif;background:var(--warm);color:var(--ink);padding:40px 20px 80px;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:640px;margin:0 auto;}
 h1{font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-bottom:4px;}
 .sub{font-size:13px;color:var(--muted);margin-bottom:28px;}
-.card{background:#fff;border:1px solid var(--border);border-radius:8px;padding:28px;margin-bottom:16px;}
-.card-title{font-size:13px;font-weight:700;letter-spacing:0.03em;color:var(--ink);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border);}
-label{display:block;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
-input[type=password]{width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:inherit;background:#fff;color:var(--ink);outline:none;}
-input[type=password]:focus{border-color:var(--teal);}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 28px;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:background 0.18s;width:100%;}
+.card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:24px;margin-bottom:16px;}
+.card-title{font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:18px;}
+.field{margin-bottom:16px;}
+.field:last-child{margin-bottom:0;}
+label{display:block;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;}
+input[type=text],input[type=password],input[type=tel],textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:inherit;background:#fff;color:var(--ink);outline:none;transition:border-color 0.15s;}
+input:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(45,140,140,0.08);}
+textarea{resize:vertical;min-height:80px;line-height:1.5;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.hint{font-size:11px;color:var(--muted);margin-top:4px;}
+.preview-avatar{width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border);margin-top:10px;display:none;}
+.checkbox-row{display:flex;align-items:center;gap:10px;}
+.checkbox-row input[type=checkbox]{width:18px;height:18px;accent-color:var(--teal);cursor:pointer;}
+.checkbox-row label{margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);font-weight:500;cursor:pointer;}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 28px;border-radius:7px;font-size:15px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:background 0.15s;width:100%;}
 .btn-primary{background:var(--teal);color:#fff;}
 .btn-primary:hover{background:#269090;}
 .btn-primary:disabled{opacity:0.5;cursor:default;}
-.status-box{margin-top:16px;padding:14px 16px;border-radius:6px;font-size:13px;line-height:1.6;display:none;white-space:pre-wrap;}
-.status-box.success{background:#F0FDF4;border:1px solid #BBF7D0;color:var(--green);display:block;}
-.status-box.error{background:#FEF2F2;border:1px solid #FECACA;color:var(--red);display:block;}
+.btn-sm{width:auto;padding:8px 18px;font-size:13px;}
 .step{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid rgba(26,36,40,0.05);}
 .step:last-child{border-bottom:none;}
-.step-icon{width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin-top:1px;}
-.step-icon.wait{background:rgba(26,36,40,0.06);color:var(--muted);}
-.step-icon.spin{background:rgba(45,140,140,0.1);color:var(--teal);}
+.step-icon{width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:1px;}
+.step-icon.wait{background:rgba(26,36,40,0.07);color:var(--muted);}
+.step-icon.spin{background:rgba(45,140,140,0.12);color:var(--teal);}
 .step-icon.ok{background:#DCFCE7;color:var(--green);}
 .step-icon.err{background:#FEE2E2;color:var(--red);}
-.step-text{font-size:13px;color:var(--ink);line-height:1.5;}
-.step-detail{font-size:11px;color:var(--muted);margin-top:2px;}
-.steps{margin-top:8px;}
-.task-section{background:rgba(45,140,140,0.04);border:1px solid rgba(45,140,140,0.12);border-radius:6px;padding:12px 16px;margin-bottom:12px;}
-.task-section h3{font-size:11px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;}
-.task-field{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;}
-.task-field span:first-child{color:var(--muted);}
-.task-field span:last-child{color:var(--ink);font-weight:500;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.step-label{font-size:13px;color:var(--ink);line-height:1.4;}
+.step-detail{font-size:11px;color:var(--muted);margin-top:3px;word-break:break-all;}
+.steps{margin-top:4px;}
+.status-box{margin-top:16px;padding:14px 16px;border-radius:8px;font-size:13px;line-height:1.7;white-space:pre-wrap;display:none;}
+.status-box.success{background:#F0FDF4;border:1px solid #BBF7D0;color:var(--green);display:block;}
+.status-box.error{background:#FEF2F2;border:1px solid #FECACA;color:var(--red);display:block;}
+.uuid-row{display:flex;gap:8px;align-items:center;}
+.uuid-row input{flex:1;font-size:12px;font-family:monospace;}
+.uuid-row button{flex-shrink:0;}
+.divider{border:none;border-top:1px solid var(--border);margin:20px 0;}
+@media(max-width:520px){.row2{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Pintag · Agent Setup</h1>
-  <p class="sub">One-time setup — updates Supabase and assigns listing to agent</p>
+  <p class="sub">Add or update an agent and assign their listings — no SQL needed</p>
 
-  <!-- Preview of what will be done -->
-  <div class="card" id="preview-card">
-    <div class="card-title">What this will do</div>
-    <div class="task-section">
-      <h3>1 · Update Agent Record</h3>
-      <div class="task-field"><span>UUID</span><span>bb7ff815-9db9-41a4-9914-c0f7b97f9046</span></div>
-      <div class="task-field"><span>Slug</span><span>viengkhone-phomthavong</span></div>
-      <div class="task-field"><span>Name (Lao)</span><span>ວຽງຄອນ ພົມທະວົງ</span></div>
-      <div class="task-field"><span>Name (EN)</span><span>Viengkhone Phomthavong</span></div>
-      <div class="task-field"><span>WhatsApp</span><span>02055465929</span></div>
-      <div class="task-field"><span>Verified</span><span>true</span></div>
-      <div class="task-field"><span>Photo</span><span>Upload to Storage → set photo_url</span></div>
-    </div>
-    <div class="task-section">
-      <h3>2 · Assign Listing to Agent</h3>
-      <div class="task-field"><span>Listing slug</span><span>modern-4-bedroom-fully-furnished-house-for-sale-near-sikhai--574108</span></div>
-      <div class="task-field"><span>Sets agent_id</span><span>bb7ff815… (Viengkhone)</span></div>
-      <div class="task-field"><span>Sets agent_name</span><span>Viengkhone Phomthavong</span></div>
-      <div class="task-field"><span>Sets agent_photo</span><span>photo_url (resolved above)</span></div>
-      <div class="task-field"><span>Sets agent_whatsapp</span><span>02055465929</span></div>
-    </div>
-  </div>
-
+  <!-- LOGIN -->
   <div class="card" id="login-card">
     <div class="card-title">Admin Sign-In</div>
-    <div style="margin-bottom:16px;">
-      <label>Admin Password</label>
-      <input type="password" id="pw-input" placeholder="Enter admin password" autocomplete="current-password">
+    <div class="field">
+      <label for="pw-input">Admin Password</label>
+      <input type="password" id="pw-input" placeholder="Enter password" autocomplete="current-password">
     </div>
-    <button class="btn btn-primary" id="run-btn" onclick="runSetup()">
-      Sign In &amp; Run All Steps
-    </button>
-    <div class="status-box error" id="login-error" style="display:none;"></div>
+    <button class="btn btn-primary" id="login-btn" onclick="signIn()">Sign In</button>
+    <div class="status-box error" id="login-err"></div>
   </div>
 
-  <div class="card" id="progress-card" style="display:none;">
-    <div class="card-title">Running Setup</div>
-    <div class="steps" id="steps-list"></div>
-    <div class="status-box" id="final-status"></div>
-  </div>
+  <!-- FORM (hidden until signed in) -->
+  <div id="form-wrap" style="display:none;">
+
+    <!-- Agent Details -->
+    <div class="card">
+      <div class="card-title">Agent Details</div>
+
+      <div class="field">
+        <label>Agent UUID</label>
+        <div class="uuid-row">
+          <input type="text" id="f-id" placeholder="Auto-generated" readonly style="color:var(--muted);">
+          <button class="btn btn-primary btn-sm" onclick="genUUID()">New UUID</button>
+        </div>
+        <p class="hint">Leave as-is to create a new agent, or paste an existing UUID to update.</p>
+      </div>
+
+      <div class="field">
+        <label>Slug (URL key)</label>
+        <input type="text" id="f-slug" placeholder="e.g. viengkhone-phomthavong">
+        <p class="hint">Lowercase, hyphens only — auto-fills from English name.</p>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label>Name (English)</label>
+          <input type="text" id="f-name-en" placeholder="Viengkhone Phomthavong" oninput="autoSlug()">
+        </div>
+        <div class="field">
+          <label>Name (Lao)</label>
+          <input type="text" id="f-name-lo" placeholder="ວຽງຄອນ ພົມທະວົງ">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Bio (Lao) — shown first on profile</label>
+        <textarea id="f-bio-lo" placeholder="ລາຍລະອຽດກ່ຽວກັບຕົວແທນ..."></textarea>
+      </div>
+      <div class="field">
+        <label>Bio (English)</label>
+        <textarea id="f-bio-en" placeholder="Agent biography in English..."></textarea>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label>WhatsApp Number</label>
+          <input type="tel" id="f-whatsapp" placeholder="02055465929">
+        </div>
+        <div class="field">
+          <label>Agency Name</label>
+          <input type="text" id="f-agency" placeholder="Pintag" value="Pintag">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Photo Filename</label>
+        <input type="text" id="f-photo" placeholder="agent-name.jpg" oninput="previewPhoto()">
+        <p class="hint">File must be uploaded to the site root (e.g. <code>agent-viengkhone-phomthavong.jpg</code>). URL: <code>https://www.pintag.io/&lt;filename&gt;</code></p>
+        <img id="photo-preview" class="preview-avatar" alt="Photo preview">
+      </div>
+
+      <div class="field">
+        <div class="checkbox-row">
+          <input type="checkbox" id="f-verified" checked>
+          <label for="f-verified">Verified Agent badge</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Listing Assignment -->
+    <div class="card">
+      <div class="card-title">Assign Listings (optional)</div>
+      <div class="field">
+        <label>Listing Slugs — one per line</label>
+        <textarea id="f-listings" rows="4" placeholder="modern-4-bedroom-fully-furnished-house-for-sale-near-sikhai--574108&#10;another-listing-slug"></textarea>
+        <p class="hint">These listings will have their agent_id, agent_name, agent_photo and agent_whatsapp updated.</p>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="run-btn" onclick="runSetup()">Save Agent &amp; Assign Listings</button>
+
+    <!-- Progress -->
+    <div class="card" id="progress-card" style="display:none;margin-top:16px;">
+      <div class="card-title">Progress</div>
+      <div class="steps" id="steps-list"></div>
+      <div class="status-box" id="final-status"></div>
+    </div>
+
+  </div><!-- /form-wrap -->
 </div>
 
 <script>
@@ -94,204 +163,215 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const ADMIN_EMAIL   = 'admin@pintag.io';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const AGENT_UUID     = 'bb7ff815-9db9-41a4-9914-c0f7b97f9046';
-const AGENT_SLUG     = 'viengkhone-phomthavong';
-const WHATSAPP       = '02055465929';
-const IMAGE_FILENAME = 'agent-viengkhone-phomthavong.jpg';
-const IMAGE_GH_URL   = 'https://www.pintag.io/' + IMAGE_FILENAME;
-const LISTING_SLUG   = 'modern-4-bedroom-fully-furnished-house-for-sale-near-sikhai--574108';
+var _token = null;
 
-const AGENT_PAYLOAD = {
-  id:          AGENT_UUID,
-  slug:        AGENT_SLUG,
-  name_lo:     'ວຽງຄອນ ພົມທະວົງ',
-  name_en:     'Viengkhone Phomthavong',
-  bio_lo:      'ນາງ ວຽງຄອນ ພົມທະວົງ ເປັນນາຍໜ້າອະສັງຫາລິມະຊັບປະຈຳນະຄອນຫຼວງວຽງຈັນ ທີ່ມີຄວາມຊຳນານໃນດ້ານເຮືອນຢູ່ອາໄສ ທີ່ດິນ ຊັບສິນໃຫ້ເຊົ່າ ແລະ ການລົງທຶນດ້ານອະສັງຫາລິມະຊັບ. ພ້ອມໃຫ້ຄຳປຶກສາ ແລະ ຊ່ວຍເຫຼືອລູກຄ້າໃນການຊື້, ຂາຍ ແລະ ຄົ້ນຫາຊັບສິນທີ່ເໝາະສົມກັບຄວາມຕ້ອງການ.',
-  bio_en:      'Real estate agent based in Vientiane specializing in residential properties, land, rentals, and investment opportunities. Dedicated to helping clients buy, sell, and discover quality properties across Laos.',
-  is_verified: true,
-  languages:   ['Lao', 'English'],
-  agency_name: 'Pintag',
-  whatsapp:    WHATSAPP
-};
+// ── Helpers ──────────────────────────────────────────────────────────
+function genUUID() {
+  var id = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random()*16|0, v = c=='x'?r:(r&0x3|0x8);
+        return v.toString(16);
+      });
+  document.getElementById('f-id').value = id;
+}
 
-var _token   = null;
-var _photoUrl = IMAGE_GH_URL;
+function autoSlug() {
+  var name = document.getElementById('f-name-en').value;
+  var slug = name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  document.getElementById('f-slug').value = slug;
+}
 
-// ── Step UI helpers ─────────────────────────────────────────────────
+function previewPhoto() {
+  var filename = document.getElementById('f-photo').value.trim();
+  var img = document.getElementById('photo-preview');
+  if (filename) {
+    img.src = 'https://www.pintag.io/' + filename;
+    img.style.display = 'block';
+    img.onerror = function() { img.style.display = 'none'; };
+  } else {
+    img.style.display = 'none';
+  }
+}
+
 function addStep(id, text) {
   var list = document.getElementById('steps-list');
   var div = document.createElement('div');
-  div.className = 'step';
-  div.id = 'step-' + id;
-  div.innerHTML = '<div class="step-icon wait" id="icon-'+id+'">·</div>' +
-    '<div><div class="step-text">'+text+'</div><div class="step-detail" id="detail-'+id+'"></div></div>';
+  div.className = 'step'; div.id = 'step-' + id;
+  div.innerHTML =
+    '<div class="step-icon wait" id="icon-'+id+'">·</div>' +
+    '<div><div class="step-label">'+text+'</div><div class="step-detail" id="detail-'+id+'"></div></div>';
   list.appendChild(div);
 }
-function setStepState(id, state, detail) {
+
+function setStep(id, state, detail) {
   var icon = document.getElementById('icon-' + id);
   var det  = document.getElementById('detail-' + id);
-  if(icon) {
+  if (icon) {
     icon.className = 'step-icon ' + state;
-    icon.textContent = state === 'ok' ? '✓' : state === 'err' ? '✗' : state === 'spin' ? '…' : '·';
+    icon.textContent = state==='ok'?'✓':state==='err'?'✗':state==='spin'?'…':'·';
   }
-  if(det && detail) det.textContent = detail;
+  if (det && detail !== undefined) det.textContent = detail;
 }
 
-// ── Supabase REST helper ─────────────────────────────────────────────
-async function sbApi(method, path, body) {
-  const token = _token || SUPABASE_ANON;
-  const headers = {
+async function sbApi(method, path, body, extraHeaders) {
+  var headers = {
     'Content-Type': 'application/json',
     'apikey': SUPABASE_ANON,
-    'Authorization': 'Bearer ' + token
+    'Authorization': 'Bearer ' + _token,
+    'Prefer': 'return=representation'
   };
-  if (method === 'POST' || method === 'PATCH') headers['Prefer'] = 'return=representation';
-  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+  if (extraHeaders) Object.assign(headers, extraHeaders);
+  var res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
     method, headers,
     body: body ? JSON.stringify(body) : undefined
   });
   if (!res.ok) {
-    const txt = await res.text();
-    throw new Error('HTTP ' + res.status + ': ' + txt.slice(0, 180));
+    var txt = await res.text();
+    var parsed = null;
+    try { parsed = JSON.parse(txt); } catch(_) {}
+    var msg = parsed ? (parsed.message || parsed.error || txt) : txt;
+    if (res.status === 403 && msg.includes('row-level security')) {
+      throw new Error('Permission denied (RLS). Run this SQL in Supabase:\n' +
+        'CREATE POLICY "Admin insert agents" ON agents FOR INSERT TO authenticated WITH CHECK (true);\n' +
+        'CREATE POLICY "Admin update agents" ON agents FOR UPDATE TO authenticated USING (true) WITH CHECK (true);');
+    }
+    throw new Error('HTTP ' + res.status + ': ' + msg.slice(0, 200));
   }
-  const text = await res.text();
+  var text = await res.text();
   return text ? JSON.parse(text) : [];
 }
 
-// ── Main setup flow ──────────────────────────────────────────────────
+// ── Sign in ───────────────────────────────────────────────────────────
+async function signIn() {
+  var pw  = document.getElementById('pw-input').value.trim();
+  var btn = document.getElementById('login-btn');
+  var err = document.getElementById('login-err');
+  err.style.display = 'none';
+  if (!pw) { err.textContent = 'Enter the admin password.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  var { data, error } = await sb.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
+  btn.disabled = false; btn.textContent = 'Sign In';
+  if (error) { err.textContent = 'Sign-in failed: ' + error.message; err.style.display = 'block'; return; }
+  _token = data.session.access_token;
+  document.getElementById('login-card').style.display = 'none';
+  document.getElementById('form-wrap').style.display = 'block';
+  genUUID();
+}
+
+// ── Main setup ────────────────────────────────────────────────────────
 async function runSetup() {
-  const pw = document.getElementById('pw-input').value.trim();
-  if (!pw) {
-    var errEl = document.getElementById('login-error');
-    errEl.textContent = 'Please enter the admin password.';
-    errEl.style.display = 'block';
+  var agentId   = document.getElementById('f-id').value.trim();
+  var slug      = document.getElementById('f-slug').value.trim();
+  var nameEn    = document.getElementById('f-name-en').value.trim();
+  var nameLo    = document.getElementById('f-name-lo').value.trim();
+  var bioLo     = document.getElementById('f-bio-lo').value.trim();
+  var bioEn     = document.getElementById('f-bio-en').value.trim();
+  var whatsapp  = document.getElementById('f-whatsapp').value.trim();
+  var agency    = document.getElementById('f-agency').value.trim() || 'Pintag';
+  var photoFile = document.getElementById('f-photo').value.trim();
+  var verified  = document.getElementById('f-verified').checked;
+  var listingRaw = document.getElementById('f-listings').value.trim();
+  var listings  = listingRaw ? listingRaw.split('\n').map(s=>s.trim()).filter(Boolean) : [];
+
+  if (!agentId || !slug || !nameEn) {
+    alert('UUID, Slug and English Name are required.');
     return;
   }
 
-  document.getElementById('run-btn').disabled = true;
-  document.getElementById('login-card').style.display = 'none';
-  document.getElementById('progress-card').style.display = 'block';
+  var photoUrl = photoFile ? 'https://www.pintag.io/' + photoFile : null;
 
-  // Register all steps upfront so the user sees the full plan
-  addStep('auth',    'Sign in as admin');
-  addStep('photo',   'Upload agent photo to Supabase Storage');
-  addStep('agent',   'Update agent record (UUID: ' + AGENT_UUID + ')');
-  addStep('listing', 'Assign listing to agent');
-  addStep('verify',  'Verify listing assignment');
+  document.getElementById('run-btn').disabled = true;
+  var prog = document.getElementById('progress-card');
+  prog.style.display = 'block';
+  document.getElementById('steps-list').innerHTML = '';
+  document.getElementById('final-status').className = 'status-box';
+  document.getElementById('final-status').style.display = 'none';
+
+  addStep('agent',  'Upsert agent record');
+  listings.forEach(function(ls, i) { addStep('ls'+i, 'Assign listing: '+ls); });
+  addStep('verify', 'Verify');
 
   try {
-    // ── Step 1: Auth ──────────────────────────────────────────────
-    setStepState('auth', 'spin');
-    const { data: authData, error: authErr } = await sb.auth.signInWithPassword({
-      email: ADMIN_EMAIL, password: pw
-    });
-    if (authErr) throw new Error('Auth failed: ' + authErr.message);
-    _token = authData.session.access_token;
-    setStepState('auth', 'ok', 'Signed in as ' + ADMIN_EMAIL);
-
-    // ── Step 2: Photo upload ──────────────────────────────────────
-    setStepState('photo', 'spin');
-    try {
-      const imgRes = await fetch(IMAGE_GH_URL);
-      if (!imgRes.ok) throw new Error('Could not fetch from GitHub Pages (' + imgRes.status + ')');
-      const blob = await imgRes.blob();
-
-      const uploadRes = await fetch(
-        SUPABASE_URL + '/storage/v1/object/agents/' + IMAGE_FILENAME,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + _token,
-            'apikey': SUPABASE_ANON,
-            'Content-Type': 'image/jpeg',
-            'x-upsert': 'true'
-          },
-          body: blob
-        }
-      );
-
-      if (uploadRes.ok) {
-        _photoUrl = SUPABASE_URL + '/storage/v1/object/public/agents/' + IMAGE_FILENAME;
-        setStepState('photo', 'ok', 'Stored at: ' + _photoUrl);
-      } else {
-        const errTxt = await uploadRes.text();
-        // Storage bucket may not exist; fall back to GitHub Pages URL
-        _photoUrl = IMAGE_GH_URL;
-        setStepState('photo', 'ok', 'Storage unavailable — using GitHub Pages URL');
-      }
-    } catch(e) {
-      _photoUrl = IMAGE_GH_URL;
-      setStepState('photo', 'ok', 'Fallback to GitHub Pages URL (' + e.message.slice(0, 60) + ')');
-    }
-
-    // ── Step 3: Update agent record ───────────────────────────────
-    setStepState('agent', 'spin');
-    const agentPayload = Object.assign({}, AGENT_PAYLOAD, { photo_url: _photoUrl });
-
-    var agentResult = await sbApi('PATCH', 'agents?id=eq.' + AGENT_UUID, agentPayload);
-    if (!Array.isArray(agentResult) || agentResult.length === 0) {
-      // Record doesn't exist yet — upsert
-      agentResult = await sbApi('POST', 'agents?on_conflict=id', agentPayload);
-    }
-    setStepState('agent', 'ok', 'slug=' + AGENT_SLUG + ' · is_verified=true · whatsapp=' + WHATSAPP);
-
-    // ── Step 4: Assign listing to agent ───────────────────────────
-    setStepState('listing', 'spin');
-    const listingPatch = {
-      agent_id:       AGENT_UUID,
-      agent_name:     'Viengkhone Phomthavong',
-      agent_name_lo:  'ວຽງຄອນ ພົມທະວົງ',
-      agent_photo:    _photoUrl,
-      agent_photo_url:_photoUrl,
-      agent_whatsapp: WHATSAPP
+    // ── Upsert agent ─────────────────────────────────────────────────
+    setStep('agent', 'spin');
+    var agentPayload = {
+      id:          agentId,
+      slug:        slug,
+      name_en:     nameEn,
+      name_lo:     nameLo || null,
+      bio_en:      bioEn  || null,
+      bio_lo:      bioLo  || null,
+      whatsapp:    whatsapp || null,
+      photo_url:   photoUrl,
+      is_verified: verified,
+      agency_name: agency,
+      languages:   ['Lao','English']
     };
-    const listingResult = await sbApi(
-      'PATCH',
-      'properties?slug=eq.' + encodeURIComponent(LISTING_SLUG),
-      listingPatch
-    );
-    if (!Array.isArray(listingResult) || listingResult.length === 0) {
-      throw new Error('Listing not found or update returned empty — check slug: ' + LISTING_SLUG);
-    }
-    setStepState('listing', 'ok', 'agent_id, agent_name, agent_photo, agent_whatsapp set');
+    await sbApi('POST', 'agents?on_conflict=id', agentPayload, {
+      'Prefer': 'return=representation,resolution=merge-duplicates'
+    });
+    setStep('agent', 'ok', nameEn + ' · slug=' + slug);
 
-    // ── Step 5: Verify ────────────────────────────────────────────
-    setStepState('verify', 'spin');
-    const check = await sbApi('GET',
-      'properties?slug=eq.' + encodeURIComponent(LISTING_SLUG) +
-      '&select=slug,agent_id,agent_name,agent_photo'
-    );
-    if (Array.isArray(check) && check[0] && check[0].agent_id === AGENT_UUID) {
-      setStepState('verify', 'ok', 'Confirmed: agent_id matches UUID');
+    // ── Assign listings ───────────────────────────────────────────────
+    for (var i = 0; i < listings.length; i++) {
+      var ls = listings[i];
+      setStep('ls'+i, 'spin');
+      var patch = {
+        agent_id:        agentId,
+        agent_name:      nameEn,
+        agent_name_lo:   nameLo || null,
+        agent_photo:     photoUrl,
+        agent_photo_url: photoUrl,
+        agent_whatsapp:  whatsapp || null
+      };
+      var result = await sbApi('PATCH', 'properties?slug=eq.' + encodeURIComponent(ls), patch);
+      if (!Array.isArray(result) || result.length === 0) {
+        setStep('ls'+i, 'err', 'Not found — check slug');
+      } else {
+        setStep('ls'+i, 'ok', 'agent_id, agent_name, agent_photo set');
+      }
+    }
+
+    // ── Verify ────────────────────────────────────────────────────────
+    setStep('verify', 'spin');
+    var check = await sbApi('GET', 'agents?id=eq.' + encodeURIComponent(agentId) + '&select=id,slug,name_en,photo_url,is_verified');
+    if (Array.isArray(check) && check[0] && check[0].id === agentId) {
+      setStep('verify', 'ok', 'Agent confirmed in database');
     } else {
-      setStepState('verify', 'err', 'agent_id mismatch — check manually');
+      setStep('verify', 'err', 'Could not confirm — check Supabase dashboard');
     }
 
-    // ── Done ──────────────────────────────────────────────────────
     var fin = document.getElementById('final-status');
     fin.className = 'status-box success';
-    fin.textContent =
-      '✓ All steps complete!\n\n' +
-      'Agent profile:  pintag.io/agents.html?slug=viengkhone-phomthavong\n' +
-      'Listing page:   pintag.io/listing.html?slug=' + LISTING_SLUG + '\n' +
-      'Photo URL:      ' + _photoUrl;
+    fin.textContent = '✓ Done!\n\nProfile: https://www.pintag.io/agents.html?slug=' + slug + (photoUrl ? '\nPhoto:   ' + photoUrl : '');
 
-  } catch (err) {
-    var errStep = ['auth','photo','agent','listing','verify'].find(function(s){
-      var el = document.getElementById('icon-' + s);
-      return el && el.classList.contains('spin');
-    });
-    if (errStep) setStepState(errStep, 'err', err.message);
-
+  } catch(err) {
+    var errStep = ['agent','verify'].concat(listings.map(function(_,i){return 'ls'+i;}))
+      .find(function(s){ var el=document.getElementById('icon-'+s); return el&&el.classList.contains('spin'); });
+    if (errStep) setStep(errStep, 'err', err.message);
     var fin = document.getElementById('final-status');
     fin.className = 'status-box error';
-    fin.textContent = '✗ Error: ' + err.message + '\n\nCheck the step that failed above.';
+    fin.textContent = '✗ ' + err.message;
   }
+
+  document.getElementById('run-btn').disabled = false;
 }
 
+// Init
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('pw-input').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') runSetup();
+    if (e.key === 'Enter') signIn();
+  });
+  // Pre-fill if already signed in
+  sb.auth.getSession().then(function(res) {
+    var session = res.data && res.data.session;
+    if (session) {
+      _token = session.access_token;
+      document.getElementById('login-card').style.display = 'none';
+      document.getElementById('form-wrap').style.display = 'block';
+      genUUID();
+    }
   });
 });
 </script>
