@@ -223,10 +223,26 @@ async function sbApi(method, path, body, extraHeaders) {
     'Prefer': 'return=minimal'
   };
   if (extraHeaders) Object.assign(headers, extraHeaders);
-  var res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
-    method, headers,
-    body: body ? JSON.stringify(body) : undefined
-  });
+
+  async function doFetch() {
+    return fetch(SUPABASE_URL + '/rest/v1/' + path, {
+      method, headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+  }
+
+  var res = await doFetch();
+
+  // On 401 (expired token), refresh once and retry
+  if (res.status === 401) {
+    var { data: refreshed } = await sb.auth.refreshSession();
+    if (refreshed && refreshed.session) {
+      _token = refreshed.session.access_token;
+      headers['Authorization'] = 'Bearer ' + _token;
+      res = await doFetch();
+    }
+  }
+
   if (!res.ok) {
     var txt = await res.text();
     var parsed = null;
@@ -235,9 +251,9 @@ async function sbApi(method, path, body, extraHeaders) {
     var code = parsed && parsed.code ? ' [code:' + parsed.code + ']' : '';
     console.error('sbApi error', method, path, res.status, txt);
     if (res.status === 401) {
-      throw new Error('HTTP 401: Not authenticated — please sign out and sign in again.');
+      throw new Error('HTTP 401: Session expired — please refresh the page and sign in again.');
     }
-    if ((res.status === 403 || res.status === 401) && msg.toLowerCase().includes('row-level security')) {
+    if ((res.status === 403) && msg.toLowerCase().includes('row-level security')) {
       var tableName = 'agents';
       if (msg.includes('"properties"') || path.startsWith('properties')) tableName = 'properties';
       var rlsSql = tableName === 'properties'
@@ -371,8 +387,8 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('pw-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') signIn();
   });
-  // Pre-fill if already signed in
-  sb.auth.getSession().then(function(res) {
+  // Pre-fill if already signed in — refresh token so it's never stale
+  sb.auth.refreshSession().then(function(res) {
     var session = res.data && res.data.session;
     if (session) {
       _token = session.access_token;
