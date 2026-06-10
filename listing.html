@@ -1021,20 +1021,31 @@ function buildMockupLayout(){
   // Nearby: rendered from data.nearby_places JSONB[]
   //   Schema: [{name:string, icon:string, distance:string, category?:string}]
   // ════════════════════════════════════════════════════════════════
+  // maps.app.goo.gl and goo.gl/maps are share links — they block iframe embedding.
+  // Only google.com/maps/embed URLs are safe to iframe.
+  function isEmbeddableMap(url){
+    if(!isSafeUrl(url)) return false;
+    var u=url.toLowerCase();
+    return u.indexOf('google.com/maps/embed')!==-1 ||
+           (u.indexOf('maps.google.com')!==-1 && u.indexOf('output=embed')!==-1);
+  }
+
   var mapSrc='';
-  if(isSafeUrl(data.map_embed_url)){
+  if(isEmbeddableMap(data.map_embed_url)){
     mapSrc=data.map_embed_url;
   } else if(data.latitude&&data.longitude){
     mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude)+'&t=&z=15&ie=UTF8&iwloc=&output=embed';
   } else if(data.district_en){
-    // District-level embed — still specific to this property's location
     mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.district_en+', Vientiane, Laos')+'&t=&z=14&ie=UTF8&iwloc=&output=embed';
   } else {
     mapSrc='';
   }
 
   var gmapsHref='';
-  if(data.latitude&&data.longitude){
+  // Use share link as the "Open in Maps" href if present, otherwise build from coords/district
+  if(isSafeUrl(data.map_embed_url) && !isEmbeddableMap(data.map_embed_url)){
+    gmapsHref=data.map_embed_url;
+  } else if(data.latitude&&data.longitude){
     gmapsHref='https://www.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude);
   } else if(data.district_en){
     gmapsHref='https://www.google.com/maps/search/'+encodeURIComponent(data.district_en+', Vientiane, Laos');
