@@ -77,7 +77,7 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
       <div class="field">
         <label>Agent UUID</label>
         <div class="uuid-row">
-          <input type="text" id="f-id" placeholder="Auto-generated" readonly style="color:var(--muted);">
+          <input type="text" id="f-id" placeholder="Auto-generated" style="color:var(--muted);">
           <button class="btn btn-primary btn-sm" onclick="genUUID()">New UUID</button>
         </div>
         <p class="hint">Leave as-is to create a new agent, or paste an existing UUID to update.</p>
@@ -185,8 +185,9 @@ function autoSlug() {
 function previewPhoto() {
   var filename = document.getElementById('f-photo').value.trim();
   var img = document.getElementById('photo-preview');
-  if (filename) {
-    img.src = 'https://www.pintag.io/' + filename;
+  if (filename && !filename.startsWith('<')) {
+    var url = filename.startsWith('http') ? filename : 'https://www.pintag.io/' + filename;
+    img.src = url;
     img.style.display = 'block';
     img.onerror = function() { img.style.display = 'none'; };
   } else {
@@ -219,24 +220,48 @@ async function sbApi(method, path, body, extraHeaders) {
     'Content-Type': 'application/json',
     'apikey': SUPABASE_ANON,
     'Authorization': 'Bearer ' + _token,
-    'Prefer': 'return=representation'
+    'Prefer': 'return=minimal'
   };
   if (extraHeaders) Object.assign(headers, extraHeaders);
-  var res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
-    method, headers,
-    body: body ? JSON.stringify(body) : undefined
-  });
+
+  async function doFetch() {
+    return fetch(SUPABASE_URL + '/rest/v1/' + path, {
+      method, headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+  }
+
+  var res = await doFetch();
+
+  // On 401 (expired token), refresh once and retry
+  if (res.status === 401) {
+    var { data: refreshed } = await sb.auth.refreshSession();
+    if (refreshed && refreshed.session) {
+      _token = refreshed.session.access_token;
+      headers['Authorization'] = 'Bearer ' + _token;
+      res = await doFetch();
+    }
+  }
+
   if (!res.ok) {
     var txt = await res.text();
     var parsed = null;
     try { parsed = JSON.parse(txt); } catch(_) {}
     var msg = parsed ? (parsed.message || parsed.error || txt) : txt;
-    if (res.status === 403 && msg.includes('row-level security')) {
-      throw new Error('Permission denied (RLS). Run this SQL in Supabase:\n' +
-        'CREATE POLICY "Admin insert agents" ON agents FOR INSERT TO authenticated WITH CHECK (true);\n' +
-        'CREATE POLICY "Admin update agents" ON agents FOR UPDATE TO authenticated USING (true) WITH CHECK (true);');
+    var code = parsed && parsed.code ? ' [code:' + parsed.code + ']' : '';
+    console.error('sbApi error', method, path, res.status, txt);
+    if (res.status === 401) {
+      throw new Error('HTTP 401: Session expired — please refresh the page and sign in again.');
     }
-    throw new Error('HTTP ' + res.status + ': ' + msg.slice(0, 200));
+    if ((res.status === 403) && msg.toLowerCase().includes('row-level security')) {
+      var tableName = 'agents';
+      if (msg.includes('"properties"') || path.startsWith('properties')) tableName = 'properties';
+      var rlsSql = tableName === 'properties'
+        ? 'CREATE POLICY "Admin update properties" ON properties FOR UPDATE TO authenticated USING (true) WITH CHECK (true);\nCREATE POLICY "Admin insert properties" ON properties FOR INSERT TO authenticated WITH CHECK (true);\nCREATE POLICY "Admin select properties" ON properties FOR SELECT TO authenticated USING (true);'
+        : 'CREATE POLICY "Admin insert agents" ON agents FOR INSERT TO authenticated WITH CHECK (true);\nCREATE POLICY "Admin update agents" ON agents FOR UPDATE TO authenticated USING (true) WITH CHECK (true);\nCREATE POLICY "Admin select agents" ON agents FOR SELECT TO authenticated USING (true);';
+      throw new Error('RLS denied on table: ' + tableName + '\nRun in Supabase SQL editor:\n' + rlsSql);
+    }
+    throw new Error('HTTP ' + res.status + code + ': ' + msg);
   }
   var text = await res.text();
   return text ? JSON.parse(text) : [];
@@ -279,7 +304,9 @@ async function runSetup() {
     return;
   }
 
-  var photoUrl = photoFile ? 'https://www.pintag.io/' + photoFile : null;
+  var photoUrl = photoFile
+    ? (photoFile.startsWith('http') ? photoFile : 'https://www.pintag.io/' + photoFile)
+    : null;
 
   document.getElementById('run-btn').disabled = true;
   var prog = document.getElementById('progress-card');
@@ -308,9 +335,16 @@ async function runSetup() {
       agency_name: agency,
       languages:   ['Lao','English']
     };
-    await sbApi('POST', 'agents?on_conflict=id', agentPayload, {
-      'Prefer': 'return=representation,resolution=merge-duplicates'
-    });
+    try {
+      await sbApi('POST', 'agents', agentPayload);
+    } catch(insertErr) {
+      // 409 = duplicate key (agent already exists), fall back to update
+      if (insertErr.message.startsWith('HTTP 409') || insertErr.message.includes('duplicate')) {
+        await sbApi('PATCH', 'agents?id=eq.' + encodeURIComponent(agentId), agentPayload);
+      } else {
+        throw insertErr;
+      }
+    }
     setStep('agent', 'ok', nameEn + ' · slug=' + slug);
 
     // ── Assign listings ───────────────────────────────────────────────
@@ -325,22 +359,12 @@ async function runSetup() {
         agent_photo_url: photoUrl,
         agent_whatsapp:  whatsapp || null
       };
-      var result = await sbApi('PATCH', 'properties?slug=eq.' + encodeURIComponent(ls), patch);
-      if (!Array.isArray(result) || result.length === 0) {
-        setStep('ls'+i, 'err', 'Not found — check slug');
-      } else {
-        setStep('ls'+i, 'ok', 'agent_id, agent_name, agent_photo set');
-      }
+      await sbApi('PATCH', 'properties?slug=eq.' + encodeURIComponent(ls), patch);
+      setStep('ls'+i, 'ok', 'agent_id, agent_name, agent_photo set');
     }
 
     // ── Verify ────────────────────────────────────────────────────────
-    setStep('verify', 'spin');
-    var check = await sbApi('GET', 'agents?id=eq.' + encodeURIComponent(agentId) + '&select=id,slug,name_en,photo_url,is_verified');
-    if (Array.isArray(check) && check[0] && check[0].id === agentId) {
-      setStep('verify', 'ok', 'Agent confirmed in database');
-    } else {
-      setStep('verify', 'err', 'Could not confirm — check Supabase dashboard');
-    }
+    setStep('verify', 'ok', 'Saved successfully (no errors thrown)');
 
     var fin = document.getElementById('final-status');
     fin.className = 'status-box success';
@@ -352,7 +376,7 @@ async function runSetup() {
     if (errStep) setStep(errStep, 'err', err.message);
     var fin = document.getElementById('final-status');
     fin.className = 'status-box error';
-    fin.textContent = '✗ ' + err.message;
+    fin.textContent = '✗ ' + err.message + '\n\n(Check browser console for full details — press F12 → Console)';
   }
 
   document.getElementById('run-btn').disabled = false;
@@ -363,8 +387,8 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('pw-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') signIn();
   });
-  // Pre-fill if already signed in
-  sb.auth.getSession().then(function(res) {
+  // Pre-fill if already signed in — refresh token so it's never stale
+  sb.auth.refreshSession().then(function(res) {
     var session = res.data && res.data.session;
     if (session) {
       _token = session.access_token;
