@@ -383,9 +383,9 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <input class="form-input" id="f-lng" type="text" placeholder="102.6331">
             </div>
             <div class="form-group form-full">
-              <label class="form-label">Google Maps Embed URL</label>
-              <input class="form-input" id="f-map" type="text" placeholder="https://maps.google.com/maps?q=...">
-              <p class="form-hint">Maps &#8594; Share &#8594; Embed a map &#8594; copy the src="" URL. Overrides coordinates if filled.</p>
+              <label class="form-label">Google Maps URL</label>
+              <input class="form-input" id="f-map" type="text" placeholder="https://maps.app.goo.gl/... or https://www.google.com/maps/place/..." oninput="autoExtractMapCoords(this.value)">
+              <p class="form-hint">Paste any Google Maps share link or place URL. Coordinates auto-fill below if found in the URL. The link becomes the "Open in Maps" button.</p>
             </div>
           </div>
           <p class="form-section-sub">Nearby Places</p>
@@ -665,6 +665,19 @@ function setHighlights(values) {
     }
   });
   renderCustomTags();
+}
+
+// ── Auto-extract lat/lng from Google Maps URL ─────────────────────
+function autoExtractMapCoords(url) {
+  if (!url) return;
+  var m = url.match(/[@/](-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/);
+  if (!m) m = url.match(/[?&]q=(-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/);
+  if (m) {
+    var latEl = document.getElementById('f-lat');
+    var lngEl = document.getElementById('f-lng');
+    if (latEl && !latEl.value) latEl.value = m[1];
+    if (lngEl && !lngEl.value) lngEl.value = m[2];
+  }
 }
 
 // ── Char count ───────────────────────────────────────────────────
