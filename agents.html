@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag · Agent</title>
+<!-- Open Graph — static defaults for Facebook (no JS); updated by JS for WhatsApp/Telegram/iMessage -->
+<meta property="og:type"        content="profile">
+<meta property="og:site_name"   content="Pintag">
+<meta property="og:title"       content="Pintag · Agent Profile">
+<meta property="og:description" content="Property advisor in Vientiane, Laos — residential sales, rentals &amp; investment.">
+<meta property="og:image"       content="https://www.pintag.io/pintag-hero.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height"content="630">
+<meta property="og:url"         content="https://www.pintag.io/agents.html">
+<meta name="twitter:card"       content="summary_large_image">
+<meta name="twitter:image"      content="https://www.pintag.io/pintag-hero.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -255,8 +266,16 @@ async function load(){
   }
 }
 
+function setMeta(prop,val){var el=document.querySelector('meta[property="'+prop+'"],meta[name="'+prop+'"]');if(el&&val)el.setAttribute('content',val);}
 function render(a,listings){
+  var pageUrl='https://www.pintag.io/agents.html?slug='+encodeURIComponent(slug);
+  var photo=a.photo_url||'https://www.pintag.io/pintag-hero.png';
   document.title='Pintag · '+(a.name_en||'Agent');
+  setMeta('og:title',(a.name_lo||a.name_en||'Agent')+' · Pintag');
+  setMeta('og:description',a.bio_en||'Property advisor in Vientiane, Laos.');
+  setMeta('og:image',photo);
+  setMeta('og:url',pageUrl);
+  setMeta('twitter:image',photo);
   var heroImg=getHeroImg(listings);
   var initial=(a.name_en||'A').charAt(0).toUpperCase();
   var heroEl=document.getElementById('agent-hero');
