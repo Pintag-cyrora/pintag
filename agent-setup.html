@@ -219,7 +219,7 @@ async function sbApi(method, path, body, extraHeaders) {
     'Content-Type': 'application/json',
     'apikey': SUPABASE_ANON,
     'Authorization': 'Bearer ' + _token,
-    'Prefer': 'return=representation'
+    'Prefer': 'return=minimal'
   };
   if (extraHeaders) Object.assign(headers, extraHeaders);
   var res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
@@ -313,7 +313,7 @@ async function runSetup() {
       languages:   ['Lao','English']
     };
     await sbApi('POST', 'agents?on_conflict=id', agentPayload, {
-      'Prefer': 'return=representation,resolution=merge-duplicates'
+      'Prefer': 'return=minimal,resolution=merge-duplicates'
     });
     setStep('agent', 'ok', nameEn + ' · slug=' + slug);
 
@@ -329,8 +329,9 @@ async function runSetup() {
         agent_photo_url: photoUrl,
         agent_whatsapp:  whatsapp || null
       };
-      var result = await sbApi('PATCH', 'properties?slug=eq.' + encodeURIComponent(ls), patch);
-      if (!Array.isArray(result) || result.length === 0) {
+      await sbApi('PATCH', 'properties?slug=eq.' + encodeURIComponent(ls), patch);
+      var found = await sbApi('GET', 'properties?slug=eq.' + encodeURIComponent(ls) + '&select=slug,agent_id&limit=1');
+      if (!Array.isArray(found) || found.length === 0) {
         setStep('ls'+i, 'err', 'Not found — check slug');
       } else {
         setStep('ls'+i, 'ok', 'agent_id, agent_name, agent_photo set');
