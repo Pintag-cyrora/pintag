@@ -231,16 +231,20 @@ async function sbApi(method, path, body, extraHeaders) {
     var parsed = null;
     try { parsed = JSON.parse(txt); } catch(_) {}
     var msg = parsed ? (parsed.message || parsed.error || txt) : txt;
-    if (res.status === 403 && msg.includes('row-level security')) {
-      // Detect which table the RLS error is for from the error message
+    var code = parsed && parsed.code ? ' [code:' + parsed.code + ']' : '';
+    console.error('sbApi error', method, path, res.status, txt);
+    if (res.status === 401) {
+      throw new Error('HTTP 401: Not authenticated — please sign out and sign in again.');
+    }
+    if ((res.status === 403 || res.status === 401) && msg.toLowerCase().includes('row-level security')) {
       var tableName = 'agents';
       if (msg.includes('"properties"') || path.startsWith('properties')) tableName = 'properties';
       var rlsSql = tableName === 'properties'
-        ? 'CREATE POLICY "Admin update properties" ON properties FOR UPDATE TO authenticated USING (true) WITH CHECK (true);\nCREATE POLICY "Admin insert properties" ON properties FOR INSERT TO authenticated WITH CHECK (true);'
-        : 'CREATE POLICY "Admin insert agents" ON agents FOR INSERT TO authenticated WITH CHECK (true);\nCREATE POLICY "Admin update agents" ON agents FOR UPDATE TO authenticated USING (true) WITH CHECK (true);';
-      throw new Error('Permission denied (RLS) on table: ' + tableName + '\nRun this SQL in Supabase:\n' + rlsSql);
+        ? 'CREATE POLICY "Admin update properties" ON properties FOR UPDATE TO authenticated USING (true) WITH CHECK (true);\nCREATE POLICY "Admin insert properties" ON properties FOR INSERT TO authenticated WITH CHECK (true);\nCREATE POLICY "Admin select properties" ON properties FOR SELECT TO authenticated USING (true);'
+        : 'CREATE POLICY "Admin insert agents" ON agents FOR INSERT TO authenticated WITH CHECK (true);\nCREATE POLICY "Admin update agents" ON agents FOR UPDATE TO authenticated USING (true) WITH CHECK (true);\nCREATE POLICY "Admin select agents" ON agents FOR SELECT TO authenticated USING (true);';
+      throw new Error('RLS denied on table: ' + tableName + '\nRun in Supabase SQL editor:\n' + rlsSql);
     }
-    throw new Error('HTTP ' + res.status + ': ' + msg.slice(0, 200));
+    throw new Error('HTTP ' + res.status + code + ': ' + msg);
   }
   var text = await res.text();
   return text ? JSON.parse(text) : [];
@@ -357,7 +361,7 @@ async function runSetup() {
     if (errStep) setStep(errStep, 'err', err.message);
     var fin = document.getElementById('final-status');
     fin.className = 'status-box error';
-    fin.textContent = '✗ ' + err.message;
+    fin.textContent = '✗ ' + err.message + '\n\n(Check browser console for full details — press F12 → Console)';
   }
 
   document.getElementById('run-btn').disabled = false;
