@@ -232,9 +232,13 @@ async function sbApi(method, path, body, extraHeaders) {
     try { parsed = JSON.parse(txt); } catch(_) {}
     var msg = parsed ? (parsed.message || parsed.error || txt) : txt;
     if (res.status === 403 && msg.includes('row-level security')) {
-      throw new Error('Permission denied (RLS). Run this SQL in Supabase:\n' +
-        'CREATE POLICY "Admin insert agents" ON agents FOR INSERT TO authenticated WITH CHECK (true);\n' +
-        'CREATE POLICY "Admin update agents" ON agents FOR UPDATE TO authenticated USING (true) WITH CHECK (true);');
+      // Detect which table the RLS error is for from the error message
+      var tableName = 'agents';
+      if (msg.includes('"properties"') || path.startsWith('properties')) tableName = 'properties';
+      var rlsSql = tableName === 'properties'
+        ? 'CREATE POLICY "Admin update properties" ON properties FOR UPDATE TO authenticated USING (true) WITH CHECK (true);\nCREATE POLICY "Admin insert properties" ON properties FOR INSERT TO authenticated WITH CHECK (true);'
+        : 'CREATE POLICY "Admin insert agents" ON agents FOR INSERT TO authenticated WITH CHECK (true);\nCREATE POLICY "Admin update agents" ON agents FOR UPDATE TO authenticated USING (true) WITH CHECK (true);';
+      throw new Error('Permission denied (RLS) on table: ' + tableName + '\nRun this SQL in Supabase:\n' + rlsSql);
     }
     throw new Error('HTTP ' + res.status + ': ' + msg.slice(0, 200));
   }
