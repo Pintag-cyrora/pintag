@@ -450,6 +450,12 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
         <div class="form-section">
           <p class="form-section-title">&#9321; Agent Contact</p>
           <div class="form-grid">
+            <div class="form-group form-full">
+              <label class="form-label">Agent Slug <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; links listing to agent profile page</span></label>
+              <input class="form-input" id="f-agent-slug" type="text" placeholder="viengkhone-phomthavong" onblur="lookupAgentSlug()">
+              <p class="form-hint" id="f-agent-slug-hint"></p>
+              <input type="hidden" id="f-agent-id">
+            </div>
             <div class="form-group">
               <label class="form-label">Agent Name</label>
               <input class="form-input" id="f-agent" type="text" placeholder="Soutchai Keovilay">
@@ -921,6 +927,41 @@ async function editListing(id) {
   document.getElementById('f-rating').value       = p.agent_rating || '';
   document.getElementById('f-listing-count').value = p.agent_listing_count || '';
   document.getElementById('f-response-time').value = p.agent_response_time || '';
+  document.getElementById('f-agent-id').value     = p.agent_id || '';
+  if (p.agent_id) {
+    sbApi('GET', 'agents?id=eq.' + encodeURIComponent(p.agent_id) + '&select=slug,name_en&limit=1')
+      .then(function(r) {
+        if (r && r[0]) {
+          document.getElementById('f-agent-slug').value = r[0].slug || '';
+          setAgentSlugHint(true, r[0].name_en || r[0].slug);
+        }
+      }).catch(function(){});
+  }
+}
+
+// ── AGENT SLUG LOOKUP ─────────────────────────────────────────────
+function setAgentSlugHint(ok, msg) {
+  var h = document.getElementById('f-agent-slug-hint');
+  h.textContent = msg;
+  h.style.color = ok ? '#0b8a6f' : '#c0392b';
+}
+async function lookupAgentSlug() {
+  var slug = document.getElementById('f-agent-slug').value.trim();
+  var idField = document.getElementById('f-agent-id');
+  if (!slug) { idField.value = ''; setAgentSlugHint(false, ''); return; }
+  try {
+    var r = await sbApi('GET', 'agents?slug=eq.' + encodeURIComponent(slug) + '&select=id,name_en&limit=1');
+    if (r && r[0]) {
+      idField.value = r[0].id;
+      setAgentSlugHint(true, '✓ ' + (r[0].name_en || r[0].id));
+    } else {
+      idField.value = '';
+      setAgentSlugHint(false, 'Agent not found');
+    }
+  } catch(e) {
+    idField.value = '';
+    setAgentSlugHint(false, 'Lookup failed');
+  }
 }
 
 // ── SAVE ──────────────────────────────────────────────────────────
@@ -986,6 +1027,7 @@ async function saveListing(e) {
     video_url:         document.getElementById('f-video').value.trim() || null,
     facebook_video_url:document.getElementById('f-facebook-video').value.trim() || null,
     download_url:      document.getElementById('f-download-url').value.trim() || null,
+    agent_id:            document.getElementById('f-agent-id').value.trim() || null,
     agent_name:          document.getElementById('f-agent').value.trim() || null,
     agent_name_lo:       document.getElementById('f-agent-lo').value.trim() || null,
     agent_title:         document.getElementById('f-agent-title').value.trim() || null,
