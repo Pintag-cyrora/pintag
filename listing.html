@@ -554,12 +554,19 @@ function isSafeUrl(url){
 function toEmbedUrl(url){
   if(!url)return '';
   var u=url.trim();
-  // YouTube watch or short URL → embed
+  // YouTube watch URL → embed
   var yt=u.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
   if(yt)return 'https://www.youtube.com/embed/'+yt[1];
-  // TikTok video page → embed
+  // YouTube Shorts → embed
+  var yts=u.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
+  if(yts)return 'https://www.youtube.com/embed/'+yts[1];
+  // YouTube already in embed form — pass through
+  if(u.indexOf('youtube.com/embed/')>-1)return u;
+  // TikTok full page URL → embed
   var tt=u.match(/tiktok\.com\/@[^\/]+\/video\/(\d+)/);
   if(tt)return 'https://www.tiktok.com/embed/v2/'+tt[1];
+  // TikTok short links (vt.tiktok.com, vm.tiktok.com) — cannot embed, mark as raw
+  if(/(?:vt|vm)\.tiktok\.com/.test(u))return u+'#tiktok-shortlink';
   // Facebook video → plugin embed
   if(/facebook\.com|fb\.watch/.test(u))
     return 'https://www.facebook.com/plugins/video.php?href='+encodeURIComponent(u)+'&show_text=false&autoplay=false';
@@ -1093,13 +1100,36 @@ function buildMockupLayout(){
 
   // ── Video ──
   var mediaHtml='';
-  var videoUrl=toEmbedUrl(data.video_embed_url||data.video_url||'');
+  var _rawVideoSrc = data.video_embed_url||data.video_url||'';
+  var videoUrl=toEmbedUrl(_rawVideoSrc);
   var fbUrl=toEmbedUrl(data.facebook_video_url||'');
   var videoBlocks='';
-  if(isSafeUrl(videoUrl))
+  // TikTok short links get a watch-link fallback instead of a broken iframe
+  var isTiktokShort = videoUrl.indexOf('#tiktok-shortlink')>-1;
+  if(isTiktokShort){
+    var _tkRaw=esc(_rawVideoSrc.trim());
+    videoBlocks+='<div style="padding:20px;background:var(--warm);border:1px solid var(--border-mid);border-radius:8px;text-align:center;">'
+      +'<p style="font-size:13px;color:var(--ink-muted);margin-bottom:10px;">TikTok short links cannot be embedded directly.</p>'
+      +'<a href="'+_tkRaw+'" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:7px;background:var(--ink);color:#fff;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:500;text-decoration:none;">'
+      +I.play+' <span class="lo-i">ເບິ່ງວິດີໂອ</span><span class="en-i">Watch Video</span><span class="zh-i">观看视频</span></a></div>';
+  } else if(isSafeUrl(videoUrl)){
     videoBlocks+='<div class="asset-iframe-wrapper"><iframe src="'+esc(videoUrl)+'" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe></div>';
+  }
+  // Always show a fallback watch link below any embed if original URL is available
+  if(isSafeUrl(_rawVideoSrc)&&!isTiktokShort&&videoUrl!==_rawVideoSrc.trim()){
+    videoBlocks+='<div style="margin-top:10px;text-align:right;">'
+      +'<a href="'+esc(_rawVideoSrc)+'" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--teal);text-decoration:none;display:inline-flex;align-items:center;gap:4px;">'
+      +I.ext+' <span class="lo-i">ເປີດໃນ Browser</span><span class="en-i">Open in browser</span><span class="zh-i">在浏览器中打开</span></a></div>';
+  }
   if(isSafeUrl(fbUrl))
     videoBlocks+='<div class="asset-iframe-wrapper" style="margin-top:14px;"><iframe src="'+esc(fbUrl)+'" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe></div>';
+  // Facebook fallback link
+  var _rawFbSrc=data.facebook_video_url||'';
+  if(isSafeUrl(_rawFbSrc)&&isSafeUrl(fbUrl)){
+    videoBlocks+='<div style="margin-top:10px;text-align:right;">'
+      +'<a href="'+esc(_rawFbSrc)+'" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:var(--teal);text-decoration:none;display:inline-flex;align-items:center;gap:4px;">'
+      +I.ext+' <span class="lo-i">ເປີດ Facebook</span><span class="en-i">Open on Facebook</span><span class="zh-i">在Facebook中打开</span></a></div>';
+  }
   if(videoBlocks){
     mediaHtml=(
       '<div class="media-section">'+
