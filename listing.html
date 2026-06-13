@@ -830,9 +830,8 @@ function buildMockupLayout(){
     ? esc(resolvedVillage) + ', ' + resolvedDistrict
     : resolvedDistrict;
 
-  // Property highlight — short emotional subtitle below title
-  // Supabase column: property_highlight (TEXT, optional)
-  var resolvedHighlight = data['property_highlight_'+lang] || data.property_highlight || '';
+  // Property highlight — language-specific, falls back to shared field
+  var resolvedHighlight = data['property_highlight_'+lang] || data.property_highlight_en || data.property_highlight || '';
 
   var isSale = data.transaction_type==='for_sale'||data.transaction_type==='sale';
   var imagesArray=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';});
@@ -916,11 +915,10 @@ function buildMockupLayout(){
     highlightPillsHtml+='</div>';
   }
 
-  // ── Sidebar neighborhood insight — from data.neighborhood_description ──
-  // Only renders if the field exists in Supabase; never fabricated.
+  // ── Sidebar neighborhood insight — language-specific, falls back to shared field ──
   var sidebarInsightHtml='';
-  var insightText=data.neighborhood_description||data.area_insight||'';
-  if(insightText.trim()){
+  var insightText=data['neighborhood_insight_'+lang]||data.neighborhood_insight_en||data.neighborhood_description||data.area_insight||'';
+  if(insightText&&insightText.trim()){
     sidebarInsightHtml='<div class="sidebar-insight">'+esc(insightText.trim())+'</div>';
   }
 
