@@ -107,13 +107,21 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .tag-custom-pill button{background:none;border:none;cursor:pointer;color:var(--teal);font-size:14px;line-height:1;padding:0;margin-left:2px;opacity:0.6;}
 .tag-custom-pill button:hover{opacity:1;}
 /* Nearby repeater */
-.nearby-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
-.nearby-row{display:grid;grid-template-columns:44px 1fr 120px auto;gap:8px;align-items:center;}
-.nearby-icon-input{width:44px;padding:9px 6px;border:1px solid var(--border);border-radius:4px;font-size:18px;text-align:center;font-family:'DM Sans',sans-serif;background:var(--white);}
+.nearby-list{display:flex;flex-direction:column;gap:10px;margin-bottom:10px;}
+.nearby-row{display:grid;grid-template-columns:44px 1fr 110px auto;gap:8px;align-items:start;}
+.nearby-icon-input{width:44px;padding:9px 6px;border:1px solid var(--border);border-radius:4px;font-size:18px;text-align:center;font-family:'DM Sans',sans-serif;background:var(--white);margin-top:1px;}
+.np-names{display:flex;flex-direction:column;gap:4px;}
+.np-names-sub{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
 .btn-add-row{font-size:12px;font-weight:500;color:var(--teal);background:var(--teal-dim);border:1px dashed var(--teal-border);padding:9px 14px;cursor:pointer;border-radius:4px;font-family:'DM Sans',sans-serif;transition:all 0.2s;width:100%;}
 .btn-add-row:hover{background:rgba(45,140,140,0.15);}
-.btn-remove{background:rgba(192,57,43,0.07);color:var(--red);border:1px solid rgba(192,57,43,0.15);padding:8px 10px;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;flex-shrink:0;}
+.btn-remove{background:rgba(192,57,43,0.07);color:var(--red);border:1px solid rgba(192,57,43,0.15);padding:8px 10px;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;flex-shrink:0;margin-top:1px;}
 .btn-remove:hover{background:rgba(192,57,43,0.14);}
+/* AI Generation */
+.ai-gen-card{background:linear-gradient(135deg,rgba(45,140,140,0.07),rgba(45,140,140,0.03));border:1px dashed var(--teal-border);border-radius:6px;padding:20px 24px;margin-bottom:24px;}
+.btn-ai-gen{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--teal);color:#fff;border:none;padding:13px 24px;border-radius:5px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.2s;width:100%;}
+.btn-ai-gen:hover{background:var(--teal-light);}
+.btn-ai-gen:disabled{background:var(--ink-muted);cursor:not-allowed;}
+.ai-gen-hint{font-size:11.5px;color:var(--ink-muted);margin-top:8px;text-align:center;line-height:1.6;}
 /* Image upload */
 .upload-zone{border:2px dashed var(--teal-border);border-radius:4px;padding:28px 20px;text-align:center;cursor:pointer;background:var(--warm);transition:all 0.2s;}
 .upload-zone:hover,.upload-zone.drag-over{border-color:var(--teal);background:var(--teal-dim);}
@@ -249,6 +257,15 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           </div>
         </div>
 
+        <!-- AI CONTENT GENERATION -->
+        <div class="ai-gen-card">
+          <button type="button" class="btn-ai-gen" id="ai-gen-btn" onclick="generateAIContent()">
+            ✨ Generate AI Content &mdash; All languages, all sections
+          </button>
+          <p class="ai-gen-hint">Fill in Basic Information (&#9312;) first, then click to auto-generate titles, highlights, descriptions, and neighborhood insights in Lao, English, and Chinese.</p>
+          <div class="form-message" id="ai-gen-status" style="display:none;margin-top:10px;margin-bottom:0;"></div>
+        </div>
+
         <!-- TITLE + HIGHLIGHT -->
         <div class="form-section">
           <p class="form-section-title">&#9313; Title &amp; Highlight</p>
@@ -266,12 +283,19 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <input class="form-input" id="f-title-zh" type="text" placeholder="&#29616;&#20195;&#21035;&#22885;&#24102;&#27836;&#27744;">
             </div>
             <div class="form-group form-full">
-              <label class="form-label">Property Highlight <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Short emotional subtitle shown below title</span></label>
-              <textarea class="form-textarea" id="f-highlight" rows="2" maxlength="160" oninput="updateCharCount(this,'highlight-count',160)" placeholder="Contemporary villa with embassy-area privacy and resort-inspired outdoor living."></textarea>
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">
-                <p class="form-hint">1 vivid sentence. Aim for emotional positioning.</p>
-                <span class="char-count" id="highlight-count">0 / 160</span>
-              </div>
+              <label class="form-label">Property Highlight (English) <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; 1 sentence emotional subtitle shown below title</span></label>
+              <textarea class="form-textarea" id="f-highlight-en" rows="2" maxlength="160" oninput="updateCharCount(this,'highlight-count-en',160)" placeholder="Contemporary villa with embassy-area privacy and resort-inspired outdoor living."></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="highlight-count-en">0 / 160</span></div>
+            </div>
+            <div class="form-group form-full">
+              <label class="form-label">Property Highlight (Lao)</label>
+              <textarea class="form-textarea" id="f-highlight-lo" rows="2" maxlength="160" oninput="updateCharCount(this,'highlight-count-lo',160)" placeholder="ວິລລ່າທີ່ທັນສະໄໝ ໃຫ້ຄວາມເປັນສ່ວນຕົວ ແລະ ການດຳລົງຊີວິດທີ່ຜ່ອນຄາຍ."></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="highlight-count-lo">0 / 160</span></div>
+            </div>
+            <div class="form-group form-full">
+              <label class="form-label">Property Highlight (Chinese)</label>
+              <textarea class="form-textarea" id="f-highlight-zh" rows="2" maxlength="160" oninput="updateCharCount(this,'highlight-count-zh',160)" placeholder="现代别墅，私密宁静，尽享度假式户外生活。"></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="highlight-count-zh">0 / 160</span></div>
             </div>
           </div>
         </div>
@@ -403,11 +427,23 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             <input class="tag-custom-input" id="custom-tag-input" type="text" placeholder="Add custom tag...">
             <button type="button" class="tag-add-btn" onclick="addCustomTag()">+ Add</button>
           </div>
-          <p class="form-section-sub" style="margin-top:24px;">Neighborhood Insight <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Context paragraph below pills</span></p>
-          <textarea class="form-textarea" id="f-neighborhood" rows="2" maxlength="220" oninput="updateCharCount(this,'neighborhood-count',220)" placeholder="Quiet embassy-area neighborhood close to international schools and Vientiane's best caf&#233;s."></textarea>
-          <div style="display:flex;justify-content:space-between;margin-top:3px;">
-            <p class="form-hint">Shown in the left sidebar of the listing page.</p>
-            <span class="char-count" id="neighborhood-count">0 / 220</span>
+          <p class="form-section-sub" style="margin-top:24px;">Neighborhood Insight <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; 1 sentence shown in the listing sidebar</span></p>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div>
+              <label class="form-label" style="margin-bottom:5px;display:block;">English</label>
+              <textarea class="form-textarea" id="f-neighborhood-en" rows="2" maxlength="220" oninput="updateCharCount(this,'neighborhood-count-en',220)" placeholder="Quiet embassy-area neighborhood close to international schools and Vientiane&#39;s best caf&#233;s."></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="neighborhood-count-en">0 / 220</span></div>
+            </div>
+            <div>
+              <label class="form-label" style="margin-bottom:5px;display:block;">Lao</label>
+              <textarea class="form-textarea" id="f-neighborhood-lo" rows="2" maxlength="220" oninput="updateCharCount(this,'neighborhood-count-lo',220)" placeholder="ຍ່ານສະຫງົບ ໃກ້ສະຖານທູດ ໂຮງຮຽນນານາຊາດ ແລະ ຮ້ານກາເຟຊັ້ນນຳ."></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="neighborhood-count-lo">0 / 220</span></div>
+            </div>
+            <div>
+              <label class="form-label" style="margin-bottom:5px;display:block;">Chinese</label>
+              <textarea class="form-textarea" id="f-neighborhood-zh" rows="2" maxlength="220" oninput="updateCharCount(this,'neighborhood-count-zh',220)" placeholder="使馆区宁静社区，紧邻国际学校与万象顶级咖啡馆。"></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="neighborhood-count-zh">0 / 220</span></div>
+            </div>
           </div>
         </div>
 
@@ -694,20 +730,41 @@ function addNearby(data) {
   const list = document.getElementById('nearby-list');
   const row = document.createElement('div');
   row.className = 'nearby-row';
+  const nameEn = data ? (data.name_en||data.name||'') : '';
+  const nameLo = data ? (data.name_lo||'') : '';
+  const nameZh = data ? (data.name_zh||'') : '';
+  const icon   = data ? (data.icon||'') : '';
+  const dist   = data ? (data.distance||'') : '';
   row.innerHTML = `
-    <input class="nearby-icon-input" type="text" placeholder="☕" value="${data ? (data.icon||'') : ''}" maxlength="2">
-    <input class="form-input np-name" type="text" placeholder="Joma Bakery Café" value="${data ? (data.name||data.name_en||'') : ''}">
-    <input class="form-input np-dist" type="text" placeholder="5 min drive" value="${data ? (data.distance||'') : ''}">
+    <input class="nearby-icon-input" type="text" placeholder="☕" value="${icon}" maxlength="2">
+    <div class="np-names">
+      <input class="form-input np-name-en" type="text" placeholder="Name (English)" value="${nameEn}">
+      <div class="np-names-sub">
+        <input class="form-input np-name-lo" type="text" placeholder="ຊື່ (ລາວ)" value="${nameLo}" style="font-size:12.5px;">
+        <input class="form-input np-name-zh" type="text" placeholder="名称 (中文)" value="${nameZh}" style="font-size:12.5px;">
+      </div>
+    </div>
+    <input class="form-input np-dist" type="text" placeholder="5 min drive" value="${dist}">
     <button type="button" class="btn-remove" onclick="this.parentElement.remove()">×</button>`;
   list.appendChild(row);
 }
 function getNearbyPlaces() {
   const places = [];
   document.querySelectorAll('.nearby-row').forEach(row => {
-    const name = row.querySelector('.np-name').value.trim();
-    const dist = row.querySelector('.np-dist').value.trim();
-    const icon = row.querySelector('.nearby-icon-input').value.trim();
-    if (name) places.push({name, name_en:name, name_lo:name, name_zh:name, icon:icon||'📍', distance:dist});
+    const nameEn = (row.querySelector('.np-name-en') || row.querySelector('.np-name') || {value:''}).value.trim();
+    const nameLo = row.querySelector('.np-name-lo') ? row.querySelector('.np-name-lo').value.trim() : nameEn;
+    const nameZh = row.querySelector('.np-name-zh') ? row.querySelector('.np-name-zh').value.trim() : nameEn;
+    const dist   = row.querySelector('.np-dist').value.trim();
+    const icon   = row.querySelector('.nearby-icon-input').value.trim();
+    const primary = nameEn || nameLo || nameZh;
+    if (primary) places.push({
+      name:     primary,
+      name_en:  nameEn  || primary,
+      name_lo:  nameLo  || primary,
+      name_zh:  nameZh  || primary,
+      icon:     icon    || '📍',
+      distance: dist
+    });
   });
   return places;
 }
@@ -842,9 +899,11 @@ function showForm(id) {
     setHighlights([]);
     customTags = [];
     populateExistingImages([]);
-    ['highlight-count','neighborhood-count'].forEach(cid => {
-      const el = document.getElementById(cid);
-      if (el) el.textContent = '0 / ' + (cid === 'highlight-count' ? '160' : '220');
+    ['highlight-count-en','highlight-count-lo','highlight-count-zh'].forEach(cid => {
+      const el = document.getElementById(cid); if (el) el.textContent = '0 / 160';
+    });
+    ['neighborhood-count-en','neighborhood-count-lo','neighborhood-count-zh'].forEach(cid => {
+      const el = document.getElementById(cid); if (el) el.textContent = '0 / 220';
     });
   }
   loadVillageSuggestions();
@@ -868,9 +927,13 @@ async function editListing(id) {
   document.getElementById('f-title-en').value    = p.title_en || '';
   document.getElementById('f-title-lo').value    = p.title_lo || '';
   document.getElementById('f-title-zh').value    = p.title_zh || '';
-  const hlField = document.getElementById('f-highlight');
-  hlField.value = p.property_highlight || '';
-  updateCharCount(hlField,'highlight-count',160);
+  ['en','lo','zh'].forEach(lang => {
+    const el = document.getElementById('f-highlight-'+lang);
+    if (el) {
+      el.value = p['property_highlight_'+lang] || (lang === 'en' ? p.property_highlight || '' : '');
+      updateCharCount(el, 'highlight-count-'+lang, 160);
+    }
+  });
 
   document.getElementById('f-desc-en').value     = p.description_en || p.desc_en || '';
   document.getElementById('f-desc-lo').value     = p.description_lo || p.desc_lo || '';
@@ -903,9 +966,13 @@ async function editListing(id) {
   else addNearby();
 
   setHighlights(Array.isArray(p.highlights) ? p.highlights : []);
-  const nbField = document.getElementById('f-neighborhood');
-  nbField.value = p.neighborhood_description || '';
-  updateCharCount(nbField,'neighborhood-count',220);
+  ['en','lo','zh'].forEach(lang => {
+    const el = document.getElementById('f-neighborhood-'+lang);
+    if (el) {
+      el.value = p['neighborhood_insight_'+lang] || (lang === 'en' ? p.neighborhood_description || '' : '');
+      updateCharCount(el, 'neighborhood-count-'+lang, 220);
+    }
+  });
 
   populateExistingImages(p.images || []);
   document.getElementById('f-video').value          = p.video_embed_url || p.video_url || '';
@@ -954,13 +1021,16 @@ async function saveListing(e) {
     price_display:     document.getElementById('f-price').value.trim() || null,
     land_title_type:   document.getElementById('f-land-title').value || null,
     is_featured:       document.getElementById('f-featured').value === 'true',
-    title_en:          titleEn,
-    title_lo:          document.getElementById('f-title-lo').value.trim() || null,
-    title_zh:          document.getElementById('f-title-zh').value.trim() || null,
-    property_highlight:document.getElementById('f-highlight').value.trim() || null,
-    description_en:    document.getElementById('f-desc-en').value.trim() || null,
-    description_lo:    document.getElementById('f-desc-lo').value.trim() || null,
-    description_zh:    document.getElementById('f-desc-zh').value.trim() || null,
+    title_en:                titleEn,
+    title_lo:                document.getElementById('f-title-lo').value.trim() || null,
+    title_zh:                document.getElementById('f-title-zh').value.trim() || null,
+    property_highlight_en:   document.getElementById('f-highlight-en').value.trim() || null,
+    property_highlight_lo:   document.getElementById('f-highlight-lo').value.trim() || null,
+    property_highlight_zh:   document.getElementById('f-highlight-zh').value.trim() || null,
+    property_highlight:      document.getElementById('f-highlight-en').value.trim() || null,
+    description_en:          document.getElementById('f-desc-en').value.trim() || null,
+    description_lo:          document.getElementById('f-desc-lo').value.trim() || null,
+    description_zh:          document.getElementById('f-desc-zh').value.trim() || null,
     bedrooms:          parseInt(document.getElementById('f-bedrooms').value) || null,
     bathrooms:         parseInt(document.getElementById('f-bathrooms').value) || null,
     sqm:               parseInt(document.getElementById('f-sqm').value) || null,
@@ -979,8 +1049,11 @@ async function saveListing(e) {
     longitude:         lng,
     map_embed_url:     document.getElementById('f-map').value.trim() || null,
     nearby_places:     nearbyPlaces.length ? nearbyPlaces : null,
-    highlights:        highlights.length ? highlights : null,
-    neighborhood_description: document.getElementById('f-neighborhood').value.trim() || null,
+    highlights:              highlights.length ? highlights : null,
+    neighborhood_insight_en: document.getElementById('f-neighborhood-en').value.trim() || null,
+    neighborhood_insight_lo: document.getElementById('f-neighborhood-lo').value.trim() || null,
+    neighborhood_insight_zh: document.getElementById('f-neighborhood-zh').value.trim() || null,
+    neighborhood_description:document.getElementById('f-neighborhood-en').value.trim() || null,
     images:            JSON.parse(document.getElementById('f-images').value || '[]'),
     video_embed_url:   document.getElementById('f-video').value.trim() || null,
     video_url:         document.getElementById('f-video').value.trim() || null,
@@ -1163,6 +1236,120 @@ function refreshImageGrid() {
 function populateExistingImages(images) {
   uploadedImages = images || [];
   refreshImageGrid();
+}
+
+// ── AI CONTENT GENERATION ─────────────────────────────────────────
+async function generateAIContent() {
+  const btn = document.getElementById('ai-gen-btn');
+  const statusEl = document.getElementById('ai-gen-status');
+  if (!btn) return;
+
+  const districtEn = document.getElementById('f-district').value;
+  const village    = document.getElementById('f-village').value.trim();
+
+  const propertyData = {
+    property_type:  document.getElementById('f-type').value,
+    property_style: document.getElementById('f-style').value,
+    transaction_type: document.getElementById('f-transaction').value,
+    bedrooms:       document.getElementById('f-bedrooms').value,
+    bathrooms:      document.getElementById('f-bathrooms').value,
+    sqm:            document.getElementById('f-sqm').value,
+    sqm_land:       document.getElementById('f-sqm-land').value,
+    price_display:  document.getElementById('f-price').value,
+    village:        village,
+    district:       districtEn,
+    features:       getCheckedKeys('features-grid'),
+    furnished:      document.getElementById('f-furnished').value,
+    nearby_places:  getNearbyPlaces()
+  };
+
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Generating...';
+  if (statusEl) {
+    statusEl.style.display = 'block';
+    statusEl.className = 'form-message';
+    statusEl.style.background = 'rgba(45,140,140,0.06)';
+    statusEl.style.color = 'var(--teal)';
+    statusEl.style.border = '1px solid var(--teal-border)';
+    statusEl.textContent = 'Generating multilingual content with AI — this may take 10–20 seconds...';
+  }
+
+  try {
+    const res = await fetch(SUPABASE_URL + '/functions/v1/generate-listing-content', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'apikey':        SUPABASE_ANON,
+        'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
+      },
+      body: JSON.stringify(propertyData)
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(res.status + ': ' + err.slice(0, 200));
+    }
+
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    // ── Fill titles ──────────────────────────────────────────────
+    if (result.title_en) document.getElementById('f-title-en').value = result.title_en;
+    if (result.title_lo) document.getElementById('f-title-lo').value = result.title_lo;
+    if (result.title_zh) document.getElementById('f-title-zh').value = result.title_zh;
+
+    // ── Fill property highlights ─────────────────────────────────
+    ['en','lo','zh'].forEach(lang => {
+      const val = result['property_highlight_'+lang];
+      const el  = document.getElementById('f-highlight-'+lang);
+      if (val && el) { el.value = val; updateCharCount(el, 'highlight-count-'+lang, 160); }
+    });
+
+    // ── Fill neighborhood insights ───────────────────────────────
+    ['en','lo','zh'].forEach(lang => {
+      const val = result['neighborhood_insight_'+lang];
+      const el  = document.getElementById('f-neighborhood-'+lang);
+      if (val && el) { el.value = val; updateCharCount(el, 'neighborhood-count-'+lang, 220); }
+    });
+
+    // ── Fill descriptions ────────────────────────────────────────
+    if (result.description_en) document.getElementById('f-desc-en').value = result.description_en;
+    if (result.description_lo) document.getElementById('f-desc-lo').value = result.description_lo;
+    if (result.description_zh) document.getElementById('f-desc-zh').value = result.description_zh;
+
+    // ── Update nearby places with translated names ───────────────
+    const nearbyRows = document.querySelectorAll('.nearby-row');
+    const nearbyEn = Array.isArray(result.nearby_en) ? result.nearby_en : [];
+    const nearbyLo = Array.isArray(result.nearby_lo) ? result.nearby_lo : [];
+    const nearbyZh = Array.isArray(result.nearby_zh) ? result.nearby_zh : [];
+    nearbyRows.forEach((row, i) => {
+      const enEl = row.querySelector('.np-name-en');
+      const loEl = row.querySelector('.np-name-lo');
+      const zhEl = row.querySelector('.np-name-zh');
+      if (enEl && nearbyEn[i]) enEl.value = nearbyEn[i];
+      if (loEl && nearbyLo[i]) loEl.value = nearbyLo[i];
+      if (zhEl && nearbyZh[i]) zhEl.value = nearbyZh[i];
+    });
+
+    if (statusEl) {
+      statusEl.className = 'form-message success';
+      statusEl.style = '';
+      statusEl.textContent = '✓ Content generated in Lao, English, and Chinese. Review and save when ready.';
+    }
+    setTimeout(() => { if (statusEl) { statusEl.style.display = 'none'; } }, 5000);
+
+  } catch (err) {
+    console.error('[AI Gen]', err);
+    if (statusEl) {
+      statusEl.className = 'form-message error';
+      statusEl.style = '';
+      statusEl.textContent = '✗ Generation failed: ' + err.message + '. Make sure the Edge Function is deployed (see database-migration.sql for setup steps).';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
