@@ -5,11 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag · ລາຍລະອິດອະສັງຫາ</title>
 <meta property="og:type" content="website">
-<meta property="og:title" content="Pintag">
-<meta property="og:description" content="Premium real estate discovery in Laos">
-<meta property="og:image" content="YOUR_IMAGE_URL">
-<meta property="og:url" content="YOUR_SITE_URL">
+<meta property="og:title" content="Pintag · Premium Real Estate in Laos">
+<meta property="og:description" content="Discover premium properties for sale and rent in Vientiane, Laos.">
+<meta property="og:image" content="https://pintag.io/pintag-exterior.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://pintag.io/">
+<meta property="og:site_name" content="Pintag">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@pintag">
+<meta name="twitter:image" content="https://pintag.io/pintag-exterior.png">
 <link rel="icon" type="image/png" href="favicon.png">
 <meta name="theme-color" content="#F3EFE8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -647,6 +652,22 @@ window.addEventListener('DOMContentLoaded',function(){
   fetchProperty(slug);
 });
 
+function updateOGTags(data){
+  var lang=getCurrentLang();
+  var title=(data['title_'+lang]||data.title_en||'Pintag Property')+' · Pintag';
+  var desc=data['property_highlight_'+lang]||data.property_highlight_en||data.property_highlight||'Premium real estate in Vientiane, Laos.';
+  var imgs=Array.isArray(data.images)?data.images.filter(function(u){return u&&typeof u==='string';}):[];
+  var img=imgs[0]||'https://pintag.io/pintag-exterior.png';
+  var url='https://pintag.io/listing.html?slug='+encodeURIComponent(data.slug||'');
+  function setMeta(sel,val){var el=document.querySelector(sel);if(el)el.setAttribute('content',val);}
+  setMeta('meta[property="og:title"]',title);
+  setMeta('meta[property="og:description"]',desc);
+  setMeta('meta[property="og:image"]',img);
+  setMeta('meta[property="og:url"]',url);
+  setMeta('meta[name="twitter:image"]',img);
+  document.title=title;
+}
+
 async function fetchProperty(slug){
   if(_fetchInFlight){PT.warn('already in flight');return;}
   _fetchInFlight=true;
@@ -658,6 +679,7 @@ async function fetchProperty(slug){
     propertyContext=data[0];
     PT.log('Loaded',{id:propertyContext.id,title:propertyContext.title_en});
     try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout',e);showErrorState('Display error. Please refresh.');return;}
+    updateOGTags(propertyContext);
     if(propertyContext.id)fetchSimilarProperties(propertyContext);
   }catch(err){
     PT.timeEnd('fetchProperty');
@@ -1040,25 +1062,22 @@ function buildMockupLayout(){
   var mapSrc='';
   var gmapsHref='';
 
-  // Always use map_embed_url as the Open in Maps button if it's any safe Google Maps URL
-  if(isSafeUrl(data.map_embed_url)) gmapsHref=data.map_embed_url;
-
   var coords=extractMapCoords(data.map_embed_url);
+
+  // Build iframe embed src from coordinates extracted from the Google Maps URL
   if(coords){
     mapSrc='https://maps.google.com/maps?q='+coords.lat+','+coords.lng+'&t=&z=16&ie=UTF8&iwloc=&output=embed';
-  } else if(data.latitude&&data.longitude){
-    mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude)+'&t=&z=15&ie=UTF8&iwloc=&output=embed';
   } else if(data.district_en){
     mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.district_en+', Vientiane, Laos')+'&t=&z=14&ie=UTF8&iwloc=&output=embed';
   }
 
-  // Fallback Open in Maps href if no custom URL was provided
-  if(!gmapsHref){
-    if(data.latitude&&data.longitude){
-      gmapsHref='https://www.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude);
-    } else if(data.district_en){
-      gmapsHref='https://www.google.com/maps/search/'+encodeURIComponent(data.district_en+', Vientiane, Laos');
-    }
+  // Build Open in Maps href from the Google Maps URL
+  if(coords){
+    gmapsHref='https://www.google.com/maps?q='+coords.lat+','+coords.lng;
+  } else if(isSafeUrl(data.map_embed_url)){
+    gmapsHref=data.map_embed_url;
+  } else if(data.district_en){
+    gmapsHref='https://www.google.com/maps/search/'+encodeURIComponent(data.district_en+', Vientiane, Laos');
   }
 
   var mapHtml='';
