@@ -1328,7 +1328,7 @@ async function generateAIContent() {
     if (statusEl) {
       statusEl.className = 'form-message error';
       statusEl.style = '';
-      statusEl.textContent = '✗ Generation failed: ' + err.message + '. Check: (1) Edge Function is deployed in Supabase, (2) ANTHROPIC_API_KEY secret is set in Supabase Dashboard → Edge Functions → Manage secrets.';
+      statusEl.textContent = '✗ Generation failed: ' + err.message + '. Check: (1) Edge Function is deployed in Supabase, (2) GEMINI_API_KEY secret is set in Supabase Dashboard → Edge Functions → Manage secrets.';
     }
   } finally {
     btn.disabled = false;
