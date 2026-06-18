@@ -1064,19 +1064,15 @@ function buildMockupLayout(){
 
   var coords=extractMapCoords(data.map_embed_url);
 
-  // Build iframe embed src
+  // Build iframe embed src from coordinates extracted from the Google Maps URL
   if(coords){
     mapSrc='https://maps.google.com/maps?q='+coords.lat+','+coords.lng+'&t=&z=16&ie=UTF8&iwloc=&output=embed';
-  } else if(data.latitude&&data.longitude){
-    mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude)+'&t=&z=15&ie=UTF8&iwloc=&output=embed';
   } else if(data.district_en){
     mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.district_en+', Vientiane, Laos')+'&t=&z=14&ie=UTF8&iwloc=&output=embed';
   }
 
-  // Build Open in Maps href — always prefer exact pin coordinates over raw embed URL
-  if(data.latitude&&data.longitude){
-    gmapsHref='https://www.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude);
-  } else if(coords){
+  // Build Open in Maps href from the Google Maps URL
+  if(coords){
     gmapsHref='https://www.google.com/maps?q='+coords.lat+','+coords.lng;
   } else if(isSafeUrl(data.map_embed_url)){
     gmapsHref=data.map_embed_url;

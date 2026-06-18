@@ -409,18 +409,10 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <datalist id="village-suggestions"></datalist>
               <p class="form-hint">Shows as "Village, District" on listing page</p>
             </div>
-            <div class="form-group">
-              <label class="form-label">Latitude</label>
-              <input class="form-input" id="f-lat" type="text" placeholder="17.9757">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Longitude</label>
-              <input class="form-input" id="f-lng" type="text" placeholder="102.6331">
-            </div>
             <div class="form-group form-full">
               <label class="form-label">Google Maps URL</label>
-              <input class="form-input" id="f-map" type="text" placeholder="https://maps.app.goo.gl/... or https://www.google.com/maps/place/..." oninput="autoExtractMapCoords(this.value)">
-              <p class="form-hint">Paste any Google Maps share link or place URL. Coordinates auto-fill below if found in the URL. The link becomes the "Open in Maps" button.</p>
+              <input class="form-input" id="f-map" type="text" placeholder="https://maps.app.goo.gl/... or https://www.google.com/maps/place/...">
+              <p class="form-hint">Paste any Google Maps share link or place URL. This becomes the "Open in Maps" button on the listing page.</p>
             </div>
           </div>
           <p class="form-section-sub">Nearby Places</p>
@@ -714,18 +706,6 @@ function setHighlights(values) {
   renderCustomTags();
 }
 
-// ── Auto-extract lat/lng from Google Maps URL ─────────────────────
-function autoExtractMapCoords(url) {
-  if (!url) return;
-  var m = url.match(/[@/](-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/);
-  if (!m) m = url.match(/[?&]q=(-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/);
-  if (m) {
-    var latEl = document.getElementById('f-lat');
-    var lngEl = document.getElementById('f-lng');
-    if (latEl && !latEl.value) latEl.value = m[1];
-    if (lngEl && !lngEl.value) lngEl.value = m[2];
-  }
-}
 
 // ── Char count ───────────────────────────────────────────────────
 function updateCharCount(el, countId, max) {
@@ -967,8 +947,6 @@ async function editListing(id) {
 
   document.getElementById('f-district').value    = p.district_en || '';
   document.getElementById('f-village').value     = p.village_en || p.village || '';
-  document.getElementById('f-lat').value         = p.latitude || '';
-  document.getElementById('f-lng').value         = p.longitude || '';
   document.getElementById('f-map').value         = p.map_embed_url || '';
 
   document.getElementById('nearby-list').innerHTML = '';
@@ -1021,9 +999,6 @@ async function saveListing(e) {
   const slugBase = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
   const slug = slugBase + '-' + Date.now().toString().slice(-6);
 
-  const lat = parseFloat(document.getElementById('f-lat').value) || null;
-  const lng = parseFloat(document.getElementById('f-lng').value) || null;
-
   const body = {
     property_type:     document.getElementById('f-type').value || null,
     property_style:    document.getElementById('f-style').value || null,
@@ -1056,8 +1031,6 @@ async function saveListing(e) {
     district_lo:       districtMap.lo || null,
     district_zh:       districtMap.zh || null,
     village_en:        village || null,
-    latitude:          lat,
-    longitude:         lng,
     map_embed_url:     document.getElementById('f-map').value.trim() || null,
     nearby_places:     nearbyPlaces.length ? nearbyPlaces : null,
     highlights:              highlights.length ? highlights : null,
