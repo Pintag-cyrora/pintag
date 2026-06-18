@@ -14,9 +14,15 @@ Deno.serve(async (req) => {
   try {
     const data = await req.json();
 
-    const client = new Anthropic({
-      apiKey: Deno.env.get('ANTHROPIC_API_KEY') ?? '',
-    });
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'ANTHROPIC_API_KEY is not configured. Add it in Supabase Dashboard → Edge Functions → Manage secrets.' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const client = new Anthropic({ apiKey });
 
     const nearbyNames = Array.isArray(data.nearby_places)
       ? data.nearby_places.map((p: { name_en?: string; name?: string }) => p.name_en || p.name || '').filter(Boolean)
