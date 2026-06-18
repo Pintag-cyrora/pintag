@@ -1069,14 +1069,7 @@ function buildMockupLayout(){
 
   var coords=extractMapCoords(data.map_embed_url);
 
-  // Build iframe embed src from coordinates extracted from the Google Maps URL
-  if(coords){
-    mapSrc='https://maps.google.com/maps?q='+coords.lat+','+coords.lng+'&t=&z=16&ie=UTF8&iwloc=&output=embed';
-  } else if(data.district_en){
-    mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.district_en+', Vientiane, Laos')+'&t=&z=14&ie=UTF8&iwloc=&output=embed';
-  }
-
-  // Build Open in Maps href from the Google Maps URL
+  // Build Open in Maps href
   if(coords){
     gmapsHref='https://www.google.com/maps?q='+coords.lat+','+coords.lng;
   } else if(isSafeUrl(data.map_embed_url)){
@@ -1085,13 +1078,16 @@ function buildMockupLayout(){
     gmapsHref='https://www.google.com/maps/search/'+encodeURIComponent(data.district_en+', Vientiane, Laos');
   }
 
+  // Only build iframe when coords are known — avoids showing district when link opens exact pin
+  if(coords){
+    mapSrc='https://maps.google.com/maps?q='+coords.lat+','+coords.lng+'&t=&z=16&ie=UTF8&iwloc=&output=embed';
+  }
+
   var mapHtml='';
-  if(mapSrc){
+  if(gmapsHref){
     mapHtml=(
-      '<div class="map-frame">'+
-      '<iframe src="'+esc(mapSrc)+'" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>'+
-      '</div>'+
-      (gmapsHref?'<a href="'+esc(gmapsHref)+'" target="_blank" rel="noopener noreferrer" class="map-open-link">'+L.mapOpen[lang]+' '+I.ext+'</a>':'')
+      (mapSrc?'<div class="map-frame"><iframe src="'+esc(mapSrc)+'" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe></div>':'')+
+      '<a href="'+esc(gmapsHref)+'" target="_blank" rel="noopener noreferrer" class="map-open-link">'+L.mapOpen[lang]+' '+I.ext+'</a>'
     );
   }
 
