@@ -98,7 +98,7 @@ Return ONLY valid JSON in this exact format with no additional text:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 3000, temperature: 0.7 },
+          generationConfig: { maxOutputTokens: 3000, temperature: 0.7, thinkingConfig: { thinkingBudget: 0 } },
         }),
       }
     );
