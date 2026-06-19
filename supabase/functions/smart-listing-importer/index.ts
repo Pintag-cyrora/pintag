@@ -121,13 +121,13 @@ Deno.serve(async (req) => {
     const textPart = { text: buildPrompt(description || '', validImages.length) };
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [...imageParts, textPart] }],
-          generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
+          generationConfig: { maxOutputTokens: 4000, temperature: 0.4 },
         }),
       }
     );
