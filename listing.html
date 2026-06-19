@@ -5,11 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag · ລາຍລະອິດອະສັງຫາ</title>
 <meta property="og:type" content="website">
-<meta property="og:title" content="Pintag">
-<meta property="og:description" content="Premium real estate discovery in Laos">
-<meta property="og:image" content="YOUR_IMAGE_URL">
-<meta property="og:url" content="YOUR_SITE_URL">
+<meta property="og:title" content="Pintag · Premium Real Estate in Laos">
+<meta property="og:description" content="Discover premium properties for sale and rent in Vientiane, Laos.">
+<meta property="og:image" content="https://pintag.io/og-preview.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:site_name" content="Pintag">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://pintag.io/og-preview.jpg">
 <link rel="icon" type="image/png" href="favicon.png">
 <meta name="theme-color" content="#F3EFE8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -96,11 +100,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 /* Gallery */
 .desktop-gallery{display:flex;flex-direction:column;height:100%;}
 .dg-hero{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--warm-deep);cursor:pointer;}
-.dg-hero img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 1s cubic-bezier(0.16,1,0.3,1),opacity 0.3s;will-change:transform,opacity;}
-.dg-hero:hover img{transform:scale(1.006);}
-.dg-hero.sf-active{background:#EDE8E0;}
-.dg-hero.sf-active img,.mg-slide.sf-active img{object-fit:contain;object-position:center center;}
-.dg-hero.sf-active:hover img{transform:none;}
+.dg-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;display:block;transition:opacity 0.3s;will-change:opacity;}
 .dg-hero::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(to bottom,rgba(255,255,255,0) 55%,rgba(20,24,28,0.10));}
 .dg-hero::before{content:"";position:absolute;top:16px;left:16px;z-index:2;width:16px;height:16px;border-top:1px solid rgba(255,255,255,0.22);border-left:1px solid rgba(255,255,255,0.22);pointer-events:none;}
 .dg-coord{position:absolute;bottom:14px;left:18px;z-index:3;font-size:8.5px;font-weight:500;letter-spacing:0.1em;color:rgba(255,255,255,0.38);text-transform:uppercase;font-variant-numeric:tabular-nums;pointer-events:none;}
@@ -115,11 +115,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .dg-thumb-overflow{position:absolute;inset:0;background:rgba(26,36,40,0.68);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
 .dg-thumb-overflow-n{font-size:18px;font-weight:700;color:#fff;line-height:1;}
 .dg-thumb-overflow-lbl{font-size:9px;font-weight:500;color:rgba(255,255,255,0.7);letter-spacing:0.06em;text-transform:uppercase;}
-.mobile-gallery{display:none;}
+.mobile-gallery{display:none;position:relative;}
 .mg-track{display:flex;overflow-x:scroll;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;touch-action:pan-x pan-y;}
 .mg-track::-webkit-scrollbar{display:none;}
 .mg-slide{flex:0 0 100%;scroll-snap-align:start;aspect-ratio:4/3;overflow:hidden;background:var(--warm-deep);}
-.mg-slide img{width:100%;height:100%;object-fit:cover;display:block;}
+.mg-slide img{width:100%;height:100%;object-fit:contain;object-position:center center;display:block;}
 .mg-dots{display:flex;justify-content:center;gap:5px;padding:10px 0 8px;background:var(--white);}
 .mg-dot{width:5px;height:5px;border-radius:50%;background:var(--ink-muted);opacity:0.28;transition:opacity 0.2s,background 0.2s;cursor:pointer;}
 .mg-dot.active{opacity:1;background:var(--teal);}
@@ -219,12 +219,27 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .loader-bead:nth-child(2){animation-delay:0.15s;}
 .loader-bead:nth-child(3){animation-delay:0.3s;}
 @keyframes beadWave{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
+/* ── PROPERTY STATUS BADGE — detail & gallery overlay ── */
+.prop-status-badge{
+  display:inline-flex;align-items:center;
+  font-size:10px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
+  padding:5px 11px;border-radius:5px;color:#fff;
+  box-shadow:0 2px 8px rgba(0,0,0,0.25);
+}
+.prop-status-available{background:#166534;}
+.prop-status-sold{background:#991B1B;}
+.prop-status-rented{background:#C2410C;}
+.prop-status-offer{background:#1D4ED8;}
+.mg-status-wrap{position:absolute;top:12px;right:12px;z-index:4;pointer-events:none;}
+@media(max-width:960px){
+  .prop-status-badge{font-size:11px;padding:6px 13px;}
+}
 /* Lightbox */
 .lb-overlay{position:fixed;inset:0;z-index:1000;background:rgba(8,12,16,0.96);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.32s cubic-bezier(0.16,1,0.3,1);touch-action:pan-y;}
 .lb-overlay.lb-open{opacity:1;pointer-events:all;}
 .lb-stage{position:relative;width:100%;max-width:1100px;max-height:90vh;display:flex;align-items:center;justify-content:center;padding:0 72px;}
-.lb-img-wrap{position:relative;max-width:100%;max-height:84vh;display:flex;align-items:center;justify-content:center;}
-.lb-img{max-width:100%;max-height:84vh;width:auto;height:auto;object-fit:contain;display:block;border-radius:3px;transition:opacity 0.22s ease;contain:layout paint;}
+.lb-img-wrap{position:relative;width:100%;height:82vh;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.15);}
+.lb-img{width:100%;height:100%;object-fit:contain;display:block;border-radius:3px;transition:opacity 0.22s ease;}
 .lb-img.lb-fade{opacity:0;}
 .lb-close{position:fixed;top:22px;right:28px;z-index:1001;width:40px;height:40px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.7);transition:background 0.2s,color 0.2s;font-size:0;}
 .lb-close:hover{background:rgba(255,255,255,0.16);color:#fff;}
@@ -398,7 +413,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
     <div class="lb-img-wrap">
-      <img class="lb-img" id="lb-img" src="" alt="" decoding="async" onerror="handleImageError(this)">
+      <img class="lb-img" id="lb-img" alt="" decoding="async">
     </div>
     <button class="lb-arrow lb-next" id="lb-next" aria-label="Next">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -506,6 +521,18 @@ function resolveLabel(value,registry,lang){
 
 var agentFallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%237A9098' stroke-width='1'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
 
+function getStatusBadgeHtml(status, lang){
+  var S = {
+    active:       { lo:'ວ່າງ',           en:'Available',   zh:'在售',   cls:'prop-status-available' },
+    sold:         { lo:'ຂາຍແລ້ວ',       en:'Sold',        zh:'已售',   cls:'prop-status-sold'      },
+    rented:       { lo:'ເຊົ່າແລ້ວ',     en:'Rented',      zh:'已租',   cls:'prop-status-rented'    },
+    under_offer:  { lo:'ກຳລັງດຳເນີນ',  en:'Under Offer', zh:'洽谈中', cls:'prop-status-offer'     }
+  };
+  var key = S[status] ? status : 'active';
+  var info = S[key];
+  return '<span class="prop-status-badge '+info.cls+'">'+(info[lang]||info.en)+'</span>';
+}
+
 var PT = (function(){
   var P='[Pintag]';
   return {
@@ -528,16 +555,28 @@ function isSafeUrl(url){
   return t.indexOf('https://')===0||t.indexOf('http://')===0;
 }
 
-function toEmbedUrl(url){
-  if(!url)return '';
+function classifyVideoUrl(url){
+  if(!url||typeof url!=='string')return{type:'none',embed:'',raw:''};
   var u=url.trim();
-  // YouTube watch or short URL → embed
+  // YouTube watch URL
   var yt=u.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  if(yt)return 'https://www.youtube.com/embed/'+yt[1];
-  // TikTok video page → embed
-  var tt=u.match(/tiktok\.com\/@[^\/]+\/video\/(\d+)/);
-  if(tt)return 'https://www.tiktok.com/embed/v2/'+tt[1];
-  return u;
+  if(yt)return{type:'youtube',embed:'https://www.youtube.com/embed/'+yt[1],raw:u};
+  // YouTube Shorts
+  var yts=u.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
+  if(yts)return{type:'youtube',embed:'https://www.youtube.com/embed/'+yts[1],raw:u};
+  // YouTube already embedded
+  if(u.indexOf('youtube.com/embed/')>-1)return{type:'youtube',embed:u,raw:u};
+  // TikTok any format — never iframe, always watch button
+  if(/tiktok\.com/.test(u))return{type:'tiktok',embed:'',raw:u};
+  // Facebook any format — never iframe, always watch button
+  if(/facebook\.com|fb\.watch/.test(u))return{type:'facebook',embed:'',raw:u};
+  // Unknown safe URL — pass through
+  if(u.indexOf('https://')===0||u.indexOf('http://')===0)return{type:'other',embed:u,raw:u};
+  return{type:'none',embed:'',raw:''};
+}
+// kept for backward compat (not used for fb/tiktok any more)
+function toEmbedUrl(url){
+  var r=classifyVideoUrl(url);return r.embed||r.raw||'';
 }
 
 function getParam(name){
@@ -612,6 +651,22 @@ window.addEventListener('DOMContentLoaded',function(){
   fetchProperty(slug);
 });
 
+function updateOGTags(data){
+  var lang=getCurrentLang();
+  var title=(data['title_'+lang]||data.title_en||'Pintag Property')+' · Pintag';
+  var desc=data['property_highlight_'+lang]||data.property_highlight_en||data.property_highlight||'Premium real estate in Vientiane, Laos.';
+  var imgs=Array.isArray(data.images)?data.images.filter(function(u){return u&&typeof u==='string';}):[];
+  var img=imgs[0]||'https://pintag.io/og-preview.jpg';
+  var url='https://pintag.io/listing.html?slug='+encodeURIComponent(data.slug||'');
+  function setMeta(sel,val){var el=document.querySelector(sel);if(el)el.setAttribute('content',val);}
+  setMeta('meta[property="og:title"]',title);
+  setMeta('meta[property="og:description"]',desc);
+  setMeta('meta[property="og:image"]',img);
+  setMeta('meta[property="og:url"]',url);
+  setMeta('meta[name="twitter:image"]',img);
+  document.title=title;
+}
+
 async function fetchProperty(slug){
   if(_fetchInFlight){PT.warn('already in flight');return;}
   _fetchInFlight=true;
@@ -623,6 +678,7 @@ async function fetchProperty(slug){
     propertyContext=data[0];
     PT.log('Loaded',{id:propertyContext.id,title:propertyContext.title_en});
     try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout',e);showErrorState('Display error. Please refresh.');return;}
+    updateOGTags(propertyContext);
     if(propertyContext.id)fetchSimilarProperties(propertyContext);
   }catch(err){
     PT.timeEnd('fetchProperty');
@@ -641,7 +697,7 @@ async function fetchProperty(slug){
 async function fetchSimilarProperties(prop){
   PT.time('fetchSimilar');
   var TARGET = 4;
-  var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,images,bedrooms,bathrooms,sqm,price_display,transaction_type';
+  var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,images,bedrooms,bathrooms,sqm,price_display,transaction_type,status';
   var results = [];
 
   // Collected IDs to exclude — always starts with current listing
@@ -736,8 +792,11 @@ function renderSimilarGrid(similar){
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug);
     card.className='sim-card';
+    var simStatusBadge=getStatusBadgeHtml(p.status||'active',lang);
+    var simStatusOverlay='<div style="position:absolute;top:8px;left:8px;z-index:3;pointer-events:none;">'+simStatusBadge+'</div>';
     card.innerHTML=(
       '<div class="sim-card-img">'+imgHtml+
+      simStatusOverlay+
       '<button class="sim-heart" onclick="event.preventDefault()" aria-label="Save">'+
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>'+
       '</button></div>'+
@@ -801,15 +860,15 @@ function buildMockupLayout(){
     ? esc(resolvedVillage) + ', ' + resolvedDistrict
     : resolvedDistrict;
 
-  // Property highlight — short emotional subtitle below title
-  // Supabase column: property_highlight (TEXT, optional)
-  var resolvedHighlight = data['property_highlight_'+lang] || data.property_highlight || '';
+  // Property highlight — language-specific, falls back to shared field
+  var resolvedHighlight = data['property_highlight_'+lang] || data.property_highlight_en || data.property_highlight || '';
 
   var isSale = data.transaction_type==='for_sale'||data.transaction_type==='sale';
   var imagesArray=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';});
 
+  var statusBadgeHtml=getStatusBadgeHtml(data.status||'active',lang);
   var desktopGalleryMarkup=buildDesktopGallery(imagesArray);
-  var mobileGalleryMarkup=buildMobileGallery(imagesArray);
+  var mobileGalleryMarkup=buildMobileGallery(imagesArray,statusBadgeHtml);
 
   var L={
     wa     :{lo:'ສອບຖາມຜ່ານ WhatsApp',en:'Chat on WhatsApp',zh:'通过WhatsApp咨询'},
@@ -886,11 +945,10 @@ function buildMockupLayout(){
     highlightPillsHtml+='</div>';
   }
 
-  // ── Sidebar neighborhood insight — from data.neighborhood_description ──
-  // Only renders if the field exists in Supabase; never fabricated.
+  // ── Sidebar neighborhood insight — language-specific, falls back to shared field ──
   var sidebarInsightHtml='';
-  var insightText=data.neighborhood_description||data.area_insight||'';
-  if(insightText.trim()){
+  var insightText=data['neighborhood_insight_'+lang]||data.neighborhood_insight_en||data.neighborhood_description||data.area_insight||'';
+  if(insightText&&insightText.trim()){
     sidebarInsightHtml='<div class="sidebar-insight">'+esc(insightText.trim())+'</div>';
   }
 
@@ -987,32 +1045,49 @@ function buildMockupLayout(){
   // Nearby: rendered from data.nearby_places JSONB[]
   //   Schema: [{name:string, icon:string, distance:string, category?:string}]
   // ════════════════════════════════════════════════════════════════
-  var mapSrc='';
-  if(isSafeUrl(data.map_embed_url)){
-    mapSrc=data.map_embed_url;
-  } else if(data.latitude&&data.longitude){
-    mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude)+'&t=&z=15&ie=UTF8&iwloc=&output=embed';
-  } else if(data.district_en){
-    // District-level embed — still specific to this property's location
-    mapSrc='https://maps.google.com/maps?q='+encodeURIComponent(data.district_en+', Vientiane, Laos')+'&t=&z=14&ie=UTF8&iwloc=&output=embed';
-  } else {
-    mapSrc='';
+  // maps.app.goo.gl and goo.gl/maps are share links — they block iframe embedding.
+  // Only google.com/maps/embed URLs are safe to iframe.
+  // Extract lat/lng from any Google Maps URL format:
+  // google.com/maps/place/Name/@lat,lng,zoom  or  ?q=lat,lng  or  maps.app.goo.gl (no coords)
+  function extractMapCoords(url){
+    if(!url) return null;
+    // google.com/maps/place/Name/@lat,lng,zoom  or  /lat,lng
+    var m=url.match(/[@/](-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
+    if(m) return {lat:m[1],lng:m[2]};
+    // ?q=lat,lng or &q=lat,lng
+    m=url.match(/[?&]q=(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
+    if(m) return {lat:m[1],lng:m[2]};
+    // google.com/maps/embed?pb=...!2d<lng>...!3d<lat>
+    var lng2=url.match(/!2d(-?\d{1,3}\.\d+)/);
+    var lat3=url.match(/!3d(-?\d{1,3}\.\d+)/);
+    if(lng2&&lat3) return {lat:lat3[1],lng:lng2[1]};
+    return null;
   }
 
+  var mapSrc='';
   var gmapsHref='';
-  if(data.latitude&&data.longitude){
-    gmapsHref='https://www.google.com/maps?q='+encodeURIComponent(data.latitude+','+data.longitude);
+
+  var coords=extractMapCoords(data.map_embed_url);
+
+  // Build Open in Maps href
+  if(coords){
+    gmapsHref='https://www.google.com/maps?q='+coords.lat+','+coords.lng;
+  } else if(isSafeUrl(data.map_embed_url)){
+    gmapsHref=data.map_embed_url;
   } else if(data.district_en){
     gmapsHref='https://www.google.com/maps/search/'+encodeURIComponent(data.district_en+', Vientiane, Laos');
   }
 
+  // Only build iframe when coords are known — avoids showing district when link opens exact pin
+  if(coords){
+    mapSrc='https://maps.google.com/maps?q='+coords.lat+','+coords.lng+'&t=&z=16&ie=UTF8&iwloc=&output=embed';
+  }
+
   var mapHtml='';
-  if(mapSrc){
+  if(gmapsHref){
     mapHtml=(
-      '<div class="map-frame">'+
-      '<iframe src="'+esc(mapSrc)+'" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>'+
-      '</div>'+
-      (gmapsHref?'<a href="'+esc(gmapsHref)+'" target="_blank" rel="noopener noreferrer" class="map-open-link">'+L.mapOpen[lang]+' '+I.ext+'</a>':'')
+      (mapSrc?'<div class="map-frame"><iframe src="'+esc(mapSrc)+'" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe></div>':'')+
+      '<a href="'+esc(gmapsHref)+'" target="_blank" rel="noopener noreferrer" class="map-open-link">'+L.mapOpen[lang]+' '+I.ext+'</a>'
     );
   }
 
@@ -1047,14 +1122,54 @@ function buildMockupLayout(){
 
   // ── Video ──
   var mediaHtml='';
-  var videoUrl=toEmbedUrl(data.video_embed_url||data.video_url||'');
-  if(isSafeUrl(videoUrl)){
+  var _vc1 = classifyVideoUrl(data.video_embed_url||data.video_url||'');
+  var _vc2 = classifyVideoUrl(data.facebook_video_url||'');
+  var videoBlocks='';
+
+  function watchCard(rawUrl, platform){
+    var icons={
+      tiktok:'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.34 6.34 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V9.09a8.16 8.16 0 004.77 1.52V7.16a4.85 4.85 0 01-1-.47z"/></svg>',
+      facebook:'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"/></svg>'
+    };
+    var labels={
+      tiktok:{lo:'ເບິ່ງໃນ TikTok',en:'Watch on TikTok',zh:'在TikTok观看'},
+      facebook:{lo:'ເບິ່ງໃນ Facebook',en:'Watch on Facebook',zh:'在Facebook观看'}
+    };
+    var colors={tiktok:'#010101',facebook:'#1877F2'};
+    var L2=labels[platform]||{lo:'ເບິ່ງວິດີໂອ',en:'Watch Video',zh:'观看视频'};
+    var icon=icons[platform]||I.play;
+    return '<div style="background:var(--warm);border:1px solid var(--border-mid);border-radius:12px;padding:28px 20px;text-align:center;margin-top:14px;">'
+      +'<div style="font-size:13px;color:var(--ink-muted);margin-bottom:14px;line-height:1.6;">'
+      +'<span class="lo-i">ວິດີໂອນຳຊົມ — ກົດເບິ່ງ</span>'
+      +'<span class="en-i">Property walk-through — tap to watch</span>'
+      +'<span class="zh-i">实景视频 — 点击观看</span>'
+      +'</div>'
+      +'<a href="'+esc(rawUrl)+'" target="_blank" rel="noopener noreferrer" '
+      +'style="display:inline-flex;align-items:center;gap:9px;background:'+colors[platform]+';color:#fff;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:500;text-decoration:none;">'
+      +icon+' <span class="lo-i">'+L2.lo+'</span><span class="en-i">'+L2.en+'</span><span class="zh-i">'+L2.zh+'</span>'
+      +'</a></div>';
+  }
+
+  // Primary video (TikTok/YouTube/other)
+  if(_vc1.type==='youtube'&&_vc1.embed){
+    videoBlocks+='<div class="asset-iframe-wrapper"><iframe src="'+esc(_vc1.embed)+'" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe></div>';
+  } else if(_vc1.type==='tiktok'){
+    videoBlocks+=watchCard(_vc1.raw,'tiktok');
+  } else if(_vc1.type==='other'&&_vc1.embed){
+    videoBlocks+='<div class="asset-iframe-wrapper"><iframe src="'+esc(_vc1.embed)+'" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe></div>';
+  }
+
+  // Facebook video
+  if(_vc2.type==='facebook'){
+    videoBlocks+=watchCard(_vc2.raw,'facebook');
+  }
+
+  if(videoBlocks){
     mediaHtml=(
       '<div class="media-section">'+
       '<span class="section-label">'+I.play+' '+L.video[lang]+'</span>'+
-      '<div class="asset-iframe-wrapper">'+
-      '<iframe src="'+esc(videoUrl)+'" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>'+
-      '</div></div>'
+      videoBlocks+
+      '</div>'
     );
   }
 
@@ -1134,7 +1249,10 @@ function buildMockupLayout(){
     '<p class="hero-location">'+I.pin+' '+locationLabel+'</p>'+
     '<h1 class="info-title">'+resolvedTitle+'</h1>'+
     propertyHighlightHtml+
-    '<div class="tx-badge">'+esc(typeBadgeText)+'</div>'+
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:24px;">'+
+    '<span class="tx-badge" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
+    statusBadgeHtml+
+    '</div>'+
     '<div class="price-block">'+resolvedPriceHtml+'</div>'+
     (specsHtml?'<div class="spec-grid">'+specsHtml+'</div>':'')+
     yearHtml+
@@ -1238,16 +1356,17 @@ function syncDesktopHero(idx,thumbEl){
   if(thumbEl)thumbEl.classList.add('active');
 }
 
-function buildMobileGallery(images){
+function buildMobileGallery(images, statusBadgeHtml){
   var clean=(Array.isArray(images)?images:[]).filter(function(u){return u&&typeof u==='string';});
-  if(!clean.length)return '<div class="mobile-gallery"><div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
+  if(!clean.length)return '<div class="mobile-gallery">'+(statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'')+'<div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
   var slidesHtml='',dotsHtml='';
   clean.forEach(function(img,i){
     var loading=i===0?'eager':'lazy';
     slidesHtml+='<div class="mg-slide" data-idx="'+i+'"><img src="'+esc(img)+'" alt="" loading="'+loading+'" decoding="async" onerror="handleImageError(this)"></div>';
     dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'"></div>';
   });
-  return '<div class="mobile-gallery"><div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
+  var overlayHtml=statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'';
+  return '<div class="mobile-gallery">'+overlayHtml+'<div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
 }
 
 function jumpMobileGallerySlide(idx){var t=document.getElementById('mg-track-el');if(!t)return;t.scrollTo({left:idx*t.offsetWidth,behavior:'smooth'});}
@@ -1275,14 +1394,7 @@ function wireMobileGalleryTrack(){
   },{passive:true});
 }
 
-function checkSmartFitLayout(src,boxEl){
-  if(!boxEl||!src)return;
-  var temp=new Image();
-  function cleanup(){temp.onload=null;temp.onerror=null;}
-  temp.onload=function(){boxEl.classList.toggle('sf-active',temp.naturalWidth/temp.naturalHeight>1.78||(temp.naturalWidth/temp.naturalHeight)<1.1);cleanup();};
-  temp.onerror=function(){cleanup();};
-  temp.src=src;
-}
+function checkSmartFitLayout(){}
 
 // ── resolveAmenityData — delegates to shared AMENITIES registry ──
 // Handles normalized keys ("pool"), legacy strings ("Private Pool"),

@@ -39,7 +39,8 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:28px;}
 .tab{padding:10px 20px;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:var(--ink-muted);transition:all 0.2s;background:none;border-top:none;border-left:none;border-right:none;font-family:'DM Sans',sans-serif;}
 .tab.active{color:var(--teal);border-bottom-color:var(--teal);}
-.listings-table{width:100%;border-collapse:collapse;background:var(--white);}
+#listings-container{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.listings-table{width:100%;border-collapse:collapse;background:var(--white);min-width:480px;}
 .listings-table th{text-align:left;font-size:10px;font-weight:500;letter-spacing:0.15em;text-transform:uppercase;color:var(--ink-muted);padding:10px 14px;background:var(--warm);border-bottom:1px solid var(--border);}
 .listings-table td{padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px;color:var(--ink-soft);vertical-align:middle;}
 .listings-table tr:last-child td{border-bottom:none;}
@@ -81,8 +82,8 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .btn-submit:disabled{background:var(--ink-muted);cursor:not-allowed;}
 .btn-cancel{padding:12px 20px;background:var(--warm);color:var(--ink-soft);border:1px solid var(--border);font-size:14px;font-weight:400;cursor:pointer;border-radius:4px;font-family:'DM Sans',sans-serif;}
 .form-message{padding:12px 16px;border-radius:4px;font-size:13px;margin-top:12px;display:none;}
-.form-message.success{background:rgba(30,107,69,0.08);color:var(--green);border:1px solid rgba(30,107,69,0.2);}
-.form-message.error{background:rgba(192,57,43,0.06);color:var(--red);border:1px solid rgba(192,57,43,0.2);}
+.form-message.success{display:block;background:rgba(30,107,69,0.08);color:var(--green);border:1px solid rgba(30,107,69,0.2);}
+.form-message.error{display:block;background:rgba(192,57,43,0.06);color:var(--red);border:1px solid rgba(192,57,43,0.2);}
 /* Checkbox grid */
 .check-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:8px;margin-top:4px;}
 .check-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:all 0.15s;background:var(--white);user-select:none;}
@@ -107,13 +108,21 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .tag-custom-pill button{background:none;border:none;cursor:pointer;color:var(--teal);font-size:14px;line-height:1;padding:0;margin-left:2px;opacity:0.6;}
 .tag-custom-pill button:hover{opacity:1;}
 /* Nearby repeater */
-.nearby-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
-.nearby-row{display:grid;grid-template-columns:44px 1fr 120px auto;gap:8px;align-items:center;}
-.nearby-icon-input{width:44px;padding:9px 6px;border:1px solid var(--border);border-radius:4px;font-size:18px;text-align:center;font-family:'DM Sans',sans-serif;background:var(--white);}
+.nearby-list{display:flex;flex-direction:column;gap:10px;margin-bottom:10px;}
+.nearby-row{display:grid;grid-template-columns:44px 1fr 110px auto;gap:8px;align-items:start;}
+.nearby-icon-input{width:44px;padding:9px 6px;border:1px solid var(--border);border-radius:4px;font-size:18px;text-align:center;font-family:'DM Sans',sans-serif;background:var(--white);margin-top:1px;}
+.np-names{display:flex;flex-direction:column;gap:4px;}
+.np-names-sub{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
 .btn-add-row{font-size:12px;font-weight:500;color:var(--teal);background:var(--teal-dim);border:1px dashed var(--teal-border);padding:9px 14px;cursor:pointer;border-radius:4px;font-family:'DM Sans',sans-serif;transition:all 0.2s;width:100%;}
 .btn-add-row:hover{background:rgba(45,140,140,0.15);}
-.btn-remove{background:rgba(192,57,43,0.07);color:var(--red);border:1px solid rgba(192,57,43,0.15);padding:8px 10px;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;flex-shrink:0;}
+.btn-remove{background:rgba(192,57,43,0.07);color:var(--red);border:1px solid rgba(192,57,43,0.15);padding:8px 10px;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;flex-shrink:0;margin-top:1px;}
 .btn-remove:hover{background:rgba(192,57,43,0.14);}
+/* AI Generation */
+.ai-gen-card{background:linear-gradient(135deg,rgba(45,140,140,0.07),rgba(45,140,140,0.03));border:1px dashed var(--teal-border);border-radius:6px;padding:20px 24px;margin-bottom:24px;}
+.btn-ai-gen{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--teal);color:#fff;border:none;padding:13px 24px;border-radius:5px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.2s;width:100%;}
+.btn-ai-gen:hover{background:var(--teal-light);}
+.btn-ai-gen:disabled{background:var(--ink-muted);cursor:not-allowed;}
+.ai-gen-hint{font-size:11.5px;color:var(--ink-muted);margin-top:8px;text-align:center;line-height:1.6;}
 /* Image upload */
 .upload-zone{border:2px dashed var(--teal-border);border-radius:4px;padding:28px 20px;text-align:center;cursor:pointer;background:var(--warm);transition:all 0.2s;}
 .upload-zone:hover,.upload-zone.drag-over{border-color:var(--teal);background:var(--teal-dim);}
@@ -137,9 +146,33 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 @media(max-width:640px){
   .form-grid,.form-grid-3{grid-template-columns:1fr;}
   .form-full{grid-column:1;}
-  .nearby-row{grid-template-columns:44px 1fr auto;}
   .check-grid{grid-template-columns:1fr 1fr;}
+  .nearby-row{grid-template-columns:44px 1fr auto;gap:6px;}
+  .np-names-sub{grid-template-columns:1fr;}
+  .nearby-row .np-dist{grid-column:2;}
+  .admin-body{padding:20px 14px;}
+  .form-section{padding:18px 14px;}
+  .listings-table th:nth-child(2),.listings-table td:nth-child(2),
+  .listings-table th:nth-child(3),.listings-table td:nth-child(3),
+  .listings-table th:nth-child(4),.listings-table td:nth-child(4){display:none;}
+  .listings-table td:last-child{display:flex;flex-wrap:wrap;gap:5px;}
+  .ai-gen-card{padding:16px 14px;}
+  .btn-ai-gen{font-size:13px;padding:12px 16px;}
 }
+/* Smart Import nav button */
+.btn-import{background:rgba(45,140,140,0.12);color:var(--teal-light);border:1px solid var(--teal-border);}
+.btn-import:hover{background:rgba(45,140,140,0.22);}
+/* Draft status badge */
+.status-draft{background:rgba(122,144,152,0.13);color:var(--ink-muted);}
+/* Import progress steps */
+.import-step{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-muted);}
+.import-step.active{color:var(--teal);font-weight:500;}
+.import-step.done{color:var(--green);}
+.import-step.error{color:var(--red);}
+.import-step-dot{width:10px;height:10px;border-radius:50%;background:var(--border);flex-shrink:0;}
+.import-step.active .import-step-dot{background:var(--teal);}
+.import-step.done .import-step-dot{background:var(--green);}
+.import-step.error .import-step-dot{background:var(--red);}
 </style>
 </head>
 <body>
@@ -159,6 +192,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
     <p class="admin-nav-logo">Pintag <span>Admin</span></p>
     <div class="admin-nav-right">
       <button class="admin-nav-btn btn-new" onclick="showForm(null)">+ New Listing</button>
+      <button class="admin-nav-btn btn-import" onclick="showImportPanel()">&#8659; Smart Import</button>
       <button class="admin-nav-btn btn-logout" onclick="logout()">Sign Out</button>
     </div>
   </nav>
@@ -223,6 +257,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
                 <option value="under_offer">Under Offer</option>
                 <option value="sold">Sold</option>
                 <option value="rented">Rented</option>
+                <option value="draft">Draft</option>
               </select>
             </div>
             <div class="form-group">
@@ -249,6 +284,15 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           </div>
         </div>
 
+        <!-- AI CONTENT GENERATION -->
+        <div class="ai-gen-card">
+          <button type="button" class="btn-ai-gen" id="ai-gen-btn" onclick="generateAIContent()">
+            ✨ Generate AI Content &mdash; All languages, all sections
+          </button>
+          <p class="ai-gen-hint">Fill in Basic Information (&#9312;) first, then click to auto-generate titles, highlights, descriptions, and neighborhood insights in Lao, English, and Chinese.</p>
+          <div class="form-message" id="ai-gen-status" style="display:none;margin-top:10px;margin-bottom:0;"></div>
+        </div>
+
         <!-- TITLE + HIGHLIGHT -->
         <div class="form-section">
           <p class="form-section-title">&#9313; Title &amp; Highlight</p>
@@ -266,12 +310,19 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <input class="form-input" id="f-title-zh" type="text" placeholder="&#29616;&#20195;&#21035;&#22885;&#24102;&#27836;&#27744;">
             </div>
             <div class="form-group form-full">
-              <label class="form-label">Property Highlight <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Short emotional subtitle shown below title</span></label>
-              <textarea class="form-textarea" id="f-highlight" rows="2" maxlength="160" oninput="updateCharCount(this,'highlight-count',160)" placeholder="Contemporary villa with embassy-area privacy and resort-inspired outdoor living."></textarea>
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">
-                <p class="form-hint">1 vivid sentence. Aim for emotional positioning.</p>
-                <span class="char-count" id="highlight-count">0 / 160</span>
-              </div>
+              <label class="form-label">Property Highlight (English) <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; 1 sentence emotional subtitle shown below title</span></label>
+              <textarea class="form-textarea" id="f-highlight-en" rows="2" maxlength="160" oninput="updateCharCount(this,'highlight-count-en',160)" placeholder="Contemporary villa with embassy-area privacy and resort-inspired outdoor living."></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="highlight-count-en">0 / 160</span></div>
+            </div>
+            <div class="form-group form-full">
+              <label class="form-label">Property Highlight (Lao)</label>
+              <textarea class="form-textarea" id="f-highlight-lo" rows="2" maxlength="160" oninput="updateCharCount(this,'highlight-count-lo',160)" placeholder="ວິລລ່າທີ່ທັນສະໄໝ ໃຫ້ຄວາມເປັນສ່ວນຕົວ ແລະ ການດຳລົງຊີວິດທີ່ຜ່ອນຄາຍ."></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="highlight-count-lo">0 / 160</span></div>
+            </div>
+            <div class="form-group form-full">
+              <label class="form-label">Property Highlight (Chinese)</label>
+              <textarea class="form-textarea" id="f-highlight-zh" rows="2" maxlength="160" oninput="updateCharCount(this,'highlight-count-zh',160)" placeholder="现代别墅，私密宁静，尽享度假式户外生活。"></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="highlight-count-zh">0 / 160</span></div>
             </div>
           </div>
         </div>
@@ -374,18 +425,10 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <datalist id="village-suggestions"></datalist>
               <p class="form-hint">Shows as "Village, District" on listing page</p>
             </div>
-            <div class="form-group">
-              <label class="form-label">Latitude</label>
-              <input class="form-input" id="f-lat" type="text" placeholder="17.9757">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Longitude</label>
-              <input class="form-input" id="f-lng" type="text" placeholder="102.6331">
-            </div>
             <div class="form-group form-full">
-              <label class="form-label">Google Maps Embed URL</label>
-              <input class="form-input" id="f-map" type="text" placeholder="https://maps.google.com/maps?q=...">
-              <p class="form-hint">Maps &#8594; Share &#8594; Embed a map &#8594; copy the src="" URL. Overrides coordinates if filled.</p>
+              <label class="form-label">Google Maps URL</label>
+              <input class="form-input" id="f-map" type="text" placeholder="https://maps.app.goo.gl/... or https://www.google.com/maps/place/..." onblur="resolveMapUrl(this)">
+              <p class="form-hint" id="f-map-hint">Paste any Google Maps share link — it will be resolved automatically to show the exact pin on the listing page.</p>
             </div>
           </div>
           <p class="form-section-sub">Nearby Places</p>
@@ -403,11 +446,23 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             <input class="tag-custom-input" id="custom-tag-input" type="text" placeholder="Add custom tag...">
             <button type="button" class="tag-add-btn" onclick="addCustomTag()">+ Add</button>
           </div>
-          <p class="form-section-sub" style="margin-top:24px;">Neighborhood Insight <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Context paragraph below pills</span></p>
-          <textarea class="form-textarea" id="f-neighborhood" rows="2" maxlength="220" oninput="updateCharCount(this,'neighborhood-count',220)" placeholder="Quiet embassy-area neighborhood close to international schools and Vientiane's best caf&#233;s."></textarea>
-          <div style="display:flex;justify-content:space-between;margin-top:3px;">
-            <p class="form-hint">Shown in the left sidebar of the listing page.</p>
-            <span class="char-count" id="neighborhood-count">0 / 220</span>
+          <p class="form-section-sub" style="margin-top:24px;">Neighborhood Insight <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; 1 sentence shown in the listing sidebar</span></p>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div>
+              <label class="form-label" style="margin-bottom:5px;display:block;">English</label>
+              <textarea class="form-textarea" id="f-neighborhood-en" rows="2" maxlength="220" oninput="updateCharCount(this,'neighborhood-count-en',220)" placeholder="Quiet embassy-area neighborhood close to international schools and Vientiane&#39;s best caf&#233;s."></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="neighborhood-count-en">0 / 220</span></div>
+            </div>
+            <div>
+              <label class="form-label" style="margin-bottom:5px;display:block;">Lao</label>
+              <textarea class="form-textarea" id="f-neighborhood-lo" rows="2" maxlength="220" oninput="updateCharCount(this,'neighborhood-count-lo',220)" placeholder="ຍ່ານສະຫງົບ ໃກ້ສະຖານທູດ ໂຮງຮຽນນານາຊາດ ແລະ ຮ້ານກາເຟຊັ້ນນຳ."></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="neighborhood-count-lo">0 / 220</span></div>
+            </div>
+            <div>
+              <label class="form-label" style="margin-bottom:5px;display:block;">Chinese</label>
+              <textarea class="form-textarea" id="f-neighborhood-zh" rows="2" maxlength="220" oninput="updateCharCount(this,'neighborhood-count-zh',220)" placeholder="使馆区宁静社区，紧邻国际学校与万象顶级咖啡馆。"></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:3px;"><span class="char-count" id="neighborhood-count-zh">0 / 220</span></div>
+            </div>
           </div>
         </div>
 
@@ -434,6 +489,10 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             <div class="form-group form-full">
               <label class="form-label">Video URL</label>
               <input class="form-input" id="f-video" type="text" placeholder="Paste any YouTube or TikTok link — auto-converted">
+            </div>
+            <div class="form-group form-full">
+              <label class="form-label">Facebook Video URL</label>
+              <input class="form-input" id="f-facebook-video" type="text" placeholder="https://www.facebook.com/watch?v=...">
             </div>
             <div class="form-group form-full">
               <label class="form-label">Download URL</label>
@@ -488,11 +547,62 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 
         <div class="form-submit">
           <button type="submit" class="btn-submit" id="submit-btn">Save Listing</button>
+          <button type="button" class="btn-submit" id="publish-btn" onclick="publishDraft()" style="display:none;background:var(--green);">Publish Listing</button>
           <button type="button" class="btn-cancel" onclick="showListings()">Cancel</button>
         </div>
         <div class="form-message" id="form-message"></div>
       </form>
     </div>
+
+    <!-- SMART IMPORT PANEL -->
+    <div id="import-panel" style="display:none;">
+      <div class="form-header">
+        <a class="form-back" onclick="showListings()">&#8592; Back</a>
+        <h2>Smart Import</h2>
+      </div>
+
+      <div class="form-section">
+        <p class="form-section-title">&#9312; Paste Property Description</p>
+        <div class="form-group">
+          <label class="form-label">Facebook Post / Description Text</label>
+          <textarea class="form-textarea" id="import-description" rows="8"
+            placeholder="Paste the property description here (Lao, English, or Thai)...&#10;&#10;AI will extract: title, price, bedrooms, bathrooms, size, location, and generate full multilingual descriptions."></textarea>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <p class="form-section-title">&#9313; Upload Property Photos</p>
+        <div class="form-group">
+          <div class="upload-zone" id="import-upload-zone" onclick="document.getElementById('import-file-input').click()">
+            <input type="file" id="import-file-input" multiple accept="image/*" style="display:none;" onchange="handleImportImageUpload(this.files)">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p style="font-size:13px;font-weight:500;color:var(--ink);margin-top:8px;">Click or drag to upload photos</p>
+            <p style="font-size:11px;color:var(--ink-muted);margin-top:3px;">Up to 15 photos &middot; JPG, PNG, WebP &middot; Max 20 MB each</p>
+          </div>
+          <div id="import-upload-progress" style="display:none;margin-top:8px;">
+            <div class="upload-progress-bar"><div class="upload-progress-fill" id="import-progress-fill"></div></div>
+            <p class="upload-status" id="import-upload-status">Uploading...</p>
+          </div>
+          <div id="import-image-grid" class="image-preview-grid"></div>
+        </div>
+      </div>
+
+      <div class="ai-gen-card">
+        <button type="button" class="btn-ai-gen" id="import-gen-btn" onclick="runSmartImport()">
+          &#9889; Generate Listing
+        </button>
+        <p class="ai-gen-hint">AI will extract property details, translate to 3 languages, analyze photos, and save a draft — ready for your review.</p>
+      </div>
+
+      <div id="import-progress-steps" style="display:none;margin-bottom:24px;">
+        <div class="form-section" style="padding:20px 24px;">
+          <div id="import-step-list" style="display:flex;flex-direction:column;gap:12px;"></div>
+        </div>
+      </div>
+
+      <div class="form-message" id="import-message"></div>
+    </div>
+
   </div>
 </div>
 
@@ -663,6 +773,31 @@ function setHighlights(values) {
   renderCustomTags();
 }
 
+
+// ── Resolve Google Maps short URL ────────────────────────────────
+async function resolveMapUrl(el) {
+  const url = el.value.trim();
+  if (!url || !url.includes('maps.app.goo.gl')) return;
+  const hint = document.getElementById('f-map-hint');
+  if (hint) { hint.textContent = 'Resolving link…'; hint.style.color = 'var(--teal)'; }
+  try {
+    const res = await fetch(SUPABASE_URL + '/functions/v1/resolve-map-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON) },
+      body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    if (data.resolved_url && data.resolved_url !== url) {
+      el.value = data.resolved_url;
+      if (hint) { hint.textContent = '✓ Link resolved — map will show exact pin.'; hint.style.color = 'var(--teal)'; }
+    } else {
+      if (hint) { hint.textContent = 'Paste any Google Maps share link — it will be resolved automatically to show the exact pin on the listing page.'; hint.style.color = ''; }
+    }
+  } catch (_) {
+    if (hint) { hint.textContent = 'Paste any Google Maps share link — it will be resolved automatically to show the exact pin on the listing page.'; hint.style.color = ''; }
+  }
+}
+
 // ── Char count ───────────────────────────────────────────────────
 function updateCharCount(el, countId, max) {
   const n = el.value.length;
@@ -677,20 +812,41 @@ function addNearby(data) {
   const list = document.getElementById('nearby-list');
   const row = document.createElement('div');
   row.className = 'nearby-row';
+  const nameEn = data ? (data.name_en||data.name||'') : '';
+  const nameLo = data ? (data.name_lo||'') : '';
+  const nameZh = data ? (data.name_zh||'') : '';
+  const icon   = data ? (data.icon||'') : '';
+  const dist   = data ? (data.distance||'') : '';
   row.innerHTML = `
-    <input class="nearby-icon-input" type="text" placeholder="☕" value="${data ? (data.icon||'') : ''}" maxlength="2">
-    <input class="form-input np-name" type="text" placeholder="Joma Bakery Café" value="${data ? (data.name||data.name_en||'') : ''}">
-    <input class="form-input np-dist" type="text" placeholder="5 min drive" value="${data ? (data.distance||'') : ''}">
+    <input class="nearby-icon-input" type="text" placeholder="☕" value="${icon}" maxlength="2">
+    <div class="np-names">
+      <input class="form-input np-name-en" type="text" placeholder="Name (English)" value="${nameEn}">
+      <div class="np-names-sub">
+        <input class="form-input np-name-lo" type="text" placeholder="ຊື່ (ລາວ)" value="${nameLo}" style="font-size:12.5px;">
+        <input class="form-input np-name-zh" type="text" placeholder="名称 (中文)" value="${nameZh}" style="font-size:12.5px;">
+      </div>
+    </div>
+    <input class="form-input np-dist" type="text" placeholder="5 min drive" value="${dist}">
     <button type="button" class="btn-remove" onclick="this.parentElement.remove()">×</button>`;
   list.appendChild(row);
 }
 function getNearbyPlaces() {
   const places = [];
   document.querySelectorAll('.nearby-row').forEach(row => {
-    const name = row.querySelector('.np-name').value.trim();
-    const dist = row.querySelector('.np-dist').value.trim();
-    const icon = row.querySelector('.nearby-icon-input').value.trim();
-    if (name) places.push({name, name_en:name, name_lo:name, name_zh:name, icon:icon||'📍', distance:dist});
+    const nameEn = (row.querySelector('.np-name-en') || row.querySelector('.np-name') || {value:''}).value.trim();
+    const nameLo = row.querySelector('.np-name-lo') ? row.querySelector('.np-name-lo').value.trim() : nameEn;
+    const nameZh = row.querySelector('.np-name-zh') ? row.querySelector('.np-name-zh').value.trim() : nameEn;
+    const dist   = row.querySelector('.np-dist').value.trim();
+    const icon   = row.querySelector('.nearby-icon-input').value.trim();
+    const primary = nameEn || nameLo || nameZh;
+    if (primary) places.push({
+      name:     primary,
+      name_en:  nameEn  || primary,
+      name_lo:  nameLo  || primary,
+      name_zh:  nameZh  || primary,
+      icon:     icon    || '📍',
+      distance: dist
+    });
   });
   return places;
 }
@@ -730,6 +886,7 @@ async function login() {
     return;
   }
   _adminToken = data.session.access_token;
+  console.log('[Auth] Signed in, token set, length:', _adminToken.length);
   showAdminScreen();
 }
 async function logout() { _adminToken = null; await sbClient.auth.signOut(); location.reload(); }
@@ -806,15 +963,18 @@ async function loadListings() {
 // ── FORM SHOW/HIDE ────────────────────────────────────────────────
 function showListings() {
   document.getElementById('listings-panel').style.display = 'block';
-  document.getElementById('form-panel').style.display = 'none';
+  document.getElementById('form-panel').style.display    = 'none';
+  document.getElementById('import-panel').style.display  = 'none';
   loadListings();
 }
 function showForm(id) {
   document.getElementById('listings-panel').style.display = 'none';
+  document.getElementById('import-panel').style.display  = 'none';
   document.getElementById('form-panel').style.display = 'block';
   document.getElementById('form-title').textContent = id ? 'Edit Listing' : 'New Listing';
   document.getElementById('edit-id').value = id || '';
   document.getElementById('form-message').style.display = 'none';
+  document.getElementById('publish-btn').style.display = 'none';
   if (!id) {
     document.getElementById('listing-form').reset();
     document.getElementById('nearby-list').innerHTML = '';
@@ -824,9 +984,11 @@ function showForm(id) {
     setHighlights([]);
     customTags = [];
     populateExistingImages([]);
-    ['highlight-count','neighborhood-count'].forEach(cid => {
-      const el = document.getElementById(cid);
-      if (el) el.textContent = '0 / ' + (cid === 'highlight-count' ? '160' : '220');
+    ['highlight-count-en','highlight-count-lo','highlight-count-zh'].forEach(cid => {
+      const el = document.getElementById(cid); if (el) el.textContent = '0 / 160';
+    });
+    ['neighborhood-count-en','neighborhood-count-lo','neighborhood-count-zh'].forEach(cid => {
+      const el = document.getElementById(cid); if (el) el.textContent = '0 / 220';
     });
   }
   loadVillageSuggestions();
@@ -843,6 +1005,7 @@ async function editListing(id) {
   document.getElementById('f-style').value       = p.property_style || '';
   document.getElementById('f-transaction').value = p.transaction_type || '';
   document.getElementById('f-status').value      = p.status || 'active';
+  document.getElementById('publish-btn').style.display = (p.status === 'draft') ? 'inline-block' : 'none';
   document.getElementById('f-price').value       = p.price_display || '';
   document.getElementById('f-land-title').value  = p.land_title_type || '';
   document.getElementById('f-featured').value    = String(p.is_featured || false);
@@ -850,9 +1013,13 @@ async function editListing(id) {
   document.getElementById('f-title-en').value    = p.title_en || '';
   document.getElementById('f-title-lo').value    = p.title_lo || '';
   document.getElementById('f-title-zh').value    = p.title_zh || '';
-  const hlField = document.getElementById('f-highlight');
-  hlField.value = p.property_highlight || '';
-  updateCharCount(hlField,'highlight-count',160);
+  ['en','lo','zh'].forEach(lang => {
+    const el = document.getElementById('f-highlight-'+lang);
+    if (el) {
+      el.value = p['property_highlight_'+lang] || (lang === 'en' ? p.property_highlight || '' : '');
+      updateCharCount(el, 'highlight-count-'+lang, 160);
+    }
+  });
 
   document.getElementById('f-desc-en').value     = p.description_en || p.desc_en || '';
   document.getElementById('f-desc-lo').value     = p.description_lo || p.desc_lo || '';
@@ -875,8 +1042,6 @@ async function editListing(id) {
 
   document.getElementById('f-district').value    = p.district_en || '';
   document.getElementById('f-village').value     = p.village_en || p.village || '';
-  document.getElementById('f-lat').value         = p.latitude || '';
-  document.getElementById('f-lng').value         = p.longitude || '';
   document.getElementById('f-map').value         = p.map_embed_url || '';
 
   document.getElementById('nearby-list').innerHTML = '';
@@ -885,13 +1050,18 @@ async function editListing(id) {
   else addNearby();
 
   setHighlights(Array.isArray(p.highlights) ? p.highlights : []);
-  const nbField = document.getElementById('f-neighborhood');
-  nbField.value = p.neighborhood_description || '';
-  updateCharCount(nbField,'neighborhood-count',220);
+  ['en','lo','zh'].forEach(lang => {
+    const el = document.getElementById('f-neighborhood-'+lang);
+    if (el) {
+      el.value = p['neighborhood_insight_'+lang] || (lang === 'en' ? p.neighborhood_description || '' : '');
+      updateCharCount(el, 'neighborhood-count-'+lang, 220);
+    }
+  });
 
   populateExistingImages(p.images || []);
-  document.getElementById('f-video').value        = p.video_embed_url || p.video_url || '';
-  document.getElementById('f-download-url').value = p.download_url || '';
+  document.getElementById('f-video').value          = p.video_embed_url || p.video_url || '';
+  document.getElementById('f-facebook-video').value = p.facebook_video_url || '';
+  document.getElementById('f-download-url').value   = p.download_url || '';
 
   document.getElementById('f-agent').value        = p.agent_name || '';
   document.getElementById('f-agent-lo').value     = p.agent_name_lo || '';
@@ -924,9 +1094,6 @@ async function saveListing(e) {
   const slugBase = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
   const slug = slugBase + '-' + Date.now().toString().slice(-6);
 
-  const lat = parseFloat(document.getElementById('f-lat').value) || null;
-  const lng = parseFloat(document.getElementById('f-lng').value) || null;
-
   const body = {
     property_type:     document.getElementById('f-type').value || null,
     property_style:    document.getElementById('f-style').value || null,
@@ -935,13 +1102,16 @@ async function saveListing(e) {
     price_display:     document.getElementById('f-price').value.trim() || null,
     land_title_type:   document.getElementById('f-land-title').value || null,
     is_featured:       document.getElementById('f-featured').value === 'true',
-    title_en:          titleEn,
-    title_lo:          document.getElementById('f-title-lo').value.trim() || null,
-    title_zh:          document.getElementById('f-title-zh').value.trim() || null,
-    property_highlight:document.getElementById('f-highlight').value.trim() || null,
-    description_en:    document.getElementById('f-desc-en').value.trim() || null,
-    description_lo:    document.getElementById('f-desc-lo').value.trim() || null,
-    description_zh:    document.getElementById('f-desc-zh').value.trim() || null,
+    title_en:                titleEn,
+    title_lo:                document.getElementById('f-title-lo').value.trim() || null,
+    title_zh:                document.getElementById('f-title-zh').value.trim() || null,
+    property_highlight_en:   document.getElementById('f-highlight-en').value.trim() || null,
+    property_highlight_lo:   document.getElementById('f-highlight-lo').value.trim() || null,
+    property_highlight_zh:   document.getElementById('f-highlight-zh').value.trim() || null,
+    property_highlight:      document.getElementById('f-highlight-en').value.trim() || null,
+    description_en:          document.getElementById('f-desc-en').value.trim() || null,
+    description_lo:          document.getElementById('f-desc-lo').value.trim() || null,
+    description_zh:          document.getElementById('f-desc-zh').value.trim() || null,
     bedrooms:          parseInt(document.getElementById('f-bedrooms').value) || null,
     bathrooms:         parseInt(document.getElementById('f-bathrooms').value) || null,
     sqm:               parseInt(document.getElementById('f-sqm').value) || null,
@@ -956,15 +1126,17 @@ async function saveListing(e) {
     district_lo:       districtMap.lo || null,
     district_zh:       districtMap.zh || null,
     village_en:        village || null,
-    latitude:          lat,
-    longitude:         lng,
     map_embed_url:     document.getElementById('f-map').value.trim() || null,
     nearby_places:     nearbyPlaces.length ? nearbyPlaces : null,
-    highlights:        highlights.length ? highlights : null,
-    neighborhood_description: document.getElementById('f-neighborhood').value.trim() || null,
+    highlights:              highlights.length ? highlights : null,
+    neighborhood_insight_en: document.getElementById('f-neighborhood-en').value.trim() || null,
+    neighborhood_insight_lo: document.getElementById('f-neighborhood-lo').value.trim() || null,
+    neighborhood_insight_zh: document.getElementById('f-neighborhood-zh').value.trim() || null,
+    neighborhood_description:document.getElementById('f-neighborhood-en').value.trim() || null,
     images:            JSON.parse(document.getElementById('f-images').value || '[]'),
     video_embed_url:   document.getElementById('f-video').value.trim() || null,
     video_url:         document.getElementById('f-video').value.trim() || null,
+    facebook_video_url:document.getElementById('f-facebook-video').value.trim() || null,
     download_url:      document.getElementById('f-download-url').value.trim() || null,
     agent_name:          document.getElementById('f-agent').value.trim() || null,
     agent_name_lo:       document.getElementById('f-agent-lo').value.trim() || null,
@@ -1023,8 +1195,6 @@ async function deleteListing(id, title) {
 }
 
 // ── IMAGE UPLOAD ──────────────────────────────────────────────────
-const SB_UPLOAD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 let uploadedImages = [];
 
 const zone = document.getElementById('upload-zone');
@@ -1033,37 +1203,95 @@ if (zone) {
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleImageUpload(e.dataTransfer.files); });
 }
+const importZone = document.getElementById('import-upload-zone');
+if (importZone) {
+  importZone.addEventListener('dragover', e => { e.preventDefault(); importZone.classList.add('drag-over'); });
+  importZone.addEventListener('dragleave', () => importZone.classList.remove('drag-over'));
+  importZone.addEventListener('drop', e => { e.preventDefault(); importZone.classList.remove('drag-over'); handleImportImageUpload(e.dataTransfer.files); });
+}
 async function handleImageUpload(files) {
   if (!files || files.length === 0) return;
   const progress = document.getElementById('upload-progress');
-  const fill = document.getElementById('progress-fill');
-  const status = document.getElementById('upload-status');
+  const fill     = document.getElementById('progress-fill');
+  const status   = document.getElementById('upload-status');
   progress.style.display = 'block';
+  status.style.color = '';
+
+  // Guard: must be authenticated
+  if (!_adminToken) {
+    status.style.color = '#C0392B';
+    status.textContent = 'Not signed in — please refresh and log in again.';
+    return;
+  }
+
   const fileArr = Array.from(files);
   let completed = 0;
+
   for (const file of fileArr) {
-    if (file.size > 10 * 1024 * 1024) { status.textContent = `${file.name} too large (max 10MB)`; continue; }
-    status.textContent = `Uploading ${file.name}...`;
-    const ext = file.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    if (file.size > 20 * 1024 * 1024) {
+      status.style.color = '#C0392B';
+      status.textContent = `${file.name} too large (max 20 MB)`;
+      continue;
+    }
+    const ext         = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const fileName    = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const contentType = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+    status.style.color = '';
+    status.textContent = `Uploading ${file.name}…`;
+
     try {
-      const imgToken = _adminToken || SB_KEY;
-      const res = await fetch(`${SB_UPLOAD}/storage/v1/object/property-images/${fileName}`, {
-        method:'POST',
-        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+imgToken,'Content-Type':file.type||'image/jpeg','x-upsert':'true'},
-        body:file
-      });
+      const res = await fetch(
+        `${SUPABASE_URL}/storage/v1/object/property-images/${fileName}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey':        SUPABASE_ANON,
+            'Authorization': 'Bearer ' + _adminToken,
+            'Content-Type':  contentType
+          },
+          body: file
+        }
+      );
+
       if (res.ok) {
-        uploadedImages.push(`${SB_UPLOAD}/storage/v1/object/public/property-images/${fileName}`);
+        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
+        uploadedImages.push(publicUrl);
         completed++;
-        fill.style.width = `${(completed/fileArr.length)*100}%`;
-        refreshImageGrid();
+        fill.style.width = `${(completed / fileArr.length) * 100}%`;
+        status.style.color = '#166534';
         status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
-      } else { status.textContent = `Error uploading ${file.name}`; }
-    } catch(err) { status.textContent = `Error: ${err.message}`; }
+        refreshImageGrid();
+      } else {
+        // Read the full Supabase error body so we can display the exact reason
+        let errBody = '';
+        try { errBody = await res.text(); } catch(_) {}
+        let parsed = null;
+        try { parsed = JSON.parse(errBody); } catch(_) {}
+        const errMsg = parsed ? (parsed.message || parsed.error || errBody) : errBody;
+
+        status.style.color = '#C0392B';
+        if (res.status === 403 || res.status === 401) {
+          status.textContent = `Upload blocked (${res.status}): ${errMsg || 'permission denied'} — add INSERT policy in Supabase Storage → property-images → Policies (see console for SQL)`;
+          console.error('[Upload] Run this SQL in Supabase:\nCREATE POLICY "Admin upload" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = \'property-images\');\nCREATE POLICY "Admin select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = \'property-images\');');
+        } else if (res.status === 404 || (errMsg && errMsg.toLowerCase().includes('not found'))) {
+          status.textContent = `Bucket not found (404) — check the bucket is named exactly "property-images" in Supabase Storage.`;
+        } else {
+          status.textContent = `Upload error ${res.status}: ${errMsg || 'unknown error'}`;
+        }
+        console.error('[Upload]', res.status, errBody);
+      }
+    } catch (err) {
+      status.style.color = '#C0392B';
+      status.textContent = `Network error: ${err.message}`;
+      console.error('[Upload exception]', err);
+    }
   }
-  setTimeout(() => { progress.style.display='none'; fill.style.width='0%'; }, 2000);
+
+  if (completed > 0 && completed === fileArr.length) {
+    setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; status.style.color = ''; }, 2500);
+  }
 }
+
 function setCoverImage(url) {
   uploadedImages = [url, ...uploadedImages.filter(u => u !== url)];
   refreshImageGrid();
@@ -1093,6 +1321,504 @@ function refreshImageGrid() {
 function populateExistingImages(images) {
   uploadedImages = images || [];
   refreshImageGrid();
+}
+
+// ── AI CONTENT GENERATION ─────────────────────────────────────────
+async function generateAIContent() {
+  const btn = document.getElementById('ai-gen-btn');
+  const statusEl = document.getElementById('ai-gen-status');
+  if (!btn) return;
+
+  const districtEn = document.getElementById('f-district').value;
+  const village    = document.getElementById('f-village').value.trim();
+
+  const propertyData = {
+    property_type:  document.getElementById('f-type').value,
+    property_style: document.getElementById('f-style').value,
+    transaction_type: document.getElementById('f-transaction').value,
+    bedrooms:       document.getElementById('f-bedrooms').value,
+    bathrooms:      document.getElementById('f-bathrooms').value,
+    sqm:            document.getElementById('f-sqm').value,
+    sqm_land:       document.getElementById('f-sqm-land').value,
+    price_display:  document.getElementById('f-price').value,
+    village:        village,
+    district:       districtEn,
+    features:       getCheckedKeys('features-grid'),
+    furnished:      document.getElementById('f-furnished').value,
+    nearby_places:  getNearbyPlaces()
+  };
+
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Generating...';
+  if (statusEl) {
+    statusEl.style.display = 'block';
+    statusEl.className = 'form-message';
+    statusEl.style.background = 'rgba(45,140,140,0.06)';
+    statusEl.style.color = 'var(--teal)';
+    statusEl.style.border = '1px solid var(--teal-border)';
+    statusEl.textContent = 'Generating multilingual content with AI — this may take 10–20 seconds...';
+  }
+
+  try {
+    const res = await fetch(SUPABASE_URL + '/functions/v1/generate-listing-content', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'apikey':        SUPABASE_ANON,
+        'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
+      },
+      body: JSON.stringify(propertyData)
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(res.status + ': ' + err.slice(0, 200));
+    }
+
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    // ── Fill titles ──────────────────────────────────────────────
+    if (result.title_en) document.getElementById('f-title-en').value = result.title_en;
+    if (result.title_lo) document.getElementById('f-title-lo').value = result.title_lo;
+    if (result.title_zh) document.getElementById('f-title-zh').value = result.title_zh;
+
+    // ── Fill property highlights ─────────────────────────────────
+    ['en','lo','zh'].forEach(lang => {
+      const val = result['property_highlight_'+lang];
+      const el  = document.getElementById('f-highlight-'+lang);
+      if (val && el) { el.value = val; updateCharCount(el, 'highlight-count-'+lang, 160); }
+    });
+
+    // ── Fill neighborhood insights ───────────────────────────────
+    ['en','lo','zh'].forEach(lang => {
+      const val = result['neighborhood_insight_'+lang];
+      const el  = document.getElementById('f-neighborhood-'+lang);
+      if (val && el) { el.value = val; updateCharCount(el, 'neighborhood-count-'+lang, 220); }
+    });
+
+    // ── Fill descriptions ────────────────────────────────────────
+    if (result.description_en) document.getElementById('f-desc-en').value = result.description_en;
+    if (result.description_lo) document.getElementById('f-desc-lo').value = result.description_lo;
+    if (result.description_zh) document.getElementById('f-desc-zh').value = result.description_zh;
+
+    // ── Update nearby places with translated names ───────────────
+    const nearbyRows = document.querySelectorAll('.nearby-row');
+    const nearbyEn = Array.isArray(result.nearby_en) ? result.nearby_en : [];
+    const nearbyLo = Array.isArray(result.nearby_lo) ? result.nearby_lo : [];
+    const nearbyZh = Array.isArray(result.nearby_zh) ? result.nearby_zh : [];
+    nearbyRows.forEach((row, i) => {
+      const enEl = row.querySelector('.np-name-en');
+      const loEl = row.querySelector('.np-name-lo');
+      const zhEl = row.querySelector('.np-name-zh');
+      if (enEl && nearbyEn[i]) enEl.value = nearbyEn[i];
+      if (loEl && nearbyLo[i]) loEl.value = nearbyLo[i];
+      if (zhEl && nearbyZh[i]) zhEl.value = nearbyZh[i];
+    });
+
+    if (statusEl) {
+      statusEl.className = 'form-message success';
+      statusEl.style = '';
+      statusEl.textContent = '✓ Content generated in Lao, English, and Chinese. Review and save when ready.';
+    }
+    setTimeout(() => { if (statusEl) { statusEl.style.display = 'none'; } }, 5000);
+
+  } catch (err) {
+    console.error('[AI Gen]', err);
+    if (statusEl) {
+      statusEl.className = 'form-message error';
+      statusEl.style = '';
+      statusEl.textContent = '✗ Generation failed: ' + err.message + '. Check: (1) Edge Function is deployed in Supabase, (2) GEMINI_API_KEY secret is set in Supabase Dashboard → Edge Functions → Manage secrets.';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+
+// ── SMART IMPORT ─────────────────────────────────────────────────
+
+function showImportPanel() {
+  document.getElementById('listings-panel').style.display = 'none';
+  document.getElementById('form-panel').style.display    = 'none';
+  document.getElementById('import-panel').style.display  = 'block';
+  importImages = [];
+  refreshImportImageGrid();
+  document.getElementById('import-description').value = '';
+  document.getElementById('import-message').style.display = 'none';
+  document.getElementById('import-progress-steps').style.display = 'none';
+  document.getElementById('import-gen-btn').disabled = false;
+  document.getElementById('import-gen-btn').innerHTML = '&#9889; Generate Listing';
+}
+
+let importImages = [];
+
+async function handleImportImageUpload(files) {
+  if (!files || files.length === 0) return;
+  if (!_adminToken) {
+    document.getElementById('import-upload-status').style.color = '#C0392B';
+    document.getElementById('import-upload-status').textContent = 'Not signed in — please refresh and log in again.';
+    return;
+  }
+  const remaining = 15 - importImages.length;
+  if (remaining <= 0) {
+    document.getElementById('import-upload-status').style.color = '#C0392B';
+    document.getElementById('import-upload-status').textContent = 'Maximum 15 photos reached.';
+    return;
+  }
+  const progress = document.getElementById('import-upload-progress');
+  const fill     = document.getElementById('import-progress-fill');
+  const status   = document.getElementById('import-upload-status');
+  progress.style.display = 'block';
+  status.style.color = '';
+
+  const fileArr = Array.from(files).slice(0, remaining);
+  let completed = 0;
+
+  for (const file of fileArr) {
+    if (file.size > 20 * 1024 * 1024) {
+      status.style.color = '#C0392B';
+      status.textContent = `${file.name} too large (max 20 MB)`;
+      continue;
+    }
+    const ext         = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const fileName    = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const contentType = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+    status.style.color = '';
+    status.textContent = `Uploading ${file.name}…`;
+
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/storage/v1/object/property-images/${fileName}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey':        SUPABASE_ANON,
+            'Authorization': 'Bearer ' + _adminToken,
+            'Content-Type':  contentType
+          },
+          body: file
+        }
+      );
+
+      if (res.ok) {
+        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
+        importImages.push(publicUrl);
+        completed++;
+        fill.style.width = `${(completed / fileArr.length) * 100}%`;
+        status.style.color = '#166534';
+        status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
+        refreshImportImageGrid();
+      } else {
+        let errBody = '';
+        try { errBody = await res.text(); } catch(_) {}
+        let parsed = null;
+        try { parsed = JSON.parse(errBody); } catch(_) {}
+        const errMsg = parsed ? (parsed.message || parsed.error || errBody) : errBody;
+        status.style.color = '#C0392B';
+        status.textContent = `Upload error ${res.status}: ${errMsg || 'unknown error'}`;
+      }
+    } catch (err) {
+      status.style.color = '#C0392B';
+      status.textContent = `Network error: ${err.message}`;
+    }
+  }
+
+  if (completed > 0 && completed === fileArr.length) {
+    setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; status.style.color = ''; }, 2500);
+  }
+}
+
+function refreshImportImageGrid() {
+  const grid = document.getElementById('import-image-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  importImages.forEach((url, i) => {
+    const safeUrl = url.replace(/'/g, '%27');
+    const div = document.createElement('div');
+    div.className = 'image-preview-item';
+    div.innerHTML = `
+      <img src="${url}" alt="Photo ${i+1}">
+      <button class="img-remove" onclick="removeImportImage('${safeUrl}')" type="button">&#215;</button>
+      <span class="img-order">${i+1}</span>`;
+    grid.appendChild(div);
+  });
+}
+
+function removeImportImage(url) {
+  importImages = importImages.filter(u => u !== url);
+  refreshImportImageGrid();
+}
+
+const IMPORT_STEPS = [
+  { id: 'step-upload',   label: 'Photos uploaded to storage' },
+  { id: 'step-analyze',  label: 'Analyzing description and photos with AI' },
+  { id: 'step-populate', label: 'Populating listing form' },
+  { id: 'step-save',     label: 'Saving as draft' }
+];
+
+function showImportSteps() {
+  const stepsEl  = document.getElementById('import-progress-steps');
+  const stepList = document.getElementById('import-step-list');
+  stepsEl.style.display = 'block';
+  stepList.innerHTML = IMPORT_STEPS.map(s =>
+    `<div class="import-step" id="${s.id}">
+       <div class="import-step-dot"></div>
+       <span>${s.label}</span>
+     </div>`
+  ).join('');
+}
+
+function setImportStep(stepId, state) {
+  const el = document.getElementById(stepId);
+  if (!el) return;
+  el.className = 'import-step ' + state;
+  const labelEl = el.querySelector('span');
+  const step = IMPORT_STEPS.find(s => s.id === stepId);
+  if (!step || !labelEl) return;
+  labelEl.textContent = state === 'done'  ? step.label + ' ✓'
+                      : state === 'error' ? step.label + ' ✗'
+                      : step.label;
+}
+
+async function runSmartImport() {
+  const description = document.getElementById('import-description').value.trim();
+  if (!description && importImages.length === 0) {
+    const msg = document.getElementById('import-message');
+    msg.className = 'form-message error';
+    msg.textContent = 'Please paste a property description or upload at least one photo.';
+    msg.style.display = 'block';
+    return;
+  }
+
+  const btn   = document.getElementById('import-gen-btn');
+  const msgEl = document.getElementById('import-message');
+  btn.disabled = true;
+  btn.innerHTML = '&#8987; Processing...';
+  msgEl.style.display = 'none';
+  showImportSteps();
+
+  try {
+    // Step 1: images already in importImages[] — mark done
+    setImportStep('step-upload', 'done');
+
+    // Step 2: call AI edge function
+    setImportStep('step-analyze', 'active');
+    const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'apikey':        SUPABASE_ANON,
+        'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
+      },
+      body: JSON.stringify({ description, image_urls: importImages })
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(res.status + ': ' + err.slice(0, 200));
+    }
+    const aiResult = await res.json();
+    if (aiResult.error) throw new Error(aiResult.error);
+    setImportStep('step-analyze', 'done');
+
+    // Step 3: populate form fields
+    setImportStep('step-populate', 'active');
+    populateFormFromImport(aiResult);
+    setImportStep('step-populate', 'done');
+
+    // Step 4: auto-save as draft
+    setImportStep('step-save', 'active');
+    const draftId = await saveDraft();
+    setImportStep('step-save', 'done');
+
+    // Transition to edit form for the saved draft
+    await editListing(draftId);
+
+  } catch (err) {
+    console.error('[Smart Import]', err);
+    IMPORT_STEPS.forEach(s => {
+      const el = document.getElementById(s.id);
+      if (el && el.classList.contains('active')) setImportStep(s.id, 'error');
+    });
+    msgEl.className = 'form-message error';
+    msgEl.textContent = '✗ Import failed: ' + err.message;
+    msgEl.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '&#9889; Generate Listing';
+  }
+}
+
+function populateFormFromImport(data) {
+  // Populate form fields (form-panel may be hidden — values are set directly)
+  document.getElementById('f-type').value        = data.property_type || '';
+  document.getElementById('f-style').value       = data.property_style || '';
+  document.getElementById('f-transaction').value = data.transaction_type || 'for_sale';
+  document.getElementById('f-status').value      = 'draft';
+  document.getElementById('f-price').value       = data.price_display || '';
+  document.getElementById('f-land-title').value  = '';
+  document.getElementById('f-featured').value    = 'false';
+
+  document.getElementById('f-title-en').value    = data.title || '';
+  document.getElementById('f-title-lo').value    = '';
+  document.getElementById('f-title-zh').value    = '';
+
+  ['en','lo','zh'].forEach(lang => {
+    const el = document.getElementById('f-highlight-' + lang);
+    if (el) {
+      el.value = data['property_highlight_' + lang] || '';
+      updateCharCount(el, 'highlight-count-' + lang, 160);
+    }
+  });
+
+  document.getElementById('f-desc-en').value     = data.description_en || '';
+  document.getElementById('f-desc-lo').value     = data.description_lo || '';
+  document.getElementById('f-desc-zh').value     = data.description_zh || '';
+
+  document.getElementById('f-bedrooms').value    = data.bedrooms != null ? data.bedrooms : '';
+  document.getElementById('f-bathrooms').value   = data.bathrooms != null ? data.bathrooms : '';
+  document.getElementById('f-sqm').value         = data.sqm != null ? data.sqm : '';
+  document.getElementById('f-sqm-land').value    = data.sqm_land != null ? data.sqm_land : '';
+  document.getElementById('f-floors').value      = '';
+  document.getElementById('f-year-built').value  = '';
+  document.getElementById('f-parking-spaces').value = '';
+  document.getElementById('f-furnished').value   = data.furnished || '';
+
+  if (data.district) document.getElementById('f-district').value = data.district;
+  else document.getElementById('f-district').value = '';
+  document.getElementById('f-village').value     = data.village || '';
+  document.getElementById('f-map').value         = '';
+
+  ['en','lo','zh'].forEach(lang => {
+    const el = document.getElementById('f-neighborhood-' + lang);
+    if (el) {
+      el.value = data['neighborhood_insight_' + lang] || '';
+      updateCharCount(el, 'neighborhood-count-' + lang, 220);
+    }
+  });
+
+  // Reset collections
+  setChecked('features-grid', [], FEATURES);
+  setChecked('amenities-grid', [], AMENITIES);
+  setHighlights([]);
+  customTags = [];
+  renderCustomTags();
+  document.getElementById('nearby-list').innerHTML = '';
+  addNearby();
+
+  // Apply AI-recommended photo order
+  const order = Array.isArray(data.recommended_order) ? data.recommended_order : [];
+  if (order.length > 0 && importImages.length > 0) {
+    const mentioned = new Set(order);
+    const reordered = [
+      ...order.map(i => importImages[i]).filter(Boolean),
+      ...importImages.filter((_, i) => !mentioned.has(i))
+    ];
+    uploadedImages = reordered;
+  } else {
+    uploadedImages = [...importImages];
+  }
+  refreshImageGrid();
+
+  // Clear video/download fields
+  document.getElementById('f-video').value           = '';
+  document.getElementById('f-facebook-video').value  = '';
+  document.getElementById('f-download-url').value    = '';
+
+  // Clear agent fields
+  ['f-agent','f-agent-lo','f-agent-title','f-agent-photo','f-whatsapp','f-phone',
+   'f-rating','f-listing-count','f-response-time'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+}
+
+async function saveDraft() {
+  const districtEn  = document.getElementById('f-district').value;
+  const districtMap = DISTRICT_MAP[districtEn] || {};
+  const village     = document.getElementById('f-village').value.trim();
+  const titleEn     = document.getElementById('f-title-en').value.trim() || 'Draft Listing';
+  const slugBase    = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-')
+                       .replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
+  const slug        = slugBase + '-' + Date.now().toString().slice(-6);
+
+  const body = {
+    property_type:          document.getElementById('f-type').value || null,
+    property_style:         document.getElementById('f-style').value || null,
+    transaction_type:       document.getElementById('f-transaction').value || null,
+    status:                 'draft',
+    price_display:          document.getElementById('f-price').value.trim() || null,
+    title_en:               titleEn,
+    title_lo:               document.getElementById('f-title-lo').value.trim() || null,
+    title_zh:               document.getElementById('f-title-zh').value.trim() || null,
+    property_highlight_en:  document.getElementById('f-highlight-en').value.trim() || null,
+    property_highlight_lo:  document.getElementById('f-highlight-lo').value.trim() || null,
+    property_highlight_zh:  document.getElementById('f-highlight-zh').value.trim() || null,
+    property_highlight:     document.getElementById('f-highlight-en').value.trim() || null,
+    description_en:         document.getElementById('f-desc-en').value.trim() || null,
+    description_lo:         document.getElementById('f-desc-lo').value.trim() || null,
+    description_zh:         document.getElementById('f-desc-zh').value.trim() || null,
+    bedrooms:               parseInt(document.getElementById('f-bedrooms').value) || null,
+    bathrooms:              parseInt(document.getElementById('f-bathrooms').value) || null,
+    sqm:                    parseInt(document.getElementById('f-sqm').value) || null,
+    sqm_land:               parseInt(document.getElementById('f-sqm-land').value) || null,
+    furnished:              document.getElementById('f-furnished').value || null,
+    district_en:            districtEn || null,
+    district_lo:            districtMap.lo || null,
+    district_zh:            districtMap.zh || null,
+    village_en:             village || null,
+    neighborhood_insight_en: document.getElementById('f-neighborhood-en').value.trim() || null,
+    neighborhood_insight_lo: document.getElementById('f-neighborhood-lo').value.trim() || null,
+    neighborhood_insight_zh: document.getElementById('f-neighborhood-zh').value.trim() || null,
+    neighborhood_description: document.getElementById('f-neighborhood-en').value.trim() || null,
+    images:                 uploadedImages.length ? uploadedImages : null,
+    slug
+  };
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/properties`, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'apikey':        SUPABASE_ANON,
+      'Authorization': 'Bearer ' + _adminToken,
+      'Prefer':        'return=representation'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('Draft save failed ' + res.status + ': ' + errText.slice(0, 200));
+  }
+  const result = await res.json();
+  const saved = Array.isArray(result) ? result[0] : result;
+  if (!saved || !saved.id) throw new Error('Draft saved but no record ID returned');
+  return saved.id;
+}
+
+async function publishDraft() {
+  const editId = document.getElementById('edit-id').value;
+  if (!editId) return;
+  if (!confirm('Publish this listing? It will become live on the site immediately.')) return;
+  const btn = document.getElementById('publish-btn');
+  btn.disabled = true;
+  btn.textContent = 'Publishing...';
+  try {
+    await sbApi('PATCH', `properties?id=eq.${editId}`, { status: 'active' });
+    document.getElementById('f-status').value = 'active';
+    document.getElementById('publish-btn').style.display = 'none';
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message success';
+    msg.textContent = '✓ Listing published and now live on the site.';
+    msg.style.display = 'block';
+    setTimeout(() => showListings(), 1800);
+  } catch (err) {
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message error';
+    msg.textContent = '✗ Publish failed: ' + err.message;
+    msg.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Publish Listing';
+  }
 }
 
 // ── INIT ──────────────────────────────────────────────────────────

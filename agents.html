@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag · Agent</title>
+<!-- Open Graph — static defaults for Facebook (no JS); updated by JS for WhatsApp/Telegram/iMessage -->
+<meta property="og:type"        content="profile">
+<meta property="og:site_name"   content="Pintag">
+<meta property="og:title"       content="Pintag · Agent Profile">
+<meta property="og:description" content="Property advisor in Vientiane, Laos — residential sales, rentals &amp; investment.">
+<meta property="og:image"       content="https://www.pintag.io/pintag-hero.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height"content="630">
+<meta property="og:url"         content="https://www.pintag.io/agents.html">
+<meta name="twitter:card"       content="summary_large_image">
+<meta name="twitter:image"      content="https://www.pintag.io/pintag-hero.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -77,6 +88,18 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
   font-size:17px;font-weight:400;color:var(--ink-soft);
   line-height:1.85;max-width:500px;
 }
+.agent-bio-secondary{
+  margin-top:20px;padding-top:20px;
+  border-top:1px solid var(--border);
+}
+.agent-bio-lang-label{
+  font-size:9px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;
+  color:var(--ink-muted);margin-bottom:8px;display:block;opacity:0.65;
+}
+.agent-bio-secondary-text{
+  font-size:15px;color:var(--ink-muted);line-height:1.85;
+  max-width:500px;font-style:italic;
+}
 .agent-langs{
   margin-top:10px;
   font-size:11px;font-weight:500;color:var(--ink-muted);
@@ -124,6 +147,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .p-card:hover .p-img img{transform:scale(1.04);}
 .p-tx{position:absolute;top:10px;left:10px;background:rgba(255,255,255,0.9);font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-soft);padding:3px 9px;border-radius:2px;}
 .p-featured-dot{position:absolute;top:10px;right:10px;width:6px;height:6px;border-radius:50%;background:var(--teal-light);box-shadow:0 0 0 2px rgba(255,255,255,0.5);}
+.p-status{position:absolute;bottom:10px;left:10px;font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;padding:3px 8px;border-radius:3px;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.22);}
+.p-status-available{background:rgba(22,101,52,0.92);}
+.p-status-sold{background:rgba(185,28,28,0.94);}
+.p-status-rented{background:rgba(194,65,0,0.92);}
+.p-status-offer{background:rgba(30,64,175,0.88);}
 .p-body{padding:10px 2px 0;}
 .p-price{font-size:16px;font-weight:700;color:var(--ink);letter-spacing:-0.02em;line-height:1;margin-bottom:4px;}
 .p-loc{font-size:11px;color:var(--ink-muted);}
@@ -238,8 +266,16 @@ async function load(){
   }
 }
 
+function setMeta(prop,val){var el=document.querySelector('meta[property="'+prop+'"],meta[name="'+prop+'"]');if(el&&val)el.setAttribute('content',val);}
 function render(a,listings){
+  var pageUrl='https://www.pintag.io/agents.html?slug='+encodeURIComponent(slug);
+  var photo=a.photo_url||'https://www.pintag.io/pintag-hero.png';
   document.title='Pintag · '+(a.name_en||'Agent');
+  setMeta('og:title',(a.name_lo||a.name_en||'Agent')+' · Pintag');
+  setMeta('og:description',a.bio_en||'Property advisor in Vientiane, Laos.');
+  setMeta('og:image',photo);
+  setMeta('og:url',pageUrl);
+  setMeta('twitter:image',photo);
   var heroImg=getHeroImg(listings);
   var initial=(a.name_en||'A').charAt(0).toUpperCase();
   var heroEl=document.getElementById('agent-hero');
@@ -281,11 +317,27 @@ function render(a,listings){
   var roleEl=document.getElementById('h-role');
   if(roleEl&&a.agency_name) roleEl.textContent=a.agency_name+' · ວຽງຈັນ';
 
-  // Bio
-  var bio=a.bio_lo||a.bio_en||'';
-  if(bio){
-    document.getElementById('bio-wrap').style.display='block';
-    document.getElementById('bio-text').textContent=bio;
+  // Bio — Lao as primary, English as secondary translation
+  var bioPrimary = a.bio_lo || '';
+  var bioSecondary = bioPrimary ? (a.bio_en || '') : '';
+  if(!bioPrimary) bioPrimary = a.bio_en || '';
+  if(bioPrimary){
+    var bw = document.getElementById('bio-wrap');
+    bw.style.display = 'block';
+    document.getElementById('bio-text').textContent = bioPrimary;
+    if(bioSecondary){
+      var secDiv = document.createElement('div');
+      secDiv.className = 'agent-bio-secondary';
+      var secLabel = document.createElement('span');
+      secLabel.className = 'agent-bio-lang-label';
+      secLabel.textContent = 'English';
+      var secText = document.createElement('p');
+      secText.className = 'agent-bio-secondary-text';
+      secText.textContent = bioSecondary;
+      secDiv.appendChild(secLabel);
+      secDiv.appendChild(secText);
+      bw.appendChild(secDiv);
+    }
   }
   if(a.languages&&a.languages.length){
     var lEl=document.getElementById('agent-langs');
@@ -320,6 +372,10 @@ function render(a,listings){
     var tx=document.createElement('span');tx.className='p-tx';
     tx.textContent=p.transaction_type==='for_sale'?'ຂາຍ':'ເຊົ່າ';imgDiv.appendChild(tx);
     if(p.is_featured){var dot=document.createElement('span');dot.className='p-featured-dot';imgDiv.appendChild(dot);}
+    var st=document.createElement('span');
+    var stMap={sold:['p-status-sold','ຂາຍແລ້ວ'],rented:['p-status-rented','ເຊົ່າແລ້ວ'],under_offer:['p-status-offer','ກຳລັງດຳເນີນ']};
+    var stInfo=stMap[p.status]||['p-status-available','ວ່າງ'];
+    st.className='p-status '+stInfo[0];st.textContent=stInfo[1];imgDiv.appendChild(st);
     var body=document.createElement('div');body.className='p-body';
     if(p.price_display){var pe=document.createElement('p');pe.className='p-price';pe.textContent=p.price_display;body.appendChild(pe);}
     if(p.district_lo||p.district_en){var de=document.createElement('p');de.className='p-loc';de.textContent=p.district_lo||p.district_en;body.appendChild(de);}

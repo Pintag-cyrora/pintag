@@ -355,6 +355,49 @@ nav{
   .panel{padding-bottom:32px;}
   .card-grid{grid-template-columns:1fr 1fr;gap:10px;}
 }
+
+/* ─── CARD AGENT ROW ─────────────────────────────────────── */
+.card-agent-row{
+  display:flex;align-items:center;gap:5px;
+  padding-top:7px;margin-top:7px;
+  border-top:1px solid rgba(255,255,255,0.10);
+  font-size:9.5px;color:rgba(255,255,255,0.42);
+  letter-spacing:0.02em;overflow:hidden;
+}
+.card-agent-pfp{
+  width:15px;height:15px;border-radius:50%;
+  overflow:hidden;background:rgba(255,255,255,0.15);
+  flex-shrink:0;
+}
+.card-agent-pfp img{width:100%;height:100%;object-fit:cover;object-position:top;}
+.card-agent-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ─── FOOTER ─────────────────────────────────────────────── */
+.site-footer{
+  padding:18px 40px;
+  border-top:1px solid rgba(26,32,36,0.07);
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:12px;
+  background:#F7F3EC;
+}
+.footer-brand{
+  display:flex;align-items:center;gap:8px;
+  font-size:13px;font-weight:500;color:#1A2024;
+  text-decoration:none;
+}
+.footer-right{
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+}
+.footer-link{
+  font-size:11.5px;color:#8C9598;text-decoration:none;
+  letter-spacing:0.02em;transition:color 0.2s;
+}
+.footer-link:hover{color:#2D8C8C;}
+.footer-sep{color:rgba(26,32,36,0.15);font-size:11px;}
+@media(max-width:700px){
+  .site-footer{padding:14px 16px;}
+  .footer-right{gap:12px;}
+}
 </style>
 </head>
 <body>
@@ -481,6 +524,25 @@ nav{
   </div>
 </section>
 
+<footer class="site-footer">
+  <a href="index.html" class="footer-brand">
+    <svg width="20" height="17" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision">
+      <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
+      <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
+    </svg>
+    Pintag
+  </a>
+  <div class="footer-right">
+    <span class="footer-link">ວຽງຈັນ, ລາວ</span>
+    <span class="footer-sep">·</span>
+    <a href="listings.html" class="footer-link">Listings</a>
+    <span class="footer-sep">·</span>
+    <a href="for-agents.html" class="footer-link">For Agents</a>
+    <span class="footer-sep">·</span>
+    <a href="https://wa.me/85620542966655" class="footer-link" target="_blank" rel="noopener">WhatsApp</a>
+  </div>
+</footer>
+
 <script>
 const SB_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
@@ -542,6 +604,14 @@ function renderCards(props, lang) {
     if (p.bathrooms) specs.push('<span class="card-spec">' + BATH_SVG + ' ' + p.bathrooms + '</span>');
     if (p.sqm) specs.push('<span class="card-spec">' + SQM_SVG + ' ' + p.sqm + '</span>');
     const priceUnit = (!isSale && p.price_display) ? '<span class="card-price-unit">' + perMo[lang] + '</span>' : '';
+    const agentName = p.agent_name || '';
+    const agentPhoto = p.agent_photo || '';
+    const agentHtml = agentName
+      ? '<div class="card-agent-row">' +
+          (agentPhoto ? '<div class="card-agent-pfp"><img src="' + agentPhoto + '" alt="" loading="lazy"></div>' : '') +
+          '<span class="card-agent-name">' + agentName + '</span>' +
+        '</div>'
+      : '';
     return '<a href="listing.html?slug=' + encodeURIComponent(p.slug) + '" class="prop-card">' +
       '<div class="card-img">' +
         imgHtml +
@@ -554,6 +624,7 @@ function renderCards(props, lang) {
         '</div>' +
         '<div class="card-loc">' + PIN_SVG + (district ? district + ', ' : '') + cityL[lang] + '</div>' +
         (specs.length ? '<div class="card-specs">' + specs.join('') + '</div>' : '') +
+        agentHtml +
       '</div>' +
     '</a>';
   }).join('');
