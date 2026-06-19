@@ -350,6 +350,52 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 @media(min-width:1101px) and (max-width:1280px){
   .similar-grid{grid-template-columns:repeat(3,1fr);}
 }
+/* ── Marketing Kit Modal ────────────────────────────────────────── */
+.mkt-overlay{position:fixed;inset:0;z-index:1000;background:rgba(26,36,40,0.52);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;}
+.mkt-modal{background:var(--white);border-radius:14px;width:100%;max-width:600px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 28px 90px rgba(0,0,0,0.22);}
+.mkt-header{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 24px 18px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.mkt-modal-title{font-size:14px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;}
+.mkt-modal-sub{font-size:11.5px;color:var(--ink-muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:420px;}
+.mkt-close-btn{background:none;border:none;cursor:pointer;color:var(--ink-muted);padding:2px 0;line-height:1;flex-shrink:0;display:flex;}
+.mkt-close-btn:hover{color:var(--ink);}
+.mkt-body{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;}
+.mkt-state-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 24px;gap:16px;color:var(--ink-muted);font-size:13px;text-align:center;}
+.mkt-spinner{width:28px;height:28px;border:2.5px solid rgba(45,140,140,0.18);border-top-color:var(--teal);border-radius:50%;animation:mkt-spin 0.75s linear infinite;flex-shrink:0;}
+@keyframes mkt-spin{to{transform:rotate(360deg);}}
+.mkt-state-error{padding:36px 24px;text-align:center;}
+.mkt-state-error p{font-size:13px;color:var(--ink-soft);line-height:1.65;margin-bottom:16px;}
+.mkt-retry-btn{padding:8px 20px;background:var(--teal);color:#fff;border:none;border-radius:7px;font-size:12.5px;font-weight:500;cursor:pointer;font-family:"DM Sans",sans-serif;}
+.mkt-retry-btn:hover{background:var(--teal-light);}
+.mkt-content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;}
+.mkt-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 20px;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-shrink:0;scrollbar-width:none;}
+.mkt-tabs::-webkit-scrollbar{display:none;}
+.mkt-tab{padding:10px 14px;font-size:12px;font-weight:500;cursor:pointer;border:none;border-bottom:2px solid transparent;background:none;color:var(--ink-muted);font-family:"DM Sans",sans-serif;transition:color 0.15s,border-color 0.15s;white-space:nowrap;margin-bottom:-1px;}
+.mkt-tab.active{color:var(--teal);border-bottom-color:var(--teal);}
+.mkt-panels{flex:1;overflow-y:auto;padding:20px 24px 0;-webkit-overflow-scrolling:touch;}
+.mkt-text{white-space:pre-wrap;font-size:12.5px;line-height:1.9;color:var(--ink);font-family:"DM Sans",sans-serif;word-break:break-word;margin:0;}
+.mkt-flyer-row{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+.mkt-flyer-row:last-child{border-bottom:none;margin-bottom:0;}
+.mkt-flyer-lbl{font-size:9px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--teal);display:block;margin-bottom:5px;}
+.mkt-flyer-val{font-size:13px;color:var(--ink);line-height:1.65;}
+.mkt-slide{display:flex;flex-direction:column;gap:3px;margin-bottom:10px;padding:13px 15px;background:var(--warm);border-radius:7px;}
+.mkt-slide:last-child{margin-bottom:0;}
+.mkt-slide-num{font-size:9px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-muted);}
+.mkt-slide-lbl{font-size:11px;font-weight:600;color:var(--teal);margin-top:1px;}
+.mkt-slide-content{font-size:13px;color:var(--ink);line-height:1.6;margin-top:5px;}
+.mkt-footer{display:flex;gap:8px;align-items:center;padding:14px 24px;border-top:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;}
+.mkt-btn{padding:7px 16px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;border:none;font-family:"DM Sans",sans-serif;transition:all 0.15s;display:inline-flex;align-items:center;gap:5px;}
+.mkt-btn-copy{background:var(--ink);color:#fff;}
+.mkt-btn-copy:hover{background:var(--ink-soft);}
+.mkt-btn-copy.copied{background:var(--teal);color:#fff;}
+.mkt-btn-regen{background:var(--warm);color:var(--ink-soft);border:1px solid var(--border);}
+.mkt-btn-regen:hover{background:var(--warm-deep);}
+.mkt-btn-dl{background:rgba(45,140,140,0.07);color:var(--teal);border:1px solid rgba(45,140,140,0.2);}
+.mkt-btn-dl:hover{background:rgba(45,140,140,0.13);}
+@media(max-width:960px){
+  .mkt-overlay{padding:0;align-items:flex-end;}
+  .mkt-modal{border-radius:14px 14px 0 0;max-height:92vh;}
+  .mkt-modal-sub{max-width:260px;}
+}
 </style>
 </head>
 <body>
@@ -403,6 +449,55 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 </div>
 
 <div id="mobile-cta-bar" class="mobile-cta-bar"></div>
+
+<!-- ── Marketing Kit Modal ────────────────────────────────────────── -->
+<div id="mkt-overlay" class="mkt-overlay" style="display:none;" role="dialog" aria-modal="true">
+  <div class="mkt-modal">
+    <div class="mkt-header">
+      <div style="min-width:0;">
+        <p class="mkt-modal-title">Generate Marketing Kit</p>
+        <p class="mkt-modal-sub" id="mkt-modal-sub"></p>
+      </div>
+      <button class="mkt-close-btn" onclick="MKT.close()" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="mkt-body">
+      <div id="mkt-state-loading" class="mkt-state-loading">
+        <div class="mkt-spinner"></div>
+        <p id="mkt-loading-msg">Generating marketing assets with AI…</p>
+      </div>
+      <div id="mkt-state-error" class="mkt-state-error" style="display:none;">
+        <p id="mkt-error-msg">Failed to generate content. Please check your connection and try again.</p>
+        <button class="mkt-retry-btn" onclick="MKT.generate(true)">Try again</button>
+      </div>
+      <div id="mkt-content" class="mkt-content" style="display:none;">
+        <div class="mkt-tabs">
+          <button class="mkt-tab active" data-tab="facebook" onclick="MKT.switchTab('facebook',this)">Facebook</button>
+          <button class="mkt-tab" data-tab="tiktok" onclick="MKT.switchTab('tiktok',this)">TikTok</button>
+          <button class="mkt-tab" data-tab="instagram" onclick="MKT.switchTab('instagram',this)">Instagram</button>
+          <button class="mkt-tab" data-tab="flyer" onclick="MKT.switchTab('flyer',this)">Flyer</button>
+          <button class="mkt-tab" data-tab="video" onclick="MKT.switchTab('video',this)">Video Script</button>
+        </div>
+        <div class="mkt-panels">
+          <div id="mkt-panel-facebook"><pre class="mkt-text" id="mkt-text-facebook"></pre></div>
+          <div id="mkt-panel-tiktok"    style="display:none;"><pre class="mkt-text" id="mkt-text-tiktok"></pre></div>
+          <div id="mkt-panel-instagram" style="display:none;"><pre class="mkt-text" id="mkt-text-instagram"></pre></div>
+          <div id="mkt-panel-flyer"     style="display:none;"><div id="mkt-text-flyer"></div></div>
+          <div id="mkt-panel-video"     style="display:none;"><div id="mkt-text-video"></div></div>
+        </div>
+      </div>
+    </div>
+    <div id="mkt-footer" class="mkt-footer" style="display:none;">
+      <button class="mkt-btn mkt-btn-copy" id="mkt-copy-btn" onclick="MKT.copy()">Copy</button>
+      <button class="mkt-btn mkt-btn-regen" onclick="MKT.generate(true)">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Regenerate
+      </button>
+      <button class="mkt-btn mkt-btn-dl" onclick="MKT.downloadCurrent()">Download JSON</button>
+    </div>
+  </div>
+</div>
 
 <div id="lb-overlay" class="lb-overlay" role="dialog" aria-modal="true">
   <button class="lb-close" id="lb-close" aria-label="Close">
@@ -1261,6 +1356,7 @@ function buildMockupLayout(){
     '<div class="left-actions">'+
     '<button class="action-link">'+I.heart+' <span class="lo-i">ບັນທຶກ</span><span class="en-i">Save property</span><span class="zh-i">收藏房源</span></button>'+
     '<button class="action-link" id="share-btn" onclick="handleShare(this)">'+I.share+' <span class="lo-i">ແຊຣ໌</span><span class="en-i">Share</span><span class="zh-i">分享</span></button>'+
+    '<button class="action-link" onclick="MKT.openFromContext()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg> <span class="en-i">Generate Marketing Kit</span><span class="lo-i">ສ້າງຊຸດການຕະຫຼາດ</span><span class="zh-i">生成营销套件</span></button>'+
     '<span class="pintag-verified">'+L.verified[lang]+'</span>'+
     '</div></div>'+
     '<div class="hero-right">'+desktopGalleryMarkup+'</div>'+
@@ -1514,6 +1610,253 @@ function handleImageError(img){
   img.style.opacity='0';
   if(img.parentElement)img.parentElement.style.background='var(--warm-deep)';
 }
+
+// ══════════════════════════════════════════════════════════════════
+// MARKETING KIT
+// ══════════════════════════════════════════════════════════════════
+var MKT={
+  data:null,
+  listing:null,
+  activeTab:'facebook',
+
+  openFromContext:function(){
+    if(!propertyContext){return;}
+    this.open(propertyContext);
+  },
+
+  open:function(listing){
+    this.listing=listing;
+    var sub=document.getElementById('mkt-modal-sub');
+    if(sub)sub.textContent=listing.title_en||listing.title_lo||'';
+    document.getElementById('mkt-overlay').style.display='flex';
+    document.body.style.overflow='hidden';
+    if(this.data&&this.data._id===listing.id){
+      this.showContent();
+    }else{
+      this.loadCached();
+    }
+  },
+
+  close:function(){
+    document.getElementById('mkt-overlay').style.display='none';
+    document.body.style.overflow='';
+  },
+
+  loadCached:async function(){
+    this.showLoading('Checking for saved content…');
+    try{
+      var res=await fetch(BASE_DB+'/rest/v1/marketing_assets?listing_id=eq.'+encodeURIComponent(this.listing.id)+'&limit=1',{
+        headers:{'apikey':SEC_KEY,'Authorization':'Bearer '+SEC_KEY}
+      });
+      var rows=await res.json();
+      if(Array.isArray(rows)&&rows.length&&rows[0].facebook_post){
+        var c=rows[0];
+        this.data={
+          _id:this.listing.id,
+          facebook_post:c.facebook_post,
+          tiktok_caption:c.tiktok_caption,
+          instagram_caption:c.instagram_caption,
+          flyer:c.flyer_json,
+          video_script:c.video_script_json
+        };
+        this.showContent();
+      }else{
+        this.generate(false);
+      }
+    }catch(e){
+      this.generate(false);
+    }
+  },
+
+  generate:async function(force){
+    this.showLoading('Generating marketing assets with AI…');
+    try{
+      var res=await fetch(BASE_DB+'/functions/v1/generate-marketing-kit',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':SEC_KEY,'Authorization':'Bearer '+SEC_KEY},
+        body:JSON.stringify({listing:this.listing})
+      });
+      if(!res.ok){var e=await res.text();throw new Error(res.status+': '+e.slice(0,200));}
+      var result=await res.json();
+      if(result.error)throw new Error(result.error);
+      result._id=this.listing.id;
+      this.data=result;
+      this._saveCache(result);
+      this.showContent();
+    }catch(e){
+      this.showError('Generation failed: '+e.message);
+    }
+  },
+
+  _saveCache:async function(result){
+    try{
+      await fetch(BASE_DB+'/rest/v1/marketing_assets',{
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'apikey':SEC_KEY,
+          'Authorization':'Bearer '+SEC_KEY,
+          'Prefer':'resolution=merge-duplicates,return=minimal'
+        },
+        body:JSON.stringify({
+          listing_id:this.listing.id,
+          facebook_post:result.facebook_post||null,
+          tiktok_caption:result.tiktok_caption||null,
+          instagram_caption:result.instagram_caption||null,
+          flyer_json:result.flyer||null,
+          video_script_json:result.video_script||null,
+          updated_at:new Date().toISOString()
+        })
+      });
+    }catch(e){
+      PT.warn('[MKT] cache save failed',e.message);
+    }
+  },
+
+  showLoading:function(msg){
+    document.getElementById('mkt-state-loading').style.display='flex';
+    document.getElementById('mkt-state-error').style.display='none';
+    document.getElementById('mkt-content').style.display='none';
+    document.getElementById('mkt-footer').style.display='none';
+    var m=document.getElementById('mkt-loading-msg');
+    if(m&&msg)m.textContent=msg;
+  },
+
+  showError:function(msg){
+    document.getElementById('mkt-state-loading').style.display='none';
+    document.getElementById('mkt-state-error').style.display='block';
+    document.getElementById('mkt-content').style.display='none';
+    document.getElementById('mkt-footer').style.display='none';
+    var m=document.getElementById('mkt-error-msg');
+    if(m)m.textContent=msg;
+  },
+
+  showContent:function(){
+    if(!this.data)return;
+    var fbEl=document.getElementById('mkt-text-facebook');
+    if(fbEl)fbEl.textContent=this.data.facebook_post||'';
+    var ttEl=document.getElementById('mkt-text-tiktok');
+    if(ttEl)ttEl.textContent=this.data.tiktok_caption||'';
+    var igEl=document.getElementById('mkt-text-instagram');
+    if(igEl)igEl.textContent=this.data.instagram_caption||'';
+    var flyerEl=document.getElementById('mkt-text-flyer');
+    if(flyerEl)flyerEl.innerHTML=this._renderFlyer(this.data.flyer||{});
+    var videoEl=document.getElementById('mkt-text-video');
+    if(videoEl)videoEl.innerHTML=this._renderVideoScript(this.data.video_script||{});
+    document.getElementById('mkt-state-loading').style.display='none';
+    document.getElementById('mkt-state-error').style.display='none';
+    document.getElementById('mkt-content').style.display='flex';
+    document.getElementById('mkt-footer').style.display='flex';
+    this._activateTab(this.activeTab);
+  },
+
+  _renderFlyer:function(f){
+    var rows=[
+      {label:'Headline',value:f.headline},
+      {label:'Subheadline',value:f.subheadline},
+      {label:'Property Highlight',value:f.property_highlight},
+      {label:'Specifications',value:f.property_specifications},
+      {label:'Neighborhood Insight',value:f.neighborhood_insight},
+      {label:'Call to Action',value:f.call_to_action}
+    ];
+    return rows.map(function(r){
+      return '<div class="mkt-flyer-row"><span class="mkt-flyer-lbl">'+esc(r.label)+'</span><p class="mkt-flyer-val">'+esc(r.value||'—')+'</p></div>';
+    }).join('');
+  },
+
+  _renderVideoScript:function(vs){
+    var keys=['slide_1','slide_2','slide_3','slide_4','slide_5','slide_6'];
+    return keys.map(function(k,i){
+      var s=vs[k]||{};
+      return '<div class="mkt-slide">'+
+        '<span class="mkt-slide-num">Slide '+(i+1)+'</span>'+
+        '<span class="mkt-slide-lbl">'+esc(s.label||'')+'</span>'+
+        '<p class="mkt-slide-content">'+esc(s.content||'')+'</p>'+
+        '</div>';
+    }).join('');
+  },
+
+  switchTab:function(tab,btn){
+    this.activeTab=tab;
+    document.querySelectorAll('.mkt-tab').forEach(function(t){t.classList.remove('active');});
+    if(btn){btn.classList.add('active');}
+    else{
+      var found=document.querySelector('.mkt-tab[data-tab="'+tab+'"]');
+      if(found)found.classList.add('active');
+    }
+    this._activateTab(tab);
+  },
+
+  _activateTab:function(tab){
+    var panels=['facebook','tiktok','instagram','flyer','video'];
+    panels.forEach(function(p){
+      var el=document.getElementById('mkt-panel-'+p);
+      if(el)el.style.display=p===tab?'block':'none';
+    });
+    var copyBtn=document.getElementById('mkt-copy-btn');
+    if(copyBtn){copyBtn.textContent='Copy';copyBtn.className='mkt-btn mkt-btn-copy';}
+  },
+
+  copy:function(){
+    var tab=this.activeTab;
+    var text='';
+    if(tab==='facebook')text=this.data?this.data.facebook_post||'':'';
+    else if(tab==='tiktok')text=this.data?this.data.tiktok_caption||'':'';
+    else if(tab==='instagram')text=this.data?this.data.instagram_caption||'':'';
+    else if(tab==='flyer')text=JSON.stringify(this.data?this.data.flyer||{}:{},null,2);
+    else if(tab==='video')text=JSON.stringify(this.data?this.data.video_script||{}:{},null,2);
+    if(!text)return;
+    var btn=document.getElementById('mkt-copy-btn');
+    var doFeedback=function(){
+      if(!btn)return;
+      btn.textContent='Copied!';
+      btn.className='mkt-btn mkt-btn-copy copied';
+      setTimeout(function(){btn.textContent='Copy';btn.className='mkt-btn mkt-btn-copy';},2000);
+    };
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(text).then(doFeedback).catch(function(){
+        MKT._fallbackCopy(text);doFeedback();
+      });
+    }else{
+      this._fallbackCopy(text);doFeedback();
+    }
+  },
+
+  _fallbackCopy:function(text){
+    var ta=document.createElement('textarea');
+    ta.value=text;ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0;';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');}catch(e){}
+    document.body.removeChild(ta);
+  },
+
+  downloadCurrent:function(){
+    var tab=this.activeTab;
+    var obj={};
+    if(tab==='facebook')obj={facebook_post:this.data?this.data.facebook_post:''};
+    else if(tab==='tiktok')obj={tiktok_caption:this.data?this.data.tiktok_caption:''};
+    else if(tab==='instagram')obj={instagram_caption:this.data?this.data.instagram_caption:''};
+    else if(tab==='flyer')obj={flyer:this.data?this.data.flyer:{}};
+    else if(tab==='video')obj={video_script:this.data?this.data.video_script:{}};
+    var json=JSON.stringify(obj,null,2);
+    var blob=new Blob([json],{type:'application/json'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='pintag-marketing-'+tab+'-'+(this.listing?this.listing.slug||this.listing.id:'kit')+'.json';
+    document.body.appendChild(a);a.click();
+    document.body.removeChild(a);URL.revokeObjectURL(url);
+  }
+};
+
+// Close marketing kit modal on overlay click
+(function(){
+  var overlay=document.getElementById('mkt-overlay');
+  if(overlay)overlay.addEventListener('click',function(e){if(e.target===overlay)MKT.close();});
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'&&overlay&&overlay.style.display!=='none')MKT.close();
+  });
+})();
 </script>
 </body>
 </html>
