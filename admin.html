@@ -159,6 +159,20 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
   .ai-gen-card{padding:16px 14px;}
   .btn-ai-gen{font-size:13px;padding:12px 16px;}
 }
+/* Smart Import nav button */
+.btn-import{background:rgba(45,140,140,0.12);color:var(--teal-light);border:1px solid var(--teal-border);}
+.btn-import:hover{background:rgba(45,140,140,0.22);}
+/* Draft status badge */
+.status-draft{background:rgba(122,144,152,0.13);color:var(--ink-muted);}
+/* Import progress steps */
+.import-step{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-muted);}
+.import-step.active{color:var(--teal);font-weight:500;}
+.import-step.done{color:var(--green);}
+.import-step.error{color:var(--red);}
+.import-step-dot{width:10px;height:10px;border-radius:50%;background:var(--border);flex-shrink:0;}
+.import-step.active .import-step-dot{background:var(--teal);}
+.import-step.done .import-step-dot{background:var(--green);}
+.import-step.error .import-step-dot{background:var(--red);}
 </style>
 </head>
 <body>
@@ -178,6 +192,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
     <p class="admin-nav-logo">Pintag <span>Admin</span></p>
     <div class="admin-nav-right">
       <button class="admin-nav-btn btn-new" onclick="showForm(null)">+ New Listing</button>
+      <button class="admin-nav-btn btn-import" onclick="showImportPanel()">&#8659; Smart Import</button>
       <button class="admin-nav-btn btn-logout" onclick="logout()">Sign Out</button>
     </div>
   </nav>
@@ -242,6 +257,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
                 <option value="under_offer">Under Offer</option>
                 <option value="sold">Sold</option>
                 <option value="rented">Rented</option>
+                <option value="draft">Draft</option>
               </select>
             </div>
             <div class="form-group">
@@ -531,11 +547,62 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 
         <div class="form-submit">
           <button type="submit" class="btn-submit" id="submit-btn">Save Listing</button>
+          <button type="button" class="btn-submit" id="publish-btn" onclick="publishDraft()" style="display:none;background:var(--green);">Publish Listing</button>
           <button type="button" class="btn-cancel" onclick="showListings()">Cancel</button>
         </div>
         <div class="form-message" id="form-message"></div>
       </form>
     </div>
+
+    <!-- SMART IMPORT PANEL -->
+    <div id="import-panel" style="display:none;">
+      <div class="form-header">
+        <a class="form-back" onclick="showListings()">&#8592; Back</a>
+        <h2>Smart Import</h2>
+      </div>
+
+      <div class="form-section">
+        <p class="form-section-title">&#9312; Paste Property Description</p>
+        <div class="form-group">
+          <label class="form-label">Facebook Post / Description Text</label>
+          <textarea class="form-textarea" id="import-description" rows="8"
+            placeholder="Paste the property description here (Lao, English, or Thai)...&#10;&#10;AI will extract: title, price, bedrooms, bathrooms, size, location, and generate full multilingual descriptions."></textarea>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <p class="form-section-title">&#9313; Upload Property Photos</p>
+        <div class="form-group">
+          <div class="upload-zone" id="import-upload-zone" onclick="document.getElementById('import-file-input').click()">
+            <input type="file" id="import-file-input" multiple accept="image/*" style="display:none;" onchange="handleImportImageUpload(this.files)">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p style="font-size:13px;font-weight:500;color:var(--ink);margin-top:8px;">Click or drag to upload photos</p>
+            <p style="font-size:11px;color:var(--ink-muted);margin-top:3px;">Up to 15 photos &middot; JPG, PNG, WebP &middot; Max 20 MB each</p>
+          </div>
+          <div id="import-upload-progress" style="display:none;margin-top:8px;">
+            <div class="upload-progress-bar"><div class="upload-progress-fill" id="import-progress-fill"></div></div>
+            <p class="upload-status" id="import-upload-status">Uploading...</p>
+          </div>
+          <div id="import-image-grid" class="image-preview-grid"></div>
+        </div>
+      </div>
+
+      <div class="ai-gen-card">
+        <button type="button" class="btn-ai-gen" id="import-gen-btn" onclick="runSmartImport()">
+          &#9889; Generate Listing
+        </button>
+        <p class="ai-gen-hint">AI will extract property details, translate to 3 languages, analyze photos, and save a draft — ready for your review.</p>
+      </div>
+
+      <div id="import-progress-steps" style="display:none;margin-bottom:24px;">
+        <div class="form-section" style="padding:20px 24px;">
+          <div id="import-step-list" style="display:flex;flex-direction:column;gap:12px;"></div>
+        </div>
+      </div>
+
+      <div class="form-message" id="import-message"></div>
+    </div>
+
   </div>
 </div>
 
@@ -896,15 +963,18 @@ async function loadListings() {
 // ── FORM SHOW/HIDE ────────────────────────────────────────────────
 function showListings() {
   document.getElementById('listings-panel').style.display = 'block';
-  document.getElementById('form-panel').style.display = 'none';
+  document.getElementById('form-panel').style.display    = 'none';
+  document.getElementById('import-panel').style.display  = 'none';
   loadListings();
 }
 function showForm(id) {
   document.getElementById('listings-panel').style.display = 'none';
+  document.getElementById('import-panel').style.display  = 'none';
   document.getElementById('form-panel').style.display = 'block';
   document.getElementById('form-title').textContent = id ? 'Edit Listing' : 'New Listing';
   document.getElementById('edit-id').value = id || '';
   document.getElementById('form-message').style.display = 'none';
+  document.getElementById('publish-btn').style.display = 'none';
   if (!id) {
     document.getElementById('listing-form').reset();
     document.getElementById('nearby-list').innerHTML = '';
@@ -935,6 +1005,7 @@ async function editListing(id) {
   document.getElementById('f-style').value       = p.property_style || '';
   document.getElementById('f-transaction').value = p.transaction_type || '';
   document.getElementById('f-status').value      = p.status || 'active';
+  document.getElementById('publish-btn').style.display = (p.status === 'draft') ? 'inline-block' : 'none';
   document.getElementById('f-price').value       = p.price_display || '';
   document.getElementById('f-land-title').value  = p.land_title_type || '';
   document.getElementById('f-featured').value    = String(p.is_featured || false);
@@ -1131,6 +1202,12 @@ if (zone) {
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleImageUpload(e.dataTransfer.files); });
+}
+const importZone = document.getElementById('import-upload-zone');
+if (importZone) {
+  importZone.addEventListener('dragover', e => { e.preventDefault(); importZone.classList.add('drag-over'); });
+  importZone.addEventListener('dragleave', () => importZone.classList.remove('drag-over'));
+  importZone.addEventListener('drop', e => { e.preventDefault(); importZone.classList.remove('drag-over'); handleImportImageUpload(e.dataTransfer.files); });
 }
 async function handleImageUpload(files) {
   if (!files || files.length === 0) return;
@@ -1357,6 +1434,390 @@ async function generateAIContent() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = originalHtml;
+  }
+}
+
+// ── SMART IMPORT ─────────────────────────────────────────────────
+
+function showImportPanel() {
+  document.getElementById('listings-panel').style.display = 'none';
+  document.getElementById('form-panel').style.display    = 'none';
+  document.getElementById('import-panel').style.display  = 'block';
+  importImages = [];
+  refreshImportImageGrid();
+  document.getElementById('import-description').value = '';
+  document.getElementById('import-message').style.display = 'none';
+  document.getElementById('import-progress-steps').style.display = 'none';
+  document.getElementById('import-gen-btn').disabled = false;
+  document.getElementById('import-gen-btn').innerHTML = '&#9889; Generate Listing';
+}
+
+let importImages = [];
+
+async function handleImportImageUpload(files) {
+  if (!files || files.length === 0) return;
+  if (!_adminToken) {
+    document.getElementById('import-upload-status').style.color = '#C0392B';
+    document.getElementById('import-upload-status').textContent = 'Not signed in — please refresh and log in again.';
+    return;
+  }
+  const remaining = 15 - importImages.length;
+  if (remaining <= 0) {
+    document.getElementById('import-upload-status').style.color = '#C0392B';
+    document.getElementById('import-upload-status').textContent = 'Maximum 15 photos reached.';
+    return;
+  }
+  const progress = document.getElementById('import-upload-progress');
+  const fill     = document.getElementById('import-progress-fill');
+  const status   = document.getElementById('import-upload-status');
+  progress.style.display = 'block';
+  status.style.color = '';
+
+  const fileArr = Array.from(files).slice(0, remaining);
+  let completed = 0;
+
+  for (const file of fileArr) {
+    if (file.size > 20 * 1024 * 1024) {
+      status.style.color = '#C0392B';
+      status.textContent = `${file.name} too large (max 20 MB)`;
+      continue;
+    }
+    const ext         = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const fileName    = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const contentType = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+    status.style.color = '';
+    status.textContent = `Uploading ${file.name}…`;
+
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/storage/v1/object/property-images/${fileName}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey':        SUPABASE_ANON,
+            'Authorization': 'Bearer ' + _adminToken,
+            'Content-Type':  contentType
+          },
+          body: file
+        }
+      );
+
+      if (res.ok) {
+        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
+        importImages.push(publicUrl);
+        completed++;
+        fill.style.width = `${(completed / fileArr.length) * 100}%`;
+        status.style.color = '#166534';
+        status.textContent = `Uploaded ${completed} of ${fileArr.length}`;
+        refreshImportImageGrid();
+      } else {
+        let errBody = '';
+        try { errBody = await res.text(); } catch(_) {}
+        let parsed = null;
+        try { parsed = JSON.parse(errBody); } catch(_) {}
+        const errMsg = parsed ? (parsed.message || parsed.error || errBody) : errBody;
+        status.style.color = '#C0392B';
+        status.textContent = `Upload error ${res.status}: ${errMsg || 'unknown error'}`;
+      }
+    } catch (err) {
+      status.style.color = '#C0392B';
+      status.textContent = `Network error: ${err.message}`;
+    }
+  }
+
+  if (completed > 0 && completed === fileArr.length) {
+    setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; status.style.color = ''; }, 2500);
+  }
+}
+
+function refreshImportImageGrid() {
+  const grid = document.getElementById('import-image-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  importImages.forEach((url, i) => {
+    const safeUrl = url.replace(/'/g, '%27');
+    const div = document.createElement('div');
+    div.className = 'image-preview-item';
+    div.innerHTML = `
+      <img src="${url}" alt="Photo ${i+1}">
+      <button class="img-remove" onclick="removeImportImage('${safeUrl}')" type="button">&#215;</button>
+      <span class="img-order">${i+1}</span>`;
+    grid.appendChild(div);
+  });
+}
+
+function removeImportImage(url) {
+  importImages = importImages.filter(u => u !== url);
+  refreshImportImageGrid();
+}
+
+const IMPORT_STEPS = [
+  { id: 'step-upload',   label: 'Photos uploaded to storage' },
+  { id: 'step-analyze',  label: 'Analyzing description and photos with AI' },
+  { id: 'step-populate', label: 'Populating listing form' },
+  { id: 'step-save',     label: 'Saving as draft' }
+];
+
+function showImportSteps() {
+  const stepsEl  = document.getElementById('import-progress-steps');
+  const stepList = document.getElementById('import-step-list');
+  stepsEl.style.display = 'block';
+  stepList.innerHTML = IMPORT_STEPS.map(s =>
+    `<div class="import-step" id="${s.id}">
+       <div class="import-step-dot"></div>
+       <span>${s.label}</span>
+     </div>`
+  ).join('');
+}
+
+function setImportStep(stepId, state) {
+  const el = document.getElementById(stepId);
+  if (!el) return;
+  el.className = 'import-step ' + state;
+  const labelEl = el.querySelector('span');
+  const step = IMPORT_STEPS.find(s => s.id === stepId);
+  if (!step || !labelEl) return;
+  labelEl.textContent = state === 'done'  ? step.label + ' ✓'
+                      : state === 'error' ? step.label + ' ✗'
+                      : step.label;
+}
+
+async function runSmartImport() {
+  const description = document.getElementById('import-description').value.trim();
+  if (!description && importImages.length === 0) {
+    const msg = document.getElementById('import-message');
+    msg.className = 'form-message error';
+    msg.textContent = 'Please paste a property description or upload at least one photo.';
+    msg.style.display = 'block';
+    return;
+  }
+
+  const btn   = document.getElementById('import-gen-btn');
+  const msgEl = document.getElementById('import-message');
+  btn.disabled = true;
+  btn.innerHTML = '&#8987; Processing...';
+  msgEl.style.display = 'none';
+  showImportSteps();
+
+  try {
+    // Step 1: images already in importImages[] — mark done
+    setImportStep('step-upload', 'done');
+
+    // Step 2: call AI edge function
+    setImportStep('step-analyze', 'active');
+    const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'apikey':        SUPABASE_ANON,
+        'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
+      },
+      body: JSON.stringify({ description, image_urls: importImages })
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(res.status + ': ' + err.slice(0, 200));
+    }
+    const aiResult = await res.json();
+    if (aiResult.error) throw new Error(aiResult.error);
+    setImportStep('step-analyze', 'done');
+
+    // Step 3: populate form fields
+    setImportStep('step-populate', 'active');
+    populateFormFromImport(aiResult);
+    setImportStep('step-populate', 'done');
+
+    // Step 4: auto-save as draft
+    setImportStep('step-save', 'active');
+    const draftId = await saveDraft();
+    setImportStep('step-save', 'done');
+
+    // Transition to edit form for the saved draft
+    await editListing(draftId);
+
+  } catch (err) {
+    console.error('[Smart Import]', err);
+    IMPORT_STEPS.forEach(s => {
+      const el = document.getElementById(s.id);
+      if (el && el.classList.contains('active')) setImportStep(s.id, 'error');
+    });
+    msgEl.className = 'form-message error';
+    msgEl.textContent = '✗ Import failed: ' + err.message;
+    msgEl.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '&#9889; Generate Listing';
+  }
+}
+
+function populateFormFromImport(data) {
+  // Populate form fields (form-panel may be hidden — values are set directly)
+  document.getElementById('f-type').value        = data.property_type || '';
+  document.getElementById('f-style').value       = data.property_style || '';
+  document.getElementById('f-transaction').value = data.transaction_type || 'for_sale';
+  document.getElementById('f-status').value      = 'draft';
+  document.getElementById('f-price').value       = data.price_display || '';
+  document.getElementById('f-land-title').value  = '';
+  document.getElementById('f-featured').value    = 'false';
+
+  document.getElementById('f-title-en').value    = data.title || '';
+  document.getElementById('f-title-lo').value    = '';
+  document.getElementById('f-title-zh').value    = '';
+
+  ['en','lo','zh'].forEach(lang => {
+    const el = document.getElementById('f-highlight-' + lang);
+    if (el) {
+      el.value = data['property_highlight_' + lang] || '';
+      updateCharCount(el, 'highlight-count-' + lang, 160);
+    }
+  });
+
+  document.getElementById('f-desc-en').value     = data.description_en || '';
+  document.getElementById('f-desc-lo').value     = data.description_lo || '';
+  document.getElementById('f-desc-zh').value     = data.description_zh || '';
+
+  document.getElementById('f-bedrooms').value    = data.bedrooms != null ? data.bedrooms : '';
+  document.getElementById('f-bathrooms').value   = data.bathrooms != null ? data.bathrooms : '';
+  document.getElementById('f-sqm').value         = data.sqm != null ? data.sqm : '';
+  document.getElementById('f-sqm-land').value    = data.sqm_land != null ? data.sqm_land : '';
+  document.getElementById('f-floors').value      = '';
+  document.getElementById('f-year-built').value  = '';
+  document.getElementById('f-parking-spaces').value = '';
+  document.getElementById('f-furnished').value   = data.furnished || '';
+
+  if (data.district) document.getElementById('f-district').value = data.district;
+  else document.getElementById('f-district').value = '';
+  document.getElementById('f-village').value     = data.village || '';
+  document.getElementById('f-map').value         = '';
+
+  ['en','lo','zh'].forEach(lang => {
+    const el = document.getElementById('f-neighborhood-' + lang);
+    if (el) {
+      el.value = data['neighborhood_insight_' + lang] || '';
+      updateCharCount(el, 'neighborhood-count-' + lang, 220);
+    }
+  });
+
+  // Reset collections
+  setChecked('features-grid', [], FEATURES);
+  setChecked('amenities-grid', [], AMENITIES);
+  setHighlights([]);
+  customTags = [];
+  renderCustomTags();
+  document.getElementById('nearby-list').innerHTML = '';
+  addNearby();
+
+  // Apply AI-recommended photo order
+  const order = Array.isArray(data.recommended_order) ? data.recommended_order : [];
+  if (order.length > 0 && importImages.length > 0) {
+    const mentioned = new Set(order);
+    const reordered = [
+      ...order.map(i => importImages[i]).filter(Boolean),
+      ...importImages.filter((_, i) => !mentioned.has(i))
+    ];
+    uploadedImages = reordered;
+  } else {
+    uploadedImages = [...importImages];
+  }
+  refreshImageGrid();
+
+  // Clear video/download fields
+  document.getElementById('f-video').value           = '';
+  document.getElementById('f-facebook-video').value  = '';
+  document.getElementById('f-download-url').value    = '';
+
+  // Clear agent fields
+  ['f-agent','f-agent-lo','f-agent-title','f-agent-photo','f-whatsapp','f-phone',
+   'f-rating','f-listing-count','f-response-time'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+}
+
+async function saveDraft() {
+  const districtEn  = document.getElementById('f-district').value;
+  const districtMap = DISTRICT_MAP[districtEn] || {};
+  const village     = document.getElementById('f-village').value.trim();
+  const titleEn     = document.getElementById('f-title-en').value.trim() || 'Draft Listing';
+  const slugBase    = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-')
+                       .replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
+  const slug        = slugBase + '-' + Date.now().toString().slice(-6);
+
+  const body = {
+    property_type:          document.getElementById('f-type').value || null,
+    property_style:         document.getElementById('f-style').value || null,
+    transaction_type:       document.getElementById('f-transaction').value || null,
+    status:                 'draft',
+    price_display:          document.getElementById('f-price').value.trim() || null,
+    title_en:               titleEn,
+    title_lo:               document.getElementById('f-title-lo').value.trim() || null,
+    title_zh:               document.getElementById('f-title-zh').value.trim() || null,
+    property_highlight_en:  document.getElementById('f-highlight-en').value.trim() || null,
+    property_highlight_lo:  document.getElementById('f-highlight-lo').value.trim() || null,
+    property_highlight_zh:  document.getElementById('f-highlight-zh').value.trim() || null,
+    property_highlight:     document.getElementById('f-highlight-en').value.trim() || null,
+    description_en:         document.getElementById('f-desc-en').value.trim() || null,
+    description_lo:         document.getElementById('f-desc-lo').value.trim() || null,
+    description_zh:         document.getElementById('f-desc-zh').value.trim() || null,
+    bedrooms:               parseInt(document.getElementById('f-bedrooms').value) || null,
+    bathrooms:              parseInt(document.getElementById('f-bathrooms').value) || null,
+    sqm:                    parseInt(document.getElementById('f-sqm').value) || null,
+    sqm_land:               parseInt(document.getElementById('f-sqm-land').value) || null,
+    furnished:              document.getElementById('f-furnished').value || null,
+    district_en:            districtEn || null,
+    district_lo:            districtMap.lo || null,
+    district_zh:            districtMap.zh || null,
+    village_en:             village || null,
+    neighborhood_insight_en: document.getElementById('f-neighborhood-en').value.trim() || null,
+    neighborhood_insight_lo: document.getElementById('f-neighborhood-lo').value.trim() || null,
+    neighborhood_insight_zh: document.getElementById('f-neighborhood-zh').value.trim() || null,
+    neighborhood_description: document.getElementById('f-neighborhood-en').value.trim() || null,
+    images:                 uploadedImages.length ? uploadedImages : null,
+    slug
+  };
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/properties`, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'apikey':        SUPABASE_ANON,
+      'Authorization': 'Bearer ' + _adminToken,
+      'Prefer':        'return=representation'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('Draft save failed ' + res.status + ': ' + errText.slice(0, 200));
+  }
+  const result = await res.json();
+  const saved = Array.isArray(result) ? result[0] : result;
+  if (!saved || !saved.id) throw new Error('Draft saved but no record ID returned');
+  return saved.id;
+}
+
+async function publishDraft() {
+  const editId = document.getElementById('edit-id').value;
+  if (!editId) return;
+  if (!confirm('Publish this listing? It will become live on the site immediately.')) return;
+  const btn = document.getElementById('publish-btn');
+  btn.disabled = true;
+  btn.textContent = 'Publishing...';
+  try {
+    await sbApi('PATCH', `properties?id=eq.${editId}`, { status: 'active' });
+    document.getElementById('f-status').value = 'active';
+    document.getElementById('publish-btn').style.display = 'none';
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message success';
+    msg.textContent = '✓ Listing published and now live on the site.';
+    msg.style.display = 'block';
+    setTimeout(() => showListings(), 1800);
+  } catch (err) {
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message error';
+    msg.textContent = '✗ Publish failed: ' + err.message;
+    msg.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Publish Listing';
   }
 }
 
