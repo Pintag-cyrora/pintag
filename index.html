@@ -562,7 +562,7 @@ function getCurrentLang() {
 
 async function loadFeatured() {
   try {
-    const res = await fetch(SB_URL + '/rest/v1/properties?order=is_featured.desc,created_at.desc&limit=4&select=*', {
+    const res = await fetch(SB_URL + '/rest/v1/properties?status=eq.active&order=is_featured.desc,created_at.desc&limit=4&select=*', {
       headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
     });
     const data = await res.json();
