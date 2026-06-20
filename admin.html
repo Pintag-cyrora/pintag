@@ -939,12 +939,18 @@ async function sbApi(method, path, body) {
 
 // ── AGENTS ────────────────────────────────────────────────────────
 async function loadAgentsForDropdown() {
+  const sel = document.getElementById('f-agent-id');
+  if (sel) sel.innerHTML = '<option value="">Loading agents…</option>';
   try {
     const data = await sbApi('GET', 'agents?select=id,name_en,name_lo,slug,photo_url,whatsapp,agency_name,bio_en&order=name_en.asc');
     _agentsAll = Array.isArray(data) ? data : [];
     buildAgentOptions('');
+    if (_agentsAll.length === 0 && sel) {
+      sel.innerHTML = '<option value="">— No agents found in table —</option>';
+    }
   } catch (e) {
     console.error('Failed to load agents:', e);
+    if (sel) sel.innerHTML = `<option value="">Error: ${e.message.slice(0,60)}</option>`;
   }
 }
 
@@ -1053,6 +1059,8 @@ function showForm(id) {
   document.getElementById('agent-preview').style.display = 'none';
   document.getElementById('agent-legacy-note').style.display = 'none';
   buildAgentOptions('');
+  // Reload agents every time form opens (handles timing + RLS token readiness)
+  loadAgentsForDropdown();
   loadVillageSuggestions();
 }
 
