@@ -173,6 +173,17 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .import-step.active .import-step-dot{background:var(--teal);}
 .import-step.done .import-step-dot{background:var(--green);}
 .import-step.error .import-step-dot{background:var(--red);}
+/* Agent dropdown */
+.agent-select-row{display:flex;gap:8px;align-items:flex-start;}
+.agent-select-wrap{flex:1;display:flex;flex-direction:column;gap:6px;}
+.agent-select-wrap .form-input{margin:0;}
+.btn-new-agent{flex-shrink:0;padding:10px 14px;font-size:12px;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;}
+.agent-preview-card{display:flex;align-items:center;gap:12px;padding:12px 14px;background:rgba(45,140,140,0.05);border:1px solid rgba(45,140,140,0.18);border-radius:6px;margin-top:10px;}
+.agent-preview-photo{width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(45,140,140,0.2);flex-shrink:0;}
+.agent-preview-name{font-size:14px;font-weight:600;color:var(--ink);}
+.agent-preview-agency{font-size:12px;color:var(--ink-muted);margin-top:2px;}
+.agent-preview-contact{font-size:12px;color:var(--ink-muted);margin-top:2px;}
+.agent-legacy-note{margin-top:10px;padding:8px 12px;background:rgba(184,134,11,0.07);border:1px solid rgba(184,134,11,0.2);border-radius:5px;font-size:12px;color:#7a6010;}
 </style>
 </head>
 <body>
@@ -504,43 +515,35 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
         <!-- AGENT -->
         <div class="form-section">
           <p class="form-section-title">&#9321; Agent Contact</p>
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Agent Name</label>
-              <input class="form-input" id="f-agent" type="text" placeholder="Soutchai Keovilay">
+          <div class="form-group form-full">
+            <label class="form-label">Agent</label>
+            <div class="agent-select-row">
+              <div class="agent-select-wrap">
+                <input class="form-input" id="f-agent-search" type="text" placeholder="Search agent…" autocomplete="off" oninput="filterAgentDropdown()">
+                <select class="form-input" id="f-agent-id" onchange="onAgentDropdownChange()">
+                  <option value="">— No agent assigned —</option>
+                </select>
+              </div>
+              <a href="agent-setup.html" target="_blank" class="btn-submit btn-new-agent">+ New Agent</a>
             </div>
-            <div class="form-group">
-              <label class="form-label">Agent Name (Lao)</label>
-              <input class="form-input" id="f-agent-lo" type="text" placeholder="ສຸດໄຊ ແກ້ວວິໄລ">
+            <!-- Agent preview card -->
+            <div id="agent-preview" class="agent-preview-card" style="display:none;">
+              <img id="agent-preview-photo" src="" alt="" class="agent-preview-photo" style="display:none;" onerror="this.style.display='none'">
+              <div>
+                <div id="agent-preview-name" class="agent-preview-name"></div>
+                <div id="agent-preview-agency" class="agent-preview-agency"></div>
+                <div id="agent-preview-contact" class="agent-preview-contact"></div>
+              </div>
             </div>
+            <!-- Legacy warning for listings with manual agent data but no agent_id -->
+            <div id="agent-legacy-note" class="agent-legacy-note" style="display:none;">
+              &#9888; This listing has manual agent data. Select an agent above to link it to the agents table, or leave blank to keep the existing data.
+            </div>
+          </div>
+          <div class="form-grid" style="margin-top:12px;">
             <div class="form-group form-full">
-              <label class="form-label">Agent Title <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Professional role shown below name</span></label>
-              <input class="form-input" id="f-agent-title" type="text" placeholder="Luxury Property Consultant">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Agent Photo URL</label>
-              <input class="form-input" id="f-agent-photo" type="text" placeholder="https://...">
-              <p class="form-hint">pintag-cyrora.github.io/pintag/agent-keomany.jpg</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label">WhatsApp</label>
-              <input class="form-input" id="f-whatsapp" type="text" placeholder="+8562055546963">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Phone</label>
-              <input class="form-input" id="f-phone" type="text" placeholder="+856 20...">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Rating</label>
-              <input class="form-input" id="f-rating" type="text" placeholder="4.9">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Active Listings Count</label>
-              <input class="form-input" id="f-listing-count" type="number" placeholder="12">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Response Time</label>
-              <input class="form-input" id="f-response-time" type="text" placeholder="within 1 hour">
+              <label class="form-label">Agent Title <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; Optional override (e.g. "Luxury Property Consultant")</span></label>
+              <input class="form-input" id="f-agent-title" type="text" placeholder="Leave blank to use agent's default title">
             </div>
           </div>
         </div>
@@ -868,6 +871,7 @@ async function loadVillageSuggestions() {
 
 // ── AUTH ──────────────────────────────────────────────────────────
 let _adminToken = null;
+let _agentsAll = [];
 
 sbClient.auth.onAuthStateChange((event, session) => {
   _adminToken = session ? session.access_token : null;
@@ -894,6 +898,7 @@ function showAdminScreen() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('admin-screen').style.display = 'block';
   loadListings();
+  loadAgentsForDropdown();
 }
 sbClient.auth.getSession().then(({ data: { session } }) => {
   if (session) { _adminToken = session.access_token; showAdminScreen(); }
@@ -932,11 +937,63 @@ async function sbApi(method, path, body) {
   }
 }
 
+// ── AGENTS ────────────────────────────────────────────────────────
+async function loadAgentsForDropdown() {
+  try {
+    const data = await sbApi('GET', 'agents?select=id,name_en,name_lo,slug,photo_url,whatsapp,agency_name,bio_en&order=name_en.asc');
+    _agentsAll = Array.isArray(data) ? data : [];
+    buildAgentOptions('');
+  } catch (e) {
+    console.error('Failed to load agents:', e);
+  }
+}
+
+function buildAgentOptions(search) {
+  const sel = document.getElementById('f-agent-id');
+  if (!sel) return;
+  const currentVal = sel.value;
+  const s = (search || '').toLowerCase();
+  const filtered = s
+    ? _agentsAll.filter(a =>
+        (a.name_en    || '').toLowerCase().includes(s) ||
+        (a.agency_name|| '').toLowerCase().includes(s) ||
+        (a.name_lo    || '').toLowerCase().includes(s))
+    : _agentsAll;
+  sel.innerHTML = '<option value="">— No agent assigned —</option>'
+    + filtered.map(a =>
+        `<option value="${a.id}">${a.name_en}${a.agency_name ? ' · ' + a.agency_name : ''}</option>`
+      ).join('');
+  if (currentVal && filtered.some(a => a.id === currentVal)) sel.value = currentVal;
+}
+
+function filterAgentDropdown() {
+  buildAgentOptions(document.getElementById('f-agent-search').value);
+}
+
+function onAgentDropdownChange() {
+  const agentId = document.getElementById('f-agent-id').value;
+  const preview = document.getElementById('agent-preview');
+  if (!agentId) { preview.style.display = 'none'; return; }
+  const agent = _agentsAll.find(a => a.id === agentId);
+  if (!agent) { preview.style.display = 'none'; return; }
+  const photo = document.getElementById('agent-preview-photo');
+  if (agent.photo_url) {
+    photo.src = agent.photo_url;
+    photo.style.display = 'block';
+  } else {
+    photo.style.display = 'none';
+  }
+  document.getElementById('agent-preview-name').textContent    = agent.name_en || '';
+  document.getElementById('agent-preview-agency').textContent  = agent.agency_name || '';
+  document.getElementById('agent-preview-contact').textContent = agent.whatsapp ? 'WhatsApp: ' + agent.whatsapp : '';
+  preview.style.display = 'flex';
+}
+
 // ── LISTINGS ──────────────────────────────────────────────────────
 async function loadListings() {
   const container = document.getElementById('listings-container');
   container.innerHTML = '<div class="loading">Loading...</div>';
-  const data = await sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,agent_name,district_en');
+  const data = await sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,agent_name,agent_id,district_en');
   if (!data || data.length === 0) {
     container.innerHTML = '<div class="empty"><p class="empty-title">No listings yet</p><p>Click "+New Listing" to add your first property.</p></div>';
     return;
@@ -947,7 +1004,7 @@ async function loadListings() {
       <td><strong style="color:var(--ink);font-weight:500;">${p.title_en||'—'}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}</td>
       <td style="color:var(--ink-muted)">${p.district_en||'—'}</td>
       <td>${p.price_display||'<em style="color:var(--ink-muted)">On request</em>'}</td>
-      <td>${p.agent_name||'—'}</td>
+      <td>${(() => { const a = p.agent_id ? _agentsAll.find(x => x.id === p.agent_id) : null; return a ? a.name_en : (p.agent_name || '—'); })()}</td>
       <td><span class="status-badge status-${p.status}">${p.status}</span></td>
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="action-btn btn-edit" onclick="editListing('${p.id}')">Edit</button>
@@ -991,6 +1048,11 @@ function showForm(id) {
       const el = document.getElementById(cid); if (el) el.textContent = '0 / 220';
     });
   }
+  // Always reset agent selection UI
+  document.getElementById('f-agent-search').value = '';
+  document.getElementById('agent-preview').style.display = 'none';
+  document.getElementById('agent-legacy-note').style.display = 'none';
+  buildAgentOptions('');
   loadVillageSuggestions();
 }
 
@@ -1063,15 +1125,20 @@ async function editListing(id) {
   document.getElementById('f-facebook-video').value = p.facebook_video_url || '';
   document.getElementById('f-download-url').value   = p.download_url || '';
 
-  document.getElementById('f-agent').value        = p.agent_name || '';
-  document.getElementById('f-agent-lo').value     = p.agent_name_lo || '';
-  document.getElementById('f-agent-title').value  = p.agent_title || '';
-  document.getElementById('f-agent-photo').value  = p.agent_photo || p.agent_photo_url || '';
-  document.getElementById('f-whatsapp').value     = p.agent_whatsapp || p.whatsapp || '';
-  document.getElementById('f-phone').value        = p.agent_phone || '';
-  document.getElementById('f-rating').value       = p.agent_rating || '';
-  document.getElementById('f-listing-count').value = p.agent_listing_count || '';
-  document.getElementById('f-response-time').value = p.agent_response_time || '';
+  document.getElementById('f-agent-title').value = p.agent_title || '';
+  // Agent dropdown: select by agent_id, fall back to legacy manual data
+  buildAgentOptions('');
+  document.getElementById('f-agent-search').value = '';
+  if (p.agent_id) {
+    document.getElementById('f-agent-id').value = p.agent_id;
+    onAgentDropdownChange();
+    document.getElementById('agent-legacy-note').style.display = 'none';
+  } else {
+    document.getElementById('f-agent-id').value = '';
+    document.getElementById('agent-preview').style.display = 'none';
+    // Show legacy note if listing has manual agent data
+    document.getElementById('agent-legacy-note').style.display = p.agent_name ? 'block' : 'none';
+  }
 }
 
 // ── SAVE ──────────────────────────────────────────────────────────
@@ -1089,6 +1156,9 @@ async function saveListing(e) {
   const amenities = getCheckedKeys('amenities-grid');
   const highlights = getHighlights();
   const nearbyPlaces = getNearbyPlaces();
+
+  const _selAgentId = document.getElementById('f-agent-id').value;
+  const _selAgent = _selAgentId ? (_agentsAll.find(a => a.id === _selAgentId) || null) : null;
 
   const titleEn = document.getElementById('f-title-en').value.trim();
   const slugBase = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
@@ -1138,16 +1208,17 @@ async function saveListing(e) {
     video_url:         document.getElementById('f-video').value.trim() || null,
     facebook_video_url:document.getElementById('f-facebook-video').value.trim() || null,
     download_url:      document.getElementById('f-download-url').value.trim() || null,
-    agent_name:          document.getElementById('f-agent').value.trim() || null,
-    agent_name_lo:       document.getElementById('f-agent-lo').value.trim() || null,
+    agent_id:            _selAgent ? _selAgent.id         : null,
     agent_title:         document.getElementById('f-agent-title').value.trim() || null,
-    agent_photo:         document.getElementById('f-agent-photo').value.trim() || null,
-    agent_photo_url:     document.getElementById('f-agent-photo').value.trim() || null,
-    agent_whatsapp:      document.getElementById('f-whatsapp').value.trim() || null,
-    agent_phone:         document.getElementById('f-phone').value.trim() || null,
-    agent_rating:        document.getElementById('f-rating').value.trim() || null,
-    agent_listing_count: parseInt(document.getElementById('f-listing-count').value) || null,
-    agent_response_time: document.getElementById('f-response-time').value.trim() || null
+    agent_name:          _selAgent ? (_selAgent.name_en   || null) : null,
+    agent_name_lo:       _selAgent ? (_selAgent.name_lo   || null) : null,
+    agent_photo:         _selAgent ? (_selAgent.photo_url || null) : null,
+    agent_photo_url:     _selAgent ? (_selAgent.photo_url || null) : null,
+    agent_whatsapp:      _selAgent ? (_selAgent.whatsapp  || null) : null,
+    agent_phone:         null,
+    agent_rating:        null,
+    agent_listing_count: null,
+    agent_response_time: null
   };
 
   const editId = document.getElementById('edit-id').value;
@@ -1725,12 +1796,12 @@ function populateFormFromImport(data) {
   document.getElementById('f-facebook-video').value  = '';
   document.getElementById('f-download-url').value    = '';
 
-  // Clear agent fields
-  ['f-agent','f-agent-lo','f-agent-title','f-agent-photo','f-whatsapp','f-phone',
-   'f-rating','f-listing-count','f-response-time'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
+  // Clear agent selection
+  document.getElementById('f-agent-id').value = '';
+  document.getElementById('f-agent-search').value = '';
+  document.getElementById('f-agent-title').value = '';
+  document.getElementById('agent-preview').style.display = 'none';
+  document.getElementById('agent-legacy-note').style.display = 'none';
 }
 
 async function saveDraft() {
@@ -1772,6 +1843,7 @@ async function saveDraft() {
     neighborhood_insight_zh: document.getElementById('f-neighborhood-zh').value.trim() || null,
     neighborhood_description: document.getElementById('f-neighborhood-en').value.trim() || null,
     images:                 uploadedImages.length ? uploadedImages : null,
+    agent_id:               document.getElementById('f-agent-id').value || null,
     slug
   };
 
