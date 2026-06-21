@@ -672,7 +672,7 @@ async function fetchProperty(slug){
   _fetchInFlight=true;
   PT.time('fetchProperty');
   try{
-    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&status=neq.draft&select=*&limit=1');
+    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&or=(status.neq.draft,status.is.null)&select=*&limit=1');
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];

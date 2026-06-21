@@ -494,7 +494,7 @@ function sortProperties(arr) {
 
 async function loadListings() {
   try {
-    var res = await fetch(SUPABASE_URL + '/rest/v1/properties?status=neq.draft&order=is_featured.desc,created_at.desc', {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc', {
       headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
     });
     allProperties = await res.json();
