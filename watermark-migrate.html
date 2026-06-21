@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pintag · Watermark Migration</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;background:#F7F3EC;color:#1A2428;line-height:1.6;}
+.wrap{max-width:720px;margin:0 auto;padding:32px 24px;}
+h1{font-size:20px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:#7A9098;margin-bottom:28px;}
+.card{background:#fff;border:1px solid rgba(26,36,40,0.1);border-radius:6px;padding:24px;margin-bottom:20px;}
+.card-title{font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:#2D8C8C;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid rgba(26,36,40,0.08);}
+label{display:block;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#7A9098;margin-bottom:5px;}
+input[type=password]{width:100%;padding:10px 12px;border:1px solid rgba(26,36,40,0.12);border-radius:6px;font-size:14px;font-family:inherit;outline:none;}
+input:focus{border-color:#2D8C8C;box-shadow:0 0 0 3px rgba(45,140,140,0.08);}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 24px;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:background 0.15s;}
+.btn-primary{background:#2D8C8C;color:#fff;}
+.btn-primary:hover{background:#38A8A8;}
+.btn-primary:disabled{opacity:0.5;cursor:default;}
+.btn-danger{background:#C0392B;color:#fff;}
+.btn-danger:hover{background:#e74c3c;}
+.msg{margin-top:12px;padding:10px 14px;border-radius:5px;font-size:13px;display:none;}
+.msg.error{background:rgba(192,57,43,0.08);color:#C0392B;border:1px solid rgba(192,57,43,0.2);}
+.msg.success{background:rgba(30,107,69,0.08);color:#1E6B45;border:1px solid rgba(30,107,69,0.2);}
+.msg.info{background:rgba(45,140,140,0.08);color:#2D8C8C;border:1px solid rgba(45,140,140,0.2);}
+.progress-wrap{margin-top:16px;display:none;}
+.progress-bar{height:6px;background:rgba(26,36,40,0.08);border-radius:3px;overflow:hidden;}
+.progress-fill{height:100%;background:#2D8C8C;width:0%;transition:width 0.3s;}
+.progress-label{font-size:12px;color:#7A9098;margin-top:6px;}
+.log{margin-top:16px;max-height:320px;overflow-y:auto;border:1px solid rgba(26,36,40,0.08);border-radius:5px;padding:12px;background:#F7F3EC;display:none;}
+.log-line{font-size:12px;font-family:monospace;padding:2px 0;border-bottom:1px solid rgba(26,36,40,0.04);}
+.log-line:last-child{border-bottom:none;}
+.log-ok{color:#1E6B45;}
+.log-err{color:#C0392B;}
+.log-skip{color:#7A9098;}
+.log-info{color:#2D8C8C;}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px;}
+.stat{text-align:center;padding:12px;background:rgba(45,140,140,0.05);border-radius:5px;}
+.stat-n{font-size:22px;font-weight:700;color:#2D8C8C;}
+.stat-l{font-size:11px;color:#7A9098;margin-top:2px;}
+.warning-box{background:rgba(184,134,11,0.07);border:1px solid rgba(184,134,11,0.2);border-radius:5px;padding:12px 14px;font-size:13px;color:#7a6010;margin-bottom:16px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pintag · Watermark Migration</h1>
+  <p class="sub">Apply Pintag watermarks to all existing property photos in Supabase Storage</p>
+
+  <div class="card" id="login-card">
+    <div class="card-title">Admin Login</div>
+    <div style="margin-bottom:14px;">
+      <label>Admin Password</label>
+      <input type="password" id="pw" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="msg" id="login-msg"></div>
+  </div>
+
+  <div id="main" style="display:none;">
+
+    <div class="card">
+      <div class="card-title">Migration Settings</div>
+      <div class="warning-box">
+        ⚠ This will overwrite existing photos in Supabase Storage with watermarked versions. The same public URLs will be reused — no database changes needed. This action cannot be undone.
+      </div>
+      <p style="font-size:13px;color:#3D5058;margin-bottom:16px;">
+        Only images hosted in the Pintag <code>property-images</code> bucket will be processed.
+        External URLs (Facebook CDN, etc.) are skipped automatically.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="scan-btn" onclick="scanListings()">Scan Listings</button>
+        <button class="btn btn-danger" id="migrate-btn" onclick="startMigration()" style="display:none;">
+          Watermark All Photos
+        </button>
+      </div>
+      <div class="msg" id="scan-msg"></div>
+    </div>
+
+    <div class="card" id="stats-card" style="display:none;">
+      <div class="card-title">Scan Results</div>
+      <div class="stats">
+        <div class="stat"><div class="stat-n" id="stat-listings">0</div><div class="stat-l">Listings</div></div>
+        <div class="stat"><div class="stat-n" id="stat-images">0</div><div class="stat-l">Total Images</div></div>
+        <div class="stat"><div class="stat-n" id="stat-ours">0</div><div class="stat-l">In Storage</div></div>
+        <div class="stat"><div class="stat-n" id="stat-skip">0</div><div class="stat-l">External (skip)</div></div>
+      </div>
+    </div>
+
+    <div class="card" id="progress-card" style="display:none;">
+      <div class="card-title">Migration Progress</div>
+      <div class="progress-wrap" id="prog-wrap" style="display:block;">
+        <div class="progress-bar"><div class="progress-fill" id="prog-fill"></div></div>
+        <div class="progress-label" id="prog-label">Starting…</div>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const ADMIN_EMAIL   = 'admin@pintag.io';
+const STORAGE_PREFIX = SUPABASE_URL + '/storage/v1/object/public/property-images/';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+let _token = null;
+let _scanResults = [];
+
+// ── WATERMARK CONFIG ──────────────────────────────────────────────
+const WATERMARK_CONFIG = {
+  opacity:       0.10,
+  scale:         0.45,
+  cornerText:    'PINTAG.IO',
+  cornerOpacity: 0.20,
+  quality:       0.88
+};
+
+const WM = {
+  logo: null,
+  ready: false,
+
+  init() {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload  = () => { this.logo = img; this.ready = true; resolve(true); };
+      img.onerror = () => { addLog('ERROR: Could not load assets/pintag-watermark.png', 'err'); resolve(false); };
+      img.src = 'assets/pintag-watermark.png';
+    });
+  },
+
+  _composite(canvas) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    if (this.logo) {
+      const logoW = w * WATERMARK_CONFIG.scale;
+      const logoH = logoW * (this.logo.naturalHeight / this.logo.naturalWidth);
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = WATERMARK_CONFIG.opacity;
+      ctx.drawImage(this.logo, (w - logoW) / 2, (h - logoH) / 2, logoW, logoH);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    const fontSize = Math.max(11, Math.round(w * 0.022));
+    const pad      = Math.round(w * 0.012);
+    ctx.globalAlpha  = WATERMARK_CONFIG.cornerOpacity;
+    ctx.font         = `600 ${fontSize}px Arial, sans-serif`;
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.lineWidth    = Math.max(1, fontSize * 0.12);
+    ctx.strokeStyle  = 'rgba(0,0,0,0.55)';
+    ctx.strokeText(WATERMARK_CONFIG.cornerText, w - pad, h - pad);
+    ctx.fillStyle    = '#ffffff';
+    ctx.fillText(WATERMARK_CONFIG.cornerText, w - pad, h - pad);
+    ctx.globalAlpha  = 1.0;
+  },
+
+  applyToUrl(url) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onerror = () => resolve(null);
+      img.onload  = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width  = img.naturalWidth  || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        this._composite(canvas);
+        canvas.toBlob(resolve, 'image/jpeg', WATERMARK_CONFIG.quality);
+      };
+      img.src = url;
+    });
+  }
+};
+
+// ── HELPERS ───────────────────────────────────────────────────────
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.className = 'msg ' + type;
+  el.textContent = text;
+  el.style.display = 'block';
+}
+
+function addLog(text, type) {
+  const log = document.getElementById('log');
+  log.style.display = 'block';
+  const line = document.createElement('div');
+  line.className = 'log-line log-' + (type || 'info');
+  line.textContent = new Date().toLocaleTimeString() + ' — ' + text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function sbApi(method, path, body) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_ANON,
+    'Authorization': 'Bearer ' + _token
+  };
+  if (method === 'POST' || method === 'PATCH') headers['Prefer'] = 'return=representation';
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    method, headers, body: body ? JSON.stringify(body) : undefined
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error('HTTP ' + res.status + ': ' + t); }
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
+}
+
+// ── AUTH ──────────────────────────────────────────────────────────
+async function doLogin() {
+  const pw  = document.getElementById('pw').value.trim();
+  const btn = document.getElementById('login-btn');
+  const msg = document.getElementById('login-msg');
+  if (!pw) { showMsg('login-msg', 'Enter password', 'error'); return; }
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  const { data, error } = await sb.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
+  btn.disabled = false; btn.textContent = 'Sign In';
+  if (error) { showMsg('login-msg', 'Sign-in failed: ' + error.message, 'error'); return; }
+  _token = data.session.access_token;
+  document.getElementById('login-card').style.display = 'none';
+  document.getElementById('main').style.display = 'block';
+  showMsg('scan-msg', 'Signed in. Click "Scan Listings" to see how many photos need watermarking.', 'info');
+}
+
+// ── SCAN ──────────────────────────────────────────────────────────
+async function scanListings() {
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = true; btn.textContent = 'Scanning…';
+  showMsg('scan-msg', 'Loading all listings…', 'info');
+
+  try {
+    const props = await sbApi('GET', 'properties?select=id,title_en,images&limit=1000');
+    let totalImages = 0, ourImages = 0, extImages = 0;
+    _scanResults = [];
+
+    for (const p of props) {
+      const imgs = Array.isArray(p.images) ? p.images : [];
+      if (imgs.length === 0) continue;
+      const ours = imgs.filter(u => u && u.startsWith(STORAGE_PREFIX));
+      const ext  = imgs.filter(u => u && !u.startsWith(STORAGE_PREFIX));
+      totalImages += imgs.length;
+      ourImages   += ours.length;
+      extImages   += ext.length;
+      if (ours.length > 0) _scanResults.push({ id: p.id, title: p.title_en || '(no title)', images: imgs, ours });
+    }
+
+    document.getElementById('stat-listings').textContent = _scanResults.length;
+    document.getElementById('stat-images').textContent   = totalImages;
+    document.getElementById('stat-ours').textContent     = ourImages;
+    document.getElementById('stat-skip').textContent     = extImages;
+    document.getElementById('stats-card').style.display  = 'block';
+
+    if (ourImages === 0) {
+      showMsg('scan-msg', 'No photos found in Supabase Storage to watermark.', 'info');
+    } else {
+      showMsg('scan-msg', `Found ${ourImages} photo(s) across ${_scanResults.length} listing(s) to watermark.`, 'success');
+      document.getElementById('migrate-btn').style.display = 'inline-flex';
+    }
+  } catch(e) {
+    showMsg('scan-msg', 'Scan failed: ' + e.message, 'error');
+  }
+
+  btn.disabled = false; btn.textContent = 'Scan Listings';
+}
+
+// ── MIGRATION ─────────────────────────────────────────────────────
+async function startMigration() {
+  if (!_scanResults.length) return;
+  if (!confirm(`Watermark ${_scanResults.reduce((a,p)=>a+p.ours.length,0)} photo(s) across ${_scanResults.length} listing(s)? This cannot be undone.`)) return;
+
+  document.getElementById('migrate-btn').style.display = 'none';
+  document.getElementById('scan-btn').style.display    = 'none';
+  document.getElementById('progress-card').style.display = 'block';
+  document.getElementById('log').style.display = 'block';
+
+  addLog('Initializing watermark module…', 'info');
+  const wmReady = await WM.init();
+  if (!wmReady) {
+    addLog('FATAL: Watermark logo could not be loaded. Aborting.', 'err');
+    return;
+  }
+  addLog('Watermark logo loaded ✓', 'ok');
+
+  const allUrls = _scanResults.flatMap(p => p.ours);
+  let done = 0, success = 0, failed = 0;
+
+  const updateProgress = () => {
+    const pct = allUrls.length ? (done / allUrls.length * 100).toFixed(0) : 0;
+    document.getElementById('prog-fill').style.width = pct + '%';
+    document.getElementById('prog-label').textContent =
+      `${done} / ${allUrls.length} — ✓ ${success}  ✗ ${failed}`;
+  };
+
+  for (const prop of _scanResults) {
+    addLog(`Processing: ${prop.title} (${prop.ours.length} photos)`, 'info');
+
+    for (const url of prop.ours) {
+      const filename = url.replace(STORAGE_PREFIX, '');
+      try {
+        // Download
+        const imgRes = await fetch(url);
+        if (!imgRes.ok) throw new Error('Download HTTP ' + imgRes.status);
+        const blob = await imgRes.blob();
+        const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
+
+        // Watermark
+        const wmBlob = await WM.applyToUrl(url);
+        if (!wmBlob) throw new Error('Watermark returned null');
+
+        // Overwrite in Supabase Storage (same filename = same public URL)
+        const upRes = await fetch(
+          `${SUPABASE_URL}/storage/v1/object/property-images/${filename}`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey':        SUPABASE_ANON,
+              'Authorization': 'Bearer ' + _token,
+              'Content-Type':  'image/jpeg',
+              'x-upsert':      'true'
+            },
+            body: wmBlob
+          }
+        );
+        if (!upRes.ok) { const t = await upRes.text(); throw new Error('Upload HTTP ' + upRes.status + ': ' + t.slice(0,120)); }
+
+        addLog(`✓ ${filename}`, 'ok');
+        success++;
+      } catch(e) {
+        addLog(`✗ ${filename}: ${e.message}`, 'err');
+        failed++;
+      }
+      done++;
+      updateProgress();
+    }
+  }
+
+  if (failed === 0) {
+    addLog(`Migration complete — ${success} photo(s) watermarked successfully.`, 'ok');
+    document.getElementById('prog-label').textContent = `✓ Done — ${success} watermarked, ${failed} failed`;
+  } else {
+    addLog(`Migration finished — ${success} watermarked, ${failed} failed. Check errors above.`, failed > success ? 'err' : 'info');
+  }
+}
+</script>
+</body>
+</html>

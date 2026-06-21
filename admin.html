@@ -869,6 +869,101 @@ async function loadVillageSuggestions() {
   }
 }
 
+// ── WATERMARK ─────────────────────────────────────────────────────
+const WATERMARK_CONFIG = {
+  opacity:       0.10,
+  scale:         0.45,
+  position:      'center',
+  cornerText:    'PINTAG.IO',
+  cornerOpacity: 0.20,
+  quality:       0.88
+};
+
+const WM = {
+  logo: null,
+  ready: false,
+
+  init(logoSrc) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload  = () => { this.logo = img; this.ready = true; resolve(true); };
+      img.onerror = () => { console.warn('[WM] Logo failed to load — uploads will be unmodified'); resolve(false); };
+      img.src = logoSrc || 'assets/pintag-watermark.png';
+    });
+  },
+
+  _composite(canvas) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+
+    // Center logo at 45% image width
+    if (this.logo) {
+      const logoW = w * WATERMARK_CONFIG.scale;
+      const logoH = logoW * (this.logo.naturalHeight / this.logo.naturalWidth);
+      const logoX = (w - logoW) / 2;
+      const logoY = (h - logoH) / 2;
+      // multiply blend: white areas disappear, dark logo shows through
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = WATERMARK_CONFIG.opacity;
+      ctx.drawImage(this.logo, logoX, logoY, logoW, logoH);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Corner text "PINTAG.IO" — white with dark outline for visibility on any background
+    const fontSize = Math.max(11, Math.round(w * 0.022));
+    const pad      = Math.round(w * 0.012);
+    ctx.globalAlpha    = WATERMARK_CONFIG.cornerOpacity;
+    ctx.font           = `600 ${fontSize}px 'DM Sans', Arial, sans-serif`;
+    ctx.textAlign      = 'right';
+    ctx.textBaseline   = 'bottom';
+    ctx.lineWidth      = Math.max(1, fontSize * 0.12);
+    ctx.strokeStyle    = 'rgba(0,0,0,0.55)';
+    ctx.strokeText(WATERMARK_CONFIG.cornerText, w - pad, h - pad);
+    ctx.fillStyle      = '#ffffff';
+    ctx.fillText(WATERMARK_CONFIG.cornerText, w - pad, h - pad);
+    ctx.globalAlpha    = 1.0;
+  },
+
+  applyToFile(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve(null);
+      reader.onload  = e => {
+        const img = new Image();
+        img.onerror = () => resolve(null);
+        img.onload  = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width  = img.naturalWidth  || img.width;
+          canvas.height = img.naturalHeight || img.height;
+          canvas.getContext('2d').drawImage(img, 0, 0);
+          this._composite(canvas);
+          canvas.toBlob(resolve, 'image/jpeg', WATERMARK_CONFIG.quality);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  },
+
+  applyToUrl(url) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onerror = () => resolve(null);
+      img.onload  = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width  = img.naturalWidth  || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        this._composite(canvas);
+        canvas.toBlob(resolve, 'image/jpeg', WATERMARK_CONFIG.quality);
+      };
+      img.src = url;
+    });
+  }
+};
+
 // ── AUTH ──────────────────────────────────────────────────────────
 let _adminToken = null;
 let _agentsAll = [];
@@ -899,6 +994,7 @@ function showAdminScreen() {
   document.getElementById('admin-screen').style.display = 'block';
   loadListings();
   loadAgentsForDropdown();
+  WM.init('assets/pintag-watermark.png');
 }
 sbClient.auth.getSession().then(({ data: { session } }) => {
   if (session) { _adminToken = session.access_token; showAdminScreen(); }
@@ -1312,10 +1408,20 @@ async function handleImageUpload(files) {
       status.textContent = `${file.name} too large (max 20 MB)`;
       continue;
     }
-    const ext         = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const fileName    = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
-    const contentType = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+    // Watermark before upload
     status.style.color = '';
+    status.textContent = `Watermarking ${file.name}…`;
+    let uploadBlob = file;
+    let uploadExt  = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    let uploadType = file.type || 'image/jpeg';
+    if (WM.ready) {
+      try {
+        const wm = await WM.applyToFile(file);
+        if (wm) { uploadBlob = wm; uploadExt = 'jpg'; uploadType = 'image/jpeg'; }
+      } catch(e) { console.warn('[WM] applyToFile failed:', e); }
+    }
+
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${uploadExt}`;
     status.textContent = `Uploading ${file.name}…`;
 
     try {
@@ -1326,9 +1432,9 @@ async function handleImageUpload(files) {
           headers: {
             'apikey':        SUPABASE_ANON,
             'Authorization': 'Bearer ' + _adminToken,
-            'Content-Type':  contentType
+            'Content-Type':  uploadType
           },
-          body: file
+          body: uploadBlob
         }
       );
 
@@ -1561,10 +1667,20 @@ async function handleImportImageUpload(files) {
       status.textContent = `${file.name} too large (max 20 MB)`;
       continue;
     }
-    const ext         = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const fileName    = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
-    const contentType = file.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+    // Watermark before upload
     status.style.color = '';
+    status.textContent = `Watermarking ${file.name}…`;
+    let uploadBlob = file;
+    let uploadExt  = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    let uploadType = file.type || 'image/jpeg';
+    if (WM.ready) {
+      try {
+        const wm = await WM.applyToFile(file);
+        if (wm) { uploadBlob = wm; uploadExt = 'jpg'; uploadType = 'image/jpeg'; }
+      } catch(e) { console.warn('[WM] applyToFile failed:', e); }
+    }
+
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${uploadExt}`;
     status.textContent = `Uploading ${file.name}…`;
 
     try {
@@ -1575,9 +1691,9 @@ async function handleImportImageUpload(files) {
           headers: {
             'apikey':        SUPABASE_ANON,
             'Authorization': 'Bearer ' + _adminToken,
-            'Content-Type':  contentType
+            'Content-Type':  uploadType
           },
-          body: file
+          body: uploadBlob
         }
       );
 
