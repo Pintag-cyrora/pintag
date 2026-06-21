@@ -574,7 +574,15 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
       </div>
 
       <div class="form-section">
-        <p class="form-section-title">&#9313; Upload Property Photos</p>
+        <p class="form-section-title">&#9313; Paste Image URLs <span style="font-size:11px;font-weight:400;color:var(--ink-muted)">(optional — one per line)</span></p>
+        <div class="form-group">
+          <textarea class="form-textarea" id="import-image-urls" rows="4"
+            placeholder="https://scontent.fbcdn.net/v/...&#10;https://scontent.fbcdn.net/v/...&#10;&#10;Paste Facebook or other image URLs here — they will be downloaded, watermarked, and uploaded automatically."></textarea>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <p class="form-section-title">&#9314; Upload Property Photos <span style="font-size:11px;font-weight:400;color:var(--ink-muted)">(or use URL paste above)</span></p>
         <div class="form-group">
           <div class="upload-zone" id="import-upload-zone" onclick="document.getElementById('import-file-input').click()">
             <input type="file" id="import-file-input" multiple accept="image/*" style="display:none;" onchange="handleImportImageUpload(this.files)">
@@ -1631,6 +1639,7 @@ function showImportPanel() {
   importImages = [];
   refreshImportImageGrid();
   document.getElementById('import-description').value = '';
+  document.getElementById('import-image-urls').value = '';
   document.getElementById('import-message').style.display = 'none';
   document.getElementById('import-progress-steps').style.display = 'none';
   document.getElementById('import-gen-btn').disabled = false;
@@ -1725,6 +1734,37 @@ async function handleImportImageUpload(files) {
   }
 }
 
+async function downloadAndWatermarkImage(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download HTTP ${res.status}`);
+  const blob = await res.blob();
+  let uploadBlob = blob;
+  if (WM.ready) {
+    try {
+      const wm = await WM.applyToBlob(blob);
+      if (wm) uploadBlob = wm;
+    } catch(e) { console.warn('[WM] applyToBlob failed on URL:', url, e); }
+  }
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.jpg`;
+  const upRes = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/property-images/${fileName}`,
+    {
+      method: 'POST',
+      headers: {
+        'apikey':        SUPABASE_ANON,
+        'Authorization': 'Bearer ' + _adminToken,
+        'Content-Type':  'image/jpeg'
+      },
+      body: uploadBlob
+    }
+  );
+  if (!upRes.ok) {
+    const t = await upRes.text();
+    throw new Error(`Upload ${upRes.status}: ${t.slice(0, 100)}`);
+  }
+  return `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
+}
+
 function refreshImportImageGrid() {
   const grid = document.getElementById('import-image-grid');
   if (!grid) return;
@@ -1747,7 +1787,7 @@ function removeImportImage(url) {
 }
 
 const IMPORT_STEPS = [
-  { id: 'step-upload',   label: 'Photos uploaded to storage' },
+  { id: 'step-upload',   label: 'Downloading and uploading photos to storage' },
   { id: 'step-analyze',  label: 'Analyzing description and photos with AI' },
   { id: 'step-populate', label: 'Populating listing form' },
   { id: 'step-save',     label: 'Saving as draft' }
@@ -1779,7 +1819,8 @@ function setImportStep(stepId, state) {
 
 async function runSmartImport() {
   const description = document.getElementById('import-description').value.trim();
-  if (!description && importImages.length === 0) {
+  const _urlsCheck = document.getElementById('import-image-urls').value.trim();
+  if (!description && importImages.length === 0 && !_urlsCheck) {
     const msg = document.getElementById('import-message');
     msg.className = 'form-message error';
     msg.textContent = 'Please paste a property description or upload at least one photo.';
@@ -1795,7 +1836,38 @@ async function runSmartImport() {
   showImportSteps();
 
   try {
-    // Step 1: images already in importImages[] — mark done
+    // Step 1: download+watermark any pasted image URLs, then mark upload done
+    setImportStep('step-upload', 'active');
+    const urlsRaw = document.getElementById('import-image-urls').value.trim();
+    if (urlsRaw) {
+      const pastedUrls = urlsRaw
+        .split('\n')
+        .map(u => u.trim())
+        .filter(u => /^https?:\/\//i.test(u));
+
+      if (pastedUrls.length > 0) {
+        const progress = document.getElementById('import-upload-progress');
+        const fill     = document.getElementById('import-progress-fill');
+        const status   = document.getElementById('import-upload-status');
+        progress.style.display = 'block';
+
+        for (let i = 0; i < pastedUrls.length && importImages.length < 15; i++) {
+          status.textContent = `Downloading image ${i + 1} of ${pastedUrls.length}…`;
+          fill.style.width = `${((i) / pastedUrls.length) * 100}%`;
+          try {
+            const publicUrl = await downloadAndWatermarkImage(pastedUrls[i]);
+            importImages.push(publicUrl);
+            refreshImportImageGrid();
+          } catch(e) {
+            console.warn('[Import] URL failed:', pastedUrls[i], e.message);
+          }
+        }
+
+        fill.style.width = '100%';
+        status.textContent = `Downloaded ${importImages.length} image(s)`;
+        setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 1500);
+      }
+    }
     setImportStep('step-upload', 'done');
 
     // Step 2: call AI edge function

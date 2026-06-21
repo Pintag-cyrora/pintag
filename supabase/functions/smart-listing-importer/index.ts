@@ -53,8 +53,13 @@ No photos provided. Return empty arrays.`;
   return `You are a real estate data extraction AI for Pintag, a premium real estate platform in Vientiane, Laos.${photoSection}
 
 TASK A — EXTRACT from the property description below.
-The description may be in Lao, English, Thai, or a mix. Extract structured fields.
+The description may be in Lao (ລາວ script), English, Thai, or a mix. Extract structured fields.
 Use null for any field that cannot be reliably determined.
+
+LANGUAGE RULES — follow exactly:
+1. Lao script (Unicode U+0E80–U+0EFF) and Khmer script (U+1780–U+17FF) look visually similar but are completely different languages. Khmer is used in Cambodia, NOT Laos. If the text contains Khmer characters, do NOT treat them as Lao — identify the input language correctly.
+2. All _lo output fields MUST be written in authentic Lao script (ພາສາລາວ). Never substitute Thai script, Khmer script, or romanised transliteration for Lao. If you are unsure, produce a proper Lao translation from the English.
+3. price_display: preserve the original currency and number as written (₭ or LAK for Lao Kip, ฿ for Thai Baht, $ for USD). Example: "450,000,000 ₭" or "$1,500/month". Do not convert currencies.
 
 Valid districts (use exact spelling or null): ${DISTRICTS.join(', ')}
 Valid property_type values: house, villa, apartment, townhouse, land, commercial
@@ -82,15 +87,15 @@ Return ONLY valid JSON with no extra text or markdown:
   "district": null,
   "village": null,
   "furnished": null,
-  "description_en": "2–4 paragraph professional English description",
-  "description_lo": "Lao translation",
-  "description_zh": "Chinese translation",
-  "property_highlight_en": "One emotional sentence in English",
-  "property_highlight_lo": "One emotional sentence in Lao",
-  "property_highlight_zh": "One emotional sentence in Chinese",
-  "neighborhood_insight_en": "One sentence about the area in English",
-  "neighborhood_insight_lo": "Lao translation",
-  "neighborhood_insight_zh": "Chinese translation",
+  "description_en": "2–4 paragraphs of professional English property description",
+  "description_lo": "2–4 paragraphs in authentic Lao script (ພາສາລາວ)",
+  "description_zh": "2–4 paragraphs in Simplified Chinese (中文)",
+  "property_highlight_en": "One compelling sentence in English",
+  "property_highlight_lo": "One compelling sentence in authentic Lao script",
+  "property_highlight_zh": "One compelling sentence in Simplified Chinese",
+  "neighborhood_insight_en": "One sentence about the neighbourhood in English",
+  "neighborhood_insight_lo": "One sentence in authentic Lao script",
+  "neighborhood_insight_zh": "One sentence in Simplified Chinese",
   ${photoJsonSection}
 }`;
 }
