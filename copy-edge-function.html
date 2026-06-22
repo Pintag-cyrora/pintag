@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: sans-serif; padding: 20px; background: #0f0f0f; color: #fff; }
+  button { width: 100%; padding: 18px; font-size: 18px; background: #2d8c8c; color: #fff; border: none; border-radius: 10px; cursor: pointer; }
+  button:active { background: #1a6060; }
+  p { color: #aaa; font-size: 14px; margin-top: 12px; text-align: center; }
+  #status { color: #4caf50; font-size: 16px; text-align: center; margin-top: 10px; display: none; }
+</style>
+</head>
+<body>
+<button onclick="copyCode()">Copy Edge Function Code</button>
+<p>Tap the button, then paste into Supabase → Edge Functions → smart-listing-importer → Code</p>
+<div id="status">Copied!</div>
+<script>
+const CODE = `const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+const MAX_IMAGES = 10;
+
+const DISTRICTS = ['Sisattanak','Saysettha','Chanthabouly','Sikhottabong','Xaythany','Hadxaifong','Naxaithong'];
+
+async function urlToBase64(url) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return null;
+    const buffer = await res.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const binary = bytes.reduce((acc, b) => acc + String.fromCharCode(b), '');
+    const mimeType = (res.headers.get('content-type') || 'image/jpeg').split(';')[0];
+    return { mimeType, data: btoa(binary) };
+  } catch {
+    return null;
+  }
+}
+
+function buildPrompt(description, imageCount) {
+  const photoSection = imageCount > 0
+    ? \`\\nYou have also received \${imageCount} property photo(s) numbered by their position in the request (index 0 through \${imageCount - 1}).\`
+    : '\\nNo photos were provided.';
+
+  const photoTaskSection = imageCount > 0
+    ? \`
+TASK B — ANALYZE PHOTOS:
+For each photo (index 0 through \${imageCount - 1}), determine:
+- room_type: one of exactly: exterior, living_room, kitchen, dining_room, bedroom, bathroom, pool, garden, balcony, other
+- quality_score: 1–5 (5 = best composition, lighting, and clarity)
+
+Then determine:
+- hero_index: the single best cover photo index (prefer bright exterior with pool or garden, or impressive living room)
+- recommended_order: array of ALL image indices in professional gallery sequence
+  Rule: hero first, then remaining exteriors, living/dining areas, kitchen, bedrooms, bathrooms, pool/garden/balcony, other\`
+    : \`
+TASK B — PHOTOS:
+No photos provided. Return empty arrays.\`;
+
+  const photoJsonSection = imageCount > 0
+    ? \`  "photo_analysis": [{ "index": 0, "room_type": "exterior", "quality_score": 4 }],
+  "hero_index": 0,
+  "recommended_order": [0, 1, 2]\`
+    : \`  "photo_analysis": [],
+  "hero_index": 0,
+  "recommended_order": []\`;
+
+  return \`You are a real estate data extraction AI for Pintag, a premium real estate platform in Vientiane, Laos.\${photoSection}
+
+TASK A — EXTRACT from the property description below.
+The description may be in Lao (ລາວ script), English, Thai, or a mix. Extract structured fields.
+Use null for any field that cannot be reliably determined.
+
+LANGUAGE RULES — follow exactly:
+1. Lao script (Unicode U+0E80–U+0EFF) and Khmer script (U+1780–U+17FF) look visually similar but are completely different languages. Khmer is used in Cambodia, NOT Laos. If the text contains Khmer characters, do NOT treat them as Lao — identify the input language correctly.
+2. All _lo output fields MUST be written in authentic Lao script (ພາສາລາວ). Never substitute Thai script, Khmer script, or romanised transliteration for Lao. If you are unsure, produce a proper Lao translation from the English.
+3. price_display: preserve the original currency and number as written (₭ or LAK for Lao Kip, ฿ for Thai Baht, $ for USD). Example: "450,000,000 ₭" or "$1,500/month". Do not convert currencies.
+
+Valid districts (use exact spelling or null): Sisattanak, Saysettha, Chanthabouly, Sikhottabong, Xaythany, Hadxaifong, Naxaithong
+Valid property_type values: house, villa, apartment, townhouse, land, commercial
+Valid property_style values: modern, luxury, minimalist, family, colonial, resort, investment
+Valid transaction_type values: for_sale, for_rent
+Valid furnished values: fully, partially, unfurnished
+
+PROPERTY DESCRIPTION:
+"""
+\${description || '(no description provided)'}
+"""
+\${photoTaskSection}
+
+Return ONLY valid JSON with no extra text or markdown:
+{
+  "title": "concise English title max 80 chars",
+  "transaction_type": "for_sale",
+  "property_type": "villa",
+  "property_style": null,
+  "price_display": null,
+  "bedrooms": null,
+  "bathrooms": null,
+  "sqm": null,
+  "sqm_land": null,
+  "district": null,
+  "village": null,
+  "furnished": null,
+  "description_en": "2–4 paragraphs of professional English property description",
+  "description_lo": "2–4 paragraphs in authentic Lao script (ພາສາລາວ)",
+  "description_zh": "2–4 paragraphs in Simplified Chinese (中文)",
+  "property_highlight_en": "One compelling sentence in English",
+  "property_highlight_lo": "One compelling sentence in authentic Lao script",
+  "property_highlight_zh": "One compelling sentence in Simplified Chinese",
+  "neighborhood_insight_en": "One sentence about the neighbourhood in English",
+  "neighborhood_insight_lo": "One sentence in authentic Lao script",
+  "neighborhood_insight_zh": "One sentence in Simplified Chinese",
+  \${photoJsonSection}
+}\`;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    const { description, image_urls } = await req.json();
+
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: 'GEMINI_API_KEY is not configured. Add it in Supabase Dashboard → Edge Functions → Manage secrets.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const urlsToFetch = Array.isArray(image_urls) ? image_urls.slice(0, MAX_IMAGES) : [];
+    const imageResults = await Promise.all(urlsToFetch.map(url => urlToBase64(url)));
+    const validImages = imageResults.filter(r => r !== null);
+
+    const imageParts = validImages.map(img => ({
+      inlineData: { mimeType: img.mimeType, data: img.data }
+    }));
+    const textPart = { text: buildPrompt(description || '', validImages.length) };
+
+    const response = await fetch(
+      \`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\${apiKey}\`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [...imageParts, textPart] }],
+          generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(\`Gemini API \${response.status}: \${errText.slice(0, 200)}\`);
+    }
+
+    const geminiData = await response.json();
+    const candidateCount = geminiData.candidates?.length ?? 0;
+    const finishReason = geminiData.candidates?.[0]?.finishReason ?? 'unknown';
+    console.log(\`Gemini candidates: \${candidateCount}, finishReason: \${finishReason}\`);
+
+    const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      throw new Error(\`No text content in Gemini response (candidates: \${candidateCount}, finishReason: \${finishReason})\`);
+    }
+
+    console.log(\`Gemini response length: \${text.length} chars\`);
+
+    const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);
+    if (!jsonMatch) {
+      throw new Error(\`No JSON object found in Gemini response. Response starts with: \${text.slice(0, 100)}\`);
+    }
+
+    const extracted = jsonMatch[0];
+    if (!extracted.trimEnd().endsWith('}')) {
+      throw new Error(\`Gemini returned incomplete JSON (likely token limit exceeded). Response length: \${text.length} chars, finishReason: \${finishReason}\`);
+    }
+
+    let result;
+    try {
+      result = JSON.parse(extracted);
+    } catch (parseErr) {
+      const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+      throw new Error(\`JSON parse failed (\${msg}). Response length: \${text.length} chars, finishReason: \${finishReason}\`);
+    }
+
+    return new Response(JSON.stringify(result), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});`;
+
+function copyCode() {
+  navigator.clipboard.writeText(CODE).then(() => {
+    document.getElementById('status').style.display = 'block';
+    setTimeout(() => document.getElementById('status').style.display = 'none', 2000);
+  });
+}
+</script>
+</body>
+</html>
