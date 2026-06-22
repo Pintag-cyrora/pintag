@@ -654,17 +654,24 @@ function formatPriceBubble(p) {
 
 // ── ACTIVITY / BADGE HELPERS ──────────────────────────
 function daysOld(p) {
-  return (Date.now() - new Date(p.created_at).getTime()) / 86400000;
+  if (!p.created_at) return Infinity;
+  var t = new Date(p.created_at).getTime();
+  if (!t || t <= 0) return Infinity;
+  return Math.max(0, (Date.now() - t) / 86400000);
 }
 function daysSinceUpdate(p) {
-  var t = p.updated_at ? new Date(p.updated_at).getTime() : new Date(p.created_at).getTime();
-  return (Date.now() - t) / 86400000;
+  var src = p.updated_at || p.created_at;
+  if (!src) return Infinity;
+  var t = new Date(src).getTime();
+  if (!t || t <= 0) return Infinity;
+  return Math.max(0, (Date.now() - t) / 86400000);
 }
-function isNewListing(p) { return daysOld(p) <= 7; }
+function isNewListing(p) { var age = daysOld(p); return isFinite(age) && age <= 7; }
 
 function getActivityBadgesHtml(p, lang) {
   var parts = [];
   var age = daysOld(p);
+  if (!isFinite(age)) age = Infinity;
   // NEW
   if (age < 1)       parts.push('<span class="act-badge act-badge-new">' + {lo:'ໃໝ່ວັນນີ້',en:'New Today',zh:'今天上架'}[lang] + '</span>');
   else if (age <= 7) parts.push('<span class="act-badge act-badge-new">' + {lo:'ໃໝ່ອາທິດນີ້',en:'New This Week',zh:'本周新上'}[lang] + '</span>');
@@ -691,11 +698,14 @@ function getActivityBadgesHtml(p, lang) {
 
 function getActivityLine(p, lang) {
   var age = daysOld(p);
-  if (age < 1)    return {lo:'ລົງຂາຍວັນນີ້',   en:'Listed today',        zh:'今日上架'}[lang];
-  if (age < 2)    return {lo:'ລົງຂາຍມື້ວານ',  en:'Listed yesterday',     zh:'昨日上架'}[lang];
-  if (age < 30)   return {lo:'ລົງຂາຍ '+Math.floor(age)+' ວັນກ່ອນ', en:'Listed '+Math.floor(age)+' days ago', zh:Math.floor(age)+'天前上架'}[lang];
-  var mo = Math.floor(age/30);
-  return {lo:'ລົງຂາຍ '+mo+' ເດືອນກ່ອນ', en:'Listed '+mo+(mo===1?' month':' months')+' ago', zh:mo+'个月前上架'}[lang];
+  if (!isFinite(age)) return '';
+  if (age < 1)   return {lo:'ລົງຂາຍວັນນີ້',  en:'Listed today',        zh:'今日上架'}[lang];
+  if (age < 2)   return {lo:'ລົງຂາຍມື້ວານ', en:'Listed yesterday',     zh:'昨日上架'}[lang];
+  if (age < 30)  return {lo:'ລົງຂາຍ '+Math.floor(age)+' ວັນກ່ອນ',   en:'Listed '+Math.floor(age)+' days ago',                       zh:Math.floor(age)+'天前上架'}[lang];
+  var mo = Math.floor(age / 30);
+  if (mo < 24)   return {lo:'ລົງຂາຍ '+mo+' ເດືອນກ່ອນ',              en:'Listed '+mo+(mo===1?' month':' months')+' ago',             zh:mo+'个月前上架'}[lang];
+  var yr = Math.floor(age / 365);
+  return           {lo:'ລົງຂາຍ '+yr+' ປີກ່ອນ',                       en:'Listed '+yr+(yr===1?' year':' years')+' ago',               zh:yr+'年前上架'}[lang];
 }
 
 // ── VIEW SWITCHING ────────────────────────────────────
