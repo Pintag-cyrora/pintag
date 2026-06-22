@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [...imageParts, textPart] }],
-          generationConfig: { maxOutputTokens: 2000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
+          generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
         }),
       }
     );
