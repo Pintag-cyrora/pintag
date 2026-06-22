@@ -143,13 +143,34 @@ Deno.serve(async (req) => {
     }
 
     const geminiData = await response.json();
+    const candidateCount = geminiData.candidates?.length ?? 0;
+    const finishReason = geminiData.candidates?.[0]?.finishReason ?? 'unknown';
+    console.log(`Gemini candidates: ${candidateCount}, finishReason: ${finishReason}`);
+
     const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('No text content in Gemini response');
+    if (!text) {
+      throw new Error(`No text content in Gemini response (candidates: ${candidateCount}, finishReason: ${finishReason})`);
+    }
+
+    console.log(`Gemini response length: ${text.length} chars`);
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Could not parse JSON from Gemini response');
+    if (!jsonMatch) {
+      throw new Error(`No JSON object found in Gemini response. Response starts with: ${text.slice(0, 100)}`);
+    }
 
-    const result = JSON.parse(jsonMatch[0]);
+    const extracted = jsonMatch[0];
+    if (!extracted.trimEnd().endsWith('}')) {
+      throw new Error(`Gemini returned incomplete JSON (likely token limit exceeded). Response length: ${text.length} chars, finishReason: ${finishReason}`);
+    }
+
+    let result: Record<string, unknown>;
+    try {
+      result = JSON.parse(extracted);
+    } catch (parseErr) {
+      const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+      throw new Error(`JSON parse failed (${msg}). Response length: ${text.length} chars, finishReason: ${finishReason}`);
+    }
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
