@@ -125,19 +125,33 @@ Deno.serve(async (req) => {
     }));
     const textPart = { text: buildPrompt(description || '', validImages.length) };
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [...imageParts, textPart] }],
-          generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
-        }),
-      }
-    );
+    const RETRY_DELAYS = [2000, 5000, 10000];
 
-    if (!response.ok) {
+    let response: Response;
+    for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [...imageParts, textPart] }],
+            generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
+          }),
+        }
+      );
+
+      if (response.ok) break;
+
+      if (
+        (response.status === 429 || response.status === 503) &&
+        attempt < RETRY_DELAYS.length
+      ) {
+        console.log(`Gemini ${response.status}, retry ${attempt + 1}/${RETRY_DELAYS.length}`);
+        await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+        continue;
+      }
+
       const errText = await response.text();
       throw new Error(`Gemini API ${response.status}: ${errText.slice(0, 200)}`);
     }
@@ -147,7 +161,9 @@ Deno.serve(async (req) => {
     const finishReason = geminiData.candidates?.[0]?.finishReason ?? 'unknown';
     console.log(`Gemini candidates: ${candidateCount}, finishReason: ${finishReason}`);
 
-    const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = geminiData.candidates?.[0]?.content?.parts
+      ?.map((p: { text?: string }) => p.text || '')
+      .join('');
     if (!text) {
       throw new Error(`No text content in Gemini response (candidates: ${candidateCount}, finishReason: ${finishReason})`);
     }
