@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag · ຊັບສິນໃນວຽງຈັນ</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -317,6 +319,75 @@ nav{
   }
   .prop-card{grid-column:span 1;}
 }
+
+/* ── VIEW TOGGLE ──────────────────────────────────── */
+.view-toggle{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;flex-shrink:0;margin-left:8px;}
+.vt-btn{font-size:11px;font-weight:400;padding:4px 12px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:5px;letter-spacing:0.02em;}
+.vt-btn.active{background:var(--ink);color:#fff;}
+.vt-btn:hover:not(.active){background:rgba(26,32,36,0.06);}
+
+/* ── MAP CONTAINER ────────────────────────────────── */
+#map-wrap{display:none;height:calc(100vh - 112px);min-height:500px;position:relative;}
+#map{width:100%;height:100%;}
+.leaflet-container{font-family:'DM Sans',sans-serif!important;}
+
+/* ── PRICE BUBBLES ────────────────────────────────── */
+.price-bubble{
+  background:var(--white);border:1.5px solid rgba(26,32,36,0.18);border-radius:20px;
+  padding:5px 10px;font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;
+  box-shadow:0 2px 8px rgba(0,0,0,0.10);cursor:pointer;font-family:'DM Sans',sans-serif;
+  transition:background 0.15s,color 0.15s,box-shadow 0.15s,transform 0.15s;user-select:none;
+}
+.price-bubble:hover{background:var(--ink);color:#fff;border-color:transparent;box-shadow:0 4px 16px rgba(0,0,0,0.20);transform:scale(1.07);}
+.price-bubble.pb-featured{background:var(--ink);color:#fff;border-color:transparent;}
+.price-bubble.pb-active{background:var(--teal)!important;color:#fff!important;border-color:transparent!important;box-shadow:0 4px 16px rgba(45,140,140,0.35)!important;transform:scale(1.07);}
+
+/* ── MAP PREVIEW CARD (Airbnb style) ──────────────── */
+#map-preview{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  width:340px;max-width:calc(100vw - 24px);
+  background:var(--white);border-radius:12px;border:1px solid rgba(26,32,36,0.08);
+  box-shadow:0 12px 40px rgba(0,0,0,0.18);overflow:hidden;z-index:2000;display:none;
+  animation:mpIn 0.2s ease-out;
+}
+@keyframes mpIn{from{opacity:0;transform:translateX(-50%) translateY(10px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+.mp-close{position:absolute;top:10px;right:10px;z-index:10;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,0.38);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;line-height:1;transition:background 0.15s;}
+.mp-close:hover{background:rgba(0,0,0,0.58);}
+.mp-img-wrap{position:relative;aspect-ratio:16/9;overflow:hidden;background:var(--off);}
+.mp-img-wrap img,.mp-img-wrap .prop-card-no-img{width:100%;height:100%;object-fit:cover;display:block;}
+.mp-img-badges{position:absolute;top:10px;left:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-start;}
+.mp-body{padding:13px 15px 15px;}
+.mp-price{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;margin-bottom:3px;}
+.mp-title{font-size:12px;color:var(--ink-soft);margin-bottom:6px;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.mp-specs{display:flex;gap:10px;font-size:11px;color:var(--ink-muted);margin-bottom:5px;flex-wrap:wrap;}
+.mp-loc{font-size:11px;color:var(--ink-muted);display:flex;align-items:center;gap:4px;margin-bottom:8px;}
+.mp-act-badges{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;}
+.mp-agent-row{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-muted);border-top:1px solid var(--border);padding-top:10px;margin-top:2px;}
+.mp-activity-line{font-size:10px;color:var(--ink-muted);opacity:0.65;margin-top:5px;}
+.mp-view-btn{display:block;text-align:center;background:var(--ink);color:#fff;font-size:12px;font-weight:500;padding:10px;text-decoration:none;border-radius:6px;margin-top:11px;transition:background 0.15s;letter-spacing:0.02em;}
+.mp-view-btn:hover{background:var(--teal);}
+
+/* ── ACTIVITY BADGES ──────────────────────────────── */
+.act-badges{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;}
+.act-badge{font-size:9px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;padding:3px 7px;border-radius:3px;}
+.act-badge-new  {background:rgba(22,101,52,0.10);color:#15803D;border:1px solid rgba(22,101,52,0.18);}
+.act-badge-feat {background:rgba(161,110,0,0.10);color:#92400E;border:1px solid rgba(161,110,0,0.20);}
+.act-badge-vfy  {background:rgba(29,78,216,0.10);color:#1D4ED8;border:1px solid rgba(29,78,216,0.18);}
+.act-badge-drop {background:rgba(185,28,28,0.10);color:#B91C1C;border:1px solid rgba(185,28,28,0.18);}
+.act-badge-hot  {background:rgba(194,65,0,0.10); color:#C24100;border:1px solid rgba(194,65,0,0.20);}
+.act-badge-upd  {background:rgba(45,140,140,0.10);color:var(--teal);border:1px solid rgba(45,140,140,0.18);}
+.act-badge-resp {background:rgba(45,100,180,0.10);color:#1E5AB4;border:1px solid rgba(45,100,180,0.18);}
+
+/* NEW badge as image overlay (second badge below status) */
+.badge-new-listing{display:inline-block;font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:4px 8px;border-radius:3px;color:#fff;background:rgba(22,101,52,0.90);backdrop-filter:blur(8px);box-shadow:0 1px 4px rgba(0,0,0,0.18);margin-top:4px;}
+
+/* ACTIVITY LINE */
+.card-activity-line{font-size:10px;color:var(--ink-muted);opacity:0.65;margin-top:4px;}
+
+@media(max-width:800px){
+  #map-wrap{height:calc(100vh - 104px);}
+  #map-preview{bottom:12px;width:calc(100vw - 20px);border-radius:10px;}
+}
 </style>
 </head>
 <body>
@@ -395,10 +466,49 @@ nav{
       <option value="price_asc"  data-lo="ລາຄາ: ຕ່ຳ→ສູງ"  data-en="Price: Low→High" data-zh="价格: 低→高">ລາຄາ: ຕ່ຳ→ສູງ</option>
       <option value="price_desc" data-lo="ລາຄາ: ສູງ→ຕ່ຳ"  data-en="Price: High→Low" data-zh="价格: 高→低">ລາຄາ: ສູງ→ຕ່ຳ</option>
     </select>
+    <div class="filter-sep"></div>
+    <div class="view-toggle">
+      <button class="vt-btn active" id="btn-list" onclick="showListView()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        <span class="lo-i">ລາຍການ</span><span class="en-i">List</span><span class="zh-i">列表</span>
+      </button>
+      <button class="vt-btn" id="btn-map" onclick="showMapView()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        <span class="lo-i">ແຜນທີ່</span><span class="en-i">Map</span><span class="zh-i">地图</span>
+      </button>
+    </div>
   </div>
 </div>
 
-<div class="page-content">
+<!-- MAP VIEW -->
+<div id="map-wrap">
+  <div id="map"></div>
+</div>
+
+<!-- MAP PREVIEW CARD -->
+<div id="map-preview">
+  <button class="mp-close" onclick="closeMapPreview()">&#215;</button>
+  <div class="mp-img-wrap">
+    <div id="mp-img-inner"><div class="prop-card-no-img"></div></div>
+    <div class="mp-img-badges" id="mp-img-badges"></div>
+  </div>
+  <div class="mp-body">
+    <div class="mp-act-badges" id="mp-act-badges"></div>
+    <div class="mp-price" id="mp-price"></div>
+    <div class="mp-title" id="mp-title"></div>
+    <div class="mp-specs" id="mp-specs"></div>
+    <div class="mp-loc" id="mp-loc"></div>
+    <div class="mp-agent-row" id="mp-agent-row" style="display:none"></div>
+    <div class="mp-activity-line" id="mp-activity-line"></div>
+    <a class="mp-view-btn" id="mp-view-btn" href="#">
+      <span class="lo-i">ເບິ່ງລາຍລະອຽດ</span>
+      <span class="en-i">View Property</span>
+      <span class="zh-i">查看详情</span>
+    </a>
+  </div>
+</div>
+
+<div class="page-content" id="page-content-wrap">
   <div id="listings-container" class="listings-grid">
     <div class="state-center">
       <div class="loading-dots">
@@ -492,6 +602,241 @@ function sortProperties(arr) {
   return copy; /* newest: already ordered by created_at desc from API */
 }
 
+// ── DISTRICT COORDINATES (Vientiane) ──────────────────
+const DISTRICT_COORDS = {
+  'Chanthabouly': [17.9620, 102.6135],
+  'Sikhottabong':  [17.9180, 102.5695],
+  'Xaythany':      [18.0265, 102.6695],
+  'Sisattanak':    [17.9440, 102.6270],
+  'Hadxaifong':    [17.8860, 102.7350],
+  'Saysettha':     [17.9835, 102.6910],
+  'Naxaithong':    [18.0660, 102.5840]
+};
+const MAP_CENTER = [17.960, 102.630];
+const MAP_ZOOM   = 12;
+
+function getLatLng(p) {
+  // Try to extract from map_url (Google Maps formats)
+  if (p.map_url) {
+    var m = p.map_url.match(/@([-\d.]+),([-\d.]+)/);
+    if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+    m = p.map_url.match(/[?&]q=([-\d.]+),([-\d.]+)/);
+    if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+    m = p.map_url.match(/!3d([-\d.]+).*?!2d([-\d.]+)/);
+    if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+  }
+  // Fall back to district centroid with small random jitter
+  var base = DISTRICT_COORDS[p.district] || MAP_CENTER;
+  var jitter = function() { return (Math.random() - 0.5) * 0.012; };
+  return [base[0] + jitter(), base[1] + jitter()];
+}
+
+function formatPriceBubble(p) {
+  var raw = p.price_display || '';
+  if (!raw) return '?';
+  var str = raw.replace(/,/g, '');
+  var match = str.match(/[\d.]+/);
+  if (!match) return raw.slice(0, 8);
+  var num = parseFloat(match[0]);
+  var hasUSD = /\$/i.test(raw) || /USD/i.test(raw);
+  var hasKip = /₭|LAK|kip/i.test(raw);
+  var sym = hasUSD ? '$' : hasKip ? '₭' : '';
+  if (hasKip) {
+    if (num >= 1e9) return sym + (num/1e9).toFixed(1).replace(/\.0$/,'') + 'B';
+    if (num >= 1e6) return sym + (num/1e6).toFixed(0) + 'M';
+    if (num >= 1e3) return sym + (num/1e3).toFixed(0) + 'k';
+    return sym + num;
+  }
+  if (num >= 1e6) return sym + (num/1e6).toFixed(1).replace(/\.0$/,'') + 'M';
+  if (num >= 1e3) return sym + (num/1e3).toFixed(0) + 'k';
+  return sym + num.toFixed(0);
+}
+
+// ── ACTIVITY / BADGE HELPERS ──────────────────────────
+function daysOld(p) {
+  return (Date.now() - new Date(p.created_at).getTime()) / 86400000;
+}
+function daysSinceUpdate(p) {
+  var t = p.updated_at ? new Date(p.updated_at).getTime() : new Date(p.created_at).getTime();
+  return (Date.now() - t) / 86400000;
+}
+function isNewListing(p) { return daysOld(p) <= 7; }
+
+function getActivityBadgesHtml(p, lang) {
+  var parts = [];
+  var age = daysOld(p);
+  // NEW
+  if (age < 1)       parts.push('<span class="act-badge act-badge-new">' + {lo:'ໃໝ່ວັນນີ້',en:'New Today',zh:'今天上架'}[lang] + '</span>');
+  else if (age <= 7) parts.push('<span class="act-badge act-badge-new">' + {lo:'ໃໝ່ອາທິດນີ້',en:'New This Week',zh:'本周新上'}[lang] + '</span>');
+  // FEATURED
+  if (p.is_featured) parts.push('<span class="act-badge act-badge-feat">' + {lo:'ຄັດເລືອກ',en:'Featured',zh:'精选'}[lang] + '</span>');
+  // VERIFIED
+  if (p.is_verified) parts.push('<span class="act-badge act-badge-vfy">' + {lo:'ຢັ້ງຢືນ',en:'Verified',zh:'认证'}[lang] + '</span>');
+  // PRICE DROP
+  if (p.price_previous && p.price_previous !== p.price_display) {
+    parts.push('<span class="act-badge act-badge-drop">' + {lo:'ລຸ້ນລາຄາ',en:'Price Reduced',zh:'降价'}[lang] + '</span>');
+  }
+  // HOT PROPERTY
+  var score = parseFloat(p.trending_score) || 0;
+  var isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
+  if (score >= 100) parts.push('<span class="act-badge act-badge-hot">' + {lo:'ຮ້ອນແຮງ',en:'Hot Property',zh:'热门房源'}[lang] + '</span>');
+  else if (score >= 50) parts.push('<span class="act-badge act-badge-hot">' + (isSale ? {lo:'ຂາຍດີ',en:'Popular Sale',zh:'热销'}[lang] : {lo:'ເຊົ່າດີ',en:'Popular Rental',zh:'热租'}[lang]) + '</span>');
+  // RECENTLY UPDATED (only if not new)
+  if (age > 7) {
+    var upd = daysSinceUpdate(p);
+    if (upd < 14) parts.push('<span class="act-badge act-badge-upd">' + {lo:'ອັບເດດໃໝ່',en:'Recently Updated',zh:'近期更新'}[lang] + '</span>');
+  }
+  return parts.join('');
+}
+
+function getActivityLine(p, lang) {
+  var age = daysOld(p);
+  if (age < 1)    return {lo:'ລົງຂາຍວັນນີ້',   en:'Listed today',        zh:'今日上架'}[lang];
+  if (age < 2)    return {lo:'ລົງຂາຍມື້ວານ',  en:'Listed yesterday',     zh:'昨日上架'}[lang];
+  if (age < 30)   return {lo:'ລົງຂາຍ '+Math.floor(age)+' ວັນກ່ອນ', en:'Listed '+Math.floor(age)+' days ago', zh:Math.floor(age)+'天前上架'}[lang];
+  var mo = Math.floor(age/30);
+  return {lo:'ລົງຂາຍ '+mo+' ເດືອນກ່ອນ', en:'Listed '+mo+(mo===1?' month':' months')+' ago', zh:mo+'个月前上架'}[lang];
+}
+
+// ── VIEW SWITCHING ────────────────────────────────────
+var _viewMode = 'list';
+
+function showListView() {
+  _viewMode = 'list';
+  document.getElementById('map-wrap').style.display     = 'none';
+  document.getElementById('map-preview').style.display  = 'none';
+  document.getElementById('page-content-wrap').style.display = 'block';
+  document.getElementById('btn-list').classList.add('active');
+  document.getElementById('btn-map').classList.remove('active');
+}
+
+function showMapView() {
+  _viewMode = 'map';
+  document.getElementById('map-wrap').style.display     = 'block';
+  document.getElementById('page-content-wrap').style.display = 'none';
+  document.getElementById('btn-map').classList.add('active');
+  document.getElementById('btn-list').classList.remove('active');
+  if (!_map) initMap();
+  renderMap();
+}
+
+// ── MAP INIT & RENDER ─────────────────────────────────
+var _map = null;
+var _markers = [];
+var _activeSlug = null;
+
+function initMap() {
+  _map = L.map('map', { zoomControl: true, scrollWheelZoom: true }).setView(MAP_CENTER, MAP_ZOOM);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(_map);
+  _map.on('click', function() { closeMapPreview(); });
+}
+
+function renderMap() {
+  if (!_map) return;
+  _markers.forEach(function(m) { _map.removeLayer(m); });
+  _markers = [];
+  _activeSlug = null;
+
+  var filtered = currentFilter === 'all' ? allProperties : allProperties.filter(function(p){
+    return p.transaction_type === currentFilter || p.property_type === currentFilter;
+  });
+
+  filtered.forEach(function(p) {
+    var latlng = getLatLng(p);
+    var label  = formatPriceBubble(p);
+    var isFeat = !!p.is_featured;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div class="price-bubble' + (isFeat ? ' pb-featured' : '') + '" data-slug="' + (p.slug||'') + '">' + label + '</div>',
+      iconAnchor: [0, 0]
+    });
+    var marker = L.marker(latlng, { icon: icon }).addTo(_map);
+    marker._pintag = p;
+    marker.on('click', function(e) {
+      L.DomEvent.stopPropagation(e);
+      var prev = document.querySelector('.price-bubble.pb-active');
+      if (prev) prev.classList.remove('pb-active');
+      var el = marker.getElement();
+      if (el) { var b = el.querySelector('.price-bubble'); if (b) b.classList.add('pb-active'); }
+      _activeSlug = p.slug;
+      showMapPreview(p);
+    });
+    _markers.push(marker);
+  });
+}
+
+function showMapPreview(p) {
+  var lang = getCurrentLang();
+  var imgInner = (p.images && p.images.length)
+    ? '<img src="' + p.images[0] + '" alt="" loading="lazy">'
+    : '<div class="prop-card-no-img"></div>';
+  document.getElementById('mp-img-inner').innerHTML = imgInner;
+
+  // Image-overlay badges (NEW only)
+  var imgBadges = '';
+  if (isNewListing(p)) {
+    var newTxt = daysOld(p) < 1
+      ? {lo:'ໃໝ່ວັນນີ້',en:'New Today',zh:'今天上架'}[lang]
+      : {lo:'ໃໝ່ອາທິດນີ້',en:'New This Week',zh:'本周新上'}[lang];
+    imgBadges = '<span class="status-badge badge-available">' + newTxt + '</span>';
+  }
+  document.getElementById('mp-img-badges').innerHTML = imgBadges;
+
+  // Activity badges
+  document.getElementById('mp-act-badges').innerHTML = getActivityBadgesHtml(p, lang);
+
+  document.getElementById('mp-price').textContent = p.price_display || {lo:'ສອບຖາມ',en:'Price on request',zh:'价格面议'}[lang];
+
+  var title = p['title_' + lang] || p.title_en || '';
+  document.getElementById('mp-title').textContent = title;
+
+  var specs = [
+    p.bedrooms  ? p.bedrooms  + ' ' + {lo:'ຫ້ອງນອນ',en:'beds',zh:'卧'}[lang] : '',
+    p.bathrooms ? p.bathrooms + ' ' + {lo:'ຫ້ອງນ້ຳ',en:'baths',zh:'浴'}[lang] : '',
+    p.sqm       ? p.sqm + ' sqm' : '',
+    p.property_type ? (p.property_type.charAt(0).toUpperCase() + p.property_type.slice(1)) : ''
+  ].filter(Boolean).join(' · ');
+  document.getElementById('mp-specs').textContent = specs;
+
+  var district = p['district_' + lang] || p.district_en || p.district || '';
+  document.getElementById('mp-loc').innerHTML =
+    '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>' +
+    (district ? district + ', ' : '') +
+    {lo:'ວຽງຈັນ',en:'Vientiane',zh:'万象'}[lang];
+
+  // Agent
+  var agentRow = document.getElementById('mp-agent-row');
+  if (p.agent_name) {
+    var avatarInner = p.agent_photo
+      ? '<img src="' + p.agent_photo + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.style.display=\'none\'">'
+      : (p.agent_name.charAt(0) || 'P');
+    agentRow.innerHTML =
+      '<div class="agent-avatar">' + avatarInner + '</div>' +
+      '<div><div class="agent-name">' + p.agent_name + '</div>' +
+      '<div class="agent-platform">ຕົວແທນ Pintag</div></div>';
+    agentRow.style.display = 'flex';
+  } else {
+    agentRow.style.display = 'none';
+  }
+
+  // Activity line
+  var actLine = getActivityLine(p, lang);
+  document.getElementById('mp-activity-line').textContent = actLine;
+
+  document.getElementById('mp-view-btn').href = 'listing.html?slug=' + encodeURIComponent(p.slug || '');
+  document.getElementById('map-preview').style.display = 'block';
+}
+
+function closeMapPreview() {
+  document.getElementById('map-preview').style.display = 'none';
+  var prev = document.querySelector('.price-bubble.pb-active');
+  if (prev) prev.classList.remove('pb-active');
+  _activeSlug = null;
+}
+
 async function loadListings() {
   try {
     var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc', {
@@ -509,12 +854,14 @@ function setFilter(filter, btn) {
   currentFilter = filter;
   document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
-  renderListings();
+  closeMapPreview();
+  if (_viewMode === 'map') renderMap();
+  else renderListings();
 }
 
 function setSort(val) {
   currentSort = val;
-  renderListings();
+  if (_viewMode === 'list') renderListings();
 }
 
 function renderListings() {
@@ -602,10 +949,22 @@ function renderListings() {
       ? '<p class="card-price">' + p.price_display + '</p>'
       : '<p class="card-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
 
+    var actBadgesHtml = getActivityBadgesHtml(p, lang);
+    var actLineTxt    = getActivityLine(p, lang);
+    var actLineHtml   = actLineTxt ? '<p class="card-activity-line">' + actLineTxt + '</p>' : '';
+
+    var newBadgeHtml = isNewListing(p)
+      ? '<div style="margin-top:4px;"><span class="badge-new-listing">' +
+          (daysOld(p) < 1
+            ? ({lo:'ໃໝ່ວັນນີ້',en:'New Today',zh:'今天上架'})[lang]
+            : ({lo:'ໃໝ່ອາທິດນີ້',en:'New This Week',zh:'本周新上'})[lang])
+          + '</span></div>'
+      : '';
+
     card.innerHTML =
       '<div class="prop-card-img">' +
         imgHtml +
-        '<div class="ov-tl">' + getBadgeHtml(p, lang, isFeaturedCard) + '</div>' +
+        '<div class="ov-tl">' + getBadgeHtml(p, lang, isFeaturedCard) + newBadgeHtml + '</div>' +
         '<div class="ov-tr">' +
           '<button class="heart-btn' + (isSaved ? ' saved' : '') + '" data-save="' + slugSafe + '" onclick="toggleSave(\'' + slugSafe + '\',event)" aria-label="Save listing">' +
             '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
@@ -621,6 +980,7 @@ function renderListings() {
           '<span class="zh-i">' + txLabel.zh + '</span>' +
           (typeDisplay ? ' · ' + typeDisplay : '') +
         '</p>' +
+        (actBadgesHtml ? '<div class="act-badges">' + actBadgesHtml + '</div>' : '') +
         '<p class="card-title">' + title + '</p>' +
         '<p class="card-loc">' +
           '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>' +
@@ -630,6 +990,7 @@ function renderListings() {
         (specsHtml ? '<div class="card-specs">' + specsHtml + '</div>' : '') +
         priceHtml +
         getAgentHtml(p) +
+        actLineHtml +
       '</div>';
 
     container.appendChild(card);
