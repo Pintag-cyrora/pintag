@@ -1,4 +1,21 @@
-const corsHeaders = {
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: sans-serif; padding: 20px; background: #0f0f0f; color: #fff; }
+  button { width: 100%; padding: 18px; font-size: 18px; background: #2d8c8c; color: #fff; border: none; border-radius: 10px; cursor: pointer; }
+  button:active { background: #1a6060; }
+  p { color: #aaa; font-size: 14px; margin-top: 12px; text-align: center; }
+  #status { color: #4caf50; font-size: 16px; text-align: center; margin-top: 10px; display: none; }
+</style>
+</head>
+<body>
+<button onclick="copyCode()">Copy Edge Function Code</button>
+<p>Tap the button, then paste into Supabase → Edge Functions → smart-listing-importer → Code</p>
+<div id="status">Copied!</div>
+<script>
+const CODE = `const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -8,7 +25,7 @@ const MAX_IMAGES = 10;
 
 const DISTRICTS = ['Sisattanak','Saysettha','Chanthabouly','Sikhottabong','Xaythany','Hadxaifong','Naxaithong'];
 
-async function urlToBase64(url: string): Promise<{ mimeType: string; data: string } | null> {
+async function urlToBase64(url) {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
@@ -22,35 +39,35 @@ async function urlToBase64(url: string): Promise<{ mimeType: string; data: strin
   }
 }
 
-function buildPrompt(description: string, imageCount: number): string {
+function buildPrompt(description, imageCount) {
   const photoSection = imageCount > 0
-    ? `\nYou have also received ${imageCount} property photo(s) numbered by their position in the request (index 0 through ${imageCount - 1}).`
-    : '\nNo photos were provided.';
+    ? \`\\nYou have also received \${imageCount} property photo(s) numbered by their position in the request (index 0 through \${imageCount - 1}).\`
+    : '\\nNo photos were provided.';
 
   const photoTaskSection = imageCount > 0
-    ? `
+    ? \`
 TASK B — ANALYZE PHOTOS:
-For each photo (index 0 through ${imageCount - 1}), determine:
+For each photo (index 0 through \${imageCount - 1}), determine:
 - room_type: one of exactly: exterior, living_room, kitchen, dining_room, bedroom, bathroom, pool, garden, balcony, other
 - quality_score: 1–5 (5 = best composition, lighting, and clarity)
 
 Then determine:
 - hero_index: the single best cover photo index (prefer bright exterior with pool or garden, or impressive living room)
 - recommended_order: array of ALL image indices in professional gallery sequence
-  Rule: hero first, then remaining exteriors, living/dining areas, kitchen, bedrooms, bathrooms, pool/garden/balcony, other`
-    : `
+  Rule: hero first, then remaining exteriors, living/dining areas, kitchen, bedrooms, bathrooms, pool/garden/balcony, other\`
+    : \`
 TASK B — PHOTOS:
-No photos provided. Return empty arrays.`;
+No photos provided. Return empty arrays.\`;
 
   const photoJsonSection = imageCount > 0
-    ? `  "photo_analysis": [{ "index": 0, "room_type": "exterior", "quality_score": 4 }],
+    ? \`  "photo_analysis": [{ "index": 0, "room_type": "exterior", "quality_score": 4 }],
   "hero_index": 0,
-  "recommended_order": [0, 1, 2]`
-    : `  "photo_analysis": [],
+  "recommended_order": [0, 1, 2]\`
+    : \`  "photo_analysis": [],
   "hero_index": 0,
-  "recommended_order": []`;
+  "recommended_order": []\`;
 
-  return `You are a real estate data extraction AI for Pintag, a premium real estate platform in Vientiane, Laos.${photoSection}
+  return \`You are a real estate data extraction AI for Pintag, a premium real estate platform in Vientiane, Laos.\${photoSection}
 
 TASK A — EXTRACT from the property description below.
 The description may be in Lao (ລາວ script), English, Thai, or a mix. Extract structured fields.
@@ -61,7 +78,7 @@ LANGUAGE RULES — follow exactly:
 2. All _lo output fields MUST be written in authentic Lao script (ພາສາລາວ). Never substitute Thai script, Khmer script, or romanised transliteration for Lao. If you are unsure, produce a proper Lao translation from the English.
 3. price_display: preserve the original currency and number as written (₭ or LAK for Lao Kip, ฿ for Thai Baht, $ for USD). Example: "450,000,000 ₭" or "$1,500/month". Do not convert currencies.
 
-Valid districts (use exact spelling or null): ${DISTRICTS.join(', ')}
+Valid districts (use exact spelling or null): Sisattanak, Saysettha, Chanthabouly, Sikhottabong, Xaythany, Hadxaifong, Naxaithong
 Valid property_type values: house, villa, apartment, townhouse, land, commercial
 Valid property_style values: modern, luxury, minimalist, family, colonial, resort, investment
 Valid transaction_type values: for_sale, for_rent
@@ -69,9 +86,9 @@ Valid furnished values: fully, partially, unfurnished
 
 PROPERTY DESCRIPTION:
 """
-${description || '(no description provided)'}
+\${description || '(no description provided)'}
 """
-${photoTaskSection}
+\${photoTaskSection}
 
 Return ONLY valid JSON with no extra text or markdown:
 {
@@ -87,17 +104,17 @@ Return ONLY valid JSON with no extra text or markdown:
   "district": null,
   "village": null,
   "furnished": null,
-  "description_en": "2–4 paragraphs of professional English property description",
-  "description_lo": "2–4 paragraphs in authentic Lao script (ພາສາລາວ)",
-  "description_zh": "2–4 paragraphs in Simplified Chinese (中文)",
+  "description_en": "2-4 paragraphs of professional English property description",
+  "description_lo": "2-4 paragraphs in authentic Lao script (ພາສາລາວ)",
+  "description_zh": "2-4 paragraphs in Simplified Chinese (中文)",
   "property_highlight_en": "One compelling sentence in English",
   "property_highlight_lo": "One compelling sentence in authentic Lao script",
   "property_highlight_zh": "One compelling sentence in Simplified Chinese",
   "neighborhood_insight_en": "One sentence about the neighbourhood in English",
   "neighborhood_insight_lo": "One sentence in authentic Lao script",
   "neighborhood_insight_zh": "One sentence in Simplified Chinese",
-  ${photoJsonSection}
-}`;
+  \${photoJsonSection}
+}\`;
 }
 
 Deno.serve(async (req) => {
@@ -116,9 +133,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const urlsToFetch: string[] = Array.isArray(image_urls) ? image_urls.slice(0, MAX_IMAGES) : [];
+    const urlsToFetch = Array.isArray(image_urls) ? image_urls.slice(0, MAX_IMAGES) : [];
     const imageResults = await Promise.all(urlsToFetch.map(url => urlToBase64(url)));
-    const validImages = imageResults.filter((r): r is NonNullable<typeof r> => r !== null);
+    const validImages = imageResults.filter(r => r !== null);
 
     const imageParts = validImages.map(img => ({
       inlineData: { mimeType: img.mimeType, data: img.data }
@@ -127,10 +144,10 @@ Deno.serve(async (req) => {
 
     const RETRY_DELAYS = [2000, 5000, 10000];
 
-    let response: Response;
+    let response;
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
       response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        \`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\${apiKey}\`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -147,45 +164,45 @@ Deno.serve(async (req) => {
         (response.status === 429 || response.status === 503) &&
         attempt < RETRY_DELAYS.length
       ) {
-        console.log(`Gemini ${response.status}, retry ${attempt + 1}/${RETRY_DELAYS.length}`);
+        console.log(\`Gemini \${response.status}, retry \${attempt + 1}/\${RETRY_DELAYS.length}\`);
         await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
         continue;
       }
 
       const errText = await response.text();
-      throw new Error(`Gemini API ${response.status}: ${errText.slice(0, 200)}`);
+      throw new Error(\`Gemini API \${response.status}: \${errText.slice(0, 200)}\`);
     }
 
     const geminiData = await response.json();
     const candidateCount = geminiData.candidates?.length ?? 0;
     const finishReason = geminiData.candidates?.[0]?.finishReason ?? 'unknown';
-    console.log(`Gemini candidates: ${candidateCount}, finishReason: ${finishReason}`);
+    console.log(\`Gemini candidates: \${candidateCount}, finishReason: \${finishReason}\`);
 
     const text = geminiData.candidates?.[0]?.content?.parts
-      ?.map((p: { text?: string }) => p.text || '')
+      ?.map(p => p.text || '')
       .join('');
     if (!text) {
-      throw new Error(`No text content in Gemini response (candidates: ${candidateCount}, finishReason: ${finishReason})`);
+      throw new Error(\`No text content in Gemini response (candidates: \${candidateCount}, finishReason: \${finishReason})\`);
     }
 
-    console.log(`Gemini response length: ${text.length} chars`);
+    console.log(\`Gemini response length: \${text.length} chars\`);
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);
     if (!jsonMatch) {
-      throw new Error(`No JSON object found in Gemini response. Response starts with: ${text.slice(0, 100)}`);
+      throw new Error(\`No JSON object found in Gemini response. Response starts with: \${text.slice(0, 100)}\`);
     }
 
     const extracted = jsonMatch[0];
     if (!extracted.trimEnd().endsWith('}')) {
-      throw new Error(`Gemini returned incomplete JSON (likely token limit exceeded). Response length: ${text.length} chars, finishReason: ${finishReason}`);
+      throw new Error(\`Gemini returned incomplete JSON (likely token limit exceeded). Response length: \${text.length} chars, finishReason: \${finishReason}\`);
     }
 
-    let result: Record<string, unknown>;
+    let result;
     try {
       result = JSON.parse(extracted);
     } catch (parseErr) {
       const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-      throw new Error(`JSON parse failed (${msg}). Response length: ${text.length} chars, finishReason: ${finishReason}`);
+      throw new Error(\`JSON parse failed (\${msg}). Response length: \${text.length} chars, finishReason: \${finishReason}\`);
     }
 
     return new Response(JSON.stringify(result), {
@@ -198,4 +215,14 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
-});
+});`;
+
+function copyCode() {
+  navigator.clipboard.writeText(CODE).then(() => {
+    document.getElementById('status').style.display = 'block';
+    setTimeout(() => document.getElementById('status').style.display = 'none', 2000);
+  });
+}
+</script>
+</body>
+</html>

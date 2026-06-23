@@ -80,6 +80,17 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
 /* Edit profile section */
 .edit-toggle{font-size:12px;color:var(--teal);cursor:pointer;text-decoration:underline;background:none;border:none;font-family:inherit;padding:0;}
 @media(max-width:520px){.row2{grid-template-columns:1fr;}}
+/* Agent photo upload */
+.photo-upload-zone{display:flex;flex-direction:column;gap:10px;}
+.avatar-preview-wrap{display:flex;align-items:center;}
+.avatar-lg{width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--border);}
+.avatar-lg-ph{width:80px;height:80px;border-radius:50%;background:rgba(45,140,140,0.1);display:flex;align-items:center;justify-content:center;font-size:32px;color:var(--teal);font-weight:700;border:2px solid var(--border);}
+.photo-upload-btns{display:flex;gap:8px;}
+.btn-danger{color:var(--red)!important;border-color:rgba(192,57,43,0.3)!important;}
+.btn-danger:hover{background:rgba(192,57,43,0.06)!important;}
+.upload-bar{height:4px;background:rgba(26,36,40,0.1);border-radius:2px;overflow:hidden;}
+.upload-bar-fill{height:100%;background:var(--teal);border-radius:2px;width:0%;transition:width 0.3s;}
+.upload-bar-status{font-size:11px;color:var(--muted);margin-top:4px;}
 </style>
 </head>
 <body>
@@ -162,9 +173,24 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
               </div>
             </div>
             <div class="field">
-              <label>Photo URL or Filename</label>
-              <input type="text" id="ep-photo" placeholder="agent-name.jpg" oninput="previewEditPhoto()">
-              <img id="ep-photo-preview" class="preview-avatar" alt="">
+              <label>Agent Photo</label>
+              <div class="photo-upload-zone">
+                <div class="avatar-preview-wrap">
+                  <img id="ep-avatar-img" class="avatar-lg" style="display:none;" alt="">
+                  <div id="ep-avatar-ph" class="avatar-lg-ph">?</div>
+                </div>
+                <div class="photo-upload-btns">
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('ep-photo-file').click()">Upload Photo</button>
+                  <button type="button" class="btn btn-ghost btn-sm btn-danger" id="ep-remove-btn" onclick="clearEpPhoto()" style="display:none;">Remove</button>
+                </div>
+                <input type="file" id="ep-photo-file" accept="image/*,.heic,.heif" style="display:none;" onchange="onEpPhotoSelected(this)">
+                <div id="ep-photo-bar-wrap" style="display:none;">
+                  <div class="upload-bar"><div class="upload-bar-fill" id="ep-photo-bar-fill"></div></div>
+                  <div class="upload-bar-status" id="ep-photo-bar-status"></div>
+                </div>
+                <input type="hidden" id="ep-photo" value="">
+              </div>
+              <p class="hint">JPG or PNG · max 5 MB · Upload a new photo to replace the current one</p>
             </div>
             <div class="field">
               <div class="checkbox-row">
@@ -262,10 +288,24 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
         </div>
 
         <div class="field">
-          <label>Photo Filename</label>
-          <input type="text" id="f-photo" placeholder="agent-name.jpg" oninput="previewPhoto()">
-          <p class="hint">File must be uploaded to the site root (e.g. <code>agent-viengkhone-phomthavong.jpg</code>). URL: <code>https://www.pintag.io/&lt;filename&gt;</code></p>
-          <img id="photo-preview" class="preview-avatar" alt="Photo preview">
+          <label>Agent Photo</label>
+          <div class="photo-upload-zone">
+            <div class="avatar-preview-wrap">
+              <img id="new-avatar-img" class="avatar-lg" style="display:none;" alt="">
+              <div id="new-avatar-ph" class="avatar-lg-ph">?</div>
+            </div>
+            <div class="photo-upload-btns">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('new-photo-file').click()">Upload Photo</button>
+              <button type="button" class="btn btn-ghost btn-sm btn-danger" id="new-remove-btn" onclick="clearNewPhoto()" style="display:none;">Remove</button>
+            </div>
+            <input type="file" id="new-photo-file" accept="image/*,.heic,.heif" style="display:none;" onchange="onNewPhotoSelected(this)">
+            <div id="new-photo-bar-wrap" style="display:none;">
+              <div class="upload-bar"><div class="upload-bar-fill" id="new-photo-bar-fill"></div></div>
+              <div class="upload-bar-status" id="new-photo-bar-status"></div>
+            </div>
+            <input type="hidden" id="f-photo" value="">
+          </div>
+          <p class="hint">JPG or PNG · max 5 MB</p>
         </div>
 
         <div class="field">
@@ -331,24 +371,132 @@ function autoSlug() {
   document.getElementById('f-slug').value = slug;
 }
 
-function previewPhoto() {
-  var filename = document.getElementById('f-photo').value.trim();
-  var img = document.getElementById('photo-preview');
-  if (filename && !filename.startsWith('<')) {
-    var url = filename.startsWith('http') ? filename : 'https://www.pintag.io/' + filename;
-    img.src = url; img.style.display = 'block';
-    img.onerror = function() { img.style.display = 'none'; };
-  } else { img.style.display = 'none'; }
+// ── Agent Photo Upload ────────────────────────────────────────────────
+var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+
+async function uploadAgentPhoto(file, agentId, fillId, wrapId, statusId) {
+  var wrap   = document.getElementById(wrapId);
+  var fill   = document.getElementById(fillId);
+  var status = document.getElementById(statusId);
+
+  console.log('[upload] file:', file.name, file.type, file.size, 'agentId:', agentId);
+
+  if (!file.type.startsWith('image/') && !['image/heic','image/heif'].includes(file.type) && file.type !== '') {
+    wrap.style.display = 'block'; fill.style.background = 'var(--red)'; fill.style.width = '100%';
+    status.textContent = 'Only image files are allowed.';
+    return null;
+  }
+  if (file.size > MAX_PHOTO_BYTES) {
+    wrap.style.display = 'block'; fill.style.background = 'var(--red)'; fill.style.width = '100%';
+    status.textContent = 'File too large — max 5 MB.';
+    return null;
+  }
+  if (!agentId) {
+    wrap.style.display = 'block'; fill.style.background = 'var(--red)'; fill.style.width = '100%';
+    status.textContent = '✗ No agent ID — save agent first';
+    console.error('[upload] agentId is empty');
+    return null;
+  }
+
+  // Check auth session before uploading
+  var { data: sessionData } = await sb.auth.getSession();
+  var session = sessionData && sessionData.session;
+  console.log('[upload] session present:', !!session, 'role:', session ? session.user.role : 'none');
+  if (!session) {
+    wrap.style.display = 'block'; fill.style.background = 'var(--red)'; fill.style.width = '100%';
+    status.textContent = '✗ Not signed in — refresh and sign in again';
+    console.error('[upload] No active session');
+    return null;
+  }
+
+  wrap.style.display = 'block';
+  fill.style.background = 'var(--teal)';
+  fill.style.width = '20%';
+  status.textContent = 'Uploading…';
+
+  var ext  = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  var uploadPath = 'agents/' + agentId + '/' + Date.now() + '.' + ext;
+  var contentType = file.type || 'image/jpeg';
+
+  console.log('[upload] path:', uploadPath, 'contentType:', contentType);
+  console.log('[upload] uploading to bucket: property-images');
+
+  var { data: uploadData, error: uploadError } = await sb.storage
+    .from('property-images')
+    .upload(uploadPath, file, { contentType, upsert: true });
+
+  console.log('[upload] result:', { data: uploadData, error: uploadError });
+
+  if (uploadError) {
+    fill.style.width = '100%'; fill.style.background = 'var(--red)';
+    var code = uploadError.statusCode ? ' [' + uploadError.statusCode + ']' : '';
+    status.textContent = '✗' + code + ': ' + uploadError.message;
+    console.error('[upload] error detail:', JSON.stringify(uploadError));
+    return null;
+  }
+
+  fill.style.width = '100%';
+  status.textContent = '✓ Uploaded';
+  var { data: urlData } = sb.storage.from('property-images').getPublicUrl(uploadPath);
+  console.log('[upload] public URL:', urlData.publicUrl);
+  return urlData.publicUrl;
 }
 
-function previewEditPhoto() {
-  var filename = document.getElementById('ep-photo').value.trim();
-  var img = document.getElementById('ep-photo-preview');
-  if (filename) {
-    var url = filename.startsWith('http') ? filename : 'https://www.pintag.io/' + filename;
-    img.src = url; img.style.display = 'block';
-    img.onerror = function() { img.style.display = 'none'; };
-  } else { img.style.display = 'none'; }
+function showAvatarPreview(imgId, phId, src) {
+  var img = document.getElementById(imgId);
+  var ph  = document.getElementById(phId);
+  img.src = src; img.style.display = 'block'; ph.style.display = 'none';
+  img.onerror = function() { img.style.display = 'none'; ph.style.display = 'flex'; };
+}
+
+async function onNewPhotoSelected(input) {
+  var file = input.files[0]; input.value = '';
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) { showAvatarPreview('new-avatar-img', 'new-avatar-ph', e.target.result); };
+  reader.readAsDataURL(file);
+  if (!document.getElementById('f-id').value.trim()) genUUID();
+  var agentId = document.getElementById('f-id').value.trim();
+  var url = await uploadAgentPhoto(file, agentId, 'new-photo-bar-fill', 'new-photo-bar-wrap', 'new-photo-bar-status');
+  if (url) {
+    document.getElementById('f-photo').value = url;
+    document.getElementById('new-remove-btn').style.display = 'inline-flex';
+  } else {
+    document.getElementById('new-avatar-img').style.display = 'none';
+    document.getElementById('new-avatar-ph').style.display = 'flex';
+  }
+}
+
+function clearNewPhoto() {
+  document.getElementById('f-photo').value = '';
+  document.getElementById('new-avatar-img').style.display = 'none';
+  document.getElementById('new-avatar-ph').style.display = 'flex';
+  document.getElementById('new-remove-btn').style.display = 'none';
+  document.getElementById('new-photo-bar-wrap').style.display = 'none';
+}
+
+async function onEpPhotoSelected(input) {
+  var file = input.files[0]; input.value = '';
+  if (!file || !_selectedAgent) return;
+  var reader = new FileReader();
+  reader.onload = function(e) { showAvatarPreview('ep-avatar-img', 'ep-avatar-ph', e.target.result); };
+  reader.readAsDataURL(file);
+  var url = await uploadAgentPhoto(file, _selectedAgent.id, 'ep-photo-bar-fill', 'ep-photo-bar-wrap', 'ep-photo-bar-status');
+  if (url) {
+    document.getElementById('ep-photo').value = url;
+    document.getElementById('ep-remove-btn').style.display = 'inline-flex';
+  } else {
+    if (_selectedAgent.photo_url) { showAvatarPreview('ep-avatar-img', 'ep-avatar-ph', _selectedAgent.photo_url); }
+    else { document.getElementById('ep-avatar-img').style.display = 'none'; document.getElementById('ep-avatar-ph').style.display = 'flex'; }
+  }
+}
+
+function clearEpPhoto() {
+  document.getElementById('ep-photo').value = '';
+  document.getElementById('ep-avatar-img').style.display = 'none';
+  document.getElementById('ep-avatar-ph').style.display = 'flex';
+  document.getElementById('ep-remove-btn').style.display = 'none';
+  document.getElementById('ep-photo-bar-wrap').style.display = 'none';
 }
 
 function addStep(id, text, containerId) {
@@ -464,7 +612,7 @@ async function loadAgentsAndListings() {
       sel.appendChild(opt);
     });
 
-    _allListings = await sbApi('GET', 'properties?select=id,slug,title_en,district,status,agent_id&order=created_at.desc&limit=500', null);
+    _allListings = await sbApi('GET', 'properties?select=id,slug,title_en,district_en,status,agent_id&order=created_at.desc&limit=500', null);
   } catch(e) {
     console.error('Failed to load agents/listings:', e);
   }
@@ -527,11 +675,16 @@ function renderAgentSummary() {
   document.getElementById('ep-agency').value   = a.agency_name || 'Pintag';
   document.getElementById('ep-photo').value    = a.photo_url || '';
   document.getElementById('ep-verified').checked = !!a.is_verified;
-  document.getElementById('ep-photo-preview').style.display = 'none';
+  var epImg = document.getElementById('ep-avatar-img');
+  var epPh  = document.getElementById('ep-avatar-ph');
+  var epRem = document.getElementById('ep-remove-btn');
+  document.getElementById('ep-photo-bar-wrap').style.display = 'none';
   if (a.photo_url) {
-    var img = document.getElementById('ep-photo-preview');
-    img.src = a.photo_url; img.style.display = 'block';
-    img.onerror = function() { img.style.display = 'none'; };
+    epImg.src = a.photo_url; epImg.style.display = 'block'; epPh.style.display = 'none'; epRem.style.display = 'inline-flex';
+    epImg.onerror = function() { epImg.style.display = 'none'; epPh.style.display = 'flex'; };
+  } else {
+    epImg.style.display = 'none'; epPh.style.display = 'flex'; epRem.style.display = 'none';
+    epPh.textContent = a.name_en ? a.name_en[0].toUpperCase() : '?';
   }
 
   updateAssignedCount();
@@ -551,7 +704,7 @@ function renderListingsGrid() {
   var filtered = _allListings.filter(function(l) {
     if (!search) return true;
     var title = (l.title_en || l.slug || '').toLowerCase();
-    var district = (l.district || '').toLowerCase();
+    var district = (l.district_en || '').toLowerCase();
     return title.includes(search) || district.includes(search);
   });
 
@@ -567,7 +720,7 @@ function renderListingsGrid() {
     var isAssigned = l.agent_id === a.id;
     var otherAgent = l.agent_id && l.agent_id !== a.id ? _agentMap[l.agent_id] : null;
     var title = l.title_en || l.slug || '(no title)';
-    var district = l.district || '';
+    var district = l.district_en || '';
     var statusTag = l.status === 'draft' ? '<span class="tag tag-draft">draft</span>' : '';
     var otherTag = otherAgent ? '<span class="tag tag-other">→ ' + otherAgent.name_en + '</span>' : '';
     var metaParts = [district].filter(Boolean);
