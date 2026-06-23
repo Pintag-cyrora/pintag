@@ -379,6 +379,8 @@ async function uploadAgentPhoto(file, agentId, fillId, wrapId, statusId) {
   var fill   = document.getElementById(fillId);
   var status = document.getElementById(statusId);
 
+  console.log('[upload] file:', file.name, file.type, file.size, 'agentId:', agentId);
+
   if (!file.type.startsWith('image/') && !['image/heic','image/heif'].includes(file.type) && file.type !== '') {
     wrap.style.display = 'block'; fill.style.background = 'var(--red)'; fill.style.width = '100%';
     status.textContent = 'Only image files are allowed.';
@@ -389,6 +391,23 @@ async function uploadAgentPhoto(file, agentId, fillId, wrapId, statusId) {
     status.textContent = 'File too large — max 5 MB.';
     return null;
   }
+  if (!agentId) {
+    wrap.style.display = 'block'; fill.style.background = 'var(--red)'; fill.style.width = '100%';
+    status.textContent = '✗ No agent ID — save agent first';
+    console.error('[upload] agentId is empty');
+    return null;
+  }
+
+  // Check auth session before uploading
+  var { data: sessionData } = await sb.auth.getSession();
+  var session = sessionData && sessionData.session;
+  console.log('[upload] session present:', !!session, 'role:', session ? session.user.role : 'none');
+  if (!session) {
+    wrap.style.display = 'block'; fill.style.background = 'var(--red)'; fill.style.width = '100%';
+    status.textContent = '✗ Not signed in — refresh and sign in again';
+    console.error('[upload] No active session');
+    return null;
+  }
 
   wrap.style.display = 'block';
   fill.style.background = 'var(--teal)';
@@ -396,23 +415,30 @@ async function uploadAgentPhoto(file, agentId, fillId, wrapId, statusId) {
   status.textContent = 'Uploading…';
 
   var ext  = (file.name.split('.').pop() || 'jpg').toLowerCase();
-  var path = 'agents/' + agentId + '/' + Date.now() + '.' + ext;
+  var uploadPath = 'agents/' + agentId + '/' + Date.now() + '.' + ext;
   var contentType = file.type || 'image/jpeg';
+
+  console.log('[upload] path:', uploadPath, 'contentType:', contentType);
+  console.log('[upload] uploading to bucket: property-images');
 
   var { data: uploadData, error: uploadError } = await sb.storage
     .from('property-images')
-    .upload(path, file, { contentType, upsert: true });
+    .upload(uploadPath, file, { contentType, upsert: true });
+
+  console.log('[upload] result:', { data: uploadData, error: uploadError });
 
   if (uploadError) {
     fill.style.width = '100%'; fill.style.background = 'var(--red)';
     var code = uploadError.statusCode ? ' [' + uploadError.statusCode + ']' : '';
     status.textContent = '✗' + code + ': ' + uploadError.message;
+    console.error('[upload] error detail:', JSON.stringify(uploadError));
     return null;
   }
 
   fill.style.width = '100%';
   status.textContent = '✓ Uploaded';
-  var { data: urlData } = sb.storage.from('property-images').getPublicUrl(path);
+  var { data: urlData } = sb.storage.from('property-images').getPublicUrl(uploadPath);
+  console.log('[upload] public URL:', urlData.publicUrl);
   return urlData.publicUrl;
 }
 
