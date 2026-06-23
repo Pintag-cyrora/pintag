@@ -183,7 +183,7 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
                   <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('ep-photo-file').click()">Upload Photo</button>
                   <button type="button" class="btn btn-ghost btn-sm btn-danger" id="ep-remove-btn" onclick="clearEpPhoto()" style="display:none;">Remove</button>
                 </div>
-                <input type="file" id="ep-photo-file" accept="image/*" style="display:none;" onchange="onEpPhotoSelected(this)">
+                <input type="file" id="ep-photo-file" accept="image/*,.heic,.heif" style="display:none;" onchange="onEpPhotoSelected(this)">
                 <div id="ep-photo-bar-wrap" style="display:none;">
                   <div class="upload-bar"><div class="upload-bar-fill" id="ep-photo-bar-fill"></div></div>
                   <div class="upload-bar-status" id="ep-photo-bar-status"></div>
@@ -298,7 +298,7 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
               <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('new-photo-file').click()">Upload Photo</button>
               <button type="button" class="btn btn-ghost btn-sm btn-danger" id="new-remove-btn" onclick="clearNewPhoto()" style="display:none;">Remove</button>
             </div>
-            <input type="file" id="new-photo-file" accept="image/*" style="display:none;" onchange="onNewPhotoSelected(this)">
+            <input type="file" id="new-photo-file" accept="image/*,.heic,.heif" style="display:none;" onchange="onNewPhotoSelected(this)">
             <div id="new-photo-bar-wrap" style="display:none;">
               <div class="upload-bar"><div class="upload-bar-fill" id="new-photo-bar-fill"></div></div>
               <div class="upload-bar-status" id="new-photo-bar-status"></div>
@@ -379,7 +379,7 @@ async function uploadAgentPhoto(file, agentId, fillId, wrapId, statusId) {
   var fill   = document.getElementById(fillId);
   var status = document.getElementById(statusId);
 
-  if (!file.type.startsWith('image/')) {
+  if (!file.type.startsWith('image/') && !['image/heic','image/heif'].includes(file.type) && file.type !== '') {
     wrap.style.display = 'block'; fill.style.background = 'var(--red)'; fill.style.width = '100%';
     status.textContent = 'Only image files are allowed.';
     return null;
@@ -398,18 +398,38 @@ async function uploadAgentPhoto(file, agentId, fillId, wrapId, statusId) {
   var ext  = (file.name.split('.').pop() || 'jpg').toLowerCase();
   var path = agentId + '/' + Date.now() + '.' + ext;
 
-  var { error } = await sb.storage.from('agent-photos').upload(path, file, { upsert: true });
-
-  if (error) {
+  // Get fresh token from session (handles refresh automatically)
+  var { data: sessionData } = await sb.auth.getSession();
+  var uploadToken = sessionData && sessionData.session ? sessionData.session.access_token : _token;
+  if (!uploadToken) {
     fill.style.width = '100%'; fill.style.background = 'var(--red)';
-    status.textContent = '✗ ' + error.message;
+    status.textContent = '✗ Not signed in — refresh the page and sign in again';
     return null;
   }
 
-  var { data } = sb.storage.from('agent-photos').getPublicUrl(path);
+  var res = await fetch(SUPABASE_URL + '/storage/v1/object/agent-photos/' + path, {
+    method: 'POST',
+    headers: {
+      'apikey':        SUPABASE_ANON,
+      'Authorization': 'Bearer ' + uploadToken,
+      'Content-Type':  file.type,
+      'x-upsert':      'true'
+    },
+    body: file
+  });
+
+  if (!res.ok) {
+    var txt = await res.text();
+    var parsed = null; try { parsed = JSON.parse(txt); } catch(_) {}
+    var msg = parsed ? (parsed.message || parsed.error || txt) : txt;
+    fill.style.width = '100%'; fill.style.background = 'var(--red)';
+    status.textContent = '✗ HTTP ' + res.status + ': ' + msg;
+    return null;
+  }
+
   fill.style.width = '100%';
   status.textContent = '✓ Uploaded';
-  return data.publicUrl;
+  return SUPABASE_URL + '/storage/v1/object/public/agent-photos/' + path;
 }
 
 function showAvatarPreview(imgId, phId, src) {
