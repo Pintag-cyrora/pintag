@@ -412,7 +412,7 @@ async function uploadAgentPhoto(file, agentId, fillId, wrapId, statusId) {
     headers: {
       'apikey':        SUPABASE_ANON,
       'Authorization': 'Bearer ' + uploadToken,
-      'Content-Type':  file.type,
+      'Content-Type':  file.type || 'image/jpeg',
       'x-upsert':      'true'
     },
     body: file
