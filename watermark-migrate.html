@@ -37,7 +37,7 @@ input:focus{border-color:#2D8C8C;box-shadow:0 0 0 3px rgba(45,140,140,0.08);}
 .log-err{color:#C0392B;}
 .log-skip{color:#7A9098;}
 .log-info{color:#2D8C8C;}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px;}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:16px;}
 .stat{text-align:center;padding:12px;background:rgba(45,140,140,0.05);border-radius:5px;}
 .stat-n{font-size:22px;font-weight:700;color:#2D8C8C;}
 .stat-l{font-size:11px;color:#7A9098;margin-top:2px;}
@@ -69,7 +69,14 @@ input:focus{border-color:#2D8C8C;box-shadow:0 0 0 3px rgba(45,140,140,0.08);}
       <p style="font-size:13px;color:#3D5058;margin-bottom:16px;">
         Only images hosted in the Pintag <code>property-images</code> bucket will be processed.
         External URLs (Facebook CDN, etc.) are skipped automatically.
+        After watermarking, each listing is flagged <code>images_watermarked = true</code> so it can be skipped on future runs.
       </p>
+      <div style="margin-bottom:16px;">
+        <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;font-size:13px;letter-spacing:0;color:#3D5058;font-weight:400;">
+          <input type="checkbox" id="only-unwatermarked" checked style="width:15px;height:15px;accent-color:#2D8C8C;">
+          Only scan properties not yet watermarked
+        </label>
+      </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn btn-primary" id="scan-btn" onclick="scanListings()">Scan Listings</button>
         <button class="btn btn-danger" id="migrate-btn" onclick="startMigration()" style="display:none;">
@@ -86,6 +93,7 @@ input:focus{border-color:#2D8C8C;box-shadow:0 0 0 3px rgba(45,140,140,0.08);}
         <div class="stat"><div class="stat-n" id="stat-images">0</div><div class="stat-l">Total Images</div></div>
         <div class="stat"><div class="stat-n" id="stat-ours">0</div><div class="stat-l">In Storage</div></div>
         <div class="stat"><div class="stat-n" id="stat-skip">0</div><div class="stat-l">External (skip)</div></div>
+        <div class="stat"><div class="stat-n" id="stat-done">0</div><div class="stat-l">Already Done</div></div>
       </div>
     </div>
 
@@ -238,18 +246,22 @@ async function doLogin() {
 
 // ── SCAN ──────────────────────────────────────────────────────────
 async function scanListings() {
-  const btn = document.getElementById('scan-btn');
+  const btn      = document.getElementById('scan-btn');
+  const onlyNew  = document.getElementById('only-unwatermarked').checked;
   btn.disabled = true; btn.textContent = 'Scanning…';
-  showMsg('scan-msg', 'Loading all listings…', 'info');
+  showMsg('scan-msg', 'Loading listings…', 'info');
 
   try {
-    const props = await sbApi('GET', 'properties?select=id,title_en,images&limit=1000');
-    let totalImages = 0, ourImages = 0, extImages = 0;
+    let qs = 'properties?select=id,title_en,images,images_watermarked&limit=1000';
+    if (onlyNew) qs += '&or=(images_watermarked.is.null,images_watermarked.is.false)';
+    const props = await sbApi('GET', qs);
+    let totalImages = 0, ourImages = 0, extImages = 0, alreadyDone = 0;
     _scanResults = [];
 
     for (const p of props) {
       const imgs = Array.isArray(p.images) ? p.images : [];
       if (imgs.length === 0) continue;
+      if (p.images_watermarked) { alreadyDone++; continue; }
       const ours = imgs.filter(u => u && u.startsWith(STORAGE_PREFIX));
       const ext  = imgs.filter(u => u && !u.startsWith(STORAGE_PREFIX));
       totalImages += imgs.length;
@@ -262,10 +274,13 @@ async function scanListings() {
     document.getElementById('stat-images').textContent   = totalImages;
     document.getElementById('stat-ours').textContent     = ourImages;
     document.getElementById('stat-skip').textContent     = extImages;
+    document.getElementById('stat-done').textContent     = alreadyDone;
     document.getElementById('stats-card').style.display  = 'block';
 
     if (ourImages === 0) {
-      showMsg('scan-msg', 'No photos found in Supabase Storage to watermark.', 'info');
+      showMsg('scan-msg', alreadyDone > 0
+        ? `All ${alreadyDone} listing(s) are already watermarked.`
+        : 'No photos found in Supabase Storage to watermark.', 'info');
     } else {
       showMsg('scan-msg', `Found ${ourImages} photo(s) across ${_scanResults.length} listing(s) to watermark.`, 'success');
       document.getElementById('migrate-btn').style.display = 'inline-flex';
@@ -307,6 +322,7 @@ async function startMigration() {
 
   for (const prop of _scanResults) {
     addLog(`Processing: ${prop.title} (${prop.ours.length} photos)`, 'info');
+    let propFailed = 0;
 
     for (const url of prop.ours) {
       const filename = url.replace(STORAGE_PREFIX, '');
@@ -341,9 +357,22 @@ async function startMigration() {
       } catch(e) {
         addLog(`✗ ${filename}: ${e.message}`, 'err');
         failed++;
+        propFailed++;
       }
       done++;
       updateProgress();
+    }
+
+    // Mark listing as watermarked only if all its images succeeded
+    if (propFailed === 0) {
+      try {
+        await sbApi('PATCH', `properties?id=eq.${prop.id}`, { images_watermarked: true });
+        addLog(`  ↳ ${prop.title}: flagged as watermarked ✓`, 'ok');
+      } catch(e) {
+        addLog(`  ↳ ${prop.title}: could not set flag — ${e.message}`, 'err');
+      }
+    } else {
+      addLog(`  ↳ ${prop.title}: ${propFailed} error(s) — flag NOT set, will retry on next run`, 'err');
     }
   }
 
