@@ -76,6 +76,8 @@ ${photoTaskSection}
 Return ONLY valid JSON with no extra text or markdown:
 {
   "title": "concise English title max 80 chars",
+  "title_lo": "concise Lao title max 80 chars in authentic Lao script",
+  "title_zh": "concise Chinese title max 80 chars in Simplified Chinese",
   "transaction_type": "for_sale",
   "property_type": "villa",
   "property_style": null,

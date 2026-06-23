@@ -2000,9 +2000,9 @@ function populateFormFromImport(data) {
   document.getElementById('f-land-title').value  = '';
   document.getElementById('f-featured').value    = 'false';
 
-  document.getElementById('f-title-en').value    = data.title || '';
-  document.getElementById('f-title-lo').value    = '';
-  document.getElementById('f-title-zh').value    = '';
+  document.getElementById('f-title-en').value    = data.title    || '';
+  document.getElementById('f-title-lo').value    = data.title_lo || '';
+  document.getElementById('f-title-zh').value    = data.title_zh || '';
 
   ['en','lo','zh'].forEach(lang => {
     const el = document.getElementById('f-highlight-' + lang);
