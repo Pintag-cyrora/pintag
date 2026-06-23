@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Pintag · OG Preview Generator</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:#111C1C;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:20px;padding:32px 16px;}
+canvas{max-width:100%;border-radius:6px;box-shadow:0 24px 80px rgba(0,0,0,0.6);}
+.actions{display:flex;gap:12px;align-items:center;}
+.btn{padding:11px 28px;background:#2D8C8C;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background 0.15s;}
+.btn:hover{background:#38A8A8;}
+.hint{color:rgba(255,255,255,0.3);font-size:12px;text-align:center;line-height:1.6;}
+</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="630"></canvas>
+<div class="actions">
+  <button class="btn" onclick="downloadPNG()">Download PNG</button>
+</div>
+<p class="hint">1200 × 630 px · Upload to pintag.io as <code style="color:rgba(255,255,255,0.5)">og-preview.jpg</code></p>
+
+<script>
+document.fonts.ready.then(draw);
+
+function draw() {
+  const canvas = document.getElementById('c');
+  const ctx    = canvas.getContext('2d');
+  const W = 1200, H = 630;
+
+  // ── Background ─────────────────────────────────────────────────
+  ctx.fillStyle = '#F3EFE8';
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Wavy lines (site signature texture) ────────────────────────
+  // Pattern from the site's SVG background (600×360 tile)
+  const lineYs = [28,54,80,108,133,160,186,214,238,265,290,318,343];
+  const tileH  = 360;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(26,36,40,0.055)';
+  ctx.lineWidth   = 0.5;
+  for (let row = 0; row * tileH < H + tileH; row++) {
+    lineYs.forEach(baseY => {
+      const y = baseY + row * tileH;
+      if (y > H + 10) return;
+      // Replicate the bezier wave: M0 yC150 y±6 450 y∓6 600 y (600px wide tile)
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let tx = 0; tx < W; tx += 600) {
+        ctx.bezierCurveTo(tx+150, y-6, tx+450, y+6, tx+600, y);
+      }
+      ctx.stroke();
+    });
+  }
+  ctx.restore();
+
+  // ── Decorative rings — top-right corner ────────────────────────
+  [[380, 0.08], [300, 0.11], [210, 0.07]].forEach(([r, a]) => {
+    ctx.beginPath();
+    ctx.arc(W + 80, -80, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(45,140,140,${a})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+  ctx.beginPath();
+  ctx.arc(W + 80, -80, 150, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(45,140,140,0.055)';
+  ctx.fill();
+
+  // ── Decorative small ring — bottom-left ────────────────────────
+  ctx.beginPath();
+  ctx.arc(-40, H + 40, 180, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(45,140,140,0.09)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // ── Pintag logo mark ───────────────────────────────────────────
+  const lx = 120, ly = Math.round(H / 2) - 12;
+  // Large circle (teal)
+  ctx.beginPath();
+  ctx.arc(lx, ly, 36, 0, Math.PI * 2);
+  ctx.fillStyle = '#38A8A8';
+  ctx.fill();
+  // Small circle (ink)
+  ctx.beginPath();
+  ctx.arc(lx + 65, ly + 23, 15, 0, Math.PI * 2);
+  ctx.fillStyle = '#1C2B32';
+  ctx.fill();
+
+  // ── "Pintag" wordmark ──────────────────────────────────────────
+  ctx.save();
+  ctx.font         = '700 90px "DM Sans", -apple-system, sans-serif';
+  ctx.fillStyle    = '#1A2428';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign    = 'left';
+  ctx.fillText('Pintag', 196, ly - 1);
+  ctx.restore();
+
+  // ── Divider ────────────────────────────────────────────────────
+  ctx.beginPath();
+  ctx.moveTo(120, ly + 52);
+  ctx.lineTo(620, ly + 52);
+  ctx.strokeStyle = 'rgba(45,140,140,0.22)';
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+
+  // ── Subtitle ───────────────────────────────────────────────────
+  ctx.save();
+  ctx.font         = '400 27px "DM Sans", -apple-system, sans-serif';
+  ctx.fillStyle    = '#2D8C8C';
+  ctx.textBaseline = 'top';
+  ctx.textAlign    = 'left';
+  ctx.fillText('Premium Real Estate · Vientiane, Laos', 120, ly + 68);
+  ctx.restore();
+
+  // ── Verification pill ──────────────────────────────────────────
+  ctx.save();
+  ctx.font = '500 12.5px "DM Sans", -apple-system, sans-serif';
+  const pillText = 'Verified Listings';
+  const pillW    = ctx.measureText(pillText).width + 24;
+  const pillX    = 120, pillY = ly + 112;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, 24, 4);
+  else ctx.rect(pillX, pillY, pillW, 24);
+  ctx.fillStyle   = 'rgba(45,140,140,0.10)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(45,140,140,0.22)';
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+  ctx.fillStyle    = '#2D8C8C';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(pillText, pillX + 12, pillY + 12);
+  ctx.restore();
+
+  // ── pintag.io URL — bottom ────────────────────────────────────
+  ctx.save();
+  ctx.font         = '500 13px "DM Sans", -apple-system, sans-serif';
+  ctx.fillStyle    = 'rgba(26,36,40,0.30)';
+  ctx.textBaseline = 'bottom';
+  ctx.textAlign    = 'left';
+  // Simulate letter-spacing by spacing chars manually
+  const url = 'PINTAG.IO';
+  let ux = 120;
+  for (const ch of url) {
+    ctx.fillText(ch, ux, H - 34);
+    ux += ctx.measureText(ch).width + 2.5;
+  }
+  ctx.restore();
+}
+
+function downloadPNG() {
+  draw();
+  const a   = document.createElement('a');
+  a.download = 'pintag-og-preview.png';
+  a.href     = document.getElementById('c').toDataURL('image/png');
+  a.click();
+}
+</script>
+</body>
+</html>
