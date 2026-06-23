@@ -95,6 +95,11 @@ input:focus{border-color:#2D8C8C;box-shadow:0 0 0 3px rgba(45,140,140,0.08);}
         <div class="stat"><div class="stat-n" id="stat-skip">0</div><div class="stat-l">External (skip)</div></div>
         <div class="stat"><div class="stat-n" id="stat-done">0</div><div class="stat-l">Already Done</div></div>
       </div>
+      <div id="mark-all-done-wrap" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid rgba(26,36,40,0.08);">
+        <p style="font-size:12px;color:#7A9098;margin-bottom:10px;">These listings were already watermarked before tracking was added. Mark them all as done so future scans skip them.</p>
+        <button class="btn btn-primary" id="mark-done-btn" onclick="markAllDone()">Mark All as Already Watermarked</button>
+        <div class="msg" id="mark-done-msg"></div>
+      </div>
     </div>
 
     <div class="card" id="progress-card" style="display:none;">
@@ -284,12 +289,39 @@ async function scanListings() {
     } else {
       showMsg('scan-msg', `Found ${ourImages} photo(s) across ${_scanResults.length} listing(s) to watermark.`, 'success');
       document.getElementById('migrate-btn').style.display = 'inline-flex';
+      // Show "mark all done" shortcut so user can initialize existing watermarked listings
+      document.getElementById('mark-all-done-wrap').style.display = 'block';
     }
   } catch(e) {
     showMsg('scan-msg', 'Scan failed: ' + e.message, 'error');
   }
 
   btn.disabled = false; btn.textContent = 'Scan Listings';
+}
+
+// ── MARK ALL DONE ─────────────────────────────────────────────────
+async function markAllDone() {
+  if (!_scanResults.length) return;
+  if (!confirm(`Mark all ${_scanResults.length} listing(s) as already watermarked? Future scans will skip them.`)) return;
+  const btn = document.getElementById('mark-done-btn');
+  btn.disabled = true; btn.textContent = 'Marking…';
+  let ok = 0, fail = 0;
+  for (const prop of _scanResults) {
+    try {
+      await sbApi('PATCH', `properties?id=eq.${prop.id}`, { images_watermarked: true });
+      ok++;
+    } catch(e) {
+      fail++;
+    }
+  }
+  btn.disabled = false; btn.textContent = 'Mark All as Already Watermarked';
+  if (fail === 0) {
+    showMsg('mark-done-msg', `Done — ${ok} listing(s) marked. Run Scan Listings again to confirm.`, 'success');
+    document.getElementById('migrate-btn').style.display = 'none';
+    document.getElementById('mark-all-done-wrap').style.display = 'none';
+  } else {
+    showMsg('mark-done-msg', `${ok} marked, ${fail} failed. Try again.`, 'error');
+  }
 }
 
 // ── MIGRATION ─────────────────────────────────────────────────────
