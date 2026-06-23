@@ -397,39 +397,23 @@ async function uploadAgentPhoto(file, agentId, fillId, wrapId, statusId) {
 
   var ext  = (file.name.split('.').pop() || 'jpg').toLowerCase();
   var path = agentId + '/' + Date.now() + '.' + ext;
+  var contentType = file.type || 'image/jpeg';
 
-  // Get fresh token from session (handles refresh automatically)
-  var { data: sessionData } = await sb.auth.getSession();
-  var uploadToken = sessionData && sessionData.session ? sessionData.session.access_token : _token;
-  if (!uploadToken) {
+  var { data: uploadData, error: uploadError } = await sb.storage
+    .from('agent-photos')
+    .upload(path, file, { contentType, upsert: true });
+
+  if (uploadError) {
     fill.style.width = '100%'; fill.style.background = 'var(--red)';
-    status.textContent = '✗ Not signed in — refresh the page and sign in again';
-    return null;
-  }
-
-  var res = await fetch(SUPABASE_URL + '/storage/v1/object/agent-photos/' + path, {
-    method: 'POST',
-    headers: {
-      'apikey':        SUPABASE_ANON,
-      'Authorization': 'Bearer ' + uploadToken,
-      'Content-Type':  file.type || 'image/jpeg',
-      'x-upsert':      'true'
-    },
-    body: file
-  });
-
-  if (!res.ok) {
-    var txt = await res.text();
-    var parsed = null; try { parsed = JSON.parse(txt); } catch(_) {}
-    var msg = parsed ? (parsed.message || parsed.error || txt) : txt;
-    fill.style.width = '100%'; fill.style.background = 'var(--red)';
-    status.textContent = '✗ HTTP ' + res.status + ': ' + msg;
+    var code = uploadError.statusCode ? ' [' + uploadError.statusCode + ']' : '';
+    status.textContent = '✗' + code + ': ' + uploadError.message;
     return null;
   }
 
   fill.style.width = '100%';
   status.textContent = '✓ Uploaded';
-  return SUPABASE_URL + '/storage/v1/object/public/agent-photos/' + path;
+  var { data: urlData } = sb.storage.from('agent-photos').getPublicUrl(path);
+  return urlData.publicUrl;
 }
 
 function showAvatarPreview(imgId, phId, src) {
