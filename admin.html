@@ -184,6 +184,21 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .agent-preview-agency{font-size:12px;color:var(--ink-muted);margin-top:2px;}
 .agent-preview-contact{font-size:12px;color:var(--ink-muted);margin-top:2px;}
 .agent-legacy-note{margin-top:10px;padding:8px 12px;background:rgba(184,134,11,0.07);border:1px solid rgba(184,134,11,0.2);border-radius:5px;font-size:12px;color:#7a6010;}
+/* Analytics panel */
+.analytics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+.analytics-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;}
+.analytics-card-label{font-size:11px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px;}
+.analytics-card-value{font-size:28px;font-weight:600;letter-spacing:-0.03em;color:var(--ink);}
+.analytics-section{margin-bottom:28px;}
+.analytics-section-title{font-size:13px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:12px;}
+.analytics-table{width:100%;border-collapse:collapse;font-size:13px;}
+.analytics-table th{text-align:left;padding:8px 12px;color:var(--ink-muted);font-weight:500;border-bottom:1px solid var(--border);}
+.analytics-table td{padding:8px 12px;border-bottom:1px solid var(--border);}
+.analytics-table tr:last-child td{border-bottom:none;}
+.lead-pill{display:inline-block;background:rgba(45,140,140,0.10);color:var(--teal);font-weight:600;font-size:11px;padding:2px 8px;border-radius:20px;}
+.conv-bar-wrap{display:flex;align-items:center;gap:8px;}
+.conv-bar{height:6px;border-radius:3px;background:rgba(45,140,140,0.18);flex:1;}
+.conv-bar-fill{height:100%;border-radius:3px;background:var(--teal);}
 </style>
 </head>
 <body>
@@ -210,7 +225,50 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 
   <div class="admin-body">
     <div id="listings-panel">
-      <div class="tabs"><button class="tab active">All Listings</button></div>
+      <div class="tabs" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="tab active">All Listings</button>
+        <button class="tab" onclick="toggleAnalytics()" id="analytics-tab">📊 Analytics</button>
+      </div>
+
+      <div id="analytics-panel" style="display:none;padding:20px 0;">
+        <div class="analytics-grid">
+          <div class="analytics-card">
+            <div class="analytics-card-label">Total Leads</div>
+            <div class="analytics-card-value" id="adm-leads-total">—</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-label">Leads Today</div>
+            <div class="analytics-card-value" id="adm-leads-today">—</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-label">This Week</div>
+            <div class="analytics-card-value" id="adm-leads-week">—</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-label">This Month</div>
+            <div class="analytics-card-value" id="adm-leads-month">—</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;">
+          <div class="analytics-section">
+            <div class="analytics-section-title">Top Listings</div>
+            <table class="analytics-table"><thead><tr><th>Listing</th><th>Leads</th></tr></thead>
+            <tbody id="adm-top-listings"></tbody></table>
+          </div>
+          <div class="analytics-section">
+            <div class="analytics-section-title">Top Agents</div>
+            <table class="analytics-table"><thead><tr><th>Agent</th><th>Leads</th></tr></thead>
+            <tbody id="adm-top-agents"></tbody></table>
+          </div>
+          <div class="analytics-section">
+            <div class="analytics-section-title">Top Districts</div>
+            <table class="analytics-table"><thead><tr><th>District</th><th>Leads</th></tr></thead>
+            <tbody id="adm-top-districts"></tbody></table>
+          </div>
+        </div>
+      </div>
+
       <div id="listings-container"><div class="loading">Loading listings...</div></div>
     </div>
 
@@ -1095,12 +1153,18 @@ function onAgentDropdownChange() {
 async function loadListings() {
   const container = document.getElementById('listings-container');
   container.innerHTML = '<div class="loading">Loading...</div>';
-  const data = await sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,agent_name,agent_id,district_en');
+  const [data, leads] = await Promise.all([
+    sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,agent_name,agent_id,district_en,view_count'),
+    sbApi('GET','lead_events?select=listing_id').catch(() => [])
+  ]);
+  // Build lead count map
+  const leadCounts = {};
+  (leads || []).forEach(l => { if (l.listing_id) leadCounts[l.listing_id] = (leadCounts[l.listing_id] || 0) + 1; });
   if (!data || data.length === 0) {
     container.innerHTML = '<div class="empty"><p class="empty-title">No listings yet</p><p>Click "+New Listing" to add your first property.</p></div>';
     return;
   }
-  let html = '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+  let html = '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Status</th><th style="white-space:nowrap;">👁 Views · 📞 Leads</th><th>Actions</th></tr></thead><tbody>';
   data.forEach(p => {
     html += `<tr>
       <td><strong style="color:var(--ink);font-weight:500;">${p.title_en||'—'}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}</td>
@@ -1108,6 +1172,12 @@ async function loadListings() {
       <td>${p.price_display||'<em style="color:var(--ink-muted)">On request</em>'}</td>
       <td>${(() => { const a = p.agent_id ? _agentsAll.find(x => x.id === p.agent_id) : null; return a ? a.name_en : (p.agent_name || '—'); })()}</td>
       <td><span class="status-badge status-${p.status}">${p.status}</span></td>
+      <td style="white-space:nowrap;font-size:12px;color:var(--ink-muted);">${(() => {
+        const v = p.view_count || 0;
+        const l = leadCounts[p.id] || 0;
+        const conv = v > 0 ? ((l/v)*100).toFixed(1) : '—';
+        return `<span style="color:var(--ink);">${v}</span> views · <span style="color:var(--teal);font-weight:600;">${l}</span> leads` + (v > 0 ? ` <span style="opacity:0.6;">(${conv}%)</span>` : '');
+      })()}</td>
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="action-btn btn-edit" onclick="editListing('${p.id}')">Edit</button>
         <a class="action-btn btn-view" href="listing.html?slug=${p.slug}" target="_blank">View</a>

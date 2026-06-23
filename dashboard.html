@@ -355,6 +355,15 @@ body{
 
 }
 
+/* Lead Analytics */
+.lead-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:28px;}
+.lead-table-wrap{overflow-x:auto;}
+.lead-table{width:100%;border-collapse:collapse;font-size:13px;}
+.lead-table th{text-align:left;padding:10px 12px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);}
+.lead-table td{padding:10px 12px;border-bottom:1px solid var(--line);}
+.lead-table tr:last-child td{border-bottom:none;}
+.lead-badge{display:inline-block;background:rgba(45,140,140,0.1);color:var(--teal);font-weight:600;font-size:12px;padding:2px 8px;border-radius:20px;}
+
 </style>
 </head>
 <body>
@@ -427,6 +436,46 @@ body{
 
     </section>
 
+    <div style="margin-top:28px;">
+      <div class="lead-stats">
+        <div class="stat-card">
+          <div class="stat-label">Leads Today</div>
+          <div class="stat-value" id="leads-today">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">This Week</div>
+          <div class="stat-value" id="leads-week">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">This Month</div>
+          <div class="stat-value" id="leads-month">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Leads</div>
+          <div class="stat-value" id="leads-total">—</div>
+        </div>
+      </div>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Lead Analytics</h2>
+        </div>
+        <div class="lead-table-wrap">
+          <table class="lead-table">
+            <thead>
+              <tr>
+                <th>Listing</th>
+                <th>WhatsApp</th>
+                <th>Call</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="lead-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
   </main>
 
 </div>
@@ -477,6 +526,7 @@ async function initDashboard(){
 
   renderStats(properties);
   renderListings(properties);
+  loadLeadStats(user.id);
 
 }
 
@@ -627,6 +677,67 @@ async function logout(){
   window.location.href =
     'agent-login.html';
 
+}
+
+async function loadLeadStats(agentId) {
+  try {
+    const now = new Date();
+    const todayStart  = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const weekStart   = new Date(now - 7  * 86400000).toISOString();
+    const monthStart  = new Date(now - 30 * 86400000).toISOString();
+
+    const { data: leads, error } = await supabaseClient
+      .from('lead_events')
+      .select('id,listing_id,event_type,created_at')
+      .eq('agent_id', agentId);
+
+    if (error || !leads) return;
+
+    document.getElementById('leads-total').innerText = leads.length;
+    document.getElementById('leads-today').innerText  = leads.filter(l => l.created_at >= todayStart).length;
+    document.getElementById('leads-week').innerText   = leads.filter(l => l.created_at >= weekStart).length;
+    document.getElementById('leads-month').innerText  = leads.filter(l => l.created_at >= monthStart).length;
+
+    // Build per-listing breakdown
+    const byListing = {};
+    leads.forEach(function(l) {
+      var lid = l.listing_id || 'unknown';
+      if (!byListing[lid]) byListing[lid] = { whatsapp: 0, call: 0 };
+      if (l.event_type === 'whatsapp_click') byListing[lid].whatsapp++;
+      else if (l.event_type === 'call_click') byListing[lid].call++;
+    });
+
+    // Fetch listing titles for the listing ids we have
+    var listingIds = Object.keys(byListing).filter(id => id !== 'unknown');
+    var titleMap = {};
+    if (listingIds.length) {
+      var { data: props } = await supabaseClient
+        .from('properties')
+        .select('id,title_en,title_lo')
+        .in('id', listingIds);
+      (props || []).forEach(function(p) { titleMap[p.id] = p.title_en || p.title_lo || '—'; });
+    }
+
+    // Sort by total desc
+    var rows = Object.keys(byListing).map(function(lid) {
+      return { lid, title: titleMap[lid] || '—', wa: byListing[lid].whatsapp, call: byListing[lid].call };
+    }).sort(function(a, b) { return (b.wa + b.call) - (a.wa + a.call); });
+
+    var tbody = document.getElementById('lead-tbody');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:20px;">No leads recorded yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(function(r) {
+      var total = r.wa + r.call;
+      return '<tr>' +
+        '<td style="font-weight:500;">' + r.title + '</td>' +
+        '<td>' + (r.wa   ? '<span class="lead-badge">' + r.wa   + '</span>' : '<span style="color:var(--muted)">0</span>') + '</td>' +
+        '<td>' + (r.call ? '<span class="lead-badge">' + r.call + '</span>' : '<span style="color:var(--muted)">0</span>') + '</td>' +
+        '<td><strong>' + total + '</strong></td>' +
+        '</tr>';
+    }).join('');
+  } catch(e) { console.error('loadLeadStats', e); }
 }
 
 initDashboard();
