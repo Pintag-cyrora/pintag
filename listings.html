@@ -959,7 +959,7 @@ function renderListings() {
       p.sqm       ? '<span class="card-spec"><span>' + p.sqm       + '</span> sqm</span>' : ''
     ].filter(Boolean).join('');
 
-    var perMo = { lo: '/ ເດືອນ', en: '/ mo', zh: '/ 月' };
+    var perMo = { lo: '/ ເດືອນ', en: '/ month', zh: '/ 月' };
     var rawPrice = (p.price_display || '').replace(/\s*\/\s*(ເດືອນ|mo|月|month)\s*/i, '').trim();
     var priceHtml = rawPrice
       ? '<p class="card-price">' + rawPrice + (!isSale ? ' <span class="card-price-unit">' + perMo[lang] + '</span>' : '') + '</p>'

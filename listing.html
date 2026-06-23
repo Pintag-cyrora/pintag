@@ -430,6 +430,27 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 var BASE_DB = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 var SEC_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 
+// ── Lead tracking ─────────────────────────────────────────────────
+function trackLead(listingId, agentId, eventType) {
+  if (!listingId) return;
+  fetch(BASE_DB + '/rest/v1/lead_events', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SEC_KEY,
+      'Authorization': 'Bearer ' + SEC_KEY,
+      'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify({
+      listing_id: listingId || null,
+      agent_id:   agentId   || null,
+      event_type: eventType,
+      user_agent: navigator.userAgent,
+      referrer:   document.referrer || null
+    })
+  }).catch(function(){});
+}
+
 // ── State ──────────────────────────────────────────────────────────
 var propertyContext = null;
 var similarCache    = null;
@@ -967,7 +988,7 @@ function buildMockupLayout(){
     if(data.agent_rating)statsHtml+='<div class="agent-stat"><span class="agent-stat-icon">'+I.star+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_rating))+'</span><span class="agent-stat-lbl"><span class="lo-i">ຄະແນນ</span><span class="en-i">Rating</span><span class="zh-i">评分</span></span></div></div>';
     statsHtml+='</div>';
   }
-  var callBtn=data.agent_phone?'<a href="tel:'+esc(data.agent_phone)+'" class="btn-primary btn-call"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  var callBtn=data.agent_phone?'<a href="tel:'+esc(data.agent_phone)+'" class="btn-primary btn-call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.agent_id||'')+'\',\'call_click\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
   var agentPhotoSrc=esc(data.agent_photo||data.agent_photo_url||agentFallback);
   var agentHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
@@ -978,7 +999,7 @@ function buildMockupLayout(){
     '</div></div>'+
     statsHtml+
     '<div class="agent-ctas">'+
-    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.agent_id||'')+'\',\'whatsapp_click\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
     '</div></div>'
   );

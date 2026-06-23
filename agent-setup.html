@@ -864,7 +864,7 @@ async function saveAgentProfile() {
   var photoUrl = photoVal ? (photoVal.startsWith('http') ? photoVal : 'https://www.pintag.io/' + photoVal) : null;
 
   var statEl = document.getElementById('edit-profile-status');
-  statEl.className = 'status-box'; statEl.style.display = 'none';
+  statEl.className = 'status-box'; statEl.style.display = '';
 
   try {
     var payload = {
@@ -930,7 +930,7 @@ async function runSetup() {
   prog.style.display = 'block';
   document.getElementById('steps-list').innerHTML = '';
   document.getElementById('final-status').className = 'status-box';
-  document.getElementById('final-status').style.display = 'none';
+  document.getElementById('final-status').style.display = '';
 
   addStep('agent', 'Upsert agent record');
   listings.forEach(function(ls, i) { addStep('ls'+i, 'Assign listing: '+ls); });
