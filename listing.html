@@ -350,6 +350,18 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 @media(min-width:1101px) and (max-width:1280px){
   .similar-grid{grid-template-columns:repeat(3,1fr);}
 }
+/* Social proof */
+.sp-badges-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;min-height:0;}
+.sp-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:10.5px;font-weight:600;letter-spacing:0.02em;white-space:nowrap;}
+.sp-badge-fire{background:rgba(239,68,68,0.08);color:#DC2626;border:1px solid rgba(239,68,68,0.18);}
+.sp-badge-pop{background:rgba(45,140,140,0.08);color:var(--teal);border:1px solid rgba(45,140,140,0.18);}
+.sp-badge-top{background:rgba(234,179,8,0.08);color:#B45309;border:1px solid rgba(234,179,8,0.22);}
+.sp-metrics-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;}
+.sp-metric{display:inline-flex;align-items:center;font-size:11.5px;color:var(--ink-muted);font-weight:400;}
+.sp-fomo-agent{margin:0 48px 16px;padding:10px 14px;background:rgba(45,140,140,0.04);border:1px solid rgba(45,140,140,0.10);border-radius:8px;display:flex;flex-direction:column;gap:4px;}
+.sp-fomo-line{font-size:11.5px;color:var(--ink-muted);line-height:1.55;}
+.sp-fomo-line::before{content:"· ";color:var(--teal);}
+@media(max-width:960px){.sp-fomo-agent{margin:0 16px 12px;}}
 </style>
 </head>
 <body>
@@ -448,6 +460,127 @@ function trackLead(listingId, agentId, eventType) {
       user_agent: navigator.userAgent,
       referrer:   document.referrer || null
     })
+  }).catch(function(){});
+}
+
+// ── Social proof feature flags ─────────────────────────────────────
+var SHOW_PUBLIC_VIEWS      = true;
+var SHOW_PUBLIC_INQUIRIES  = true;
+var SHOW_POPULAR_BADGES    = true;
+var LEAD_HIGH_INTEREST_MIN = 10;  // "High Interest" badge threshold
+var LEAD_POPULAR_MIN       = 5;   // "Popular Listing" badge threshold
+
+// ── Social proof helpers ───────────────────────────────────────────
+var _publicStats = null;
+
+function formatViewCount(n) {
+  if (!SHOW_PUBLIC_VIEWS || !n || n < 10) return null;
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k views';
+  return n + ' views';
+}
+
+// Rounded inquiry count — hide low numbers, round down to nearest 5
+function formatInquiryCount(n) {
+  if (!SHOW_PUBLIC_INQUIRIES || !n || n < 5) return null;
+  if (n < 10) return '5+ inquiries';
+  return (Math.floor(n / 5) * 5) + '+ inquiries';
+}
+
+function getFomoLines(stats, lang) {
+  if (!stats) return [];
+  var lines = [];
+  if ((stats.lead_week || 0) >= 3) {
+    lines.push({lo:'ໂດ່ດັງໃນອາທິດນີ້', en:'Trending this week', zh:'本周热门'}[lang] || 'Trending this week');
+  }
+  if ((stats.lead_month || 0) >= 5) {
+    var n = stats.lead_month;
+    lines.push({
+      lo: n + ' ຄົນ ຕິດຕໍ່ຊັບສິນນີ້ໃນເດືອນນີ້',
+      en: n + ' people contacted this property this month',
+      zh: '本月 ' + n + ' 人咨询此房源'
+    }[lang]);
+  }
+  if (stats.is_top_district && stats.district) {
+    var d = stats.district;
+    lines.push({
+      lo: 'ຊັບສິນທີ່ເບິ່ງຫຼາຍທີ່ສຸດໃນ ' + d,
+      en: 'One of the most viewed homes in ' + d,
+      zh: d + '区浏览量最高的房源之一'
+    }[lang]);
+  }
+  return lines.filter(Boolean);
+}
+
+function applyPublicStats(stats) {
+  if (!stats) return;
+  var lang = getCurrentLang();
+
+  // View count pill
+  var spV = document.getElementById('sp-views');
+  if (spV) {
+    var vfmt = formatViewCount(stats.view_count);
+    spV.textContent = vfmt ? '👁 ' + vfmt : '';
+    spV.style.display = vfmt ? 'inline-flex' : 'none';
+  }
+
+  // Inquiry count pill
+  var spI = document.getElementById('sp-inquiries');
+  if (spI) {
+    var ifmt = formatInquiryCount(stats.lead_count);
+    spI.textContent = ifmt ? '📩 ' + ifmt : '';
+    spI.style.display = ifmt ? 'inline-flex' : 'none';
+  }
+
+  // Popular badges
+  if (SHOW_POPULAR_BADGES) {
+    var spB = document.getElementById('sp-badges');
+    if (spB) {
+      var badges = '';
+      if ((stats.lead_count || 0) >= LEAD_HIGH_INTEREST_MIN) {
+        badges += '<span class="sp-badge sp-badge-fire">🔥 ' + ({lo:'ຊັບສິນສົນໃຈສູງ', en:'High Interest Property', zh:'高关注房源'}[lang]||'High Interest Property') + '</span>';
+      } else if ((stats.lead_count || 0) >= LEAD_POPULAR_MIN) {
+        badges += '<span class="sp-badge sp-badge-pop">⚡ ' + ({lo:'ລາຍການຍອດນິຍົມ', en:'Popular Listing', zh:'热门房源'}[lang]||'Popular Listing') + '</span>';
+      }
+      if (stats.is_top_district) {
+        badges += '<span class="sp-badge sp-badge-top">🏆 ' + ({lo:'ເບິ່ງຫຼາຍທີ່ສຸດໃນເຂດ', en:'Most Viewed in District', zh:'区域最高浏览'}[lang]||'Most Viewed in District') + '</span>';
+      }
+      spB.innerHTML = badges;
+    }
+  }
+
+  // FOMO lines below agent CTA
+  var spF = document.getElementById('sp-fomo');
+  if (spF) {
+    var lines = getFomoLines(stats, lang);
+    if (lines.length) {
+      spF.innerHTML = lines.map(function(l){ return '<span class="sp-fomo-line">' + l + '</span>'; }).join('');
+      spF.style.display = 'block';
+    } else {
+      spF.style.display = 'none';
+    }
+  }
+}
+
+async function loadPublicStats(listingId) {
+  if (!listingId) return;
+  try {
+    var res = await fetch(BASE_DB + '/rest/v1/rpc/public_listing_stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SEC_KEY, 'Authorization': 'Bearer ' + SEC_KEY },
+      body: JSON.stringify({ p_listing_id: listingId })
+    });
+    if (!res.ok) return;
+    _publicStats = await res.json();
+    applyPublicStats(_publicStats);
+  } catch(e) {}
+}
+
+function incrementView(listingId) {
+  if (!listingId) return;
+  fetch(BASE_DB + '/rest/v1/rpc/increment_listing_view', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': SEC_KEY, 'Authorization': 'Bearer ' + SEC_KEY },
+    body: JSON.stringify({ p_listing_id: listingId })
   }).catch(function(){});
 }
 
@@ -642,7 +775,7 @@ function setLang(lang,btn){
   document.body.classList.remove('lang-lo','lang-en','lang-zh');
   document.body.classList.add('lang-'+lang);
   if(btn){document.querySelectorAll('.lang-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');}
-  if(propertyContext){try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on lang switch',e);}if(similarCache)renderSimilarGrid(similarCache);}
+  if(propertyContext){try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on lang switch',e);}if(similarCache)renderSimilarGrid(similarCache);if(_publicStats)applyPublicStats(_publicStats);}
 }
 
 function handleShare(btn){
@@ -700,7 +833,11 @@ async function fetchProperty(slug){
     PT.log('Loaded',{id:propertyContext.id,title:propertyContext.title_en});
     try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout',e);showErrorState('Display error. Please refresh.');return;}
     updateOGTags(propertyContext);
-    if(propertyContext.id)fetchSimilarProperties(propertyContext);
+    if(propertyContext.id){
+      fetchSimilarProperties(propertyContext);
+      incrementView(propertyContext.id);
+      loadPublicStats(propertyContext.id);
+    }
   }catch(err){
     PT.timeEnd('fetchProperty');
     var offline=typeof navigator!=='undefined'&&navigator.onLine===false;
@@ -1001,7 +1138,8 @@ function buildMockupLayout(){
     '<div class="agent-ctas">'+
     '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.agent_id||'')+'\',\'whatsapp_click\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
-    '</div></div>'
+    '</div></div>'+
+    '<div id="sp-fomo" class="sp-fomo-agent" style="display:none;"></div>'
   );
 
   // ════════════════════════════════════════════════════════════════
@@ -1270,11 +1408,13 @@ function buildMockupLayout(){
     '<p class="hero-location">'+I.pin+' '+locationLabel+'</p>'+
     '<h1 class="info-title">'+resolvedTitle+'</h1>'+
     propertyHighlightHtml+
-    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:24px;">'+
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
     '<span class="tx-badge" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
     statusBadgeHtml+
     '</div>'+
+    '<div id="sp-badges" class="sp-badges-row"></div>'+
     '<div class="price-block">'+resolvedPriceHtml+'</div>'+
+    '<div class="sp-metrics-row"><span class="sp-metric" id="sp-views" style="display:none;"></span><span class="sp-metric" id="sp-inquiries" style="display:none;"></span></div>'+
     (specsHtml?'<div class="spec-grid">'+specsHtml+'</div>':'')+
     yearHtml+
     highlightPillsHtml+
