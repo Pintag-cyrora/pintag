@@ -398,37 +398,18 @@ async function uploadAgentPhoto(file, agentId, fillId, wrapId, statusId) {
   var ext  = (file.name.split('.').pop() || 'jpg').toLowerCase();
   var path = agentId + '/' + Date.now() + '.' + ext;
 
-  try {
-    var res = await fetch(SUPABASE_URL + '/storage/v1/object/agent-photos/' + path, {
-      method: 'POST',
-      headers: {
-        'apikey':        SUPABASE_ANON,
-        'Authorization': 'Bearer ' + _token,
-        'Content-Type':  file.type,
-        'x-upsert':      'true'
-      },
-      body: file
-    });
+  var { error } = await sb.storage.from('agent-photos').upload(path, file, { upsert: true });
 
-    if (!res.ok) {
-      var txt = await res.text();
-      var parsed = null; try { parsed = JSON.parse(txt); } catch(_) {}
-      var msg = parsed ? (parsed.message || parsed.error || txt) : txt;
-      if (res.status === 404) msg = 'Bucket "agent-photos" not found — create it in Supabase Dashboard → Storage.';
-      else if (res.status === 403 || res.status === 401) msg = 'Storage permission denied — add INSERT policy for agent-photos bucket.';
-      fill.style.width = '100%'; fill.style.background = 'var(--red)';
-      status.textContent = '✗ ' + msg;
-      return null;
-    }
-
-    fill.style.width = '100%';
-    status.textContent = '✓ Uploaded';
-    return SUPABASE_URL + '/storage/v1/object/public/agent-photos/' + path;
-  } catch(e) {
+  if (error) {
     fill.style.width = '100%'; fill.style.background = 'var(--red)';
-    status.textContent = '✗ ' + e.message;
+    status.textContent = '✗ ' + error.message;
     return null;
   }
+
+  var { data } = sb.storage.from('agent-photos').getPublicUrl(path);
+  fill.style.width = '100%';
+  status.textContent = '✓ Uploaded';
+  return data.publicUrl;
 }
 
 function showAvatarPreview(imgId, phId, src) {
