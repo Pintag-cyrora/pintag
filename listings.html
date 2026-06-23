@@ -261,6 +261,7 @@ nav{
 .prop-card.is-featured .card-price{
   font-size:24px;font-weight:400;letter-spacing:-0.02em;margin-bottom:20px;
 }
+.card-price-unit{font-size:11px;font-weight:400;color:var(--ink-muted);}
 .card-price-req{
   font-size:12px;font-weight:400;color:var(--ink-muted);
   font-style:italic;margin-bottom:14px;
@@ -958,8 +959,10 @@ function renderListings() {
       p.sqm       ? '<span class="card-spec"><span>' + p.sqm       + '</span> sqm</span>' : ''
     ].filter(Boolean).join('');
 
-    var priceHtml = p.price_display
-      ? '<p class="card-price">' + p.price_display + '</p>'
+    var perMo = { lo: '/ ເດືອນ', en: '/ mo', zh: '/ 月' };
+    var rawPrice = (p.price_display || '').replace(/\s*\/\s*(ເດືອນ|mo|月|month)\s*/i, '').trim();
+    var priceHtml = rawPrice
+      ? '<p class="card-price">' + rawPrice + (!isSale ? ' <span class="card-price-unit">' + perMo[lang] + '</span>' : '') + '</p>'
       : '<p class="card-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
 
     var actBadgesHtml = getActivityBadgesHtml(p, lang);
