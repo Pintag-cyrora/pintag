@@ -612,7 +612,7 @@ async function loadAgentsAndListings() {
       sel.appendChild(opt);
     });
 
-    _allListings = await sbApi('GET', 'properties?select=id,slug,title_en,district,status,agent_id&order=created_at.desc&limit=500', null);
+    _allListings = await sbApi('GET', 'properties?select=id,slug,title_en,district_en,status,agent_id&order=created_at.desc&limit=500', null);
   } catch(e) {
     console.error('Failed to load agents/listings:', e);
   }
@@ -704,7 +704,7 @@ function renderListingsGrid() {
   var filtered = _allListings.filter(function(l) {
     if (!search) return true;
     var title = (l.title_en || l.slug || '').toLowerCase();
-    var district = (l.district || '').toLowerCase();
+    var district = (l.district_en || '').toLowerCase();
     return title.includes(search) || district.includes(search);
   });
 
@@ -720,7 +720,7 @@ function renderListingsGrid() {
     var isAssigned = l.agent_id === a.id;
     var otherAgent = l.agent_id && l.agent_id !== a.id ? _agentMap[l.agent_id] : null;
     var title = l.title_en || l.slug || '(no title)';
-    var district = l.district || '';
+    var district = l.district_en || '';
     var statusTag = l.status === 'draft' ? '<span class="tag tag-draft">draft</span>' : '';
     var otherTag = otherAgent ? '<span class="tag tag-other">→ ' + otherAgent.name_en + '</span>' : '';
     var metaParts = [district].filter(Boolean);
