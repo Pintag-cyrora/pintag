@@ -500,6 +500,14 @@ function getFomoLines(stats, lang) {
       zh: '本月 ' + n + ' 人咨询此房源'
     }[lang]);
   }
+  if ((stats.views_week || 0) >= 5) {
+    var vw = stats.views_week;
+    lines.push({
+      lo: 'ເບິ່ງ ' + vw + ' ຄັ້ງໃນອາທິດນີ້',
+      en: 'Viewed ' + vw + ' times this week',
+      zh: '本周浏览 ' + vw + ' 次'
+    }[lang]);
+  }
   if (stats.is_top_district && stats.district) {
     var d = stats.district;
     lines.push({

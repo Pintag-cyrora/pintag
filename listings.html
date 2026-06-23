@@ -883,6 +883,18 @@ function renderListings() {
     return p.transaction_type === currentFilter || p.property_type === currentFilter;
   });
   var sorted = sortProperties(filtered);
+
+  // Derive trending_score from views_week if not already set in DB.
+  // Uses full dataset for a stable average so filtering doesn't distort scores.
+  var _wTotal = 0, _wCount = 0;
+  allProperties.forEach(function(p) { if ((p.views_week||0) > 0) { _wTotal += p.views_week; _wCount++; } });
+  var _avgW = _wCount > 0 ? _wTotal / _wCount : 0;
+  sorted.forEach(function(p) {
+    if (!p.trending_score && _avgW > 0) {
+      p.trending_score = Math.round((p.views_week||0) / _avgW * 100);
+    }
+  });
+
   var lang = getCurrentLang();
   var saved = getSavedSet();
   var n = filtered.length;
