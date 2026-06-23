@@ -1149,6 +1149,82 @@ function onAgentDropdownChange() {
   preview.style.display = 'flex';
 }
 
+// ── ANALYTICS ────────────────────────────────────────────────────
+var _analyticsVisible = false;
+function toggleAnalytics() {
+  _analyticsVisible = !_analyticsVisible;
+  document.getElementById('analytics-panel').style.display = _analyticsVisible ? 'block' : 'none';
+  document.getElementById('listings-container').style.display = _analyticsVisible ? 'none' : 'block';
+  document.getElementById('analytics-tab').classList.toggle('active', _analyticsVisible);
+  document.querySelectorAll('.tab')[0].classList.toggle('active', !_analyticsVisible);
+  if (_analyticsVisible) loadAnalytics();
+}
+
+async function loadAnalytics() {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const weekStart  = new Date(now - 7  * 86400000).toISOString();
+    const monthStart = new Date(now - 30 * 86400000).toISOString();
+
+    const leads = await sbApi('GET', 'lead_events?select=id,listing_id,agent_id,event_type,created_at&order=created_at.desc&limit=2000');
+    if (!leads) return;
+
+    document.getElementById('adm-leads-total').textContent = leads.length;
+    document.getElementById('adm-leads-today').textContent  = leads.filter(l => l.created_at >= todayStart).length;
+    document.getElementById('adm-leads-week').textContent   = leads.filter(l => l.created_at >= weekStart).length;
+    document.getElementById('adm-leads-month').textContent  = leads.filter(l => l.created_at >= monthStart).length;
+
+    // Top listings
+    const byListing = {};
+    leads.forEach(l => { if (l.listing_id) byListing[l.listing_id] = (byListing[l.listing_id] || 0) + 1; });
+    const topListingIds = Object.keys(byListing).sort((a,b) => byListing[b]-byListing[a]).slice(0,10);
+    if (topListingIds.length) {
+      const props = await sbApi('GET', 'properties?id=in.('+topListingIds.join(',')+')&select=id,title_en');
+      const titleMap = Object.fromEntries((props||[]).map(p => [p.id, p.title_en||'—']));
+      document.getElementById('adm-top-listings').innerHTML = topListingIds.map(id =>
+        `<tr><td style="font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${titleMap[id]||'—'}</td><td><span class="lead-pill">${byListing[id]}</span></td></tr>`
+      ).join('');
+    } else {
+      document.getElementById('adm-top-listings').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
+    }
+
+    // Top agents
+    const byAgent = {};
+    leads.forEach(l => { if (l.agent_id) byAgent[l.agent_id] = (byAgent[l.agent_id] || 0) + 1; });
+    const topAgentIds = Object.keys(byAgent).sort((a,b) => byAgent[b]-byAgent[a]).slice(0,10);
+    if (topAgentIds.length) {
+      const agents = await sbApi('GET', 'agents?id=in.('+topAgentIds.join(',')+')&select=id,name_en');
+      const nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.name_en||'—']));
+      document.getElementById('adm-top-agents').innerHTML = topAgentIds.map(id =>
+        `<tr><td style="font-weight:500;">${nameMap[id]||'—'}</td><td><span class="lead-pill">${byAgent[id]}</span></td></tr>`
+      ).join('');
+    } else {
+      document.getElementById('adm-top-agents').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
+    }
+
+    // Top districts — fetch listings for all listing_ids seen
+    const allListingIds = [...new Set(leads.map(l => l.listing_id).filter(Boolean))];
+    if (allListingIds.length) {
+      const distProps = await sbApi('GET', 'properties?id=in.('+allListingIds.join(',')+')&select=id,district_en');
+      const distMap = Object.fromEntries((distProps||[]).map(p => [p.id, p.district_en||'Unknown']));
+      const byDistrict = {};
+      leads.forEach(l => {
+        if (!l.listing_id) return;
+        const d = distMap[l.listing_id] || 'Unknown';
+        byDistrict[d] = (byDistrict[d] || 0) + 1;
+      });
+      const topDists = Object.keys(byDistrict).sort((a,b) => byDistrict[b]-byDistrict[a]).slice(0,10);
+      document.getElementById('adm-top-districts').innerHTML = topDists.map(d =>
+        `<tr><td style="font-weight:500;">${d}</td><td><span class="lead-pill">${byDistrict[d]}</span></td></tr>`
+      ).join('');
+    } else {
+      document.getElementById('adm-top-districts').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
+    }
+
+  } catch(e) { console.error('loadAnalytics', e); }
+}
+
 // ── LISTINGS ──────────────────────────────────────────────────────
 async function loadListings() {
   const container = document.getElementById('listings-container');
