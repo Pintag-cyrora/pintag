@@ -60,6 +60,7 @@ LANGUAGE RULES — follow exactly:
 1. Lao script (Unicode U+0E80–U+0EFF) and Khmer script (U+1780–U+17FF) look visually similar but are completely different languages. Khmer is used in Cambodia, NOT Laos. If the text contains Khmer characters, do NOT treat them as Lao — identify the input language correctly.
 2. All _lo output fields MUST be written in authentic Lao script (ພາສາລາວ). Never substitute Thai script, Khmer script, or romanised transliteration for Lao. If you are unsure, produce a proper Lao translation from the English.
 3. price_display: preserve the original currency and number as written (₭ or LAK for Lao Kip, ฿ for Thai Baht, $ for USD). Example: "450,000,000 ₭" or "$1,500/month". Do not convert currencies.
+4. title_lo and title_zh are REQUIRED — never return null for these fields. Always translate the English title into authentic Lao script and Simplified Chinese.
 
 Valid districts (use exact spelling or null): ${DISTRICTS.join(', ')}
 Valid property_type values: house, villa, apartment, townhouse, land, commercial
@@ -73,11 +74,17 @@ ${description || '(no description provided)'}
 """
 ${photoTaskSection}
 
-Return ONLY valid JSON with no extra text or markdown:
+Return ONLY valid JSON with no extra text or markdown.
+title_lo and title_zh must always be non-null strings (translate from the English title if needed).
+Example of correct title format:
+  "title": "Modern 4BR Pool Villa Near That Luang",
+  "title_lo": "ວິລລ່າ 4 ຫ້ອງນອນພ້ອມສະລອຍນໍ້າໃກ້ທາດຫລວງ",
+  "title_zh": "现代4卧室泳池别墅近塔銮"
+
 {
-  "title": "concise English title max 80 chars",
-  "title_lo": "concise Lao title max 80 chars in authentic Lao script",
-  "title_zh": "concise Chinese title max 80 chars in Simplified Chinese",
+  "title": "concise English title, max 80 chars",
+  "title_lo": "Lao script translation of the title — REQUIRED, never null",
+  "title_zh": "Simplified Chinese translation of the title — REQUIRED, never null",
   "transaction_type": "for_sale",
   "property_type": "villa",
   "property_style": null,
