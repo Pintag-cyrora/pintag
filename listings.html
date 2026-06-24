@@ -381,6 +381,7 @@ nav{
 .act-badge-hot  {background:rgba(194,65,0,0.10); color:#C24100;border:1px solid rgba(194,65,0,0.20);}
 .act-badge-upd  {background:rgba(45,140,140,0.10);color:var(--teal);border:1px solid rgba(45,140,140,0.18);}
 .act-badge-resp {background:rgba(45,100,180,0.10);color:#1E5AB4;border:1px solid rgba(45,100,180,0.18);}
+.act-badge-val  {background:rgba(0,127,63,0.10);color:#0a7a3e;border:1px solid rgba(0,127,63,0.18);}
 
 /* NEW badge as image overlay (second badge below status) */
 .badge-new-listing{display:inline-block;font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:4px 8px;border-radius:3px;color:#fff;background:rgba(22,101,52,0.90);backdrop-filter:blur(8px);box-shadow:0 1px 4px rgba(0,0,0,0.18);margin-top:4px;}
@@ -672,44 +673,59 @@ function daysSinceUpdate(p) {
 }
 function isNewListing(p) { var age = daysOld(p); return isFinite(age) && age <= 7; }
 
+// Extract a numeric price value from display strings like "$550,000" or "2.5M"
+function parseNumericPrice(s) {
+  if (!s) return null;
+  var clean = String(s).replace(/[^\d.MmKk]/g, '');
+  if (/[Mm]$/.test(clean)) return parseFloat(clean) * 1000000;
+  if (/[Kk]$/.test(clean)) return parseFloat(clean) * 1000;
+  return parseFloat(clean) || null;
+}
+
+// One primary badge per card (priority order) + optional Verified secondary
 function getActivityBadgesHtml(p, lang) {
-  var parts = [];
   var age = daysOld(p);
   if (!isFinite(age)) age = Infinity;
-  // NEW
-  if (age < 1)       parts.push('<span class="act-badge act-badge-new">' + {lo:'ໃໝ່ວັນນີ້',en:'New Today',zh:'今天上架'}[lang] + '</span>');
-  else if (age <= 7) parts.push('<span class="act-badge act-badge-new">' + {lo:'ໃໝ່ອາທິດນີ້',en:'New This Week',zh:'本周新上'}[lang] + '</span>');
-  // FEATURED
-  if (p.is_featured) parts.push('<span class="act-badge act-badge-feat">' + {lo:'ຄັດເລືອກ',en:'Featured',zh:'精选'}[lang] + '</span>');
-  // VERIFIED
-  if (p.is_verified) parts.push('<span class="act-badge act-badge-vfy">' + {lo:'ຢັ້ງຢືນ',en:'Verified',zh:'认证'}[lang] + '</span>');
-  // PRICE DROP
-  if (p.price_previous && p.price_previous !== p.price_display) {
-    parts.push('<span class="act-badge act-badge-drop">' + {lo:'ລຸ້ນລາຄາ',en:'Price Reduced',zh:'降价'}[lang] + '</span>');
-  }
-  // HOT PROPERTY
   var score = parseFloat(p.trending_score) || 0;
-  var isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
-  if (score >= 100) parts.push('<span class="act-badge act-badge-hot">' + {lo:'ຮ້ອນແຮງ',en:'Hot Property',zh:'热门房源'}[lang] + '</span>');
-  else if (score >= 50) parts.push('<span class="act-badge act-badge-hot">' + (isSale ? {lo:'ຂາຍດີ',en:'Popular Sale',zh:'热销'}[lang] : {lo:'ເຊົ່າດີ',en:'Popular Rental',zh:'热租'}[lang]) + '</span>');
-  // RECENTLY UPDATED (only if not new)
-  if (age > 7) {
-    var upd = daysSinceUpdate(p);
-    if (upd < 14) parts.push('<span class="act-badge act-badge-upd">' + {lo:'ອັບເດດໃໝ່',en:'Recently Updated',zh:'近期更新'}[lang] + '</span>');
+  var primary = '';
+
+  if (p.price_previous && p.price_previous !== p.price_display) {
+    primary = '<span class="act-badge act-badge-drop">📉 ' + {lo:'ຫຼຸດລາຄາ',en:'Price Reduced',zh:'降价'}[lang] + '</span>';
+  } else if (age <= 7) {
+    primary = '<span class="act-badge act-badge-new">🆕 ' + {lo:'ໃໝ່',en:'New',zh:'新房源'}[lang] + '</span>';
+  } else if (score >= 200) {
+    primary = '<span class="act-badge act-badge-hot">🔥 ' + {lo:'ນິຍົມສູງ',en:'Hot Property',zh:'热门房源'}[lang] + '</span>';
+  } else if (p._isBestValue) {
+    primary = '<span class="act-badge act-badge-val">💰 ' + {lo:'ຄຸ້ມຄ່າທີ່ສຸດ',en:'Best Value',zh:'超值房源'}[lang] + '</span>';
+  } else if (p.is_featured) {
+    primary = '<span class="act-badge act-badge-feat">⭐ ' + {lo:'ແນະນຳ',en:'Featured',zh:'精选'}[lang] + '</span>';
   }
-  return parts.join('');
+
+  var secondary = p.is_verified ? '<span class="act-badge act-badge-vfy">' + {lo:'ຢັ້ງຢືນ',en:'Verified',zh:'认证'}[lang] + '</span>' : '';
+  return primary + secondary;
 }
 
 function getActivityLine(p, lang) {
   var age = daysOld(p);
   if (!isFinite(age)) return '';
+  var score = parseFloat(p.trending_score) || 0;
+  var isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
+
+  // District-trending context replaces age line for popular/hot listings
+  if (score >= 100 && p.district_en) {
+    return {
+      lo: 'ຍອດນິຍົມ ' + (isSale ? 'ຊື້ຂາຍ' : 'ເຊົ່າ') + ' ໃນ ' + p.district_en,
+      en: 'Popular ' + (isSale ? 'sale' : 'rental') + ' in ' + p.district_en,
+      zh: p.district_en + '热门' + (isSale ? '售房' : '出租房')
+    }[lang];
+  }
   if (age < 1)   return {lo:'ລົງຂາຍວັນນີ້',  en:'Listed today',        zh:'今日上架'}[lang];
   if (age < 2)   return {lo:'ລົງຂາຍມື້ວານ', en:'Listed yesterday',     zh:'昨日上架'}[lang];
-  if (age < 30)  return {lo:'ລົງຂາຍ '+Math.floor(age)+' ວັນກ່ອນ',   en:'Listed '+Math.floor(age)+' days ago',                       zh:Math.floor(age)+'天前上架'}[lang];
+  if (age < 30)  return {lo:'ລົງຂາຍ '+Math.floor(age)+' ວັນກ່ອນ',   en:'Listed '+Math.floor(age)+' days ago',   zh:Math.floor(age)+'天前上架'}[lang];
   var mo = Math.floor(age / 30);
-  if (mo < 24)   return {lo:'ລົງຂາຍ '+mo+' ເດືອນກ່ອນ',              en:'Listed '+mo+(mo===1?' month':' months')+' ago',             zh:mo+'个月前上架'}[lang];
+  if (mo < 24)   return {lo:'ລົງຂາຍ '+mo+' ເດືອນກ່ອນ',              en:'Listed '+mo+(mo===1?' month':' months')+' ago', zh:mo+'个月前上架'}[lang];
   var yr = Math.floor(age / 365);
-  return           {lo:'ລົງຂາຍ '+yr+' ປີກ່ອນ',                       en:'Listed '+yr+(yr===1?' year':' years')+' ago',               zh:yr+'年前上架'}[lang];
+  return           {lo:'ລົງຂາຍ '+yr+' ປີກ່ອນ',                       en:'Listed '+yr+(yr===1?' year':' years')+' ago',   zh:yr+'年前上架'}[lang];
 }
 
 // ── VIEW SWITCHING ────────────────────────────────────
@@ -883,6 +899,37 @@ function renderListings() {
     return p.transaction_type === currentFilter || p.property_type === currentFilter;
   });
   var sorted = sortProperties(filtered);
+
+  // Derive trending_score from views_week (stable average from full dataset)
+  var _wTotal = 0, _wCount = 0;
+  allProperties.forEach(function(p) { if ((p.views_week||0) > 0) { _wTotal += p.views_week; _wCount++; } });
+  var _avgW = _wCount > 0 ? _wTotal / _wCount : 0;
+  sorted.forEach(function(p) {
+    if (!p.trending_score && _avgW > 0) {
+      p.trending_score = Math.round((p.views_week||0) / _avgW * 100);
+    }
+  });
+
+  // Derive Best Value: price > 15% below group average (same district + type + transaction, min 3 peers)
+  var _grp = {};
+  allProperties.forEach(function(p) {
+    var np = parseNumericPrice(p.price_display);
+    if (!np || !p.district_en || !p.property_type || !p.transaction_type) return;
+    var k = p.district_en + '|' + p.property_type + '|' + p.transaction_type;
+    if (!_grp[k]) _grp[k] = [];
+    _grp[k].push(np);
+  });
+  var _grpAvg = {};
+  Object.keys(_grp).forEach(function(k) {
+    var arr = _grp[k];
+    if (arr.length >= 3) _grpAvg[k] = arr.reduce(function(a,b){return a+b;},0) / arr.length;
+  });
+  sorted.forEach(function(p) {
+    var np = parseNumericPrice(p.price_display);
+    var k = (p.district_en||'') + '|' + (p.property_type||'') + '|' + (p.transaction_type||'');
+    p._isBestValue = !!(np && _grpAvg[k] && np < _grpAvg[k] * 0.85);
+  });
+
   var lang = getCurrentLang();
   var saved = getSavedSet();
   var n = filtered.length;
