@@ -195,6 +195,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .sim-specs{font-size:11px;color:var(--ink-muted);margin-bottom:10px;display:flex;gap:12px;}
 .sim-spec-item{display:flex;align-items:center;gap:3px;}
 .sim-price{font-size:16px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;}
+.sim-label{font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:3px;display:inline-block;margin-bottom:5px;}
+.sim-label-sim{background:rgba(45,140,140,0.09);color:var(--teal);border:1px solid rgba(45,140,140,0.18);}
+.sim-label-pop{background:rgba(194,65,0,0.09);color:#C24100;border:1px solid rgba(194,65,0,0.20);}
+.sim-label-val{background:rgba(0,127,63,0.09);color:#0a7a3e;border:1px solid rgba(0,127,63,0.18);}
+.sim-label-new{background:rgba(22,101,52,0.09);color:#15803D;border:1px solid rgba(22,101,52,0.18);}
 /* ── Editorial presentation layer (desktop) ── */
 .emotional-intro{max-width:640px;margin:0 auto;padding:100px 48px 0;text-align:center;background:var(--white);}
 .emotional-statement{font-size:24px;font-weight:300;line-height:1.7;color:var(--ink-soft);letter-spacing:0.01em;}
@@ -401,9 +406,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   <div id="similar-section" class="similar-section" style="display:none;">
     <div class="similar-header">
       <span class="similar-title">
-        <span class="lo-i">ອະສັງຫາທີ່ຄ້າຍຄືກັນ</span>
-        <span class="en-i">Similar Properties</span>
-        <span class="zh-i">相似房源</span>
+        <span class="lo-i">ທ່ານອາດຈະຊອບ</span>
+        <span class="en-i">You May Also Like</span>
+        <span class="zh-i">您可能喜欢</span>
       </span>
       <a href="listings.html" class="similar-view-all">
         <span class="lo-i">ເບິ່ງທັງໝົດ</span><span class="en-i">View all</span><span class="zh-i">查看全部</span>
@@ -486,36 +491,46 @@ function formatInquiryCount(n) {
   return (Math.floor(n / 5) * 5) + '+ inquiries';
 }
 
-function getFomoLines(stats, lang) {
+function getFomoLines(stats, lang, ctx) {
   if (!stats) return [];
   var lines = [];
-  if ((stats.lead_week || 0) >= 3) {
-    lines.push({lo:'ໂດ່ດັງໃນອາທິດນີ້', en:'Trending this week', zh:'本周热门'}[lang] || 'Trending this week');
-  }
-  if ((stats.lead_month || 0) >= 5) {
-    var n = stats.lead_month;
-    lines.push({
-      lo: n + ' ຄົນ ຕິດຕໍ່ຊັບສິນນີ້ໃນເດືອນນີ້',
-      en: n + ' people contacted this property this month',
-      zh: '本月 ' + n + ' 人咨询此房源'
-    }[lang]);
-  }
+  var isSale = ctx && (ctx.transaction_type === 'for_sale' || ctx.transaction_type === 'sale');
+
+  // Weekly views (freshness signal — shows recency of real interest)
   if ((stats.views_week || 0) >= 5) {
     var vw = stats.views_week;
-    lines.push({
-      lo: 'ເບິ່ງ ' + vw + ' ຄັ້ງໃນອາທິດນີ້',
-      en: 'Viewed ' + vw + ' times this week',
-      zh: '本周浏览 ' + vw + ' 次'
-    }[lang]);
+    lines.push({lo:'ມີການເບິ່ງ '+vw+' ຄັ້ງໃນອາທິດນີ້', en:'Viewed '+vw+' times this week', zh:'本周浏览 '+vw+' 次'}[lang]);
   }
+
+  // Total views context (shown only if no weekly signal, threshold higher to avoid overlap)
+  if ((stats.view_count || 0) >= 20 && (stats.views_week || 0) < 5) {
+    var vc = stats.view_count;
+    lines.push({lo:'ມີຜູ້ເຂົ້າເບິ່ງຫຼ້າສຸດ '+vc+' ຄົນ', en:vc+' people viewed this property recently', zh:'最近有 '+vc+' 人查看此房源'}[lang]);
+  }
+
+  // Lead activity signals
+  if ((stats.lead_week || 0) >= 3) {
+    lines.push({lo:'ໂດ່ດັງໃນອາທິດນີ້', en:'Trending this week', zh:'本周热门'}[lang]);
+  }
+  if ((stats.lead_month || 0) >= 5 && (stats.lead_week || 0) < 3) {
+    var n = stats.lead_month;
+    lines.push({lo:n+' ຄົນ ຕິດຕໍ່ຊັບສິນນີ້ໃນເດືອນນີ້', en:n+' people contacted this property this month', zh:'本月 '+n+' 人咨询此房源'}[lang]);
+  }
+
+  // District popularity with transaction context
   if (stats.is_top_district && stats.district) {
     var d = stats.district;
-    lines.push({
-      lo: 'ຊັບສິນທີ່ເບິ່ງຫຼາຍທີ່ສຸດໃນ ' + d,
-      en: 'One of the most viewed homes in ' + d,
-      zh: d + '区浏览量最高的房源之一'
-    }[lang]);
+    if (isSale !== undefined) {
+      lines.push({
+        lo: 'ນິຍົມ' + (isSale ? 'ຊື້ຂາຍ' : 'ເຊົ່າ') + 'ໃນ ' + d,
+        en: 'Popular ' + (isSale ? 'sale' : 'rental') + ' in ' + d,
+        zh: d + '热门' + (isSale ? '售房' : '出租房')
+      }[lang]);
+    } else {
+      lines.push({lo:'ກຳລັງເປັນທີ່ນິຍົມໃນ '+d, en:'Trending in '+d, zh:d+'区热门房源'}[lang]);
+    }
   }
+
   return lines.filter(Boolean);
 }
 
@@ -559,7 +574,7 @@ function applyPublicStats(stats) {
   // FOMO lines below agent CTA
   var spF = document.getElementById('sp-fomo');
   if (spF) {
-    var lines = getFomoLines(stats, lang);
+    var lines = getFomoLines(stats, lang, propertyContext);
     if (lines.length) {
       spF.innerHTML = lines.map(function(l){ return '<span class="sp-fomo-line">' + l + '</span>'; }).join('');
       spF.style.display = 'block';
@@ -862,69 +877,95 @@ async function fetchProperty(slug){
 // ══════════════════════════════════════════════════════════════════
 async function fetchSimilarProperties(prop){
   PT.time('fetchSimilar');
-  var TARGET = 4;
-  var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,images,bedrooms,bathrooms,sqm,price_display,transaction_type,status';
-  var results = [];
+  var SHOW = 6;   // cards to display
+  var POOL = 30;  // candidates to fetch for scoring
+  var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,' +
+             'images,bedrooms,bathrooms,sqm,price_display,price_previous,transaction_type,' +
+             'status,property_type,is_featured,views_week,created_at';
+  var candidates = [];
 
-  // Collected IDs to exclude — always starts with current listing
   function excludeParam(ids){
     return 'id=not.in.('+ids.map(function(x){return encodeURIComponent(x);}).join(',')+')';
   }
 
   try{
-    // ── Stage 1: same district + same type ──
+    // Fetch a wide pool: same district first, then same type, then catch-all
     if(prop.district_en && prop.transaction_type){
-      var q1 = '/rest/v1/properties'
-        +'?'+excludeParam([prop.id])
+      var q1 = '/rest/v1/properties?'+excludeParam([prop.id])
         +'&district_en=eq.'+encodeURIComponent(prop.district_en)
         +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type)
-        +'&status=eq.active'
-        +'&limit='+TARGET
-        +'&select='+cols;
+        +'&status=eq.active&order=created_at.desc&limit=20&select='+cols;
       var s1 = await sbFetch(q1);
-      if(Array.isArray(s1))results = s1.filter(Boolean);
-      PT.log('Similar stage1',{count:results.length,district:prop.district_en});
+      if(Array.isArray(s1)) candidates = s1.filter(Boolean);
     }
-
-    // ── Stage 2: same type, different district ──
-    if(results.length < TARGET && prop.transaction_type){
-      var usedIds = [prop.id].concat(results.map(function(p){return p.id;}));
-      var need = TARGET - results.length;
-      var q2 = '/rest/v1/properties'
-        +'?'+excludeParam(usedIds)
+    if(candidates.length < POOL && prop.transaction_type){
+      var usedIds = [prop.id].concat(candidates.map(function(p){return p.id;}));
+      var q2 = '/rest/v1/properties?'+excludeParam(usedIds)
         +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type)
-        +'&status=eq.active'
-        +'&limit='+need
-        +'&select='+cols;
+        +'&status=eq.active&order=created_at.desc&limit='+(POOL - candidates.length)+'&select='+cols;
       var s2 = await sbFetch(q2);
-      if(Array.isArray(s2))results = results.concat(s2.filter(Boolean));
-      PT.log('Similar stage2',{count:results.length});
+      if(Array.isArray(s2)) candidates = candidates.concat(s2.filter(Boolean));
     }
-
-    // ── Stage 3: any active (catch-all) ──
-    if(results.length < TARGET){
-      var usedIds2 = [prop.id].concat(results.map(function(p){return p.id;}));
-      var need2 = TARGET - results.length;
-      var q3 = '/rest/v1/properties'
-        +'?'+excludeParam(usedIds2)
-        +'&status=eq.active'
-        +'&limit='+need2
-        +'&select='+cols;
+    if(candidates.length < POOL){
+      var usedIds2 = [prop.id].concat(candidates.map(function(p){return p.id;}));
+      var q3 = '/rest/v1/properties?'+excludeParam(usedIds2)
+        +'&status=eq.active&order=created_at.desc&limit='+(POOL - candidates.length)+'&select='+cols;
       var s3 = await sbFetch(q3);
-      if(Array.isArray(s3))results = results.concat(s3.filter(Boolean));
-      PT.log('Similar stage3',{count:results.length});
+      if(Array.isArray(s3)) candidates = candidates.concat(s3.filter(Boolean));
     }
 
     PT.timeEnd('fetchSimilar');
-    if(!results.length){hideSimilarSection();return;}
-    similarCache = results;
-    renderSimilarGrid(results);
+    if(!candidates.length){hideSimilarSection();return;}
+
+    // Score each candidate for relevance (higher = better match)
+    var propPrice = parseSimPrice(prop.price_display);
+    candidates.forEach(function(c){
+      var sc = 0;
+      if(c.district_en && c.district_en === prop.district_en) sc += 40;
+      if(c.property_type && c.property_type === prop.property_type) sc += 30;
+      if(c.transaction_type && c.transaction_type === prop.transaction_type) sc += 20;
+      if(prop.bedrooms && c.bedrooms && Math.abs(c.bedrooms - prop.bedrooms) <= 1) sc += 10;
+      var cp = parseSimPrice(c.price_display);
+      if(propPrice && cp && cp > 0) {
+        var ratio = propPrice / cp;
+        if(ratio > 0.5 && ratio < 2) sc += 10; // within 50-200% of current price
+      }
+      if((c.views_week || 0) >= 5) sc += 5;
+      if(daysOld(c) <= 7) sc += 5;
+      c._simScore = sc;
+    });
+
+    // Sort by relevance and take top SHOW
+    candidates.sort(function(a,b){ return b._simScore - a._simScore; });
+    var top = candidates.slice(0, SHOW);
+
+    // Compute average price within candidates for Best Value label
+    var candidatePrices = top.map(function(c){ return parseSimPrice(c.price_display); }).filter(Boolean);
+    var candAvg = candidatePrices.length ? candidatePrices.reduce(function(a,b){return a+b;},0) / candidatePrices.length : 0;
+    var candAvgW = top.reduce(function(a,c){ return a + (c.views_week||0); },0) / (top.length || 1);
+
+    top.forEach(function(c){
+      var cp = parseSimPrice(c.price_display);
+      c._simBestValue = !!(cp && candAvg && cp < candAvg * 0.85);
+      c._simHot = candAvgW > 0 && (c.views_week||0) >= candAvgW * 1.5;
+    });
+
+    similarCache = top;
+    renderSimilarGrid(top);
 
   }catch(e){
     PT.timeEnd('fetchSimilar');
     PT.warn('fetchSimilarProperties failed',e.message);
     hideSimilarSection();
   }
+}
+
+function parseSimPrice(s) {
+  if (!s) return null;
+  var clean = String(s).replace(/[^\d.MmKk]/g, '');
+  if (/[Mm]$/.test(clean)) return parseFloat(clean) * 1000000;
+  if (/[Kk]$/.test(clean)) return parseFloat(clean) * 1000;
+  return parseFloat(clean) || null;
 }
 
 function hideSimilarSection(){
@@ -955,6 +996,19 @@ function renderSimilarGrid(similar){
     if(p.bedrooms)specs.push('<span class="sim-spec-item">'+sI.bed+' '+esc(String(p.bedrooms))+'</span>');
     if(p.bathrooms)specs.push('<span class="sim-spec-item">'+sI.bath+' '+esc(String(p.bathrooms))+'</span>');
     if(p.sqm)specs.push('<span class="sim-spec-item">'+sI.sqm+' '+esc(String(p.sqm))+'</span>');
+
+    // Label: Popular Alternative > Best Value Nearby > New Listing > Similar Property
+    var labelHtml = '';
+    if(p._simHot){
+      labelHtml='<span class="sim-label sim-label-pop">'+ {lo:'ທາງເລືອກຍອດນິຍົມ',en:'Popular Alternative',zh:'热门备选'}[lang] +'</span>';
+    } else if(p._simBestValue){
+      labelHtml='<span class="sim-label sim-label-val">'+ {lo:'ສະຖານທີ່ດີທີ່ສຸດໃກ້ຄຽງ',en:'Best Value Nearby',zh:'周边超值'}[lang] +'</span>';
+    } else if(daysOld(p) <= 7){
+      labelHtml='<span class="sim-label sim-label-new">'+ {lo:'ລາຍການໃໝ່',en:'New Listing',zh:'新房源'}[lang] +'</span>';
+    } else {
+      labelHtml='<span class="sim-label sim-label-sim">'+ {lo:'ຄ້າຍຄືກັນ',en:'Similar Property',zh:'相似房源'}[lang] +'</span>';
+    }
+
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug);
     card.className='sim-card';
@@ -967,6 +1021,7 @@ function renderSimilarGrid(similar){
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>'+
       '</button></div>'+
       '<div class="sim-body">'+
+      labelHtml+
       '<p class="sim-title">'+title+'</p>'+
       '<p class="sim-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>'+district+'</p>'+
       (specs.length?'<div class="sim-specs">'+specs.join('')+'</div>':'')+
