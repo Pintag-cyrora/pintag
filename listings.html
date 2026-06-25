@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com https://unpkg.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
 <title>Pintag · ຊັບສິນໃນວຽງຈັນ</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -543,6 +544,11 @@ function getCurrentLang() {
   return 'lo';
 }
 
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function getSavedSet() {
   try { return new Set(JSON.parse(localStorage.getItem('pintag_saved') || '[]')); }
   catch(e) { return new Set(); }
@@ -577,15 +583,15 @@ function getBadgeHtml(p, lang, isFeaturedCard) {
 
 function getAgentHtml(p) {
   if (!p.agent_name) return '';
-  var initials = (p.agent_name.trim().charAt(0) || 'P');
+  var initial = esc(p.agent_name.trim().charAt(0) || 'P');
   var avatarInner = p.agent_photo
-    ? '<img src="' + p.agent_photo + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
-    : initials;
+    ? '<img src="' + esc(p.agent_photo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+    : initial;
   return '<div class="card-divider"></div>' +
     '<div class="card-agent">' +
       '<div class="agent-avatar">' + avatarInner + '</div>' +
       '<div>' +
-        '<div class="agent-name">' + p.agent_name + '</div>' +
+        '<div class="agent-name">' + esc(p.agent_name) + '</div>' +
         '<div class="agent-platform">ຕົວແທນ Pintag</div>' +
       '</div>' +
     '</div>';
@@ -713,10 +719,11 @@ function getActivityLine(p, lang) {
 
   // District-trending context replaces age line for popular/hot listings
   if (score >= 100 && p.district_en) {
+    var d = esc(p.district_en);
     return {
-      lo: 'ຍອດນິຍົມ ' + (isSale ? 'ຊື້ຂາຍ' : 'ເຊົ່າ') + ' ໃນ ' + p.district_en,
-      en: 'Popular ' + (isSale ? 'sale' : 'rental') + ' in ' + p.district_en,
-      zh: p.district_en + '热门' + (isSale ? '售房' : '出租房')
+      lo: 'ຍອດນິຍົມ ' + (isSale ? 'ຊື້ຂາຍ' : 'ເຊົ່າ') + ' ໃນ ' + d,
+      en: 'Popular ' + (isSale ? 'sale' : 'rental') + ' in ' + d,
+      zh: d + '热门' + (isSale ? '售房' : '出租房')
     }[lang];
   }
   if (age < 1)   return {lo:'ລົງຂາຍວັນນີ້',  en:'Listed today',        zh:'今日上架'}[lang];
@@ -834,18 +841,18 @@ function showMapPreview(p) {
   var district = p['district_' + lang] || p.district_en || p.district || '';
   document.getElementById('mp-loc').innerHTML =
     '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>' +
-    (district ? district + ', ' : '') +
+    (district ? esc(district) + ', ' : '') +
     {lo:'ວຽງຈັນ',en:'Vientiane',zh:'万象'}[lang];
 
   // Agent
   var agentRow = document.getElementById('mp-agent-row');
   if (p.agent_name) {
     var avatarInner = p.agent_photo
-      ? '<img src="' + p.agent_photo + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.style.display=\'none\'">'
-      : (p.agent_name.charAt(0) || 'P');
+      ? '<img src="' + esc(p.agent_photo) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.style.display=\'none\'">'
+      : esc(p.agent_name.charAt(0) || 'P');
     agentRow.innerHTML =
       '<div class="agent-avatar">' + avatarInner + '</div>' +
-      '<div><div class="agent-name">' + p.agent_name + '</div>' +
+      '<div><div class="agent-name">' + esc(p.agent_name) + '</div>' +
       '<div class="agent-platform">ຕົວແທນ Pintag</div></div>';
     agentRow.style.display = 'flex';
   } else {
@@ -966,8 +973,8 @@ function renderListings() {
     if (isFeaturedCard) { featuredUsed = true; card.className = 'prop-card is-featured'; }
     else { card.className = 'prop-card'; }
 
-    var title    = p['title_'    + lang] || p.title_en    || '';
-    var district = p['district_' + lang] || p.district_en || '';
+    var title    = esc(p['title_'    + lang] || p.title_en    || '');
+    var district = esc(p['district_' + lang] || p.district_en || '');
     var isSale   = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
 
     var txLabel = {
@@ -981,7 +988,7 @@ function renderListings() {
       : '';
 
     var imgHtml = (p.images && p.images.length)
-      ? '<img src="' + p.images[0] + '" alt="" loading="' + (idx < 4 ? 'eager' : 'lazy') + '">'
+      ? '<img src="' + esc(p.images[0]) + '" alt="" loading="' + (idx < 4 ? 'eager' : 'lazy') + '">'
       : '<div class="prop-card-no-img"></div>';
 
     var imgCount = (p.images && p.images.length > 1) ? p.images.length : 0;
@@ -1009,12 +1016,12 @@ function renderListings() {
     var perMo = { lo: '/ ເດືອນ', en: '/ month', zh: '/ 月' };
     var rawPrice = (p.price_display || '').replace(/\s*\/\s*(ເດືອນ|mo|月|month)\s*/i, '').trim();
     var priceHtml = rawPrice
-      ? '<p class="card-price">' + rawPrice + (!isSale ? ' <span class="card-price-unit">' + perMo[lang] + '</span>' : '') + '</p>'
+      ? '<p class="card-price">' + esc(rawPrice) + (!isSale ? ' <span class="card-price-unit">' + perMo[lang] + '</span>' : '') + '</p>'
       : '<p class="card-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
 
     var actBadgesHtml = getActivityBadgesHtml(p, lang);
     var actLineTxt    = getActivityLine(p, lang);
-    var actLineHtml   = actLineTxt ? '<p class="card-activity-line">' + actLineTxt + '</p>' : '';
+    var actLineHtml   = actLineTxt ? '<p class="card-activity-line">' + esc(actLineTxt) + '</p>' : '';
 
     var newBadgeHtml = isNewListing(p)
       ? '<div style="margin-top:4px;"><span class="badge-new-listing">' +

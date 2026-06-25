@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co https://generativelanguage.googleapis.com; frame-src 'none'; object-src 'none';">
 <title>Pintag Admin</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -675,6 +676,11 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 const ADMIN_EMAIL   = 'admin@pintag.io';
 const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
@@ -813,7 +819,7 @@ document.addEventListener('keydown', e => {
 function renderCustomTags() {
   const el = document.getElementById('highlights-custom');
   el.innerHTML = customTags.map((t, i) =>
-    `<span class="tag-custom-pill">${t}<button type="button" onclick="removeCustomTag(${i})">×</button></span>`
+    `<span class="tag-custom-pill">${esc(t)}<button type="button" onclick="removeCustomTag(${i})">×</button></span>`
   ).join('');
 }
 function removeCustomTag(i) { customTags.splice(i,1); renderCustomTags(); }
@@ -883,15 +889,15 @@ function addNearby(data) {
   const icon   = data ? (data.icon||'') : '';
   const dist   = data ? (data.distance||'') : '';
   row.innerHTML = `
-    <input class="nearby-icon-input" type="text" placeholder="☕" value="${icon}" maxlength="2">
+    <input class="nearby-icon-input" type="text" placeholder="☕" value="${esc(icon)}" maxlength="2">
     <div class="np-names">
-      <input class="form-input np-name-en" type="text" placeholder="Name (English)" value="${nameEn}">
+      <input class="form-input np-name-en" type="text" placeholder="Name (English)" value="${esc(nameEn)}">
       <div class="np-names-sub">
-        <input class="form-input np-name-lo" type="text" placeholder="ຊື່ (ລາວ)" value="${nameLo}" style="font-size:12.5px;">
-        <input class="form-input np-name-zh" type="text" placeholder="名称 (中文)" value="${nameZh}" style="font-size:12.5px;">
+        <input class="form-input np-name-lo" type="text" placeholder="ຊື່ (ລາວ)" value="${esc(nameLo)}" style="font-size:12.5px;">
+        <input class="form-input np-name-zh" type="text" placeholder="名称 (中文)" value="${esc(nameZh)}" style="font-size:12.5px;">
       </div>
     </div>
-    <input class="form-input np-dist" type="text" placeholder="5 min drive" value="${dist}">
+    <input class="form-input np-dist" type="text" placeholder="5 min drive" value="${esc(dist)}">
     <button type="button" class="btn-remove" onclick="this.parentElement.remove()">×</button>`;
   list.appendChild(row);
 }
@@ -1125,7 +1131,7 @@ function buildAgentOptions(search) {
     : _agentsAll;
   sel.innerHTML = '<option value="">— No agent assigned —</option>'
     + filtered.map(a =>
-        `<option value="${a.id}">${a.name_en}${a.agency_name ? ' · ' + a.agency_name : ''}</option>`
+        `<option value="${esc(a.id)}">${esc(a.name_en)}${a.agency_name ? ' · ' + esc(a.agency_name) : ''}</option>`
       ).join('');
   if (currentVal && filtered.some(a => a.id === currentVal)) sel.value = currentVal;
 }
@@ -1187,7 +1193,7 @@ async function loadAnalytics() {
       const props = await sbApi('GET', 'properties?id=in.('+topListingIds.join(',')+')&select=id,title_en');
       const titleMap = Object.fromEntries((props||[]).map(p => [p.id, p.title_en||'—']));
       document.getElementById('adm-top-listings').innerHTML = topListingIds.map(id =>
-        `<tr><td style="font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${titleMap[id]||'—'}</td><td><span class="lead-pill">${byListing[id]}</span></td></tr>`
+        `<tr><td style="font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(titleMap[id]||'—')}</td><td><span class="lead-pill">${Number(byListing[id])}</span></td></tr>`
       ).join('');
     } else {
       document.getElementById('adm-top-listings').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
@@ -1201,7 +1207,7 @@ async function loadAnalytics() {
       const agents = await sbApi('GET', 'agents?id=in.('+topAgentIds.join(',')+')&select=id,name_en');
       const nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.name_en||'—']));
       document.getElementById('adm-top-agents').innerHTML = topAgentIds.map(id =>
-        `<tr><td style="font-weight:500;">${nameMap[id]||'—'}</td><td><span class="lead-pill">${byAgent[id]}</span></td></tr>`
+        `<tr><td style="font-weight:500;">${esc(nameMap[id]||'—')}</td><td><span class="lead-pill">${Number(byAgent[id])}</span></td></tr>`
       ).join('');
     } else {
       document.getElementById('adm-top-agents').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
@@ -1220,7 +1226,7 @@ async function loadAnalytics() {
       });
       const topDists = Object.keys(byDistrict).sort((a,b) => byDistrict[b]-byDistrict[a]).slice(0,10);
       document.getElementById('adm-top-districts').innerHTML = topDists.map(d =>
-        `<tr><td style="font-weight:500;">${d}</td><td><span class="lead-pill">${byDistrict[d]}</span></td></tr>`
+        `<tr><td style="font-weight:500;">${esc(d)}</td><td><span class="lead-pill">${Number(byDistrict[d])}</span></td></tr>`
       ).join('');
     } else {
       document.getElementById('adm-top-districts').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
@@ -1246,22 +1252,22 @@ async function loadListings() {
   }
   let html = '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Status</th><th style="white-space:nowrap;">👁 Views · 📞 Leads</th><th>Actions</th></tr></thead><tbody>';
   data.forEach(p => {
+    const agentDisplay = esc((() => { const a = p.agent_id ? _agentsAll.find(x => x.id === p.agent_id) : null; return a ? (a.name_en || '') : (p.agent_name || '—'); })());
+    const statusCls = esc(p.status || 'unknown');
+    const v = Number(p.view_count) || 0;
+    const l = Number(leadCounts[p.id]) || 0;
+    const conv = v > 0 ? ((l/v)*100).toFixed(1) : '—';
     html += `<tr>
-      <td><strong style="color:var(--ink);font-weight:500;">${p.title_en||'—'}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}</td>
-      <td style="color:var(--ink-muted)">${p.district_en||'—'}</td>
-      <td>${p.price_display||'<em style="color:var(--ink-muted)">On request</em>'}</td>
-      <td>${(() => { const a = p.agent_id ? _agentsAll.find(x => x.id === p.agent_id) : null; return a ? a.name_en : (p.agent_name || '—'); })()}</td>
-      <td><span class="status-badge status-${p.status}">${p.status}</span></td>
-      <td style="white-space:nowrap;font-size:12px;color:var(--ink-muted);">${(() => {
-        const v = p.view_count || 0;
-        const l = leadCounts[p.id] || 0;
-        const conv = v > 0 ? ((l/v)*100).toFixed(1) : '—';
-        return `<span style="color:var(--ink);">${v}</span> views · <span style="color:var(--teal);font-weight:600;">${l}</span> leads` + (v > 0 ? ` <span style="opacity:0.6;">(${conv}%)</span>` : '');
-      })()}</td>
+      <td><strong style="color:var(--ink);font-weight:500;">${esc(p.title_en||'—')}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}</td>
+      <td style="color:var(--ink-muted)">${esc(p.district_en||'—')}</td>
+      <td>${p.price_display ? esc(p.price_display) : '<em style="color:var(--ink-muted)">On request</em>'}</td>
+      <td>${agentDisplay}</td>
+      <td><span class="status-badge status-${statusCls}">${statusCls}</span></td>
+      <td style="white-space:nowrap;font-size:12px;color:var(--ink-muted);"><span style="color:var(--ink);">${v}</span> views · <span style="color:var(--teal);font-weight:600;">${l}</span> leads${v > 0 ? ` <span style="opacity:0.6;">(${esc(conv)}%)</span>` : ''}</td>
       <td style="display:flex;gap:6px;align-items:center;">
-        <button class="action-btn btn-edit" onclick="editListing('${p.id}')">Edit</button>
-        <a class="action-btn btn-view" href="listing.html?slug=${p.slug}" target="_blank">View</a>
-        <button class="action-btn btn-delete" onclick="deleteListing('${p.id}','${(p.title_en||'').replace(/'/g,"&apos;")}')">Delete</button>
+        <button class="action-btn btn-edit" onclick="editListing('${esc(p.id)}')">Edit</button>
+        <a class="action-btn btn-view" href="listing.html?slug=${esc(p.slug)}" target="_blank">View</a>
+        <button class="action-btn btn-delete" data-id="${esc(p.id)}" data-title="${esc(p.title_en||'')}" onclick="deleteListing(this.dataset.id, this.dataset.title)">Delete</button>
       </td>
     </tr>`;
   });
