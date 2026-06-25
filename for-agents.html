@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
 <title>Pintag · ສຳລັບຕົວແທນ</title>
 <meta name="description" content="ຊ່ວຍໃຫ້ການນຳສະເໜີອະສັງຫາຂອງທ່ານ ດູດີ ແລະ ໜ້າເຊື່ອຖື">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -332,6 +333,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 
 <script>
 const SB='https://eoladhcljbpbhnrmmpev.supabase.co';
+function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-interior.png';
 
@@ -368,7 +370,7 @@ function renderRoster(agents,byAgent){
   if(!agents.length){list.style.display='none';return;}
   agents.forEach(function(a){
     var count=(byAgent[a.id]||[]).length;
-    var initial=(a.name_en||'A').charAt(0).toUpperCase();
+    var initial=esc((a.name_en||'A').charAt(0).toUpperCase());
     var bio=a.bio_lo||a.bio_en||'ຕົວແທນອະສັງຫາ · ວຽງຈັນ';
 
     var card=document.createElement('a');

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
 <title>Pintag — Discover Properties Across Laos</title>
 <meta name="description" content="Discover properties for sale and rent across Laos. Pintag connects buyers, renters and agents on Laos's premier real estate platform.">
 <meta property="og:type" content="website">
@@ -559,6 +560,12 @@ nav{
 const SB_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function setLang(lang, btn) {
   document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
   document.querySelectorAll('.nav-lang-item').forEach(b => b.classList.remove('active'));
@@ -603,21 +610,20 @@ function renderCards(props, lang) {
   const cityL = { lo: 'ວຽງຈັນ', en: 'Vientiane', zh: '万象' };
 
   grid.innerHTML = props.map(p => {
-    const title = p['title_' + lang] || p.title_en || '';
-    const district = p['district_' + lang] || p.district_en || '';
+    const district = esc(p['district_' + lang] || p.district_en || '');
     const isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
     const tx = isSale ? txL.sale[lang] : txL.rent[lang];
     const badgeClass = isSale ? 'badge-sale' : 'badge-rent';
     const imgHtml = (p.images && p.images.length)
-      ? '<img src="' + p.images[0] + '" alt="" loading="lazy">'
+      ? '<img src="' + esc(p.images[0]) + '" alt="" loading="lazy">'
       : '<div class="card-img-placeholder"></div>';
     const specs = [];
-    if (p.bedrooms) specs.push('<span class="card-spec">' + BED_SVG + ' ' + p.bedrooms + '</span>');
-    if (p.bathrooms) specs.push('<span class="card-spec">' + BATH_SVG + ' ' + p.bathrooms + '</span>');
-    if (p.sqm) specs.push('<span class="card-spec">' + SQM_SVG + ' ' + p.sqm + '</span>');
+    if (p.bedrooms) specs.push('<span class="card-spec">' + BED_SVG + ' ' + Number(p.bedrooms) + '</span>');
+    if (p.bathrooms) specs.push('<span class="card-spec">' + BATH_SVG + ' ' + Number(p.bathrooms) + '</span>');
+    if (p.sqm) specs.push('<span class="card-spec">' + SQM_SVG + ' ' + Number(p.sqm) + '</span>');
     const priceUnit = (!isSale && p.price_display) ? '<span class="card-price-unit">' + perMo[lang] + '</span>' : '';
-    const agentName = p.agent_name || '';
-    const agentPhoto = p.agent_photo || '';
+    const agentName = esc(p.agent_name || '');
+    const agentPhoto = esc(p.agent_photo || '');
     const agentHtml = agentName
       ? '<div class="card-agent-row">' +
           (agentPhoto ? '<div class="card-agent-pfp"><img src="' + agentPhoto + '" alt="" loading="lazy"></div>' : '') +
@@ -632,7 +638,7 @@ function renderCards(props, lang) {
       '</div>' +
       '<div class="card-body">' +
         '<div class="card-price-row">' +
-          '<span class="card-price">' + (p.price_display || '—') + '</span>' + priceUnit +
+          '<span class="card-price">' + esc(p.price_display || '—') + '</span>' + priceUnit +
         '</div>' +
         '<div class="card-loc">' + PIN_SVG + (district ? district + ', ' : '') + cityL[lang] + '</div>' +
         (specs.length ? '<div class="card-specs">' + specs.join('') + '</div>' : '') +
