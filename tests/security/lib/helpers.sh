@@ -467,3 +467,150 @@ generate_reports() {
   } > "$json_file"
   echo -e "${DIM}  JSON summary: ${json_file}${RESET}"
 }
+
+# ── Coverage reporting ────────────────────────────────────────────────────────
+# Reads the REQUEST_LOG to show which known resources were exercised this run.
+generate_coverage_report() {
+  echo ""
+  echo -e "${BOLD}════════════════════════════════════════${RESET}"
+  echo -e "${BOLD} Coverage${RESET}"
+  echo -e "${BOLD}════════════════════════════════════════${RESET}"
+
+  if [[ ! -f "$REQUEST_LOG" ]]; then
+    echo -e "  ${DIM}No request log found — coverage unavailable${RESET}"
+    return
+  fi
+
+  local KNOWN_FNS=("generate-listing-content" "smart-listing-importer" "resolve-map-url")
+  local KNOWN_TABLES=("properties" "agents" "lead_events" "listing_events")
+  local KNOWN_BUCKETS=("property-images" "agent-photos")
+
+  # URL is the 5th tab-separated field in the log
+  local tested_fns tested_tables tested_buckets
+  tested_fns=$(awk -F'\t' 'NF>=5{print $5}' "$REQUEST_LOG" \
+    | grep -oE '/functions/v1/[^?/ ]+' | sed 's|/functions/v1/||' | sort -u)
+  tested_tables=$(awk -F'\t' 'NF>=5{print $5}' "$REQUEST_LOG" \
+    | grep -oE '/rest/v1/[^?/]+' | sed 's|/rest/v1/||' | grep -v '^rpc$' | sort -u)
+  tested_buckets=$(awk -F'\t' 'NF>=5{print $5}' "$REQUEST_LOG" \
+    | grep -oE '/storage/v1/object/[^/]+' | sed 's|/storage/v1/object/||' | sort -u)
+
+  echo -e "  ${BOLD}Edge Functions:${RESET}"
+  for fn in "${KNOWN_FNS[@]}"; do
+    if echo "$tested_fns" | grep -q "^${fn}$"; then
+      printf "    ${GREEN}✓${RESET}  %s\n" "$fn"
+    else
+      printf "    ${RED}✗${RESET}  %s ${DIM}(not tested)${RESET}\n" "$fn"
+    fi
+  done
+
+  echo -e "  ${BOLD}Database Tables:${RESET}"
+  for tbl in "${KNOWN_TABLES[@]}"; do
+    if echo "$tested_tables" | grep -q "^${tbl}$"; then
+      printf "    ${GREEN}✓${RESET}  %s\n" "$tbl"
+    else
+      printf "    ${RED}✗${RESET}  %s ${DIM}(not tested)${RESET}\n" "$tbl"
+    fi
+  done
+
+  echo -e "  ${BOLD}Storage Buckets:${RESET}"
+  for bucket in "${KNOWN_BUCKETS[@]}"; do
+    if echo "$tested_buckets" | grep -q "^${bucket}$"; then
+      printf "    ${GREEN}✓${RESET}  %s\n" "$bucket"
+    else
+      printf "    ${RED}✗${RESET}  %s ${DIM}(not tested)${RESET}\n" "$bucket"
+    fi
+  done
+
+  echo -e "  ${BOLD}Security Headers:${RESET}"
+  if [[ -n "${SITE_URL:-}" ]]; then
+    printf "    ${GREEN}✓${RESET}  %s (SITE_URL set)\n" "${SITE_URL}"
+  else
+    printf "    ${YELLOW}–${RESET}  ${DIM}not tested (SITE_URL not set)${RESET}\n"
+  fi
+}
+
+# ── Performance regression history ───────────────────────────────────────────
+# Computes per-endpoint average latency from REQUEST_LOG, compares to a stored
+# baseline, warns on >50% regression, then updates the baseline.
+compare_perf_history() {
+  if [[ ! -f "$REQUEST_LOG" ]]; then return; fi
+  if ! command -v python3 &>/dev/null; then
+    echo -e "  ${DIM}python3 not found — performance history skipped${RESET}"
+    return
+  fi
+
+  local baseline_file="${LOG_DIR}/perf-baseline.json"
+
+  echo ""
+  echo -e "${BOLD}════════════════════════════════════════${RESET}"
+  echo -e "${BOLD} Performance History${RESET}"
+  echo -e "${BOLD}════════════════════════════════════════${RESET}"
+
+  python3 - "$REQUEST_LOG" "$baseline_file" <<'PYEOF'
+import sys, json, re, os
+from collections import defaultdict
+
+log_file  = sys.argv[1]
+base_file = sys.argv[2]
+
+totals = defaultdict(list)
+
+with open(log_file) as fh:
+    for line in fh:
+        parts = line.rstrip('\n').split('\t')
+        if len(parts) < 7:
+            continue
+        url   = parts[4]
+        dur_s = parts[6]
+        try:
+            dur = int(re.sub(r'[^0-9]', '', dur_s))
+        except ValueError:
+            continue
+
+        m = re.search(r'/functions/v1/([^?/]+)', url)
+        if m:
+            key = 'fn:' + m.group(1)
+        else:
+            m2 = re.search(r'/storage/v1/object/([^/]+)', url)
+            if m2:
+                key = 'storage:' + m2.group(1)
+            else:
+                m3 = re.search(r'/rest/v1/([^?/]+)', url)
+                if m3 and m3.group(1) != 'rpc':
+                    key = 'table:' + m3.group(1)
+                else:
+                    continue
+        totals[key].append(dur)
+
+current = {k: sum(v) // len(v) for k, v in totals.items() if v}
+
+baseline = {}
+if os.path.exists(base_file):
+    try:
+        with open(base_file) as fh:
+            baseline = json.load(fh)
+    except Exception:
+        pass
+
+regressions = 0
+if baseline:
+    for key in sorted(current):
+        avg = current[key]
+        if key in baseline:
+            prev = baseline[key]
+            if prev > 0 and avg > prev * 1.5:
+                pct = int((avg / prev - 1) * 100)
+                print(f'  PERF REGRESSION  {key}  {avg}ms  (+{pct}% vs baseline {prev}ms)')
+                regressions += 1
+    if regressions == 0:
+        print('  No regressions vs baseline.')
+else:
+    print('  No baseline found — recording this run as the baseline.')
+
+baseline.update(current)
+os.makedirs(os.path.dirname(base_file) or '.', exist_ok=True)
+with open(base_file, 'w') as fh:
+    json.dump(baseline, fh, indent=2, sort_keys=True)
+print(f'  Baseline: {base_file}')
+PYEOF
+}

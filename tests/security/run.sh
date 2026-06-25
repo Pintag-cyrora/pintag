@@ -155,6 +155,8 @@ fi
 
 echo ""
 generate_reports
+generate_coverage_report
+compare_perf_history
 
 echo -e "${BOLD}════════════════════════════════════════${RESET}"
 

@@ -79,6 +79,9 @@ bash tests/security/run.sh headers
 #   rate_limiting    lead_events and listing_events throttling
 #   headers          HTTP security response headers (requires SITE_URL)
 #   pintag_specific  Pintag-specific: error format, Smart Import edge cases, listing isolation
+#   sql_injection    SQL injection through PostgREST filters, RPC calls, and Edge Function bodies
+#   secret_scan      Repository scan for committed secrets (JWTs, PEM keys, .env files, API keys)
+#   open_redirect    Open redirect via resolve-map-url (protocol confusion, CRLF, fragment bypass)
 ```
 
 New suites are auto-discovered from `tests/security/suites/*.sh` — no changes to `run.sh` are needed.
@@ -181,6 +184,31 @@ The workflow runs on every push/PR to `main` and weekly on Mondays.
 - Listing data isolation: draft invisible to anon and non-admin via direct ID and slug; anon cannot promote draft to active
 - `resolve-map-url` edge cases: empty URL, numeric URL, `data:` URI, `file:` URI — all rejected cleanly
 
+### Suite 10 — SQL Injection
+- Slug, ID (UUID), and text `ilike` filter injection via PostgREST query params
+- Edge Function JSON body injection (`generate-listing-content`, `smart-listing-importer`)
+- RPC call injection (`increment_listing_view`)
+- Payloads: `'`, `'--`, `' OR '1'='1`, `UNION SELECT`, `DROP TABLE`, `pg_sleep`
+- Verify: no SQL errors, no stack traces, proper 4xx, DB tables still accessible
+
+### Suite 11 — Secret Leakage Scanning
+- No committed `.env` files (`.env.local`, `.env.production`, etc.)
+- No PEM private keys (`BEGIN PRIVATE KEY` / `BEGIN RSA PRIVATE KEY`)
+- No service-role JWTs (decoded and checked for `role=service_role`)
+- No OpenAI API key patterns (`sk-...`)
+- No Google API key patterns (`AIza...`)
+- No hardcoded DB credentials (`DATABASE_URL=`, `POSTGRES_PASSWORD=` with values)
+
+### Suite 12 — Open Redirect
+- Protocol-relative `//evil.com`, leading-space URL, bare hostname → 4xx
+- CRLF header injection (`\r\n` and `%0d%0a` in URL) → 4xx or no 500
+- Null-byte hostname confusion → no 500
+- Fragment bypass (`evil.com#maps.app.goo.gl`) → 4xx
+- Percent-encoded hostname (`evil%2ecom`) → 4xx
+- `javascript:` and `data:` URLs → 403
+- Verified `resolved_url` in response stays on google.com for legitimate input
+- Documents known limitation: redirect chain through allowed domain → evil.com
+
 ### Suite 08 — Security Headers
 - CSP (response header or `<meta>` tag)
 - X-Frame-Options or `frame-ancestors` in CSP
@@ -188,6 +216,14 @@ The workflow runs on every push/PR to `main` and weekly on Mondays.
 - Referrer-Policy
 - Permissions-Policy
 - Strict-Transport-Security
+
+---
+
+### End-of-run extras (printed after all suites)
+
+After the per-suite summary, the runner always prints:
+- **Coverage** — which known edge functions, tables, buckets, and headers were actually exercised
+- **Performance History** — compares per-endpoint average latency to a stored baseline; warns on >50% regression, updates `tests/security/output/perf-baseline.json`
 
 ---
 
@@ -202,3 +238,7 @@ The workflow runs on every push/PR to `main` and weekly on Mondays.
 4. **HTTP security headers**: Headers checked in suite 08 (X-Frame-Options, Referrer-Policy, etc.) must be configured at the CDN/hosting layer, not in HTML `<meta>` tags. These are expected to fail until the CDN is configured.
 
 5. **Agent cross-row isolation**: The full cross-user test (agent A cannot delete agent B's listings) requires two agent accounts with actual listings assigned. The suite tests the policy logic via policy checks; full isolation requires manual verification or a more complex fixture setup.
+
+6. **Storage double-extension** (`shell.php.jpg`): `storage.extension()` returns only the last extension (`jpg`), so double-extension uploads pass the policy. Suite 04 documents this; enable MIME-type validation in Supabase Dashboard → Storage to mitigate.
+
+7. **Open redirect via redirect chain**: `resolve-map-url` does not re-validate the resolved URL after following HTTP redirects. A short-link on an allowed domain (`goo.gl`) that redirects to `evil.com` would return `resolved_url=https://evil.com`. Client code must not use this value directly for browser navigation.
