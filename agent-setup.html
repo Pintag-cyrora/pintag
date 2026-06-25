@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
 <title>Pintag · Agent Setup</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -345,6 +346,7 @@ const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 const ADMIN_EMAIL   = 'admin@pintag.io';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 var _token = null;
 var _agents = [];
@@ -657,9 +659,10 @@ function renderAgentSummary() {
   // Avatar
   var avatarWrap = document.getElementById('agent-avatar-wrap');
   if (a.photo_url) {
-    avatarWrap.innerHTML = '<img class="agent-avatar" src="' + a.photo_url + '" onerror="this.parentElement.innerHTML=\'<div class=agent-avatar-placeholder>' + (a.name_en[0]||'?') + '</div>\'" alt="">';
+    var initial = esc((a.name_en[0]||'?').toUpperCase());
+    avatarWrap.innerHTML = '<img class="agent-avatar" src="' + esc(a.photo_url) + '" onerror="this.parentElement.innerHTML=\'<div class=agent-avatar-placeholder>' + initial + '</div>\'" alt="">';
   } else {
-    avatarWrap.innerHTML = '<div class="agent-avatar-placeholder">' + (a.name_en[0]||'?') + '</div>';
+    avatarWrap.innerHTML = '<div class="agent-avatar-placeholder">' + esc(a.name_en[0]||'?') + '</div>';
   }
 
   document.getElementById('agent-summary-name').textContent = a.name_en + (a.name_lo ? ' · ' + a.name_lo : '');
@@ -722,13 +725,16 @@ function renderListingsGrid() {
     var title = l.title_en || l.slug || '(no title)';
     var district = l.district_en || '';
     var statusTag = l.status === 'draft' ? '<span class="tag tag-draft">draft</span>' : '';
-    var otherTag = otherAgent ? '<span class="tag tag-other">→ ' + otherAgent.name_en + '</span>' : '';
-    var metaParts = [district].filter(Boolean);
+    var otherTag = otherAgent ? '<span class="tag tag-other">→ ' + esc(otherAgent.name_en) + '</span>' : '';
+    var safeId = esc(l.id);
+    var safeTitle = esc(title);
+    var safeDistrict = esc(district);
+    var metaParts = [safeDistrict].filter(Boolean);
 
-    html += '<div class="listing-row" data-id="' + l.id + '">' +
-      '<input type="checkbox" id="lc-' + l.id + '" data-listing-id="' + l.id + '" ' + (isAssigned ? 'checked' : '') + ' onchange="updateAssignedCount()">' +
+    html += '<div class="listing-row" data-id="' + safeId + '">' +
+      '<input type="checkbox" id="lc-' + safeId + '" data-listing-id="' + safeId + '" ' + (isAssigned ? 'checked' : '') + ' onchange="updateAssignedCount()">' +
       '<div class="listing-info">' +
-        '<div class="listing-title"><label for="lc-' + l.id + '" style="cursor:pointer;font-weight:500;">' + title + '</label>' + statusTag + otherTag + '</div>' +
+        '<div class="listing-title"><label for="lc-' + safeId + '" style="cursor:pointer;font-weight:500;">' + safeTitle + '</label>' + statusTag + otherTag + '</div>' +
         (metaParts.length ? '<div class="listing-meta">' + metaParts.join(' · ') + '</div>' : '') +
       '</div>' +
       '</div>';

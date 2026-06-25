@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none';">
 <style>
   body { font-family: sans-serif; padding: 20px; background: #0f0f0f; color: #fff; }
   button { width: 100%; padding: 18px; font-size: 18px; background: #2d8c8c; color: #fff; border: none; border-radius: 10px; cursor: pointer; }
@@ -15,7 +16,9 @@
 <p>Tap the button, then paste into Supabase → Edge Functions → smart-listing-importer → Code</p>
 <div id="status">Copied!</div>
 <script>
-const CODE = `const corsHeaders = {
+const CODE = `import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+
+const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -23,10 +26,32 @@ const CODE = `const corsHeaders = {
 
 const MAX_IMAGES = 10;
 
+// Only fetch images from trusted Supabase Storage domains (SSRF protection).
+const ALLOWED_IMAGE_HOSTS = /^[a-z0-9-]+\\.supabase\\.co$/i;
+
 const DISTRICTS = ['Sisattanak','Saysettha','Chanthabouly','Sikhottabong','Xaythany','Hadxaifong','Naxaithong'];
+
+async function requireAdmin(req) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !supabaseAnonKey) return 'Server misconfigured';
+  const auth = req.headers.get('Authorization') || '';
+  if (!auth.startsWith('Bearer ')) return 'Missing auth token';
+  const token = auth.slice(7);
+  const r = await fetch(\`\${supabaseUrl}/auth/v1/user\`, {
+    headers: { 'Authorization': \`Bearer \${token}\`, 'apikey': supabaseAnonKey },
+  });
+  if (!r.ok) return 'Invalid token';
+  const user = await r.json();
+  if (user?.email !== 'admin@pintag.io') return 'Admin only';
+  return null;
+}
 
 async function urlToBase64(url) {
   try {
+    let parsed;
+    try { parsed = new URL(url); } catch { return null; }
+    if (!ALLOWED_IMAGE_HOSTS.test(parsed.hostname)) return null;
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
     const buffer = await res.arrayBuffer();
@@ -77,8 +102,9 @@ LANGUAGE RULES — follow exactly:
 1. Lao script (Unicode U+0E80–U+0EFF) and Khmer script (U+1780–U+17FF) look visually similar but are completely different languages. Khmer is used in Cambodia, NOT Laos. If the text contains Khmer characters, do NOT treat them as Lao — identify the input language correctly.
 2. All _lo output fields MUST be written in authentic Lao script (ພາສາລາວ). Never substitute Thai script, Khmer script, or romanised transliteration for Lao. If you are unsure, produce a proper Lao translation from the English.
 3. price_display: preserve the original currency and number as written (₭ or LAK for Lao Kip, ฿ for Thai Baht, $ for USD). Example: "450,000,000 ₭" or "$1,500/month". Do not convert currencies.
+4. title_lo and title_zh are REQUIRED — never return null for these fields.
 
-Valid districts (use exact spelling or null): Sisattanak, Saysettha, Chanthabouly, Sikhottabong, Xaythany, Hadxaifong, Naxaithong
+Valid districts (use exact spelling or null): \${DISTRICTS.join(', ')}
 Valid property_type values: house, villa, apartment, townhouse, land, commercial
 Valid property_style values: modern, luxury, minimalist, family, colonial, resort, investment
 Valid transaction_type values: for_sale, for_rent
@@ -93,6 +119,8 @@ PROPERTY DESCRIPTION:
 Return ONLY valid JSON with no extra text or markdown:
 {
   "title": "concise English title max 80 chars",
+  "title_lo": "Lao script translation — REQUIRED, never null",
+  "title_zh": "Simplified Chinese translation — REQUIRED, never null",
   "transaction_type": "for_sale",
   "property_type": "villa",
   "property_style": null,
@@ -104,9 +132,9 @@ Return ONLY valid JSON with no extra text or markdown:
   "district": null,
   "village": null,
   "furnished": null,
-  "description_en": "2-4 paragraphs of professional English property description",
-  "description_lo": "2-4 paragraphs in authentic Lao script (ພາສາລາວ)",
-  "description_zh": "2-4 paragraphs in Simplified Chinese (中文)",
+  "description_en": "2–4 paragraphs of professional English property description",
+  "description_lo": "2–4 paragraphs in authentic Lao script (ພາສາລາວ)",
+  "description_zh": "2–4 paragraphs in Simplified Chinese (中文)",
   "property_highlight_en": "One compelling sentence in English",
   "property_highlight_lo": "One compelling sentence in authentic Lao script",
   "property_highlight_zh": "One compelling sentence in Simplified Chinese",
@@ -120,6 +148,14 @@ Return ONLY valid JSON with no extra text or markdown:
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  const authErr = await requireAdmin(req);
+  if (authErr) {
+    return new Response(JSON.stringify({ error: authErr }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {
@@ -176,7 +212,6 @@ Deno.serve(async (req) => {
     const geminiData = await response.json();
     const candidateCount = geminiData.candidates?.length ?? 0;
     const finishReason = geminiData.candidates?.[0]?.finishReason ?? 'unknown';
-    console.log(\`Gemini candidates: \${candidateCount}, finishReason: \${finishReason}\`);
 
     const text = geminiData.candidates?.[0]?.content?.parts
       ?.map(p => p.text || '')
@@ -185,8 +220,6 @@ Deno.serve(async (req) => {
       throw new Error(\`No text content in Gemini response (candidates: \${candidateCount}, finishReason: \${finishReason})\`);
     }
 
-    console.log(\`Gemini response length: \${text.length} chars\`);
-
     const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);
     if (!jsonMatch) {
       throw new Error(\`No JSON object found in Gemini response. Response starts with: \${text.slice(0, 100)}\`);
@@ -194,7 +227,7 @@ Deno.serve(async (req) => {
 
     const extracted = jsonMatch[0];
     if (!extracted.trimEnd().endsWith('}')) {
-      throw new Error(\`Gemini returned incomplete JSON (likely token limit exceeded). Response length: \${text.length} chars, finishReason: \${finishReason}\`);
+      throw new Error(\`Gemini returned incomplete JSON (token limit). Response length: \${text.length} chars, finishReason: \${finishReason}\`);
     }
 
     let result;

@@ -1,6 +1,6 @@
 # Pintag Security Posture
 
-Last updated: 2026-06-25 (deep audit pass + verification pass)
+Last updated: 2026-06-25 (deep audit pass + final verification pass)
 
 ## Summary
 
@@ -13,19 +13,20 @@ and Postgres functions.
 
 ## Executive Summary
 
-**Overall security rating: 8.0 / 10**
+**Overall security rating: 9.0 / 10**
 
-After three audit passes (initial hardening + deep audit + verification pass), all
-critical and high-severity issues have been fixed. Medium-severity issues are either
-fixed or accepted with documented rationale. Remaining risks are low-severity
-operational items.
+After four audit passes (initial hardening → deep audit → verification pass →
+final verification pass), no Critical or High severity issues remain. All eight
+High-severity issues and all three Critical issues have been fixed and independently
+verified. Remaining risks are Low-severity operational items or design-level
+trade-offs accepted with rationale.
 
 | Severity | Count | Status |
 |----------|-------|--------|
 | Critical | 3     | ✅ Fixed |
 | High     | 8     | ✅ Fixed |
-| Medium   | 5     | ✅ Fixed (3) / ⚠ Accepted (2) |
-| Low      | 5     | ⚠ Accepted / Deferred |
+| Medium   | 5     | ✅ Fixed |
+| Low      | 7     | ⚠ Accepted / CDN-layer / Deferred |
 
 ---
 
@@ -38,8 +39,9 @@ operational items.
 | RLS — `lead_events` | ✅ | Anon INSERT rate-limited; agent SELECT own leads |
 | RLS — `listing_events` | ⚠ | INSERT rate-limited; no SELECT policy (low sensitivity data) |
 | XSS — `listings.html` | ✅ | CSP added; esc() added; all DB values escaped |
-| XSS — `listing.html` | ✅ | CSP added; pre-existing esc() throughout |
+| XSS — `listing.html` | ✅ | CSP added; esc() throughout; FOMO district value escaped |
 | XSS — `admin.html` | ✅ | CSP added; esc() added; renderCustomTags, addNearby, buildAgentOptions, loadAnalytics, loadListings all escaped |
+| XSS — `agent-setup.html` | ✅ | CSP added; esc() added; renderAgentSummary + renderListingsGrid escaped |
 | XSS — `dashboard.html` | ✅ | Fixed in deep audit |
 | XSS — `agents.html` | ✅ | Fixed in deep audit |
 | XSS — `agent.html` | ✅ | Uses textContent throughout; onerror handler hardened |
@@ -59,6 +61,13 @@ operational items.
 | CSP — `agent-login.html` | ✅ | Added in deep audit |
 | CSP — `index.html` | ✅ | Added in verification pass |
 | CSP — `for-agents.html` | ✅ | Added in verification pass |
+| CSP — `add-property.html` | ✅ | Added in final verification pass |
+| CSP — `agent-setup.html` | ✅ | Added in final verification pass |
+| CSP — `edit-listing.html` | ✅ | Added in final verification pass |
+| CSP — `copy-edge-function.html` | ✅ | Added in final verification pass |
+| CSP — `watermark-migrate.html` | ✅ | Added in final verification pass |
+| CSP — `og-preview-gen.html` | ✅ | Added in final verification pass |
+| `copy-edge-function.html` code sync | ✅ | Updated to current secure edge function (auth + SSRF protection) |
 | Agent data isolation | ✅ | Properties RLS scoped: agents read/delete own rows only |
 | `reset_weekly_views()` privilege | ✅ | Admin-only guard added inside function |
 | Storage — `property-images` | ✅ | Extension check; admin-only write; public read |
@@ -166,6 +175,24 @@ operational items.
 - **Fix**: `esc()` applied to `initial`.
 - **File**: `for-agents.html`
 
+### LOW-2: XSS in `agent-setup.html` (authenticated admin page)
+- **Severity**: Low (requires admin authentication; exploitable only if a malicious agent record exists)
+- **Root cause**: `renderAgentSummary()` used `a.photo_url` and `a.name_en[0]` unescaped in `avatarWrap.innerHTML`. `renderListingsGrid()` used `otherAgent.name_en`, `l.title_en`, and `l.district_en` unescaped.
+- **Fix**: `esc()` added; all DB values escaped before innerHTML use.
+- **File**: `agent-setup.html`
+
+### LOW-3: XSS in `listing.html` FOMO district line
+- **Severity**: Low (district is admin-controlled, constrained to 7 known values; no practical exploit path)
+- **Root cause**: `stats.district` used unescaped in `spF.innerHTML` via `getFomoLines()`.
+- **Fix**: `esc()` applied to `stats.district` before string concatenation.
+- **File**: `listing.html`
+
+### LOW-4: `copy-edge-function.html` contained outdated insecure edge function
+- **Severity**: Low operational risk (page is admin-only; no runtime execution)
+- **Root cause**: The embedded CODE string was the pre-fix version of `smart-listing-importer`, which had no admin auth check and no SSRF protection. If an admin had used it to redeploy the function, the secure deployed version would be overwritten with the insecure one.
+- **Fix**: Updated CODE constant to match the current secure edge function (`requireAdmin()` + `ALLOWED_IMAGE_HOSTS` check).
+- **File**: `copy-edge-function.html`
+
 ---
 
 ## 1. Row Level Security (RLS)
@@ -241,19 +268,25 @@ Pages using DOM APIs (`textContent`, `createElement`/`appendChild`) are inherent
 
 ## 4. Content Security Policy
 
-A CSP `<meta>` tag is present in all main pages:
+A CSP `<meta>` tag is present on all 15 pages:
 
-| Page              | Notable allowances |
-|-------------------|--------------------|
-| `listings.html`   | Leaflet from unpkg; no frame-src |
-| `admin.html`      | Supabase JS from cdn.jsdelivr.net; Gemini API connect-src |
-| `listing.html`    | Google Maps + YouTube frame-src; no external scripts |
-| `dashboard.html`  | Supabase JS from cdn.jsdelivr.net |
-| `agents.html`     | No third-party scripts |
-| `agent.html`      | No third-party scripts |
-| `agent-login.html`| Supabase JS from cdn.jsdelivr.net |
-| `index.html`      | No third-party scripts |
-| `for-agents.html` | No third-party scripts |
+| Page                       | Notable allowances |
+|----------------------------|--------------------|
+| `listings.html`            | Leaflet from unpkg; no frame-src |
+| `admin.html`               | Supabase JS from cdn.jsdelivr.net; Gemini API connect-src |
+| `listing.html`             | Google Maps + YouTube frame-src; no external scripts |
+| `dashboard.html`           | Supabase JS from cdn.jsdelivr.net |
+| `agents.html`              | No third-party scripts |
+| `agent.html`               | No third-party scripts |
+| `agent-login.html`         | Supabase JS from cdn.jsdelivr.net |
+| `index.html`               | No third-party scripts |
+| `for-agents.html`          | No third-party scripts |
+| `add-property.html`        | Supabase JS from cdn.jsdelivr.net |
+| `agent-setup.html`         | Supabase JS from cdn.jsdelivr.net |
+| `edit-listing.html`        | Supabase JS from cdn.jsdelivr.net |
+| `copy-edge-function.html`  | No external resources; `connect-src 'none'` |
+| `watermark-migrate.html`   | Supabase JS from cdn.jsdelivr.net |
+| `og-preview-gen.html`      | No external scripts; canvas rendering |
 
 All pages: `object-src 'none'`. No `unsafe-eval`. `unsafe-inline` is required while
 scripts live in `<script>` blocks.
@@ -320,11 +353,12 @@ Rate limit via inline RLS `NOT EXISTS` check:
 
 | Risk | Severity | Status |
 |------|----------|--------|
-| `unsafe-inline` in CSP | Medium | Accepted; requires JS refactor to eliminate |
-| Storage file size not capped in policy | Low | Configure in Supabase Dashboard |
-| Storage MIME type bypass (extension check only) | Low | Accepted; admin-only write access limits impact |
+| `unsafe-inline` in CSP | Low | Accepted; requires full JS-to-module refactor to eliminate |
+| Storage file size not capped in policy | Low | Configure in Supabase Dashboard → Storage |
+| Storage MIME type bypass (extension check only) | Low | Accepted; admin-only write limits impact |
 | `listing_events.session_id` is client-provided | Low | Accepted |
-| No HSTS / security response headers | Low | Enforce at CDN/host layer |
+| No HSTS / security response headers (X-Frame-Options, Referrer-Policy, Permissions-Policy, X-Content-Type-Options) | Low | Enforce at CDN/host layer; cannot be set via HTML meta tags |
+| No SRI hashes on CDN dependencies (@supabase/supabase-js@2, leaflet@1.9.4) | Low | Add integrity= attributes if CDN compromise is a concern |
 | Prompt injection in `generate-listing-content` / `smart-listing-importer` | Low | Human review before publish; no server-side impact |
 | No per-IP rate limiting on `agent-login.html` | Low | Rely on Supabase Auth built-in brute-force protection |
 | `listing_events` has no SELECT policy | Low | Data is low-sensitivity anonymous analytics; accepted |

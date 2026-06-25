@@ -520,7 +520,7 @@ function getFomoLines(stats, lang, ctx) {
 
   // District popularity with transaction context
   if (stats.is_top_district && stats.district) {
-    var d = stats.district;
+    var d = esc(stats.district);
     if (isSale !== undefined) {
       lines.push({
         lo: 'ນິຍົມ' + (isSale ? 'ຊື້ຂາຍ' : 'ເຊົ່າ') + 'ໃນ ' + d,
