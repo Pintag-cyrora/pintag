@@ -1,0 +1,58 @@
+name: Security Regression
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Run weekly even without code changes to catch environment drift
+  schedule:
+    - cron: '0 2 * * 1'   # Mondays at 02:00 UTC
+  workflow_dispatch:        # Manual trigger from GitHub Actions UI
+
+jobs:
+  security:
+    name: Security Regression Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      SUPABASE_URL:       ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY:  ${{ secrets.SUPABASE_ANON_KEY }}
+      ADMIN_EMAIL:        ${{ secrets.ADMIN_EMAIL }}
+      ADMIN_PASSWORD:     ${{ secrets.ADMIN_PASSWORD }}
+      TEST_USER_EMAIL:    ${{ secrets.TEST_USER_EMAIL }}
+      TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+      SITE_URL:           ${{ secrets.SITE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        run: |
+          missing=()
+          [[ -z "$SUPABASE_URL" ]]      && missing+=(SUPABASE_URL)
+          [[ -z "$SUPABASE_ANON_KEY" ]] && missing+=(SUPABASE_ANON_KEY)
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "ERROR: Required secrets not set: ${missing[*]}"
+            echo "Go to Settings → Secrets and variables → Actions and add them."
+            exit 1
+          fi
+          echo "Required secrets present."
+
+      - name: Install dependencies (curl + jq)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq curl jq
+
+      - name: Run security suite
+        run: bash tests/security/run.sh
+
+      - name: Upload failure report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-failure-report
+          path: /tmp/pintag-security-*.log
+          retention-days: 30
