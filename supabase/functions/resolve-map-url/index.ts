@@ -4,6 +4,11 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// Only allow Google Maps short-link domains.
+// Without this allowlist the function was an open SSRF proxy — any URL
+// (including internal metadata endpoints) could be fetched server-side.
+const ALLOWED_HOSTS = new Set(['maps.app.goo.gl', 'goo.gl', 'maps.google.com']);
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -12,6 +17,20 @@ Deno.serve(async (req) => {
   try {
     const { url } = await req.json();
     if (!url || typeof url !== 'string') throw new Error('No URL provided');
+
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error('Invalid URL');
+    }
+
+    if (!ALLOWED_HOSTS.has(parsed.hostname)) {
+      return new Response(JSON.stringify({ error: 'URL not allowed' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const response = await fetch(url, {
       redirect: 'follow',

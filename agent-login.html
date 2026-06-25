@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'none'; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
 <title>Pintag Agent Login</title>
 
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -148,10 +149,6 @@ button:hover{
 
   <button id="auth-btn">Login</button>
 
-  <div class="switch">
-    <span id="toggle-mode">Create account instead</span>
-  </div>
-
   <div id="message" class="message"></div>
 
 </div>
@@ -166,26 +163,8 @@ const supabaseClient = supabase.createClient(
   SUPABASE_KEY
 );
 
-let signupMode = false;
-
 const authBtn = document.getElementById('auth-btn');
-const toggleMode = document.getElementById('toggle-mode');
 const message = document.getElementById('message');
-
-toggleMode.addEventListener('click', () => {
-
-  signupMode = !signupMode;
-
-  authBtn.textContent = signupMode
-    ? 'Create Account'
-    : 'Login';
-
-  toggleMode.textContent = signupMode
-    ? 'Back to login'
-    : 'Create account instead';
-
-  message.innerHTML = '';
-});
 
 authBtn.addEventListener('click', async () => {
 
@@ -202,32 +181,15 @@ authBtn.addEventListener('click', async () => {
 
   try{
 
-    if(signupMode){
+    const { error } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password
+    });
 
-      const { error } = await supabaseClient.auth.signUp({
-        email,
-        password
-      });
-
-      if(error){
-        showError(error.message);
-      }else{
-        showSuccess('Account created. You can now login.');
-      }
-
+    if(error){
+      showError(error.message);
     }else{
-
-      const { error } = await supabaseClient.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if(error){
-        showError(error.message);
-      }else{
-        window.location.href = 'dashboard.html';
-      }
-
+      window.location.href = 'dashboard.html';
     }
 
   }catch(err){
@@ -235,10 +197,7 @@ authBtn.addEventListener('click', async () => {
   }
 
   authBtn.disabled = false;
-
-  authBtn.textContent = signupMode
-    ? 'Create Account'
-    : 'Login';
+  authBtn.textContent = 'Login';
 });
 
 function showError(text){
