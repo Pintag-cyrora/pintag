@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Suite 01 — Authentication
-# Verifies that admin-only Edge Functions correctly reject unauthenticated
-# and non-admin callers.
+#
+# @suite    Authentication
+# @purpose  Verify all admin Edge Functions reject unauthenticated, anon-role, and non-admin callers
+# @covers   fn:generate-listing-content fn:smart-listing-importer
+# @needs    optional:ADMIN_EMAIL,ADMIN_PASSWORD optional:TEST_USER_EMAIL,TEST_USER_PASSWORD
+# @runtime  ~15s
 
 run_auth_tests() {
   suite_start "Authentication"

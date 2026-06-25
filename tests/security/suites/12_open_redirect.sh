@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # Suite 12 — Open Redirect
+#
+# @suite    Open Redirect
+# @purpose  Verify resolve-map-url rejects open-redirect bypass payloads and validates resolved_url domain
+# @covers   fn:resolve-map-url
+# @needs    none
+# @runtime  ~15s
+#
 # Tests Pintag's only URL-accepting endpoint, resolve-map-url, for open redirect
 # vulnerabilities.
 #

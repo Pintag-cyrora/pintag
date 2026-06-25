@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Suite 05 — SSRF (Server-Side Request Forgery)
-# Tests the allowlist protections in:
-#   • resolve-map-url  (public, hostname allowlist)
-#   • smart-listing-importer  (admin-only, *.supabase.co allowlist on image_urls)
+#
+# @suite    SSRF
+# @purpose  Verify hostname allowlists on resolve-map-url and smart-listing-importer block SSRF payloads
+# @covers   fn:resolve-map-url fn:smart-listing-importer
+# @needs    optional:ADMIN_EMAIL,ADMIN_PASSWORD
+# @runtime  ~20s
 
 run_ssrf_tests() {
   suite_start "SSRF"

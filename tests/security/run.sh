@@ -94,17 +94,8 @@ else
   REQUESTED=("${ALL_SUITES[@]}")
 fi
 
-# ── Print header ──────────────────────────────────────────────────────────────
-echo ""
-echo -e "${BOLD}╔════════════════════════════════════════╗${RESET}"
-echo -e "${BOLD}║   Pintag Security Regression Suite     ║${RESET}"
-echo -e "${BOLD}╚════════════════════════════════════════╝${RESET}"
-echo -e "${DIM}Run ID: ${RUN_ID}${RESET}"
-echo -e "${DIM}Target: ${SUPABASE_URL}${RESET}"
-[[ -n "${SITE_URL:-}" ]] && echo -e "${DIM}Site:   ${SITE_URL}${RESET}"
-echo -e "${DIM}Env:    ${APP_ENV:-local}${RESET}"
-echo -e "${DIM}Admin:  ${ADMIN_JWT:+authenticated}${ADMIN_JWT:-not set}${RESET}"
-echo -e "${DIM}User:   ${TEST_USER_JWT:+authenticated}${TEST_USER_JWT:-not set}${RESET}"
+# ── Print run banner ──────────────────────────────────────────────────────────
+print_run_banner "${REQUESTED[@]}"
 
 # ── Run suites ────────────────────────────────────────────────────────────────
 for suite in "${REQUESTED[@]}"; do

@@ -9,6 +9,11 @@ if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
   exit 1
 fi
 
+# ── Resource registry ─────────────────────────────────────────────────────────
+# shellcheck source=tests/security/resources.sh
+_SECURITY_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")"
+source "${_SECURITY_LIB_DIR}/../resources.sh"
+
 # ── Colour codes ──────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
   RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
@@ -451,6 +456,7 @@ generate_reports() {
   done
   {
     printf '{\n'
+    printf '  "framework_version": "%s",\n' "$FRAMEWORK_VERSION"
     printf '  "run_id": "%s",\n'          "$RUN_ID"
     printf '  "environment": "%s",\n'     "$(json_escape "${APP_ENV:-unknown}")"
     printf '  "supabase_url": "%s",\n'    "$(json_escape "${SUPABASE_URL:-}")"
@@ -481,10 +487,6 @@ generate_coverage_report() {
     return
   fi
 
-  local KNOWN_FNS=("generate-listing-content" "smart-listing-importer" "resolve-map-url")
-  local KNOWN_TABLES=("properties" "agents" "lead_events" "listing_events")
-  local KNOWN_BUCKETS=("property-images" "agent-photos")
-
   # URL is the 5th tab-separated field in the log
   local tested_fns tested_tables tested_buckets
   tested_fns=$(awk -F'\t' 'NF>=5{print $5}' "$REQUEST_LOG" \
@@ -495,7 +497,7 @@ generate_coverage_report() {
     | grep -oE '/storage/v1/object/[^/]+' | sed 's|/storage/v1/object/||' | sort -u)
 
   echo -e "  ${BOLD}Edge Functions:${RESET}"
-  for fn in "${KNOWN_FNS[@]}"; do
+  for fn in "${RESOURCE_FNS[@]}"; do
     if echo "$tested_fns" | grep -q "^${fn}$"; then
       printf "    ${GREEN}✓${RESET}  %s\n" "$fn"
     else
@@ -504,7 +506,7 @@ generate_coverage_report() {
   done
 
   echo -e "  ${BOLD}Database Tables:${RESET}"
-  for tbl in "${KNOWN_TABLES[@]}"; do
+  for tbl in "${RESOURCE_TABLES[@]}"; do
     if echo "$tested_tables" | grep -q "^${tbl}$"; then
       printf "    ${GREEN}✓${RESET}  %s\n" "$tbl"
     else
@@ -513,7 +515,7 @@ generate_coverage_report() {
   done
 
   echo -e "  ${BOLD}Storage Buckets:${RESET}"
-  for bucket in "${KNOWN_BUCKETS[@]}"; do
+  for bucket in "${RESOURCE_BUCKETS[@]}"; do
     if echo "$tested_buckets" | grep -q "^${bucket}$"; then
       printf "    ${GREEN}✓${RESET}  %s\n" "$bucket"
     else
@@ -523,9 +525,9 @@ generate_coverage_report() {
 
   echo -e "  ${BOLD}Security Headers:${RESET}"
   if [[ -n "${SITE_URL:-}" ]]; then
-    printf "    ${GREEN}✓${RESET}  %s (SITE_URL set)\n" "${SITE_URL}"
+    printf "    ${GREEN}✓${RESET}  all 6 headers (SITE_URL set → suite 08 ran)\n"
   else
-    printf "    ${YELLOW}–${RESET}  ${DIM}not tested (SITE_URL not set)${RESET}\n"
+    printf "    ${YELLOW}–${RESET}  ${DIM}not tested (SITE_URL not set — run with SITE_URL=https://pintag.io)${RESET}\n"
   fi
 }
 
@@ -546,7 +548,7 @@ compare_perf_history() {
   echo -e "${BOLD} Performance History${RESET}"
   echo -e "${BOLD}════════════════════════════════════════${RESET}"
 
-  python3 - "$REQUEST_LOG" "$baseline_file" <<'PYEOF'
+  python3 - "$REQUEST_LOG" "$baseline_file" << 'PYEOF'
 import sys, json, re, os
 from collections import defaultdict
 
@@ -613,4 +615,73 @@ with open(base_file, 'w') as fh:
     json.dump(baseline, fh, indent=2, sort_keys=True)
 print(f'  Baseline: {base_file}')
 PYEOF
+}
+
+# ── Run banner ────────────────────────────────────────────────────────────────
+# Printed once at the start of every run; embeds version, git, env, and flags.
+# Usage: print_run_banner suite1 suite2 ...
+print_run_banner() {
+  local suites=("$@")
+  local git_commit git_subject
+  git_commit=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  git_subject=$(git log -1 --format="%s" 2>/dev/null | cut -c1-55 || echo "")
+
+  local ts
+  ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+  echo ""
+  echo -e "${BOLD}╔══════════════════════════════════════════════════════════════╗${RESET}"
+  printf  "${BOLD}║  Pintag Security Regression Framework  v%-20s║${RESET}\n" "${FRAMEWORK_VERSION}"
+  echo -e "${BOLD}╚══════════════════════════════════════════════════════════════╝${RESET}"
+  printf  "  ${DIM}Run ID:    %s${RESET}\n" "$RUN_ID"
+  printf  "  ${DIM}Timestamp: %s${RESET}\n" "$ts"
+  printf  "  ${DIM}Commit:    %s  %s${RESET}\n" "$git_commit" "$git_subject"
+  printf  "  ${DIM}Target:    %s${RESET}\n" "${SUPABASE_URL:-?}"
+  [[ -n "${SITE_URL:-}" ]] && printf "  ${DIM}Site:      %s${RESET}\n" "${SITE_URL}"
+  printf  "  ${DIM}Env:       %s${RESET}\n" "${APP_ENV:-local}"
+  echo ""
+  echo -e "  ${BOLD}Credentials:${RESET}"
+  if [[ -n "${ADMIN_JWT:-}" ]]; then
+    printf "    ${GREEN}✓${RESET}  Admin      %s\n" "${ADMIN_EMAIL:-}"
+  else
+    printf "    ${YELLOW}–${RESET}  ${DIM}Admin      not set (admin-only tests will be skipped)${RESET}\n"
+  fi
+  if [[ -n "${TEST_USER_JWT:-}" ]]; then
+    printf "    ${GREEN}✓${RESET}  Test user  %s\n" "${TEST_USER_EMAIL:-}"
+  else
+    printf "    ${YELLOW}–${RESET}  ${DIM}Test user  not set (cross-user tests will be skipped)${RESET}\n"
+  fi
+  echo ""
+  echo -e "  ${BOLD}Suites (${#suites[@]}):${RESET}"
+  local i=0 line="  "
+  for s in "${suites[@]}"; do
+    line+="  ${s}"
+    i=$((i+1))
+    if [[ $((i % 4)) -eq 0 ]]; then
+      echo -e "${DIM}${line}${RESET}"; line="  "
+    fi
+  done
+  [[ "$line" != "  " ]] && echo -e "${DIM}${line}${RESET}"
+  echo ""
+  echo -e "  ${BOLD}Feature flags:${RESET}"
+  if [[ -n "${ADMIN_JWT:-}" ]]; then
+    printf "    ${GREEN}✓${RESET}  Admin operations\n"
+  else
+    printf "    ${YELLOW}–${RESET}  ${DIM}Admin operations          (set ADMIN_EMAIL + ADMIN_PASSWORD)${RESET}\n"
+  fi
+  if [[ -n "${TEST_USER_JWT:-}" ]]; then
+    printf "    ${GREEN}✓${RESET}  Cross-user tests\n"
+  else
+    printf "    ${YELLOW}–${RESET}  ${DIM}Cross-user tests          (set TEST_USER_EMAIL + TEST_USER_PASSWORD)${RESET}\n"
+  fi
+  if [[ -n "${SITE_URL:-}" ]]; then
+    printf "    ${GREEN}✓${RESET}  Security header checks\n"
+  else
+    printf "    ${YELLOW}–${RESET}  ${DIM}Security header checks    (set SITE_URL)${RESET}\n"
+  fi
+  if command -v node >/dev/null 2>&1 && node -e "require('@playwright/test')" 2>/dev/null; then
+    printf "    ${GREEN}✓${RESET}  Browser XSS check (Playwright)\n"
+  else
+    printf "    ${YELLOW}–${RESET}  ${DIM}Browser XSS check         (@playwright/test not installed)${RESET}\n"
+  fi
 }

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Suite 09 — Pintag-Specific Security
-# Tests unique to Pintag's architecture:
-#   - Error response format (no leaked internals, stack traces, SQL errors, env vars)
-#   - Smart Import extended validation (oversized payload, wrong types, many URLs)
-#   - Listing data isolation (draft visibility, status promotion by anon)
-#   - resolve-map-url structured error format
+#
+# @suite    Pintag Specific
+# @purpose  Error format (no leaks), Smart Import edge cases, listing isolation, resolve-map-url edge cases
+# @covers   fn:generate-listing-content fn:smart-listing-importer fn:resolve-map-url table:properties
+# @needs    optional:ADMIN_EMAIL,ADMIN_PASSWORD optional:TEST_USER_EMAIL,TEST_USER_PASSWORD
+# @runtime  ~25s
 
 run_pintag_specific_tests() {
   suite_start "Pintag Specific"

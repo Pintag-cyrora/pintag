@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Suite 07 — Rate Limiting
-# Verifies throttling on lead_events (30-second window per listing+event_type)
-# and listing_events (30-minute dedup per session+property+event_type).
+#
+# @suite    Rate Limiting
+# @purpose  Verify 30-second dedup on lead_events and 30-minute dedup on listing_events
+# @covers   table:properties table:lead_events table:listing_events
+# @needs    none
+# @runtime  ~15s
 
 run_rate_limiting_tests() {
   suite_start "Rate Limiting"

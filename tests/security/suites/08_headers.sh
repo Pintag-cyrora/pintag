@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Suite 08 — Security Headers
-# Checks HTTP response headers from the live deployment.
-# Requires SITE_URL to be set (e.g. https://pintag.io).
+#
+# @suite    Headers
+# @purpose  Verify HTTP security response headers are present on all frontend pages
+# @covers   header:Content-Security-Policy header:X-Frame-Options header:X-Content-Type-Options header:Referrer-Policy header:Permissions-Policy header:Strict-Transport-Security
+# @needs    SITE_URL
+# @runtime  ~20s
 #
 # Note: Pintag uses CSP <meta> tags, not HTTP response headers.
 # The HTTP header layer (X-Frame-Options, Referrer-Policy etc.) must be

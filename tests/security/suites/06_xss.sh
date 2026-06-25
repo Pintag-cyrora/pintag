@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Suite 06 — XSS
 #
+# @suite    XSS
+# @purpose  Verify XSS payloads are stored faithfully (not escaped by API) and draft RLS prevents anon access
+# @covers   table:properties
+# @needs    ADMIN_EMAIL,ADMIN_PASSWORD optional:SITE_URL
+# @runtime  ~20s
+#
 # XSS protection is a two-layer concern:
 #   1. All DB-sourced values pass through esc() before insertion into innerHTML.
 #      This is verified by static code review.

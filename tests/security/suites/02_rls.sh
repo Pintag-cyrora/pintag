@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Suite 02 — Row Level Security
-# Verifies RLS policies on every protected table:
-#   properties, agents, lead_events, listing_events
+#
+# @suite    RLS
+# @purpose  Verify Row Level Security policies enforce correct read/write isolation on all tables
+# @covers   table:properties table:agents table:lead_events table:listing_events
+# @needs    optional:ADMIN_EMAIL,ADMIN_PASSWORD optional:TEST_USER_EMAIL,TEST_USER_PASSWORD
+# @runtime  ~25s
 
 run_rls_tests() {
   suite_start "RLS"

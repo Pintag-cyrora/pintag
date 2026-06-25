@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Suite 10 — SQL Injection
-# Verifies that SQL injection payloads do not cause SQL errors, stack traces,
-# or unexpected data exposure through PostgREST query filters, RPC calls, and
-# Edge Function JSON bodies.
+#
+# @suite    SQL Injection
+# @purpose  Verify SQL injection payloads do not cause errors or data exposure through any input surface
+# @covers   table:properties table:agents fn:generate-listing-content fn:smart-listing-importer
+# @needs    none
+# @runtime  ~30s
 #
 # Supabase PostgREST parameterises all inputs — these tests confirm that
 # behaviour is preserved at every public input surface.

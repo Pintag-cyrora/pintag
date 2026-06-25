@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Suite 04 — Storage
-# Verifies upload/delete restrictions on property-images and agent-photos buckets.
-# Extension checks and admin-only write policies are tested.
+#
+# @suite    Storage
+# @purpose  Verify upload/delete policies, extension filtering, MIME disguise, and cross-user isolation
+# @covers   bucket:property-images bucket:agent-photos
+# @needs    optional:ADMIN_EMAIL,ADMIN_PASSWORD optional:TEST_USER_EMAIL,TEST_USER_PASSWORD
+# @runtime  ~30s
 
 run_storage_tests() {
   suite_start "Storage"

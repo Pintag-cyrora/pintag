@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Suite 03 — Edge Functions
-# Verifies auth gating, payload handling, and expected behaviour for all
-# three Pintag Edge Functions.
+#
+# @suite    Edge Functions
+# @purpose  Verify auth gating, payload validation, and graceful error handling for all Edge Functions
+# @covers   fn:generate-listing-content fn:smart-listing-importer fn:resolve-map-url
+# @needs    optional:ADMIN_EMAIL,ADMIN_PASSWORD
+# @runtime  ~20s
 
-run_edge_function_tests() {
+run_edge_functions_tests() {
   suite_start "Edge Functions"
 
   local r body status

@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # Suite 11 — Secret Leakage Scanning
+#
+# @suite    Secret Scan
+# @purpose  Scan tracked repository files for accidentally committed secrets and credentials
+# @covers   static
+# @needs    none
+# @runtime  ~5s
+#
 # Scans tracked repository files for accidentally committed secrets:
 #   - Service-role JWTs (Supabase role=service_role)
 #   - PEM private keys (BEGIN PRIVATE KEY / BEGIN RSA PRIVATE KEY)
