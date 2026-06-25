@@ -7,7 +7,7 @@ run_storage_tests() {
   suite_start "Storage"
 
   local r status ts
-  ts="$(date +%s)"
+  ts="${RUN_ID_SHORT}"
 
   for bucket in "property-images" "agent-photos"; do
     info "--- ${bucket} ---"

@@ -24,7 +24,7 @@ run_rate_limiting_tests() {
   # ════════════════════════════════
   info "--- lead_events (30-second dedup) ---"
 
-  local session="pentest-rl-$(date +%s)"
+  local session="pentest-rl-${RUN_ID_SHORT}"
 
   # First request — should succeed
   r=$(api_post "lead_events" \
@@ -42,7 +42,7 @@ run_rate_limiting_tests() {
   check_status "different event_type same session → 201 (not rate-limited)" 201 "$(resp_status "$r")"
 
   # Different session ID — allowed (rate limit is per listing+event_type, not global)
-  local session2="pentest-rl2-$(date +%s)"
+  local session2="pentest-rl2-${RUN_ID_SHORT}"
   r=$(api_post "lead_events" \
     "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp\",\"session_id\":\"${session2}\"}")
   check_status "different session, same listing+event → 201 (independent limit)" 201 "$(resp_status "$r")"
@@ -62,7 +62,7 @@ run_rate_limiting_tests() {
   # ════════════════════════════════
   info "--- listing_events (30-minute dedup) ---"
 
-  local ev_session="pentest-ev-rl-$(date +%s)"
+  local ev_session="pentest-ev-rl-${RUN_ID_SHORT}"
 
   r=$(api_post "listing_events" \
     "{\"property_id\":\"${active_id}\",\"event_type\":\"view\",\"session_id\":\"${ev_session}\"}")

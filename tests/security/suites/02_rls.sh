@@ -76,7 +76,7 @@ run_rls_tests() {
     check "admin SELECT all properties (including drafts) → 200" "^200$" "$(resp_status "$r")"
 
     # Admin can INSERT and then DELETE a test listing
-    local test_slug="pentest-rls-admin-$(date +%s)"
+    local test_slug="pentest-rls-admin-${RUN_ID_SHORT}"
     r=$(api_post "properties" \
       "{\"title_en\":\"Pentest Admin RLS\",\"status\":\"draft\",\"slug\":\"${test_slug}\",\"transaction_type\":\"for_sale\"}" \
       "${ADMIN_JWT}")

@@ -35,7 +35,7 @@ run_xss_tests() {
     return
   fi
 
-  local ts="$(date +%s)"
+  local ts="${RUN_ID_SHORT}"
 
   for i in "${!PAYLOADS[@]}"; do
     local payload="${PAYLOADS[$i]}"

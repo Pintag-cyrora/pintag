@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 15
 
     env:
+      APP_ENV:            staging
       SUPABASE_URL:       ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY:  ${{ secrets.SUPABASE_ANON_KEY }}
       ADMIN_EMAIL:        ${{ secrets.ADMIN_EMAIL }}
@@ -49,10 +50,10 @@ jobs:
       - name: Run security suite
         run: bash tests/security/run.sh
 
-      - name: Upload failure report
-        if: failure()
+      - name: Upload reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: security-failure-report
-          path: /tmp/pintag-security-*.log
+          name: security-reports
+          path: tests/security/output/reports/
           retention-days: 30

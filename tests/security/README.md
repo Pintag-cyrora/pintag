@@ -9,12 +9,14 @@ Run before every production deployment and on every PR to `main`.
 
 ```bash
 # Minimum — runs all anon-only tests
+export APP_ENV=local
 export SUPABASE_URL=https://eoladhcljbpbhnrmmpev.supabase.co
 export SUPABASE_ANON_KEY=eyJ...   # from admin.html or Supabase Dashboard
 
 bash tests/security/run.sh
 
 # Full coverage — admin + cross-user + header checks
+export APP_ENV=local
 export ADMIN_EMAIL=admin@pintag.io
 export ADMIN_PASSWORD=your-admin-password
 export TEST_USER_EMAIL=agent@example.com
@@ -24,6 +26,10 @@ export SITE_URL=https://pintag.io
 bash tests/security/run.sh
 ```
 
+Reports are written to `tests/security/output/reports/` (gitignored):
+- `junit-<run-id>.xml` — JUnit XML for CI integration
+- `summary-<run-id>.json` — JSON summary with timing, counts, and environment
+
 ---
 
 ## Environment Variables
@@ -32,11 +38,13 @@ bash tests/security/run.sh
 |----------|----------|-------------|
 | `SUPABASE_URL` | **Yes** | `https://<ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | **Yes** | Publishable anon key (safe to commit) |
+| `APP_ENV` | Recommended | `local` or `staging`; **production is refused** (defaults to `local` with a warning) |
 | `ADMIN_EMAIL` | Recommended | Enables admin auth, storage extension, XSS injection, and admin RLS tests |
 | `ADMIN_PASSWORD` | Recommended | Password for `ADMIN_EMAIL` |
 | `TEST_USER_EMAIL` | Optional | A non-admin Supabase user (an agent account) — enables cross-user access tests |
 | `TEST_USER_PASSWORD` | Optional | Password for `TEST_USER_EMAIL` |
 | `SITE_URL` | Optional | Base URL of the deployed frontend — enables security header checks |
+| `DEBUG` | Optional | Set to `1` to print every request URL, status, and timing to stderr |
 
 ### Setting up the test user
 
@@ -61,16 +69,19 @@ bash tests/security/run.sh auth rls
 bash tests/security/run.sh ssrf storage
 bash tests/security/run.sh headers
 
-# Available suites:
-#   auth            Edge Function JWT auth gating
-#   rls             Row Level Security on all tables
-#   edge_functions  Edge Function behaviour and payload handling
-#   storage         Storage bucket upload/delete/extension restrictions
-#   ssrf            SSRF allowlist on resolve-map-url and smart-listing-importer
-#   xss             XSS payload injection and rendering safety
-#   rate_limiting   lead_events and listing_events throttling
-#   headers         HTTP security response headers (requires SITE_URL)
+# Available suites (auto-discovered from tests/security/suites/*.sh):
+#   auth             Edge Function JWT auth gating
+#   rls              Row Level Security on all tables
+#   edge_functions   Edge Function behaviour and payload handling
+#   storage          Storage bucket upload/delete/extension restrictions
+#   ssrf             SSRF allowlist on resolve-map-url and smart-listing-importer
+#   xss              XSS payload injection and rendering safety
+#   rate_limiting    lead_events and listing_events throttling
+#   headers          HTTP security response headers (requires SITE_URL)
+#   pintag_specific  Pintag-specific: error format, Smart Import edge cases, listing isolation
 ```
+
+New suites are auto-discovered from `tests/security/suites/*.sh` — no changes to `run.sh` are needed.
 
 ---
 
@@ -87,6 +98,8 @@ Secrets to add in GitHub → Settings → Secrets and variables → Actions:
 | `TEST_USER_EMAIL` | Test agent email |
 | `TEST_USER_PASSWORD` | Test agent password |
 | `SITE_URL` | `https://pintag.io` (or staging URL) |
+
+> `APP_ENV` is hardcoded to `staging` in the workflow — no secret needed. The suite refuses to run if `APP_ENV=production`.
 
 The workflow runs on every push/PR to `main` and weekly on Mondays.
 
@@ -161,6 +174,12 @@ The workflow runs on every push/PR to `main` and weekly on Mondays.
 - Different event_type → 201 (independent limit)
 - Different session → 201 (per-listing, not global)
 - Flood (5 rapid) → all 5 blocked
+
+### Suite 09 — Pintag-Specific Security
+- Error response format: no stack traces, SQL errors, env var names, or internal Supabase details in any error body
+- Smart Import extended: `image_urls` wrong type (object/string), >10 URLs, null description — all handled without 500 crash
+- Listing data isolation: draft invisible to anon and non-admin via direct ID and slug; anon cannot promote draft to active
+- `resolve-map-url` edge cases: empty URL, numeric URL, `data:` URI, `file:` URI — all rejected cleanly
 
 ### Suite 08 — Security Headers
 - CSP (response header or `<meta>` tag)
