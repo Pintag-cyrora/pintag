@@ -187,6 +187,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
   color:var(--ink-soft);padding:3px 8px;border-radius:3px;
 }
 .p-tx-rent{background:rgba(45,140,140,0.13);color:var(--teal);}
+.p-tx-sor{background:rgba(139,92,246,0.12);color:#7C3AED;}
 .p-featured-dot{position:absolute;top:9px;right:9px;width:6px;height:6px;border-radius:50%;background:var(--teal-light);box-shadow:0 0 0 2px rgba(255,255,255,0.6);}
 
 .p-body{padding:11px 2px 0;}
@@ -510,8 +511,9 @@ function render(a,listings){
       ti.loading=i===0?'eager':'lazy';ti.decoding='async';imgDiv.appendChild(ti);
     }
     var tx=document.createElement('span');
-    tx.className='p-tx'+(p.transaction_type!=='for_sale'?' p-tx-rent':'');
-    tx.textContent=p.transaction_type==='for_sale'?'ຂາຍ':'ເຊົ່າ';imgDiv.appendChild(tx);
+    var isSor=p.transaction_type==='sale_or_rent';
+    tx.className='p-tx'+(p.transaction_type==='for_sale'?'':isSor?' p-tx-sor':' p-tx-rent');
+    tx.textContent=p.transaction_type==='for_sale'?'ຂາຍ':isSor?'ຊື້/ເຊົ່າ':'ເຊົ່າ';imgDiv.appendChild(tx);
     if(p.is_featured){var dot=document.createElement('span');dot.className='p-featured-dot';imgDiv.appendChild(dot);}
     var body=document.createElement('div');body.className='p-body';
     if(p.price_display){var pe=document.createElement('p');pe.className='p-price';pe.textContent=p.price_display;body.appendChild(pe);}

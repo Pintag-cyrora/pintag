@@ -603,8 +603,9 @@ function renderCards(props, lang) {
   const HEART_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2024" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
 
   const txL = {
-    sale: { lo: 'ຂາຍ', en: 'Sale', zh: '出售' },
-    rent: { lo: 'ເຊົ່າ', en: 'Rent', zh: '租房' }
+    sale:    { lo: 'ຂາຍ',      en: 'Sale',        zh: '出售' },
+    rent:    { lo: 'ເຊົ່າ',    en: 'Rent',        zh: '租房' },
+    sor:     { lo: 'ຊື້/ເຊົ່າ', en: 'Sale or Rent', zh: '售/租' }
   };
   const perMo = { lo: '/ ເດືອນ', en: '/ mo', zh: '/ 月' };
   const cityL = { lo: 'ວຽງຈັນ', en: 'Vientiane', zh: '万象' };
@@ -612,8 +613,9 @@ function renderCards(props, lang) {
   grid.innerHTML = props.map(p => {
     const district = esc(p['district_' + lang] || p.district_en || '');
     const isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
-    const tx = isSale ? txL.sale[lang] : txL.rent[lang];
-    const badgeClass = isSale ? 'badge-sale' : 'badge-rent';
+    const isSor  = p.transaction_type === 'sale_or_rent';
+    const tx = isSor ? txL.sor[lang] : isSale ? txL.sale[lang] : txL.rent[lang];
+    const badgeClass = isSor ? 'badge-sor' : isSale ? 'badge-sale' : 'badge-rent';
     const imgHtml = (p.images && p.images.length)
       ? '<img src="' + esc(p.images[0]) + '" alt="" loading="lazy">'
       : '<div class="card-img-placeholder"></div>';
@@ -621,7 +623,10 @@ function renderCards(props, lang) {
     if (p.bedrooms) specs.push('<span class="card-spec">' + BED_SVG + ' ' + Number(p.bedrooms) + '</span>');
     if (p.bathrooms) specs.push('<span class="card-spec">' + BATH_SVG + ' ' + Number(p.bathrooms) + '</span>');
     if (p.sqm) specs.push('<span class="card-spec">' + SQM_SVG + ' ' + Number(p.sqm) + '</span>');
-    const priceUnit = (!isSale && p.price_display) ? '<span class="card-price-unit">' + perMo[lang] + '</span>' : '';
+    const priceUnit = (!isSale && !isSor && p.price_display) ? '<span class="card-price-unit">' + perMo[lang] + '</span>' : '';
+    const sorPriceHtml = isSor && (p.sale_price || p.rent_price)
+      ? (p.sale_price ? esc(p.sale_price) : '') + (p.sale_price && p.rent_price ? ' / ' : '') + (p.rent_price ? esc(p.rent_price) : '')
+      : null;
     const agentName = esc(p.agent_name || '');
     const agentPhoto = esc(p.agent_photo || '');
     const agentHtml = agentName
@@ -638,7 +643,7 @@ function renderCards(props, lang) {
       '</div>' +
       '<div class="card-body">' +
         '<div class="card-price-row">' +
-          '<span class="card-price">' + esc(p.price_display || '—') + '</span>' + priceUnit +
+          '<span class="card-price">' + (sorPriceHtml || esc(p.price_display || '—')) + '</span>' + priceUnit +
         '</div>' +
         '<div class="card-loc">' + PIN_SVG + (district ? district + ', ' : '') + cityL[lang] + '</div>' +
         (specs.length ? '<div class="card-specs">' + specs.join('') + '</div>' : '') +

@@ -452,6 +452,9 @@ nav{
       <button class="filter-btn" data-filter="for_rent" onclick="setFilter('for_rent',this)">
         <span class="lo-i">ໃຫ້ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">租房</span>
       </button>
+      <button class="filter-btn" data-filter="sale_or_rent" onclick="setFilter('sale_or_rent',this)">
+        <span class="lo-i">ຊື້ / ເຊົ່າ</span><span class="en-i">Sale or Rent</span><span class="zh-i">售/租</span>
+      </button>
       <button class="filter-btn" data-filter="house" onclick="setFilter('house',this)">
         <span class="lo-i">ເຮືອນ</span><span class="en-i">House</span><span class="zh-i">住宅</span>
       </button>
@@ -716,7 +719,7 @@ function getActivityLine(p, lang) {
   var age = daysOld(p);
   if (!isFinite(age)) return '';
   var score = parseFloat(p.trending_score) || 0;
-  var isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
+  var isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale' || p.transaction_type === 'sale_or_rent';
 
   // District-trending context replaces age line for popular/hot listings
   if (score >= 100 && p.district_en) {
@@ -826,7 +829,10 @@ function showMapPreview(p) {
   // Activity badges
   document.getElementById('mp-act-badges').innerHTML = getActivityBadgesHtml(p, lang);
 
-  document.getElementById('mp-price').textContent = p.price_display || {lo:'ສອບຖາມ',en:'Price on request',zh:'价格面议'}[lang];
+  var mpPriceText = p.transaction_type === 'sale_or_rent' && (p.sale_price || p.rent_price)
+    ? [p.sale_price, p.rent_price].filter(Boolean).join(' / ')
+    : (p.price_display || {lo:'ສອບຖາມ',en:'Price on request',zh:'价格面议'}[lang]);
+  document.getElementById('mp-price').textContent = mpPriceText;
 
   var title = p['title_' + lang] || p.title_en || '';
   document.getElementById('mp-title').textContent = title;
@@ -978,11 +984,12 @@ function renderListings() {
     var title    = p['title_'    + lang] || p.title_en    || '';
     var district = p['district_' + lang] || p.district_en || '';
     var isSale   = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
+    var isSor    = p.transaction_type === 'sale_or_rent';
 
     var txLabel = {
-      lo: isSale ? 'ຂາຍ' : 'ໃຫ້ເຊົ່າ',
-      en: isSale ? 'For Sale' : 'For Rent',
-      zh: isSale ? '出售' : '租房'
+      lo: isSor ? 'ຊື້ / ເຊົ່າ' : isSale ? 'ຂາຍ' : 'ໃຫ້ເຊົ່າ',
+      en: isSor ? 'Sale or Rent' : isSale ? 'For Sale' : 'For Rent',
+      zh: isSor ? '售/租'        : isSale ? '出售'     : '租房'
     };
 
     var typeDisplay = p.property_type
@@ -1017,9 +1024,16 @@ function renderListings() {
 
     var perMo = { lo: '/ ເດືອນ', en: '/ month', zh: '/ 月' };
     var rawPrice = esc((p.price_display || '').replace(/\s*\/\s*(ເດືອນ|mo|月|month)\s*/i, '').trim());
-    var priceHtml = rawPrice
-      ? '<p class="card-price">' + rawPrice + (!isSale ? ' <span class="card-price-unit">' + perMo[lang] + '</span>' : '') + '</p>'
-      : '<p class="card-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
+    var priceHtml;
+    if (isSor && (p.sale_price || p.rent_price)) {
+      priceHtml = '';
+      if (p.sale_price) priceHtml += '<p class="card-price">' + esc(p.sale_price) + ' <span class="card-price-unit lo-i">ຂາຍ</span><span class="card-price-unit en-i">Sale</span><span class="card-price-unit zh-i">售</span></p>';
+      if (p.rent_price) priceHtml += '<p class="card-price">' + esc(p.rent_price) + ' <span class="card-price-unit">' + perMo[lang] + '</span> <span class="card-price-unit lo-i">ເຊົ່າ</span><span class="card-price-unit en-i">Rent</span><span class="card-price-unit zh-i">租</span></p>';
+    } else {
+      priceHtml = rawPrice
+        ? '<p class="card-price">' + rawPrice + (!isSale && !isSor ? ' <span class="card-price-unit">' + perMo[lang] + '</span>' : '') + '</p>'
+        : '<p class="card-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
+    }
 
     var actBadgesHtml = getActivityBadgesHtml(p, lang);
     var actLineTxt    = getActivityLine(p, lang);

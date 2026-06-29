@@ -77,6 +77,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 /* property highlight subtitle — renders from data.property_highlight */
 .property-highlight{font-size:13px;font-weight:400;color:var(--ink-muted);line-height:1.65;margin-bottom:20px;}
 .tx-badge{display:inline-block;padding:3px 11px;border:1px solid rgba(45,140,140,0.28);border-radius:20px;font-size:10.5px;font-weight:400;color:var(--teal);background:rgba(45,140,140,0.04);margin-bottom:24px;width:fit-content;letter-spacing:0.02em;}
+.tx-badge-sor{border-color:rgba(139,92,246,0.3);color:#7C3AED;background:rgba(139,92,246,0.06);}
+.price-type-label{font-size:13px;font-weight:400;color:var(--ink-muted);margin-left:4px;}
 .price-block{margin-bottom:0;}
 .price-value{font-size:28px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1.1;}
 .price-lak{font-size:11px;color:var(--ink-muted);margin-top:4px;font-variant-numeric:tabular-nums;}
@@ -495,7 +497,7 @@ function formatInquiryCount(n) {
 function getFomoLines(stats, lang, ctx) {
   if (!stats) return [];
   var lines = [];
-  var isSale = ctx && (ctx.transaction_type === 'for_sale' || ctx.transaction_type === 'sale');
+  var isSale = ctx && (ctx.transaction_type === 'for_sale' || ctx.transaction_type === 'sale' || ctx.transaction_type === 'sale_or_rent');
 
   // Weekly views (freshness signal — shows recency of real interest)
   if ((stats.views_week || 0) >= 5) {
@@ -1086,6 +1088,7 @@ function buildMockupLayout(){
   var resolvedHighlight = data['property_highlight_'+lang] || data.property_highlight_en || data.property_highlight || '';
 
   var isSale = data.transaction_type==='for_sale'||data.transaction_type==='sale';
+  var isSor  = data.transaction_type==='sale_or_rent';
   var imagesArray=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';});
 
   var statusBadgeHtml=getStatusBadgeHtml(data.status||'active',lang);
@@ -1128,7 +1131,12 @@ function buildMockupLayout(){
 
   // ── Price ──
   var resolvedPriceHtml='';
-  if(data.price_display){
+  if(isSor && (data.sale_price || data.rent_price)){
+    var periodLabel={month:{lo:'/ ເດືອນ',en:'/ month',zh:'/ 月'},year:{lo:'/ ປີ',en:'/ year',zh:'/ 年'},day:{lo:'/ ວັນ',en:'/ day',zh:'/ 天'}};
+    var period=data.rent_period||'month';
+    if(data.sale_price) resolvedPriceHtml+='<p class="price-value">'+esc(data.sale_price)+'<span class="price-type-label"> &mdash; <span class="lo-i">ຂາຍ</span><span class="en-i">For Sale</span><span class="zh-i">出售</span></span></p>';
+    if(data.rent_price) resolvedPriceHtml+='<p class="price-value">'+esc(data.rent_price)+'<span class="price-type-label"> '+esc((periodLabel[period]||periodLabel.month)[lang])+' &mdash; <span class="lo-i">ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">出租</span></span></p>';
+  }else if(data.price_display){
     resolvedPriceHtml='<p class="price-value">'+esc(data.price_display)+'</p>';
     if(data.price_lak)resolvedPriceHtml+='<p class="price-lak">'+esc(data.price_lak)+'</p>';
   }else{
@@ -1144,7 +1152,7 @@ function buildMockupLayout(){
 
   var yearHtml=data.year_built?'<div class="year-row"><span class="year-row-lbl">'+L.year[lang]+'</span><span class="agent-stat-icon">'+I.cal+'</span><strong>'+esc(String(data.year_built))+'</strong></div>':'';
 
-  var typeBadgeText=isSale?(lang==='lo'?'ຂາຍ':lang==='zh'?'出售':'For Sale'):(lang==='lo'?'ໃຫ້ເຊົ່າ':lang==='zh'?'出租':'For Rent');
+  var typeBadgeText=isSor?(lang==='lo'?'ຊື້ / ເຊົ່າ':lang==='zh'?'售/租':' Sale or Rent'):isSale?(lang==='lo'?'ຂາຍ':lang==='zh'?'出售':'For Sale'):(lang==='lo'?'ໃຫ້ເຊົ່າ':lang==='zh'?'出租':'For Rent');
 
   // ── Highlight pills — from data.highlights array (TEXT[]) ──
   // Falls back to auto-generating district pill if no highlights stored.
@@ -1473,7 +1481,7 @@ function buildMockupLayout(){
     '<h1 class="info-title">'+resolvedTitle+'</h1>'+
     propertyHighlightHtml+
     '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
-    '<span class="tx-badge" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
+    '<span class="tx-badge'+(isSor?' tx-badge-sor':'')+'" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
     statusBadgeHtml+
     '</div>'+
     '<div id="sp-badges" class="sp-badges-row"></div>'+
@@ -1509,7 +1517,8 @@ function buildMockupLayout(){
   // Mobile CTA bar
   var mCtaBar=document.getElementById('mobile-cta-bar');
   if(mCtaBar){
-    var mPriceHtml=data.price_display?'<span class="mcta-price-value">'+esc(data.price_display)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
+    var mPriceDisplay=isSor?(data.sale_price||data.rent_price||data.price_display):data.price_display;
+    var mPriceHtml=mPriceDisplay?'<span class="mcta-price-value">'+esc(mPriceDisplay)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
       '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+
