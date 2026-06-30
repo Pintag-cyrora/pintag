@@ -4,9 +4,33 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+async function requireAdmin(req: Request): Promise<string | null> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !supabaseAnonKey) return 'Server misconfigured';
+  const auth = req.headers.get('Authorization') || '';
+  if (!auth.startsWith('Bearer ')) return 'Missing auth token';
+  const token = auth.slice(7);
+  const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey },
+  });
+  if (!r.ok) return 'Invalid token';
+  const user = await r.json();
+  if (user?.email !== 'admin@pintag.io') return 'Admin only';
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  const authErr = await requireAdmin(req);
+  if (authErr) {
+    return new Response(JSON.stringify({ error: authErr }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {

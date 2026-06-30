@@ -6,10 +6,34 @@ const corsHeaders = {
 
 const MAX_IMAGES = 10;
 
+// Only fetch images from trusted Supabase Storage domains.
+// Allowing arbitrary URLs would let an attacker probe internal metadata
+// endpoints (SSRF) or trigger unbounded outbound connections.
+const ALLOWED_IMAGE_HOSTS = /^[a-z0-9-]+\.supabase\.co$/i;
+
 const DISTRICTS = ['Sisattanak','Saysettha','Chanthabouly','Sikhottabong','Xaythany','Hadxaifong','Naxaithong'];
+
+async function requireAdmin(req: Request): Promise<string | null> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !supabaseAnonKey) return 'Server misconfigured';
+  const auth = req.headers.get('Authorization') || '';
+  if (!auth.startsWith('Bearer ')) return 'Missing auth token';
+  const token = auth.slice(7);
+  const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey },
+  });
+  if (!r.ok) return 'Invalid token';
+  const user = await r.json();
+  if (user?.email !== 'admin@pintag.io') return 'Admin only';
+  return null;
+}
 
 async function urlToBase64(url: string): Promise<{ mimeType: string; data: string } | null> {
   try {
+    let parsed: URL;
+    try { parsed = new URL(url); } catch { return null; }
+    if (!ALLOWED_IMAGE_HOSTS.test(parsed.hostname)) return null;
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
     const buffer = await res.arrayBuffer();
@@ -112,6 +136,14 @@ Example of correct title format:
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  const authErr = await requireAdmin(req);
+  if (authErr) {
+    return new Response(JSON.stringify({ error: authErr }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
 <title>Pintag · Agent</title>
 <!-- Open Graph — static defaults for Facebook (no JS); updated by JS for WhatsApp/Telegram/iMessage -->
 <meta property="og:type"        content="profile">
@@ -146,6 +147,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .p-img img{width:100%;height:100%;object-fit:cover;object-position:center 45%;display:block;transition:transform 0.5s cubic-bezier(0.4,0,0.2,1);}
 .p-card:hover .p-img img{transform:scale(1.04);}
 .p-tx{position:absolute;top:10px;left:10px;background:rgba(255,255,255,0.9);font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-soft);padding:3px 9px;border-radius:2px;}
+.p-tx-sor{background:rgba(139,92,246,0.12);color:#7C3AED;}
 .p-featured-dot{position:absolute;top:10px;right:10px;width:6px;height:6px;border-radius:50%;background:var(--teal-light);box-shadow:0 0 0 2px rgba(255,255,255,0.5);}
 .p-status{position:absolute;bottom:10px;left:10px;font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;padding:3px 8px;border-radius:3px;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.22);}
 .p-status-available{background:rgba(22,101,52,0.92);}
@@ -225,6 +227,8 @@ const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6
 const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-villa.png';
 const slug=new URLSearchParams(location.search).get('slug');
 
+function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
 function showError(msg){
   document.getElementById('loading').innerHTML=
     '<div style="padding:40px 24px;text-align:center;font-family:DM Sans,sans-serif;max-width:320px;margin:0 auto;">'+
@@ -277,17 +281,18 @@ function render(a,listings){
   setMeta('og:url',pageUrl);
   setMeta('twitter:image',photo);
   var heroImg=getHeroImg(listings);
-  var initial=(a.name_en||'A').charAt(0).toUpperCase();
+  var initial=esc((a.name_en||'A').charAt(0).toUpperCase());
+  var agentName=esc(a.name_lo||a.name_en||'Agent');
   var heroEl=document.getElementById('agent-hero');
 
   if(heroImg){
     heroEl.innerHTML=
-      '<img class="hero-img" src="'+heroImg+'" alt="" loading="eager" onerror="this.src=\''+FALLBACK+'\'">'+
+      '<img class="hero-img" src="'+esc(heroImg)+'" alt="" loading="eager" onerror="this.src=\''+FALLBACK+'\'">'+
       '<div class="hero-gradient"></div>'+
       '<div class="hero-identity fu fu1">'+
         '<div class="hero-avatar" id="h-av"><div class="hero-avatar-initial">'+initial+'</div></div>'+
         (a.is_verified?'<span class="hero-credential">VERIFIED AGENT</span>':'')+
-        '<h1 class="hero-name">'+(a.name_lo||a.name_en||'Agent')+'</h1>'+
+        '<h1 class="hero-name">'+agentName+'</h1>'+
         '<p class="hero-role" id="h-role">Property Advisor · ວຽງຈັນ</p>'+
       '</div>';
   } else {
@@ -296,7 +301,7 @@ function render(a,listings){
       '<div class="hero-identity fu fu1">'+
         '<div class="hero-avatar" id="h-av"><div class="hero-avatar-initial" style="color:var(--teal);">'+initial+'</div></div>'+
         (a.is_verified?'<span class="hero-credential">VERIFIED AGENT</span>':'')+
-        '<h1 class="hero-name" style="color:var(--ink);">'+(a.name_lo||a.name_en||'Agent')+'</h1>'+
+        '<h1 class="hero-name" style="color:var(--ink);">'+agentName+'</h1>'+
         '<p class="hero-role" id="h-role" style="color:var(--ink-muted);">Property Advisor · ວຽງຈັນ</p>'+
       '</div>';
   }
@@ -308,7 +313,7 @@ function render(a,listings){
       var img=document.createElement('img');
       img.alt=a.name_en||'';
       img.style.cssText='width:100%;height:100%;object-fit:cover;object-position:top center;display:block;';
-      img.onerror=function(){this.onerror=null;av.innerHTML='<div class="hero-avatar-initial">'+initial+'</div>';};
+      img.onerror=function(){this.onerror=null;av.innerHTML='<div class="hero-avatar-initial">'+initial+'</div>';};/* initial already esc()'d */
       img.src=a.photo_url;av.innerHTML='';av.appendChild(img);
     }
   }
@@ -369,8 +374,9 @@ function render(a,listings){
       var ti=document.createElement('img');ti.src=imgs[0];ti.alt='';
       ti.loading=i===0?'eager':'lazy';ti.decoding='async';imgDiv.appendChild(ti);
     }
-    var tx=document.createElement('span');tx.className='p-tx';
-    tx.textContent=p.transaction_type==='for_sale'?'ຂາຍ':'ເຊົ່າ';imgDiv.appendChild(tx);
+    var tx=document.createElement('span');
+    tx.className='p-tx'+(p.transaction_type==='sale_or_rent'?' p-tx-sor':'');
+    tx.textContent=p.transaction_type==='for_sale'?'ຂາຍ':p.transaction_type==='sale_or_rent'?'ຊື້/ເຊົ່າ':'ເຊົ່າ';imgDiv.appendChild(tx);
     if(p.is_featured){var dot=document.createElement('span');dot.className='p-featured-dot';imgDiv.appendChild(dot);}
     var st=document.createElement('span');
     var stMap={sold:['p-status-sold','ຂາຍແລ້ວ'],rented:['p-status-rented','ເຊົ່າແລ້ວ'],under_offer:['p-status-offer','ກຳລັງດຳເນີນ']};

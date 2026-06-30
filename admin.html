@@ -51,6 +51,8 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .status-sold{background:rgba(192,57,43,0.1);color:var(--red);}
 .status-rented{background:rgba(154,98,0,0.1);color:#9A6200;}
 .status-under_offer{background:rgba(45,140,140,0.1);color:var(--teal);}
+.status-draft{background:rgba(122,144,152,0.13);color:var(--ink-muted);}
+.status-sale-rent{background:rgba(139,92,246,0.1);color:#7C3AED;}
 .action-btn{font-size:11px;font-weight:500;padding:5px 10px;border-radius:2px;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;text-decoration:none;display:inline-block;transition:all 0.2s;}
 .btn-edit{background:var(--warm);color:var(--ink);border:1px solid var(--border);}
 .btn-edit:hover{background:var(--warm-deep);}
@@ -313,10 +315,11 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             </div>
             <div class="form-group">
               <label class="form-label">Transaction <span class="required">*</span></label>
-              <select class="form-select" id="f-transaction" required>
+              <select class="form-select" id="f-transaction" required onchange="onTransactionChange()">
                 <option value="">Select</option>
                 <option value="for_sale">For Sale</option>
                 <option value="for_rent">For Rent</option>
+                <option value="sale_or_rent">Sale or Rent</option>
               </select>
             </div>
             <div class="form-group">
@@ -330,9 +333,25 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
                 <option value="draft">Draft</option>
               </select>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="price-field-single">
               <label class="form-label">Price Display</label>
               <input class="form-input" id="f-price" type="text" placeholder="$550,000 or leave blank">
+            </div>
+            <div class="form-group" id="price-field-sale" style="display:none">
+              <label class="form-label">Sale Price</label>
+              <input class="form-input" id="f-sale-price" type="text" placeholder="$550,000">
+            </div>
+            <div class="form-group" id="price-field-rent" style="display:none">
+              <label class="form-label">Rent Price</label>
+              <input class="form-input" id="f-rent-price" type="text" placeholder="$1,200">
+            </div>
+            <div class="form-group" id="price-field-period" style="display:none">
+              <label class="form-label">Rent Period</label>
+              <select class="form-select" id="f-rent-period">
+                <option value="month">Per Month</option>
+                <option value="year">Per Year</option>
+                <option value="day">Per Day</option>
+              </select>
             </div>
             <div class="form-group">
               <label class="form-label">Previous Price</label>
@@ -679,7 +698,8 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 function esc(s) {
   if (s == null) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 const ADMIN_EMAIL   = 'admin@pintag.io';
 const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -1252,10 +1272,10 @@ async function loadListings() {
   }
   let html = '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Status</th><th style="white-space:nowrap;">👁 Views · 📞 Leads</th><th>Actions</th></tr></thead><tbody>';
   data.forEach(p => {
-    const agentDisplay = esc((() => { const a = p.agent_id ? _agentsAll.find(x => x.id === p.agent_id) : null; return a ? (a.name_en || '') : (p.agent_name || '—'); })());
-    const statusCls = esc(p.status || 'unknown');
-    const v = Number(p.view_count) || 0;
-    const l = Number(leadCounts[p.id]) || 0;
+    const agentDisplay = esc((() => { const a = p.agent_id ? _agentsAll.find(x => x.id === p.agent_id) : null; return a ? a.name_en : (p.agent_name || '—'); })());
+    const statusCls = esc(p.status || 'draft');
+    const v = Number(p.view_count || 0);
+    const l = Number(leadCounts[p.id] || 0);
     const conv = v > 0 ? ((l/v)*100).toFixed(1) : '—';
     html += `<tr>
       <td><strong style="color:var(--ink);font-weight:500;">${esc(p.title_en||'—')}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}</td>
@@ -1263,16 +1283,26 @@ async function loadListings() {
       <td>${p.price_display ? esc(p.price_display) : '<em style="color:var(--ink-muted)">On request</em>'}</td>
       <td>${agentDisplay}</td>
       <td><span class="status-badge status-${statusCls}">${statusCls}</span></td>
-      <td style="white-space:nowrap;font-size:12px;color:var(--ink-muted);"><span style="color:var(--ink);">${v}</span> views · <span style="color:var(--teal);font-weight:600;">${l}</span> leads${v > 0 ? ` <span style="opacity:0.6;">(${esc(conv)}%)</span>` : ''}</td>
+      <td style="white-space:nowrap;font-size:12px;color:var(--ink-muted);"><span style="color:var(--ink);">${v}</span> views · <span style="color:var(--teal);font-weight:600;">${l}</span> leads${v > 0 ? ` <span style="opacity:0.6;">(${conv}%)</span>` : ''}</td>
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="action-btn btn-edit" onclick="editListing('${esc(p.id)}')">Edit</button>
-        <a class="action-btn btn-view" href="listing.html?slug=${esc(p.slug)}" target="_blank">View</a>
-        <button class="action-btn btn-delete" data-id="${esc(p.id)}" data-title="${esc(p.title_en||'')}" onclick="deleteListing(this.dataset.id, this.dataset.title)">Delete</button>
+        <a class="action-btn btn-view" href="listing.html?slug=${encodeURIComponent(p.slug||'')}" target="_blank">View</a>
+        <button class="action-btn btn-delete" onclick="deleteListing('${esc(p.id)}','${esc(p.title_en||'')}')">Delete</button>
       </td>
     </tr>`;
   });
   html += '</tbody></table>';
   container.innerHTML = html;
+}
+
+// ── TRANSACTION TYPE TOGGLE ───────────────────────────────────────
+function onTransactionChange() {
+  var tx = document.getElementById('f-transaction').value;
+  var isSor = tx === 'sale_or_rent';
+  document.getElementById('price-field-single').style.display = isSor ? 'none' : '';
+  document.getElementById('price-field-sale').style.display   = isSor ? ''     : 'none';
+  document.getElementById('price-field-rent').style.display   = isSor ? ''     : 'none';
+  document.getElementById('price-field-period').style.display = isSor ? ''     : 'none';
 }
 
 // ── FORM SHOW/HIDE ────────────────────────────────────────────────
@@ -1326,9 +1356,13 @@ async function editListing(id) {
   document.getElementById('f-type').value        = p.property_type || '';
   document.getElementById('f-style').value       = p.property_style || '';
   document.getElementById('f-transaction').value = p.transaction_type || '';
+  onTransactionChange();
   document.getElementById('f-status').value      = p.status || 'active';
   document.getElementById('publish-btn').style.display = (p.status === 'draft') ? 'inline-block' : 'none';
   document.getElementById('f-price').value          = p.price_display || '';
+  document.getElementById('f-sale-price').value     = p.sale_price || '';
+  document.getElementById('f-rent-price').value     = p.rent_price || '';
+  document.getElementById('f-rent-period').value    = p.rent_period || 'month';
   document.getElementById('f-price-previous').value = p.price_previous || '';
   document.getElementById('f-land-title').value  = p.land_title_type || '';
   document.getElementById('f-featured').value    = String(p.is_featured || false);
@@ -1430,7 +1464,14 @@ async function saveListing(e) {
     property_style:    document.getElementById('f-style').value || null,
     transaction_type:  document.getElementById('f-transaction').value || null,
     status:            document.getElementById('f-status').value || 'active',
-    price_display:     document.getElementById('f-price').value.trim() || null,
+    price_display:     (document.getElementById('f-transaction').value === 'sale_or_rent'
+                          ? document.getElementById('f-sale-price').value.trim()
+                          : document.getElementById('f-price').value.trim()) || null,
+    sale_price:        document.getElementById('f-sale-price').value.trim() || null,
+    rent_price:        document.getElementById('f-rent-price').value.trim() || null,
+    rent_period:       (document.getElementById('f-transaction').value === 'sale_or_rent'
+                          ? document.getElementById('f-rent-period').value || 'month'
+                          : null),
     price_previous:    document.getElementById('f-price-previous').value.trim() || null,
     land_title_type:   document.getElementById('f-land-title').value || null,
     is_featured:       document.getElementById('f-featured').value === 'true',
@@ -2007,8 +2048,12 @@ function populateFormFromImport(data) {
   document.getElementById('f-type').value        = data.property_type || '';
   document.getElementById('f-style').value       = data.property_style || '';
   document.getElementById('f-transaction').value = data.transaction_type || 'for_sale';
+  onTransactionChange();
   document.getElementById('f-status').value      = 'draft';
   document.getElementById('f-price').value          = data.price_display || '';
+  document.getElementById('f-sale-price').value     = data.sale_price || '';
+  document.getElementById('f-rent-price').value     = data.rent_price || '';
+  document.getElementById('f-rent-period').value    = data.rent_period || 'month';
   document.getElementById('f-price-previous').value = '';
   document.getElementById('f-land-title').value  = '';
   document.getElementById('f-featured').value    = 'false';
@@ -2101,7 +2146,14 @@ async function saveDraft() {
     property_style:         document.getElementById('f-style').value || null,
     transaction_type:       document.getElementById('f-transaction').value || null,
     status:                 'draft',
-    price_display:          document.getElementById('f-price').value.trim() || null,
+    price_display:          (document.getElementById('f-transaction').value === 'sale_or_rent'
+                               ? document.getElementById('f-sale-price').value.trim()
+                               : document.getElementById('f-price').value.trim()) || null,
+    sale_price:             document.getElementById('f-sale-price').value.trim() || null,
+    rent_price:             document.getElementById('f-rent-price').value.trim() || null,
+    rent_period:            (document.getElementById('f-transaction').value === 'sale_or_rent'
+                               ? document.getElementById('f-rent-period').value || 'month'
+                               : null),
     price_previous:         null,
     title_en:               titleEn,
     title_lo:               document.getElementById('f-title-lo').value.trim() || null,

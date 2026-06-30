@@ -22,6 +22,11 @@ UPDATE properties
 SET neighborhood_insight_en = neighborhood_description
 WHERE neighborhood_description IS NOT NULL AND neighborhood_insight_en IS NULL;
 
+-- ── Sale or Rent — dual pricing ────────────────────────────────────
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS sale_price TEXT;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS rent_price TEXT;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS rent_period TEXT;
+
 -- ── Verify ─────────────────────────────────────────────────────────
 -- After running, confirm the new columns exist:
 SELECT column_name, data_type
@@ -29,6 +34,7 @@ FROM information_schema.columns
 WHERE table_name = 'properties'
   AND column_name IN (
     'property_highlight_en', 'property_highlight_lo', 'property_highlight_zh',
-    'neighborhood_insight_en', 'neighborhood_insight_lo', 'neighborhood_insight_zh'
+    'neighborhood_insight_en', 'neighborhood_insight_lo', 'neighborhood_insight_zh',
+    'sale_price', 'rent_price', 'rent_period'
   )
 ORDER BY column_name;

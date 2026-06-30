@@ -452,6 +452,9 @@ nav{
       <button class="filter-btn" data-filter="for_rent" onclick="setFilter('for_rent',this)">
         <span class="lo-i">ໃຫ້ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">租房</span>
       </button>
+      <button class="filter-btn" data-filter="sale_or_rent" onclick="setFilter('sale_or_rent',this)">
+        <span class="lo-i">ຊື້ / ເຊົ່າ</span><span class="en-i">Sale or Rent</span><span class="zh-i">售/租</span>
+      </button>
       <button class="filter-btn" data-filter="house" onclick="setFilter('house',this)">
         <span class="lo-i">ເຮືອນ</span><span class="en-i">House</span><span class="zh-i">住宅</span>
       </button>
@@ -533,6 +536,12 @@ nav{
 
 const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 
 let allProperties = [];
 let currentFilter = 'all';
@@ -715,7 +724,7 @@ function getActivityLine(p, lang) {
   var age = daysOld(p);
   if (!isFinite(age)) return '';
   var score = parseFloat(p.trending_score) || 0;
-  var isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
+  var isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale' || p.transaction_type === 'sale_or_rent';
 
   // District-trending context replaces age line for popular/hot listings
   if (score >= 100 && p.district_en) {
@@ -808,7 +817,7 @@ function renderMap() {
 function showMapPreview(p) {
   var lang = getCurrentLang();
   var imgInner = (p.images && p.images.length)
-    ? '<img src="' + p.images[0] + '" alt="" loading="lazy">'
+    ? '<img src="' + esc(p.images[0]) + '" alt="" loading="lazy">'
     : '<div class="prop-card-no-img"></div>';
   document.getElementById('mp-img-inner').innerHTML = imgInner;
 
@@ -825,7 +834,10 @@ function showMapPreview(p) {
   // Activity badges
   document.getElementById('mp-act-badges').innerHTML = getActivityBadgesHtml(p, lang);
 
-  document.getElementById('mp-price').textContent = p.price_display || {lo:'ສອບຖາມ',en:'Price on request',zh:'价格面议'}[lang];
+  var mpPriceText = p.transaction_type === 'sale_or_rent' && (p.sale_price || p.rent_price)
+    ? [p.sale_price, p.rent_price].filter(Boolean).join(' / ')
+    : (p.price_display || {lo:'ສອບຖາມ',en:'Price on request',zh:'价格面议'}[lang]);
+  document.getElementById('mp-price').textContent = mpPriceText;
 
   var title = p['title_' + lang] || p.title_en || '';
   document.getElementById('mp-title').textContent = title;
@@ -847,9 +859,10 @@ function showMapPreview(p) {
   // Agent
   var agentRow = document.getElementById('mp-agent-row');
   if (p.agent_name) {
+    var agentInitial = esc(p.agent_name.charAt(0) || 'P');
     var avatarInner = p.agent_photo
       ? '<img src="' + esc(p.agent_photo) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.style.display=\'none\'">'
-      : esc(p.agent_name.charAt(0) || 'P');
+      : agentInitial;
     agentRow.innerHTML =
       '<div class="agent-avatar">' + avatarInner + '</div>' +
       '<div><div class="agent-name">' + esc(p.agent_name) + '</div>' +
@@ -976,15 +989,16 @@ function renderListings() {
     var title    = esc(p['title_'    + lang] || p.title_en    || '');
     var district = esc(p['district_' + lang] || p.district_en || '');
     var isSale   = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
+    var isSor    = p.transaction_type === 'sale_or_rent';
 
     var txLabel = {
-      lo: isSale ? 'ຂາຍ' : 'ໃຫ້ເຊົ່າ',
-      en: isSale ? 'For Sale' : 'For Rent',
-      zh: isSale ? '出售' : '租房'
+      lo: isSor ? 'ຊື້ / ເຊົ່າ' : isSale ? 'ຂາຍ' : 'ໃຫ້ເຊົ່າ',
+      en: isSor ? 'Sale or Rent' : isSale ? 'For Sale' : 'For Rent',
+      zh: isSor ? '售/租'        : isSale ? '出售'     : '租房'
     };
 
     var typeDisplay = p.property_type
-      ? p.property_type.charAt(0).toUpperCase() + p.property_type.slice(1)
+      ? esc(p.property_type.charAt(0).toUpperCase() + p.property_type.slice(1))
       : '';
 
     var imgHtml = (p.images && p.images.length)
@@ -1014,10 +1028,17 @@ function renderListings() {
     ].filter(Boolean).join('');
 
     var perMo = { lo: '/ ເດືອນ', en: '/ month', zh: '/ 月' };
-    var rawPrice = (p.price_display || '').replace(/\s*\/\s*(ເດືອນ|mo|月|month)\s*/i, '').trim();
-    var priceHtml = rawPrice
-      ? '<p class="card-price">' + esc(rawPrice) + (!isSale ? ' <span class="card-price-unit">' + perMo[lang] + '</span>' : '') + '</p>'
-      : '<p class="card-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
+    var rawPrice = esc((p.price_display || '').replace(/\s*\/\s*(ເດືອນ|mo|月|month)\s*/i, '').trim());
+    var priceHtml;
+    if (isSor && (p.sale_price || p.rent_price)) {
+      priceHtml = '';
+      if (p.sale_price) priceHtml += '<p class="card-price">' + esc(p.sale_price) + ' <span class="card-price-unit lo-i">ຂາຍ</span><span class="card-price-unit en-i">Sale</span><span class="card-price-unit zh-i">售</span></p>';
+      if (p.rent_price) priceHtml += '<p class="card-price">' + esc(p.rent_price) + ' <span class="card-price-unit">' + perMo[lang] + '</span> <span class="card-price-unit lo-i">ເຊົ່າ</span><span class="card-price-unit en-i">Rent</span><span class="card-price-unit zh-i">租</span></p>';
+    } else {
+      priceHtml = rawPrice
+        ? '<p class="card-price">' + rawPrice + (!isSale && !isSor ? ' <span class="card-price-unit">' + perMo[lang] + '</span>' : '') + '</p>'
+        : '<p class="card-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
+    }
 
     var actBadgesHtml = getActivityBadgesHtml(p, lang);
     var actLineTxt    = getActivityLine(p, lang);
@@ -1051,10 +1072,10 @@ function renderListings() {
           (typeDisplay ? ' · ' + typeDisplay : '') +
         '</p>' +
         (actBadgesHtml ? '<div class="act-badges">' + actBadgesHtml + '</div>' : '') +
-        '<p class="card-title">' + title + '</p>' +
+        '<p class="card-title">' + esc(title) + '</p>' +
         '<p class="card-loc">' +
           '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>' +
-          (district ? district + ', ' : '') +
+          (district ? esc(district) + ', ' : '') +
           '<span class="lo-i">ວຽງຈັນ</span><span class="en-i">Vientiane</span><span class="zh-i">万象</span>' +
         '</p>' +
         (specsHtml ? '<div class="card-specs">' + specsHtml + '</div>' : '') +

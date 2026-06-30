@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
 <title>Pintag Agent Dashboard</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -486,6 +487,12 @@ const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 const supabaseClient = supabase.createClient(
   SUPABASE_URL,
   SUPABASE_KEY
@@ -569,73 +576,34 @@ function renderListings(properties){
   }
 
   container.innerHTML = properties.map(property => {
-
-    const image =
-      property.images &&
-      property.images.length
-      ? property.images[0]
-      : 'https://placehold.co/1200x800';
+    const image    = esc(property.images && property.images.length ? property.images[0] : 'https://placehold.co/1200x800');
+    const district = esc(property.district_en || '');
+    const title    = esc(property.title_en || property.title_lo || 'Untitled');
+    const price    = esc(property.price_display || '');
+    const views    = Number(property.views)     || 0;
+    const inquiries= Number(property.inquiries) || 0;
+    const saves    = Number(property.saves)     || 0;
+    const id       = esc(property.id);
 
     return `
-
       <div class="card">
-
-        <div class="card-img">
-          <img src="${image}">
-        </div>
-
+        <div class="card-img"><img src="${image}"></div>
         <div class="card-body">
-
-          <div class="card-location">
-            ${property.district_en || ''}
+          <div class="card-location">${district}</div>
+          <div class="card-title">${title}</div>
+          <div class="card-price">${price}</div>
+          <div class="listing-stats">
+            <span>👁 ${views}</span>
+            <span>💬 ${inquiries}</span>
+            <span>❤ ${saves}</span>
           </div>
-
-          <div class="card-title">
-            ${property.title_en || property.title_lo || 'Untitled'}
-          </div>
-
-          <div class="card-price">
-            ${property.price_display || ''}
-          </div>
-<div class="listing-stats">
-
-  <span>
-    👁 ${property.views || 0}
-  </span>
-
-  <span>
-    💬 ${property.inquiries || 0}
-  </span>
-
-  <span>
-    ❤ ${property.saves || 0}
-  </span>
-
-</div>
           <div class="card-actions">
-
-            <button
-              class="card-btn edit-btn"
-             onclick="editListing('${property.id}')"
-            >
-              Edit
-            </button>
-
-            <button
-              class="card-btn delete-btn"
-              onclick="deleteListing('${property.id}')"
-            >
-              Delete
-            </button>
-
+            <button class="card-btn edit-btn"   data-id="${id}" onclick="editListing(this.dataset.id)">Edit</button>
+            <button class="card-btn delete-btn" data-id="${id}" onclick="deleteListing(this.dataset.id)">Delete</button>
           </div>
-
         </div>
-
       </div>
-
     `;
-
   }).join('');
 
 }
@@ -729,11 +697,11 @@ async function loadLeadStats(agentId) {
       return;
     }
     tbody.innerHTML = rows.map(function(r) {
-      var total = r.wa + r.call;
+      var total = Number(r.wa) + Number(r.call);
       return '<tr>' +
-        '<td style="font-weight:500;">' + r.title + '</td>' +
-        '<td>' + (r.wa   ? '<span class="lead-badge">' + r.wa   + '</span>' : '<span style="color:var(--muted)">0</span>') + '</td>' +
-        '<td>' + (r.call ? '<span class="lead-badge">' + r.call + '</span>' : '<span style="color:var(--muted)">0</span>') + '</td>' +
+        '<td style="font-weight:500;">' + esc(r.title) + '</td>' +
+        '<td>' + (r.wa   ? '<span class="lead-badge">' + Number(r.wa)   + '</span>' : '<span style="color:var(--muted)">0</span>') + '</td>' +
+        '<td>' + (r.call ? '<span class="lead-badge">' + Number(r.call) + '</span>' : '<span style="color:var(--muted)">0</span>') + '</td>' +
         '<td><strong>' + total + '</strong></td>' +
         '</tr>';
     }).join('');
