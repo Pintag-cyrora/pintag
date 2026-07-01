@@ -215,11 +215,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 /* Mobile CTA */
 .mobile-cta-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;background:rgba(255,255,255,0.985);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--border-mid);padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom));}
 .mcta-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;}
-.mcta-price-wrap{display:flex;flex-direction:column;gap:1px;}
-.mcta-price-label{font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-muted);}
-.mcta-price-value{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1;}
+.mcta-price-wrap{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0;}
+.mcta-price-label{font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mcta-price-value{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .mcta-price-req{font-size:13px;font-weight:400;color:var(--ink-muted);}
-.mcta-btn{display:flex;align-items:center;gap:7px;background:var(--wa);color:var(--white);padding:8px 14px;border-radius:var(--r-btn);font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap;box-shadow:0 3px 10px rgba(35,107,107,0.18);}
+.mcta-btn{display:flex;align-items:center;gap:7px;background:var(--wa);color:var(--white);padding:8px 14px;border-radius:var(--r-btn);font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap;box-shadow:0 3px 10px rgba(35,107,107,0.18);flex-shrink:0;}
 /* Loader */
 .loader-stage{min-height:70vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:140px 24px;color:var(--ink-muted);}
 .loader-cluster{display:flex;gap:6px;justify-content:center;margin-bottom:16px;}
@@ -1514,14 +1514,40 @@ function buildMockupLayout(){
 
   container.innerHTML=layout;
 
-  // Mobile CTA bar
+  // Mobile CTA bar — always reflects this listing's own transaction_type,
+  // never any active filter/previous page state.
   var mCtaBar=document.getElementById('mobile-cta-bar');
   if(mCtaBar){
-    var mPriceDisplay=isSor?(data.sale_price||data.rent_price||data.price_display):data.price_display;
-    var mPriceHtml=mPriceDisplay?'<span class="mcta-price-value">'+esc(mPriceDisplay)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
+    var mPeriodLabel={month:{lo:'/ ເດືອນ',en:'/ month',zh:'/ 月'},year:{lo:'/ ປີ',en:'/ year',zh:'/ 年'},day:{lo:'/ ວັນ',en:'/ day',zh:'/ 天'}};
+    var saleLabel=lang==='lo'?'ຂາຍ':lang==='zh'?'出售':'For Sale';
+    var rentLabel=lang==='lo'?'ໃຫ້ເຊົ່າ':lang==='zh'?'出租':'For Rent';
+    var mLabel=typeBadgeText, mPriceRaw='';
+    if(isSale){
+      mPriceRaw=data.sale_price||data.price_display||'';
+    }else if(isSor){
+      if(data.sale_price){
+        mLabel=saleLabel;
+        mPriceRaw=data.sale_price;
+      }else if(data.rent_price){
+        mLabel=rentLabel;
+        var mSorPeriod=data.rent_period||'month';
+        mPriceRaw=data.rent_price+' '+(mPeriodLabel[mSorPeriod]||mPeriodLabel.month)[lang];
+      }else{
+        mPriceRaw=data.price_display||'';
+      }
+    }else{
+      mLabel=rentLabel;
+      if(data.rent_price){
+        var mPeriod=data.rent_period||'month';
+        mPriceRaw=data.rent_price+' '+(mPeriodLabel[mPeriod]||mPeriodLabel.month)[lang];
+      }else{
+        mPriceRaw=data.price_display||'';
+      }
+    }
+    var mPriceHtml=mPriceRaw?'<span class="mcta-price-value">'+esc(mPriceRaw)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
-      '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+
+      '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(mLabel)+'</span>'+mPriceHtml+'</div>'+
       '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
       '</div>'
     );
