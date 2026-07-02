@@ -22,6 +22,8 @@
 <link rel="preconnect" href="https://eoladhcljbpbhnrmmpev.supabase.co">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin>
 <script src="favorites.js"></script>
+<script src="compare.js"></script>
+<script src="compare-bar.js"></script>
 <script>
 window.addEventListener('error',function(e){
   if(e.message==='Script error.'||e.message==='Script error'){e.preventDefault();e.stopImmediatePropagation();return true;}
@@ -103,6 +105,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .action-link svg{transition:stroke 0.18s;}
 .action-link.saved{color:#DC2626;}
 .action-link.saved svg{fill:#DC2626;stroke:#DC2626;}
+.action-link.comparing{color:var(--teal);}
+.action-link.comparing svg rect{fill:var(--teal);stroke:var(--teal);}
+.action-link.comparing svg .cm{stroke-opacity:1;stroke:#fff;}
 .pintag-badge{display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);border:1px solid var(--teal-mark);padding:3px 8px;border-radius:var(--r-tag);white-space:nowrap;width:fit-content;}
 .pintag-badge::before{content:"";display:block;width:4px;height:4px;border-right:1.5px solid var(--teal);border-bottom:1.5px solid var(--teal);transform:rotate(-45deg) translateY(-1px);flex-shrink:0;}
 /* Gallery */
@@ -197,6 +202,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .sim-heart:hover{background:#fff;}
 .sim-heart svg{transition:fill 0.15s,stroke 0.15s;}
 .sim-heart.saved svg{fill:#DC2626;stroke:#DC2626;}
+.sim-compare{position:absolute;top:48px;right:10px;z-index:2;width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,0.88);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;}
+.sim-compare:hover{background:#fff;}
+.sim-compare svg rect{transition:fill 0.15s,stroke 0.15s;}
+.sim-compare.comparing svg rect{fill:#2D8C8C;stroke:#2D8C8C;}
+.sim-compare.comparing svg .cm{stroke-opacity:1;}
 .sim-body{padding:16px 16px 18px;}
 .sim-title{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:5px;line-height:1.35;}
 .sim-loc{font-size:11.5px;color:var(--ink-muted);margin-bottom:9px;display:flex;align-items:center;gap:4px;}
@@ -336,6 +346,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
     object-fit:cover;
   }
   .sim-heart{width:28px;height:28px;top:8px;right:8px;}
+  .sim-compare{width:28px;height:28px;top:44px;right:8px;}
   .sim-body{padding:12px 13px 14px;}
   .sim-title{font-size:14px;font-weight:500;margin-bottom:3px;}
   .sim-loc{margin-bottom:5px;}
@@ -641,6 +652,23 @@ function onHeroSaveClick(e, slug){
     var lang = getCurrentLang();
     label.textContent = (nowSaved ? SAVED_LABELS : SAVE_LABELS)[lang] || (nowSaved ? SAVED_LABELS.en : SAVE_LABELS.en);
   }
+}
+
+// getCompareSet() / toggleCompare() come from compare.js — same shared
+// pattern as favorites.js, kept as a separate module since "saved" and
+// "selected for comparison" are different intents.
+var COMPARE_LABELS  = {lo:'ເພີ່ມເພື່ອປຽບທຽບ', en:'Add to Compare', zh:'加入比较'};
+var COMPARING_LABELS = {lo:'ກຳລັງປຽບທຽບ',    en:'Comparing',      zh:'比较中'};
+
+function onHeroCompareClick(e, slug){
+  var result = toggleCompare(slug, e);
+  var btn = document.getElementById('compare-btn-hero');
+  var label = btn ? btn.querySelector('.compare-btn-label') : null;
+  if(label){
+    var lang = getCurrentLang();
+    label.textContent = (result.comparing ? COMPARING_LABELS : COMPARE_LABELS)[lang] || (result.comparing ? COMPARING_LABELS.en : COMPARE_LABELS.en);
+  }
+  if(result.limitReached && btn) pintagCompareLimitNudge(btn);
 }
 
 
@@ -1002,6 +1030,7 @@ function renderSimilarGrid(similar){
   secEl.style.display='block';
   var lang=getCurrentLang();
   var savedSet=getSavedSet();
+  var compareSet=getCompareSet();
   var sI={
     bed:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4v16M22 4v16M2 8h20M2 14h20"/></svg>',
     bath:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18a4 4 0 0 0 8 0v-4H4zM12 14V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>',
@@ -1028,6 +1057,7 @@ function renderSimilarGrid(similar){
     var typeBadgeHtml=typeInfo?'<span class="sim-type-badge">'+(typeInfo[lang]||typeInfo.en)+'</span>':'';
 
     var isFav=savedSet.has(p.slug);
+    var isCompared=compareSet.has(p.slug);
     var slugSafe=esc(p.slug);
 
     var card=document.createElement('a');
@@ -1040,6 +1070,9 @@ function renderSimilarGrid(similar){
       simStatusOverlay+
       '<button class="sim-heart'+(isFav?' saved':'')+'" type="button" data-save="'+slugSafe+'" aria-pressed="'+(isFav?'true':'false')+'" aria-label="Save" onclick="toggleSave(\''+slugSafe+'\',event)">'+
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>'+
+      '</button>'+
+      '<button class="sim-compare'+(isCompared?' comparing':'')+'" type="button" data-compare="'+slugSafe+'" aria-pressed="'+(isCompared?'true':'false')+'" aria-label="Add to compare" onclick="var r=toggleCompare(\''+slugSafe+'\',event); if(r.limitReached) pintagCompareLimitNudge(this);">'+
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" stroke="#1A2428" stroke-width="2"/><polyline class="cm" points="7 12 10.5 15.5 17 8.5" stroke="#fff" stroke-width="2" stroke-opacity="0"/></svg>'+
       '</button></div>'+
       '<div class="sim-body">'+
       typeBadgeHtml+
@@ -1108,6 +1141,7 @@ function buildMockupLayout(){
   var isSale = data.transaction_type==='for_sale'||data.transaction_type==='sale';
   var isSor  = data.transaction_type==='sale_or_rent';
   var isFavorited = isSaved(data.slug);
+  var isComparedHero = isComparing(data.slug);
   var imagesArray=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';});
 
   var statusBadgeHtml=getStatusBadgeHtml(data.status||'active',lang);
@@ -1138,6 +1172,7 @@ function buildMockupLayout(){
     cal:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
     doc:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
     heart:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
+    compare:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.8"/><polyline class="cm" points="7 12 10.5 15.5 17 8.5" stroke="currentColor" stroke-width="1.8" stroke-opacity="0"/></svg>',
     play:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
     pin:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
     back:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
@@ -1526,6 +1561,7 @@ function buildMockupLayout(){
     sidebarInsightHtml+
     '<div class="left-actions">'+
     '<button class="action-link'+(isFavorited?' saved':'')+'" id="save-btn" type="button" data-save="'+esc(data.slug||'')+'" aria-pressed="'+(isFavorited?'true':'false')+'" onclick="onHeroSaveClick(event,\''+esc(data.slug||'')+'\')">'+I.heart+' <span class="save-btn-label">'+esc((isFavorited?SAVED_LABELS:SAVE_LABELS)[lang]||(isFavorited?SAVED_LABELS.en:SAVE_LABELS.en))+'</span></button>'+
+    '<button class="action-link'+(isComparedHero?' comparing':'')+'" id="compare-btn-hero" type="button" data-compare="'+esc(data.slug||'')+'" aria-pressed="'+(isComparedHero?'true':'false')+'" onclick="onHeroCompareClick(event,\''+esc(data.slug||'')+'\')">'+I.compare+' <span class="compare-btn-label">'+esc((isComparedHero?COMPARING_LABELS:COMPARE_LABELS)[lang]||(isComparedHero?COMPARING_LABELS.en:COMPARE_LABELS.en))+'</span></button>'+
     '<button class="action-link" id="share-btn" onclick="handleShare(this)">'+I.share+' <span class="lo-i">ແຊຣ໌</span><span class="en-i">Share</span><span class="zh-i">分享</span></button>'+
     '<span class="pintag-badge">'+L.verified[lang]+'</span>'+
     '</div></div>'+

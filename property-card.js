@@ -115,8 +115,10 @@ function getActivityLine(p, lang) {
 // (from getSavedSet()). isFeaturedCard: whether to render the wide
 // editorial layout (listings.html only — a personal saved list doesn't
 // use it). idx: position in the grid, used only to decide eager vs lazy
-// image loading for the first few cards.
-function buildPropCard(p, lang, savedSet, isFeaturedCard, idx) {
+// image loading for the first few cards. compareSet: a Set of slugs
+// currently selected for comparison (from getCompareSet()) — the
+// compare toggle is on every card, on every surface, by design.
+function buildPropCard(p, lang, savedSet, isFeaturedCard, idx, compareSet) {
   var card = document.createElement('a');
   card.href = 'listing.html?slug=' + encodeURIComponent(p.slug);
   card.className = isFeaturedCard ? 'prop-card is-featured' : 'prop-card';
@@ -156,6 +158,7 @@ function buildPropCard(p, lang, savedSet, isFeaturedCard, idx) {
 
   var slugSafe = p.slug.replace(/'/g, '%27');
   var isSaved = savedSet.has(p.slug);
+  var isCompared = !!(compareSet && compareSet.has(p.slug));
 
   var specsHtml = [
     p.bedrooms  ? '<span class="card-spec"><span>' + p.bedrooms  + '</span> <span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">beds</span><span class="zh-i">卧</span></span>' : '',
@@ -195,6 +198,9 @@ function buildPropCard(p, lang, savedSet, isFeaturedCard, idx) {
       '<div class="ov-tr">' +
         '<button class="heart-btn' + (isSaved ? ' saved' : '') + '" data-save="' + slugSafe + '" onclick="toggleSave(\'' + slugSafe + '\',event)" aria-label="Save listing" aria-pressed="' + (isSaved ? 'true' : 'false') + '">' +
           '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
+        '</button>' +
+        '<button class="compare-btn' + (isCompared ? ' comparing' : '') + '" data-compare="' + slugSafe + '" onclick="var r=toggleCompare(\'' + slugSafe + '\',event); if(r.limitReached) pintagCompareLimitNudge(this);" aria-label="Add to compare" aria-pressed="' + (isCompared ? 'true' : 'false') + '">' +
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" stroke="#1A2428" stroke-width="2"/><polyline class="cm" points="7 12 10.5 15.5 17 8.5" stroke="#fff" stroke-width="2" stroke-opacity="0"/></svg>' +
         '</button>' +
       '</div>' +
       photoHtml +

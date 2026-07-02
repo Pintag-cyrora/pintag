@@ -7,7 +7,9 @@
 <title>Pintag · ຊັບສິນທີ່ບັນທຶກໄວ້</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="favorites.js"></script>
+<script src="compare.js"></script>
 <script src="property-card.js"></script>
+<script src="compare-bar.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -106,7 +108,7 @@ nav{
 
 /* ─── OVERLAYS ───────────────────────────────────────────────────────── */
 .ov-tl{position:absolute;top:12px;left:12px;z-index:2;}
-.ov-tr{position:absolute;top:12px;right:12px;z-index:2;}
+.ov-tr{position:absolute;top:12px;right:12px;z-index:2;display:flex;flex-direction:column;gap:6px;align-items:flex-end;}
 .ov-br{position:absolute;bottom:12px;right:12px;z-index:2;}
 .ov-bl{position:absolute;bottom:12px;left:12px;z-index:2;}
 
@@ -140,6 +142,20 @@ nav{
 .heart-btn:hover{background:rgba(255,255,255,0.95);}
 .heart-btn.saved svg{stroke:#D94040;fill:#D94040;}
 .heart-btn svg{transition:stroke 0.15s,fill 0.15s;}
+
+/* COMPARE BUTTON — rounded-square checkbox, distinct from the round heart */
+.compare-btn{
+  width:28px;height:28px;
+  background:rgba(255,255,255,0.78);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border-radius:8px;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 0.2s;
+}
+.compare-btn:hover{background:rgba(255,255,255,0.95);}
+.compare-btn svg rect{transition:fill 0.15s,stroke 0.15s;}
+.compare-btn.comparing svg rect{fill:#2D8C8C;stroke:#2D8C8C;}
+.compare-btn.comparing svg .cm{stroke-opacity:1;}
 
 /* PHOTO COUNT */
 .photo-count{
@@ -363,11 +379,12 @@ function renderSaved() {
   }
 
   var saved = getSavedSet();
+  var compareSet = getCompareSet();
   container.innerHTML = '';
   allSaved.forEach(function (p, idx) {
     // No editorial "featured" layout here — that's a platform-curation
     // concept for the browse grid, not meaningful on a personal list.
-    var card = buildPropCard(p, lang, saved, false, idx);
+    var card = buildPropCard(p, lang, saved, false, idx, compareSet);
 
     // Every card on this page starts saved, so unsaving it here means
     // "remove from this page." buildPropCard's default heart button calls
