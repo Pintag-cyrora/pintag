@@ -21,6 +21,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://eoladhcljbpbhnrmmpev.supabase.co">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin>
+<script src="favorites.js"></script>
 <script>
 window.addEventListener('error',function(e){
   if(e.message==='Script error.'||e.message==='Script error'){e.preventDefault();e.stopImmediatePropagation();return true;}
@@ -100,8 +101,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .action-link:hover{color:var(--teal);}
 .action-link:hover svg{stroke:var(--teal);}
 .action-link svg{transition:stroke 0.18s;}
-.action-link.is-favorited{color:#DC2626;}
-.action-link.is-favorited svg{fill:#DC2626;stroke:#DC2626;}
+.action-link.saved{color:#DC2626;}
+.action-link.saved svg{fill:#DC2626;stroke:#DC2626;}
 .pintag-badge{display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);border:1px solid var(--teal-mark);padding:3px 8px;border-radius:var(--r-tag);white-space:nowrap;width:fit-content;}
 .pintag-badge::before{content:"";display:block;width:4px;height:4px;border-right:1.5px solid var(--teal);border-bottom:1.5px solid var(--teal);transform:rotate(-45deg) translateY(-1px);flex-shrink:0;}
 /* Gallery */
@@ -195,7 +196,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .sim-heart{position:absolute;top:10px;right:10px;z-index:2;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.88);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;}
 .sim-heart:hover{background:#fff;}
 .sim-heart svg{transition:fill 0.15s,stroke 0.15s;}
-.sim-heart.is-favorited svg{fill:#DC2626;stroke:#DC2626;}
+.sim-heart.saved svg{fill:#DC2626;stroke:#DC2626;}
 .sim-body{padding:16px 16px 18px;}
 .sim-title{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:5px;line-height:1.35;}
 .sim-loc{font-size:11.5px;color:var(--ink-muted);margin-bottom:9px;display:flex;align-items:center;gap:4px;}
@@ -624,60 +625,21 @@ function handleImageError(img) {
   img.style.background = 'var(--warm-deep)';
 }
 
-// ── Favorites — client-side, localStorage-backed (no account needed) ──
-var FAVORITES_KEY = 'pintag_favorites';
-var Favorites = (function(){
-  function readAll(){
-    try{
-      var arr = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
-      return Array.isArray(arr) ? arr : [];
-    }catch(_){ return []; }
-  }
-  function writeAll(arr){
-    try{ localStorage.setItem(FAVORITES_KEY, JSON.stringify(arr)); }catch(_){}
-  }
-  return {
-    has: function(id){
-      if(!id) return false;
-      return readAll().indexOf(String(id)) > -1;
-    },
-    toggle: function(id){
-      if(!id) return false;
-      id = String(id);
-      var arr = readAll();
-      var idx = arr.indexOf(id);
-      if(idx > -1){ arr.splice(idx,1); writeAll(arr); return false; }
-      arr.push(id); writeAll(arr); return true;
-    }
-  };
-})();
-
-function setFavoriteButtonState(btn, active){
-  if(!btn) return;
-  btn.classList.toggle('is-favorited', active);
-  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-}
-
+// getSavedSet() / isSaved() / toggleSave() come from favorites.js —
+// the single shared save/favorite implementation, keyed by slug, also
+// used by listings.html. Below is just this page's own presentation
+// logic (the hero button additionally swaps its text label).
 var SAVE_LABELS  = {lo:'ບັນທຶກ',      en:'Save property', zh:'收藏房源'};
 var SAVED_LABELS = {lo:'ບັນທຶກແລ້ວ', en:'Saved',         zh:'已收藏'};
 
-function toggleHeroFavorite(btn){
-  if(!propertyContext || !propertyContext.id) return;
-  var active = Favorites.toggle(propertyContext.id);
-  setFavoriteButtonState(btn, active);
-  var label = btn.querySelector('.save-btn-label');
+function onHeroSaveClick(e, slug){
+  var nowSaved = toggleSave(slug, e);
+  var btn = document.getElementById('save-btn');
+  var label = btn ? btn.querySelector('.save-btn-label') : null;
   if(label){
     var lang = getCurrentLang();
-    label.textContent = (active ? SAVED_LABELS : SAVE_LABELS)[lang] || (active ? SAVED_LABELS.en : SAVE_LABELS.en);
+    label.textContent = (nowSaved ? SAVED_LABELS : SAVE_LABELS)[lang] || (nowSaved ? SAVED_LABELS.en : SAVE_LABELS.en);
   }
-}
-
-function toggleCardFavorite(e, btn, id){
-  e.preventDefault();
-  e.stopPropagation();
-  if(!id) return;
-  var active = Favorites.toggle(id);
-  setFavoriteButtonState(btn, active);
 }
 
 
@@ -1038,6 +1000,7 @@ function renderSimilarGrid(similar){
   if(!Array.isArray(similar)||!similar.length){hideSimilarSection();return;}
   secEl.style.display='block';
   var lang=getCurrentLang();
+  var savedSet=getSavedSet();
   var sI={
     bed:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4v16M22 4v16M2 8h20M2 14h20"/></svg>',
     bath:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18a4 4 0 0 0 8 0v-4H4zM12 14V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>',
@@ -1063,7 +1026,8 @@ function renderSimilarGrid(similar){
     var typeInfo=SIM_TYPE_LABELS[p.transaction_type];
     var typeBadgeHtml=typeInfo?'<span class="sim-type-badge">'+(typeInfo[lang]||typeInfo.en)+'</span>':'';
 
-    var isFav=Favorites.has(p.id);
+    var isFav=savedSet.has(p.slug);
+    var slugSafe=esc(p.slug);
 
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug);
@@ -1073,7 +1037,7 @@ function renderSimilarGrid(similar){
     card.innerHTML=(
       '<div class="sim-card-img">'+imgHtml+
       simStatusOverlay+
-      '<button class="sim-heart'+(isFav?' is-favorited':'')+'" type="button" aria-pressed="'+(isFav?'true':'false')+'" aria-label="Save">'+
+      '<button class="sim-heart'+(isFav?' saved':'')+'" type="button" data-save="'+slugSafe+'" aria-pressed="'+(isFav?'true':'false')+'" aria-label="Save" onclick="toggleSave(\''+slugSafe+'\',event)">'+
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>'+
       '</button></div>'+
       '<div class="sim-body">'+
@@ -1084,10 +1048,6 @@ function renderSimilarGrid(similar){
       (p.price_display?'<p class="sim-price">'+esc(p.price_display)+'</p>':'')+
       '</div>'
     );
-    var heartBtn=card.querySelector('.sim-heart');
-    if(heartBtn){
-      heartBtn.addEventListener('click',function(e){ toggleCardFavorite(e, heartBtn, p.id); });
-    }
     frag.appendChild(card);
   });
   gridEl.innerHTML='';
@@ -1146,7 +1106,7 @@ function buildMockupLayout(){
 
   var isSale = data.transaction_type==='for_sale'||data.transaction_type==='sale';
   var isSor  = data.transaction_type==='sale_or_rent';
-  var isFavorited = Favorites.has(data.id);
+  var isFavorited = isSaved(data.slug);
   var imagesArray=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';});
 
   var statusBadgeHtml=getStatusBadgeHtml(data.status||'active',lang);
@@ -1564,7 +1524,7 @@ function buildMockupLayout(){
     highlightPillsHtml+
     sidebarInsightHtml+
     '<div class="left-actions">'+
-    '<button class="action-link'+(isFavorited?' is-favorited':'')+'" id="save-btn" type="button" aria-pressed="'+(isFavorited?'true':'false')+'" onclick="toggleHeroFavorite(this)">'+I.heart+' <span class="save-btn-label">'+esc((isFavorited?SAVED_LABELS:SAVE_LABELS)[lang]||(isFavorited?SAVED_LABELS.en:SAVE_LABELS.en))+'</span></button>'+
+    '<button class="action-link'+(isFavorited?' saved':'')+'" id="save-btn" type="button" data-save="'+esc(data.slug||'')+'" aria-pressed="'+(isFavorited?'true':'false')+'" onclick="onHeroSaveClick(event,\''+esc(data.slug||'')+'\')">'+I.heart+' <span class="save-btn-label">'+esc((isFavorited?SAVED_LABELS:SAVE_LABELS)[lang]||(isFavorited?SAVED_LABELS.en:SAVE_LABELS.en))+'</span></button>'+
     '<button class="action-link" id="share-btn" onclick="handleShare(this)">'+I.share+' <span class="lo-i">ແຊຣ໌</span><span class="en-i">Share</span><span class="zh-i">分享</span></button>'+
     '<span class="pintag-badge">'+L.verified[lang]+'</span>'+
     '</div></div>'+

@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="favorites.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -558,20 +559,8 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function getSavedSet() {
-  try { return new Set(JSON.parse(localStorage.getItem('pintag_saved') || '[]')); }
-  catch(e) { return new Set(); }
-}
-
-function toggleSave(slug, e) {
-  e.preventDefault();
-  e.stopPropagation();
-  const saved = getSavedSet();
-  if (saved.has(slug)) { saved.delete(slug); } else { saved.add(slug); }
-  try { localStorage.setItem('pintag_saved', JSON.stringify([...saved])); } catch(e) {}
-  const btn = document.querySelector('[data-save="' + slug + '"]');
-  if (btn) btn.classList.toggle('saved', saved.has(slug));
-}
+// getSavedSet() / isSaved() / toggleSave() now come from favorites.js
+// (shared with listing.html so a saved property agrees everywhere).
 
 function getBadgeHtml(p, lang, isFeaturedCard) {
   const L = {
