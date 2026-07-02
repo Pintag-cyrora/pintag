@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
+<title>Pintag · ຊັບສິນທີ່ບັນທຶກໄວ້</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="favorites.js"></script>
+<script src="property-card.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --teal:#2D8C8C;--teal-light:#38A8A8;--teal-mark:rgba(45,140,140,0.18);
+  --ink:#1A2024;--ink-soft:#4A5558;--ink-muted:#8C9598;
+  --warm:#F7F3EC;--off:#F2EDE4;--white:#fff;
+  --border:rgba(26,32,36,0.07);--border-mid:rgba(26,32,36,0.10);
+  --r-card:3px;
+}
+
+body{
+  font-family:'DM Sans',sans-serif;font-weight:400;font-size:14px;line-height:1.7;
+  background-color:var(--warm);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='500'%3E%3Cpath d='M0 40C200 30 600 50 800 40M0 110C200 100 600 120 800 110M0 180C200 170 600 190 800 180M0 250C200 240 600 260 800 250M0 320C200 310 600 330 800 320M0 390C200 380 600 400 800 390M0 460C200 450 600 470 800 460' fill='none' stroke='%231A2024' stroke-width='0.4' stroke-opacity='0.032'/%3E%3C/svg%3E");
+  background-repeat:repeat;background-size:800px 500px;
+  color:var(--ink);-webkit-font-smoothing:antialiased;
+}
+
+/* ─── LANGUAGE ───────────────────────────────────────────────────────── */
+.lo{display:block;}.en{display:none;}.zh{display:none;}
+.lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
+body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
+body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}body.lang-en .zh-i{display:none;}
+body.lang-zh .lo{display:none;}body.lang-zh .en{display:none;}body.lang-zh .zh{display:block;}
+body.lang-zh .lo-i{display:none;}body.lang-zh .en-i{display:none;}body.lang-zh .zh-i{display:inline;}
+
+/* ─── NAV ────────────────────────────────────────────────────────────── */
+nav{
+  position:sticky;top:0;z-index:200;height:64px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 48px;
+  background:rgba(247,243,236,0.96);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
+.nav-wordmark{font-size:16px;font-weight:500;color:var(--ink);letter-spacing:-0.01em;}
+.nav-right{display:flex;align-items:center;gap:14px;}
+.lang-switcher{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;}
+.lang-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans',sans-serif;letter-spacing:0.02em;}
+.lang-btn.active{background:var(--ink);color:#fff;}
+.nav-home{font-size:12px;font-weight:400;color:var(--ink-muted);text-decoration:none;letter-spacing:0.03em;}
+.nav-home:hover{color:var(--teal);}
+
+/* ─── PAGE HEADER ────────────────────────────────────────────────────── */
+.page-header{background:var(--white);border-bottom:1px solid var(--border);padding:36px 48px 28px;}
+.page-header-inner{max-width:1200px;margin:0 auto;}
+.page-title-wrap{margin-bottom:6px;}
+.page-title-bar{display:block;width:20px;height:1.5px;background:var(--teal);margin-bottom:12px;opacity:0.7;}
+.page-title{font-size:clamp(22px,3.5vw,32px);font-weight:300;color:var(--ink);letter-spacing:-0.015em;display:inline;line-height:1.2;}
+.page-title-dot{display:inline-block;width:5px;height:5px;background:var(--teal);border-radius:50%;margin-left:5px;vertical-align:middle;position:relative;top:-2px;opacity:0.8;}
+.page-count{font-size:12px;font-weight:400;color:var(--ink-muted);margin-top:6px;letter-spacing:0.01em;}
+
+/* ─── CONTENT WRAPPER ────────────────────────────────────────────────── */
+.page-content{max-width:1200px;margin:0 auto;padding:40px 48px 80px;}
+
+/* ─── GRID — same editorial 12-col rhythm as listings.html ─────────── */
+.listings-grid{
+  display:grid;
+  grid-template-columns:repeat(12,1fr);
+  gap:28px;
+  row-gap:36px;
+}
+
+/* ─── STANDARD CARD — spans 4 columns (identical to listings.html) ─── */
+.prop-card{
+  grid-column:span 4;
+  background:var(--white);
+  border-radius:var(--r-card);
+  border:1px solid var(--border);
+  text-decoration:none;display:block;
+  transition:border-color 0.3s,box-shadow 0.3s,opacity 0.25s,transform 0.25s;
+  overflow:hidden;
+}
+.prop-card:hover{
+  border-color:rgba(26,32,36,0.14);
+  box-shadow:0 6px 28px rgba(26,32,36,0.05);
+}
+.prop-card.is-featured{
+  grid-column:1/-1;
+  display:grid;
+  grid-template-columns:1.85fr 1fr;
+  overflow:hidden;
+}
+.prop-card.is-featured .prop-card-img{aspect-ratio:unset;height:auto;min-height:360px;}
+.prop-card.is-featured .prop-card-img img{position:absolute;inset:0;width:100%;height:100%;}
+.prop-card.is-featured .prop-card-body{padding:36px 40px;display:flex;flex-direction:column;justify-content:center;}
+.prop-card.is-featured .card-title{font-size:22px;font-weight:300;margin-bottom:10px;letter-spacing:-0.015em;line-height:1.25;}
+.prop-card.is-featured .card-price{font-size:24px;font-weight:400;letter-spacing:-0.02em;margin-bottom:20px;}
+
+/* ─── IMAGE AREAS ────────────────────────────────────────────────────── */
+.prop-card-img{position:relative;overflow:hidden;background:var(--off);aspect-ratio:4/3;}
+.prop-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.7s cubic-bezier(0.16,1,0.3,1);}
+.prop-card:hover .prop-card-img img{transform:scale(1.025);}
+.prop-card-no-img{width:100%;height:100%;background:linear-gradient(145deg,#E8E3DB,#D8D3CB);}
+
+/* ─── OVERLAYS ───────────────────────────────────────────────────────── */
+.ov-tl{position:absolute;top:12px;left:12px;z-index:2;}
+.ov-tr{position:absolute;top:12px;right:12px;z-index:2;}
+.ov-br{position:absolute;bottom:12px;right:12px;z-index:2;}
+.ov-bl{position:absolute;bottom:12px;left:12px;z-index:2;}
+
+/* STATUS BADGES */
+.status-badge{
+  display:inline-block;
+  font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
+  padding:4px 9px;border-radius:3px;color:#fff;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  box-shadow:0 1px 5px rgba(0,0,0,0.22);
+}
+.badge-available{background:rgba(22,101,52,0.92);}
+.badge-curated{background:rgba(45,140,140,0.82);}
+.badge-sale{background:rgba(148,116,4,0.86);}
+.badge-rent{background:rgba(55,72,78,0.86);}
+.badge-land{background:rgba(80,52,14,0.86);}
+.badge-sold{background:rgba(185,28,28,0.94);}
+.badge-rented{background:rgba(194,65,0,0.92);}
+.badge-offer{background:rgba(30,64,175,0.88);}
+@media(max-width:800px){.status-badge{font-size:10px;padding:5px 10px;border-radius:4px;}}
+
+/* HEART BUTTON — filled here (everything on this page is saved); click removes it */
+.heart-btn{
+  width:28px;height:28px;
+  background:rgba(255,255,255,0.78);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border-radius:50%;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 0.2s;
+}
+.heart-btn:hover{background:rgba(255,255,255,0.95);}
+.heart-btn.saved svg{stroke:#D94040;fill:#D94040;}
+.heart-btn svg{transition:stroke 0.15s,fill 0.15s;}
+
+/* PHOTO COUNT */
+.photo-count{
+  display:inline-flex;align-items:center;gap:4px;
+  background:rgba(0,0,0,0.36);color:#fff;
+  font-size:9px;font-weight:400;
+  padding:2px 7px;border-radius:10px;
+  letter-spacing:0.02em;
+}
+
+/* AI BADGE */
+.ai-badge{
+  display:inline-block;
+  background:rgba(45,140,140,0.60);color:#fff;
+  font-size:8px;font-weight:500;
+  padding:3px 8px;border-radius:2px;letter-spacing:0.05em;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+}
+
+/* ─── CARD BODY ──────────────────────────────────────────────────────── */
+.prop-card-body{padding:18px 20px 20px;}
+.card-tag{font-size:9px;font-weight:400;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;opacity:0.85;}
+.card-title{font-size:14px;font-weight:400;color:var(--ink);margin-bottom:6px;line-height:1.4;letter-spacing:-0.005em;}
+.card-loc{font-size:11px;font-weight:400;color:var(--ink-muted);margin-bottom:14px;display:flex;align-items:center;gap:5px;}
+.card-specs{display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
+.card-spec{font-size:11px;font-weight:400;color:var(--ink-muted);}
+.card-spec span{font-weight:500;color:var(--ink-soft);}
+.card-price{font-size:16px;font-weight:500;color:var(--ink);letter-spacing:-0.01em;margin-bottom:14px;}
+.card-price-unit{font-size:11px;font-weight:400;color:var(--ink-muted);}
+.card-price-req{font-size:12px;font-weight:400;color:var(--ink-muted);font-style:italic;margin-bottom:14px;}
+.card-divider{height:1px;background:var(--border);margin:14px 0;}
+.card-agent{display:flex;align-items:center;gap:8px;}
+.agent-avatar{width:22px;height:22px;border-radius:50%;background:var(--off);border:1px solid var(--border);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:500;color:var(--ink-muted);}
+.agent-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+.agent-name{font-size:11px;font-weight:400;color:var(--ink-muted);line-height:1.3;}
+.agent-platform{font-size:9.5px;font-weight:400;color:var(--teal);opacity:0.8;}
+
+/* ── ACTIVITY BADGES ──────────────────────────────── */
+.act-badges{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;}
+.act-badge{font-size:9px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;padding:3px 7px;border-radius:3px;}
+.act-badge-new  {background:rgba(22,101,52,0.10);color:#15803D;border:1px solid rgba(22,101,52,0.18);}
+.act-badge-feat {background:rgba(161,110,0,0.10);color:#92400E;border:1px solid rgba(161,110,0,0.20);}
+.act-badge-vfy  {background:rgba(29,78,216,0.10);color:#1D4ED8;border:1px solid rgba(29,78,216,0.18);}
+.act-badge-drop {background:rgba(185,28,28,0.10);color:#B91C1C;border:1px solid rgba(185,28,28,0.18);}
+.act-badge-hot  {background:rgba(194,65,0,0.10); color:#C24100;border:1px solid rgba(194,65,0,0.20);}
+.act-badge-val  {background:rgba(0,127,63,0.10);color:#0a7a3e;border:1px solid rgba(0,127,63,0.18);}
+.badge-new-listing{display:inline-block;font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:4px 8px;border-radius:3px;color:#fff;background:rgba(22,101,52,0.90);backdrop-filter:blur(8px);box-shadow:0 1px 4px rgba(0,0,0,0.18);margin-top:4px;}
+.card-activity-line{font-size:10px;color:var(--ink-muted);opacity:0.65;margin-top:4px;}
+
+/* ─── LOADING ────────────────────────────────────────────────────────── */
+.state-center{grid-column:1/-1;text-align:center;padding:100px 24px;color:var(--ink-muted);}
+.state-title{font-size:16px;font-weight:400;color:var(--ink-soft);margin-bottom:8px;}
+.loading-dots{display:flex;gap:8px;justify-content:center;margin-bottom:20px;}
+.loading-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);opacity:0.5;animation:dotPulse 1.4s ease-in-out infinite;}
+.loading-dot:nth-child(2){animation-delay:0.2s;}
+.loading-dot:nth-child(3){animation-delay:0.4s;}
+@keyframes dotPulse{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:0.7;transform:scale(1.1);}}
+
+/* ─── ATTRACTIVE EMPTY STATE ─────────────────────────────────────────── */
+.empty-state{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;text-align:center;padding:110px 24px 100px;}
+.empty-icon{width:68px;height:68px;border-radius:50%;background:rgba(45,140,140,0.08);display:flex;align-items:center;justify-content:center;margin-bottom:26px;color:var(--teal);}
+.empty-title{font-size:20px;font-weight:500;color:var(--ink);margin-bottom:10px;letter-spacing:-0.01em;}
+.empty-sub{font-size:13px;color:var(--ink-muted);max-width:380px;line-height:1.7;margin-bottom:30px;}
+.empty-cta{display:inline-flex;align-items:center;gap:8px;background:var(--teal);color:#fff;font-size:13px;font-weight:500;padding:12px 26px;border-radius:6px;text-decoration:none;transition:background 0.15s,transform 0.15s;}
+.empty-cta:hover{background:#256f6f;transform:translateY(-1px);}
+
+/* ─── RESPONSIVE ─────────────────────────────────────────────────────── */
+@media(max-width:1100px){
+  .page-content{padding:36px 36px 70px;}
+  .page-header{padding:32px 36px 24px;}
+  nav{padding:0 36px;}
+  .listings-grid{gap:22px;row-gap:28px;}
+}
+@media(max-width:800px){
+  .listings-grid{grid-template-columns:repeat(2,1fr);gap:18px;row-gap:24px;}
+  .prop-card{grid-column:span 1;}
+  .prop-card.is-featured{grid-column:1/-1;grid-template-columns:1fr;}
+  .prop-card.is-featured .prop-card-img{height:260px;min-height:0;}
+  .prop-card.is-featured .prop-card-body{padding:24px 24px;}
+  .prop-card.is-featured .card-title{font-size:18px;}
+  .prop-card.is-featured .card-price{font-size:18px;}
+  nav{padding:0 20px;height:56px;}
+  .page-header{padding:24px 20px 20px;}
+  .page-content{padding:28px 20px 60px;}
+  .empty-state{padding:80px 20px 70px;}
+}
+@media(max-width:500px){
+  .listings-grid{grid-template-columns:1fr;gap:16px;row-gap:20px;}
+  .prop-card{grid-column:span 1;}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">
+    <svg width="26" height="22" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision">
+      <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
+      <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
+    </svg>
+    <span class="nav-wordmark">Pintag</span>
+  </a>
+  <div class="nav-right">
+    <div class="lang-switcher">
+      <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
+      <button class="lang-btn" onclick="setLang('en',this)">EN</button>
+      <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
+    </div>
+    <a href="listings.html" class="nav-home"><span class="lo-i">← ລາຍການ</span><span class="en-i">← Listings</span><span class="zh-i">← 房源</span></a>
+  </div>
+</nav>
+
+<div class="page-header">
+  <div class="page-header-inner">
+    <div class="page-title-wrap">
+      <span class="page-title-bar"></span>
+      <h1 class="page-title">
+        <span class="lo-i">ຊັບສິນທີ່ບັນທຶກໄວ້</span>
+        <span class="en-i">Saved Properties</span>
+        <span class="zh-i">收藏房源</span>
+      </h1><span class="page-title-dot"></span>
+    </div>
+    <p class="page-count" id="count-text">
+      <span class="lo-i">ກຳລັງໂຫຼດ...</span>
+      <span class="en-i">Loading...</span>
+      <span class="zh-i">加载中...</span>
+    </p>
+  </div>
+</div>
+
+<div class="page-content">
+  <div id="saved-grid" class="listings-grid">
+    <div class="state-center">
+      <div class="loading-dots">
+        <div class="loading-dot"></div>
+        <div class="loading-dot"></div>
+        <div class="loading-dot"></div>
+      </div>
+      <p class="lo-i">ກຳລັງໂຫຼດ...</p>
+      <p class="en-i">Loading...</p>
+      <p class="zh-i">加载中...</p>
+    </div>
+  </div>
+</div>
+
+<script>
+
+const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+
+// Only the columns buildPropCard() / getAgentHtml() actually read — keeps
+// this fetch light regardless of how many extra columns the table has.
+const SAVED_COLS = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,' +
+  'images,bedrooms,bathrooms,sqm,price_display,price_previous,sale_price,rent_price,' +
+  'transaction_type,property_type,status,is_featured,agent_name,agent_photo,created_at';
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function getCurrentLang() {
+  if (document.body.classList.contains('lang-en')) return 'en';
+  if (document.body.classList.contains('lang-zh')) return 'zh';
+  return 'lo';
+}
+
+let allSaved = [];
+
+function updateCount(n, lang) {
+  var el = document.getElementById('count-text');
+  if (!el) return;
+  el.innerHTML =
+    '<span class="lo-i">' + n + ' ຊັບສິນທີ່ບັນທຶກໄວ້</span>' +
+    '<span class="en-i">' + n + ' saved ' + (n === 1 ? 'property' : 'properties') + '</span>' +
+    '<span class="zh-i">' + n + ' 个收藏房源</span>';
+}
+
+function emptyStateHtml() {
+  return (
+    '<div class="empty-state">' +
+      '<div class="empty-icon">' +
+        '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
+      '</div>' +
+      '<h2 class="empty-title">' +
+        '<span class="lo-i">ຍັງບໍ່ມີຊັບສິນທີ່ບັນທຶກໄວ້</span>' +
+        '<span class="en-i">No saved properties yet</span>' +
+        '<span class="zh-i">暂无收藏房源</span>' +
+      '</h2>' +
+      '<p class="empty-sub">' +
+        '<span class="lo-i">ກົດຮູບຫົວໃຈຢູ່ຊັບສິນທີ່ທ່ານມັກ ເພື່ອບັນທຶກໄວ້ເບິ່ງບ່ອນນີ້ພາຍຫຼັງ</span>' +
+        '<span class="en-i">Tap the heart on any listing to save it here and come back to it later</span>' +
+        '<span class="zh-i">点击房源上的爱心图标，即可将其收藏于此，方便日后查看</span>' +
+      '</p>' +
+      '<a href="listings.html" class="empty-cta">' +
+        '<span class="lo-i">ເບິ່ງລາຍການທັງໝົດ</span><span class="en-i">Browse Listings</span><span class="zh-i">浏览全部房源</span>' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>' +
+      '</a>' +
+    '</div>'
+  );
+}
+
+function errorStateHtml() {
+  return (
+    '<div class="state-center">' +
+      '<p class="state-title lo-i">ເກີດຂໍ້ຜິດພາດ ກະລຸນາລອງໃໝ່</p>' +
+      '<p class="state-title en-i">Something went wrong, please try again</p>' +
+      '<p class="state-title zh-i">出现错误，请重试</p>' +
+    '</div>'
+  );
+}
+
+function renderSaved() {
+  var lang = getCurrentLang();
+  var container = document.getElementById('saved-grid');
+  updateCount(allSaved.length, lang);
+
+  if (!allSaved.length) {
+    container.innerHTML = emptyStateHtml();
+    return;
+  }
+
+  var saved = getSavedSet();
+  container.innerHTML = '';
+  allSaved.forEach(function (p, idx) {
+    // No editorial "featured" layout here — that's a platform-curation
+    // concept for the browse grid, not meaningful on a personal list.
+    var card = buildPropCard(p, lang, saved, false, idx);
+
+    // Every card on this page starts saved, so unsaving it here means
+    // "remove from this page." buildPropCard's default heart button calls
+    // toggleSave(), which calls stopPropagation() (needed so the click
+    // doesn't also navigate via the card's <a> link) — that also blocks
+    // a delegated listener on an ancestor from ever seeing the bubbled
+    // event, so instead of listening on the grid, replace this card's
+    // heart handler directly: still calls the shared toggleSave(), then
+    // reacts to the result.
+    var heartBtn = card.querySelector('.heart-btn');
+    if (heartBtn) {
+      heartBtn.onclick = function (e) {
+        var stillSaved = toggleSave(p.slug, e);
+        if (!stillSaved) removeCardWithAnimation(card, p.slug);
+      };
+    }
+
+    container.appendChild(card);
+  });
+}
+
+function removeCardWithAnimation(card, slug) {
+  card.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+  card.style.opacity = '0';
+  card.style.transform = 'scale(0.96)';
+  setTimeout(function () {
+    card.remove();
+    allSaved = allSaved.filter(function (p) { return p.slug !== slug; });
+    updateCount(allSaved.length, getCurrentLang());
+    if (!allSaved.length) {
+      document.getElementById('saved-grid').innerHTML = emptyStateHtml();
+    }
+  }, 250);
+}
+
+async function loadSaved() {
+  var slugs = Array.from(getSavedSet());
+  if (!slugs.length) {
+    allSaved = [];
+    renderSaved();
+    return;
+  }
+  try {
+    var url = SUPABASE_URL + '/rest/v1/properties?slug=in.(' +
+      slugs.map(function (s) { return encodeURIComponent(s); }).join(',') +
+      ')&select=' + SAVED_COLS;
+    var res = await fetch(url, { headers: { apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON } });
+    var data = await res.json();
+    if (!Array.isArray(data)) throw new Error('Unexpected response');
+
+    // Prune slugs that no longer resolve to a listing (deleted/unpublished)
+    // so they don't sit in localStorage forever as dead references.
+    var foundSlugs = {};
+    data.forEach(function (p) { foundSlugs[p.slug] = true; });
+    slugs.forEach(function (s) { if (!foundSlugs[s]) toggleSave(s); });
+
+    // Preserve the order the user saved them in (most-recently-saved first).
+    var order = {};
+    slugs.forEach(function (s, i) { order[s] = i; });
+    data.sort(function (a, b) { return order[b.slug] - order[a.slug]; });
+
+    allSaved = data;
+    renderSaved();
+  } catch (e) {
+    document.getElementById('saved-grid').innerHTML = errorStateHtml();
+  }
+}
+
+function setLang(lang, btn) {
+  document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
+  document.querySelectorAll('.lang-btn').forEach(function (b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  renderSaved();
+}
+
+loadSaved();
+
+</script>
+</body>
+</html>
