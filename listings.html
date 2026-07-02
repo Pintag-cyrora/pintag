@@ -15,7 +15,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
-  --teal:#2D8C8C;--teal-light:#38A8A8;--teal-mark:rgba(45,140,140,0.18);
+  --teal:#237373;--teal-light:#38A8A8;--teal-mark:rgba(45,140,140,0.18);
   --ink:#1A2024;--ink-soft:#4A5558;--ink-muted:#8C9598;
   --warm:#F7F3EC;--off:#F2EDE4;--white:#fff;
   --border:rgba(26,32,36,0.07);--border-mid:rgba(26,32,36,0.10);
@@ -97,6 +97,19 @@ nav{
 .filter-btn.active{background:var(--ink);color:#fff;border-color:var(--ink);}
 .filter-btn:hover:not(.active){background:rgba(26,32,36,0.04);border-color:rgba(26,32,36,0.15);}
 .filter-sep{width:1px;height:18px;background:var(--border);flex-shrink:0;}
+.search-box{
+  display:flex;align-items:center;gap:6px;flex-shrink:0;
+  border:1px solid var(--border);border-radius:2px;
+  padding:5px 10px;color:var(--ink-muted);background:transparent;
+}
+.search-box svg{flex-shrink:0;}
+.search-box input{
+  border:none;outline:none;background:transparent;
+  font-family:'DM Sans',sans-serif;font-size:11px;color:var(--ink);
+  width:150px;min-width:0;
+}
+.search-box input::placeholder{color:var(--ink-muted);}
+@media(max-width:800px){.search-box input{width:110px;}}
 .sort-select{
   font-size:11px;font-weight:400;padding:5px 24px 5px 10px;
   border-radius:2px;
@@ -463,6 +476,11 @@ nav{
 
 <div class="filter-bar">
   <div class="filter-bar-inner">
+    <div class="search-box">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="search-input" oninput="onSearchInput(this.value)">
+    </div>
+    <div class="filter-sep"></div>
     <div class="filters" id="filters">
       <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">
         <span class="lo-i">ທັງໝົດ</span><span class="en-i">All</span><span class="zh-i">全部</span>
@@ -567,6 +585,8 @@ function esc(s) {
 let allProperties = [];
 let currentFilter = 'all';
 let currentSort = 'newest';
+let currentSearch = '';
+let _searchDebounce = null;
 
 function getCurrentLang() {
   if (document.body.classList.contains('lang-en')) return 'en';
@@ -694,8 +714,9 @@ function renderMap() {
   _markers = [];
   _activeSlug = null;
 
-  var filtered = currentFilter === 'all' ? allProperties : allProperties.filter(function(p){
-    return p.transaction_type === currentFilter || p.property_type === currentFilter;
+  var filtered = allProperties.filter(function(p){
+    return (currentFilter === 'all' || p.transaction_type === currentFilter || p.property_type === currentFilter)
+      && matchesSearch(p, currentSearch);
   });
 
   filtered.forEach(function(p) {
@@ -812,9 +833,71 @@ function setFilter(filter, btn) {
   currentFilter = filter;
   document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
+  updateFilterUrl(filter);
   closeMapPreview();
   if (_viewMode === 'map') renderMap();
   else renderListings();
+}
+
+// Keep the URL in sync with the active filter — makes filtered views
+// bookmarkable/shareable, survives a refresh, and is what makes deep
+// links like listings.html?filter=for_rent (used by listing.html's nav)
+// actually work.
+function updateFilterUrl(filter) {
+  var url = new URL(window.location.href);
+  if (filter && filter !== 'all') url.searchParams.set('filter', filter);
+  else url.searchParams.delete('filter');
+  history.replaceState(null, '', url.toString());
+}
+
+function updateSearchUrl(term) {
+  var url = new URL(window.location.href);
+  if (term) url.searchParams.set('q', term);
+  else url.searchParams.delete('q');
+  history.replaceState(null, '', url.toString());
+}
+
+// Apply ?filter= and ?q= from the URL on load, before the first render,
+// so a deep link (e.g. listings.html?filter=for_rent from listing.html's
+// nav, or a search submitted from the homepage) lands on the right view.
+function applyFilterFromUrl() {
+  var params = new URLSearchParams(window.location.search);
+  var requested = params.get('filter');
+  var btn = requested ? document.querySelector('.filter-btn[data-filter="' + requested + '"]') : null;
+  if (btn) {
+    currentFilter = requested;
+    document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+  } // unknown or absent value — default "All" stays active
+
+  var q = (params.get('q') || '').trim();
+  if (q) {
+    currentSearch = q;
+    var input = document.getElementById('search-input');
+    if (input) input.value = q;
+  }
+}
+
+// Free-text search across title/district/village — matches the same
+// fields regardless of current language, since a user might type in
+// any of the three.
+function onSearchInput(value) {
+  currentSearch = value.trim();
+  if (_searchDebounce) clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(function() {
+    updateSearchUrl(currentSearch);
+    if (_viewMode === 'map') renderMap(); else renderListings();
+  }, 200);
+}
+
+function matchesSearch(p, term) {
+  if (!term) return true;
+  var haystack = [
+    p.title_lo, p.title_en, p.title_zh,
+    p.district_lo, p.district_en, p.district_zh, p.district,
+    p.village_lo, p.village_en, p.village
+  ].filter(Boolean).join(' ').toLowerCase();
+  return haystack.indexOf(term.toLowerCase()) > -1;
 }
 
 function setSort(val) {
@@ -823,8 +906,9 @@ function setSort(val) {
 }
 
 function renderListings() {
-  var filtered = currentFilter === 'all' ? allProperties : allProperties.filter(function(p){
-    return p.transaction_type === currentFilter || p.property_type === currentFilter;
+  var filtered = allProperties.filter(function(p){
+    return (currentFilter === 'all' || p.transaction_type === currentFilter || p.property_type === currentFilter)
+      && matchesSearch(p, currentSearch);
   });
   var sorted = sortProperties(filtered);
 
@@ -877,9 +961,9 @@ function renderListings() {
         '<p class="state-title lo-i">ບໍ່ມີລາຍການ</p>' +
         '<p class="state-title en-i">No listings found</p>' +
         '<p class="state-title zh-i">暂无房源</p>' +
-        '<p class="lo-i">ລອງປ່ຽນໂຕກອງ</p>' +
-        '<p class="en-i">Try a different filter</p>' +
-        '<p class="zh-i">尝试其他筛选条件</p>' +
+        '<p class="lo-i">ລອງປ່ຽນຄຳຄົ້ນຫາ ຫຼື ໂຕກອງ</p>' +
+        '<p class="en-i">Try a different search term or filter</p>' +
+        '<p class="zh-i">请尝试其他搜索词或筛选条件</p>' +
       '</div>';
     return;
   }
@@ -905,14 +989,24 @@ function updateSortLabels() {
   });
 }
 
+const SEARCH_PLACEHOLDER = {
+  lo: 'ຄົ້ນຫາທຳເລ, ເມືອງ, ບ້ານ...',
+  en: 'Search location, district, village...',
+  zh: '搜索位置、区、村...'
+};
+
 function setLang(lang, btn) {
   document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
   document.querySelectorAll('.lang-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
+  var input = document.getElementById('search-input');
+  if (input) input.placeholder = SEARCH_PLACEHOLDER[lang] || SEARCH_PLACEHOLDER.en;
   updateSortLabels();
   renderListings();
 }
 
+document.getElementById('search-input').placeholder = SEARCH_PLACEHOLDER.lo;
+applyFilterFromUrl();
 loadListings();
 
 </script>

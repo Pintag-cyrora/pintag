@@ -18,6 +18,10 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://pintag.io/og-preview.jpg">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="favorites.js"></script>
+<script src="compare.js"></script>
+<script src="property-card.js"></script>
+<script src="compare-bar.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
@@ -71,11 +75,36 @@ nav{
   width:36px;height:36px;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:5px;cursor:pointer;border:none;background:none;padding:4px;
+  position:relative;
 }
 .nav-menu-icon span{
   display:block;width:20px;height:1.5px;
   background:#1A2024;border-radius:1px;
+  transition:transform 0.2s,opacity 0.2s;
 }
+.nav-menu-icon.open span:first-child{transform:translateY(3.25px) rotate(45deg);}
+.nav-menu-icon.open span:last-child{transform:translateY(-3.25px) rotate(-45deg);}
+
+.nav-dropdown-wrap{position:relative;}
+.nav-dropdown{
+  position:absolute;top:calc(100% + 10px);right:0;z-index:150;
+  min-width:220px;background:#fff;border-radius:10px;
+  border:1px solid rgba(26,32,36,0.08);box-shadow:0 12px 32px rgba(0,0,0,0.12);
+  padding:8px;display:none;
+}
+.nav-dropdown.open{display:block;}
+.nav-dropdown-link{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:7px;text-decoration:none;
+  font-size:13px;font-weight:400;color:#1A2024;
+  transition:background 0.15s;
+}
+.nav-dropdown-link:hover{background:rgba(26,32,36,0.05);}
+.nav-dropdown-count{
+  margin-left:auto;font-size:10.5px;font-weight:600;color:#fff;
+  background:#237373;border-radius:999px;padding:1px 7px;min-width:16px;text-align:center;
+}
+.nav-dropdown-sep{height:1px;background:rgba(26,32,36,0.07);margin:6px 4px;}
 
 /* ─── HERO ─────────────────────────────────────────────── */
 .hero{
@@ -208,11 +237,41 @@ nav{
 }
 .location-pin-row{
   display:flex;align-items:center;gap:6px;
-  font-size:12.5px;font-weight:500;color:#2D8C8C;
+  font-size:12.5px;font-weight:500;color:#237373;
 }
 .location-tagline{
   font-size:12px;font-weight:300;color:#8C9598;
   letter-spacing:0.01em;
+}
+
+/* ─── HOME SEARCH BAR ────────────────────────────────── */
+.home-search{
+  display:flex;align-items:center;gap:8px;
+  width:100%;max-width:540px;margin-top:14px;
+  background:#fff;border:1px solid rgba(26,32,36,0.10);border-radius:999px;
+  padding:6px 6px 6px 18px;
+  box-shadow:0 4px 18px rgba(26,32,36,0.05);
+  transition:border-color 0.2s,box-shadow 0.2s;
+}
+.home-search:focus-within{border-color:#237373;box-shadow:0 6px 22px rgba(45,140,140,0.12);}
+.home-search-icon{color:#8C9598;flex-shrink:0;display:flex;}
+.home-search input{
+  flex:1;border:none;outline:none;background:transparent;
+  font-family:"DM Sans",sans-serif;font-size:13.5px;color:#1A2024;
+  min-width:0;padding:8px 0;
+}
+.home-search input::placeholder{color:#8C9598;}
+.home-search button{
+  flex-shrink:0;border:none;cursor:pointer;
+  background:#1A2024;color:#fff;
+  font-family:"DM Sans",sans-serif;font-size:12.5px;font-weight:500;
+  padding:10px 20px;border-radius:999px;letter-spacing:0.02em;
+  transition:background 0.2s;
+}
+.home-search button:hover{background:#237373;}
+@media(max-width:480px){
+  .home-search{padding:5px 5px 5px 14px;}
+  .home-search button{padding:9px 14px;font-size:12px;}
 }
 
 /* ─── FEATURED SECTION ───────────────────────────────── */
@@ -227,7 +286,7 @@ nav{
 .featured-title-block{}
 .featured-eyebrow{
   font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;
-  color:#2D8C8C;margin-bottom:6px;opacity:0.8;
+  color:#237373;margin-bottom:6px;opacity:0.8;
 }
 .featured-title{
   font-size:22px;font-weight:400;color:#1A2024;
@@ -238,114 +297,129 @@ nav{
 }
 .featured-view-all{
   display:inline-flex;align-items:center;gap:5px;
-  font-size:12px;font-weight:400;color:#2D8C8C;
+  font-size:12px;font-weight:400;color:#237373;
   text-decoration:none;letter-spacing:0.02em;
   transition:gap 0.2s;flex-shrink:0;
 }
 .featured-view-all:hover{gap:9px;}
 
-/* ─── CARD GRID ─────────────────────────────────────────── */
+/* ─── CARD GRID — same shared card component as listings.html /
+   saved-properties.html, so a listing looks and behaves identically
+   wherever it appears. ─────────────────────────────────────────── */
 .card-grid{
   display:grid;
   grid-template-columns:repeat(4,1fr);
   gap:16px;
 }
 .prop-card{
-  display:block;text-decoration:none;color:inherit;
-  background:transparent;
+  background:var(--white,#fff);
   border-radius:3px;
+  border:1px solid rgba(26,32,36,0.07);
+  text-decoration:none;display:block;
+  transition:border-color 0.3s,box-shadow 0.3s;
   overflow:hidden;
-  position:relative;
-  transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
 }
-.prop-card:hover{transform:translateY(-3px);}
+.prop-card:hover{
+  border-color:rgba(26,32,36,0.14);
+  box-shadow:0 6px 28px rgba(26,32,36,0.05);
+}
+.prop-card-img{position:relative;overflow:hidden;background:#F2EDE4;aspect-ratio:4/3;}
+.prop-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.7s cubic-bezier(0.16,1,0.3,1);}
+.prop-card:hover .prop-card-img img{transform:scale(1.025);}
+.prop-card-no-img{width:100%;height:100%;background:linear-gradient(145deg,#E8E3DB,#D8D3CB);}
 
-.card-img{
-  position:relative;aspect-ratio:3/4;overflow:hidden;
-  background:#EDE8E0;border-radius:3px;
-}
-.card-img img{
-  width:100%;height:100%;object-fit:cover;display:block;
-  transition:transform 0.7s cubic-bezier(0.16,1,0.3,1);
-}
-.prop-card:hover .card-img img{transform:scale(1.04);}
-.card-img-placeholder{
-  width:100%;height:100%;
-  background:linear-gradient(145deg,#E0DBD3,#CEC9C1);
-}
+.ov-tl{position:absolute;top:12px;left:12px;z-index:2;}
+.ov-tr{position:absolute;top:12px;right:12px;z-index:2;display:flex;flex-direction:column;gap:6px;align-items:flex-end;}
+.ov-br{position:absolute;bottom:12px;right:12px;z-index:2;}
+.ov-bl{position:absolute;bottom:12px;left:12px;z-index:2;}
 
-/* bottom gradient overlay — where metadata lives */
-.card-img::after{
-  content:'';position:absolute;inset:0;
-  background:linear-gradient(
-    to bottom,
-    transparent 30%,
-    rgba(8,12,16,0.55) 70%,
-    rgba(8,12,16,0.82) 100%
-  );
-  pointer-events:none;border-radius:3px;
-}
-
-.card-badge{
-  position:absolute;top:11px;left:11px;z-index:3;
-  font-size:8px;font-weight:400;letter-spacing:0.09em;text-transform:uppercase;
-  padding:3px 8px;border-radius:2px;color:rgba(255,255,255,0.9);
-  background:rgba(255,255,255,0.14);
+.status-badge{
+  display:inline-block;
+  font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
+  padding:4px 9px;border-radius:3px;color:#fff;
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  border:1px solid rgba(255,255,255,0.18);
+  box-shadow:0 1px 5px rgba(0,0,0,0.22);
 }
-.card-heart{
-  position:absolute;top:10px;right:10px;z-index:3;
-  width:28px;height:28px;border-radius:50%;
-  background:rgba(255,255,255,0.82);
-  backdrop-filter:blur(4px);border:none;cursor:pointer;
+.badge-available{background:rgba(22,101,52,0.92);}
+.badge-curated{background:rgba(45,140,140,0.82);}
+.badge-sale{background:rgba(148,116,4,0.86);}
+.badge-rent{background:rgba(55,72,78,0.86);}
+.badge-land{background:rgba(80,52,14,0.86);}
+.badge-sold{background:rgba(185,28,28,0.94);}
+.badge-rented{background:rgba(194,65,0,0.92);}
+.badge-offer{background:rgba(30,64,175,0.88);}
+.badge-new-listing{display:inline-block;font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:4px 8px;border-radius:3px;color:#fff;background:rgba(22,101,52,0.90);backdrop-filter:blur(8px);box-shadow:0 1px 4px rgba(0,0,0,0.18);margin-top:4px;}
+
+.heart-btn{
+  width:28px;height:28px;
+  background:rgba(255,255,255,0.78);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border-radius:50%;border:none;cursor:pointer;
   display:flex;align-items:center;justify-content:center;
+  transition:background 0.2s;
+}
+.heart-btn:hover{background:rgba(255,255,255,0.95);}
+.heart-btn.saved svg{stroke:#D94040;fill:#D94040;}
+.heart-btn svg{transition:stroke 0.15s,fill 0.15s;}
+
+.compare-btn{
+  width:28px;height:28px;
+  background:rgba(255,255,255,0.78);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border-radius:8px;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 0.2s;
+}
+.compare-btn:hover{background:rgba(255,255,255,0.95);}
+.compare-btn svg rect{transition:fill 0.15s,stroke 0.15s;}
+.compare-btn.comparing svg rect{fill:#237373;stroke:#237373;}
+.compare-btn.comparing svg .cm{stroke-opacity:1;}
+
+.photo-count{
+  display:inline-flex;align-items:center;gap:4px;
+  background:rgba(0,0,0,0.36);color:#fff;
+  font-size:9px;font-weight:400;padding:2px 7px;border-radius:10px;letter-spacing:0.02em;
+}
+.ai-badge{
+  display:inline-block;background:rgba(45,140,140,0.60);color:#fff;
+  font-size:8px;font-weight:500;padding:3px 8px;border-radius:2px;letter-spacing:0.05em;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
 }
 
-/* metadata — overlaid on image */
-.card-body{
-  position:absolute;bottom:0;left:0;right:0;z-index:2;
-  padding:14px 14px 16px;
-}
-.card-price-row{
-  display:flex;align-items:baseline;gap:4px;
-  margin-bottom:4px;
-}
-.card-price{
-  font-size:15px;font-weight:500;color:#fff;
-  letter-spacing:-0.01em;line-height:1;
-}
-.card-price-unit{font-size:11px;font-weight:300;color:rgba(255,255,255,0.65);}
-.card-loc{
-  display:flex;align-items:center;gap:4px;
-  font-size:10.5px;color:rgba(255,255,255,0.6);margin-bottom:7px;
-}
-.card-loc svg{opacity:0.7;}
-.card-specs{
-  display:flex;gap:10px;
-}
-.card-spec{
-  display:flex;align-items:center;gap:3px;
-  font-size:10.5px;color:rgba(255,255,255,0.55);
-}
+.prop-card-body{padding:14px 15px 16px;}
+.card-tag{font-size:9px;font-weight:400;letter-spacing:0.1em;text-transform:uppercase;color:#237373;margin-bottom:8px;opacity:0.85;}
+.card-title{font-size:13.5px;font-weight:400;color:#1A2024;margin-bottom:6px;line-height:1.4;letter-spacing:-0.005em;}
+.card-loc{font-size:11px;font-weight:400;color:#8C9598;margin-bottom:12px;display:flex;align-items:center;gap:5px;}
+.card-specs{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
+.card-spec{font-size:11px;font-weight:400;color:#8C9598;}
+.card-spec span{font-weight:500;color:#4A5558;}
+.card-price{font-size:15px;font-weight:500;color:#1A2024;letter-spacing:-0.01em;margin-bottom:8px;}
+.card-price-unit{font-size:11px;font-weight:400;color:#8C9598;}
+.card-price-req{font-size:12px;font-weight:400;color:#8C9598;font-style:italic;margin-bottom:8px;}
+.card-divider{height:1px;background:rgba(26,32,36,0.07);margin:12px 0;}
+.card-agent{display:flex;align-items:center;gap:8px;}
+.agent-avatar{width:20px;height:20px;border-radius:50%;background:#F2EDE4;border:1px solid rgba(26,32,36,0.07);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:500;color:#8C9598;}
+.agent-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+.agent-name{font-size:11px;font-weight:400;color:#8C9598;line-height:1.3;}
+.agent-platform{font-size:9.5px;font-weight:400;color:#237373;opacity:0.8;}
+.act-badges{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;}
+.act-badge{font-size:9px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;padding:3px 7px;border-radius:3px;}
+.act-badge-new  {background:rgba(22,101,52,0.10);color:#15803D;border:1px solid rgba(22,101,52,0.18);}
+.act-badge-feat {background:rgba(161,110,0,0.10);color:#92400E;border:1px solid rgba(161,110,0,0.20);}
+.act-badge-vfy  {background:rgba(29,78,216,0.10);color:#1D4ED8;border:1px solid rgba(29,78,216,0.18);}
+.act-badge-drop {background:rgba(185,28,28,0.10);color:#B91C1C;border:1px solid rgba(185,28,28,0.18);}
+.act-badge-hot  {background:rgba(194,65,0,0.10); color:#C24100;border:1px solid rgba(194,65,0,0.20);}
+.act-badge-val  {background:rgba(0,127,63,0.10);color:#0a7a3e;border:1px solid rgba(0,127,63,0.18);}
+.card-activity-line{font-size:10px;color:#8C9598;opacity:0.65;margin-top:4px;}
 
-/* loading shimmer */
-.card-shimmer{
-  background:linear-gradient(90deg,#EDE8E0 25%,#E4E0D8 50%,#EDE8E0 75%);
-  background-size:200% 100%;
-  animation:shimmer 1.4s infinite;
-}
-@keyframes shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
-.shimmer-card{
-  background:#fff;border-radius:3px;
-  border:1px solid rgba(26,32,36,0.07);overflow:hidden;
-}
-.shimmer-img{aspect-ratio:4/3;width:100%;}
-.shimmer-body{padding:14px 15px;}
-.shimmer-line{height:12px;border-radius:2px;margin-bottom:8px;}
-.shimmer-line.wide{width:70%;}
-.shimmer-line.mid{width:50%;}
-.shimmer-line.short{width:35%;}
+/* loading + empty/error state — same pattern used on listings.html */
+.state-center{grid-column:1/-1;text-align:center;padding:56px 24px;color:#8C9598;}
+.state-title{font-size:14px;font-weight:400;color:#4A5558;margin-bottom:6px;}
+.loading-dots{display:flex;gap:8px;justify-content:center;margin-bottom:16px;}
+.loading-dot{width:6px;height:6px;border-radius:50%;background:#237373;opacity:0.5;animation:dotPulse 1.4s ease-in-out infinite;}
+.loading-dot:nth-child(2){animation-delay:0.2s;}
+.loading-dot:nth-child(3){animation-delay:0.4s;}
+@keyframes dotPulse{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:0.7;transform:scale(1.1);}}
 
 /* ─── RESPONSIVE ─────────────────────────────────────────── */
 @media(max-width:1000px){
@@ -405,7 +479,7 @@ nav{
   font-size:11.5px;color:#8C9598;text-decoration:none;
   letter-spacing:0.02em;transition:color 0.2s;
 }
-.footer-link:hover{color:#2D8C8C;}
+.footer-link:hover{color:#237373;}
 .footer-sep{color:rgba(26,32,36,0.15);font-size:11px;}
 @media(max-width:700px){
   .site-footer{padding:14px 16px;}
@@ -430,14 +504,32 @@ nav{
     <button class="nav-lang-item" onclick="setLang('zh',this)">中文</button>
   </div>
   <div class="nav-right">
-    <a href="for-agents.html" class="nav-agent-btn">
+    <a href="agent-login.html" class="nav-agent-btn">
       <span class="lo-i">ເຂົ້າສູ່ລະບົບ</span>
       <span class="en-i">Agent login</span>
       <span class="zh-i">经纪登录</span>
     </a>
-    <button class="nav-menu-icon" aria-label="Menu">
-      <span></span><span></span>
-    </button>
+    <div class="nav-dropdown-wrap">
+      <button class="nav-menu-icon" id="nav-menu-btn" aria-label="Menu" aria-expanded="false" onclick="toggleNavMenu()">
+        <span></span><span></span>
+      </button>
+      <div class="nav-dropdown" id="nav-dropdown">
+        <a href="listings.html" class="nav-dropdown-link">
+          <span class="lo-i">ລາຍການ</span><span class="en-i">Listings</span><span class="zh-i">房源</span>
+        </a>
+        <a href="saved-properties.html" class="nav-dropdown-link">
+          <span class="lo-i">ບັນທຶກໄວ້</span><span class="en-i">Saved Properties</span><span class="zh-i">收藏房源</span>
+          <span class="nav-dropdown-count" id="nav-saved-count" style="display:none;"></span>
+        </a>
+        <div class="nav-dropdown-sep"></div>
+        <a href="for-agents.html" class="nav-dropdown-link">
+          <span class="lo-i">ສຳລັບຕົວແທນ</span><span class="en-i">For Agents</span><span class="zh-i">经纪合作</span>
+        </a>
+        <a href="https://wa.me/85620542966655" target="_blank" rel="noopener" class="nav-dropdown-link">
+          <span class="lo-i">ຕິດຕໍ່ WhatsApp</span><span class="en-i">WhatsApp Us</span><span class="zh-i">WhatsApp联系我们</span>
+        </a>
+      </div>
+    </div>
   </div>
 </nav>
 
@@ -499,6 +591,15 @@ nav{
     <span class="en-i">Explore every opportunity. Find what matters.</span>
     <span class="zh-i">探索每一个机遇。找到所需。</span>
   </p>
+  <form class="home-search" id="home-search-form" onsubmit="return submitHomeSearch(event)">
+    <span class="home-search-icon">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </span>
+    <input type="text" id="home-search-input" autocomplete="off">
+    <button type="submit">
+      <span class="lo-i">ຄົ້ນຫາ</span><span class="en-i">Search</span><span class="zh-i">搜索</span>
+    </button>
+  </form>
 </div>
 
 <!-- FEATURED LISTINGS -->
@@ -529,11 +630,10 @@ nav{
     </a>
   </div>
   <div id="card-grid" class="card-grid">
-    <!-- shimmer placeholders -->
-    <div class="shimmer-card"><div class="shimmer-img card-shimmer"></div><div class="shimmer-body"><div class="shimmer-line wide card-shimmer"></div><div class="shimmer-line mid card-shimmer"></div><div class="shimmer-line short card-shimmer"></div></div></div>
-    <div class="shimmer-card"><div class="shimmer-img card-shimmer"></div><div class="shimmer-body"><div class="shimmer-line wide card-shimmer"></div><div class="shimmer-line mid card-shimmer"></div><div class="shimmer-line short card-shimmer"></div></div></div>
-    <div class="shimmer-card"><div class="shimmer-img card-shimmer"></div><div class="shimmer-body"><div class="shimmer-line wide card-shimmer"></div><div class="shimmer-line mid card-shimmer"></div><div class="shimmer-line short card-shimmer"></div></div></div>
-    <div class="shimmer-card"><div class="shimmer-img card-shimmer"></div><div class="shimmer-body"><div class="shimmer-line wide card-shimmer"></div><div class="shimmer-line mid card-shimmer"></div><div class="shimmer-line short card-shimmer"></div></div></div>
+    <div class="state-center">
+      <div class="loading-dots"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>
+      <p class="lo-i">ກຳລັງໂຫຼດ...</p><p class="en-i">Loading...</p><p class="zh-i">加载中...</p>
+    </div>
   </div>
 </section>
 
@@ -566,10 +666,32 @@ function esc(s) {
                   .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+const SEARCH_PLACEHOLDER = {
+  lo: 'ຄົ້ນຫາທຳເລ, ເມືອງ, ບ້ານ ຫຼື ຊື່ຊັບສິນ...',
+  en: 'Search by location, district, village, or title...',
+  zh: '按位置、区、村或标题搜索...'
+};
+
+function updateSearchPlaceholder(lang) {
+  var input = document.getElementById('home-search-input');
+  if (input) input.placeholder = SEARCH_PLACEHOLDER[lang] || SEARCH_PLACEHOLDER.en;
+}
+
+function submitHomeSearch(e) {
+  e.preventDefault();
+  var input = document.getElementById('home-search-input');
+  var term = input ? input.value.trim() : '';
+  window.location.href = term
+    ? 'listings.html?q=' + encodeURIComponent(term)
+    : 'listings.html';
+  return false;
+}
+
 function setLang(lang, btn) {
   document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
   document.querySelectorAll('.nav-lang-item').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  updateSearchPlaceholder(lang);
   renderCards(window._props || [], lang);
 }
 
@@ -579,80 +701,81 @@ function getCurrentLang() {
   return 'lo';
 }
 
+function emptyStateHtml() {
+  return (
+    '<div class="state-center">' +
+      '<p class="state-title lo-i">ຍັງບໍ່ມີຊັບສິນທີ່ແນະນຳໃນຕອນນີ້</p>' +
+      '<p class="state-title en-i">No featured properties yet</p>' +
+      '<p class="state-title zh-i">暂无精选房源</p>' +
+    '</div>'
+  );
+}
+
+function errorStateHtml() {
+  return (
+    '<div class="state-center">' +
+      '<p class="state-title lo-i">ບໍ່ສາມາດໂຫຼດຊັບສິນໄດ້ ກະລຸນາລອງໃໝ່</p>' +
+      '<p class="state-title en-i">Couldn\'t load properties — please try again</p>' +
+      '<p class="state-title zh-i">加载房源失败，请重试</p>' +
+    '</div>'
+  );
+}
+
 async function loadFeatured() {
+  var grid = document.getElementById('card-grid');
   try {
     const res = await fetch(SB_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&limit=4&select=*', {
       headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
     });
     const data = await res.json();
+    if (!Array.isArray(data)) throw new Error('Unexpected response');
     window._props = data;
     renderCards(data, getCurrentLang());
   } catch(e) {
-    document.getElementById('card-grid').innerHTML = '';
+    grid.innerHTML = errorStateHtml();
   }
 }
 
+// Cards are built by the same buildPropCard() used on listings.html,
+// saved-properties.html and listing.html's Similar Properties — same
+// markup, same save/compare wiring, same styling, everywhere.
 function renderCards(props, lang) {
   const grid = document.getElementById('card-grid');
-  if (!props || !props.length) { grid.innerHTML = ''; return; }
-
-  const BED_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v16M2 12h20M22 4v16M6 12V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"/></svg>';
-  const BATH_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>';
-  const SQM_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>';
-  const PIN_SVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
-  const HEART_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2024" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
-
-  const txL = {
-    sale:    { lo: 'ຂາຍ',      en: 'Sale',        zh: '出售' },
-    rent:    { lo: 'ເຊົ່າ',    en: 'Rent',        zh: '租房' },
-    sor:     { lo: 'ຊື້/ເຊົ່າ', en: 'Sale or Rent', zh: '售/租' }
-  };
-  const perMo = { lo: '/ ເດືອນ', en: '/ mo', zh: '/ 月' };
-  const cityL = { lo: 'ວຽງຈັນ', en: 'Vientiane', zh: '万象' };
-
-  grid.innerHTML = props.map(p => {
-    const district = esc(p['district_' + lang] || p.district_en || '');
-    const isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
-    const isSor  = p.transaction_type === 'sale_or_rent';
-    const tx = isSor ? txL.sor[lang] : isSale ? txL.sale[lang] : txL.rent[lang];
-    const badgeClass = isSor ? 'badge-sor' : isSale ? 'badge-sale' : 'badge-rent';
-    const imgHtml = (p.images && p.images.length)
-      ? '<img src="' + esc(p.images[0]) + '" alt="" loading="lazy">'
-      : '<div class="card-img-placeholder"></div>';
-    const specs = [];
-    if (p.bedrooms) specs.push('<span class="card-spec">' + BED_SVG + ' ' + Number(p.bedrooms) + '</span>');
-    if (p.bathrooms) specs.push('<span class="card-spec">' + BATH_SVG + ' ' + Number(p.bathrooms) + '</span>');
-    if (p.sqm) specs.push('<span class="card-spec">' + SQM_SVG + ' ' + Number(p.sqm) + '</span>');
-    const priceUnit = (!isSale && !isSor && p.price_display) ? '<span class="card-price-unit">' + perMo[lang] + '</span>' : '';
-    const sorPriceHtml = isSor && (p.sale_price || p.rent_price)
-      ? (p.sale_price ? esc(p.sale_price) : '') + (p.sale_price && p.rent_price ? ' / ' : '') + (p.rent_price ? esc(p.rent_price) : '')
-      : null;
-    const agentName = esc(p.agent_name || '');
-    const agentPhoto = esc(p.agent_photo || '');
-    const agentHtml = agentName
-      ? '<div class="card-agent-row">' +
-          (agentPhoto ? '<div class="card-agent-pfp"><img src="' + agentPhoto + '" alt="" loading="lazy"></div>' : '') +
-          '<span class="card-agent-name">' + agentName + '</span>' +
-        '</div>'
-      : '';
-    return '<a href="listing.html?slug=' + encodeURIComponent(p.slug) + '" class="prop-card">' +
-      '<div class="card-img">' +
-        imgHtml +
-        '<span class="card-badge ' + badgeClass + '">' + tx + '</span>' +
-        '<button class="card-heart" onclick="event.preventDefault()">' + HEART_SVG + '</button>' +
-      '</div>' +
-      '<div class="card-body">' +
-        '<div class="card-price-row">' +
-          '<span class="card-price">' + (sorPriceHtml || esc(p.price_display || '—')) + '</span>' + priceUnit +
-        '</div>' +
-        '<div class="card-loc">' + PIN_SVG + (district ? district + ', ' : '') + cityL[lang] + '</div>' +
-        (specs.length ? '<div class="card-specs">' + specs.join('') + '</div>' : '') +
-        agentHtml +
-      '</div>' +
-    '</a>';
-  }).join('');
+  if (!props || !props.length) { grid.innerHTML = emptyStateHtml(); return; }
+  var saved = getSavedSet();
+  var compareSet = getCompareSet();
+  grid.innerHTML = '';
+  props.forEach(function(p, idx) {
+    grid.appendChild(buildPropCard(p, lang, saved, false, idx, compareSet));
+  });
 }
 
+function toggleNavMenu(forceClose) {
+  var btn = document.getElementById('nav-menu-btn');
+  var panel = document.getElementById('nav-dropdown');
+  if (!btn || !panel) return;
+  var open = forceClose ? false : !panel.classList.contains('open');
+  panel.classList.toggle('open', open);
+  btn.classList.toggle('open', open);
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    var n = getSavedSet().size;
+    var countEl = document.getElementById('nav-saved-count');
+    if (countEl) {
+      countEl.textContent = n;
+      countEl.style.display = n > 0 ? 'inline-block' : 'none';
+    }
+  }
+}
+document.addEventListener('click', function(e) {
+  var wrap = document.querySelector('.nav-dropdown-wrap');
+  if (wrap && !wrap.contains(e.target)) toggleNavMenu(true);
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') toggleNavMenu(true);
+});
+
+updateSearchPlaceholder('lo');
 loadFeatured();
 </script>
 </body>

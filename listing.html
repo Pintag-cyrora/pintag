@@ -23,6 +23,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin>
 <script src="favorites.js"></script>
 <script src="compare.js"></script>
+<script src="property-card.js"></script>
 <script src="compare-bar.js"></script>
 <script>
 window.addEventListener('error',function(e){
@@ -213,7 +214,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .sim-specs{font-size:11px;color:var(--ink-muted);margin-bottom:10px;display:flex;gap:12px;}
 .sim-spec-item{display:flex;align-items:center;gap:3px;}
 .sim-price{font-size:16px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;}
-.sim-type-badge{font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:20px;display:inline-block;margin-bottom:6px;background:rgba(45,140,140,0.09);color:var(--teal);border:1px solid rgba(45,140,140,0.18);}
+.sim-type-badge{font-size:9px;font-weight:400;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:8px;color:var(--teal);opacity:0.85;}
 /* ── Editorial presentation layer (desktop) ── */
 .emotional-intro{max-width:640px;margin:0 auto;padding:100px 48px 0;text-align:center;background:var(--white);}
 .emotional-statement{font-size:24px;font-weight:300;line-height:1.7;color:var(--ink-soft);letter-spacing:0.01em;}
@@ -238,20 +239,27 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .loader-bead:nth-child(2){animation-delay:0.15s;}
 .loader-bead:nth-child(3){animation-delay:0.3s;}
 @keyframes beadWave{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
-/* ── PROPERTY STATUS BADGE — detail & gallery overlay ── */
-.prop-status-badge{
-  display:inline-flex;align-items:center;
-  font-size:10px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
-  padding:5px 11px;border-radius:5px;color:#fff;
-  box-shadow:0 2px 8px rgba(0,0,0,0.25);
+/* ── STATUS BADGE — same .status-badge/.badge-* system as listings.html /
+   saved-properties.html / Home (via property-card.js's getBadgeHtml),
+   used here for both the main property and Similar Properties cards ── */
+.status-badge{
+  display:inline-block;
+  font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
+  padding:4px 9px;border-radius:3px;color:#fff;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  box-shadow:0 1px 5px rgba(0,0,0,0.22);
 }
-.prop-status-available{background:#166534;}
-.prop-status-sold{background:#991B1B;}
-.prop-status-rented{background:#C2410C;}
-.prop-status-offer{background:#1D4ED8;}
+.badge-available{background:rgba(22,101,52,0.92);}
+.badge-curated{background:rgba(45,140,140,0.82);}
+.badge-sale{background:rgba(148,116,4,0.86);}
+.badge-rent{background:rgba(55,72,78,0.86);}
+.badge-land{background:rgba(80,52,14,0.86);}
+.badge-sold{background:rgba(185,28,28,0.94);}
+.badge-rented{background:rgba(194,65,0,0.92);}
+.badge-offer{background:rgba(30,64,175,0.88);}
 .mg-status-wrap{position:absolute;top:12px;right:12px;z-index:4;pointer-events:none;}
 @media(max-width:960px){
-  .prop-status-badge{font-size:11px;padding:6px 13px;}
+  .status-badge{font-size:11px;padding:6px 13px;border-radius:4px;}
 }
 /* Lightbox */
 .lb-overlay{position:fixed;inset:0;z-index:1000;background:rgba(8,12,16,0.96);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.32s cubic-bezier(0.16,1,0.3,1);touch-action:pan-y;}
@@ -754,17 +762,9 @@ function resolveLabel(value,registry,lang){
 
 var agentFallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%237A9098' stroke-width='1'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
 
-function getStatusBadgeHtml(status, lang){
-  var S = {
-    active:       { lo:'ວ່າງ',           en:'Available',   zh:'在售',   cls:'prop-status-available' },
-    sold:         { lo:'ຂາຍແລ້ວ',       en:'Sold',        zh:'已售',   cls:'prop-status-sold'      },
-    rented:       { lo:'ເຊົ່າແລ້ວ',     en:'Rented',      zh:'已租',   cls:'prop-status-rented'    },
-    under_offer:  { lo:'ກຳລັງດຳເນີນ',  en:'Under Offer', zh:'洽谈中', cls:'prop-status-offer'     }
-  };
-  var key = S[status] ? status : 'active';
-  var info = S[key];
-  return '<span class="prop-status-badge '+info.cls+'">'+(info[lang]||info.en)+'</span>';
-}
+// getBadgeHtml() now comes from property-card.js — this file used to
+// define an equivalent getStatusBadgeHtml() locally under different
+// CSS class names (.prop-status-* vs the shared .status-badge/.badge-*).
 
 var PT = (function(){
   var P='[Pintag]';
@@ -977,11 +977,11 @@ async function fetchSimilarProperties(prop){
 
     // Priority sort: same district first, then same property type,
     // then closest absolute price — a strict cascade, not a blended score.
-    var propPrice = parseSimPrice(prop.price_display);
+    var propPrice = parseNumericPrice(prop.price_display);
     candidates.forEach(function(c){
       c._sameDistrict = !!(c.district_en && prop.district_en && c.district_en === prop.district_en);
       c._sameType     = !!(c.property_type && prop.property_type && c.property_type === prop.property_type);
-      var cp = parseSimPrice(c.price_display);
+      var cp = parseNumericPrice(c.price_display);
       c._priceDist = (propPrice && cp) ? Math.abs(cp - propPrice) : Infinity;
     });
     candidates.sort(function(a,b){
@@ -1001,13 +1001,8 @@ async function fetchSimilarProperties(prop){
   }
 }
 
-function parseSimPrice(s) {
-  if (!s) return null;
-  var clean = String(s).replace(/[^\d.MmKk]/g, '');
-  if (/[Mm]$/.test(clean)) return parseFloat(clean) * 1000000;
-  if (/[Kk]$/.test(clean)) return parseFloat(clean) * 1000;
-  return parseFloat(clean) || null;
-}
+// parseNumericPrice() now comes from property-card.js — this file used
+// to define an identical local copy under a different name.
 
 function hideSimilarSection(){
   var el=document.getElementById('similar-section');
@@ -1063,7 +1058,7 @@ function renderSimilarGrid(similar){
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug);
     card.className='sim-card';
-    var simStatusBadge=getStatusBadgeHtml(p.status||'active',lang);
+    var simStatusBadge=getBadgeHtml(p,lang,false);
     var simStatusOverlay='<div style="position:absolute;top:8px;left:8px;z-index:3;pointer-events:none;">'+simStatusBadge+'</div>';
     card.innerHTML=(
       '<div class="sim-card-img">'+imgHtml+
@@ -1144,7 +1139,7 @@ function buildMockupLayout(){
   var isComparedHero = isComparing(data.slug);
   var imagesArray=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';});
 
-  var statusBadgeHtml=getStatusBadgeHtml(data.status||'active',lang);
+  var statusBadgeHtml=getBadgeHtml(data,lang,false);
   var desktopGalleryMarkup=buildDesktopGallery(imagesArray,resolvedTitle);
   var mobileGalleryMarkup=buildMobileGallery(imagesArray,statusBadgeHtml,resolvedTitle);
 
@@ -1187,8 +1182,8 @@ function buildMockupLayout(){
   // Price Reduced — only when price_previous is a real, larger prior price
   // (never inferred; both values must parse and the drop must be genuine).
   var priceReducedBadgeHtml='';
-  var priceCutPrevNum=data.price_previous?parseSimPrice(data.price_previous):null;
-  var priceCutCurNum=data.price_display?parseSimPrice(data.price_display):null;
+  var priceCutPrevNum=data.price_previous?parseNumericPrice(data.price_previous):null;
+  var priceCutCurNum=data.price_display?parseNumericPrice(data.price_display):null;
   var isPriceReduced=!!(priceCutPrevNum&&priceCutCurNum&&priceCutPrevNum>priceCutCurNum);
   if(isPriceReduced){
     var reducedLbl={lo:'ຫຼຸດລາຄາ',en:'Price Reduced',zh:'降价'}[lang]||'Price Reduced';

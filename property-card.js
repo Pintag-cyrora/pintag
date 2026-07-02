@@ -46,7 +46,7 @@ function getAgentHtml(p) {
   if (!p.agent_name) return '';
   var initial = esc(p.agent_name.trim().charAt(0) || 'P');
   var avatarInner = p.agent_photo
-    ? '<img src="' + esc(p.agent_photo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+    ? '<img src="' + esc(p.agent_photo) + '" alt="' + esc(p.agent_name) + '" loading="lazy" onerror="this.style.display=\'none\'">'
     : initial;
   return '<div class="card-divider"></div>' +
     '<div class="card-agent">' +
@@ -140,7 +140,7 @@ function buildPropCard(p, lang, savedSet, isFeaturedCard, idx, compareSet) {
     : '';
 
   var imgHtml = (p.images && p.images.length)
-    ? '<img src="' + esc(p.images[0]) + '" alt="" loading="' + ((idx||0) < 4 ? 'eager' : 'lazy') + '">'
+    ? '<img src="' + esc(p.images[0]) + '" alt="' + (title || 'Property photo') + '" loading="' + ((idx||0) < 4 ? 'eager' : 'lazy') + '">'
     : '<div class="prop-card-no-img"></div>';
 
   var imgCount = (p.images && p.images.length > 1) ? p.images.length : 0;
