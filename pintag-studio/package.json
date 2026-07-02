@@ -1,0 +1,18 @@
+{
+  "name": "pintag-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pintag's internal AI marketing department — orchestration engine. See ../pintag-studio/README.md and the architecture doc.",
+  "type": "module",
+  "scripts": {
+    "pipeline": "tsx pipeline/run.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

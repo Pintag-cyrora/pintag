@@ -1,0 +1,24 @@
+{
+  "templates": [
+    {
+      "slot": "educational_post_square",
+      "canva_template_id": null,
+      "note": "Needs to be filled in once this Brand Template is created in Canva."
+    },
+    {
+      "slot": "neighborhood_guide_carousel",
+      "canva_template_id": null,
+      "note": "Needs to be filled in once this Brand Template is created in Canva."
+    },
+    {
+      "slot": "market_update_infographic",
+      "canva_template_id": null,
+      "note": "Needs to be filled in once this Brand Template is created in Canva."
+    },
+    {
+      "slot": "property_video_thumbnail",
+      "canva_template_id": null,
+      "note": "Needs to be filled in once this Brand Template is created in Canva."
+    }
+  ]
+}

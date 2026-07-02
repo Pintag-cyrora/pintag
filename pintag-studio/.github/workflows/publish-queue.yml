@@ -1,0 +1,28 @@
+name: Publish Queue
+
+# Short-interval poll that checks content_calendar for items due to publish
+# (auto-eligible ones) and approvals_queue for founder decisions that need
+# to be actioned (pipeline/stages/08-publish.ts publishApprovedItem). Manual
+# trigger until M2 implements the real Meta Graph API calls — see SETUP.md.
+on:
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: '*/15 * * * *'
+
+jobs:
+  publish-queue:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pintag-studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: echo "TODO(M2) - wire pipeline/stages/08-publish.ts polling loop here"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}

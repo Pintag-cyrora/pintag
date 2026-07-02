@@ -1,0 +1,61 @@
+{
+  "$schema_description": "Scene/shot list schema for FFmpeg-assembled property videos. Each scene is rendered in 'order' sequence. This file defines the schema and includes one realistic 5-scene example for a typical property video.",
+  "schema": {
+    "listing_id": "string - Pintag listing ID this video is generated for",
+    "scenes": [
+      {
+        "order": "integer - 1-based position of this scene in the final video",
+        "image_or_clip": "string - path or URL to the source listing photo or video clip used for this scene",
+        "duration_seconds": "number - length of this scene in seconds",
+        "caption_text": "string - on-screen caption/lower-third text overlaid on this scene",
+        "voiceover_line": "string - TTS voiceover script line spoken during this scene",
+        "transition": "string - transition effect into the next scene, e.g. 'crossfade', 'cut', 'slide-left'"
+      }
+    ]
+  },
+  "example": {
+    "listing_id": "PTG-example-00001",
+    "scenes": [
+      {
+        "order": 1,
+        "image_or_clip": "listing-photos/PTG-example-00001/exterior-01.jpg",
+        "duration_seconds": 4,
+        "caption_text": "3-Bedroom Villa | Sisattanak",
+        "voiceover_line": "Welcome to this beautifully maintained three-bedroom villa in the heart of Sisattanak.",
+        "transition": "crossfade"
+      },
+      {
+        "order": 2,
+        "image_or_clip": "listing-photos/PTG-example-00001/living-room-01.jpg",
+        "duration_seconds": 5,
+        "caption_text": "Spacious Living Area",
+        "voiceover_line": "The open-plan living area offers natural light throughout the day, perfect for family gatherings.",
+        "transition": "crossfade"
+      },
+      {
+        "order": 3,
+        "image_or_clip": "listing-photos/PTG-example-00001/kitchen-01.jpg",
+        "duration_seconds": 4,
+        "caption_text": "Modern Kitchen",
+        "voiceover_line": "A fully equipped modern kitchen makes this home move-in ready.",
+        "transition": "slide-left"
+      },
+      {
+        "order": 4,
+        "image_or_clip": "listing-photos/PTG-example-00001/bedroom-master.jpg",
+        "duration_seconds": 4,
+        "caption_text": "Master Bedroom with En-Suite",
+        "voiceover_line": "The master bedroom includes a private en-suite bathroom and ample closet space.",
+        "transition": "crossfade"
+      },
+      {
+        "order": 5,
+        "image_or_clip": "listing-photos/PTG-example-00001/exterior-garden.jpg",
+        "duration_seconds": 5,
+        "caption_text": "Contact Pintag to Schedule a Viewing",
+        "voiceover_line": "Interested in this property? Contact the listing agent through Pintag today to schedule a viewing.",
+        "transition": "cut"
+      }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+name: Daily Content Pipeline
+
+# Runs pipeline/run.ts headlessly (Sense -> ... -> Memory Update).
+# Trigger is manual (workflow_dispatch) until SETUP.md steps 1-2 are done and
+# SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY secrets exist — flip on the
+# `schedule` block below once that's true, per brain/mission.md's daily
+# posting-cadence target.
+on:
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: '0 1 * * *'  # 08:00 Asia/Vientiane
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pintag-studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm run pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

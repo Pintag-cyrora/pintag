@@ -1,0 +1,26 @@
+name: Trend Scan
+
+# Runs Trend Hunter (pipeline/stages/00-sense.ts runTrendHunter) on its own
+# cadence, independent of the daily content pipeline. Manual trigger until
+# M3 implements the real RSS/web-search logic — see ARCHITECTURE.md Section 11.
+on:
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: '0 2 * * *'
+
+jobs:
+  trend-scan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pintag-studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npx tsx -e "import('./pipeline/stages/00-sense.js').then(m => m.runTrendHunter())"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

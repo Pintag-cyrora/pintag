@@ -1,0 +1,97 @@
+{
+  "org": {
+    "name": "Pintag",
+    "founder": "Keomany",
+    "market": "Vientiane, Laos",
+    "languages": ["lo", "en", "zh"],
+    "districts": [
+      "Sisattanak", "Saysettha", "Chanthabouly", "Sikhottabong",
+      "Xaythany", "Hadxaifong", "Naxaithong"
+    ]
+  },
+
+  "year1_targets": {
+    "educational_posts": 300,
+    "neighborhood_guides": 200,
+    "market_updates": 150,
+    "property_videos": 500,
+    "posting_cadence": "daily"
+  },
+
+  "platforms": {
+    "facebook": { "active": true, "priority": 1 },
+    "instagram": { "active": true, "priority": 1 },
+    "tiktok": { "active": false, "planned_phase": "platform_phase_2" },
+    "youtube": { "active": false, "planned_phase": "future" }
+  },
+
+  "approval_phase": "phase_1",
+  "approval_phase_notes": {
+    "phase_1": "Founder approves every item via the Dashboard queue, regardless of content type or confidence.",
+    "phase_2": "Content types listed in auto_publish_eligible below auto-publish when confidence exceeds their threshold. Everything else queues.",
+    "phase_3": "Only market_updates, major announcements, new content formats, and low-confidence items reach the founder."
+  },
+
+  "auto_publish_eligible": {
+    "educational_posts": { "min_confidence": 0.90, "eligible_from_phase": "phase_2" },
+    "property_videos": { "min_confidence": 0.90, "eligible_from_phase": "phase_2" },
+    "neighborhood_guides": { "min_confidence": 0.92, "eligible_from_phase": "phase_3" },
+    "market_updates": { "min_confidence": null, "eligible_from_phase": "never" }
+  },
+
+  "quality_score": {
+    "dimensions": [
+      "educational_value",
+      "trustworthiness",
+      "brand_voice",
+      "originality",
+      "visual_quality",
+      "shareability",
+      "promotion_level",
+      "confidence"
+    ],
+    "weights": {
+      "educational_value": 2.0,
+      "trustworthiness": 1.5,
+      "brand_voice": 1.5,
+      "originality": 1.0,
+      "visual_quality": 1.0,
+      "shareability": 1.0,
+      "promotion_level": 1.0,
+      "confidence": 1.0
+    },
+    "min_threshold_per_dimension": 0.7,
+    "max_revision_cycles": 2,
+    "note": "educational_value carries the highest weight by explicit founder rule — see brain/ceo.md non-negotiable principles."
+  },
+
+  "founder_mode": "normal",
+  "founder_modes": {
+    "normal": {},
+    "busy": {
+      "auto_publish_threshold_delta": -0.05,
+      "notification_level": "reduced",
+      "deprioritize_new_campaigns": true,
+      "note": "Never lowers the bar for market_updates or new formats, regardless of delta."
+    },
+    "campaign": {
+      "pinned_campaign_id": null,
+      "campaign_priority_weight": 2.0
+    },
+    "vacation": {
+      "pause_new_strategy": true,
+      "notification_level": "exceptions_only"
+    },
+    "manual": {
+      "force_approval_required": true,
+      "note": "Hard override — takes precedence over approval_phase and every other mode."
+    }
+  },
+
+  "competitor_watchlist": [],
+
+  "budget": {
+    "monthly_ceiling_usd": 100,
+    "note": "See architecture doc Section 6 for the tool-by-tool cost reasoning."
+  }
+}

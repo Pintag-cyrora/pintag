@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
+<title>Pintag Marketing — Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --teal:#2D8C8C;--teal-light:#38A8A8;--teal-dim:rgba(45,140,140,0.08);--teal-border:rgba(45,140,140,0.22);
+  --ink:#1A2428;--ink-soft:#3D5058;--ink-muted:#7A9098;
+  --warm:#F7F3EC;--warm-deep:#EDE8E0;--white:#fff;
+  --border:rgba(26,36,40,0.1);--border-mid:rgba(26,36,40,0.13);
+  --red:#C0392B;--green:#1E6B45;--gold:#B8860B;--purple:#7C3AED;--blue:#2563EB;
+}
+body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);color:var(--ink);line-height:1.6;}
+
+/* ---- login ---- */
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ink);}
+.login-box{width:100%;max-width:360px;padding:48px 40px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);text-align:center;}
+.login-logo{font-size:22px;font-weight:600;color:#fff;margin-bottom:6px;}
+.login-sub{font-size:12px;color:rgba(255,255,255,0.35);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:32px;}
+.login-input{width:100%;padding:12px 16px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#fff;font-size:15px;font-family:'DM Sans',sans-serif;margin-bottom:12px;border-radius:3px;}
+.login-input::placeholder{color:rgba(255,255,255,0.3);}
+.login-btn{width:100%;padding:13px;background:var(--teal);color:#fff;border:none;font-size:14px;font-weight:500;cursor:pointer;border-radius:3px;font-family:'DM Sans',sans-serif;transition:background 0.2s;}
+.login-btn:hover{background:var(--teal-light);}
+.login-error{color:#e74c3c;font-size:13px;margin-top:8px;display:none;}
+
+/* ---- shell ---- */
+#dash-screen{display:none;}
+.dash-nav{background:var(--ink);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.dash-nav-logo{font-size:16px;font-weight:600;color:#fff;}
+.dash-nav-logo span{color:var(--teal-light);}
+.btn-logout{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);font-size:12px;font-weight:500;padding:7px 14px;border-radius:3px;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;}
+.btn-logout:hover{background:rgba(255,255,255,0.15);}
+.dash-body{max-width:880px;margin:0 auto;padding:32px 20px 64px;}
+
+/* ---- greeting ---- */
+.greeting h1{font-size:26px;font-weight:600;margin-bottom:4px;}
+.greeting .date{font-size:13px;color:var(--ink-muted);}
+
+/* ---- founder mode switcher ---- */
+.mode-row{display:flex;gap:8px;margin:22px 0 28px;flex-wrap:wrap;}
+.mode-chip{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:20px;border:1.5px solid var(--border-mid);background:var(--white);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;color:var(--ink-soft);}
+.mode-chip:hover{border-color:var(--teal-border);}
+.mode-chip.active{border-color:transparent;color:#fff;}
+.mode-chip.active[data-mode="normal"]{background:var(--green);}
+.mode-chip.active[data-mode="busy"]{background:var(--gold);}
+.mode-chip.active[data-mode="campaign"]{background:var(--blue);}
+.mode-chip.active[data-mode="vacation"]{background:var(--purple);}
+.mode-chip.active[data-mode="manual"]{background:var(--red);}
+
+/* ---- cards ---- */
+.card{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:22px 24px;margin-bottom:18px;}
+.card-title{font-size:10px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:16px;}
+.status-line{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:14px;color:var(--ink-soft);}
+.status-line .icon{font-size:15px;width:20px;text-align:center;}
+.empty-note{font-size:13px;color:var(--ink-muted);font-style:italic;}
+
+/* ---- progress bars ---- */
+.progress-row{margin-bottom:16px;}
+.progress-row:last-child{margin-bottom:0;}
+.progress-label{display:flex;justify-content:space-between;font-size:13px;color:var(--ink-soft);margin-bottom:6px;}
+.progress-label b{color:var(--ink);font-weight:600;}
+.progress-track{height:8px;background:var(--warm-deep);border-radius:4px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--teal);border-radius:4px;transition:width .3s;}
+
+/* ---- approvals ---- */
+.approval-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
+.approval-item:last-child{border-bottom:none;}
+.approval-meta{font-size:13px;color:var(--ink-soft);}
+.approval-meta .type{font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);display:block;margin-bottom:2px;}
+.approval-actions{display:flex;gap:6px;flex-shrink:0;}
+.btn-approve,.btn-reject{font-size:11px;font-weight:500;padding:6px 12px;border-radius:3px;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;}
+.btn-approve{background:rgba(30,107,69,0.1);color:var(--green);}
+.btn-approve:hover{background:rgba(30,107,69,0.18);}
+.btn-reject{background:rgba(192,57,43,0.08);color:var(--red);}
+.btn-reject:hover{background:rgba(192,57,43,0.15);}
+
+/* ---- confidence + recommendation ---- */
+.confidence-value{font-size:40px;font-weight:700;color:var(--teal);line-height:1;}
+.confidence-sub{font-size:12px;color:var(--ink-muted);margin-top:4px;}
+.recommendation{font-size:14px;color:var(--ink-soft);background:var(--teal-dim);border:1px solid var(--teal-border);border-radius:6px;padding:14px 16px;}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media (max-width:640px){.two-col{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<!-- ============== LOGIN ============== -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Pintag <span>Studio</span></div>
+    <div class="login-sub">Marketing Dashboard</div>
+    <input type="email" id="login-email" class="login-input" placeholder="Email" autocomplete="username">
+    <input type="password" id="login-password" class="login-input" placeholder="Password" autocomplete="current-password">
+    <button class="login-btn" id="login-btn">Sign In</button>
+    <div class="login-error" id="login-error">Invalid email or password.</div>
+  </div>
+</div>
+
+<!-- ============== DASHBOARD ============== -->
+<div id="dash-screen">
+  <div class="dash-nav">
+    <div class="dash-nav-logo">Pintag <span>Studio</span></div>
+    <button class="btn-logout" id="logout-btn">Sign Out</button>
+  </div>
+
+  <div class="dash-body">
+
+    <div class="greeting">
+      <h1 id="greeting-text">Good morning</h1>
+      <div class="date" id="greeting-date"></div>
+    </div>
+
+    <!-- Founder Mode switcher -->
+    <div class="mode-row" id="mode-row">
+      <div class="mode-chip" data-mode="normal">🟢 Normal</div>
+      <div class="mode-chip" data-mode="busy">🟡 Busy</div>
+      <div class="mode-chip" data-mode="campaign">🔵 Campaign</div>
+      <div class="mode-chip" data-mode="vacation">🟣 Vacation</div>
+      <div class="mode-chip" data-mode="manual">🔴 Manual</div>
+    </div>
+
+    <!-- Today's Status -->
+    <div class="card">
+      <div class="card-title">Today's Status</div>
+      <div id="today-status">
+        <div class="empty-note">No activity scheduled for today yet.</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <!-- This Week / Year progress -->
+      <div class="card">
+        <div class="card-title">This Week</div>
+        <div id="week-published" class="progress-label" style="margin-bottom:14px;">
+          <span>Posts Published</span><b id="week-published-count">0 / 7</b>
+        </div>
+        <div id="year-progress"><!-- filled by JS: one .progress-row per content type --></div>
+      </div>
+
+      <!-- AI Confidence -->
+      <div class="card">
+        <div class="card-title">AI Confidence</div>
+        <div class="confidence-value" id="confidence-value">—</div>
+        <div class="confidence-sub" id="confidence-sub">Average Brand Guardian score, pending items</div>
+      </div>
+    </div>
+
+    <!-- Approvals -->
+    <div class="card">
+      <div class="card-title">Items Awaiting Approval</div>
+      <div id="approvals-list">
+        <div class="empty-note">Nothing waiting on you right now.</div>
+      </div>
+    </div>
+
+    <!-- Recommendation -->
+    <div class="card">
+      <div class="card-title">Today's Recommendation</div>
+      <div class="recommendation" id="recommendation-text">You're all caught up.</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Config — fill these in once the pintag-studio Supabase project exists.
+// See ../SETUP.md for how to create the project and where to find these values.
+// ---------------------------------------------------------------------------
+const SUPABASE_URL  = 'REPLACE_WITH_PINTAG_STUDIO_SUPABASE_URL';
+const SUPABASE_ANON = 'REPLACE_WITH_PINTAG_STUDIO_SUPABASE_ANON_KEY';
+const ORG_ID = 'pintag';
+const YEAR1_TARGETS = {
+  educational_post:  { label: 'Educational',    target: 300 },
+  neighborhood_guide:{ label: 'Neighborhoods',  target: 200 },
+  market_update:     { label: 'Market Updates', target: 150 },
+  property_video:    { label: 'Property Videos',target: 500 }
+};
+
+const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+const loginScreen = document.getElementById('login-screen');
+const dashScreen  = document.getElementById('dash-screen');
+
+sbClient.auth.onAuthStateChange((_event, session) => {
+  if (session) {
+    loginScreen.style.display = 'none';
+    dashScreen.style.display  = 'block';
+    loadDashboard();
+  } else {
+    loginScreen.style.display = 'flex';
+    dashScreen.style.display  = 'none';
+  }
+});
+
+document.getElementById('login-btn').addEventListener('click', async () => {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  const { error } = await sbClient.auth.signInWithPassword({ email, password });
+  if (error) { errEl.style.display = 'block'; }
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => sbClient.auth.signOut());
+
+// ---------------------------------------------------------------------------
+// Founder Mode switcher — single click, writes straight to org_settings.
+// ---------------------------------------------------------------------------
+document.querySelectorAll('.mode-chip').forEach(chip => {
+  chip.addEventListener('click', async () => {
+    const mode = chip.dataset.mode;
+    await sbClient.from('org_settings').update({ founder_mode: mode, updated_at: new Date().toISOString() }).eq('org_id', ORG_ID);
+    highlightMode(mode);
+  });
+});
+
+function highlightMode(mode) {
+  document.querySelectorAll('.mode-chip').forEach(c => c.classList.toggle('active', c.dataset.mode === mode));
+}
+
+// ---------------------------------------------------------------------------
+// Greeting
+// ---------------------------------------------------------------------------
+function renderGreeting() {
+  const hour = new Date().getHours();
+  const part = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+  document.getElementById('greeting-text').textContent = `Good ${part}, Keomany`;
+  document.getElementById('greeting-date').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+// ---------------------------------------------------------------------------
+// Load everything the founder needs to see, and nothing else.
+// ---------------------------------------------------------------------------
+async function loadDashboard() {
+  renderGreeting();
+
+  const { data: settings } = await sbClient.from('org_settings').select('*').eq('org_id', ORG_ID).single();
+  if (settings) highlightMode(settings.founder_mode);
+
+  await Promise.all([
+    loadTodayStatus(),
+    loadWeekAndYearProgress(),
+    loadApprovals(),
+    loadConfidence()
+  ]);
+
+  renderRecommendation();
+}
+
+async function loadTodayStatus() {
+  const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+  const endOfDay = new Date(); endOfDay.setHours(23,59,59,999);
+
+  const { data } = await sbClient
+    .from('content_calendar')
+    .select('platform, publish_status, content_items(title, content_type)')
+    .eq('org_id', ORG_ID)
+    .gte('scheduled_at', startOfDay.toISOString())
+    .lte('scheduled_at', endOfDay.toISOString());
+
+  const el = document.getElementById('today-status');
+  if (!data || data.length === 0) { el.innerHTML = '<div class="empty-note">No activity scheduled for today yet.</div>'; return; }
+
+  const icons = { published: '✅', queued: '⏳', auto_publish_pending: '⏳', awaiting_approval: '⏳', approved: '⏳', failed: '❌', skipped: '⏭️' };
+  el.innerHTML = data.map(row => {
+    const icon = icons[row.publish_status] || '⏳';
+    const title = row.content_items ? row.content_items.title : 'Untitled item';
+    return `<div class="status-line"><span class="icon">${icon}</span><span>${escapeHtml(row.platform)} — ${escapeHtml(title)}</span></div>`;
+  }).join('');
+}
+
+async function loadWeekAndYearProgress() {
+  const startOfWeek = new Date(); startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); startOfWeek.setHours(0,0,0,0);
+
+  const { count: weekPublished } = await sbClient
+    .from('content_calendar')
+    .select('*', { count: 'exact', head: true })
+    .eq('org_id', ORG_ID)
+    .eq('publish_status', 'published')
+    .gte('scheduled_at', startOfWeek.toISOString());
+
+  document.getElementById('week-published-count').textContent = `${weekPublished || 0} / 7`;
+
+  const yearEl = document.getElementById('year-progress');
+  const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
+  const rows = await Promise.all(Object.entries(YEAR1_TARGETS).map(async ([type, cfg]) => {
+    const { count } = await sbClient
+      .from('content_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('org_id', ORG_ID)
+      .eq('content_type', type)
+      .eq('status', 'published')
+      .gte('created_at', startOfYear);
+    return { ...cfg, count: count || 0 };
+  }));
+
+  yearEl.innerHTML = rows.map(r => `
+    <div class="progress-row">
+      <div class="progress-label"><span>${escapeHtml(r.label)}</span><b>${r.count} / ${r.target}</b></div>
+      <div class="progress-track"><div class="progress-fill" style="width:${Math.min(100, (r.count / r.target) * 100)}%"></div></div>
+    </div>`).join('');
+}
+
+async function loadApprovals() {
+  const { data } = await sbClient
+    .from('approvals_queue')
+    .select('id, reason, content_items(title, content_type)')
+    .eq('org_id', ORG_ID)
+    .is('decided_at', null)
+    .order('submitted_at', { ascending: true });
+
+  const el = document.getElementById('approvals-list');
+  if (!data || data.length === 0) { el.innerHTML = '<div class="empty-note">Nothing waiting on you right now.</div>'; return; }
+
+  el.innerHTML = data.map(item => `
+    <div class="approval-item" data-id="${item.id}">
+      <div class="approval-meta">
+        <span class="type">${escapeHtml((item.content_items?.content_type || '').replace('_',' '))}</span>
+        ${escapeHtml(item.content_items?.title || 'Untitled item')}
+      </div>
+      <div class="approval-actions">
+        <button class="btn-approve" onclick="decide('${item.id}','approved')">Approve</button>
+        <button class="btn-reject" onclick="decide('${item.id}','rejected')">Reject</button>
+      </div>
+    </div>`).join('');
+
+  window._pendingApprovals = data;
+}
+
+async function decide(id, decision) {
+  await sbClient.from('approvals_queue').update({ decision, decided_at: new Date().toISOString() }).eq('id', id);
+  await loadApprovals();
+  await loadConfidence();
+  renderRecommendation();
+}
+
+async function loadConfidence() {
+  const { data } = await sbClient
+    .from('quality_scores')
+    .select('confidence, content_item_id')
+    .eq('org_id', ORG_ID)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  const el = document.getElementById('confidence-value');
+  if (!data || data.length === 0) { el.textContent = '—'; return; }
+  const avg = data.reduce((sum, r) => sum + Number(r.confidence || 0), 0) / data.length;
+  el.textContent = `${Math.round(avg * 100)}%`;
+}
+
+function renderRecommendation() {
+  const el = document.getElementById('recommendation-text');
+  const pending = window._pendingApprovals || [];
+  if (pending.length > 0) {
+    const titles = pending.slice(0, 2).map(p => p.content_items?.title).filter(Boolean).join(' and ');
+    el.textContent = pending.length === 1
+      ? `Approve "${titles}" — it's ready and waiting on you.`
+      : `Start with "${titles}"${pending.length > 2 ? `, plus ${pending.length - 2} more` : ''} — everything else is on track.`;
+  } else {
+    el.textContent = "You're all caught up. Nothing needs your attention today.";
+  }
+}
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+</body>
+</html>

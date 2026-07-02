@@ -1,0 +1,26 @@
+name: Competitor Scan
+
+# Runs Competitor Watch (pipeline/stages/00-sense.ts runCompetitorWatch) on a
+# monthly-ish cadence, per ARCHITECTURE.md's employee spec. Manual trigger
+# until M3 implements the real public-page fetch logic.
+on:
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: '0 3 1 * *'  # first of the month
+
+jobs:
+  competitor-scan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pintag-studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npx tsx -e "import('./pipeline/stages/00-sense.js').then(m => m.runCompetitorWatch())"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

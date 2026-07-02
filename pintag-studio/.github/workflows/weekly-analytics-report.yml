@@ -1,0 +1,26 @@
+name: Weekly Analytics Report
+
+# Runs the Marketing Analyst's writeWeeklyReport (pipeline/stages/09-analyze.ts)
+# once a week. Manual trigger until M5 implements the real Meta Insights
+# collection this report depends on.
+on:
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: '0 4 * * 1'  # Monday mornings
+
+jobs:
+  weekly-report:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pintag-studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npx tsx -e "import('./pipeline/stages/09-analyze.js').then(m => m.writeWeeklyReport())"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
