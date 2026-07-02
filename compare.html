@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
+<title>Pintag · ປຽບທຽບຊັບສິນ</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="favorites.js"></script>
+<script src="compare.js"></script>
+<script src="property-card.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --teal:#237373;--teal-light:#38A8A8;
+  --ink:#1A2024;--ink-soft:#4A5558;--ink-muted:#8C9598;
+  --warm:#F7F3EC;--off:#F2EDE4;--white:#fff;
+  --border:rgba(26,32,36,0.07);--border-mid:rgba(26,32,36,0.10);
+  --win:#0a7a3e;--win-bg:rgba(0,127,63,0.08);
+}
+
+body{
+  font-family:'DM Sans',sans-serif;font-weight:400;font-size:14px;line-height:1.7;
+  background-color:var(--warm);color:var(--ink);-webkit-font-smoothing:antialiased;
+}
+
+.lo{display:block;}.en{display:none;}.zh{display:none;}
+.lo-i{display:inline;}.en-i{display:none;}.zh-i{display:none;}
+body.lang-en .lo{display:none;}body.lang-en .en{display:block;}body.lang-en .zh{display:none;}
+body.lang-en .lo-i{display:none;}body.lang-en .en-i{display:inline;}body.lang-en .zh-i{display:none;}
+body.lang-zh .lo{display:none;}body.lang-zh .en{display:none;}body.lang-zh .zh{display:block;}
+body.lang-zh .lo-i{display:none;}body.lang-zh .en-i{display:none;}body.lang-zh .zh-i{display:inline;}
+
+nav{
+  position:sticky;top:0;z-index:200;height:64px;
+  display:flex;align-items:center;justify-content:space-between;padding:0 48px;
+  background:rgba(247,243,236,0.96);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
+.nav-wordmark{font-size:16px;font-weight:500;color:var(--ink);letter-spacing:-0.01em;}
+.nav-right{display:flex;align-items:center;gap:14px;}
+.lang-switcher{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;}
+.lang-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans',sans-serif;letter-spacing:0.02em;}
+.lang-btn.active{background:var(--ink);color:#fff;}
+.nav-home{font-size:12px;font-weight:400;color:var(--ink-muted);text-decoration:none;letter-spacing:0.03em;}
+.nav-home:hover{color:var(--teal);}
+
+.page-header{background:var(--white);border-bottom:1px solid var(--border);padding:36px 48px 28px;}
+.page-header-inner{max-width:1280px;margin:0 auto;}
+.page-title-wrap{margin-bottom:6px;}
+.page-title-bar{display:block;width:20px;height:1.5px;background:var(--teal);margin-bottom:12px;opacity:0.7;}
+.page-title{font-size:clamp(22px,3.5vw,32px);font-weight:300;color:var(--ink);letter-spacing:-0.015em;display:inline;line-height:1.2;}
+.page-title-dot{display:inline-block;width:5px;height:5px;background:var(--teal);border-radius:50%;margin-left:5px;vertical-align:middle;position:relative;top:-2px;opacity:0.8;}
+.page-count{font-size:12px;font-weight:400;color:var(--ink-muted);margin-top:6px;letter-spacing:0.01em;}
+
+.page-content{max-width:1280px;margin:0 auto;padding:32px 48px 90px;}
+
+.stale-note{background:rgba(234,179,8,0.08);border:1px solid rgba(234,179,8,0.22);color:#92600E;font-size:12.5px;padding:10px 16px;border-radius:8px;margin-bottom:20px;}
+
+/* ─── COMPARISON TABLE ───────────────────────────────────────────────── */
+.compare-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px;border:1px solid var(--border-mid);background:var(--white);}
+.compare-grid{display:grid;width:max-content;min-width:100%;}
+.cg-row{display:contents;}
+.cg-cell{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;font-size:13px;color:var(--ink-soft);min-width:220px;}
+.cg-label{position:sticky;left:0;z-index:3;background:var(--off);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-muted);min-width:150px;width:150px;flex-shrink:0;}
+.cg-row:last-child .cg-cell{border-bottom:none;}
+.cg-cell.cg-win{background:var(--win-bg);color:var(--win);font-weight:600;}
+.cg-cell.cg-win .cg-win-badge{display:inline-flex;margin-left:6px;font-size:9px;}
+
+/* Header row — photo, title, remove */
+.cg-head{flex-direction:column;align-items:stretch;padding:0;min-width:240px;}
+.cg-head-img{position:relative;aspect-ratio:4/3;background:var(--off);overflow:hidden;}
+.cg-head-img img{width:100%;height:100%;object-fit:cover;display:block;}
+.cg-head-noimg{width:100%;height:100%;background:linear-gradient(145deg,#E8E3DB,#D8D3CB);}
+.cg-remove{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,0.5);color:#fff;border:none;cursor:pointer;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background 0.15s;}
+.cg-remove:hover{background:rgba(0,0,0,0.75);}
+.cg-head-body{padding:14px 16px 16px;}
+.cg-head-title{font-size:14px;font-weight:500;color:var(--ink);margin-bottom:6px;line-height:1.35;display:block;text-decoration:none;}
+.cg-head-title:hover{color:var(--teal);}
+.cg-head-price{font-size:17px;font-weight:600;color:var(--ink);margin-bottom:2px;}
+.cg-head-price-prev{font-size:12px;color:var(--ink-muted);text-decoration:line-through;margin-right:4px;}
+.cg-head-view{display:block;margin-top:10px;text-align:center;background:var(--ink);color:#fff;font-size:12px;font-weight:500;padding:8px;border-radius:6px;text-decoration:none;transition:background 0.15s;}
+.cg-head-view:hover{background:var(--teal);}
+
+.cg-agent{display:flex;align-items:center;gap:8px;}
+.cg-agent-avatar{width:22px;height:22px;border-radius:50%;background:var(--off);border:1px solid var(--border);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:500;color:var(--ink-muted);}
+.cg-agent-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+.cg-wa-btn{display:inline-flex;align-items:center;gap:5px;background:#236B6B;color:#fff;font-size:11px;font-weight:500;padding:6px 10px;border-radius:6px;text-decoration:none;white-space:nowrap;}
+.cg-wa-btn:hover{background:#1D5858;}
+
+/* ─── EMPTY / PROMPT STATE ───────────────────────────────────────────── */
+.empty-state{display:flex;flex-direction:column;align-items:center;text-align:center;padding:100px 24px;}
+.empty-icon{width:64px;height:64px;border-radius:50%;background:rgba(45,140,140,0.08);display:flex;align-items:center;justify-content:center;margin-bottom:24px;color:var(--teal);}
+.empty-title{font-size:19px;font-weight:500;color:var(--ink);margin-bottom:10px;}
+.empty-sub{font-size:13px;color:var(--ink-muted);max-width:380px;line-height:1.7;margin-bottom:28px;}
+.empty-cta{display:inline-flex;align-items:center;gap:8px;background:var(--teal);color:#fff;font-size:13px;font-weight:500;padding:12px 26px;border-radius:6px;text-decoration:none;}
+.empty-cta:hover{background:#256f6f;}
+
+.state-center{text-align:center;padding:100px 24px;color:var(--ink-muted);}
+.state-title{font-size:16px;font-weight:400;color:var(--ink-soft);margin-bottom:8px;}
+.loading-dots{display:flex;gap:8px;justify-content:center;margin-bottom:20px;}
+.loading-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);opacity:0.5;animation:dotPulse 1.4s ease-in-out infinite;}
+.loading-dot:nth-child(2){animation-delay:0.2s;}
+.loading-dot:nth-child(3){animation-delay:0.4s;}
+@keyframes dotPulse{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:0.7;transform:scale(1.1);}}
+
+@media(max-width:1100px){
+  .page-content{padding:28px 36px 80px;}
+  .page-header{padding:32px 36px 24px;}
+  nav{padding:0 36px;}
+}
+@media(max-width:800px){
+  nav{padding:0 20px;height:56px;}
+  .page-header{padding:24px 20px 20px;}
+  .page-content{padding:20px 16px 70px;}
+  .cg-label{min-width:110px;width:110px;font-size:9.5px;}
+  .cg-cell{padding:12px;min-width:190px;font-size:12.5px;}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">
+    <svg width="26" height="22" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision">
+      <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
+      <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
+    </svg>
+    <span class="nav-wordmark">Pintag</span>
+  </a>
+  <div class="nav-right">
+    <div class="lang-switcher">
+      <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
+      <button class="lang-btn" onclick="setLang('en',this)">EN</button>
+      <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
+    </div>
+    <a href="listings.html" class="nav-home"><span class="lo-i">← ລາຍການ</span><span class="en-i">← Listings</span><span class="zh-i">← 房源</span></a>
+  </div>
+</nav>
+
+<div class="page-header">
+  <div class="page-header-inner">
+    <div class="page-title-wrap">
+      <span class="page-title-bar"></span>
+      <h1 class="page-title">
+        <span class="lo-i">ປຽບທຽບຊັບສິນ</span>
+        <span class="en-i">Compare Properties</span>
+        <span class="zh-i">房源比较</span>
+      </h1><span class="page-title-dot"></span>
+    </div>
+    <p class="page-count" id="count-text"></p>
+  </div>
+</div>
+
+<div class="page-content" id="page-content">
+  <div class="state-center">
+    <div class="loading-dots"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>
+    <p class="lo-i">ກຳລັງໂຫຼດ...</p><p class="en-i">Loading...</p><p class="zh-i">加载中...</p>
+  </div>
+</div>
+
+<script>
+
+const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+
+const COMPARE_COLS = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,' +
+  'village_en,village,images,bedrooms,bathrooms,sqm,sqm_land,price_display,price_previous,' +
+  'sale_price,rent_price,transaction_type,property_type,status,year_built,land_title_type,' +
+  'amenities,agent_name,agent_photo,agent_whatsapp,created_at';
+
+const LAND_TITLE_LABELS = {
+  hard_title:        {en:'Hard Title',       lo:'ໂຉນດ (Hard Title)',      zh:'硬产权'},
+  soft_title:        {en:'Soft Title',       lo:'ໃບຕາດິນ (Soft Title)',   zh:'软产权'},
+  leasehold:         {en:'Leasehold',        lo:'ເຊົ່າສິດທິ (Leasehold)', zh:'租赁产权'},
+  company_ownership: {en:'Company Ownership',lo:'ກຳມະສິດບໍລິສັດ',        zh:'公司持有'}
+};
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function getCurrentLang() {
+  if (document.body.classList.contains('lang-en')) return 'en';
+  if (document.body.classList.contains('lang-zh')) return 'zh';
+  return 'lo';
+}
+
+function slugsFromUrl() {
+  var raw = new URLSearchParams(window.location.search).get('slugs') || '';
+  return raw.split(',').map(function (s) { return s.trim(); }).filter(Boolean).slice(0, COMPARE_MAX);
+}
+
+function updateUrl(slugs) {
+  var url = new URL(window.location.href);
+  if (slugs.length) url.searchParams.set('slugs', slugs.join(','));
+  else url.searchParams.delete('slugs');
+  history.replaceState(null, '', url.toString());
+}
+
+var currentSlugs = [];
+var currentData = [];
+var staleCount = 0;
+
+function highlightExtreme(values, mode) {
+  var valid = values.filter(function (v) { return v != null && isFinite(v); });
+  if (valid.length < 2) return values.map(function () { return false; });
+  if (valid.every(function (v) { return v === valid[0]; })) return values.map(function () { return false; });
+  var target = mode === 'max' ? Math.max.apply(null, valid) : Math.min.apply(null, valid);
+  return values.map(function (v) { return v != null && isFinite(v) && v === target; });
+}
+
+function promptStateHtml() {
+  var lang = getCurrentLang();
+  return (
+    '<div class="empty-state">' +
+      '<div class="empty-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><polyline points="7 12 10.5 15.5 17 8.5"/></svg></div>' +
+      '<h2 class="empty-title">' +
+        '<span class="lo-i">ເລືອກຢ່າງໜ້ອຍ 2 ຊັບສິນ</span>' +
+        '<span class="en-i">Select at least 2 properties</span>' +
+        '<span class="zh-i">请至少选择2个房源</span>' +
+      '</h2>' +
+      '<p class="empty-sub">' +
+        '<span class="lo-i">ກົດປຸ່ມສີ່ຫລ່ຽມ (☐) ຢູ່ຊັບສິນທີ່ທ່ານຢາກປຽບທຽບ ຢ່າງໜ້ອຍ 2 ລາຍການ ແລ້ວກົດ "ປຽບທຽບເລີຍ"</span>' +
+        '<span class="en-i">Tap the compare checkbox on any 2-4 listings, then use the "Compare Now" bar that appears</span>' +
+        '<span class="zh-i">在2-4个房源上点击比较复选框，然后使用出现的“立即比较”栏</span>' +
+      '</p>' +
+      '<a href="listings.html" class="empty-cta">' +
+        '<span class="lo-i">ເບິ່ງລາຍການທັງໝົດ</span><span class="en-i">Browse Listings</span><span class="zh-i">浏览全部房源</span>' +
+      '</a>' +
+    '</div>'
+  );
+}
+
+function errorStateHtml() {
+  return (
+    '<div class="state-center">' +
+      '<p class="state-title lo-i">ເກີດຂໍ້ຜິດພາດ ກະລຸນາລອງໃໝ່</p>' +
+      '<p class="state-title en-i">Something went wrong, please try again</p>' +
+      '<p class="state-title zh-i">出现错误，请重试</p>' +
+    '</div>'
+  );
+}
+
+function removeProperty(slug) {
+  currentSlugs = currentSlugs.filter(function (s) { return s !== slug; });
+  currentData = currentData.filter(function (p) { return p.slug !== slug; });
+  removeFromCompare(slug);
+  updateUrl(currentSlugs);
+  renderPage();
+}
+
+function updateCount(n, lang) {
+  var el = document.getElementById('count-text');
+  if (!el) return;
+  if (n < 2) { el.innerHTML = ''; return; }
+  el.innerHTML =
+    '<span class="lo-i">ປຽບທຽບ ' + n + ' ຊັບສິນ</span>' +
+    '<span class="en-i">Comparing ' + n + ' properties</span>' +
+    '<span class="zh-i">正在比较 ' + n + ' 个房源</span>';
+}
+
+function renderPage() {
+  var lang = getCurrentLang();
+  var container = document.getElementById('page-content');
+  updateCount(currentData.length, lang);
+
+  if (currentData.length < 2) {
+    container.innerHTML = promptStateHtml();
+    return;
+  }
+
+  var staleNote = staleCount > 0
+    ? '<div class="stale-note">' +
+        '<span class="lo-i">' + staleCount + ' ລາຍການບໍ່ສາມາດໃຊ້ໄດ້ອີກຕໍ່ໄປ ແລະ ຖືກລຶບອອກຈາກການປຽບທຽບນີ້</span>' +
+        '<span class="en-i">' + staleCount + ' listing(s) are no longer available and were removed from this comparison</span>' +
+        '<span class="zh-i">' + staleCount + ' 个房源已不可用，已从本次比较中移除</span>' +
+      '</div>'
+    : '';
+
+  container.innerHTML = staleNote + '<div class="compare-scroll"><div class="compare-grid" id="compare-grid"></div></div>';
+
+  var grid = document.getElementById('compare-grid');
+  var n = currentData.length;
+  grid.style.gridTemplateColumns = '150px repeat(' + n + ', 1fr)';
+
+  function row(labelHtml, cellsHtml, winFlags) {
+    var html = '<div class="cg-row"><div class="cg-cell cg-label">' + labelHtml + '</div>';
+    cellsHtml.forEach(function (c, i) {
+      html += '<div class="cg-cell' + (winFlags && winFlags[i] ? ' cg-win' : '') + '">' + c + '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  var L = {
+    price: {lo:'ລາຄາ',en:'Price',zh:'价格'},
+    pricePerSqm: {lo:'ລາຄາ/ຕລມ',en:'Price / sqm',zh:'每平米价格'},
+    type: {lo:'ປະເພດ',en:'Listing Type',zh:'类型'},
+    beds: {lo:'ຫ້ອງນອນ',en:'Bedrooms',zh:'卧室'},
+    baths: {lo:'ຫ້ອງນ້ຳ',en:'Bathrooms',zh:'浴室'},
+    sqm: {lo:'ພື້ນທີ່ໃຊ້ສອຍ',en:'Building Size',zh:'建筑面积'},
+    land: {lo:'ພື້ນທີ່ດິນ',en:'Land Size',zh:'土地面积'},
+    year: {lo:'ປີສ້າງ',en:'Year Built',zh:'建成年份'},
+    title: {lo:'ປະເພດເອກະສານ',en:'Land Title',zh:'土地产权'},
+    loc: {lo:'ສະຖານທີ່',en:'Location',zh:'位置'},
+    amenities: {lo:'ສິ່ງອຳນວຍຄວາມສະດວກ',en:'Amenities',zh:'配套设施'},
+    agent: {lo:'ຕົວແທນ',en:'Agent',zh:'经纪人'},
+    txLabels: {
+      for_sale:{lo:'ຂາຍ',en:'For Sale',zh:'出售'}, sale:{lo:'ຂາຍ',en:'For Sale',zh:'出售'},
+      for_rent:{lo:'ໃຫ້ເຊົ່າ',en:'For Rent',zh:'出租'}, rent:{lo:'ໃຫ້ເຊົ່າ',en:'For Rent',zh:'出租'},
+      sale_or_rent:{lo:'ຊື້ / ເຊົ່າ',en:'Sale or Rent',zh:'售/租'}
+    },
+    noData: {lo:'—',en:'—',zh:'—'}
+  };
+
+  // ── Header row: photo, title, price, remove, view ──
+  var headCells = currentData.map(function (p) {
+    var title = esc(p['title_' + lang] || p.title_en || '');
+    var img = (p.images && p.images.length)
+      ? '<img src="' + esc(p.images[0]) + '" alt="' + title + '" loading="lazy">'
+      : '<div class="cg-head-noimg"></div>';
+    var isReduced = !!(p.price_previous && parseNumericPrice(p.price_previous) > parseNumericPrice(p.price_display));
+    var priceLine = isReduced
+      ? '<span class="cg-head-price-prev">' + esc(p.price_previous) + '</span>' + esc(p.price_display || '')
+      : esc(p.price_display || '');
+    return (
+      '<div class="cg-head">' +
+        '<div class="cg-head-img">' + img +
+          '<button class="cg-remove" onclick="removeProperty(\'' + esc(p.slug) + '\')" aria-label="Remove from comparison">&times;</button>' +
+        '</div>' +
+        '<div class="cg-head-body">' +
+          '<a class="cg-head-title" href="listing.html?slug=' + encodeURIComponent(p.slug) + '">' + title + '</a>' +
+          '<div class="cg-head-price">' + priceLine + '</div>' +
+          '<a class="cg-head-view" href="listing.html?slug=' + encodeURIComponent(p.slug) + '"><span class="lo-i">ເບິ່ງລາຍລະອຽດ</span><span class="en-i">View Listing</span><span class="zh-i">查看详情</span></a>' +
+        '</div>' +
+      '</div>'
+    );
+  });
+
+  var priceVals = currentData.map(function (p) { return parseNumericPrice(p.price_display); });
+  var priceWin = highlightExtreme(priceVals, 'min');
+
+  var pricePerSqmCells = currentData.map(function (p, i) {
+    var pv = priceVals[i], sq = p.sqm;
+    if (!pv || !sq) return L.noData[lang];
+    return '$' + Math.round(pv / sq).toLocaleString();
+  });
+  var pricePerSqmVals = currentData.map(function (p, i) { return (priceVals[i] && p.sqm) ? priceVals[i] / p.sqm : null; });
+  var pricePerSqmWin = highlightExtreme(pricePerSqmVals, 'min');
+
+  var typeCells = currentData.map(function (p) {
+    var t = L.txLabels[p.transaction_type];
+    return t ? t[lang] : L.noData[lang];
+  });
+
+  var bedVals = currentData.map(function (p) { return p.bedrooms || null; });
+  var bedWin = highlightExtreme(bedVals, 'max');
+  var bedCells = currentData.map(function (p) { return p.bedrooms || L.noData[lang]; });
+
+  var bathVals = currentData.map(function (p) { return p.bathrooms || null; });
+  var bathWin = highlightExtreme(bathVals, 'max');
+  var bathCells = currentData.map(function (p) { return p.bathrooms || L.noData[lang]; });
+
+  var sqmVals = currentData.map(function (p) { return p.sqm || null; });
+  var sqmWin = highlightExtreme(sqmVals, 'max');
+  var sqmCells = currentData.map(function (p) { return p.sqm ? p.sqm + ' m&sup2;' : L.noData[lang]; });
+
+  var hasLand = currentData.some(function (p) { return p.sqm_land; });
+  var landVals = currentData.map(function (p) { return p.sqm_land || null; });
+  var landWin = highlightExtreme(landVals, 'max');
+  var landCells = currentData.map(function (p) { return p.sqm_land ? p.sqm_land + ' m&sup2;' : L.noData[lang]; });
+
+  var yearVals = currentData.map(function (p) { return p.year_built || null; });
+  var yearWin = highlightExtreme(yearVals, 'max');
+  var yearCells = currentData.map(function (p) { return p.year_built || L.noData[lang]; });
+
+  var hasLandTitle = currentData.some(function (p) { return p.land_title_type; });
+  var titleCells = currentData.map(function (p) {
+    var info = p.land_title_type ? LAND_TITLE_LABELS[p.land_title_type] : null;
+    return info ? esc(info[lang] || info.en) : L.noData[lang];
+  });
+
+  var locCells = currentData.map(function (p) {
+    var district = esc(p['district_' + lang] || p.district_en || '');
+    var village = p['village_' + lang] || p.village_en || p.village || '';
+    return village ? esc(village) + ', ' + district : (district || L.noData[lang]);
+  });
+
+  var hasAmenities = currentData.some(function (p) { return Array.isArray(p.amenities) && p.amenities.length; });
+  var amenityCells = currentData.map(function (p) {
+    if (!Array.isArray(p.amenities) || !p.amenities.length) return L.noData[lang];
+    return esc(p.amenities.join(', '));
+  });
+
+  var agentCells = currentData.map(function (p) {
+    if (!p.agent_name) return L.noData[lang];
+    var initial = esc((p.agent_name || 'P').trim().charAt(0));
+    var avatar = p.agent_photo
+      ? '<img src="' + esc(p.agent_photo) + '" alt="" loading="lazy">'
+      : initial;
+    var waBtn = p.agent_whatsapp
+      ? '<a class="cg-wa-btn" href="https://wa.me/' + esc(String(p.agent_whatsapp).replace(/[^0-9]/g,'')) + '" target="_blank" rel="noopener noreferrer">WhatsApp</a>'
+      : '';
+    return (
+      '<div class="cg-agent">' +
+        '<div class="cg-agent-avatar">' + avatar + '</div>' +
+        '<span>' + esc(p.agent_name) + '</span>' +
+      '</div>' + (waBtn ? '<div style="margin-top:8px;">' + waBtn + '</div>' : '')
+    );
+  });
+
+  var html = row('', headCells, null);
+  html += row(L.price[lang], currentData.map(function (p, i) { return esc(p.price_display || L.noData[lang]); }), priceWin);
+  html += row(L.pricePerSqm[lang], pricePerSqmCells, pricePerSqmWin);
+  html += row(L.type[lang], typeCells, null);
+  html += row(L.beds[lang], bedCells, bedWin);
+  html += row(L.baths[lang], bathCells, bathWin);
+  html += row(L.sqm[lang], sqmCells, sqmWin);
+  if (hasLand) html += row(L.land[lang], landCells, landWin);
+  html += row(L.year[lang], yearCells, yearWin);
+  if (hasLandTitle) html += row(L.title[lang], titleCells, null);
+  html += row(L.loc[lang], locCells, null);
+  if (hasAmenities) html += row(L.amenities[lang], amenityCells, null);
+  html += row(L.agent[lang], agentCells, null);
+
+  grid.innerHTML = html;
+}
+
+async function loadCompare() {
+  currentSlugs = slugsFromUrl();
+  if (currentSlugs.length < 2) {
+    currentData = [];
+    renderPage();
+    return;
+  }
+  try {
+    var url = SUPABASE_URL + '/rest/v1/properties?slug=in.(' +
+      currentSlugs.map(function (s) { return encodeURIComponent(s); }).join(',') +
+      ')&select=' + COMPARE_COLS;
+    var res = await fetch(url, { headers: { apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON } });
+    var data = await res.json();
+    if (!Array.isArray(data)) throw new Error('Unexpected response');
+
+    var foundSlugs = {};
+    data.forEach(function (p) { foundSlugs[p.slug] = true; });
+    staleCount = currentSlugs.filter(function (s) { return !foundSlugs[s]; }).length;
+    currentSlugs = currentSlugs.filter(function (s) { return foundSlugs[s]; });
+
+    // Preserve URL order.
+    var order = {};
+    currentSlugs.forEach(function (s, i) { order[s] = i; });
+    data.sort(function (a, b) { return order[a.slug] - order[b.slug]; });
+
+    currentData = data;
+
+    // Reconcile local selection state with what's actually being viewed —
+    // opening a shared link makes it "your" comparison too, consistent
+    // with the floating bar you'd see elsewhere on the site.
+    var compareSet = getCompareSet();
+    currentSlugs.forEach(function (s) { if (!compareSet.has(s)) toggleCompare(s); });
+
+    updateUrl(currentSlugs);
+    renderPage();
+  } catch (e) {
+    document.getElementById('page-content').innerHTML = errorStateHtml();
+  }
+}
+
+function setLang(lang, btn) {
+  document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
+  document.querySelectorAll('.lang-btn').forEach(function (b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  renderPage();
+}
+
+loadCompare();
+
+</script>
+</body>
+</html>

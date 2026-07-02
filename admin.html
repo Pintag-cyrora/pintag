@@ -1437,6 +1437,15 @@ async function editListing(id) {
 }
 
 // ── SAVE ──────────────────────────────────────────────────────────
+// A listing needs at least one working contact channel before it can go
+// live — otherwise a visitor who lands on it has no way to convert.
+// Today's admin flow only ever populates agent_whatsapp (from the
+// selected agent's profile); agent_phone is checked too in case that
+// changes later or a row was set directly in the database.
+function agentHasContactMethod(agent) {
+  return !!(agent && (agent.whatsapp || agent.phone));
+}
+
 async function saveListing(e) {
   e.preventDefault();
   const btn = document.getElementById('submit-btn');
@@ -1454,6 +1463,21 @@ async function saveListing(e) {
 
   const _selAgentId = document.getElementById('f-agent-id').value;
   const _selAgent = _selAgentId ? (_agentsAll.find(a => a.id === _selAgentId) || null) : null;
+
+  // A published listing with no way to contact the agent is a dead end
+  // for every visitor who reaches it — block publishing until it has at
+  // least one working contact method. Draft listings are exempt since
+  // they aren't visible to the public yet.
+  const _statusVal = document.getElementById('f-status').value || 'active';
+  if (_statusVal !== 'draft' && !agentHasContactMethod(_selAgent)) {
+    btn.disabled = false;
+    btn.textContent = 'Save Listing';
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message error';
+    msg.textContent = '✗ This listing has no way for a buyer to make contact — the selected agent has no WhatsApp number on file. Add one to the agent\'s profile, choose a different agent, or set Status to Draft.';
+    msg.style.display = 'block';
+    return;
+  }
 
   const titleEn = document.getElementById('f-title-en').value.trim();
   const slugBase = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
@@ -2206,6 +2230,17 @@ async function saveDraft() {
 async function publishDraft() {
   const editId = document.getElementById('edit-id').value;
   if (!editId) return;
+
+  const _selAgentId = document.getElementById('f-agent-id').value;
+  const _selAgent = _selAgentId ? (_agentsAll.find(a => a.id === _selAgentId) || null) : null;
+  if (!agentHasContactMethod(_selAgent)) {
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message error';
+    msg.textContent = '✗ Can\'t publish — the selected agent has no WhatsApp number on file, so this listing would have no way for a buyer to make contact. Add one to the agent\'s profile or choose a different agent first.';
+    msg.style.display = 'block';
+    return;
+  }
+
   if (!confirm('Publish this listing? It will become live on the site immediately.')) return;
   const btn = document.getElementById('publish-btn');
   btn.disabled = true;

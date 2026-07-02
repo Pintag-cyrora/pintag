@@ -19,7 +19,12 @@
 <meta name="theme-color" content="#F3EFE8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://eoladhcljbpbhnrmmpev.supabase.co">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin>
+<script src="favorites.js"></script>
+<script src="compare.js"></script>
+<script src="property-card.js"></script>
+<script src="compare-bar.js"></script>
 <script>
 window.addEventListener('error',function(e){
   if(e.message==='Script error.'||e.message==='Script error'){e.preventDefault();e.stopImmediatePropagation();return true;}
@@ -29,8 +34,8 @@ window.addEventListener('error',function(e){
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
 :root{
-  --teal:#2D8C8C;--teal-light:#38A8A8;--teal-mark:rgba(45,140,140,0.22);
-  --ink:#1A2428;--ink-soft:#3A4E55;--ink-muted:#7A9098;
+  --teal:#237373;--teal-light:#38A8A8;--teal-mark:rgba(45,140,140,0.22);
+  --ink:#1A2428;--ink-soft:#3A4E55;--ink-muted:#5A6E75;
   --warm:#F3EFE8;--warm-deep:#E8E3DB;--white:#FFFFFF;
   --border:rgba(26,36,40,0.07);--border-mid:rgba(26,36,40,0.10);--border-strong:rgba(26,36,40,0.13);
   --wa:#236B6B;--wa-hover:#1D5858;
@@ -82,6 +87,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .price-block{margin-bottom:0;}
 .price-value{font-size:28px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1.1;}
 .price-lak{font-size:11px;color:var(--ink-muted);margin-top:4px;font-variant-numeric:tabular-nums;}
+.price-previous{font-size:16px;font-weight:400;color:var(--ink-muted);text-decoration:line-through;letter-spacing:0;margin-right:2px;}
 .price-inquire{font-size:14px;font-weight:400;color:var(--ink-muted);}
 .spec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 8px;margin:26px 0 0;}
 .spec-item{display:flex;flex-direction:column;gap:4px;}
@@ -98,8 +104,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .action-link:hover{color:var(--teal);}
 .action-link:hover svg{stroke:var(--teal);}
 .action-link svg{transition:stroke 0.18s;}
-.pintag-verified{display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);border:1px solid var(--teal-mark);padding:3px 8px;border-radius:var(--r-tag);white-space:nowrap;width:fit-content;}
-.pintag-verified::before{content:"";display:block;width:4px;height:4px;border-right:1.5px solid var(--teal);border-bottom:1.5px solid var(--teal);transform:rotate(-45deg) translateY(-1px);flex-shrink:0;}
+.action-link.saved{color:#DC2626;}
+.action-link.saved svg{fill:#DC2626;stroke:#DC2626;}
+.action-link.comparing{color:var(--teal);}
+.action-link.comparing svg rect{fill:var(--teal);stroke:var(--teal);}
+.action-link.comparing svg .cm{stroke-opacity:1;stroke:#fff;}
+.pintag-badge{display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);border:1px solid var(--teal-mark);padding:3px 8px;border-radius:var(--r-tag);white-space:nowrap;width:fit-content;}
+.pintag-badge::before{content:"";display:block;width:4px;height:4px;border-right:1.5px solid var(--teal);border-bottom:1.5px solid var(--teal);transform:rotate(-45deg) translateY(-1px);flex-shrink:0;}
 /* Gallery */
 .desktop-gallery{display:flex;flex-direction:column;height:100%;}
 .dg-hero{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--warm-deep);cursor:pointer;}
@@ -159,8 +170,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .feature-item{display:flex;align-items:center;gap:12px;font-size:13px;font-weight:400;color:var(--ink-soft);padding:11px 0;border-bottom:1px solid var(--border);line-height:1.4;}
 .feature-item:last-child{border-bottom:none;}
 .feature-item-icon{width:26px;height:26px;border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--ink-muted);flex-shrink:0;background:rgba(45,140,140,0.03);}
-.view-all-features{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--teal);text-decoration:none;margin-top:18px;transition:gap 0.15s;}
-.view-all-features:hover{gap:8px;}
 /* Map column */
 .map-frame{width:100%;height:300px;background:var(--warm-deep);border-radius:16px;overflow:hidden;border:1px solid var(--border-mid);box-shadow:0 4px 12px rgba(0,0,0,0.04);margin-bottom:12px;position:relative;}
 .map-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;}
@@ -192,17 +201,20 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .sim-no-img{width:100%;height:100%;background:linear-gradient(135deg,#2A3A35,#1A2828);}
 .sim-heart{position:absolute;top:10px;right:10px;z-index:2;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.88);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;}
 .sim-heart:hover{background:#fff;}
+.sim-heart svg{transition:fill 0.15s,stroke 0.15s;}
+.sim-heart.saved svg{fill:#DC2626;stroke:#DC2626;}
+.sim-compare{position:absolute;top:48px;right:10px;z-index:2;width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,0.88);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;}
+.sim-compare:hover{background:#fff;}
+.sim-compare svg rect{transition:fill 0.15s,stroke 0.15s;}
+.sim-compare.comparing svg rect{fill:#2D8C8C;stroke:#2D8C8C;}
+.sim-compare.comparing svg .cm{stroke-opacity:1;}
 .sim-body{padding:16px 16px 18px;}
 .sim-title{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:5px;line-height:1.35;}
 .sim-loc{font-size:11.5px;color:var(--ink-muted);margin-bottom:9px;display:flex;align-items:center;gap:4px;}
 .sim-specs{font-size:11px;color:var(--ink-muted);margin-bottom:10px;display:flex;gap:12px;}
 .sim-spec-item{display:flex;align-items:center;gap:3px;}
 .sim-price{font-size:16px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;}
-.sim-label{font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:3px;display:inline-block;margin-bottom:5px;}
-.sim-label-sim{background:rgba(45,140,140,0.09);color:var(--teal);border:1px solid rgba(45,140,140,0.18);}
-.sim-label-pop{background:rgba(194,65,0,0.09);color:#C24100;border:1px solid rgba(194,65,0,0.20);}
-.sim-label-val{background:rgba(0,127,63,0.09);color:#0a7a3e;border:1px solid rgba(0,127,63,0.18);}
-.sim-label-new{background:rgba(22,101,52,0.09);color:#15803D;border:1px solid rgba(22,101,52,0.18);}
+.sim-type-badge{font-size:9px;font-weight:400;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:8px;color:var(--teal);opacity:0.85;}
 /* ── Editorial presentation layer (desktop) ── */
 .emotional-intro{max-width:640px;margin:0 auto;padding:100px 48px 0;text-align:center;background:var(--white);}
 .emotional-statement{font-size:24px;font-weight:300;line-height:1.7;color:var(--ink-soft);letter-spacing:0.01em;}
@@ -215,11 +227,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 /* Mobile CTA */
 .mobile-cta-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;background:rgba(255,255,255,0.985);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--border-mid);padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom));}
 .mcta-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;}
-.mcta-price-wrap{display:flex;flex-direction:column;gap:1px;}
-.mcta-price-label{font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-muted);}
-.mcta-price-value{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1;}
+.mcta-price-wrap{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0;}
+.mcta-price-label{font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mcta-price-value{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .mcta-price-req{font-size:13px;font-weight:400;color:var(--ink-muted);}
-.mcta-btn{display:flex;align-items:center;gap:7px;background:var(--wa);color:var(--white);padding:8px 14px;border-radius:var(--r-btn);font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap;box-shadow:0 3px 10px rgba(35,107,107,0.18);}
+.mcta-btn{display:flex;align-items:center;gap:7px;background:var(--wa);color:var(--white);padding:8px 14px;border-radius:var(--r-btn);font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap;box-shadow:0 3px 10px rgba(35,107,107,0.18);flex-shrink:0;}
 /* Loader */
 .loader-stage{min-height:70vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:140px 24px;color:var(--ink-muted);}
 .loader-cluster{display:flex;gap:6px;justify-content:center;margin-bottom:16px;}
@@ -227,20 +239,27 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .loader-bead:nth-child(2){animation-delay:0.15s;}
 .loader-bead:nth-child(3){animation-delay:0.3s;}
 @keyframes beadWave{0%,100%{opacity:0.2;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
-/* ── PROPERTY STATUS BADGE — detail & gallery overlay ── */
-.prop-status-badge{
-  display:inline-flex;align-items:center;
-  font-size:10px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
-  padding:5px 11px;border-radius:5px;color:#fff;
-  box-shadow:0 2px 8px rgba(0,0,0,0.25);
+/* ── STATUS BADGE — same .status-badge/.badge-* system as listings.html /
+   saved-properties.html / Home (via property-card.js's getBadgeHtml),
+   used here for both the main property and Similar Properties cards ── */
+.status-badge{
+  display:inline-block;
+  font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
+  padding:4px 9px;border-radius:3px;color:#fff;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  box-shadow:0 1px 5px rgba(0,0,0,0.22);
 }
-.prop-status-available{background:#166534;}
-.prop-status-sold{background:#991B1B;}
-.prop-status-rented{background:#C2410C;}
-.prop-status-offer{background:#1D4ED8;}
+.badge-available{background:rgba(22,101,52,0.92);}
+.badge-curated{background:rgba(45,140,140,0.82);}
+.badge-sale{background:rgba(148,116,4,0.86);}
+.badge-rent{background:rgba(55,72,78,0.86);}
+.badge-land{background:rgba(80,52,14,0.86);}
+.badge-sold{background:rgba(185,28,28,0.94);}
+.badge-rented{background:rgba(194,65,0,0.92);}
+.badge-offer{background:rgba(30,64,175,0.88);}
 .mg-status-wrap{position:absolute;top:12px;right:12px;z-index:4;pointer-events:none;}
 @media(max-width:960px){
-  .prop-status-badge{font-size:11px;padding:6px 13px;}
+  .status-badge{font-size:11px;padding:6px 13px;border-radius:4px;}
 }
 /* Lightbox */
 .lb-overlay{position:fixed;inset:0;z-index:1000;background:rgba(8,12,16,0.96);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.32s cubic-bezier(0.16,1,0.3,1);touch-action:pan-y;}
@@ -335,6 +354,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
     object-fit:cover;
   }
   .sim-heart{width:28px;height:28px;top:8px;right:8px;}
+  .sim-compare{width:28px;height:28px;top:44px;right:8px;}
   .sim-body{padding:12px 13px 14px;}
   .sim-title{font-size:14px;font-weight:500;margin-bottom:3px;}
   .sim-loc{margin-bottom:5px;}
@@ -385,6 +405,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
     <a href="listings.html?filter=for_sale" class="nav-link"><span class="lo-i">ຊື້</span><span class="en-i">Buy</span><span class="zh-i">购房</span></a>
     <a href="listings.html?filter=for_rent" class="nav-link"><span class="lo-i">ເຊົ່າ</span><span class="en-i">Rent</span><span class="zh-i">租房</span></a>
     <a href="listings.html" class="nav-link"><span class="lo-i">ລາຍການ</span><span class="en-i">Listings</span><span class="zh-i">房源</span></a>
+    <a href="saved-properties.html" class="nav-link"><span class="lo-i">ບັນທຶກໄວ້</span><span class="en-i">Saved</span><span class="zh-i">收藏</span></a>
   </div>
   <div class="nav-right">
     <div class="lang-switcher">
@@ -408,11 +429,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   </div>
   <div id="similar-section" class="similar-section" style="display:none;">
     <div class="similar-header">
-      <span class="similar-title">
+      <h2 class="similar-title">
         <span class="lo-i">ທ່ານອາດຈະມັກ</span>
         <span class="en-i">You May Also Like</span>
         <span class="zh-i">您可能喜欢</span>
-      </span>
+      </h2>
       <a href="listings.html" class="similar-view-all">
         <span class="lo-i">ເບິ່ງທັງໝົດ</span><span class="en-i">View all</span><span class="zh-i">查看全部</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -624,6 +645,40 @@ function handleImageError(img) {
   img.style.background = 'var(--warm-deep)';
 }
 
+// getSavedSet() / isSaved() / toggleSave() come from favorites.js —
+// the single shared save/favorite implementation, keyed by slug, also
+// used by listings.html. Below is just this page's own presentation
+// logic (the hero button additionally swaps its text label).
+var SAVE_LABELS  = {lo:'ບັນທຶກ',      en:'Save property', zh:'收藏房源'};
+var SAVED_LABELS = {lo:'ບັນທຶກແລ້ວ', en:'Saved',         zh:'已收藏'};
+
+function onHeroSaveClick(e, slug){
+  var nowSaved = toggleSave(slug, e);
+  var btn = document.getElementById('save-btn');
+  var label = btn ? btn.querySelector('.save-btn-label') : null;
+  if(label){
+    var lang = getCurrentLang();
+    label.textContent = (nowSaved ? SAVED_LABELS : SAVE_LABELS)[lang] || (nowSaved ? SAVED_LABELS.en : SAVE_LABELS.en);
+  }
+}
+
+// getCompareSet() / toggleCompare() come from compare.js — same shared
+// pattern as favorites.js, kept as a separate module since "saved" and
+// "selected for comparison" are different intents.
+var COMPARE_LABELS  = {lo:'ເພີ່ມເພື່ອປຽບທຽບ', en:'Add to Compare', zh:'加入比较'};
+var COMPARING_LABELS = {lo:'ກຳລັງປຽບທຽບ',    en:'Comparing',      zh:'比较中'};
+
+function onHeroCompareClick(e, slug){
+  var result = toggleCompare(slug, e);
+  var btn = document.getElementById('compare-btn-hero');
+  var label = btn ? btn.querySelector('.compare-btn-label') : null;
+  if(label){
+    var lang = getCurrentLang();
+    label.textContent = (result.comparing ? COMPARING_LABELS : COMPARE_LABELS)[lang] || (result.comparing ? COMPARING_LABELS.en : COMPARE_LABELS.en);
+  }
+  if(result.limitReached && btn) pintagCompareLimitNudge(btn);
+}
+
 
 // ══════════════════════════════════════════════════════════════════
 // PINTAG TAXONOMY — single source of truth for admin + listing page
@@ -686,6 +741,12 @@ var HIGHLIGHTS={
   near_hospital:    {en:'Near Hospital',             lo:'ໃກ້ໂຮງໝໍ',           zh:'近医院'     },
   expat_community:  {en:'Expat Community',           lo:'ຊຸມຊົນຕ່າງປະເທດ',    zh:'外籍社区'   }
 };
+var LAND_TITLE_LABELS={
+  hard_title:        {en:'Hard Title',        lo:'ໂຉນດ (Hard Title)',        zh:'硬产权'  },
+  soft_title:        {en:'Soft Title',         lo:'ໃບຕາດິນ (Soft Title)',    zh:'软产权'  },
+  leasehold:         {en:'Leasehold',          lo:'ເຊົ່າສິດທິ (Leasehold)',   zh:'租赁产权'},
+  company_ownership: {en:'Company Ownership',  lo:'ກຳມະສິດບໍລິສັດ',           zh:'公司持有'}
+};
 
 // ── Resolve stored value (key OR legacy display string) → localized label ──
 // Priority: direct key → normalized key → en-label scan → raw fallback
@@ -701,17 +762,9 @@ function resolveLabel(value,registry,lang){
 
 var agentFallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%237A9098' stroke-width='1'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
 
-function getStatusBadgeHtml(status, lang){
-  var S = {
-    active:       { lo:'ວ່າງ',           en:'Available',   zh:'在售',   cls:'prop-status-available' },
-    sold:         { lo:'ຂາຍແລ້ວ',       en:'Sold',        zh:'已售',   cls:'prop-status-sold'      },
-    rented:       { lo:'ເຊົ່າແລ້ວ',     en:'Rented',      zh:'已租',   cls:'prop-status-rented'    },
-    under_offer:  { lo:'ກຳລັງດຳເນີນ',  en:'Under Offer', zh:'洽谈中', cls:'prop-status-offer'     }
-  };
-  var key = S[status] ? status : 'active';
-  var info = S[key];
-  return '<span class="prop-status-badge '+info.cls+'">'+(info[lang]||info.en)+'</span>';
-}
+// getBadgeHtml() now comes from property-card.js — this file used to
+// define an equivalent getStatusBadgeHtml() locally under different
+// CSS class names (.prop-status-* vs the shared .status-badge/.badge-*).
 
 var PT = (function(){
   var P='[Pintag]';
@@ -872,87 +925,72 @@ async function fetchProperty(slug){
 }
 
 // ══════════════════════════════════════════════════════════════════
-// fetchSimilarProperties — 3-stage priority:
-//   Stage 1: same district + same transaction_type
-//   Stage 2: same transaction_type (any district), fill gap
-//   Stage 3: any active (any type/district), fill remaining gap
-// Excludes current listing ID at every stage.
+// fetchSimilarProperties — priority: same district > same property type
+// > closest price. Excludes current listing.
+//
+// Performance: one request in the common case (same transaction_type
+// pool is almost always enough to fill 6 cards), only falling back to
+// a second broader request if that pool comes back thin. Both requests
+// fire after the main property has already rendered, so this never
+// blocks or delays the primary content paint.
 // ══════════════════════════════════════════════════════════════════
 async function fetchSimilarProperties(prop){
   PT.time('fetchSimilar');
-  var SHOW = 6;   // cards to display
-  var POOL = 30;  // candidates to fetch for scoring
+  var SHOW = 6;         // max cards to display
+  var MIN_RESULTS = 4;  // below this, widen the search
+  var POOL = 24;        // candidates to fetch for client-side sorting
   var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,' +
-             'images,bedrooms,bathrooms,sqm,price_display,price_previous,transaction_type,' +
-             'status,property_type,is_featured,views_week,created_at';
-  var candidates = [];
+             'village_en,village,' +
+             'images,bedrooms,bathrooms,sqm,sqm_land,price_display,transaction_type,' +
+             'property_type,status,created_at';
 
   function excludeParam(ids){
     return 'id=not.in.('+ids.map(function(x){return encodeURIComponent(x);}).join(',')+')';
   }
 
   try{
-    // Fetch a wide pool: same district first, then same type, then catch-all
-    if(prop.district_en && prop.transaction_type){
+    var candidates = [];
+
+    // Stage 1 (single request — covers the common case): keep it to the
+    // same transaction_type so a buyer never sees rentals mixed into
+    // "similar" results for a sale listing.
+    if(prop.transaction_type){
       var q1 = '/rest/v1/properties?'+excludeParam([prop.id])
-        +'&district_en=eq.'+encodeURIComponent(prop.district_en)
         +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type)
-        +'&status=eq.active&order=created_at.desc&limit=20&select='+cols;
+        +'&status=eq.active&order=created_at.desc&limit='+POOL+'&select='+cols;
       var s1 = await sbFetch(q1);
       if(Array.isArray(s1)) candidates = s1.filter(Boolean);
     }
-    if(candidates.length < POOL && prop.transaction_type){
+
+    // Stage 2 (fallback — only when the pool is thin): widen to any
+    // active listing so the section still has enough to show.
+    if(candidates.length < MIN_RESULTS){
       var usedIds = [prop.id].concat(candidates.map(function(p){return p.id;}));
       var q2 = '/rest/v1/properties?'+excludeParam(usedIds)
-        +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type)
         +'&status=eq.active&order=created_at.desc&limit='+(POOL - candidates.length)+'&select='+cols;
       var s2 = await sbFetch(q2);
       if(Array.isArray(s2)) candidates = candidates.concat(s2.filter(Boolean));
-    }
-    if(candidates.length < POOL){
-      var usedIds2 = [prop.id].concat(candidates.map(function(p){return p.id;}));
-      var q3 = '/rest/v1/properties?'+excludeParam(usedIds2)
-        +'&status=eq.active&order=created_at.desc&limit='+(POOL - candidates.length)+'&select='+cols;
-      var s3 = await sbFetch(q3);
-      if(Array.isArray(s3)) candidates = candidates.concat(s3.filter(Boolean));
     }
 
     PT.timeEnd('fetchSimilar');
     if(!candidates.length){hideSimilarSection();return;}
 
-    // Score each candidate for relevance (higher = better match)
-    var propPrice = parseSimPrice(prop.price_display);
+    // Priority sort: same district first, then same property type,
+    // then closest absolute price — a strict cascade, not a blended score.
+    var propPrice = parseNumericPrice(prop.price_display);
     candidates.forEach(function(c){
-      var sc = 0;
-      if(c.district_en && c.district_en === prop.district_en) sc += 40;
-      if(c.property_type && c.property_type === prop.property_type) sc += 30;
-      if(c.transaction_type && c.transaction_type === prop.transaction_type) sc += 20;
-      if(prop.bedrooms && c.bedrooms && Math.abs(c.bedrooms - prop.bedrooms) <= 1) sc += 10;
-      var cp = parseSimPrice(c.price_display);
-      if(propPrice && cp && cp > 0) {
-        var ratio = propPrice / cp;
-        if(ratio > 0.5 && ratio < 2) sc += 10; // within 50-200% of current price
-      }
-      if((c.views_week || 0) >= 5) sc += 5;
-      if(daysOld(c) <= 7) sc += 5;
-      c._simScore = sc;
+      c._sameDistrict = !!(c.district_en && prop.district_en && c.district_en === prop.district_en);
+      c._sameType     = !!(c.property_type && prop.property_type && c.property_type === prop.property_type);
+      var cp = parseNumericPrice(c.price_display);
+      c._priceDist = (propPrice && cp) ? Math.abs(cp - propPrice) : Infinity;
+    });
+    candidates.sort(function(a,b){
+      if(a._sameDistrict !== b._sameDistrict) return a._sameDistrict ? -1 : 1;
+      if(a._sameType !== b._sameType) return a._sameType ? -1 : 1;
+      return a._priceDist - b._priceDist;
     });
 
-    // Sort by relevance and take top SHOW
-    candidates.sort(function(a,b){ return b._simScore - a._simScore; });
     var top = candidates.slice(0, SHOW);
-
-    // Compute average price within candidates for Best Value label
-    var candidatePrices = top.map(function(c){ return parseSimPrice(c.price_display); }).filter(Boolean);
-    var candAvg = candidatePrices.length ? candidatePrices.reduce(function(a,b){return a+b;},0) / candidatePrices.length : 0;
-    var candAvgW = top.reduce(function(a,c){ return a + (c.views_week||0); },0) / (top.length || 1);
-
-    top.forEach(function(c){
-      var cp = parseSimPrice(c.price_display);
-      c._simBestValue = !!(cp && candAvg && cp < candAvg * 0.85);
-      c._simHot = candAvgW > 0 && (c.views_week||0) >= candAvgW * 1.5;
-    });
-
     similarCache = top;
     renderSimilarGrid(top);
 
@@ -963,18 +1001,21 @@ async function fetchSimilarProperties(prop){
   }
 }
 
-function parseSimPrice(s) {
-  if (!s) return null;
-  var clean = String(s).replace(/[^\d.MmKk]/g, '');
-  if (/[Mm]$/.test(clean)) return parseFloat(clean) * 1000000;
-  if (/[Kk]$/.test(clean)) return parseFloat(clean) * 1000;
-  return parseFloat(clean) || null;
-}
+// parseNumericPrice() now comes from property-card.js — this file used
+// to define an identical local copy under a different name.
 
 function hideSimilarSection(){
   var el=document.getElementById('similar-section');
   if(el)el.style.display='none';
 }
+
+var SIM_TYPE_LABELS = {
+  for_sale:     {lo:'ຂາຍ',           en:'For Sale',      zh:'出售'  },
+  sale:         {lo:'ຂາຍ',           en:'For Sale',      zh:'出售'  },
+  for_rent:     {lo:'ໃຫ້ເຊົ່າ',     en:'For Rent',      zh:'出租'  },
+  rent:         {lo:'ໃຫ້ເຊົ່າ',     en:'For Rent',      zh:'出租'  },
+  sale_or_rent: {lo:'ຊື້ / ເຊົ່າ',  en:'Sale or Rent',  zh:'售/租' }
+};
 
 function renderSimilarGrid(similar){
   var secEl=document.getElementById('similar-section');
@@ -983,6 +1024,8 @@ function renderSimilarGrid(similar){
   if(!Array.isArray(similar)||!similar.length){hideSimilarSection();return;}
   secEl.style.display='block';
   var lang=getCurrentLang();
+  var savedSet=getSavedSet();
+  var compareSet=getCompareSet();
   var sI={
     bed:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4v16M22 4v16M2 8h20M2 14h20"/></svg>',
     bath:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18a4 4 0 0 0 8 0v-4H4zM12 14V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>',
@@ -993,40 +1036,43 @@ function renderSimilarGrid(similar){
     if(!p||!p.slug)return;
     var title=esc(p['title_'+lang]||p.title_en||'');
     var district=esc(p['district_'+lang]||p.district_en||'');
-    var imgs=Array.isArray(p.images)?p.images.filter(Boolean):[];
-    var imgHtml=imgs[0]?'<img src="'+esc(imgs[0])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)">':'<div class="sim-no-img"></div>';
+    var villageRaw=p['village_'+lang]||p.village_en||p.village||'';
+    var locationLabel=villageRaw?esc(villageRaw)+', '+district:district;
+    var imgs=Array.isArray(p.images)?p.images.filter(function(u){return u&&typeof u==='string';}):[];
+    var imgAlt=(title||'Property photo')+' — thumbnail';
+    var imgHtml=imgs[0]?'<img src="'+esc(imgs[0])+'" alt="'+esc(imgAlt)+'" loading="lazy" decoding="async" onerror="handleImageError(this)">':'<div class="sim-no-img"></div>';
+
     var specs=[];
     if(p.bedrooms)specs.push('<span class="sim-spec-item">'+sI.bed+' '+esc(String(p.bedrooms))+'</span>');
     if(p.bathrooms)specs.push('<span class="sim-spec-item">'+sI.bath+' '+esc(String(p.bathrooms))+'</span>');
-    if(p.sqm)specs.push('<span class="sim-spec-item">'+sI.sqm+' '+esc(String(p.sqm))+'</span>');
+    if(p.sqm)specs.push('<span class="sim-spec-item">'+sI.sqm+' '+esc(String(p.sqm))+'m&sup2;</span>');
+    if(p.sqm_land&&p.sqm_land!==p.sqm)specs.push('<span class="sim-spec-item">'+sI.sqm+' '+esc(String(p.sqm_land))+'m&sup2; land</span>');
 
-    // Label: Popular Alternative > Best Value Nearby > New Listing > Similar Property
-    var labelHtml = '';
-    if(p._simHot){
-      labelHtml='<span class="sim-label sim-label-pop">'+ {lo:'ທາງເລືອກຍອດນິຍົມ',en:'Popular Alternative',zh:'热门备选'}[lang] +'</span>';
-    } else if(p._simBestValue){
-      labelHtml='<span class="sim-label sim-label-val">'+ {lo:'ສະຖານທີ່ດີທີ່ສຸດໃກ້ຄຽງ',en:'Best Value Nearby',zh:'周边超值'}[lang] +'</span>';
-    } else if(daysOld(p) <= 7){
-      labelHtml='<span class="sim-label sim-label-new">'+ {lo:'ລາຍການໃໝ່',en:'New Listing',zh:'新房源'}[lang] +'</span>';
-    } else {
-      labelHtml='<span class="sim-label sim-label-sim">'+ {lo:'ຄ້າຍຄືກັນ',en:'Similar Property',zh:'相似房源'}[lang] +'</span>';
-    }
+    var typeInfo=SIM_TYPE_LABELS[p.transaction_type];
+    var typeBadgeHtml=typeInfo?'<span class="sim-type-badge">'+(typeInfo[lang]||typeInfo.en)+'</span>':'';
+
+    var isFav=savedSet.has(p.slug);
+    var isCompared=compareSet.has(p.slug);
+    var slugSafe=esc(p.slug);
 
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug);
     card.className='sim-card';
-    var simStatusBadge=getStatusBadgeHtml(p.status||'active',lang);
+    var simStatusBadge=getBadgeHtml(p,lang,false);
     var simStatusOverlay='<div style="position:absolute;top:8px;left:8px;z-index:3;pointer-events:none;">'+simStatusBadge+'</div>';
     card.innerHTML=(
       '<div class="sim-card-img">'+imgHtml+
       simStatusOverlay+
-      '<button class="sim-heart" onclick="event.preventDefault()" aria-label="Save">'+
+      '<button class="sim-heart'+(isFav?' saved':'')+'" type="button" data-save="'+slugSafe+'" aria-pressed="'+(isFav?'true':'false')+'" aria-label="Save" onclick="toggleSave(\''+slugSafe+'\',event)">'+
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>'+
+      '</button>'+
+      '<button class="sim-compare'+(isCompared?' comparing':'')+'" type="button" data-compare="'+slugSafe+'" aria-pressed="'+(isCompared?'true':'false')+'" aria-label="Add to compare" onclick="var r=toggleCompare(\''+slugSafe+'\',event); if(r.limitReached) pintagCompareLimitNudge(this);">'+
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" stroke="#1A2428" stroke-width="2"/><polyline class="cm" points="7 12 10.5 15.5 17 8.5" stroke="#fff" stroke-width="2" stroke-opacity="0"/></svg>'+
       '</button></div>'+
       '<div class="sim-body">'+
-      labelHtml+
+      typeBadgeHtml+
       '<p class="sim-title">'+title+'</p>'+
-      '<p class="sim-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>'+district+'</p>'+
+      '<p class="sim-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>'+locationLabel+'</p>'+
       (specs.length?'<div class="sim-specs">'+specs.join('')+'</div>':'')+
       (p.price_display?'<p class="sim-price">'+esc(p.price_display)+'</p>':'')+
       '</div>'
@@ -1089,11 +1135,13 @@ function buildMockupLayout(){
 
   var isSale = data.transaction_type==='for_sale'||data.transaction_type==='sale';
   var isSor  = data.transaction_type==='sale_or_rent';
+  var isFavorited = isSaved(data.slug);
+  var isComparedHero = isComparing(data.slug);
   var imagesArray=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';});
 
-  var statusBadgeHtml=getStatusBadgeHtml(data.status||'active',lang);
-  var desktopGalleryMarkup=buildDesktopGallery(imagesArray);
-  var mobileGalleryMarkup=buildMobileGallery(imagesArray,statusBadgeHtml);
+  var statusBadgeHtml=getBadgeHtml(data,lang,false);
+  var desktopGalleryMarkup=buildDesktopGallery(imagesArray,resolvedTitle);
+  var mobileGalleryMarkup=buildMobileGallery(imagesArray,statusBadgeHtml,resolvedTitle);
 
   var L={
     wa     :{lo:'ສອບຖາມຜ່ານ WhatsApp',en:'Chat on WhatsApp',zh:'通过WhatsApp咨询'},
@@ -1103,12 +1151,12 @@ function buildMockupLayout(){
     features:{lo:'ຈຸດເດັ່ນ',en:'Features',zh:'房屋亮点'},
     location:{lo:'ສະຖານທີ່ຕັ້ງ',en:'Location',zh:'地理位置'},
     nearby :{lo:'ສະຖານທີ່ໃກ້ຄຽງ',en:'Nearby',zh:'周边'},
-    viewFt :{lo:'ເບິ່ງທັງໝົດ',en:'View all features',zh:'查看全部特征'},
     mapOpen:{lo:'ເປີດໃນ Google Maps',en:'Open in Google Maps',zh:'在谷歌地图中打开'},
     video  :{lo:'ວິດີໂອນຳຊົມ',en:'Property walk-through',zh:'实景视频'},
-    verified:{lo:'ກວດສອບແລ້ວ',en:'Verified',zh:'平台已核验'},
+    verified:{lo:'ລົງປະກາດຢູ່ Pintag',en:'Listed on Pintag',zh:'发布于 Pintag'},
     inquire:{lo:'ສອບຖາມລາຄາ',en:'Inquire for price',zh:'意向询价'},
-    year   :{lo:'ປີທີ່ສ້າງສຳເລັດ',en:'Year built',zh:'建成岁次'}
+    year   :{lo:'ປີທີ່ສ້າງສຳເລັດ',en:'Year built',zh:'建成岁次'},
+    landTitle:{lo:'ປະເພດເອກະສານທີ່ດິນ',en:'Land title',zh:'土地产权'}
   };
 
   var I={
@@ -1117,7 +1165,9 @@ function buildMockupLayout(){
     sqm:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>',
     car:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="22" height="13" rx="2"/><path d="M7 16v2M17 16v2"/></svg>',
     cal:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+    doc:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
     heart:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
+    compare:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.8"/><polyline class="cm" points="7 12 10.5 15.5 17 8.5" stroke="currentColor" stroke-width="1.8" stroke-opacity="0"/></svg>',
     play:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
     pin:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
     back:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
@@ -1125,11 +1175,21 @@ function buildMockupLayout(){
     bolt:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
     star:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
     ext:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
-    chev:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
     share:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>'
   };
 
   // ── Price ──
+  // Price Reduced — only when price_previous is a real, larger prior price
+  // (never inferred; both values must parse and the drop must be genuine).
+  var priceReducedBadgeHtml='';
+  var priceCutPrevNum=data.price_previous?parseNumericPrice(data.price_previous):null;
+  var priceCutCurNum=data.price_display?parseNumericPrice(data.price_display):null;
+  var isPriceReduced=!!(priceCutPrevNum&&priceCutCurNum&&priceCutPrevNum>priceCutCurNum);
+  if(isPriceReduced){
+    var reducedLbl={lo:'ຫຼຸດລາຄາ',en:'Price Reduced',zh:'降价'}[lang]||'Price Reduced';
+    priceReducedBadgeHtml='<span class="sp-badge sp-badge-fire">&#8595; '+reducedLbl+'</span>';
+  }
+
   var resolvedPriceHtml='';
   if(isSor && (data.sale_price || data.rent_price)){
     var periodLabel={month:{lo:'/ ເດືອນ',en:'/ month',zh:'/ 月'},year:{lo:'/ ປີ',en:'/ year',zh:'/ 年'},day:{lo:'/ ວັນ',en:'/ day',zh:'/ 天'}};
@@ -1137,7 +1197,7 @@ function buildMockupLayout(){
     if(data.sale_price) resolvedPriceHtml+='<p class="price-value">'+esc(data.sale_price)+'<span class="price-type-label"> &mdash; <span class="lo-i">ຂາຍ</span><span class="en-i">For Sale</span><span class="zh-i">出售</span></span></p>';
     if(data.rent_price) resolvedPriceHtml+='<p class="price-value">'+esc(data.rent_price)+'<span class="price-type-label"> '+esc((periodLabel[period]||periodLabel.month)[lang])+' &mdash; <span class="lo-i">ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">出租</span></span></p>';
   }else if(data.price_display){
-    resolvedPriceHtml='<p class="price-value">'+esc(data.price_display)+'</p>';
+    resolvedPriceHtml='<p class="price-value">'+(isPriceReduced?'<span class="price-previous">'+esc(data.price_previous)+'</span> ':'')+esc(data.price_display)+'</p>';
     if(data.price_lak)resolvedPriceHtml+='<p class="price-lak">'+esc(data.price_lak)+'</p>';
   }else{
     resolvedPriceHtml='<p class="price-inquire">'+L.inquire[lang]+'</p>';
@@ -1151,6 +1211,8 @@ function buildMockupLayout(){
   if(data.parking_spaces)specsHtml+='<div class="spec-item"><span class="spec-icon">'+I.car+'</span><span class="spec-val">'+esc(String(data.parking_spaces))+'</span><span class="spec-lbl">PARKING</span></div>';
 
   var yearHtml=data.year_built?'<div class="year-row"><span class="year-row-lbl">'+L.year[lang]+'</span><span class="agent-stat-icon">'+I.cal+'</span><strong>'+esc(String(data.year_built))+'</strong></div>':'';
+  var landTitleInfo=data.land_title_type?LAND_TITLE_LABELS[data.land_title_type]:null;
+  var landTitleHtml=landTitleInfo?'<div class="year-row"><span class="year-row-lbl">'+L.landTitle[lang]+'</span><span class="agent-stat-icon">'+I.doc+'</span><strong>'+esc(landTitleInfo[lang]||landTitleInfo.en)+'</strong></div>':'';
 
   var typeBadgeText=isSor?(lang==='lo'?'ຊື້ / ເຊົ່າ':lang==='zh'?'售/租':' Sale or Rent'):isSale?(lang==='lo'?'ຂາຍ':lang==='zh'?'出售':'For Sale'):(lang==='lo'?'ໃຫ້ເຊົ່າ':lang==='zh'?'出租':'For Rent');
 
@@ -1203,7 +1265,7 @@ function buildMockupLayout(){
     '<div class="agent-band" id="agent-band-anchor">'+
     '<div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p>'+
     '<div class="agent-identity">'+
-    '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" onerror="handleImageError(this)" alt="Agent">'+
+    '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" width="60" height="60" onerror="handleImageError(this)" alt="'+esc(data.agent_name||'Agent')+'">'+
     '<div><div class="agent-name-en">'+esc(data.agent_name||'')+'</div>'+(data.agent_name_lo?'<div class="agent-name-lo">'+esc(data.agent_name_lo)+'</div>':'')+'</div>'+
     '</div></div>'+
     statsHtml+
@@ -1230,7 +1292,7 @@ function buildMockupLayout(){
 
   var overviewColHtml=(
     '<div>'+
-    '<span class="section-label">'+L.overview[lang]+'</span>'+
+    '<h2 class="section-label">'+L.overview[lang]+'</h2>'+
     '<p class="body-narrative">'+resolvedDesc+'</p>'+
     amenityRowHtml+
     '</div>'
@@ -1243,7 +1305,7 @@ function buildMockupLayout(){
   // ════════════════════════════════════════════════════════════════
   var featuresColHtml='';
   if(Array.isArray(data.features)&&data.features.filter(Boolean).length){
-    featuresColHtml='<div><span class="section-label">'+L.features[lang]+'</span><div class="features-list">';
+    featuresColHtml='<div><h2 class="section-label">'+L.features[lang]+'</h2><div class="features-list">';
     data.features.filter(Boolean).forEach(function(ft){
       if(!ft)return;
       var label='';
@@ -1264,7 +1326,6 @@ function buildMockupLayout(){
       );
     });
     featuresColHtml+='</div>';
-    featuresColHtml+='<a href="#" class="view-all-features" onclick="return false;">'+L.viewFt[lang]+' '+I.chev+'</a>';
     featuresColHtml+='</div>';
   }
   if(!featuresColHtml)featuresColHtml='<div></div>';
@@ -1345,7 +1406,7 @@ function buildMockupLayout(){
 
   var locationColHtml=(
     '<div>'+
-    '<span class="section-label">'+L.location[lang]+'</span>'+
+    '<h2 class="section-label">'+L.location[lang]+'</h2>'+
     mapHtml+
     nearbyHtml+
     '</div>'
@@ -1398,7 +1459,7 @@ function buildMockupLayout(){
   if(videoBlocks){
     mediaHtml=(
       '<div class="media-section">'+
-      '<span class="section-label">'+I.play+' '+L.video[lang]+'</span>'+
+      '<h2 class="section-label">'+I.play+' '+L.video[lang]+'</h2>'+
       videoBlocks+
       '</div>'
     );
@@ -1483,18 +1544,21 @@ function buildMockupLayout(){
     '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
     '<span class="tx-badge'+(isSor?' tx-badge-sor':'')+'" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
     statusBadgeHtml+
+    priceReducedBadgeHtml+
     '</div>'+
     '<div id="sp-badges" class="sp-badges-row"></div>'+
     '<div class="price-block">'+resolvedPriceHtml+'</div>'+
     '<div class="sp-metrics-row"><span class="sp-metric" id="sp-views" style="display:none;"></span><span class="sp-metric" id="sp-inquiries" style="display:none;"></span></div>'+
     (specsHtml?'<div class="spec-grid">'+specsHtml+'</div>':'')+
     yearHtml+
+    landTitleHtml+
     highlightPillsHtml+
     sidebarInsightHtml+
     '<div class="left-actions">'+
-    '<button class="action-link">'+I.heart+' <span class="lo-i">ບັນທຶກ</span><span class="en-i">Save property</span><span class="zh-i">收藏房源</span></button>'+
+    '<button class="action-link'+(isFavorited?' saved':'')+'" id="save-btn" type="button" data-save="'+esc(data.slug||'')+'" aria-pressed="'+(isFavorited?'true':'false')+'" onclick="onHeroSaveClick(event,\''+esc(data.slug||'')+'\')">'+I.heart+' <span class="save-btn-label">'+esc((isFavorited?SAVED_LABELS:SAVE_LABELS)[lang]||(isFavorited?SAVED_LABELS.en:SAVE_LABELS.en))+'</span></button>'+
+    '<button class="action-link'+(isComparedHero?' comparing':'')+'" id="compare-btn-hero" type="button" data-compare="'+esc(data.slug||'')+'" aria-pressed="'+(isComparedHero?'true':'false')+'" onclick="onHeroCompareClick(event,\''+esc(data.slug||'')+'\')">'+I.compare+' <span class="compare-btn-label">'+esc((isComparedHero?COMPARING_LABELS:COMPARE_LABELS)[lang]||(isComparedHero?COMPARING_LABELS.en:COMPARE_LABELS.en))+'</span></button>'+
     '<button class="action-link" id="share-btn" onclick="handleShare(this)">'+I.share+' <span class="lo-i">ແຊຣ໌</span><span class="en-i">Share</span><span class="zh-i">分享</span></button>'+
-    '<span class="pintag-verified">'+L.verified[lang]+'</span>'+
+    '<span class="pintag-badge">'+L.verified[lang]+'</span>'+
     '</div></div>'+
     '<div class="hero-right">'+desktopGalleryMarkup+'</div>'+
     '</div>'+
@@ -1514,14 +1578,40 @@ function buildMockupLayout(){
 
   container.innerHTML=layout;
 
-  // Mobile CTA bar
+  // Mobile CTA bar — always reflects this listing's own transaction_type,
+  // never any active filter/previous page state.
   var mCtaBar=document.getElementById('mobile-cta-bar');
   if(mCtaBar){
-    var mPriceDisplay=isSor?(data.sale_price||data.rent_price||data.price_display):data.price_display;
-    var mPriceHtml=mPriceDisplay?'<span class="mcta-price-value">'+esc(mPriceDisplay)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
+    var mPeriodLabel={month:{lo:'/ ເດືອນ',en:'/ month',zh:'/ 月'},year:{lo:'/ ປີ',en:'/ year',zh:'/ 年'},day:{lo:'/ ວັນ',en:'/ day',zh:'/ 天'}};
+    var saleLabel=lang==='lo'?'ຂາຍ':lang==='zh'?'出售':'For Sale';
+    var rentLabel=lang==='lo'?'ໃຫ້ເຊົ່າ':lang==='zh'?'出租':'For Rent';
+    var mLabel=typeBadgeText, mPriceRaw='';
+    if(isSale){
+      mPriceRaw=data.sale_price||data.price_display||'';
+    }else if(isSor){
+      if(data.sale_price){
+        mLabel=saleLabel;
+        mPriceRaw=data.sale_price;
+      }else if(data.rent_price){
+        mLabel=rentLabel;
+        var mSorPeriod=data.rent_period||'month';
+        mPriceRaw=data.rent_price+' '+(mPeriodLabel[mSorPeriod]||mPeriodLabel.month)[lang];
+      }else{
+        mPriceRaw=data.price_display||'';
+      }
+    }else{
+      mLabel=rentLabel;
+      if(data.rent_price){
+        var mPeriod=data.rent_period||'month';
+        mPriceRaw=data.rent_price+' '+(mPeriodLabel[mPeriod]||mPeriodLabel.month)[lang];
+      }else{
+        mPriceRaw=data.price_display||'';
+      }
+    }
+    var mPriceHtml=mPriceRaw?'<span class="mcta-price-value">'+esc(mPriceRaw)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
-      '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+
+      '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(mLabel)+'</span>'+mPriceHtml+'</div>'+
       '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
       '</div>'
     );
@@ -1533,19 +1623,21 @@ function buildMockupLayout(){
 }
 
 // ── buildDesktopGallery ──────────────────────────────────────────
-function buildDesktopGallery(images){
+function buildDesktopGallery(images,title){
   var clean=(Array.isArray(images)?images:[]).filter(function(u){return u&&typeof u==='string';});
   if(!clean.length)return '<div class="desktop-gallery"><div class="dg-hero"><div class="sim-no-img"></div></div></div>';
+  var altBase=title||'Property photo';
   var thumbsHtml='';
   var maxThumbs=5;
   for(var i=0;i<maxThumbs;i++){
     var cls=i===0?'active':'';
     if(i<clean.length){
+      var thumbAlt=altBase+' — photo '+(i+1)+' of '+clean.length;
       if(i===maxThumbs-1&&clean.length>maxThumbs){
         var remaining=clean.length-maxThumbs;
-        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'"><img src="'+esc(clean[i])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
+        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'"><img src="'+esc(clean[i])+'" alt="'+esc(thumbAlt)+'" loading="lazy" decoding="async" onerror="handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
       }else{
-        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'"><img src="'+esc(clean[i])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"></div>';
+        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'"><img src="'+esc(clean[i])+'" alt="'+esc(thumbAlt)+'" loading="lazy" decoding="async" onerror="handleImageError(this)"></div>';
       }
     }else{
       thumbsHtml+='<div class="dg-thumb" style="cursor:default;opacity:0.12;"><div style="width:100%;height:100%;background:var(--warm-deep);"></div></div>';
@@ -1554,7 +1646,7 @@ function buildDesktopGallery(images){
   return(
     '<div class="desktop-gallery" id="dg-hero-frame">'+
     '<div class="dg-hero" id="dg-hero-box">'+
-    '<img src="'+esc(clean[0])+'" id="dg-hero-img" alt="" decoding="async" onerror="handleImageError(this)">'+
+    '<img src="'+esc(clean[0])+'" id="dg-hero-img" alt="'+esc(altBase+' — main photo')+'" decoding="async" fetchpriority="high" onerror="handleImageError(this)">'+
     '<span class="dg-coord" id="dg-coord-lbl">01 / '+String(clean.length).padStart(2,'0')+'</span>'+
     '<button class="dg-view-all" id="dg-view-all-btn">'+
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>'+
@@ -1577,6 +1669,9 @@ function syncDesktopHero(idx,thumbEl){
     if(_heroTimer){clearTimeout(_heroTimer);_heroTimer=null;}
     heroImg.style.opacity='0';
     var capturedSrc=clean[idx];
+    var lang=getCurrentLang();
+    var titleForAlt=propertyContext['title_'+lang]||propertyContext.title_en||propertyContext.title_lo||'Property photo';
+    heroImg.alt=titleForAlt+' — photo '+(idx+1)+' of '+clean.length;
     _heroTimer=setTimeout(function(){
       _heroTimer=null;
       heroImg.src=capturedSrc;
@@ -1590,13 +1685,15 @@ function syncDesktopHero(idx,thumbEl){
   if(thumbEl)thumbEl.classList.add('active');
 }
 
-function buildMobileGallery(images, statusBadgeHtml){
+function buildMobileGallery(images, statusBadgeHtml, title){
   var clean=(Array.isArray(images)?images:[]).filter(function(u){return u&&typeof u==='string';});
   if(!clean.length)return '<div class="mobile-gallery">'+(statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'')+'<div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
+  var altBase=title||'Property photo';
   var slidesHtml='',dotsHtml='';
   clean.forEach(function(img,i){
     var loading=i===0?'eager':'lazy';
-    slidesHtml+='<div class="mg-slide" data-idx="'+i+'"><img src="'+esc(img)+'" alt="" loading="'+loading+'" decoding="async" onerror="handleImageError(this)"></div>';
+    var fetchPriorityAttr=i===0?' fetchpriority="high"':'';
+    slidesHtml+='<div class="mg-slide" data-idx="'+i+'"><img src="'+esc(img)+'" alt="'+esc(altBase+' — photo '+(i+1)+' of '+clean.length)+'" loading="'+loading+'"'+fetchPriorityAttr+' decoding="async" onerror="handleImageError(this)"></div>';
     dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'"></div>';
   });
   var overlayHtml=statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'';
@@ -1676,6 +1773,9 @@ var LB={
     if(!img||!this.images.length)return;
     this.idx=((idx%this.images.length)+this.images.length)%this.images.length;
     var capturedSrc=this.images[this.idx];
+    var lang=getCurrentLang();
+    var titleForAlt=(propertyContext&&(propertyContext['title_'+lang]||propertyContext.title_en||propertyContext.title_lo))||'Property photo';
+    img.alt=titleForAlt+' — photo '+(this.idx+1)+' of '+this.images.length;
     if(_lbTimer){clearTimeout(_lbTimer);_lbTimer=null;img.classList.remove('lb-fade');}
     if(animate){
       img.classList.add('lb-fade');
