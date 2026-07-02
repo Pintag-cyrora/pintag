@@ -7,28 +7,33 @@
 // Writes to: performance_metrics, analytics/reports/{week}.md
 
 import { supabase } from '../lib/supabase.js';
+import { withHealthReport } from '../lib/health.js';
 
 export async function collectPerformance(contentItemId: string, platform: 'facebook' | 'instagram'): Promise<void> {
-  // TODO(M5): call the Meta Graph API Insights endpoint for the post's
-  // post_id (from content_calendar), then insert the row below.
-  await supabase.from('performance_metrics').insert({
-    org_id: 'pintag',
-    content_item_id: contentItemId,
-    platform,
-    impressions: 0,
-    reach: 0,
-    likes: 0,
-    comments: 0,
-    shares: 0,
-    saves: 0,
-    click_throughs: 0,
+  return withHealthReport('marketing_analyst', async () => {
+    // TODO(M5): call the Meta Graph API Insights endpoint for the post's
+    // post_id (from content_calendar), then insert the row below.
+    await supabase.from('performance_metrics').insert({
+      org_id: 'pintag',
+      content_item_id: contentItemId,
+      platform,
+      impressions: 0,
+      reach: 0,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      saves: 0,
+      click_throughs: 0,
+    });
   });
 }
 
 export async function writeWeeklyReport(): Promise<string> {
-  // TODO(M5): aggregate the past 7 days of performance_metrics by content
-  // type/pillar, surface what over/under-performed, write to
-  // analytics/reports/{iso-week}.md, and feed a summary back to the
-  // Content Strategist for next week's planning (Stage 2).
-  return '';
+  return withHealthReport('marketing_analyst', async () => {
+    // TODO(M5): aggregate the past 7 days of performance_metrics by content
+    // type/pillar, surface what over/under-performed, write to
+    // analytics/reports/{iso-week}.md, and feed a summary back to the
+    // Content Strategist for next week's planning (Stage 2).
+    return '';
+  });
 }

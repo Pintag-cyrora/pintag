@@ -6,6 +6,7 @@
 // Writes to: content_items (new draft row, status='draft')
 
 import { supabase } from '../lib/supabase.js';
+import { withHealthReport } from '../lib/health.js';
 import type { ContentBrief, ContentType } from '../lib/types.js';
 
 const SIMILARITY_MATCH_THRESHOLD = 0.85;
@@ -30,11 +31,13 @@ export async function findSimilarExistingContent(
 }
 
 export async function planNextBrief(): Promise<ContentBrief | null> {
-  // TODO(M1): read brain/content-pillars.md pacing vs brain/mission.md
-  // targets to pick the next content type due; check trend_signals for
-  // reactive opportunities; call findSimilarExistingContent() before
-  // deciding brief.origin = 'new' | 'update' | 'repurpose'.
-  return null;
+  return withHealthReport('content_strategist', async () => {
+    // TODO(M1): read brain/content-pillars.md pacing vs brain/mission.md
+    // targets to pick the next content type due; check trend_signals for
+    // reactive opportunities; call findSimilarExistingContent() before
+    // deciding brief.origin = 'new' | 'update' | 'repurpose'.
+    return null;
+  });
 }
 
 void SIMILARITY_MATCH_THRESHOLD;

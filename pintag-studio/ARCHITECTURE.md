@@ -28,7 +28,7 @@ Three planes:
 | **Control plane** (Supabase Postgres) | Content calendar, approval queue, quality scores, performance metrics, campaigns, Memory/embeddings index, `org_settings` | AI employees and the Dashboard (read/write) |
 | **Interface plane** (Dashboard) | The founder's daily homepage | Founder only |
 
-The founder should never need to open the repo. Every "what needs my attention" question is answered by the Dashboard.
+The founder should never need to open the repo. Every "what needs my attention" question is answered by the Dashboard — including whether the department itself is functioning. A dedicated **Department Health** widget shows one row per AI employee (🟢 healthy / 🟡 degraded / 🔴 down / ⚪ not yet run), backed by a control-plane `agent_health` table that each pipeline stage upserts on every run (`pipeline/lib/health.ts`). This is additive to the existing three-plane design, not a new plane: it's one more control-plane table and one more Dashboard card, following the same "AI employees write, Dashboard reads" pattern as everything else.
 
 **Implementation note (post-freeze):** the tooling available in this session is scoped to the `pintag-cyrora/pintag` GitHub repository only. `pintag-studio/` is therefore scaffolded as a top-level directory inside that same repo rather than a second GitHub repository. It deliberately shares no code or dependencies with the main site (own `package.json`, own folder tree) so it can be extracted into its own repository later (e.g. `git subtree split`) with no rework — the separation is logical, not yet physical.
 
@@ -90,7 +90,7 @@ pintag-studio/
 │   │   ├── 08-publish.ts            # phase- and mode-aware
 │   │   ├── 09-analyze.ts
 │   │   └── 10-memory-update.ts
-│   ├── lib/                         # config.ts, supabase.ts, types.ts
+│   ├── lib/                         # config.ts, supabase.ts, types.ts, health.ts
 │   └── run.ts                       # CLI entry, invoked headlessly by GitHub Actions
 │
 ├── dashboard/

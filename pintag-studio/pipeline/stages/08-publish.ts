@@ -8,6 +8,7 @@
 
 import { supabase } from '../lib/supabase.js';
 import { loadRuntimeConfig, shouldAutoPublish } from '../lib/config.js';
+import { reportHealth, classifyMetaPublishError } from '../lib/health.js';
 import type { ContentType } from '../lib/types.js';
 
 export async function processCalendarItem(
@@ -19,11 +20,21 @@ export async function processCalendarItem(
   const config = await loadRuntimeConfig();
 
   if (shouldAutoPublish(config, contentType, guardianConfidence)) {
-    // TODO(M2): call the Facebook Pages API / Instagram Graph API, then:
-    await supabase
-      .from('content_calendar')
-      .update({ publish_status: 'published', published_at: new Date().toISOString() })
-      .eq('id', calendarId);
+    try {
+      // TODO(M2): call the Facebook Pages API / Instagram Graph API here.
+      // On failure, the catch block below classifies the error (expired
+      // token vs. rate limit vs. unknown) so Department Health reflects it
+      // immediately, per the founder's Publisher examples.
+      await supabase
+        .from('content_calendar')
+        .update({ publish_status: 'published', published_at: new Date().toISOString() })
+        .eq('id', calendarId);
+      await reportHealth('publisher', 'healthy');
+    } catch (err) {
+      const { status, message } = classifyMetaPublishError(err);
+      await reportHealth('publisher', status, message);
+      throw err;
+    }
     return;
   }
 
@@ -44,6 +55,8 @@ export async function processCalendarItem(
     .from('content_calendar')
     .update({ publish_status: 'awaiting_approval' })
     .eq('id', calendarId);
+
+  await reportHealth('publisher', 'healthy');
 }
 
 /**
@@ -53,7 +66,14 @@ export async function processCalendarItem(
  * SETUP.md for wiring options.
  */
 export async function publishApprovedItem(calendarId: string): Promise<void> {
-  // TODO(M2): call the Facebook Pages API / Instagram Graph API, then
-  // update content_calendar with publish_status='published', post_id, post_url.
-  void calendarId;
+  try {
+    // TODO(M2): call the Facebook Pages API / Instagram Graph API, then
+    // update content_calendar with publish_status='published', post_id, post_url.
+    void calendarId;
+    await reportHealth('publisher', 'healthy');
+  } catch (err) {
+    const { status, message } = classifyMetaPublishError(err);
+    await reportHealth('publisher', status, message);
+    throw err;
+  }
 }

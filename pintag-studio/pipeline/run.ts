@@ -16,20 +16,27 @@ import { research } from './stages/01-research.js';
 import { write } from './stages/03-write.js';
 import { guardianReview, meetsThreshold } from './stages/06-guardian-review.js';
 import { loadRuntimeConfig } from './lib/config.js';
+import { reportHealth } from './lib/health.js';
 
 async function main() {
   await runTrendHunter();
   await runCompetitorWatch();
 
+  // The CMO doesn't have its own pipeline stage file (its output is the
+  // monthly brief the Content Strategist plans against, not a stage in the
+  // daily run) — its health reflects whether orchestration itself, i.e. this
+  // function, completes the run without error. See the outer .catch() below.
   const config = await loadRuntimeConfig();
   if (config.founderMode === 'vacation') {
     console.log('Founder Mode: vacation — skipping new strategy generation this run.');
+    await reportHealth('cmo', 'healthy');
     return;
   }
 
   const brief = await planNextBrief();
   if (!brief) {
     console.log('Nothing due to plan this run.');
+    await reportHealth('cmo', 'healthy');
     return;
   }
 
@@ -48,11 +55,13 @@ async function main() {
   }
 
   console.log(`Pipeline run complete for "${draft.title}" — verdict: ${result.verdict}`);
+  await reportHealth('cmo', 'healthy');
   // TODO: Stage 4/5 (design/video), 7 (schedule), 8 (publish) wiring lands
   // in M1-M4 as each stage moves from stub to real implementation.
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
+  await reportHealth('cmo', 'down', err instanceof Error ? err.message : 'Unknown pipeline error');
   console.error(err);
   process.exit(1);
 });

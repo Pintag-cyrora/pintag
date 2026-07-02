@@ -5,7 +5,7 @@ Everything in this repo is scaffolded to run once these are in place. None of it
 ## 1. Supabase project
 
 1. Create a **new, separate** Supabase project (do not reuse the production pintag.io project — see `ARCHITECTURE.md` Section 1 for why).
-2. Run the migration: `supabase/migrations/0001_init_control_plane.sql` (via the Supabase SQL editor, or the Supabase CLI once linked).
+2. Run the migrations in order: `supabase/migrations/0001_init_control_plane.sql`, then `0002_agent_health.sql` (via the Supabase SQL editor, or the Supabase CLI once linked).
 3. Create one Supabase Auth user for yourself (email + password) — this is the account the Dashboard signs in as.
 4. Collect these values:
    - Project URL and anon key → paste into `dashboard/index.html` (`SUPABASE_URL`, `SUPABASE_ANON`)
