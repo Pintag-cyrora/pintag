@@ -1,0 +1,32 @@
+{
+  "facts": [
+    {
+      "claim": "A meaningful share of listed properties in Vientiane are advertised as available for either sale or rent, with the owner's preference depending on market conditions and how quickly they need liquidity versus steady income.",
+      "source": "knowledge-base/market/laos-real-estate-overview.md"
+    },
+    {
+      "claim": "\"For sale\" and \"for rent\" should be treated as attributes of a listing at a point in time, not permanent classifications, since owners frequently switch between the two.",
+      "source": "knowledge-base/market/laos-real-estate-overview.md"
+    },
+    {
+      "claim": "Negotiation on price and terms is standard practice in the Vientiane market rather than an exception, applying on both the buying and selling side.",
+      "source": "knowledge-base/guides/selling-guide.md"
+    },
+    {
+      "claim": "Buyers should shortlist properties by filtering Pintag listings by property type, district, and price range before arranging viewings.",
+      "source": "knowledge-base/guides/buying-guide.md"
+    },
+    {
+      "claim": "Renters should filter Pintag listings by property type, district, and monthly rent, and clarify lease terms including deposit and what's included before committing.",
+      "source": "knowledge-base/guides/renting-guide.md"
+    },
+    {
+      "claim": "Vientiane's market lacks a single centralized public price registry, so pricing information is often inconsistent between sources and comparable-sale data is harder to access than in more mature markets.",
+      "source": "knowledge-base/market/laos-real-estate-overview.md"
+    }
+  ],
+  "knowledgeGaps": [
+    "No data on what proportion of Vientiane listings carry dual sale/rent pricing, or how the sale price and rent price for the same property typically compare (e.g., implied yield or ratio) — would need founder/market-data confirmation.",
+    "No guidance on typical timeframes or signals (e.g., how long a listing has carried dual pricing) that buyers/renters could use to gauge an owner's urgency during negotiation."
+  ]
+}

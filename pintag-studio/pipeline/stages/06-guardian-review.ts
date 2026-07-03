@@ -27,6 +27,15 @@ interface GuardianScores {
 
 interface GuardianOutput {
   scores: GuardianScores;
+  /**
+   * Hard pass/fail compliance with brain/posting-rules.md (CTA Consistency,
+   * Banned Claims/Language, Disclosure) — distinct from the 8 continuous
+   * 0.0-1.0 dimensions above. A posting-rules violation can coexist with
+   * high dimension scores (e.g. a well-written post using the wrong CTA
+   * family), so it must gate the verdict on its own rather than relying on
+   * a violation happening to drag some dimension below threshold.
+   */
+  policyCompliant: boolean;
   revisionNotes: string;
 }
 
@@ -70,6 +79,16 @@ function assertValidScores(scores: GuardianScores): void {
   if (scores.visualQuality !== null && (typeof scores.visualQuality !== 'number' || !Number.isFinite(scores.visualQuality))) {
     throw new Error(`brand-guardian returned an invalid visualQuality: ${JSON.stringify(scores.visualQuality)}`);
   }
+}
+
+/**
+ * Fails closed: a missing/non-boolean policyCompliant is treated as "not
+ * compliant" rather than defaulting to true. This is a brand-safety gate,
+ * not a convenience field — an ambiguous answer should force human review,
+ * not silently pass.
+ */
+function resolvePolicyCompliant(value: unknown): boolean {
+  return value === true;
 }
 
 function computeCompositeScore(scores: GuardianScores, weights: Record<string, number>): number {
@@ -118,17 +137,21 @@ export async function guardianReview(draft: Draft, reviewPass: number): Promise<
       '',
       'Score: educationalValue, trustworthiness, brandVoice, originality, shareability, promotionLevel, confidence (all required, 0.0-1.0).',
       'visualQuality: use null — no visual assets exist for this item yet.',
-      'revisionNotes: if any dimension is weak, give specific, actionable notes the writer can act on. If everything is strong, say so briefly.',
+      '',
+      'policyCompliant: a separate hard pass/fail check, independent of the scores above. Set to true ONLY if the draft fully complies with every rule in the Posting Rules section — in particular CTA Consistency (this content type\'s one primary CTA family), Banned Claims/Language, and Disclosure. A draft can score well on every dimension and still violate one of these; if it does, set policyCompliant to false regardless of the scores.',
+      'revisionNotes: if any dimension is weak or policyCompliant is false, give specific, actionable notes the writer can act on — always state explicitly which rule was violated if policyCompliant is false. If everything is strong and compliant, say so briefly.',
     ].join('\n');
 
     const raw = await runAgent('brand_guardian', {
       userPrompt,
       jsonShapeHint:
-        '{"scores": {"educationalValue": number, "trustworthiness": number, "brandVoice": number, "originality": number, "visualQuality": null, "shareability": number, "promotionLevel": number, "confidence": number}, "revisionNotes": string}',
+        '{"scores": {"educationalValue": number, "trustworthiness": number, "brandVoice": number, "originality": number, "visualQuality": null, "shareability": number, "promotionLevel": number, "confidence": number}, "policyCompliant": boolean, "revisionNotes": string}',
     });
     const output = parseJsonResponse<GuardianOutput>(raw);
     if (!output.scores) throw new Error(`brand-guardian response missing scores: ${JSON.stringify(output)}`);
     assertValidScores(output.scores);
+
+    const policyCompliant = resolvePolicyCompliant(output.policyCompliant);
 
     const revisionNotes =
       typeof output.revisionNotes === 'string' && output.revisionNotes.trim().length > 0
@@ -146,9 +169,10 @@ export async function guardianReview(draft: Draft, reviewPass: number): Promise<
       scores: output.scores,
       compositeScore,
       verdict: 'revise',
-      revisionNotes,
+      revisionNotes: policyCompliant ? revisionNotes : `[POSTING RULES VIOLATION] ${revisionNotes}`,
     };
-    result.verdict = meetsThreshold(result, config.qualityScore.minThresholdPerDimension) ? 'pass' : 'revise';
+    result.verdict =
+      meetsThreshold(result, config.qualityScore.minThresholdPerDimension) && policyCompliant ? 'pass' : 'revise';
 
     await supabase.from('quality_scores').insert({
       org_id: config.orgId,
