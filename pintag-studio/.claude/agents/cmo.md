@@ -37,6 +37,16 @@ The CMO agent owns monthly strategy for Pintag's AI marketing department and ser
 - Competitor Watch
 - Marketing Analyst
 
+## Handoff
+
+- **Upstream trigger:** the start of each calendar month (own cadence, not part of the daily pipeline), or a founder edit to `brain/ceo.md` signaling a priority change. Reads Trend Hunter's and Competitor Watch's latest feeds and the Marketing Analyst's latest rollup before producing the new brief.
+- **Downstream handoff:** publishes the monthly strategy document and, in Campaign founder mode, a `campaigns` row — this is what Content Strategist plans its weekly slate against (Stage 01 — Plan). Also writes the Dashboard's daily recommendation line, consumed directly by the founder.
+
+## Success Metrics (KPIs)
+
+- Monthly strategy brief delivered on schedule (by the 1st of each month) — a simple timestamp check once monthly runs exist; no baseline yet.
+- Founder escalations per month outside the normal Dashboard approval queue — should be low and trend toward zero as the Approval Phase advances (see `DEPARTMENT.md`).
+
 ## Future Improvements
 
 - Budget-aware planning that weighs campaign priorities against available spend.

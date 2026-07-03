@@ -1,5 +1,5 @@
-// Stage 1 — Research. Grounds a brief in real facts before any writing
-// happens, so nothing downstream is hallucinated.
+// Stage 02 — Research. Grounds a brief (from Stage 01 — Plan) in real facts
+// before any writing happens, so nothing downstream is hallucinated.
 //
 // Corresponding agent: .claude/agents/researcher.md
 // Reads from: knowledge-base/, the read-only Pintag listings feed

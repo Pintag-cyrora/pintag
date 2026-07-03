@@ -32,6 +32,17 @@ The Publisher agent gets approved content live, on schedule, to Facebook and Ins
 - Supabase `content_calendar`
 - Brand Guardian's score
 
+## Handoff
+
+- **Upstream trigger:** a `content_calendar` row with `publish_status='queued'` at its `scheduled_at` time, or `approvals_queue.decision='approved'` from the founder.
+- **Downstream handoff:** updates `content_calendar` (`publish_status='published'`, `post_id`, `post_url`) — triggers Marketing Analyst to begin collecting performance after a delay (Stage 09).
+
+## Success Metrics (KPIs)
+
+- Publish success rate: share of publish attempts that succeed without error, from `content_calendar` publish-status history.
+- Department Health uptime: share of time `agent_health.status='healthy'` for `publisher` — already implemented.
+- Time from founder approval to live post (`approvals_queue.decided_at` → `content_calendar.published_at`).
+
 ## Future Improvements
 
 - Add TikTok Content Posting API support.

@@ -31,6 +31,16 @@ The Writer agent produces the actual copy for every content type Pintag publishe
 - Researcher
 - Brand Guardian (for revision notes)
 
+## Handoff
+
+- **Upstream trigger:** a `content_items` row with a research packet attached (Stage 02 — Research), or a Brand Guardian `revise` verdict with revision notes on an existing draft.
+- **Downstream handoff:** writes `draft.md` and sets `content_items.status='in_review'` — triggers Graphic Designer and Video Producer in parallel (Stages 04/05, as applicable) and Brand Guardian's review (Stage 06).
+
+## Success Metrics (KPIs)
+
+- First-pass Guardian approval rate: share of drafts passing at `review_pass=1` (from `quality_scores`) — the core writing-quality signal.
+- Average review passes per item (lower is better, bounded by `max_revision_cycles`).
+
 ## Future Improvements
 
 - Add a self-critique pass against the style guide before handoff to Brand Guardian.

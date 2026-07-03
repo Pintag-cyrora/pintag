@@ -5,6 +5,7 @@ Pintag's internal AI marketing department — a small team of specialized Claude
 This is **not** a Pintag customer-facing feature. It's an internal tool used only by the founder, via `dashboard/index.html`.
 
 - **Read first:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) — the full approved design (why every folder here exists).
+- **Read second:** [`DEPARTMENT.md`](./DEPARTMENT.md) — the operations manual: why the department exists, the org chart, handoffs, KPIs, approval workflow, and how success is actually measured.
 - **Setting up for real:** [`SETUP.md`](./SETUP.md) — the manual steps only the founder can do (Supabase project, Meta app, Canva, TTS credentials).
 - **Working in this repo as an AI agent:** [`CLAUDE.md`](./CLAUDE.md).
 

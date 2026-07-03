@@ -1,7 +1,8 @@
 // CLI entry point, invoked headlessly by .github/workflows/daily-content-pipeline.yml.
 // Wires the stages together per the architecture doc's pipeline diagram
-// (Section 4): Sense -> Research -> Plan -> Write -> Design/Video ->
+// (Section 4): Sense -> Plan -> Research -> Write -> Design/Video ->
 // Guardian Review (loop on 'revise') -> Schedule -> Publish -> Analyze -> Memory Update.
+// Plan runs before Research: a brief has to exist before it can be researched.
 //
 // M0 ships this as a real skeleton with every stage stubbed and typed
 // (see pipeline/stages/*.ts) — filling in each TODO is the work of
@@ -11,8 +12,8 @@
 // before any single stage is implemented for real.
 
 import { runTrendHunter, runCompetitorWatch } from './stages/00-sense.js';
-import { planNextBrief } from './stages/02-plan.js';
-import { research } from './stages/01-research.js';
+import { planNextBrief } from './stages/01-plan.js';
+import { research } from './stages/02-research.js';
 import { write } from './stages/03-write.js';
 import { guardianReview, meetsThreshold } from './stages/06-guardian-review.js';
 import { loadRuntimeConfig } from './lib/config.js';

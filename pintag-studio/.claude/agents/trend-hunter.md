@@ -28,6 +28,16 @@ The Trend Hunter agent proactively discovers timely opportunities, feeding both 
 
 - None upstream; feeds the CMO and Content Strategist
 
+## Handoff
+
+- **Upstream trigger:** its own schedule (`trend-scan.yml`), independent of the daily content pipeline.
+- **Downstream handoff:** writes `trend_signals` rows — read by the CMO (monthly strategy) and Content Strategist (reactive weekly slotting).
+
+## Success Metrics (KPIs)
+
+- Signal-to-action ratio: share of `trend_signals` rows with `status='actioned'` (linked to a content item) vs. `dismissed`.
+- Time-to-publish: the gap between a trend signal's `created_at` and its linked content item's publish date — trends are time-sensitive, so freshness matters more than volume of signals raised.
+
 ## Future Improvements
 
 - Upgrade to a paid social-listening API once revenue justifies the cost.

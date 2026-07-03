@@ -33,6 +33,16 @@ The Content Strategist owns weekly execution planning against the CMO's monthly 
 - Memory layer
 - Trend Hunter
 
+## Handoff
+
+- **Upstream trigger:** the CMO's monthly strategy document (new or updated), plus any Trend Hunter alert arriving mid-week.
+- **Downstream handoff:** writes a `content_items` row (`status='draft'`, tagged `new`/`update:{vault_id}`/`repurpose:{vault_id}`) — triggers Researcher (Stage 02) to begin grounding it in facts.
+
+## Success Metrics (KPIs)
+
+- Pacing accuracy: actual vs. target weekly output per content pillar (`brain/content-pillars.md` balancing rule) — computable once `content_items` has real rows.
+- Dedupe effectiveness: share of briefs tagged `update`/`repurpose` vs. `new` — not a "higher is always better" metric, but should roughly track how much genuinely-overlapping topic space exists; calibrate after M1.
+
 ## Future Improvements
 
 - Automatic pacing correction against Year-1 numeric targets, made visible on the founder's dashboard.

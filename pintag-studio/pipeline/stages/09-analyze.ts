@@ -33,7 +33,7 @@ export async function writeWeeklyReport(): Promise<string> {
     // TODO(M5): aggregate the past 7 days of performance_metrics by content
     // type/pillar, surface what over/under-performed, write to
     // analytics/reports/{iso-week}.md, and feed a summary back to the
-    // Content Strategist for next week's planning (Stage 2).
+    // Content Strategist for next week's planning (Stage 01).
     return '';
   });
 }

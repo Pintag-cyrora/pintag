@@ -1,5 +1,6 @@
-// Stage 2 — Plan. Content Strategist converts the CMO's monthly brief into
+// Stage 01 — Plan. Content Strategist converts the CMO's monthly brief into
 // dated content briefs, checking Memory first so nothing gets duplicated.
+// Runs before Research: a brief has to exist before it can be researched.
 //
 // Corresponding agent: .claude/agents/content-strategist.md
 // Reads from: brain/content-pillars.md, trend_signals, content_items (Memory)
@@ -23,7 +24,8 @@ export async function findSimilarExistingContent(
 ): Promise<{ vaultItemId: string; similarity: number } | null> {
   // TODO(M2): call a Postgres RPC (match_content_items) doing
   // `embedding <=> topicEmbedding` cosine distance ordering, filtered by
-  // content_type and org_id, once embeddings are being written by Stage 3.
+  // content_type and org_id, once embeddings are being written by Stage 10
+  // (Memory Update).
   void supabase;
   void topicEmbedding;
   void contentType;

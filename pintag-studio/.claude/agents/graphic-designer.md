@@ -27,6 +27,16 @@ The Graphic Designer agent produces on-brand static visuals to accompany written
 - Canva API
 - Writer
 
+## Handoff
+
+- **Upstream trigger:** Writer's `draft.md` (`content_items.status='in_review'`) for any content type except `property_video`, which gets its thumbnail from Video Producer instead.
+- **Downstream handoff:** writes image assets to `generated-content/.../assets/` — feeds into the same Brand Guardian review pass as the Writer's draft (Stage 06 scores text and visuals together, not as separate gates).
+
+## Success Metrics (KPIs)
+
+- Visual Quality dimension average from `quality_scores` (Guardian-scored) — the direct quality signal for this role.
+- Asset turnaround time from brief received to asset delivered.
+
 ## Future Improvements
 
 - Auto-generate visual variants for A/B testing.

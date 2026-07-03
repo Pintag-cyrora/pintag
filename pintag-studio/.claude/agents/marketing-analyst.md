@@ -29,6 +29,16 @@ The Marketing Analyst agent closes the feedback loop between what gets published
 - Publisher (for post IDs)
 - Meta Graph API
 
+## Handoff
+
+- **Upstream trigger:** `content_calendar` rows with `publish_status='published'`, polled after a delay (e.g. 48h) to let engagement accumulate.
+- **Downstream handoff:** writes `performance_metrics` rows and `analytics/reports/{week}.md` — read by Content Strategist (next week's planning, Stage 01), Brand Guardian (future threshold tuning), and the CMO (monthly rollup).
+
+## Success Metrics (KPIs)
+
+- Coverage: share of published items with `performance_metrics` collected within 48 hours of publish.
+- Weekly report delivered on schedule — a binary, per-week check.
+
 ## Future Improvements
 
 - Add anomaly detection for badly underperforming posts.

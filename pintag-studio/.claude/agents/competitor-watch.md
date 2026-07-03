@@ -27,6 +27,15 @@ The Competitor Watch agent provides strategic intelligence on the competitive la
 
 - None upstream; feeds the CMO's monthly strategy
 
+## Handoff
+
+- **Upstream trigger:** its own monthly schedule (`competitor-scan.yml`).
+- **Downstream handoff:** writes `competitor_notes` rows — read by the CMO for the monthly strategy brief.
+
+## Success Metrics (KPIs)
+
+- Genuine content gaps identified that are actually actioned into a content brief per month — quality of observations, not quantity.
+
 ## Future Improvements
 
 - Add sentiment or engagement estimation on competitor public posts, if a low-cost data source supports it later.

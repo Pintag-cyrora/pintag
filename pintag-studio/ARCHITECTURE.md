@@ -80,8 +80,8 @@ pintag-studio/
 ├── pipeline/
 │   ├── stages/
 │   │   ├── 00-sense.ts              # Trend Hunter + Competitor Watch, continuous
-│   │   ├── 01-research.ts
-│   │   ├── 02-plan.ts               # Memory dedupe check before briefing
+│   │   ├── 01-plan.ts               # Memory dedupe check before briefing
+│   │   ├── 02-research.ts
 │   │   ├── 03-write.ts
 │   │   ├── 04-design.ts
 │   │   ├── 05-video.ts
@@ -123,7 +123,7 @@ Full purpose/responsibilities/inputs/outputs/dependencies/future-improvements fo
 ```
 0. Sense (Trend Hunter + Competitor Watch — continuous, feeds Planning)
         ↓
-1. Research  →  2. Plan (Memory dedupe check: new / update / repurpose)
+1. Plan (Memory dedupe check: new / update / repurpose)  →  2. Research
         ↓
 3. Write  →  4. Design  →  5. Video (as applicable)
         ↓

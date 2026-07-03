@@ -29,6 +29,16 @@ The Researcher agent grounds every content brief in real, verifiable facts so th
 - Pintag production listings feed (read-only)
 - Knowledge base
 
+## Handoff
+
+- **Upstream trigger:** a `content_items` row in `status='draft'` with no research packet yet (from Content Strategist, Stage 01 — Plan).
+- **Downstream handoff:** attaches the research packet (facts + sources) to the brief — triggers Writer (Stage 03).
+
+## Success Metrics (KPIs)
+
+- Share of facts in each research packet traceable to a `knowledge-base/` or listings-feed source — target 100%; this is a hard correctness bar, not an aspiration.
+- Knowledge-gap flags raised per month — a visibility metric, not a "lower is better" one: a healthy count means the Researcher is honestly surfacing knowledge-base staleness rather than silently guessing.
+
 ## Future Improvements
 
 - Add web search for macro Laos real-estate and economic context.

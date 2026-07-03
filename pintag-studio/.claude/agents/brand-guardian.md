@@ -39,6 +39,16 @@ The Brand Guardian agent is the final editorial gate before anything reaches the
 - Video Producer
 - Memory layer
 
+## Handoff
+
+- **Upstream trigger:** any `content_items` row reaching `status='in_review'` (from Writer, Graphic Designer, and/or Video Producer).
+- **Downstream handoff:** writes a `quality_scores` row plus a verdict — **pass** hands off to Content Strategist/CMO for scheduling (Stage 07); **revise** sets `content_items.status='revising'` and returns to Writer/Designer/Video Producer (Stages 03/04/05) with specific notes, bounded by `max_revision_cycles`.
+
+## Success Metrics (KPIs)
+
+- Average composite quality score of published content (`quality_scores.composite_score`, filtered to `verdict='pass'`).
+- Revision-cycle rate: share of items needing a second pass vs. passing on the first — target is this decreasing over time as Writer/Designer/Video Producer calibrate to the bar.
+
 ## Future Improvements
 
 - Learn which of its own past rejections correlated with better post performance, in order to tune its own thresholds over time.
