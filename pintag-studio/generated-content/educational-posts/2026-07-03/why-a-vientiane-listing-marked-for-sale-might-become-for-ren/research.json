@@ -1,0 +1,29 @@
+{
+  "facts": [
+    {
+      "claim": "A meaningful share of listed properties in Vientiane are advertised as available for either sale or rent, with the owner's preference depending on market conditions and whether they need quick liquidity versus steady income.",
+      "source": "knowledge-base/market/laos-real-estate-overview.md"
+    },
+    {
+      "claim": "Content and listing data should treat \"for sale\" and \"for rent\" as attributes of a listing at a point in time, not permanent classifications, since owners frequently switch between the two.",
+      "source": "knowledge-base/market/laos-real-estate-overview.md"
+    },
+    {
+      "claim": "Vientiane's real estate market is smaller and less formalized than neighboring capitals, with no single centralized public price registry, so listing information can be inconsistent between sources.",
+      "source": "knowledge-base/market/laos-real-estate-overview.md"
+    },
+    {
+      "claim": "Buyers are advised to contact the listing agent or owner directly through the listing's contact information to arrange a viewing and ask questions.",
+      "source": "knowledge-base/guides/buying-guide.md"
+    },
+    {
+      "claim": "Renters are advised to contact the listing agent or owner directly to schedule viewings and clarify terms.",
+      "source": "knowledge-base/guides/renting-guide.md"
+    }
+  ],
+  "knowledgeGaps": [
+    "No data on how frequently or on what typical timescale individual Vientiane listings actually switch between 'for sale' and 'for rent' status (e.g., average time before a switch, or what share of dual-listed properties switch in a given month).",
+    "No data on which districts or property types are most likely to carry dual sale/rent listings.",
+    "No guidance on whether Pintag's own listing pages display a 'last updated' or status-change timestamp that buyers/renters could use to judge how current a sale/rent label is."
+  ]
+}
