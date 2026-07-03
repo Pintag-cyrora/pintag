@@ -15,6 +15,8 @@ export type ContentType =
 
 export type Language = 'lo' | 'en' | 'zh';
 
+export type Platform = 'facebook' | 'instagram' | 'tiktok' | 'youtube';
+
 export type ContentStatus =
   | 'draft'
   | 'in_review'
@@ -28,13 +30,17 @@ export type FounderMode = 'normal' | 'busy' | 'campaign' | 'vacation' | 'manual'
 export type ApprovalPhase = 'phase_1' | 'phase_2' | 'phase_3';
 
 export interface ContentBrief {
+  /** The content_items row this brief created (status='draft') — every downstream stage keys off this id. */
+  contentItemId: string;
+  /** Where staged artifacts (research.json, draft.md) live for this item, e.g. generated-content/educational-posts/2026-07-03/{slug}/ */
+  vaultPath: string;
   contentType: ContentType;
   topic: string;
   angle: string;
   language: Language;
   /** 'new' for from-scratch content, or a reference to an existing Vault item to update/repurpose. */
   origin: { kind: 'new' } | { kind: 'update' | 'repurpose'; vaultItemId: string };
-  targetPlatforms: Array<'facebook' | 'instagram' | 'tiktok' | 'youtube'>;
+  targetPlatforms: Platform[];
 }
 
 export interface ResearchPacket {

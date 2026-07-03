@@ -26,3 +26,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # anthropic-api (not claude-cli) is the sane CI default — it needs
+          # only this one secret, vs. installing and authenticating the
+          # Claude Code CLI on a fresh runner. See SETUP.md.
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'anthropic-api' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

@@ -8,12 +8,15 @@
 
 import { supabase } from '../lib/supabase.js';
 import { withHealthReport } from '../lib/health.js';
+import type { Platform } from '../lib/types.js';
 
-export async function collectPerformance(contentItemId: string, platform: 'facebook' | 'instagram'): Promise<void> {
+export async function collectPerformance(contentItemId: string, platform: Platform): Promise<void> {
   return withHealthReport('marketing_analyst', async () => {
     // TODO(M5): call the Meta Graph API Insights endpoint for the post's
-    // post_id (from content_calendar), then insert the row below.
-    await supabase.from('performance_metrics').insert({
+    // post_id (from content_calendar), then insert the row below. Zeros are
+    // the honest value today: a simulated post (see 08-publish.ts) has no
+    // real engagement to report, not a placeholder standing in for one.
+    const { error } = await supabase.from('performance_metrics').insert({
       org_id: 'pintag',
       content_item_id: contentItemId,
       platform,
@@ -25,6 +28,9 @@ export async function collectPerformance(contentItemId: string, platform: 'faceb
       saves: 0,
       click_throughs: 0,
     });
+    if (error) throw new Error(`Failed to insert performance_metrics: ${error.message}`);
+
+    console.log(`[Stage 09 — Analyze] performance_metrics recorded for ${contentItemId} (${platform})`);
   });
 }
 

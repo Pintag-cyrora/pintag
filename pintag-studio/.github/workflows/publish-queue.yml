@@ -1,9 +1,10 @@
 name: Publish Queue
 
-# Short-interval poll that checks content_calendar for items due to publish
-# (auto-eligible ones) and approvals_queue for founder decisions that need
-# to be actioned (pipeline/stages/08-publish.ts publishApprovedItem). Manual
-# trigger until M2 implements the real Meta Graph API calls — see SETUP.md.
+# Short-interval poll that picks up content_calendar items with a
+# founder-approved decision in approvals_queue and runs Publish -> Analyze ->
+# Memory Update (pipeline/publish-queue.ts). Manual trigger until real Meta
+# credentials exist and META_PUBLISH_MODE is flipped to 'live' — see
+# SETUP.md. Runs safely today in 'simulate' mode (the default).
 on:
   workflow_dispatch: {}
   # schedule:
@@ -21,8 +22,11 @@ jobs:
         with:
           node-version: '20'
       - run: npm ci
-      - run: echo "TODO(M2) - wire pipeline/stages/08-publish.ts polling loop here"
+      - run: npm run pipeline:publish-queue
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'anthropic-api' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          META_PUBLISH_MODE: ${{ vars.META_PUBLISH_MODE || 'simulate' }}
           META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}

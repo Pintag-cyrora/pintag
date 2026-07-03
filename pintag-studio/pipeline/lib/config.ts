@@ -5,7 +5,11 @@ import { supabase } from './supabase.js';
 import type { RuntimeConfig, FounderMode, ApprovalPhase } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ORG_CONFIG_PATH = join(__dirname, '..', '..', 'brain', 'org-config.json');
+
+/** pintag-studio/ — the one place this is computed; every other file needing file-system paths should import this instead of re-deriving it. */
+export const REPO_ROOT = join(__dirname, '..', '..');
+
+const ORG_CONFIG_PATH = join(REPO_ROOT, 'brain', 'org-config.json');
 
 /**
  * Loads the merged runtime config: static structure from brain/org-config.json
