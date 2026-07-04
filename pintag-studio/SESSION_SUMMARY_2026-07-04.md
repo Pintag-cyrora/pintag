@@ -28,16 +28,26 @@ Branch: `claude/pintag-marketing-ai-arch-rfq4a7`. Goal: connect the Marketing OS
 
 - `content_items.status` reads `approved` rather than `scheduled`, because `guardianReview()`'s status write doesn't know the item was already scheduled downstream — it unconditionally sets `approved`/`revising` on every review pass, overwriting `scheduled` back to `approved` after the pass-2 re-review. Cosmetic only: `content_calendar` and `approvals_queue` are still correct and consistent. Worth a small fix later if it causes confusion (e.g. dashboard status filters).
 
+## Also completed today (after this summary was first written)
+
+7. **Found and fixed a real gap in repo hygiene**: the repo root (`~/pintag`) had no `.gitignore` at all — `pintag-studio/.gitignore`'s `.env*` rule only covers that subdirectory, not the parent, so `.env.local` at the repo root (holding real Supabase credentials) was untracked but *not* protected from a future `git add -A`. Added a minimal root-level `.gitignore` (`.env`, `.env.*`).
+
+8. **Committed and pushed both fixes** to `origin/claude/pintag-marketing-ai-arch-rfq4a7`:
+   - `e6b6e2b` — Guardian verdict-logic fix, plus the revised draft/research as evidence and this summary file.
+   - `f0af550` — root-level `.gitignore`.
+   - Confirmed via `git fetch` + `git log`/`git rev-list`: origin tip matches local tip exactly, 0 ahead/0 behind. No secrets were ever staged or committed.
+
+9. **Founder approval + publish loop closed, end to end, against the real cloud project.** With your explicit go-ahead each step: set `decision='approved'`, `decided_at=now()` on the `approvals_queue` row (id `3b1308f0-16c3-4507-a3e0-7eab80f00b8e`), then ran `npm run pipeline:publish-queue`. Result: `content_items.status='published'`, `content_calendar.publish_status='published'` with `simulated=true` (no real Meta API call — `META_PUBLISH_MODE` still defaults to `simulate`, correct per `SETUP.md`), and a `performance_metrics` row was written (all zeros — honest placeholder for a simulated post with no real engagement, not a bug). `content_items.embedding` is still null, which is expected — embedding generation is explicitly M2 scope.
+
 ## Current state as of end of session
 
-- One content item fully through the pipeline, Guardian-approved (pass 2, composite 0.893), sitting in `approvals_queue` awaiting a real founder decision. Nothing has been approved or published (even in simulate mode) on your behalf.
-- `pipeline/stages/06-guardian-review.ts` has an uncommitted fix (`policyCompliant` gate) — not yet committed to git.
-- `.env.local` (Supabase Dev project credentials, Transaction Pooler URL) is in place and gitignored — reusable tomorrow without re-entering anything.
+- **The full M1 loop has now run once, completely, against the real cloud Supabase project**: Plan → Research → Write → Guardian (2 passes) → Schedule → Founder Approval → Publish (simulated) → Analyze → Memory Update. Nothing left in a partial state for this item.
+- All code changes (Guardian fix + root `.gitignore`) are committed **and pushed** to `origin/claude/pintag-marketing-ai-arch-rfq4a7`. Working tree is clean.
+- `.env.local` (Supabase Dev project credentials, Transaction Pooler URL) is in place, gitignored at both the `pintag-studio/` and repo-root level — reusable next session without re-entering anything, and safe from accidental commits.
 - `node_modules` installed (`npm install` was run fresh this session).
 
-## Next steps to resume tomorrow
+## Next steps to resume next session
 
-1. **Decide on the queued item**: review the final draft at `generated-content/educational-posts/2026-07-03/why-the-same-vientiane-listing-is-often-priced-for-both-sale/draft.md` and either approve it (set `decision='approved'`, `decided_at=now()` on its `approvals_queue` row, id `3b1308f0-16c3-4507-a3e0-7eab80f00b8e`) via Supabase Studio/Dashboard, or ask me to do it, then run `npm run pipeline:publish-queue` (Publish [simulated] → Analyze → Memory Update) to finish the M1 loop end to end against the real cloud project.
-2. **Commit the Guardian fix**: `pipeline/stages/06-guardian-review.ts` changes are still uncommitted — review and commit once you're happy with it.
-3. **Optional cleanup**: decide whether the `content_items.status` cosmetic inconsistency (item 1 above) is worth fixing before M2, or can wait.
-4. **Broader M1 verification**: this was one item through the pipeline once. If "M1 verification" means more than a single successful run (e.g. multiple items, testing the revision-loop path, testing `max_revision_cycles`), that's still open.
+1. **Optional cleanup**: decide whether the `content_items.status` cosmetic inconsistency (flagged above — `guardianReview()` overwrote `scheduled` back to `approved` on the pass-2 re-review, though `content_calendar`/`approvals_queue` stayed correct throughout) is worth fixing before M2, or can wait.
+2. **Broader M1 verification**: this was one item through the pipeline once, successfully, on the first clean attempt. If "M1 verification" means more than a single successful run (e.g. multiple items, testing the revision-loop path where Guardian genuinely fails a draft twice, testing `max_revision_cycles`, or testing what happens when `policyCompliant` legitimately trips to `false` on a fresh draft), that's still open.
+3. **M2 planning**: M1's goal (per `ARCHITECTURE.md`: "10 posts published, brand voice proven consistent") is now demonstrated end-to-end for 1 of 10 posts against the real project. Worth deciding whether to run more items through before calling M1 done, or move to M2 (Graphic Designer / visual assets) scope.
