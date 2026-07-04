@@ -1,5 +1,7 @@
 # Lao Brain
 
+**The purpose of this Brain is not to translate Lao. Its purpose is to teach AI how knowledgeable Lao real estate professionals communicate, explain, and educate.**
+
 The language and cultural-context layer for communicating in Lao about Vientiane real estate. Distinct from `knowledge-base/` (facts — listings, guides, market data) and the top-level `brain/*.md` files (Pintag's own brand voice, org config, priorities). This directory holds *how to say things in Lao and why*, not the facts themselves — factual claims still must trace back to `knowledge-base/` per `CLAUDE.md`'s ground rules.
 
 Kept organization-agnostic on purpose: nothing Pintag-specific belongs here. If a future tenant needed this same engine for a different market, `brain/lao/` should be reusable as-is — Pintag-specific voice/config stays in `org-config.json`, `brand-voice.md`, etc., one level up.
