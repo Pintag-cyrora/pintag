@@ -3,7 +3,7 @@
 #
 # @suite    SQL Injection
 # @purpose  Verify SQL injection payloads do not cause errors or data exposure through any input surface
-# @covers   table:properties table:agents fn:generate-listing-content fn:smart-listing-importer
+# @covers   table:properties table:parties table:contacts fn:generate-listing-content fn:smart-listing-importer
 # @needs    none
 # @runtime  ~30s
 #
@@ -177,8 +177,12 @@ run_sql_injection_tests() {
   check "DB integrity: properties table still accessible after all injection attempts" \
     "^[^5]|^5[^0]|^50[^0]" "$(resp_status "$r")"
 
-  r=$(api_get "agents?select=id&limit=1")
-  check "DB integrity: agents table still accessible" \
+  r=$(api_get "parties?select=id&limit=1")
+  check "DB integrity: parties table still accessible" \
+    "^[^5]|^5[^0]|^50[^0]" "$(resp_status "$r")"
+
+  r=$(api_get "contacts?select=id&limit=1")
+  check "DB integrity: contacts table still accessible" \
     "^[^5]|^5[^0]|^50[^0]" "$(resp_status "$r")"
 
   suite_end

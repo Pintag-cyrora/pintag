@@ -314,6 +314,24 @@ label{
 <div class="section">
 
   <div class="section-title">
+    ຜູ້ຕິດຕໍ່ (Buyer Contact)
+  </div>
+
+  <div class="field">
+    <label>ຊື່ຜູ້ຕິດຕໍ່</label>
+    <input type="text" class="input" id="contactName">
+  </div>
+
+  <div class="field">
+    <label>ເບີໂທ *</label>
+    <input type="text" class="input" id="contactPhone">
+  </div>
+
+</div>
+
+<div class="section">
+
+  <div class="section-title">
     ຮູບພາບ
   </div>
 
@@ -547,12 +565,27 @@ async function compressImage(file){
 
 }
 
+let editingContactId = null;
+let editingContactSharedCount = 0;
+
+// Resolves the logged-in user's own party row — checks auth_user_id first
+// (the decoupled model going forward), falling back to id (the legacy
+// "agents.id == auth uid" convention preserved for pre-existing agents).
+async function resolveMyPartyId(userId){
+  const { data } = await supabaseClient
+    .from('parties')
+    .select('id,name_en,whatsapp')
+    .or(`auth_user_id.eq.${userId},id.eq.${userId}`)
+    .limit(1);
+  return (data && data[0]) || null;
+}
+
 async function loadProperty(){
 
   const { data,error } =
   await supabaseClient
     .from('properties')
-    .select('*')
+    .select('*,contacts(*)')
     .eq('id',propertyId)
     .single();
 
@@ -581,6 +614,24 @@ async function loadProperty(){
 
   document.getElementById('status').value =
   data.status || 'published';
+
+  editingContactId = data.contact_id || null;
+  document.getElementById('contactName').value =
+  (data.contacts && data.contacts.name) || '';
+
+  document.getElementById('contactPhone').value =
+  (data.contacts && data.contacts.phone) || '';
+
+  if(editingContactId){
+    const { data:usage } = await supabaseClient
+      .from('properties')
+      .select('id')
+      .eq('contact_id',editingContactId);
+    editingContactSharedCount = (usage || []).filter(r=>r.id !== propertyId).length;
+    if(editingContactSharedCount > 0){
+      alert(`ໝາຍເຫດ: ຜູ້ຕິດຕໍ່ນີ້ຖືກໃຊ້ຮ່ວມກັນໃນ ${editingContactSharedCount} ລາຍການອື່ນ. ການບັນທຶກຈະປ່ຽນແປງທຸກລາຍການ.`);
+    }
+  }
 
   existingImages =
     data.images || [];
@@ -709,6 +760,45 @@ async function saveProperty(){
       )
     ).map(el=>el.value);
 
+  const contactPhone =
+    document.getElementById('contactPhone').value.trim();
+
+  if(!contactPhone){
+    document.getElementById('statusText').innerHTML =
+      'ກະລຸນາປ້ອນເບີໂທຜູ້ຕິດຕໍ່.';
+    return;
+  }
+
+  const contactBody = {
+    name: document.getElementById('contactName').value.trim() || null,
+    phone: contactPhone,
+    whatsapp: contactPhone
+  };
+
+  if(editingContactId){
+    const { error: contactError } = await supabaseClient
+      .from('contacts')
+      .update(contactBody)
+      .eq('id',editingContactId);
+    if(contactError){
+      alert(JSON.stringify(contactError));
+      return;
+    }
+  } else {
+    // Defensive fallback for a pre-migration listing with no contact_id yet.
+    const { data:{ user } } = await supabaseClient.auth.getUser();
+    const myParty = user ? await resolveMyPartyId(user.id) : null;
+    const { data:created, error: contactError } = await supabaseClient
+      .from('contacts')
+      .insert({ ...contactBody, role: 'agent', party_id: myParty ? myParty.id : null, created_by: user ? user.id : null })
+      .select('id');
+    if(contactError){
+      alert(JSON.stringify(contactError));
+      return;
+    }
+    editingContactId = created[0].id;
+  }
+
   const payload = {
 
     title_en:
@@ -763,7 +853,9 @@ async function saveProperty(){
 
     amenities,
 
-    images
+    images,
+
+    contact_id: editingContactId
 
   };
 

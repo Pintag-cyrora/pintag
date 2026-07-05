@@ -3,7 +3,7 @@
 #
 # @suite    Pintag Specific
 # @purpose  Error format (no leaks), Smart Import edge cases, listing isolation, resolve-map-url edge cases
-# @covers   fn:generate-listing-content fn:smart-listing-importer fn:resolve-map-url table:properties
+# @covers   fn:generate-listing-content fn:smart-listing-importer fn:resolve-map-url table:properties table:contacts
 # @needs    optional:ADMIN_EMAIL,ADMIN_PASSWORD optional:TEST_USER_EMAIL,TEST_USER_PASSWORD
 # @runtime  ~25s
 
@@ -146,6 +146,17 @@ run_pintag_specific_tests() {
     status="$(resp_status "$r")"
     check "null description → no 500 crash (should be 4xx or 2xx)" \
       "^[^5]|^5[^0]|^50[^0]" "$status"
+
+    # Description mentioning a buyer contact — exercises the new
+    # contact_name/contact_phone/contact_role extraction fields; the
+    # response shape is AI-generated so this only verifies no crash and
+    # that the fields, if present, don't break JSON parsing downstream.
+    CURRENT_TEST="smart-import: description with contact info"
+    r=$(fn_post "smart-listing-importer" \
+      '{"description":"3BR villa for sale, contact the owner Somchai at 020 55512345","image_urls":[]}' "${ADMIN_JWT}")
+    status="$(resp_status "$r")"
+    check "description with contact info → no 500 crash" \
+      "^[^5]|^5[^0]|^50[^0]" "$status"
   else
     skip "Smart Import extended validation" "ADMIN_EMAIL/ADMIN_PASSWORD not set"
     skip "Smart Import extended validation (image_urls wrong type)" "ADMIN_EMAIL/ADMIN_PASSWORD not set"
@@ -159,11 +170,18 @@ run_pintag_specific_tests() {
   info "--- Listing data isolation ---"
 
   if [[ -n "${ADMIN_JWT:-}" ]]; then
+    # Buyer Contact is mandatory going forward — create one for this test
+    # draft so the insert still succeeds once contact_id is NOT NULL.
+    local iso_contact_id=""
+    r=$(api_post "contacts" '{"role":"other","phone":"02033333333"}' "${ADMIN_JWT}")
+    iso_contact_id=$(resp_body "$r" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    [[ -n "$iso_contact_id" ]] && register_cleanup_contact "$iso_contact_id"
+
     # Create a draft listing with a unique slug
     local test_slug="pentest-iso-${RUN_ID_SHORT}"
     CURRENT_TEST="listing isolation: create draft"
     r=$(api_post "properties" \
-      "{\"title_en\":\"Pentest Isolation ${RUN_ID_SHORT}\",\"status\":\"draft\",\"slug\":\"${test_slug}\",\"transaction_type\":\"for_sale\"}" \
+      "{\"title_en\":\"Pentest Isolation ${RUN_ID_SHORT}\",\"status\":\"draft\",\"slug\":\"${test_slug}\",\"transaction_type\":\"for_sale\",\"contact_id\":$( [[ -n "$iso_contact_id" ]] && echo "\"${iso_contact_id}\"" || echo null )}" \
       "${ADMIN_JWT}")
     status="$(resp_status "$r")"
 

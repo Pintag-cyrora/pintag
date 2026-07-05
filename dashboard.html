@@ -509,21 +509,28 @@ async function initDashboard(){
     return;
   }
 
-  const { data: agent } = await supabaseClient
-    .from('agents')
+  // Resolve the logged-in user's own party row — checks auth_user_id first
+  // (the decoupled model going forward), falling back to id (the legacy
+  // "agents.id == auth uid" convention preserved for pre-existing agents).
+  const { data: parties } = await supabaseClient
+    .from('parties')
     .select('*')
-    .eq('id', user.id)
-    .single();
+    .or(`auth_user_id.eq.${user.id},id.eq.${user.id}`)
+    .limit(1);
+  const agent = (parties && parties[0]) || null;
 
-  if(agent){
-    document.getElementById('welcome-name').innerText =
-      `Welcome back, ${agent.name_en || 'Agent'}`;
+  if(!agent){
+    console.error('No party record found for this user');
+    return;
   }
+
+  document.getElementById('welcome-name').innerText =
+    `Welcome back, ${agent.name_en || 'Agent'}`;
 
   const { data: properties, error } = await supabaseClient
     .from('properties')
     .select('*')
-    .eq('agent_id', user.id)
+    .eq('managed_by_party_id', agent.id)
     .order('created_at', { ascending:false });
 
   if(error){
@@ -533,7 +540,7 @@ async function initDashboard(){
 
   renderStats(properties);
   renderListings(properties);
-  loadLeadStats(user.id);
+  loadLeadStats(agent.id);
 
 }
 

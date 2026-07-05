@@ -505,6 +505,26 @@ body{
 
     </div>
 
+    <!-- BUYER CONTACT -->
+
+    <div class="section">
+
+      <div class="section-title">
+        ຜູ້ຕິດຕໍ່ (Buyer Contact)
+      </div>
+
+      <div class="field">
+        <label>ຊື່ຜູ້ຕິດຕໍ່</label>
+        <input class="input" id="contactName" placeholder="ຄ່າເລີ່ມຕົ້ນ: ຊື່ຂອງທ່ານ">
+      </div>
+
+      <div class="field">
+        <label>ເບີໂທ *</label>
+        <input class="input" id="contactPhone" placeholder="020 XXXXXXXX">
+      </div>
+
+    </div>
+
     <!-- STATUS -->
 
 <div class="section">
@@ -575,6 +595,32 @@ const supabaseClient =
     SUPABASE_KEY
   );
 let deleteId = null;
+
+// Resolves the logged-in user's own party row — checks auth_user_id first
+// (the decoupled model going forward), falling back to id (the legacy
+// "agents.id == auth uid" convention preserved for pre-existing agents).
+async function resolveMyPartyId(userId){
+  const { data } = await supabaseClient
+    .from('parties')
+    .select('id,name_en,whatsapp')
+    .or(`auth_user_id.eq.${userId},id.eq.${userId}`)
+    .limit(1);
+  return (data && data[0]) || null;
+}
+
+// Prefill the Buyer Contact section with the agent's own info as a
+// convenience default — still editable, since an agent may be listing on
+// an owner's behalf and want buyers to call the owner instead.
+(async function prefillContactFromOwnParty(){
+  const { data:{ user } } = await supabaseClient.auth.getUser();
+  if(!user) return;
+  const myParty = await resolveMyPartyId(user.id);
+  if(!myParty) return;
+  const nameEl = document.getElementById('contactName');
+  const phoneEl = document.getElementById('contactPhone');
+  if(nameEl && !nameEl.value) nameEl.value = myParty.name_en || '';
+  if(phoneEl && !phoneEl.value) phoneEl.value = myParty.whatsapp || '';
+})();
 
 function openDeleteModal(id){
 
@@ -781,6 +827,45 @@ async function saveProperty(){
     return;
   }
 
+  const myParty = await resolveMyPartyId(user.id);
+
+  if(!myParty){
+    statusText.innerText =
+      'ບັນຊີຕົວແທນຂອງທ່ານຍັງບໍ່ໄດ້ຕັ້ງຄ່າ. ກະລຸນາຕິດຕໍ່ Pintag staff.';
+    return;
+  }
+
+  const contactPhone =
+    document.getElementById('contactPhone').value.trim();
+
+  if(!contactPhone){
+    statusText.innerText =
+      'ກະລຸນາປ້ອນເບີໂທຜູ້ຕິດຕໍ່.';
+    return;
+  }
+
+  const { data: contactRows, error: contactError } =
+    await supabaseClient
+      .from('contacts')
+      .insert({
+        role: 'agent',
+        name: document.getElementById('contactName').value.trim() || null,
+        phone: contactPhone,
+        whatsapp: contactPhone,
+        party_id: myParty.id,
+        created_by: user.id
+      })
+      .select('id');
+
+  if(contactError){
+    console.error(contactError);
+    statusText.innerText =
+      contactError.message;
+    return;
+  }
+
+  const contactId = contactRows[0].id;
+
   const title =
     document.getElementById('title').value;
 
@@ -860,7 +945,8 @@ async function saveProperty(){
 
         status:status,
 
-        agent_id:user.id
+        managed_by_party_id:myParty.id,
+        contact_id:contactId
 
       });
 

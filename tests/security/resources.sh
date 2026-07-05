@@ -26,7 +26,8 @@ RESOURCE_FNS=(
 # PostgREST-exposed tables under /rest/v1/
 RESOURCE_TABLES=(
   "properties"
-  "agents"
+  "parties"
+  "contacts"
   "lead_events"
   "listing_events"
 )

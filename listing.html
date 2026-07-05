@@ -852,7 +852,7 @@ async function fetchProperty(slug){
   _fetchInFlight=true;
   PT.time('fetchProperty');
   try{
-    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*&limit=1');
+    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(role,name,phone,whatsapp),parties(id,name_en,name_lo,photo_url,agency_name,slug,type)&limit=1');
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
@@ -1182,37 +1182,57 @@ function buildMockupLayout(){
     sidebarInsightHtml='<div class="sidebar-insight">'+esc(insightText.trim())+'</div>';
   }
 
-  // ── WhatsApp ──
-  var cleanPhone=String(data.agent_whatsapp||'').replace(/[^0-9]/g,'');
+  // ── Buyer Contact (always rendered — who the buyer should actually call,
+  // independent of whether a Pintag Agent Profile is linked below) ──
+  var contact=data.contacts||null;
+  var contactPhone=contact?(contact.whatsapp||contact.phone||''):'';
+  var cleanPhone=String(contactPhone).replace(/[^0-9]/g,'');
   var waTitleShort=String(data.title_en||data.title_lo||'').slice(0,80);
   var waMessage=encodeURIComponent('Hello, I am interested in '+waTitleShort+' (Ref: '+(data.id||'')+')');
   var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
-
-  // ── Agent stats ──
-  var statsHtml='';
-  if(data.agent_listing_count||data.agent_response_time||data.agent_rating){
-    statsHtml='<div class="agent-stats-row">';
-    if(data.agent_listing_count)statsHtml+='<div class="agent-stat"><span class="agent-stat-icon">'+I.home+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_listing_count))+'</span><span class="agent-stat-lbl"><span class="lo-i">ລາຍການ</span><span class="en-i">Active Listings</span><span class="zh-i">活跃房源</span></span></div></div>';
-    if(data.agent_response_time)statsHtml+='<div class="agent-stat"><span class="agent-stat-icon">'+I.bolt+'</span><div class="agent-stat-body"><span class="agent-stat-val"><span class="lo-i">ຕອບໄວ</span><span class="en-i">Responds</span><span class="zh-i">响应</span></span><span class="agent-stat-lbl">'+esc(data.agent_response_time)+'</span></div></div>';
-    if(data.agent_rating)statsHtml+='<div class="agent-stat"><span class="agent-stat-icon">'+I.star+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_rating))+'</span><span class="agent-stat-lbl"><span class="lo-i">ຄະແນນ</span><span class="en-i">Rating</span><span class="zh-i">评分</span></span></div></div>';
-    statsHtml+='</div>';
-  }
-  var callBtn=data.agent_phone?'<a href="tel:'+esc(data.agent_phone)+'" class="btn-primary btn-call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.agent_id||'')+'\',\'call_click\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
-  var agentPhotoSrc=esc(data.agent_photo||data.agent_photo_url||agentFallback);
-  var agentHtml=(
+  var CONTACT_ROLE_LABELS={
+    owner:{lo:'ເຈົ້າຂອງ',en:'Owner',zh:'业主'},
+    agent:{lo:'ຕົວແທນ',en:'Agent',zh:'代理'},
+    property_manager:{lo:'ຜູ້ຈັດການອາຄານ',en:'Property Manager',zh:'物业经理'},
+    reception:{lo:'ພະນັກງານຕ້ອນຮັບ',en:'Reception',zh:'前台'},
+    sales_office:{lo:'ຫ້ອງການຂາຍ',en:'Sales Office',zh:'销售处'},
+    developer:{lo:'ຜູ້ພັດທະນາ',en:'Developer',zh:'开发商'},
+    family_representative:{lo:'ຕົວແທນຄອບຄົວ',en:'Family Representative',zh:'家庭代表'},
+    other:{lo:'ຜູ້ຕິດຕໍ່',en:'Contact',zh:'联系人'}
+  };
+  var roleLabel=CONTACT_ROLE_LABELS[contact&&contact.role]||CONTACT_ROLE_LABELS.other;
+  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.managed_by_party_id||'')+'\',\'call_click\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
-    '<div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p>'+
+    '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
     '<div class="agent-identity">'+
-    '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" onerror="handleImageError(this)" alt="Agent">'+
-    '<div><div class="agent-name-en">'+esc(data.agent_name||'')+'</div>'+(data.agent_name_lo?'<div class="agent-name-lo">'+esc(data.agent_name_lo)+'</div>':'')+'</div>'+
+    '<div><div class="agent-name-en">'+esc((contact&&contact.name)||roleLabel.en)+'</div></div>'+
     '</div></div>'+
-    statsHtml+
     '<div class="agent-ctas">'+
-    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.agent_id||'')+'\',\'whatsapp_click\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',\'whatsapp_click\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
-    '</div></div>'+
-    '<div id="sp-fomo" class="sp-fomo-agent" style="display:none;"></div>'
+    '</div></div>'
   );
+
+  // ── Agent Profile card (additional — only when this listing is linked to
+  // a real Pintag Agent Profile; never shown for owner/reception/sales-office
+  // contacts, so buyers can tell they're not talking to Pintag) ──
+  var agentProfileHtml='';
+  var party=data.parties||null;
+  if(party&&party.type==='agent'){
+    var agentPhotoSrc=esc(party.photo_url||agentFallback);
+    agentProfileHtml=(
+      '<div class="agent-band agent-profile-card">'+
+      '<div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p>'+
+      '<div class="agent-identity">'+
+      '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" onerror="handleImageError(this)" alt="Agent">'+
+      '<div><div class="agent-name-en">'+esc(party.name_en||'')+'</div>'+(party.name_lo?'<div class="agent-name-lo">'+esc(party.name_lo)+'</div>':'')+(party.agency_name?'<div class="agent-name-lo">'+esc(party.agency_name)+'</div>':'')+'</div>'+
+      '</div></div>'+
+      (party.slug?'<a href="agent.html?slug='+encodeURIComponent(party.slug)+'" class="btn-primary btn-wa">View Profile</a>':'')+
+      '</div>'
+    );
+  }
+  var agentHtml=contactHtml+agentProfileHtml+'<div id="sp-fomo" class="sp-fomo-agent" style="display:none;"></div>';
 
   // ════════════════════════════════════════════════════════════════
   // COLUMN 1 — Overview: description + amenity icon row

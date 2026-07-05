@@ -590,18 +590,42 @@ function getBadgeHtml(p, lang, isFeaturedCard) {
   return                                 '<span class="status-badge badge-available">' + L.available[lang] + '</span>';
 }
 
+// Role-appropriate label — only listings with a real linked Pintag Agent
+// Profile (parties.type === 'agent') get the "Pintag Agent" badge; every
+// other contact (owner, reception, sales office, etc.) shows its own role,
+// so buyers can tell who they're actually about to contact.
+var CONTACT_ROLE_LABELS_LO = {
+  owner: 'ເຈົ້າຂອງ', agent: 'ຕົວແທນ', property_manager: 'ຜູ້ຈັດການອາຄານ',
+  reception: 'ພະນັກງານຕ້ອນຮັບ', sales_office: 'ຫ້ອງການຂາຍ', developer: 'ຜູ້ພັດທະນາ',
+  family_representative: 'ຕົວແທນຄອບຄົວ', other: 'ຜູ້ຕິດຕໍ່'
+};
+
+function getContactDisplay(p) {
+  var contact = p.contacts;
+  var party = p.parties;
+  var isAgent = !!(party && party.type === 'agent');
+  var name = isAgent ? (party.name_en || (contact && contact.name) || '') : ((contact && contact.name) || '');
+  if (!name) return null;
+  return {
+    name: name,
+    photo: isAgent ? party.photo_url : null,
+    platformLabel: isAgent ? 'ຕົວແທນ Pintag' : (CONTACT_ROLE_LABELS_LO[contact && contact.role] || CONTACT_ROLE_LABELS_LO.other)
+  };
+}
+
 function getAgentHtml(p) {
-  if (!p.agent_name) return '';
-  var initial = esc(p.agent_name.trim().charAt(0) || 'P');
-  var avatarInner = p.agent_photo
-    ? '<img src="' + esc(p.agent_photo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+  var d = getContactDisplay(p);
+  if (!d) return '';
+  var initial = esc(d.name.trim().charAt(0) || 'P');
+  var avatarInner = d.photo
+    ? '<img src="' + esc(d.photo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
     : initial;
   return '<div class="card-divider"></div>' +
     '<div class="card-agent">' +
       '<div class="agent-avatar">' + avatarInner + '</div>' +
       '<div>' +
-        '<div class="agent-name">' + esc(p.agent_name) + '</div>' +
-        '<div class="agent-platform">ຕົວແທນ Pintag</div>' +
+        '<div class="agent-name">' + esc(d.name) + '</div>' +
+        '<div class="agent-platform">' + esc(d.platformLabel) + '</div>' +
       '</div>' +
     '</div>';
 }
@@ -856,17 +880,18 @@ function showMapPreview(p) {
     (district ? esc(district) + ', ' : '') +
     {lo:'ວຽງຈັນ',en:'Vientiane',zh:'万象'}[lang];
 
-  // Agent
+  // Agent / Buyer Contact
   var agentRow = document.getElementById('mp-agent-row');
-  if (p.agent_name) {
-    var agentInitial = esc(p.agent_name.charAt(0) || 'P');
-    var avatarInner = p.agent_photo
-      ? '<img src="' + esc(p.agent_photo) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.style.display=\'none\'">'
+  var mpContact = getContactDisplay(p);
+  if (mpContact) {
+    var agentInitial = esc(mpContact.name.charAt(0) || 'P');
+    var avatarInner = mpContact.photo
+      ? '<img src="' + esc(mpContact.photo) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.style.display=\'none\'">'
       : agentInitial;
     agentRow.innerHTML =
       '<div class="agent-avatar">' + avatarInner + '</div>' +
-      '<div><div class="agent-name">' + esc(p.agent_name) + '</div>' +
-      '<div class="agent-platform">ຕົວແທນ Pintag</div></div>';
+      '<div><div class="agent-name">' + esc(mpContact.name) + '</div>' +
+      '<div class="agent-platform">' + esc(mpContact.platformLabel) + '</div></div>';
     agentRow.style.display = 'flex';
   } else {
     agentRow.style.display = 'none';
@@ -889,7 +914,7 @@ function closeMapPreview() {
 
 async function loadListings() {
   try {
-    var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc', {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&select=*,contacts(role,name),parties(type,name_en,photo_url)', {
       headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
     });
     allProperties = await res.json();

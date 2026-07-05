@@ -339,12 +339,15 @@ const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-interior.png';
 
 async function load(){
   try{
-    var r1=await fetch(SB+'/rest/v1/agents?order=created_at.asc&select=id,slug,name_lo,name_en,photo_url,bio_lo,bio_en,is_verified',
+    var r1=await fetch(SB+'/rest/v1/parties?type=eq.agent&order=created_at.asc&select=id,slug,name_lo,name_en,photo_url,bio_lo,bio_en,is_verified',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var agents=await r1.json();
     if(!Array.isArray(agents)) agents=[];
 
-    var r2=await fetch(SB+'/rest/v1/properties?order=is_featured.desc,created_at.desc&select=agent_id,images,slug,price_display,transaction_type',
+    // Alias managed_by_party_id back to agent_id client-side so the rest of
+    // this file's local bookkeeping (which predates the Platform Identity
+    // rename) doesn't need to change.
+    var r2=await fetch(SB+'/rest/v1/properties?order=is_featured.desc,created_at.desc&select=agent_id:managed_by_party_id,images,slug,price_display,transaction_type',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var listings=await r2.json();
     if(!Array.isArray(listings)) listings=[];

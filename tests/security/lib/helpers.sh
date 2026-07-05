@@ -288,6 +288,24 @@ acquire_jwt() {
   resp_body "$resp" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4
 }
 
+# jwt_sub JWT — prints the `sub` claim (auth.uid()) from a JWT's payload,
+# or empty string if it can't be decoded. Used by RLS tests that need to
+# construct payloads satisfying created_by/party_id ownership checks.
+jwt_sub() {
+  local jwt="$1"
+  [[ -z "$jwt" ]] && return
+  local payload="${jwt#*.}"; payload="${payload%.*}"
+  python3 -c "
+import sys, base64, json
+s = sys.argv[1]
+s += '=' * (-len(s) % 4)
+try:
+    print(json.loads(base64.urlsafe_b64decode(s)).get('sub',''))
+except Exception:
+    print('')
+" "$payload" 2>/dev/null
+}
+
 # ── HTTP API wrappers ─────────────────────────────────────────────────────────
 # All wrappers return BODY<newline>HTTP_STATUS
 
@@ -383,20 +401,29 @@ require_env() {
 # ── Cleanup registry ──────────────────────────────────────────────────────────
 CLEANUP_LISTING_IDS=()
 CLEANUP_STORAGE_PATHS=()
+CLEANUP_CONTACT_IDS=()
 
 register_cleanup_listing() { CLEANUP_LISTING_IDS+=("$1"); }
 register_cleanup_storage()  { CLEANUP_STORAGE_PATHS+=("$1"); }
+register_cleanup_contact()  { CLEANUP_CONTACT_IDS+=("$1"); }
 
 run_cleanup() {
   local has_work=0
   for id in "${CLEANUP_LISTING_IDS[@]}"; do [[ -n "$id" ]] && { has_work=1; break; }; done
   for p  in "${CLEANUP_STORAGE_PATHS[@]}"; do [[ -n "$p"  ]] && { has_work=1; break; }; done
+  for id in "${CLEANUP_CONTACT_IDS[@]}"; do [[ -n "$id" ]] && { has_work=1; break; }; done
   [[ $has_work -eq 0 ]] && return
 
   echo -e "\n${DIM}Cleaning up test data...${RESET}"
+  # Listings first — some reference test contacts via contact_id, and
+  # contacts can't be deleted while still referenced.
   for id in "${CLEANUP_LISTING_IDS[@]}"; do
     [[ -z "$id" ]] && continue
     api_delete "properties?id=eq.${id}" "${ADMIN_JWT:-}" >/dev/null 2>&1 || true
+  done
+  for id in "${CLEANUP_CONTACT_IDS[@]}"; do
+    [[ -z "$id" ]] && continue
+    api_delete "contacts?id=eq.${id}" "${ADMIN_JWT:-}" >/dev/null 2>&1 || true
   done
   for p in "${CLEANUP_STORAGE_PATHS[@]}"; do
     [[ -z "$p" ]] && continue
