@@ -40,11 +40,8 @@
       label: 'production'
     },
     development: {
-      // Filled in once, after the persistent pintag-dev Supabase project is
-      // created (see PREVIEW.md) — a one-time edit, never touched again for
-      // future branches.
-      url: 'https://PINTAG_DEV_PROJECT_REF.supabase.co',
-      anonKey: 'PINTAG_DEV_ANON_KEY',
+      url: 'https://ebtgoqrywdywuqrvudcp.supabase.co',
+      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVidGdvcXJ5d2R5d3VxcnZ1ZGNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNTg1MjcsImV4cCI6MjA5ODgzNDUyN30.FbM5Az9bxUflHabIqVLWFyb3BqfLWfCu1ZP5xwowUb8',
       tag: 'DEV',
       label: 'pintag-dev'
     }
