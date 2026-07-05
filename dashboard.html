@@ -481,11 +481,13 @@ body{
 
 </div>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
 <script>
 
-const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SUPABASE_URL = window.PINTAG.supabaseUrl;
 
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const SUPABASE_KEY = window.PINTAG.anonKey;
 
 function esc(s) {
   if (s == null) return '';

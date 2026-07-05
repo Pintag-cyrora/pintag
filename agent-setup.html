@@ -341,9 +341,11 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
   </div><!-- /form-wrap -->
 </div>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
 <script>
-const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const SUPABASE_URL  = window.PINTAG.supabaseUrl;
+const SUPABASE_ANON = window.PINTAG.anonKey;
 const ADMIN_EMAIL   = 'admin@pintag.io';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}

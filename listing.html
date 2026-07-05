@@ -442,13 +442,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   <div class="lb-dots" id="lb-dots"></div>
 </div>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // PINTAG · listing.html v4 — fully dynamic, no hardcoded content
 // ═══════════════════════════════════════════════════════════════════
 
-var BASE_DB = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-var SEC_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+var BASE_DB = window.PINTAG.supabaseUrl;
+var SEC_KEY = window.PINTAG.anonKey;
 
 // ── Lead tracking ─────────────────────────────────────────────────
 function trackLead(listingId, agentId, eventType) {

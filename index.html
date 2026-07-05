@@ -556,9 +556,11 @@ nav{
   </div>
 </footer>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
 <script>
-const SB_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const SB_URL = window.PINTAG.supabaseUrl;
+const SB_KEY = window.PINTAG.anonKey;
 
 function esc(s) {
   if (s == null) return '';

@@ -221,9 +221,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 <div class="page-footer"><p>Pintag · pintag.io</p></div>
 </div>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
 <script>
-const SB='https://eoladhcljbpbhnrmmpev.supabase.co';
-const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const SB=window.PINTAG.supabaseUrl;
+const KEY=window.PINTAG.anonKey;
 const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-villa.png';
 const slug=new URLSearchParams(location.search).get('slug');
 
