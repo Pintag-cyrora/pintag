@@ -15,6 +15,26 @@ WHERE agent_id IS NOT NULL AND agent_id NOT IN (SELECT id FROM parties);
 
 ALTER TABLE properties RENAME COLUMN agent_id TO managed_by_party_id;
 
+-- Pre-existing trigger function (not part of any tracked migration, found
+-- only by scanning pg_proc against production) directly referenced the old
+-- agent_id column name — every future UPDATE on properties would otherwise
+-- fail immediately after the rename above. Same "unset previous featured
+-- listing for this party" behavior, just against the renamed column.
+CREATE OR REPLACE FUNCTION public.unset_previous_featured()
+RETURNS trigger
+LANGUAGE plpgsql AS $function$
+begin
+  if NEW.is_featured = true then
+    update properties
+    set is_featured = false
+    where managed_by_party_id = NEW.managed_by_party_id
+    and id != NEW.id
+    and is_featured = true;
+  end if;
+  return NEW;
+end;
+$function$;
+
 ALTER TABLE properties
   ADD CONSTRAINT properties_managed_by_party_id_fkey
   FOREIGN KEY (managed_by_party_id) REFERENCES parties(id) ON DELETE SET NULL;
