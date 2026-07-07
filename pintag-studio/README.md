@@ -19,6 +19,7 @@ This is **not** a Pintag customer-facing feature. It's an internal tool used onl
 |---|---|
 | `brain/` | The department's shared operating system — brand voice, posting rules, org config, and `ceo.md` (the founder's current priorities, read by every agent first) |
 | `knowledge-base/` | Curated facts about Pintag, Vientiane neighborhoods, and Laos real estate |
+| `knowledge/` | The Knowledge Layer — lifecycle-managed (draft/verified/deprecated), retrievable, agent-writable knowledge (language, culture, psychology, marketing, industries, brands). See `knowledge/README.md`. |
 | `content-vault/` | Every piece of content ever produced — permanent, nothing deleted |
 | `.claude/agents/` | The 11 AI "employees," each a subagent definition doubling as its own job description |
 | `pipeline/` | The orchestration engine wiring the employees together |

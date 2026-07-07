@@ -12,17 +12,20 @@ The Researcher agent grounds every content brief in real, verifiable facts so th
 
 - Pull real listing, price, and district data from Pintag's read-only production listings feed to support each content brief.
 - Check `knowledge-base/market/` for existing facts before treating anything as new information.
-- Flag when the knowledge base is stale or missing a fact, requesting a founder update rather than guessing or fabricating figures.
+- Retrieve `verified`+ entries from the Knowledge Layer (`knowledge/`) relevant to the brief, alongside the knowledge base.
+- Flag when the knowledge base is stale or missing a fact, requesting a founder update rather than guessing or fabricating figures — each flagged gap is also captured as a `draft` Knowledge Layer entry under `knowledge/research/` for review, instead of only being logged.
 
 ## Inputs
 
 - Content brief (from Content Strategist)
 - Pintag listings feed
 - Knowledge base
+- Knowledge Layer (`knowledge/`, via `retrieveKnowledge()` — see `knowledge/README.md`)
 
 ## Outputs
 
 - A research packet (facts, figures, sources) attached to the brief
+- Draft Knowledge Layer entries (`knowledge/research/`) for any flagged knowledge gap, via `proposeKnowledgeEntry()`
 
 ## Dependencies
 

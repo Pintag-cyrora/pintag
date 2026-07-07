@@ -156,19 +156,21 @@ This section is a *reading guide* to what's already implemented in `brain/org-co
 
 Who reads what, drawn from each agent file's `## Inputs` section:
 
-| Employee | `ceo.md` | `mission.md` | `brand-voice.md` | `style-guide.md` | `posting-rules.md` | `content-pillars.md` | `org-config.json` | Knowledge base | Listings feed | `brand-assets/` | Memory (Vault/metrics/signals) |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| CMO | ✓ | ✓ | | | | | ✓ | | | | ✓ (trend_signals, competitor_notes, analyst reports) |
-| Content Strategist | | | | | | ✓ | ✓ | ✓ | | | ✓ (dedupe check, trend_signals) |
-| Researcher | | | | | | | | ✓ | ✓ | | |
-| Writer | | | ✓ | ✓ | | | | | | | |
-| Graphic Designer | | | | | | | | | | ✓ | |
-| Video Producer | | | | | | | | | ✓ | ✓ | |
-| Brand Guardian | | | ✓ | | ✓ | | ✓ | ✓ | | | ✓ (repetition check) |
-| Trend Hunter | | | | | | | | | | | (external: RSS, web search) |
-| Competitor Watch | | | | | | | ✓ (watchlist) | | | | (external: public pages) |
-| Publisher | | | | | | | ✓ | | | | |
-| Marketing Analyst | | | | | | | | | | | ✓ (writes performance_metrics) |
+| Employee | `ceo.md` | `mission.md` | `brand-voice.md` | `style-guide.md` | `posting-rules.md` | `content-pillars.md` | `org-config.json` | Knowledge base | Listings feed | `brand-assets/` | Memory (Vault/metrics/signals) | Knowledge Layer (`knowledge/`) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| CMO | ✓ | ✓ | | | | | ✓ | | | | ✓ (trend_signals, competitor_notes, analyst reports) | — not yet wired |
+| Content Strategist | | | | | | ✓ | ✓ | ✓ | | | ✓ (dedupe check, trend_signals) | — not yet wired |
+| Researcher | | | | | | | | ✓ | ✓ | | | ✓ read (retrieve) + write (capture knowledge gaps) |
+| Writer | | | ✓ | ✓ | | | | | | | | — not yet wired |
+| Graphic Designer | | | | | | | | | | ✓ | | — not yet wired |
+| Video Producer | | | | | | | | | ✓ | ✓ | | — not yet wired |
+| Brand Guardian | | | ✓ | | ✓ | | ✓ | ✓ | | | ✓ (repetition check) | — not yet wired |
+| Trend Hunter | | | | | | | | | | | (external: RSS, web search) | — not yet wired |
+| Competitor Watch | | | | | | | ✓ (watchlist) | | | | (external: public pages) | — not yet wired |
+| Publisher | | | | | | | ✓ | | | | | — not yet wired |
+| Marketing Analyst | | | | | | | | | | | ✓ (writes performance_metrics) | — not yet wired |
+
+**Knowledge Layer column, added with `ARCHITECTURE.md` §5A:** Researcher is the only employee integrated today — a deliberate proof-of-concept scope, not a ceiling. "Not yet wired" means the capability exists (`retrieveKnowledge()`/`proposeKnowledgeEntry()` in `pipeline/lib/knowledge.ts` are generic, agent-agnostic functions any employee can call) but no call site has been added for that employee yet. See `knowledge/README.md` → "Where this plugs in today."
 
 **Gap flagged, not fixed now:** Researcher today reads the listings feed and knowledge base but not Memory directly — it could check "has this exact fact already been researched" before re-deriving it. Noted as a future-improvement candidate in `researcher.md`, not changed as part of this document.
 

@@ -1,4 +1,4 @@
-# Pintag Marketing AI — Architecture & Roadmap (v2.1, approved)
+# Pintag Marketing AI — Architecture & Roadmap (v2.2, approved)
 
 *This is the canonical, version-controlled copy of the approved architecture. Read this before touching anything else in this directory — it explains why the folders below are shaped the way they are.*
 
@@ -13,6 +13,8 @@ The founder (Keomany) wants an internal, Claude-Code-driven "AI marketing depart
 **v2** incorporated ten founder refinements, all in service of one stated goal: *reduce founder workload while continuously improving content quality and brand consistency.* The biggest shift: **the founder never manages this system through git or markdown.** A Dashboard is the daily interface; git is the engine room and permanent archive; Supabase is the live operational "control plane."
 
 **v2.1 is frozen.** Architectural changes are out of scope unless implementation exposes a genuine limitation — the working assumption from here forward is "can this be done with what already exists," not "what else could we add."
+
+**v2.2** adds one explicitly-justified extension on top of the frozen v2.1 base: the **Knowledge Layer** (§5A) — a lifecycle-managed, retrievable, agent-writable fourth Archive-plane component, distinct from the existing curated `knowledge-base/`. Everything else in this document is unchanged and still frozen on the same terms as v2.1.
 
 ---
 
@@ -67,6 +69,7 @@ pintag-studio/
 │   └── org-config.json              # static structural config — see Section 10
 │
 ├── knowledge-base/                  # company/market/neighborhoods/guides
+├── knowledge/                       # Knowledge Layer — lifecycle-managed, retrievable, agent-writable (§5A)
 ├── brand-assets/                    # logo/fonts/colors/canva-templates/voice
 ├── templates/                       # structural templates per content type
 ├── generated-content/               # staging, pre-Guardian / pre-approval
@@ -90,7 +93,7 @@ pintag-studio/
 │   │   ├── 08-publish.ts            # phase- and mode-aware
 │   │   ├── 09-analyze.ts
 │   │   └── 10-memory-update.ts
-│   ├── lib/                         # config.ts, supabase.ts, types.ts, health.ts
+│   ├── lib/                         # config.ts, supabase.ts, types.ts, health.ts, knowledge.ts
 │   └── run.ts                       # CLI entry, invoked headlessly by GitHub Actions
 │
 ├── dashboard/
@@ -151,6 +154,20 @@ The founder's **only** touchpoint anywhere in this pipeline is the Dashboard's a
 **Content Vault** (`content-vault/`) — permanent, append-only home for every piece of content ever produced. Nothing is deleted; superseded content is marked `superseded_by`. Treated as long-term IP.
 
 **Memory layer** — Supabase **pgvector** index over every Vault item, plus `performance_metrics` and `campaigns`. Before the Content Strategist drafts a new brief, it runs a similarity search; a close match becomes a candidate for **update** or **repurpose** instead of a duplicate. Lineage tracked via `derived_from` / `repurposed_into`.
+
+---
+
+## 5A. Knowledge Layer *(approved post-freeze extension)*
+
+**This section extends the frozen v2.1 architecture.** It's called out explicitly, per `CLAUDE.md`'s instruction to only extend the frozen docs "if implementation genuinely can't proceed without a new concept, and say so explicitly." The concept it adds: none of `brain/`, `knowledge-base/`, or the Memory layer above has a *lifecycle* (draft vs. reviewed) or a *retrieval API* — every stage reads a hardcoded set of whole files. The founder's stated long-term goal — Marketing OS as a shared intelligence layer that will eventually power more than one tenant app (Pintag today; Houluebor, Mamieii, Tien as future products) — genuinely needs both, and neither fits cleanly into the three existing Archive-plane folders without conflating "curated company facts" with "continuously accumulating, reviewable knowledge."
+
+**`knowledge/`** — a fourth Archive-plane component, git-native like the other three (same "logical not yet physical separation" precedent as `pintag-studio/` itself, §1). Structured by category (`language/`, `culture/`, `psychology/`, `marketing/`, `research/`, `prompts/`, `industries/<vertical>/`, `brands/<tenant>/`) rather than by content type, because its job is cross-cutting: the same Lao-terminology or objection-handling entry is relevant to every content type, not scoped to one.
+
+Every entry is a markdown file with a frontmatter lifecycle: `status` (`draft → verified → expert_reviewed`, or `deprecated`), `confidence`, structured `source`, `contributedBy` (provenance), and `relatedIds` (lineage, same idea as `derived_from`/`repurposed_into` above). Nothing enters above `draft` automatically — promotion is a deliberate review step, matching the zero-tolerance-on-unverified-claims principle already enforced for published content (`DEPARTMENT.md` §12 Tier 2).
+
+**Retrieval and capture** go through one small library, `pipeline/lib/knowledge.ts` — `retrieveKnowledge()` and `proposeKnowledgeEntry()` — deliberately agent-agnostic so any current or future employee can call the same two functions. Today this is a tag/category-filtered file scan; the functions are shaped so a future Supabase pgvector store (following the same `org_id text not null default 'pintag'` pattern every control-plane table already uses) can replace the internals without changing a single call site — the same "stub now, TODO(M2) marks the real thing" pattern already used for Memory-layer dedupe (`findSimilarByTitle()` in `pipeline/stages/01-plan.ts`).
+
+**Current scope: proof-of-concept only.** Stage 02 (Research) is the sole integration point — it retrieves `verified`+ entries to enrich its prompt, and converts every `knowledgeGaps` entry it would otherwise only log into a structured `draft` entry under `knowledge/research/`. No other stage is wired in yet; doing so is calling the same two functions from a new call site, not a redesign. Full schema, category guide, and future upgrade path: `knowledge/README.md`.
 
 ---
 
@@ -235,6 +252,12 @@ Each milestone ships something usable.
 - **M5 — Analyst + full feedback loop + Dashboard v2:** Marketing Analyst live; weekly reports feed the Strategist and Memory; Dashboard adds AI Confidence + Today's Recommendation as real (not placeholder) data.
 - **M6 — Approval Phase 2:** Once Guardian's scoring has a track record, routine educational posts and templated property videos auto-publish above threshold. TikTok added as a platform.
 - **M7 — Approval Phase 3 + Year-1 close-out:** Founder review narrows to market updates, major announcements, new formats, and low-confidence items. Hit Year-1 numeric targets. Prepare for "Pintag Studio" extraction (Section 12).
+
+**Knowledge Layer track (K0+, parallel to M0–M7 — see §5A):** the Knowledge Layer evolves on its own schedule, independent of the execution-pipeline milestones above, since it's cross-cutting infrastructure rather than a content-type capability.
+- **K0 (current):** file-based `knowledge/`, category-scoped retrieval, Researcher-only integration (proof-of-concept).
+- **K1 (future, trigger: Writer/Guardian want to call it too):** wire retrieval/capture into additional stages; no library redesign needed, per §5A.
+- **K2 (future, trigger: entry volume or a second tenant app):** Supabase-backed storage (`knowledge_entries`, `org_id`-scoped) + pgvector semantic retrieval, replacing the file scan behind the same `retrieveKnowledge()`/`proposeKnowledgeEntry()` signatures.
+- **K3 (future, trigger: a second consuming application beyond this pipeline):** an API surface over the Knowledge Layer.
 
 ---
 

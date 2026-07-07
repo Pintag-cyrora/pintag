@@ -2,7 +2,8 @@
 // before any writing happens, so nothing downstream is hallucinated.
 //
 // Corresponding agent: .claude/agents/researcher.md
-// Reads from: knowledge-base/, the read-only Pintag listings feed
+// Reads from: knowledge-base/, knowledge/ (Knowledge Layer — proof-of-concept
+// integration, see knowledge/README.md), the read-only Pintag listings feed
 // (see the main pintag repo's supabase/functions/public-listings-feed)
 
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -11,6 +12,7 @@ import type { ContentBrief, ResearchPacket } from '../lib/types.js';
 import { withHealthReport } from '../lib/health.js';
 import { runAgent, parseJsonResponse } from '../lib/agent.js';
 import { REPO_ROOT } from '../lib/config.js';
+import { retrieveKnowledge, proposeKnowledgeEntry, relativeKnowledgePath } from '../lib/knowledge.js';
 
 export async function research(brief: ContentBrief): Promise<ResearchPacket> {
   return withHealthReport('researcher', async () => {
@@ -29,6 +31,20 @@ export async function research(brief: ContentBrief): Promise<ResearchPacket> {
       'utf-8'
     );
 
+    // Knowledge Layer retrieval (proof-of-concept — see knowledge/README.md
+    // "Where this plugs in today"). Scoped to verified+ entries only: a
+    // 'draft' knowledge/ entry is by definition unreviewed, so it isn't
+    // citable as fact here any more than an unreviewed knowledge-base note
+    // would be — same "never state a fact not traceable to a verified
+    // source" rule (CLAUDE.md) applies to this layer too.
+    const knowledgeEntries = retrieveKnowledge({
+      categories: ['industries/real-estate', 'brands/pintag', 'psychology', 'marketing', 'language'],
+      minStatus: 'verified',
+    });
+    const knowledgeSection = knowledgeEntries
+      .map((e) => `### knowledge/${relativeKnowledgePath(e)}\n${e.body}`)
+      .join('\n\n');
+
     const userPrompt = [
       `Ground the following educational post brief in verifiable facts from the reference material below.`,
       `Topic: ${brief.topic}`,
@@ -45,6 +61,7 @@ export async function research(brief: ContentBrief): Promise<ResearchPacket> {
       foreignOwnership,
       '### knowledge-base/market/laos-real-estate-overview.md',
       marketOverview,
+      ...(knowledgeSection ? ['', '## Additional verified knowledge (Knowledge Layer)', knowledgeSection] : []),
       '',
       'Extract 3-6 concrete facts relevant to the topic and angle, each citing the exact source file it came from.',
       'If the topic requires a fact not covered by the reference material above, list it under knowledgeGaps instead of inventing it.',
@@ -73,6 +90,22 @@ export async function research(brief: ContentBrief): Promise<ResearchPacket> {
     const outDir = join(REPO_ROOT, brief.vaultPath);
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, 'research.json'), JSON.stringify(packet, null, 2), 'utf-8');
+
+    // Knowledge Layer capture (proof-of-concept): a knowledge gap is exactly
+    // "a reusable insight that would otherwise remain in a log line" — turn
+    // each one into a structured draft entry under knowledge/research/ for
+    // founder review, instead of only console-logging it.
+    for (const gap of packet.knowledgeGaps ?? []) {
+      const captured = proposeKnowledgeEntry({
+        category: 'research',
+        title: gap.slice(0, 100),
+        body: `Flagged by the Researcher while grounding brief "${brief.topic}" (${brief.vaultPath}) — the reference material did not cover this:\n\n${gap}`,
+        tags: ['knowledge-gap', brief.contentType],
+        source: { type: 'agent-inference', reference: `content_items ${brief.contentItemId}` },
+        contributedBy: 'researcher',
+      });
+      console.log(`[Stage 02 — Research] Knowledge gap captured → knowledge/${relativeKnowledgePath(captured)}`);
+    }
 
     console.log(
       `[Stage 02 — Research] ${packet.facts.length} facts, ${packet.knowledgeGaps?.length ?? 0} knowledge gaps → ${brief.vaultPath}/research.json`
