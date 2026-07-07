@@ -8,6 +8,14 @@ Everything Marketing OS learns that's worth keeping past a single workflow run: 
 
 `knowledge-base/` (curated, human-authored, slowly-changing company/market facts) and `brain/` (operating rules, brand voice, org config) are untouched by this addition — they keep doing exactly what they do today. `knowledge/` is additive: a lifecycle-managed layer for knowledge that's produced continuously by workflows, not just curated by hand.
 
+## Relationship to `brain/lao/`
+
+`brain/lao/` (Keomany's hand-built Lao real estate dictionary and language/culture corpus) is **not** a competing knowledge system — it's the seed of this layer's future Language module, kept exactly as-is for now:
+
+- **Phase 1 (current):** `brain/lao/` is the authoritative source for Lao dictionary/language content. Nothing here duplicates it. `retrieveKnowledge()` reads it transparently via a source adapter (`pipeline/lib/knowledge-sources/lao-brain.ts`) and merges its entries into the same `category: 'language'` results `knowledge/language/` entries return — callers never know (or need to know) which directory an entry actually lives in. `knowledge/language/` itself stays sparse: only content that isn't dictionary material belongs there (see the seed entry already in it).
+- **Phase 2 (future, once this layer's schema has proven itself):** a controlled migration of `brain/lao/`'s content into this layer, preserving every entry and its richer per-term template (Lao term, English equivalent, definition, when to use/not use, common mistakes, legal-verification status, preferred wording, related knowledge) — that template is more sophisticated for terminology than this layer's generic frontmatter and should inform how `knowledge/language/` entries are shaped once merged, not be flattened away.
+- **Long-term:** one Intelligence Layer, not two parallel language systems — `Language` (dictionary/grammar/spelling/style), `Culture`, `Marketing`, `Psychology`, `Industries`, `Brands`, `Research`, `Trends`, `Performance`, all behind the same `retrieveKnowledge()`/`proposeKnowledgeEntry()` API regardless of what's storing them underneath (today: markdown files across two directories; tomorrow: Postgres + embeddings + semantic search). `brain/lao/`'s current content is the beginning of that future `Language` module, not a separate thing to reconcile away later.
+
 ## Category guide
 
 | Folder | Holds |
@@ -73,7 +81,7 @@ Two functions, callable by any agent, current or future:
   - Tien (future) → `retrieveKnowledge({ categories: ['industries/luxury-goods', 'brands/tien'] })`
 - **`proposeKnowledgeEntry({ category, title, body, tags, source, contributedBy, confidence?, relatedIds? })`** — writes a new `status: 'draft'` entry and returns it.
 
-Both are storage-agnostic by design: today they scan markdown files under `knowledge/`; later they can be backed by Supabase pgvector (see "Future upgrade path") without changing a single call site, the same way `01-plan.ts`'s `findSimilarByTitle()` stub is written to be replaced by a real vector query (`TODO(M2)`) without touching its callers.
+Both are storage-agnostic by design: today `retrieveKnowledge()` merges markdown files under `knowledge/` with `brain/lao/dictionary.md` (via the source adapter described above) into one list before filtering/sorting; later it can be backed by Supabase pgvector (see "Future upgrade path") without changing a single call site or exposing which source an entry came from — the same way `01-plan.ts`'s `findSimilarByTitle()` stub is written to be replaced by a real vector query (`TODO(M2)`) without touching its callers. `proposeKnowledgeEntry()` only ever writes to `knowledge/` — per the Phase 1 decision above, `brain/lao/` is read-only from this layer's perspective until the Phase 2 migration.
 
 ## Where this plugs in today
 

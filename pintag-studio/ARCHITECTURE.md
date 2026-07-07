@@ -169,6 +169,8 @@ Every entry is a markdown file with a frontmatter lifecycle: `status` (`draft �
 
 **Current scope: proof-of-concept only.** Stage 02 (Research) is the sole integration point — it retrieves `verified`+ entries to enrich its prompt, and converts every `knowledgeGaps` entry it would otherwise only log into a structured `draft` entry under `knowledge/research/`. No other stage is wired in yet; doing so is calling the same two functions from a new call site, not a redesign. Full schema, category guide, and future upgrade path: `knowledge/README.md`.
 
+**Relationship to `brain/lao/`:** `brain/lao/` (Keomany's hand-built Lao real estate dictionary/language corpus, established the same week as this section) is treated as the seed of this layer's future Language module, not a competing system. `retrieveKnowledge()` reads it via a source adapter (`pipeline/lib/knowledge-sources/lao-brain.ts`) and merges its entries transparently into `category: 'language'` results alongside `knowledge/language/` — callers never see which directory an entry came from, and `brain/lao/` itself is untouched (read-only from this layer, `proposeKnowledgeEntry()` never writes there). A controlled migration is a deliberate future step once this layer's schema has proven itself, not done now. Full detail: `knowledge/README.md` → "Relationship to `brain/lao/`".
+
 ---
 
 ## 6. Technology Recommendations

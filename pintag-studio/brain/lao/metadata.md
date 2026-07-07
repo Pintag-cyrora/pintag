@@ -29,4 +29,4 @@ Catalog and health-tracking for `brain/lao/`. Update this file whenever content 
 
 ## Future notes
 
-- _placeholder — open questions, planned expansions, known gaps_
+- **Relationship to `knowledge/` (the Knowledge/Intelligence Layer, `ARCHITECTURE.md` §5A):** `brain/lao/` is the seed of that layer's future Language module, not a separate system to reconcile. Phase 1 (current): `brain/lao/` stays exactly as-is, nothing is duplicated into `knowledge/`, and `knowledge/`'s `retrieveKnowledge()` reads `dictionary.md` transparently via a source adapter so callers never need to know it lives here rather than under `knowledge/language/`. Phase 2 (future, once that layer's schema has proven itself): a controlled migration into `knowledge/`, preserving every entry and this directory's richer per-term template. See `knowledge/README.md` → "Relationship to `brain/lao/`" for the full plan.

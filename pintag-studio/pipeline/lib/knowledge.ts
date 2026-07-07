@@ -19,6 +19,7 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { REPO_ROOT } from './config.js';
+import { loadLaoBrainDictionaryEntries } from './knowledge-sources/lao-brain.js';
 
 export const KNOWLEDGE_ROOT = join(REPO_ROOT, 'knowledge');
 
@@ -168,13 +169,22 @@ function walkMarkdownFiles(dir: string): string[] {
   return out;
 }
 
-/** Loads and parses every knowledge entry on disk. Cheap at this volume (file scan, no index) — see knowledge/README.md for the upgrade path once that stops being true. */
+/**
+ * Loads and parses every knowledge entry from every source, merged into one
+ * flat list. Today that's knowledge/**\/*.md plus brain/lao/dictionary.md
+ * (via the lao-brain source adapter — see knowledge-sources/lao-brain.ts).
+ * This is the one seam a future source (a Supabase-backed store, more
+ * brain/lao/ files as they're populated) plugs into — callers of
+ * retrieveKnowledge()/proposeKnowledgeEntry() never see which source an
+ * entry came from, per the founder's explicit design goal.
+ */
 export function loadAllKnowledgeEntries(): KnowledgeEntry[] {
-  return walkMarkdownFiles(KNOWLEDGE_ROOT).map((filePath) => {
+  const fileEntries = walkMarkdownFiles(KNOWLEDGE_ROOT).map((filePath) => {
     const raw = readFileSync(filePath, 'utf-8');
     const { meta, body } = parseFrontmatter(raw);
     return toKnowledgeEntry(meta, body, filePath);
   });
+  return [...fileEntries, ...loadLaoBrainDictionaryEntries()];
 }
 
 export interface RetrieveKnowledgeOptions {
