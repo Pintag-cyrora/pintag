@@ -32,6 +32,18 @@ Deploying the *website* is fully automatic (above). Getting new tables/columns o
 
 Known gap: the base schema (`properties`, `parties`, `contacts`, `lead_events`, `listing_events`) can't be fully recreated by `supabase db push` alone on a brand-new project, since the original tables predate tracked migrations. Tracked in [#37](https://github.com/Pintag-cyrora/pintag/issues/37) — once fixed, provisioning a fresh dev/staging project becomes a single command.
 
+## Refreshing dev data from production
+
+`scripts/seed-dev-from-prod.sh` copies a redacted, representative snapshot of production listings into `pintag-dev` — real properties/parties/contacts for realistic UI testing, with `lead_events`/`listing_events` (analytics, buyer behavior) never copied and phone/WhatsApp numbers replaced with an obvious placeholder. Run it from a machine with normal network access (not a sandboxed session):
+
+```
+PINTAG_PROD_DB_URL="<production Session Pooler connection string>" \
+PINTAG_DEV_DB_URL="<pintag-dev Session Pooler connection string>" \
+./scripts/seed-dev-from-prod.sh
+```
+
+It's destructive to `pintag-dev`'s current `properties`/`parties`/`contacts` (asks for confirmation first) and hard-refuses to run against anything that isn't `pintag-dev`. See the script's header comment for exactly what's copied, redacted, and excluded.
+
 ## One-time setup (reference — already done unless noted)
 
 - [ ] `pintag-dev` Supabase project created
