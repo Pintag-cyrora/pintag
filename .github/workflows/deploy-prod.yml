@@ -1,0 +1,47 @@
+name: Deploy Production (Pages)
+
+# Builds and deploys pintag.io from main via GitHub Actions, replacing the
+# previous "Pages serves main's raw branch content" mechanism. The only
+# "build" step is generating config.js from config.prod.js — there is no
+# bundler; every other file is served as-is.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-prod
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate config.js (production)
+        run: cp config.prod.js config.js
+
+      - uses: actions/configure-pages@v5
+
+      # path: . uploads the whole repo root, so the existing CNAME file
+      # (pintag.io) is included automatically — required for the custom
+      # domain to keep working under an Actions-based Pages deploy.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

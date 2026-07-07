@@ -1,32 +1,49 @@
-# Pintag Preview Checklist
+# Pintag Dev/Prod Deployment
 
-Run through this every time a feature branch needs phone testing before merge.
-Everything stays within GitHub + Supabase — no third-party hosting platform.
+Two live websites, kept isolated by construction:
 
-## One-time setup (already done, kept here for reference)
+| | Branch | Repo | Website | Supabase project |
+|---|---|---|---|---|
+| **Production** | `main` (`pintag`) | `Pintag-cyrora/pintag` | `pintag.io` | `eoladhcljbpbhnrmmpev` |
+| **Development** | `dev` (`pintag`) | mirrored into `Pintag-cyrora/pintag-dev` | `pintag-cyrora.github.io/pintag-dev/` | `ebtgoqrywdywuqrvudcp` |
 
-- [ ] `pintag-dev` Supabase project created and reachable
-- [ ] `config.js` has the real `pintag-dev` project URL and anon key filled in (not the `PINTAG_DEV_PROJECT_REF` / `PINTAG_DEV_ANON_KEY` placeholders)
+`config.js` is never committed — it's generated at deploy time from `config.prod.js` or `config.dev.js` (both committed, identical on every branch). A dev deploy can never contain production's key, and vice versa, because the file that would need to be wrong simply doesn't exist until the correct deploy step creates it.
 
-## Every branch, before merge
+## Everyday workflow
 
-- [ ] **Update `pintag-dev` schema** — apply any new `supabase/migrations/*.sql` files this branch adds
-- [ ] **Apply migrations** — `supabase link --project-ref <pintag-dev-ref>` + `supabase db push`, or run new files directly with `psql`
-- [ ] **Deploy required edge functions** — `supabase functions deploy <name> --project-ref <pintag-dev-ref>` for any function this branch touches
-- [ ] **Open Codespace** — GitHub → Code → Codespaces → Create codespace on branch
-- [ ] **Forward port 8080** — run `python3 -m http.server 8080` from the repo root, then in the Codespace's Ports panel forward port 8080 and set visibility to **Public**
-- [ ] **Test Admin** — log into `admin.html`, confirm the orange DEV banner is visible on every page
-- [ ] **Test Buyer Contact** — create a listing with a Contact and no Agent selected
-- [ ] **Test Listing** — confirm the contact band renders on `listing.html`, and no Agent Profile card appears when no agent is linked
-- [ ] **Test Search** — confirm `listings.html` shows the correct role label, with no "Pintag Agent" badge unless a real agent is linked
-- [ ] **Verify production is unchanged** (required before every merge):
-  - [ ] the test listing appears in `pintag-dev` (`listings.html`/`listing.html` on the preview URL)
-  - [ ] the same listing does **not** appear on the live production site (`pintag.io`)
-  - [ ] the same listing does **not** exist in the production Supabase project's `properties` table
-- [ ] **Stop Codespace**
+1. Branch off `dev` (or commit directly to `dev` for small changes).
+2. Push to `dev` → **`deploy-dev.yml`** runs automatically → the `pintag-dev` repo's site updates within ~1–2 minutes.
+3. Open `https://pintag-cyrora.github.io/pintag-dev/` on your phone. Confirm the orange **DEV** banner is visible — that's the ground-truth check that you're on the dev database, not production, regardless of what the URL says.
+4. Test the feature for real, against the live `ebtgoqrywdywuqrvudcp` Supabase project.
+5. **Verify production isolation** (required before every merge):
+   - [ ] the change/test data appears on the dev site
+   - [ ] it does **not** appear on `pintag.io`
+   - [ ] it does **not** exist in the production Supabase project's tables
+6. Open a PR merging `dev` → `main`. On merge, **`deploy-prod.yml`** runs automatically and `pintag.io` updates within ~1–2 minutes.
+
+No Codespace, no port-forwarding, no manual server-starting — the dev site is always on, the same way production is.
+
+## If a branch adds new database schema
+
+Deploying the *website* is fully automatic (above). Getting new tables/columns onto the `pintag-dev` **database** is a separate, manual step for now:
+
+- [ ] Apply any new `supabase/migrations/*.sql` files to `pintag-dev` (`supabase link --project-ref ebtgoqrywdywuqrvudcp` + `supabase db push`, run from a machine with normal network access — see the repo's earlier bootstrap notes for why this can't run from a sandboxed session)
+- [ ] Deploy any new/changed edge functions (`supabase functions deploy <name> --project-ref ebtgoqrywdywuqrvudcp`)
+
+Known gap: the base schema (`properties`, `parties`, `contacts`, `lead_events`, `listing_events`) can't be fully recreated by `supabase db push` alone on a brand-new project, since the original tables predate tracked migrations. Tracked in [#37](https://github.com/Pintag-cyrora/pintag/issues/37) — once fixed, provisioning a fresh dev/staging project becomes a single command.
+
+## One-time setup (reference — already done unless noted)
+
+- [ ] `pintag-dev` Supabase project created
+- [ ] `pintag-dev` GitHub repo created (empty; the first `deploy-dev.yml` run populates it)
+- [ ] Fine-grained PAT created, scoped to `pintag-dev` only, `Contents: Read and write`, stored as the `PINTAG_DEV_DEPLOY_TOKEN` secret in the `pintag` repo
+- [ ] GitHub Pages enabled on `pintag-dev` (source: branch `main`, root) — do this *after* the first successful `deploy-dev.yml` run, once there's something to serve
+- [ ] `pintag`'s Pages source flipped from "Deploy from a branch" to **"GitHub Actions"** (Settings → Pages) — do this only after dry-running `deploy-prod.yml` via `workflow_dispatch` and confirming the build artifact looks right, to avoid a breakage window
+- [ ] `config.dev.js` / `config.prod.js` contain real values (not placeholders)
 
 ## Notes
 
-- Hostname detection lives in one place: `detectEnvironment()` in `config.js`. It defaults to development for any unrecognized host, and only treats `pintag.io`, `www.pintag.io`, and `pintag-cyrora.github.io` as production. Add a new domain there only when Pintag genuinely adds one — never add preview/dev hosts, they're supposed to fall through to the default.
-- The DEV banner (`dev-banner.js`) is the ground-truth check — if it's missing, you're on production, whatever the URL says.
-- Known gap: the base schema (`properties`, `parties`, `contacts`, `lead_events`, `listing_events`) can't be fully recreated by `supabase db push` alone on a brand-new project, since the original tables predate tracked migrations. Tracked in [#37](https://github.com/Pintag-cyrora/pintag/issues/37).
+- There is no hostname-detection logic anymore — which environment a page uses is decided entirely by which deploy pipeline generated its `config.js`, not by guessing from `window.location.hostname`. This is deliberately stronger than the earlier approach: a dev deploy is structurally incapable of shipping production's key.
+- The DEV banner (`dev-banner.js`) reads `window.PINTAG.tag`/`.label` and is the human-facing ground-truth check — if it's missing, you're looking at production.
+- `main` = stable production. `dev` = ongoing integration/testing. Short-lived feature branches are created from `dev`, not from `main`.
+- Fallback: a GitHub Codespace with `python3 -m http.server` + port forwarding still works for one-off testing of a branch that hasn't been merged into `dev` yet, if you want to preview something before it's ready for the shared dev site. Point `config.js` at `config.dev.js`'s content locally (`cp config.dev.js config.js`, never commit that copy) to test against the dev database this way.
