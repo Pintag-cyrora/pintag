@@ -28,7 +28,18 @@ COMMENT ON TABLE contacts IS
 
 CREATE INDEX idx_contacts_party_id ON contacts(party_id);
 
--- Reuses update_updated_at() from 20260622000000_engagement_metrics.sql
+-- Defined here with CREATE OR REPLACE (not just assumed present from
+-- 20260622000000_engagement_metrics.sql) — that migration's application
+-- history turned out to be inconsistent between environments, so this one
+-- no longer depends on it having run first.
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
 CREATE TRIGGER trg_contacts_updated_at
   BEFORE UPDATE ON contacts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
