@@ -487,42 +487,47 @@ nav{
   <div class="filter-bar-inner">
     <!-- Priority 1: Rent/Sale is the first decision a visitor makes — kept
          as its own prominent row, separate from the secondary property-type
-         pills below (still uses the existing setFilter()/currentFilter
-         logic, just re-weighted visually). -->
+         pills below. Listing Type (this row) and Property Type (the row
+         below) are independent filter groups combined with AND logic via
+         setTxFilter()/setTypeFilter() and currentTxFilter/currentTypeFilter
+         — selecting one must never clear the other. -->
     <div class="filter-bar-row">
       <div class="tx-toggle" id="tx-toggle">
-        <button class="tx-btn active" data-filter="all" onclick="setFilter('all',this)">
+        <button class="tx-btn active" data-filter="all" onclick="setTxFilter('all',this)">
           <span class="lo-i">ທັງໝົດ</span><span class="en-i">All</span><span class="zh-i">全部</span>
         </button>
-        <button class="tx-btn" data-filter="for_rent" onclick="setFilter('for_rent',this)">
+        <button class="tx-btn" data-filter="for_rent" onclick="setTxFilter('for_rent',this)">
           <span class="lo-i">ໃຫ້ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">租房</span>
         </button>
-        <button class="tx-btn" data-filter="for_sale" onclick="setFilter('for_sale',this)">
+        <button class="tx-btn" data-filter="for_sale" onclick="setTxFilter('for_sale',this)">
           <span class="lo-i">ຂາຍ</span><span class="en-i">For Sale</span><span class="zh-i">出售</span>
         </button>
       </div>
     </div>
     <div class="filter-bar-row filter-bar-row2">
       <div class="filters" id="filters">
-        <button class="filter-btn" data-filter="house" onclick="setFilter('house',this)">
+        <button class="filter-btn active" data-filter="all" onclick="setTypeFilter('all',this)">
+          <span class="lo-i">ທັງໝົດ</span><span class="en-i">All Types</span><span class="zh-i">全部</span>
+        </button>
+        <button class="filter-btn" data-filter="house" onclick="setTypeFilter('house',this)">
           <span class="lo-i">ເຮືອນ</span><span class="en-i">House</span><span class="zh-i">住宅</span>
         </button>
-        <button class="filter-btn" data-filter="townhouse" onclick="setFilter('townhouse',this)">
+        <button class="filter-btn" data-filter="townhouse" onclick="setTypeFilter('townhouse',this)">
           <span class="lo-i">ທາວເຮົາ</span><span class="en-i">Townhouse</span><span class="zh-i">联排别墅</span>
         </button>
-        <button class="filter-btn" data-filter="villa" onclick="setFilter('villa',this)">
+        <button class="filter-btn" data-filter="villa" onclick="setTypeFilter('villa',this)">
           <span class="lo-i">ວິລລ່າ</span><span class="en-i">Villa</span><span class="zh-i">别墅</span>
         </button>
-        <button class="filter-btn" data-filter="apartment" onclick="setFilter('apartment',this)">
+        <button class="filter-btn" data-filter="apartment" onclick="setTypeFilter('apartment',this)">
           <span class="lo-i">ອາພາດເມັນ</span><span class="en-i">Apartment</span><span class="zh-i">公寓</span>
         </button>
-        <button class="filter-btn" data-filter="condo" onclick="setFilter('condo',this)">
+        <button class="filter-btn" data-filter="condo" onclick="setTypeFilter('condo',this)">
           <span class="lo-i">ຄອນໂດ</span><span class="en-i">Condo</span><span class="zh-i">公寓楼</span>
         </button>
-        <button class="filter-btn" data-filter="commercial" onclick="setFilter('commercial',this)">
+        <button class="filter-btn" data-filter="commercial" onclick="setTypeFilter('commercial',this)">
           <span class="lo-i">ອາຄານພານິດ</span><span class="en-i">Commercial</span><span class="zh-i">商业</span>
         </button>
-        <button class="filter-btn" data-filter="land" onclick="setFilter('land',this)">
+        <button class="filter-btn" data-filter="land" onclick="setTypeFilter('land',this)">
           <span class="lo-i">ທີ່ດິນ</span><span class="en-i">Land</span><span class="zh-i">土地</span>
         </button>
       </div>
@@ -616,7 +621,11 @@ function esc(s) {
 }
 
 let allProperties = [];
-let currentFilter = 'all';
+// Listing Type (Rent/Sale/All) and Property Type (House/Condo/etc.) are
+// independent filter groups, combined with AND logic — see setTxFilter/
+// setTypeFilter below. Neither selection clears the other.
+let currentTxFilter = 'all';
+let currentTypeFilter = 'all';
 let currentSort = 'newest';
 let currentAvailOnly = false;
 
@@ -900,9 +909,10 @@ function renderMap() {
   _activeSlug = null;
 
   var filtered = allProperties.filter(function(p){
-    var matchesFilter = currentFilter === 'all' || p.transaction_type === currentFilter || p.property_type === currentFilter;
+    var matchesTx = currentTxFilter === 'all' || p.transaction_type === currentTxFilter;
+    var matchesType = currentTypeFilter === 'all' || p.property_type === currentTypeFilter;
     var matchesAvail = !currentAvailOnly || isAvailableStatus(p);
-    return matchesFilter && matchesAvail;
+    return matchesTx && matchesType && matchesAvail;
   });
 
   filtered.forEach(function(p) {
@@ -1016,9 +1026,18 @@ async function loadListings() {
   }
 }
 
-function setFilter(filter, btn) {
-  currentFilter = filter;
-  document.querySelectorAll('.tx-btn, .filter-btn').forEach(function(b){ b.classList.remove('active'); });
+function setTxFilter(filter, btn) {
+  currentTxFilter = filter;
+  document.querySelectorAll('.tx-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  closeMapPreview();
+  if (_viewMode === 'map') renderMap();
+  else renderListings();
+}
+
+function setTypeFilter(filter, btn) {
+  currentTypeFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
   closeMapPreview();
   if (_viewMode === 'map') renderMap();
@@ -1032,9 +1051,10 @@ function setSort(val) {
 
 function renderListings() {
   var filtered = allProperties.filter(function(p){
-    var matchesFilter = currentFilter === 'all' || p.transaction_type === currentFilter || p.property_type === currentFilter;
+    var matchesTx = currentTxFilter === 'all' || p.transaction_type === currentTxFilter;
+    var matchesType = currentTypeFilter === 'all' || p.property_type === currentTypeFilter;
     var matchesAvail = !currentAvailOnly || isAvailableStatus(p);
-    return matchesFilter && matchesAvail;
+    return matchesTx && matchesType && matchesAvail;
   });
   var sorted = sortProperties(filtered);
 
