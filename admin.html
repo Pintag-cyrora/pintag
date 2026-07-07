@@ -97,6 +97,9 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .check-item.checked .check-dot::after{content:"";display:block;width:8px;height:8px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpolyline points='1.5,5 4,7.5 8.5,2.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;}
 .check-label{font-size:12.5px;color:var(--ink-soft);line-height:1.3;}
 .check-item.checked .check-label{color:var(--ink);font-weight:500;}
+.check-group{margin-top:14px;}
+.check-group:first-child{margin-top:0;}
+.check-group-label{font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:6px;}
 /* Tag pills */
 .tag-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
 .tag-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border:1px solid var(--border);border-radius:999px;cursor:pointer;font-size:12px;font-weight:400;color:var(--ink-muted);transition:all 0.15s;background:var(--white);user-select:none;}
@@ -730,6 +733,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
+<script src="amenities.js"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
@@ -770,24 +774,9 @@ const FEATURES={
   water_pump:       {en:'Water Heater & Pump',     lo:'ເຄື່ອງສູບນ້ຳ',          zh:'热水器水泵'},
   covered_parking:  {en:'Covered Parking',         lo:'ທີ່ຈອດລົດ',             zh:'有盖停车'  }
 };
-const AMENITIES={
-  pool:      {en:'Pool',          lo:'ສະລອຍນ້ຳ',    zh:'游泳池',  icon:'🏊'},
-  parking:   {en:'Parking',       lo:'ທີ່ຈອດລົດ',   zh:'停车位',  icon:'🅿️'},
-  security:  {en:'Security',      lo:'ລະບົບຮັກສາ',  zh:'保安',    icon:'🛡️'},
-  wifi:      {en:'Wi-Fi',         lo:'ອິນເຕີເນັດ',   zh:'无线网络',icon:'📶'},
-  gym:       {en:'Gym',           lo:'ຫ້ອງຟິດເນສ',  zh:'健身房',  icon:'🏋️'},
-  furnished: {en:'Furnished',     lo:'ເຄື່ອງເຟີນີຈ', zh:'带家具',  icon:'🛋️'},
-  balcony:   {en:'Balcony',       lo:'ລະບຽງ',       zh:'阳台',    icon:'🌅'},
-  elevator:  {en:'Elevator',      lo:'ລິຟ',          zh:'电梯',    icon:'🛗'},
-  rooftop:   {en:'Rooftop',       lo:'ດາດຟ້າ',      zh:'屋顶',    icon:'🌆'},
-  smart:     {en:'Smart Home',    lo:'ສະມາດໂຮມ',    zh:'智能家居',icon:'🏡'},
-  ac:        {en:'Air Con',       lo:'ລະບົບແອ',     zh:'空调',    icon:'❄️'},
-  solar:     {en:'Solar',         lo:'ໂຊລາ',        zh:'太阳能',  icon:'☀️'},
-  generator: {en:'Generator',     lo:'ເຄື່ອງສຳຮອງ', zh:'发电机',  icon:'⚡'},
-  bbq:       {en:'BBQ Area',      lo:'ບ່ອນ BBQ',    zh:'烧烤区',  icon:'🔥'},
-  tennis:    {en:'Tennis',        lo:'ເທັນນິດ',      zh:'网球场',  icon:'🎾'},
-  garden:    {en:'Garden',        lo:'ສວນ',          zh:'花园',    icon:'🌳'}
-};
+// AMENITIES / AMENITY_CATEGORIES / resolveAmenityData / AMENITY_PRIORITY /
+// topAmenities now live in amenities.js (shared with listing.html and
+// listings.html) — loaded via <script src="amenities.js"> before this block.
 const HIGHLIGHTS={
   embassy_district: {en:'Embassy District',          lo:'ເຂດສະຖານທູດ',         zh:'使馆区'     },
   near_intl_school: {en:'Near International School', lo:'ໃກ້ໂຮງຮຽນນານາຊາດ',  zh:'近国际学校' },
@@ -837,6 +826,26 @@ function initCheckGrid(containerId, registry) {
       <span class="check-label">${def.en}</span>
     </div>`
   ).join('');
+}
+// Same flat .check-item[data-key] elements as initCheckGrid (so
+// getCheckedKeys/setChecked/toggleCheck all keep working unmodified) —
+// just visually clustered under category headings. "Other" (legacy,
+// non-standardized amenities like Wi-Fi) is rendered last and unlabeled
+// as a category to avoid suggesting it's part of the standard set.
+function initGroupedCheckGrid(containerId, registry, categories) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = categories.map(cat => {
+    const items = cat.keys
+      .filter(key => registry[key])
+      .map(key => `<div class="check-item" data-key="${key}" onclick="toggleCheck(this)">
+        <div class="check-dot"></div>
+        <span class="check-label">${registry[key].icon} ${registry[key].en}</span>
+      </div>`).join('');
+    if (!items) return '';
+    const label = cat.label === 'Other' ? '' : `<div class="check-group-label">${cat.label}</div>`;
+    return `<div class="check-group">${label}<div class="check-grid">${items}</div></div>`;
+  }).join('');
 }
 function toggleCheck(el) { el.classList.toggle('checked'); }
 function getCheckedKeys(containerId) {
@@ -2402,7 +2411,7 @@ async function publishDraft() {
 
 // ── INIT ──────────────────────────────────────────────────────────
 initCheckGrid('features-grid', FEATURES);
-initCheckGrid('amenities-grid', AMENITIES);
+initGroupedCheckGrid('amenities-grid', AMENITIES, AMENITY_CATEGORIES);
 initHighlightPresets();
 </script>
 </body>

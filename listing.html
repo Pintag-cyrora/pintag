@@ -154,6 +154,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .amenity-row{display:flex;flex-wrap:wrap;gap:16px 20px;margin-top:28px;padding-top:22px;border-top:1px solid var(--border);}
 .amenity-item{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:10px;color:var(--ink-muted);text-align:center;min-width:54px;max-width:66px;}
 .amenity-icon{width:38px;height:38px;border:1px solid var(--border-mid);border-radius:9px;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);}
+/* Mobile-only duplicate slot for the amenity row (see the mobile media
+   query below for why: same amenityRowHtml, shown earlier in the mobile
+   reading order, hidden here by default so it doesn't also show on
+   desktop where the original .detail-grid copy is the visible one). */
+.mobile-amenities-slot{display:none;}
+.mobile-amenities-slot .amenity-row{margin-top:0;padding-top:0;border-top:none;}
 /* Features — editorial, premium spacing */
 .features-list{display:flex;flex-direction:column;gap:0;}
 .feature-item{display:flex;align-items:center;gap:12px;font-size:13px;font-weight:400;color:var(--ink-soft);padding:11px 0;border-bottom:1px solid var(--border);line-height:1.4;}
@@ -268,9 +274,34 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   .back-link{display:none;}
   /* Hero — collapse to single column, show mobile gallery */
   .hero-section{grid-template-columns:1fr;min-height:auto;}
-  .hero-left{padding:20px 16px 18px;border-right:none;border-bottom:1px solid var(--border-mid);}
   .hero-right,.desktop-gallery{display:none;}
   .mobile-gallery{display:block;}
+  /* Mobile info hierarchy: Price, then Title, then Location, then Facts —
+     reordered from desktop's Title-first reading order via flex `order`,
+     scoped to this breakpoint only. Every child keeps the exact same
+     markup/desktop styling; only their visual sequence changes here. */
+  .hero-left{
+    padding:20px 16px 18px;border-right:none;border-bottom:1px solid var(--border-mid);
+    display:flex;flex-direction:column;
+  }
+  .hero-left .price-block{order:1;}
+  .hero-left .hero-badges-row{order:2;}
+  .hero-left #sp-badges{order:3;}
+  .hero-left .sp-metrics-row{order:4;}
+  .hero-left .info-title{order:5;}
+  .hero-left .property-highlight{order:6;}
+  .hero-left .hero-location{order:7;}
+  .hero-left .spec-grid{order:8;}
+  .hero-left .year-row{order:9;}
+  .hero-left .highlight-pills{order:10;}
+  .hero-left .sidebar-insight{order:11;}
+  .hero-left .left-actions{order:12;}
+  /* Amenity icons (position 6 in the mobile hierarchy) — shown here,
+     ahead of Contact/Agent/Description; the identical row still renders
+     in its original desktop spot inside the Overview column (hidden below
+     only on mobile) so the two never show at once. */
+  .mobile-amenities-slot{display:block;padding:16px;border-bottom:1px solid var(--border-mid);}
+  .detail-grid .amenity-row{display:none;}
   .mobile-cta-bar{display:block;}
   /* Agent band — contained card presence on mobile */
   .agent-band{grid-template-columns:1fr;gap:14px;padding:18px 16px;margin:12px 16px 0;border-radius:14px;border:1px solid var(--border-mid);}
@@ -444,6 +475,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
+<script src="amenities.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // PINTAG · listing.html v4 — fully dynamic, no hardcoded content
@@ -656,24 +688,9 @@ var FEATURES={
   water_pump:       {en:'Water Heater & Pump',     lo:'ເຄື່ອງສູບນ້ຳ',          zh:'热水器水泵'},
   covered_parking:  {en:'Covered Parking',         lo:'ທີ່ຈອດລົດ',             zh:'有盖停车'  }
 };
-var AMENITIES={
-  pool:      {en:'Pool',          lo:'ສະລອຍນ້ຳ',    zh:'游泳池',  icon:'🏊'},
-  parking:   {en:'Parking',       lo:'ທີ່ຈອດລົດ',   zh:'停车位',  icon:'🅿️'},
-  security:  {en:'Security',      lo:'ລະບົບຮັກສາ',  zh:'保安',    icon:'🛡️'},
-  wifi:      {en:'Wi-Fi',         lo:'ອິນເຕີເນັດ',   zh:'无线网络',icon:'📶'},
-  gym:       {en:'Gym',           lo:'ຫ້ອງຟິດເນສ',  zh:'健身房',  icon:'🏋️'},
-  furnished: {en:'Furnished',     lo:'ເຄື່ອງເຟີນີຈ', zh:'带家具',  icon:'🛋️'},
-  balcony:   {en:'Balcony',       lo:'ລະບຽງ',       zh:'阳台',    icon:'🌅'},
-  elevator:  {en:'Elevator',      lo:'ລິຟ',          zh:'电梯',    icon:'🛗'},
-  rooftop:   {en:'Rooftop',       lo:'ດາດຟ້າ',      zh:'屋顶',    icon:'🌆'},
-  smart:     {en:'Smart Home',    lo:'ສະມາດໂຮມ',    zh:'智能家居',icon:'🏡'},
-  ac:        {en:'Air Con',       lo:'ລະບົບແອ',     zh:'空调',    icon:'❄️'},
-  solar:     {en:'Solar',         lo:'ໂຊລາ',        zh:'太阳能',  icon:'☀️'},
-  generator: {en:'Generator',     lo:'ເຄື່ອງສຳຮອງ', zh:'发电机',  icon:'⚡'},
-  bbq:       {en:'BBQ Area',      lo:'ບ່ອນ BBQ',    zh:'烧烤区',  icon:'🔥'},
-  tennis:    {en:'Tennis',        lo:'ເທັນນິດ',      zh:'网球场',  icon:'🎾'},
-  garden:    {en:'Garden',        lo:'ສວນ',          zh:'花园',    icon:'🌳'}
-};
+// AMENITIES / resolveAmenityData / AMENITY_PRIORITY / topAmenities now live
+// in amenities.js (shared with admin.html and listings.html) — loaded via
+// <script src="amenities.js"> before this block.
 var HIGHLIGHTS={
   embassy_district: {en:'Embassy District',          lo:'ເຂດສະຖານທູດ',         zh:'使馆区'     },
   near_intl_school: {en:'Near International School', lo:'ໃກ້ໂຮງຮຽນນານາຊາດ',  zh:'近国际学校' },
@@ -1495,14 +1512,29 @@ function buildMockupLayout(){
     propertyHighlightsHtml += '</div>';
   }
 
+  // Mobile-only amenity icon row, positioned ahead of Contact/Agent/
+  // Description (see target hierarchy in the mobile media query below).
+  // Reuses the same amenityRowHtml string also emitted inside
+  // overviewColHtml for desktop — one computation, two toggled slots
+  // (`.detail-grid .amenity-row` vs `.mobile-amenities-slot`), not
+  // duplicated amenity-building logic.
+  var mobileAmenitiesSlotHtml = amenityRowHtml
+    ? '<div class="mobile-amenities-slot">'+amenityRowHtml+'</div>'
+    : '';
+
   var layout=(
+    // Gallery first in source order — on mobile this is the only visible
+    // gallery (.hero-right/.desktop-gallery are display:none there); on
+    // desktop .mobile-gallery is display:none so this moved position has
+    // zero visual effect there.
+    mobileGalleryMarkup+
     '<div class="hero-section">'+
     '<div class="hero-left">'+
     '<a href="listings.html" class="back-link">'+I.back+' <span class="lo-i">ກັບຄືນ</span><span class="en-i">Back</span><span class="zh-i">返回</span></a>'+
     '<p class="hero-location">'+I.pin+' '+locationLabel+'</p>'+
     '<h1 class="info-title">'+resolvedTitle+'</h1>'+
     propertyHighlightHtml+
-    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
+    '<div class="hero-badges-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
     '<span class="tx-badge'+(isSor?' tx-badge-sor':'')+'" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
     statusBadgeHtml+
     '</div>'+
@@ -1520,7 +1552,7 @@ function buildMockupLayout(){
     '</div></div>'+
     '<div class="hero-right">'+desktopGalleryMarkup+'</div>'+
     '</div>'+
-    mobileGalleryMarkup+
+    mobileAmenitiesSlotHtml+
     agentHtml+
     emotionalIntroHtml+
     '<div class="detail-wrap">'+
@@ -1651,27 +1683,6 @@ function wireMobileGalleryTrack(){
 }
 
 function checkSmartFitLayout(){}
-
-// ── resolveAmenityData — delegates to shared AMENITIES registry ──
-// Handles normalized keys ("pool"), legacy strings ("Private Pool"),
-// and partial matches. Backward compatible with all existing data.
-function resolveAmenityData(key,lang){
-  var clean=String(key).trim();
-  // Direct registry lookup (covers normalized keys)
-  if(AMENITIES[clean])return{icon:AMENITIES[clean].icon,label:AMENITIES[clean][lang]||AMENITIES[clean].en};
-  // Normalized: "Pool" → "pool", "Smart Home" → "smart" (won't match, falls through)
-  var norm=clean.toLowerCase().replace(/[\s&\/\-]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
-  if(AMENITIES[norm])return{icon:AMENITIES[norm].icon,label:AMENITIES[norm][lang]||AMENITIES[norm].en};
-  // Scan by en label (legacy "Private Pool", "Fitness Gym", etc.)
-  for(var k in AMENITIES){
-    if(AMENITIES[k].en&&AMENITIES[k].en.toLowerCase()===clean.toLowerCase())
-      return{icon:AMENITIES[k].icon,label:AMENITIES[k][lang]||AMENITIES[k].en};
-  }
-  // Partial key match for very short legacy keys ("gym" inside "fitness gym")
-  var lower=clean.toLowerCase();
-  for(var k in AMENITIES){if(lower.indexOf(k)>-1||k.indexOf(lower)>-1)return{icon:AMENITIES[k].icon,label:AMENITIES[k][lang]||AMENITIES[k].en};}
-  return{icon:'✨',label:String(key)};
-}
 
 var WA_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
 
