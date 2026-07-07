@@ -13,11 +13,17 @@ ALTER TABLE agents
 ALTER TABLE agents
   ADD COLUMN auth_user_id uuid REFERENCES auth.users(id);
 
--- Backfill: every existing agents row was created under the "id == auth uid"
+-- Backfill: most existing agents rows were created under the "id == auth uid"
 -- convention (agent-setup.html has staff type in the future auth uid as the
--- row's own PK). Preserve that linkage explicitly now that the two are
--- decoupled going forward.
-UPDATE agents SET auth_user_id = id WHERE auth_user_id IS NULL;
+-- row's own PK) — preserve that linkage explicitly now that the two are
+-- decoupled going forward. Guarded with an existence check: some rows'
+-- id was never actually a real auth.users id (e.g. agents pre-registered by
+-- staff with no login yet) — those correctly stay auth_user_id = NULL,
+-- exactly the "unclaimed identity" state this redesign is meant to support,
+-- rather than aborting the whole migration on a dangling reference.
+UPDATE agents SET auth_user_id = id
+WHERE auth_user_id IS NULL
+  AND id IN (SELECT id FROM auth.users);
 
 CREATE UNIQUE INDEX idx_agents_auth_user_id ON agents(auth_user_id) WHERE auth_user_id IS NOT NULL;
 
