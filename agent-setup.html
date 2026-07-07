@@ -248,7 +248,7 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
             <input type="text" id="f-id" placeholder="Auto-generated" style="color:var(--muted);">
             <button class="btn btn-primary btn-sm" onclick="genUUID()">New UUID</button>
           </div>
-          <p class="hint">Leave as-is to create a new agent, or paste an existing UUID to update.</p>
+          <p class="hint">Leave as-is to create a new agent, or paste an existing UUID to update. This UUID is independent of any login — leaving it auto-generated creates an "unclaimed" party record with no linked Supabase Auth account; the agent can be linked to a real login later once they sign up.</p>
         </div>
 
         <div class="field">
@@ -323,7 +323,7 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
         <div class="field">
           <label>Listing Slugs — one per line</label>
           <textarea id="f-listings" rows="4" placeholder="modern-4-bedroom-fully-furnished-house-for-sale-near-sikhai--574108&#10;another-listing-slug"></textarea>
-          <p class="hint">These listings will have their agent_id, agent_name, agent_photo and agent_whatsapp updated.</p>
+          <p class="hint">These listings will have their Platform Identity (managed_by_party_id) and Buyer Contact linked to this agent.</p>
         </div>
       </div>
 
@@ -341,9 +341,11 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
   </div><!-- /form-wrap -->
 </div>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
 <script>
-const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const SUPABASE_URL  = window.PINTAG.supabaseUrl;
+const SUPABASE_ANON = window.PINTAG.anonKey;
 const ADMIN_EMAIL   = 'admin@pintag.io';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -601,7 +603,7 @@ function switchMode(mode) {
 // ── Load agents + listings ────────────────────────────────────────────
 async function loadAgentsAndListings() {
   try {
-    _agents = await sbApi('GET', 'agents?select=id,name_en,name_lo,slug,photo_url,whatsapp,agency_name,is_verified,bio_en,bio_lo&order=name_en.asc', null);
+    _agents = await sbApi('GET', 'parties?type=eq.agent&select=id,name_en,name_lo,slug,photo_url,whatsapp,agency_name,is_verified,bio_en,bio_lo&order=name_en.asc', null);
     _agentMap = {};
     _agents.forEach(function(a) { _agentMap[a.id] = a; });
 
@@ -614,7 +616,10 @@ async function loadAgentsAndListings() {
       sel.appendChild(opt);
     });
 
-    _allListings = await sbApi('GET', 'properties?select=id,slug,title_en,district_en,status,agent_id&order=created_at.desc&limit=500', null);
+    // Alias managed_by_party_id back to agent_id client-side so the rest of
+    // this file's local bookkeeping (which predates the Platform Identity
+    // rename) doesn't need to change.
+    _allListings = await sbApi('GET', 'properties?select=id,slug,title_en,district_en,status,agent_id:managed_by_party_id&order=created_at.desc&limit=500', null);
   } catch(e) {
     console.error('Failed to load agents/listings:', e);
   }
@@ -808,16 +813,34 @@ async function saveAssignments() {
   toUnassign.forEach(function(l, i) { addStep('u'+i, 'Remove: ' + (l.title_en || l.slug), 'assign-steps'); });
 
   try {
+    // Assigning an agent here also makes them the Buyer Contact for these
+    // listings (matches the original tool's intent — the agent both manages
+    // the listing and is who the buyer should call). Reuse one shared
+    // "default" contacts row per agent instead of writing a fresh row per
+    // listing, so editing the agent's phone later updates all of them —
+    // the same dedup pattern the contacts table exists for.
+    var defaultContactId = null;
+    if (toAssign.length > 0) {
+      var existing = await sbApi('GET', 'contacts?party_id=eq.' + encodeURIComponent(a.id) + '&role=eq.agent&select=id&limit=1', null);
+      if (Array.isArray(existing) && existing.length) {
+        defaultContactId = existing[0].id;
+        await sbApi('PATCH', 'contacts?id=eq.' + encodeURIComponent(defaultContactId), {
+          name: a.name_en, phone: a.whatsapp || null, whatsapp: a.whatsapp || null
+        });
+      } else {
+        var createdContact = await sbApi('POST', 'contacts', {
+          role: 'agent', name: a.name_en, phone: a.whatsapp || null, whatsapp: a.whatsapp || null, party_id: a.id
+        });
+        defaultContactId = Array.isArray(createdContact) ? createdContact[0].id : createdContact.id;
+      }
+    }
+
     for (var i = 0; i < toAssign.length; i++) {
       var l = toAssign[i];
       setStep('a'+i, 'spin');
       await sbApi('PATCH', 'properties?id=eq.' + encodeURIComponent(l.id), {
-        agent_id:        a.id,
-        agent_name:      a.name_en,
-        agent_name_lo:   a.name_lo   || null,
-        agent_photo:     photoUrl,
-        agent_photo_url: photoUrl,
-        agent_whatsapp:  a.whatsapp  || null
+        managed_by_party_id: a.id,
+        contact_id:          defaultContactId
       });
       setStep('a'+i, 'ok', 'assigned');
     }
@@ -825,13 +848,10 @@ async function saveAssignments() {
     for (var j = 0; j < toUnassign.length; j++) {
       var lu = toUnassign[j];
       setStep('u'+j, 'spin');
+      // Only clear the Platform Identity link — buyers still need someone
+      // to contact, so contact_id (mandatory) is left untouched here.
       await sbApi('PATCH', 'properties?id=eq.' + encodeURIComponent(lu.id), {
-        agent_id:        null,
-        agent_name:      null,
-        agent_name_lo:   null,
-        agent_photo:     null,
-        agent_photo_url: null,
-        agent_whatsapp:  null
+        managed_by_party_id: null
       });
       setStep('u'+j, 'ok', 'removed');
     }
@@ -883,7 +903,7 @@ async function saveAgentProfile() {
       photo_url:   photoUrl,
       is_verified: document.getElementById('ep-verified').checked
     };
-    await sbApi('PATCH', 'agents?id=eq.' + encodeURIComponent(a.id), payload);
+    await sbApi('PATCH', 'parties?id=eq.' + encodeURIComponent(a.id), payload);
 
     // Update local cache
     Object.assign(a, payload);
@@ -958,27 +978,42 @@ async function runSetup() {
       languages:   ['Lao','English']
     };
     try {
-      await sbApi('POST', 'agents', agentPayload);
+      await sbApi('POST', 'parties', agentPayload);
     } catch(insertErr) {
       if (insertErr.message.startsWith('HTTP 409') || insertErr.message.includes('duplicate')) {
-        await sbApi('PATCH', 'agents?id=eq.' + encodeURIComponent(agentId), agentPayload);
+        await sbApi('PATCH', 'parties?id=eq.' + encodeURIComponent(agentId), agentPayload);
       } else { throw insertErr; }
     }
     setStep('agent', 'ok', nameEn + ' · slug=' + slug);
+
+    // Reuse one shared "default" contacts row for this agent (same dedup
+    // pattern as the bulk-assign tool above) instead of a fresh row per
+    // listing, so future phone/name edits update every listing at once.
+    var newAgentContactId = null;
+    if (listings.length > 0) {
+      var existingContact = await sbApi('GET', 'contacts?party_id=eq.' + encodeURIComponent(agentId) + '&role=eq.agent&select=id&limit=1', null);
+      if (Array.isArray(existingContact) && existingContact.length) {
+        newAgentContactId = existingContact[0].id;
+        await sbApi('PATCH', 'contacts?id=eq.' + encodeURIComponent(newAgentContactId), {
+          name: nameEn, phone: whatsapp || null, whatsapp: whatsapp || null
+        });
+      } else {
+        var createdContact = await sbApi('POST', 'contacts', {
+          role: 'agent', name: nameEn, phone: whatsapp || null, whatsapp: whatsapp || null, party_id: agentId
+        });
+        newAgentContactId = Array.isArray(createdContact) ? createdContact[0].id : createdContact.id;
+      }
+    }
 
     for (var i = 0; i < listings.length; i++) {
       var ls = listings[i];
       setStep('ls'+i, 'spin');
       var patch = {
-        agent_id:        agentId,
-        agent_name:      nameEn,
-        agent_name_lo:   nameLo || null,
-        agent_photo:     photoUrl,
-        agent_photo_url: photoUrl,
-        agent_whatsapp:  whatsapp || null
+        managed_by_party_id: agentId,
+        contact_id:          newAgentContactId
       };
       await sbApi('PATCH', 'properties?slug=eq.' + encodeURIComponent(ls), patch);
-      setStep('ls'+i, 'ok', 'agent_id, agent_name, agent_photo set');
+      setStep('ls'+i, 'ok', 'managed_by_party_id and contact_id set');
     }
 
     setStep('verify', 'ok', 'Saved successfully');

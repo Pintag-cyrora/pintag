@@ -1,0 +1,43 @@
+name: Deploy Dev (mirror to pintag-dev)
+
+# Mirrors the dev branch's content into the separate Pintag-cyrora/pintag-dev
+# repo, whose own GitHub Pages site is the permanent development website.
+# Requires a PINTAG_DEV_DEPLOY_TOKEN repo secret: a fine-grained PAT scoped
+# to pintag-dev with Contents: Read and write. See PREVIEW.md for setup.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-dev
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate config.js (development)
+        run: cp config.dev.js config.js
+
+      # pintag-dev has no custom domain — don't carry pintag.io's CNAME
+      # binding over to the mirror repo.
+      - name: Strip production-only CNAME
+        run: rm -f CNAME
+
+      - name: Publish to pintag-dev
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.PINTAG_DEV_DEPLOY_TOKEN }}
+          external_repository: Pintag-cyrora/pintag-dev
+          publish_branch: main
+          publish_dir: .
+          force_orphan: true
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'Deploy pintag@${{ github.sha }}'

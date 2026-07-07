@@ -25,7 +25,18 @@ async function requireAdmin(req: Request): Promise<string | null> {
   });
   if (!r.ok) return 'Invalid token';
   const user = await r.json();
-  if (user?.email !== 'admin@pintag.io') return 'Admin only';
+  if (!user?.id) return 'Invalid token';
+  // `parties` is publicly readable, so this check works with just the
+  // caller's own token — no service-role key needed. Replaces the old
+  // auth.email() === 'admin@pintag.io' string match with real data, same as
+  // the is_pintag_staff() Postgres function used by RLS.
+  const staffCheck = await fetch(
+    `${supabaseUrl}/rest/v1/parties?auth_user_id=eq.${user.id}&type=eq.staff&select=id&limit=1`,
+    { headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey } },
+  );
+  if (!staffCheck.ok) return 'Server misconfigured';
+  const staffRows = await staffCheck.json();
+  if (!Array.isArray(staffRows) || staffRows.length === 0) return 'Admin only';
   return null;
 }
 
@@ -92,6 +103,13 @@ Valid property_style values: modern, luxury, minimalist, family, colonial, resor
 Valid transaction_type values: for_sale, for_rent
 Valid furnished values: fully, partially, unfurnished
 
+TASK C — EXTRACT BUYER CONTACT (best-effort, never guess a phone number):
+If the description mentions who to contact (e.g. "call Somchai 020XXXXXXXX", "contact reception", "sales office: 020..."), extract:
+- contact_name: the person's name, if mentioned, else null
+- contact_phone: a phone/WhatsApp number exactly as written, only if one is actually present in the text — never fabricate one
+- contact_role: one of exactly: owner, agent, property_manager, reception, sales_office, developer, family_representative, other — best guess from context, or null if unclear
+This is only ever a suggestion — Pintag staff always confirms it in the admin form before the listing can be published.
+
 PROPERTY DESCRIPTION:
 """
 ${description || '(no description provided)'}
@@ -129,6 +147,9 @@ Example of correct title format:
   "neighborhood_insight_en": "One sentence about the neighbourhood in English",
   "neighborhood_insight_lo": "One sentence in authentic Lao script",
   "neighborhood_insight_zh": "One sentence in Simplified Chinese",
+  "contact_name": null,
+  "contact_phone": null,
+  "contact_role": null,
   ${photoJsonSection}
 }`;
 }

@@ -115,9 +115,11 @@ input:focus{border-color:#2D8C8C;box-shadow:0 0 0 3px rgba(45,140,140,0.08);}
   </div>
 </div>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
 <script>
-const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const SUPABASE_URL  = window.PINTAG.supabaseUrl;
+const SUPABASE_ANON = window.PINTAG.anonKey;
 const ADMIN_EMAIL   = 'admin@pintag.io';
 const STORAGE_PREFIX = SUPABASE_URL + '/storage/v1/object/public/property-images/';
 

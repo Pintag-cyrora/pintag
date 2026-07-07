@@ -481,11 +481,13 @@ body{
 
 </div>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
 <script>
 
-const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+const SUPABASE_URL = window.PINTAG.supabaseUrl;
 
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const SUPABASE_KEY = window.PINTAG.anonKey;
 
 function esc(s) {
   if (s == null) return '';
@@ -509,21 +511,28 @@ async function initDashboard(){
     return;
   }
 
-  const { data: agent } = await supabaseClient
-    .from('agents')
+  // Resolve the logged-in user's own party row — checks auth_user_id first
+  // (the decoupled model going forward), falling back to id (the legacy
+  // "agents.id == auth uid" convention preserved for pre-existing agents).
+  const { data: parties } = await supabaseClient
+    .from('parties')
     .select('*')
-    .eq('id', user.id)
-    .single();
+    .or(`auth_user_id.eq.${user.id},id.eq.${user.id}`)
+    .limit(1);
+  const agent = (parties && parties[0]) || null;
 
-  if(agent){
-    document.getElementById('welcome-name').innerText =
-      `Welcome back, ${agent.name_en || 'Agent'}`;
+  if(!agent){
+    console.error('No party record found for this user');
+    return;
   }
+
+  document.getElementById('welcome-name').innerText =
+    `Welcome back, ${agent.name_en || 'Agent'}`;
 
   const { data: properties, error } = await supabaseClient
     .from('properties')
     .select('*')
-    .eq('agent_id', user.id)
+    .eq('managed_by_party_id', agent.id)
     .order('created_at', { ascending:false });
 
   if(error){
@@ -533,7 +542,7 @@ async function initDashboard(){
 
   renderStats(properties);
   renderListings(properties);
-  loadLeadStats(user.id);
+  loadLeadStats(agent.id);
 
 }
 

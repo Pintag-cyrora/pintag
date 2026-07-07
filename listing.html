@@ -154,6 +154,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .amenity-row{display:flex;flex-wrap:wrap;gap:16px 20px;margin-top:28px;padding-top:22px;border-top:1px solid var(--border);}
 .amenity-item{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:10px;color:var(--ink-muted);text-align:center;min-width:54px;max-width:66px;}
 .amenity-icon{width:38px;height:38px;border:1px solid var(--border-mid);border-radius:9px;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);}
+/* Mobile-only duplicate slot for the amenity row (see the mobile media
+   query below for why: same amenityRowHtml, shown earlier in the mobile
+   reading order, hidden here by default so it doesn't also show on
+   desktop where the original .detail-grid copy is the visible one). */
+.mobile-amenities-slot{display:none;}
+.mobile-amenities-slot .amenity-row{margin-top:0;padding-top:0;border-top:none;}
 /* Features — editorial, premium spacing */
 .features-list{display:flex;flex-direction:column;gap:0;}
 .feature-item{display:flex;align-items:center;gap:12px;font-size:13px;font-weight:400;color:var(--ink-soft);padding:11px 0;border-bottom:1px solid var(--border);line-height:1.4;}
@@ -268,9 +274,34 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   .back-link{display:none;}
   /* Hero — collapse to single column, show mobile gallery */
   .hero-section{grid-template-columns:1fr;min-height:auto;}
-  .hero-left{padding:20px 16px 18px;border-right:none;border-bottom:1px solid var(--border-mid);}
   .hero-right,.desktop-gallery{display:none;}
   .mobile-gallery{display:block;}
+  /* Mobile info hierarchy: Price, then Title, then Location, then Facts —
+     reordered from desktop's Title-first reading order via flex `order`,
+     scoped to this breakpoint only. Every child keeps the exact same
+     markup/desktop styling; only their visual sequence changes here. */
+  .hero-left{
+    padding:20px 16px 18px;border-right:none;border-bottom:1px solid var(--border-mid);
+    display:flex;flex-direction:column;
+  }
+  .hero-left .price-block{order:1;}
+  .hero-left .hero-badges-row{order:2;}
+  .hero-left #sp-badges{order:3;}
+  .hero-left .sp-metrics-row{order:4;}
+  .hero-left .info-title{order:5;}
+  .hero-left .property-highlight{order:6;}
+  .hero-left .hero-location{order:7;}
+  .hero-left .spec-grid{order:8;}
+  .hero-left .year-row{order:9;}
+  .hero-left .highlight-pills{order:10;}
+  .hero-left .sidebar-insight{order:11;}
+  .hero-left .left-actions{order:12;}
+  /* Amenity icons (position 6 in the mobile hierarchy) — shown here,
+     ahead of Contact/Agent/Description; the identical row still renders
+     in its original desktop spot inside the Overview column (hidden below
+     only on mobile) so the two never show at once. */
+  .mobile-amenities-slot{display:block;padding:16px;border-bottom:1px solid var(--border-mid);}
+  .detail-grid .amenity-row{display:none;}
   .mobile-cta-bar{display:block;}
   /* Agent band — contained card presence on mobile */
   .agent-band{grid-template-columns:1fr;gap:14px;padding:18px 16px;margin:12px 16px 0;border-radius:14px;border:1px solid var(--border-mid);}
@@ -442,13 +473,16 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   <div class="lb-dots" id="lb-dots"></div>
 </div>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
+<script src="amenities.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // PINTAG · listing.html v4 — fully dynamic, no hardcoded content
 // ═══════════════════════════════════════════════════════════════════
 
-var BASE_DB = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-var SEC_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+var BASE_DB = window.PINTAG.supabaseUrl;
+var SEC_KEY = window.PINTAG.anonKey;
 
 // ── Lead tracking ─────────────────────────────────────────────────
 function trackLead(listingId, agentId, eventType) {
@@ -654,24 +688,9 @@ var FEATURES={
   water_pump:       {en:'Water Heater & Pump',     lo:'ເຄື່ອງສູບນ້ຳ',          zh:'热水器水泵'},
   covered_parking:  {en:'Covered Parking',         lo:'ທີ່ຈອດລົດ',             zh:'有盖停车'  }
 };
-var AMENITIES={
-  pool:      {en:'Pool',          lo:'ສະລອຍນ້ຳ',    zh:'游泳池',  icon:'🏊'},
-  parking:   {en:'Parking',       lo:'ທີ່ຈອດລົດ',   zh:'停车位',  icon:'🅿️'},
-  security:  {en:'Security',      lo:'ລະບົບຮັກສາ',  zh:'保安',    icon:'🛡️'},
-  wifi:      {en:'Wi-Fi',         lo:'ອິນເຕີເນັດ',   zh:'无线网络',icon:'📶'},
-  gym:       {en:'Gym',           lo:'ຫ້ອງຟິດເນສ',  zh:'健身房',  icon:'🏋️'},
-  furnished: {en:'Furnished',     lo:'ເຄື່ອງເຟີນີຈ', zh:'带家具',  icon:'🛋️'},
-  balcony:   {en:'Balcony',       lo:'ລະບຽງ',       zh:'阳台',    icon:'🌅'},
-  elevator:  {en:'Elevator',      lo:'ລິຟ',          zh:'电梯',    icon:'🛗'},
-  rooftop:   {en:'Rooftop',       lo:'ດາດຟ້າ',      zh:'屋顶',    icon:'🌆'},
-  smart:     {en:'Smart Home',    lo:'ສະມາດໂຮມ',    zh:'智能家居',icon:'🏡'},
-  ac:        {en:'Air Con',       lo:'ລະບົບແອ',     zh:'空调',    icon:'❄️'},
-  solar:     {en:'Solar',         lo:'ໂຊລາ',        zh:'太阳能',  icon:'☀️'},
-  generator: {en:'Generator',     lo:'ເຄື່ອງສຳຮອງ', zh:'发电机',  icon:'⚡'},
-  bbq:       {en:'BBQ Area',      lo:'ບ່ອນ BBQ',    zh:'烧烤区',  icon:'🔥'},
-  tennis:    {en:'Tennis',        lo:'ເທັນນິດ',      zh:'网球场',  icon:'🎾'},
-  garden:    {en:'Garden',        lo:'ສວນ',          zh:'花园',    icon:'🌳'}
-};
+// AMENITIES / resolveAmenityData / AMENITY_PRIORITY / topAmenities now live
+// in amenities.js (shared with admin.html and listings.html) — loaded via
+// <script src="amenities.js"> before this block.
 var HIGHLIGHTS={
   embassy_district: {en:'Embassy District',          lo:'ເຂດສະຖານທູດ',         zh:'使馆区'     },
   near_intl_school: {en:'Near International School', lo:'ໃກ້ໂຮງຮຽນນານາຊາດ',  zh:'近国际学校' },
@@ -852,7 +871,7 @@ async function fetchProperty(slug){
   _fetchInFlight=true;
   PT.time('fetchProperty');
   try{
-    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*&limit=1');
+    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(role,name,phone,whatsapp),parties(id,name_en,name_lo,photo_url,agency_name,slug,type)&limit=1');
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
@@ -1182,37 +1201,57 @@ function buildMockupLayout(){
     sidebarInsightHtml='<div class="sidebar-insight">'+esc(insightText.trim())+'</div>';
   }
 
-  // ── WhatsApp ──
-  var cleanPhone=String(data.agent_whatsapp||'').replace(/[^0-9]/g,'');
+  // ── Buyer Contact (always rendered — who the buyer should actually call,
+  // independent of whether a Pintag Agent Profile is linked below) ──
+  var contact=data.contacts||null;
+  var contactPhone=contact?(contact.whatsapp||contact.phone||''):'';
+  var cleanPhone=String(contactPhone).replace(/[^0-9]/g,'');
   var waTitleShort=String(data.title_en||data.title_lo||'').slice(0,80);
   var waMessage=encodeURIComponent('Hello, I am interested in '+waTitleShort+' (Ref: '+(data.id||'')+')');
   var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
-
-  // ── Agent stats ──
-  var statsHtml='';
-  if(data.agent_listing_count||data.agent_response_time||data.agent_rating){
-    statsHtml='<div class="agent-stats-row">';
-    if(data.agent_listing_count)statsHtml+='<div class="agent-stat"><span class="agent-stat-icon">'+I.home+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_listing_count))+'</span><span class="agent-stat-lbl"><span class="lo-i">ລາຍການ</span><span class="en-i">Active Listings</span><span class="zh-i">活跃房源</span></span></div></div>';
-    if(data.agent_response_time)statsHtml+='<div class="agent-stat"><span class="agent-stat-icon">'+I.bolt+'</span><div class="agent-stat-body"><span class="agent-stat-val"><span class="lo-i">ຕອບໄວ</span><span class="en-i">Responds</span><span class="zh-i">响应</span></span><span class="agent-stat-lbl">'+esc(data.agent_response_time)+'</span></div></div>';
-    if(data.agent_rating)statsHtml+='<div class="agent-stat"><span class="agent-stat-icon">'+I.star+'</span><div class="agent-stat-body"><span class="agent-stat-val">'+esc(String(data.agent_rating))+'</span><span class="agent-stat-lbl"><span class="lo-i">ຄະແນນ</span><span class="en-i">Rating</span><span class="zh-i">评分</span></span></div></div>';
-    statsHtml+='</div>';
-  }
-  var callBtn=data.agent_phone?'<a href="tel:'+esc(data.agent_phone)+'" class="btn-primary btn-call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.agent_id||'')+'\',\'call_click\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
-  var agentPhotoSrc=esc(data.agent_photo||data.agent_photo_url||agentFallback);
-  var agentHtml=(
+  var CONTACT_ROLE_LABELS={
+    owner:{lo:'ເຈົ້າຂອງ',en:'Owner',zh:'业主'},
+    agent:{lo:'ຕົວແທນ',en:'Agent',zh:'代理'},
+    property_manager:{lo:'ຜູ້ຈັດການອາຄານ',en:'Property Manager',zh:'物业经理'},
+    reception:{lo:'ພະນັກງານຕ້ອນຮັບ',en:'Reception',zh:'前台'},
+    sales_office:{lo:'ຫ້ອງການຂາຍ',en:'Sales Office',zh:'销售处'},
+    developer:{lo:'ຜູ້ພັດທະນາ',en:'Developer',zh:'开发商'},
+    family_representative:{lo:'ຕົວແທນຄອບຄົວ',en:'Family Representative',zh:'家庭代表'},
+    other:{lo:'ຜູ້ຕິດຕໍ່',en:'Contact',zh:'联系人'}
+  };
+  var roleLabel=CONTACT_ROLE_LABELS[contact&&contact.role]||CONTACT_ROLE_LABELS.other;
+  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.managed_by_party_id||'')+'\',\'call_click\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
-    '<div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p>'+
+    '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
     '<div class="agent-identity">'+
-    '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" onerror="handleImageError(this)" alt="Agent">'+
-    '<div><div class="agent-name-en">'+esc(data.agent_name||'')+'</div>'+(data.agent_name_lo?'<div class="agent-name-lo">'+esc(data.agent_name_lo)+'</div>':'')+'</div>'+
+    '<div><div class="agent-name-en">'+esc((contact&&contact.name)||roleLabel.en)+'</div></div>'+
     '</div></div>'+
-    statsHtml+
     '<div class="agent-ctas">'+
-    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.agent_id||'')+'\',\'whatsapp_click\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',\'whatsapp_click\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
-    '</div></div>'+
-    '<div id="sp-fomo" class="sp-fomo-agent" style="display:none;"></div>'
+    '</div></div>'
   );
+
+  // ── Agent Profile card (additional — only when this listing is linked to
+  // a real Pintag Agent Profile; never shown for owner/reception/sales-office
+  // contacts, so buyers can tell they're not talking to Pintag) ──
+  var agentProfileHtml='';
+  var party=data.parties||null;
+  if(party&&party.type==='agent'){
+    var agentPhotoSrc=esc(party.photo_url||agentFallback);
+    agentProfileHtml=(
+      '<div class="agent-band agent-profile-card">'+
+      '<div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p>'+
+      '<div class="agent-identity">'+
+      '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" onerror="handleImageError(this)" alt="Agent">'+
+      '<div><div class="agent-name-en">'+esc(party.name_en||'')+'</div>'+(party.name_lo?'<div class="agent-name-lo">'+esc(party.name_lo)+'</div>':'')+(party.agency_name?'<div class="agent-name-lo">'+esc(party.agency_name)+'</div>':'')+'</div>'+
+      '</div></div>'+
+      (party.slug?'<a href="agent.html?slug='+encodeURIComponent(party.slug)+'" class="btn-primary btn-wa">View Profile</a>':'')+
+      '</div>'
+    );
+  }
+  var agentHtml=contactHtml+agentProfileHtml+'<div id="sp-fomo" class="sp-fomo-agent" style="display:none;"></div>';
 
   // ════════════════════════════════════════════════════════════════
   // COLUMN 1 — Overview: description + amenity icon row
@@ -1473,14 +1512,29 @@ function buildMockupLayout(){
     propertyHighlightsHtml += '</div>';
   }
 
+  // Mobile-only amenity icon row, positioned ahead of Contact/Agent/
+  // Description (see target hierarchy in the mobile media query below).
+  // Reuses the same amenityRowHtml string also emitted inside
+  // overviewColHtml for desktop — one computation, two toggled slots
+  // (`.detail-grid .amenity-row` vs `.mobile-amenities-slot`), not
+  // duplicated amenity-building logic.
+  var mobileAmenitiesSlotHtml = amenityRowHtml
+    ? '<div class="mobile-amenities-slot">'+amenityRowHtml+'</div>'
+    : '';
+
   var layout=(
+    // Gallery first in source order — on mobile this is the only visible
+    // gallery (.hero-right/.desktop-gallery are display:none there); on
+    // desktop .mobile-gallery is display:none so this moved position has
+    // zero visual effect there.
+    mobileGalleryMarkup+
     '<div class="hero-section">'+
     '<div class="hero-left">'+
     '<a href="listings.html" class="back-link">'+I.back+' <span class="lo-i">ກັບຄືນ</span><span class="en-i">Back</span><span class="zh-i">返回</span></a>'+
     '<p class="hero-location">'+I.pin+' '+locationLabel+'</p>'+
     '<h1 class="info-title">'+resolvedTitle+'</h1>'+
     propertyHighlightHtml+
-    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
+    '<div class="hero-badges-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
     '<span class="tx-badge'+(isSor?' tx-badge-sor':'')+'" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
     statusBadgeHtml+
     '</div>'+
@@ -1498,7 +1552,7 @@ function buildMockupLayout(){
     '</div></div>'+
     '<div class="hero-right">'+desktopGalleryMarkup+'</div>'+
     '</div>'+
-    mobileGalleryMarkup+
+    mobileAmenitiesSlotHtml+
     agentHtml+
     emotionalIntroHtml+
     '<div class="detail-wrap">'+
@@ -1629,27 +1683,6 @@ function wireMobileGalleryTrack(){
 }
 
 function checkSmartFitLayout(){}
-
-// ── resolveAmenityData — delegates to shared AMENITIES registry ──
-// Handles normalized keys ("pool"), legacy strings ("Private Pool"),
-// and partial matches. Backward compatible with all existing data.
-function resolveAmenityData(key,lang){
-  var clean=String(key).trim();
-  // Direct registry lookup (covers normalized keys)
-  if(AMENITIES[clean])return{icon:AMENITIES[clean].icon,label:AMENITIES[clean][lang]||AMENITIES[clean].en};
-  // Normalized: "Pool" → "pool", "Smart Home" → "smart" (won't match, falls through)
-  var norm=clean.toLowerCase().replace(/[\s&\/\-]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
-  if(AMENITIES[norm])return{icon:AMENITIES[norm].icon,label:AMENITIES[norm][lang]||AMENITIES[norm].en};
-  // Scan by en label (legacy "Private Pool", "Fitness Gym", etc.)
-  for(var k in AMENITIES){
-    if(AMENITIES[k].en&&AMENITIES[k].en.toLowerCase()===clean.toLowerCase())
-      return{icon:AMENITIES[k].icon,label:AMENITIES[k][lang]||AMENITIES[k].en};
-  }
-  // Partial key match for very short legacy keys ("gym" inside "fitness gym")
-  var lower=clean.toLowerCase();
-  for(var k in AMENITIES){if(lower.indexOf(k)>-1||k.indexOf(lower)>-1)return{icon:AMENITIES[k].icon,label:AMENITIES[k][lang]||AMENITIES[k].en};}
-  return{icon:'✨',label:String(key)};
-}
 
 var WA_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
 

@@ -1,0 +1,60 @@
+-- STAGE D — DO NOT APPLY YET.
+--
+-- This file intentionally does NOT have a .sql extension and is NOT named
+-- with a timestamp prefix, so `supabase db push` / the Supabase CLI will
+-- never pick it up automatically alongside the Stage A/B/C migrations.
+--
+-- Per the approved migration plan, Stage D must ship as its own separate
+-- deploy, gated on confirming Stage C (20260705000400_staff_rls_rewrite_
+-- and_self_service.sql plus the matching admin.html/listing.html/Agent
+-- Portal frontend changes) has been live in production and baked for a
+-- reasonable period — not just merged, but actually confirmed working.
+--
+-- BEFORE applying this file:
+--   1. Confirm Stage C has been deployed and is live in production.
+--   2. Run this verification query and record the result in the deploy
+--      ticket:
+--
+--        SELECT count(*) FILTER (WHERE contact_id IS NULL)                                  AS still_null,
+--               count(*) FILTER (WHERE contact_id = '00000000-0000-0000-0000-0000000000c1') AS sentinel_count
+--        FROM properties;
+--
+--      `still_null` MUST be 0 before proceeding — if it isn't, the backfill
+--      migration (20260705000300_backfill_contacts_from_properties.sql)
+--      didn't run cleanly and must be investigated first.
+--
+--      `sentinel_count` > 0 is expected (every listing with no agent_whatsapp
+--      on file at backfill time) — this is a staff cleanup backlog, not a
+--      blocker. Confirm admin.html surfaces it as an ongoing filter so it
+--      doesn't get silently forgotten.
+--
+--   3. Grep the whole repo for the legacy column names below to confirm
+--      there are no remaining writers before dropping them (agent-setup.html
+--      and admin.html were updated in this same effort — re-check after any
+--      further changes land on those files).
+--
+-- Once both checks pass, copy the two ALTER statements below into a new,
+-- properly timestamped migration file (e.g.
+-- supabase/migrations/<YYYYMMDDHHMMSS>_properties_contact_required_and_drop_legacy.sql)
+-- and apply it as its own deploy.
+
+ALTER TABLE properties ALTER COLUMN contact_id SET NOT NULL;
+
+ALTER TABLE properties
+  DROP COLUMN agent_name,
+  DROP COLUMN agent_name_lo,
+  DROP COLUMN agent_photo,
+  DROP COLUMN agent_photo_url,
+  DROP COLUMN agent_whatsapp,
+  DROP COLUMN agent_phone,
+  DROP COLUMN agent_rating,
+  DROP COLUMN agent_listing_count,
+  DROP COLUMN agent_response_time;
+
+-- agent_title is deliberately NOT in the drop list above — it's still a
+-- live, actively-used field (admin.html's "Agent Title" optional override
+-- on the Platform Identity / Managed By section, e.g. "Luxury Property
+-- Consultant"), unlike the other agent_* columns which were purely
+-- denormalized buyer-contact snapshots. Leave it as a properties column
+-- unless/until it's deliberately redesigned as part of the Agent Profile
+-- work, not as a side effect of this cleanup.

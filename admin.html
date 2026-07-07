@@ -97,6 +97,9 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .check-item.checked .check-dot::after{content:"";display:block;width:8px;height:8px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpolyline points='1.5,5 4,7.5 8.5,2.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;}
 .check-label{font-size:12.5px;color:var(--ink-soft);line-height:1.3;}
 .check-item.checked .check-label{color:var(--ink);font-weight:500;}
+.check-group{margin-top:14px;}
+.check-group:first-child{margin-top:0;}
+.check-group-label{font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:6px;}
 /* Tag pills */
 .tag-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
 .tag-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border:1px solid var(--border);border-radius:999px;cursor:pointer;font-size:12px;font-weight:400;color:var(--ink-muted);transition:all 0.15s;background:var(--white);user-select:none;}
@@ -293,11 +296,12 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <select class="form-select" id="f-type" required>
                 <option value="">Select type</option>
                 <option value="house">House</option>
+                <option value="townhouse">Townhouse</option>
                 <option value="villa">Villa</option>
                 <option value="apartment">Apartment</option>
-                <option value="townhouse">Townhouse</option>
-                <option value="land">Land</option>
+                <option value="condo">Condo</option>
                 <option value="commercial">Commercial</option>
+                <option value="land">Land</option>
               </select>
             </div>
             <div class="form-group">
@@ -594,9 +598,50 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           </div>
         </div>
 
-        <!-- AGENT -->
+        <!-- BUYER CONTACT (mandatory — who the buyer should actually call) -->
         <div class="form-section">
-          <p class="form-section-title">&#9321; Agent Contact</p>
+          <p class="form-section-title">&#9321; Buyer Contact <span style="color:var(--red,#c0392b);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; required, shown to buyers regardless of Platform Identity below</span></p>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Contact Role *</label>
+              <select class="form-input" id="f-contact-role">
+                <option value="owner">Owner</option>
+                <option value="agent" selected>Agent</option>
+                <option value="property_manager">Property Manager</option>
+                <option value="reception">Reception</option>
+                <option value="sales_office">Sales Office</option>
+                <option value="developer">Developer</option>
+                <option value="family_representative">Family Representative</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Contact Name</label>
+              <input class="form-input" id="f-contact-name" type="text" placeholder="e.g. Mr. Somchai (optional)">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Contact Phone *</label>
+              <input class="form-input" id="f-contact-phone" type="text" placeholder="020 XXXXXXXX">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Contact WhatsApp</label>
+              <input class="form-input" id="f-contact-whatsapp" type="text" placeholder="Defaults to phone if blank">
+            </div>
+            <div class="form-group form-full">
+              <button type="button" class="btn-cancel" onclick="fillContactFromSelectedAgent()">Same as selected agent</button>
+              <div id="contact-shared-note" class="agent-legacy-note" style="display:none;margin-top:8px;">
+                <div id="contact-shared-note-text"></div>
+                <label style="display:block;margin-top:6px;font-weight:400;">
+                  <input type="checkbox" id="f-contact-fork"> Create a separate contact for just this listing
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PLATFORM IDENTITY / MANAGED BY (optional — internal attribution + Agent Profile branding) -->
+        <div class="form-section">
+          <p class="form-section-title">&#9322; Platform Identity / Managed By <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; optional; links this listing to a Pintag Agent Profile for branding/CRM, independent of Buyer Contact above</span></p>
           <div class="form-group form-full">
             <label class="form-label">Agent</label>
             <div class="agent-select-row">
@@ -616,10 +661,6 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
                 <div id="agent-preview-agency" class="agent-preview-agency"></div>
                 <div id="agent-preview-contact" class="agent-preview-contact"></div>
               </div>
-            </div>
-            <!-- Legacy warning for listings with manual agent data but no agent_id -->
-            <div id="agent-legacy-note" class="agent-legacy-note" style="display:none;">
-              &#9888; This listing has manual agent data. Select an agent above to link it to the agents table, or leave blank to keep the existing data.
             </div>
           </div>
           <div class="form-grid" style="margin-top:12px;">
@@ -691,10 +732,13 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
   </div>
 </div>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
+<script src="amenities.js"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
-const SUPABASE_URL  = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const SUPABASE_URL  = window.PINTAG.supabaseUrl;
+const SUPABASE_ANON = window.PINTAG.anonKey;
 
 function esc(s) {
   if (s == null) return '';
@@ -731,24 +775,9 @@ const FEATURES={
   water_pump:       {en:'Water Heater & Pump',     lo:'ເຄື່ອງສູບນ້ຳ',          zh:'热水器水泵'},
   covered_parking:  {en:'Covered Parking',         lo:'ທີ່ຈອດລົດ',             zh:'有盖停车'  }
 };
-const AMENITIES={
-  pool:      {en:'Pool',          lo:'ສະລອຍນ້ຳ',    zh:'游泳池',  icon:'🏊'},
-  parking:   {en:'Parking',       lo:'ທີ່ຈອດລົດ',   zh:'停车位',  icon:'🅿️'},
-  security:  {en:'Security',      lo:'ລະບົບຮັກສາ',  zh:'保安',    icon:'🛡️'},
-  wifi:      {en:'Wi-Fi',         lo:'ອິນເຕີເນັດ',   zh:'无线网络',icon:'📶'},
-  gym:       {en:'Gym',           lo:'ຫ້ອງຟິດເນສ',  zh:'健身房',  icon:'🏋️'},
-  furnished: {en:'Furnished',     lo:'ເຄື່ອງເຟີນີຈ', zh:'带家具',  icon:'🛋️'},
-  balcony:   {en:'Balcony',       lo:'ລະບຽງ',       zh:'阳台',    icon:'🌅'},
-  elevator:  {en:'Elevator',      lo:'ລິຟ',          zh:'电梯',    icon:'🛗'},
-  rooftop:   {en:'Rooftop',       lo:'ດາດຟ້າ',      zh:'屋顶',    icon:'🌆'},
-  smart:     {en:'Smart Home',    lo:'ສະມາດໂຮມ',    zh:'智能家居',icon:'🏡'},
-  ac:        {en:'Air Con',       lo:'ລະບົບແອ',     zh:'空调',    icon:'❄️'},
-  solar:     {en:'Solar',         lo:'ໂຊລາ',        zh:'太阳能',  icon:'☀️'},
-  generator: {en:'Generator',     lo:'ເຄື່ອງສຳຮອງ', zh:'发电机',  icon:'⚡'},
-  bbq:       {en:'BBQ Area',      lo:'ບ່ອນ BBQ',    zh:'烧烤区',  icon:'🔥'},
-  tennis:    {en:'Tennis',        lo:'ເທັນນິດ',      zh:'网球场',  icon:'🎾'},
-  garden:    {en:'Garden',        lo:'ສວນ',          zh:'花园',    icon:'🌳'}
-};
+// AMENITIES / AMENITY_CATEGORIES / resolveAmenityData / AMENITY_PRIORITY /
+// topAmenities now live in amenities.js (shared with listing.html and
+// listings.html) — loaded via <script src="amenities.js"> before this block.
 const HIGHLIGHTS={
   embassy_district: {en:'Embassy District',          lo:'ເຂດສະຖານທູດ',         zh:'使馆区'     },
   near_intl_school: {en:'Near International School', lo:'ໃກ້ໂຮງຮຽນນານາຊາດ',  zh:'近国际学校' },
@@ -798,6 +827,26 @@ function initCheckGrid(containerId, registry) {
       <span class="check-label">${def.en}</span>
     </div>`
   ).join('');
+}
+// Same flat .check-item[data-key] elements as initCheckGrid (so
+// getCheckedKeys/setChecked/toggleCheck all keep working unmodified) —
+// just visually clustered under category headings. "Other" (legacy,
+// non-standardized amenities like Wi-Fi) is rendered last and unlabeled
+// as a category to avoid suggesting it's part of the standard set.
+function initGroupedCheckGrid(containerId, registry, categories) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = categories.map(cat => {
+    const items = cat.keys
+      .filter(key => registry[key])
+      .map(key => `<div class="check-item" data-key="${key}" onclick="toggleCheck(this)">
+        <div class="check-dot"></div>
+        <span class="check-label">${registry[key].icon} ${registry[key].en}</span>
+      </div>`).join('');
+    if (!items) return '';
+    const label = cat.label === 'Other' ? '' : `<div class="check-group-label">${cat.label}</div>`;
+    return `<div class="check-group">${label}<div class="check-grid">${items}</div></div>`;
+  }).join('');
 }
 function toggleCheck(el) { el.classList.toggle('checked'); }
 function getCheckedKeys(containerId) {
@@ -1055,6 +1104,8 @@ const WM = {
 // ── AUTH ──────────────────────────────────────────────────────────
 let _adminToken = null;
 let _agentsAll = [];
+let _editingContactId = null; // contact_id currently loaded into the Buyer Contact form, if any
+let _editingContactSharedCount = 0; // how many other listings also use _editingContactId
 
 sbClient.auth.onAuthStateChange((event, session) => {
   _adminToken = session ? session.access_token : null;
@@ -1126,7 +1177,7 @@ async function loadAgentsForDropdown() {
   const sel = document.getElementById('f-agent-id');
   if (sel) sel.innerHTML = '<option value="">Loading agents…</option>';
   try {
-    const data = await sbApi('GET', 'agents?select=id,name_en,name_lo,slug,photo_url,whatsapp,agency_name,bio_en&order=name_en.asc');
+    const data = await sbApi('GET', 'parties?type=eq.agent&select=id,name_en,name_lo,slug,photo_url,whatsapp,agency_name,bio_en&order=name_en.asc');
     _agentsAll = Array.isArray(data) ? data : [];
     buildAgentOptions('');
     if (_agentsAll.length === 0 && sel) {
@@ -1179,6 +1230,23 @@ function onAgentDropdownChange() {
   preview.style.display = 'flex';
 }
 
+// ── BUYER CONTACT ────────────────────────────────────────────────
+// One-click convenience prefill for the common case where the selected
+// Agent Profile IS the buyer contact (Example 2 in the product brief) —
+// never applied automatically, always an explicit staff action.
+function fillContactFromSelectedAgent() {
+  const agentId = document.getElementById('f-agent-id').value;
+  const agent = agentId ? _agentsAll.find(a => a.id === agentId) : null;
+  if (!agent) {
+    alert('Select an agent above first.');
+    return;
+  }
+  document.getElementById('f-contact-role').value = 'agent';
+  document.getElementById('f-contact-name').value = agent.name_en || '';
+  document.getElementById('f-contact-phone').value = agent.whatsapp || '';
+  document.getElementById('f-contact-whatsapp').value = agent.whatsapp || '';
+}
+
 // ── ANALYTICS ────────────────────────────────────────────────────
 var _analyticsVisible = false;
 function toggleAnalytics() {
@@ -1224,7 +1292,7 @@ async function loadAnalytics() {
     leads.forEach(l => { if (l.agent_id) byAgent[l.agent_id] = (byAgent[l.agent_id] || 0) + 1; });
     const topAgentIds = Object.keys(byAgent).sort((a,b) => byAgent[b]-byAgent[a]).slice(0,10);
     if (topAgentIds.length) {
-      const agents = await sbApi('GET', 'agents?id=in.('+topAgentIds.join(',')+')&select=id,name_en');
+      const agents = await sbApi('GET', 'parties?id=in.('+topAgentIds.join(',')+')&select=id,name_en');
       const nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.name_en||'—']));
       document.getElementById('adm-top-agents').innerHTML = topAgentIds.map(id =>
         `<tr><td style="font-weight:500;">${esc(nameMap[id]||'—')}</td><td><span class="lead-pill">${Number(byAgent[id])}</span></td></tr>`
@@ -1260,7 +1328,7 @@ async function loadListings() {
   const container = document.getElementById('listings-container');
   container.innerHTML = '<div class="loading">Loading...</div>';
   const [data, leads] = await Promise.all([
-    sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,agent_name,agent_id,district_en,view_count'),
+    sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,managed_by_party_id,district_en,view_count,contacts(role,name,phone)'),
     sbApi('GET','lead_events?select=listing_id').catch(() => [])
   ]);
   // Build lead count map
@@ -1272,7 +1340,12 @@ async function loadListings() {
   }
   let html = '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Status</th><th style="white-space:nowrap;">👁 Views · 📞 Leads</th><th>Actions</th></tr></thead><tbody>';
   data.forEach(p => {
-    const agentDisplay = esc((() => { const a = p.agent_id ? _agentsAll.find(x => x.id === p.agent_id) : null; return a ? a.name_en : (p.agent_name || '—'); })());
+    const agentDisplay = esc((() => {
+      const a = p.managed_by_party_id ? _agentsAll.find(x => x.id === p.managed_by_party_id) : null;
+      if (a) return a.name_en;
+      if (p.contacts && p.contacts.name) return p.contacts.name + ' (contact only)';
+      return '—';
+    })());
     const statusCls = esc(p.status || 'draft');
     const v = Number(p.view_count || 0);
     const l = Number(leadCounts[p.id] || 0);
@@ -1339,7 +1412,14 @@ function showForm(id) {
   // Always reset agent selection UI
   document.getElementById('f-agent-search').value = '';
   document.getElementById('agent-preview').style.display = 'none';
-  document.getElementById('agent-legacy-note').style.display = 'none';
+  document.getElementById('contact-shared-note').style.display = 'none';
+  if (!id) {
+    document.getElementById('f-contact-role').value = 'agent';
+    document.getElementById('f-contact-name').value = '';
+    document.getElementById('f-contact-phone').value = '';
+    document.getElementById('f-contact-whatsapp').value = '';
+    _editingContactId = null;
+  }
   buildAgentOptions('');
   // Reload agents every time form opens (handles timing + RLS token readiness)
   loadAgentsForDropdown();
@@ -1349,7 +1429,7 @@ function showForm(id) {
 // ── EDIT ──────────────────────────────────────────────────────────
 async function editListing(id) {
   showForm(id);
-  const data = await sbApi('GET', `properties?id=eq.${id}&limit=1`);
+  const data = await sbApi('GET', `properties?id=eq.${id}&select=*,contacts(*)&limit=1`);
   if (!data || !data[0]) return;
   const p = data[0];
 
@@ -1421,18 +1501,41 @@ async function editListing(id) {
   document.getElementById('f-download-url').value   = p.download_url || '';
 
   document.getElementById('f-agent-title').value = p.agent_title || '';
-  // Agent dropdown: select by agent_id, fall back to legacy manual data
+  // Platform Identity dropdown: select by managed_by_party_id (nullable —
+  // optional Agent Profile link, independent of the Buyer Contact below).
   buildAgentOptions('');
   document.getElementById('f-agent-search').value = '';
-  if (p.agent_id) {
-    document.getElementById('f-agent-id').value = p.agent_id;
+  if (p.managed_by_party_id) {
+    document.getElementById('f-agent-id').value = p.managed_by_party_id;
     onAgentDropdownChange();
-    document.getElementById('agent-legacy-note').style.display = 'none';
   } else {
     document.getElementById('f-agent-id').value = '';
     document.getElementById('agent-preview').style.display = 'none';
-    // Show legacy note if listing has manual agent data
-    document.getElementById('agent-legacy-note').style.display = p.agent_name ? 'block' : 'none';
+  }
+
+  // Buyer Contact: always populate from the linked contacts row (mandatory
+  // going forward). Falls back to the sentinel-shaped defaults for listings
+  // that predate this field.
+  const c = p.contacts || null;
+  _editingContactId = p.contact_id || null;
+  document.getElementById('f-contact-role').value     = c ? c.role : 'agent';
+  document.getElementById('f-contact-name').value     = c ? (c.name || '') : '';
+  document.getElementById('f-contact-phone').value    = c ? (c.phone || '') : '';
+  document.getElementById('f-contact-whatsapp').value = c ? (c.whatsapp || '') : '';
+
+  document.getElementById('contact-shared-note').style.display = 'none';
+  _editingContactSharedCount = 0;
+  if (_editingContactId) {
+    try {
+      const usage = await sbApi('GET', `properties?contact_id=eq.${_editingContactId}&select=id`);
+      _editingContactSharedCount = Array.isArray(usage) ? usage.filter(r => r.id !== id).length : 0;
+      if (_editingContactSharedCount > 0) {
+        document.getElementById('contact-shared-note-text').textContent =
+          `⚠ This contact is shared by ${_editingContactSharedCount} other listing${_editingContactSharedCount === 1 ? '' : 's'}. Saving here updates all of them, unless you check the box below.`;
+        document.getElementById('f-contact-fork').checked = false;
+        document.getElementById('contact-shared-note').style.display = 'block';
+      }
+    } catch (e) { console.error('Failed to check contact usage:', e); }
   }
 }
 
@@ -1454,6 +1557,46 @@ async function saveListing(e) {
 
   const _selAgentId = document.getElementById('f-agent-id').value;
   const _selAgent = _selAgentId ? (_agentsAll.find(a => a.id === _selAgentId) || null) : null;
+
+  const contactPhone = document.getElementById('f-contact-phone').value.trim();
+  if (!contactPhone) {
+    btn.disabled = false;
+    btn.textContent = 'Save Listing';
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message error';
+    msg.textContent = '✗ Buyer Contact phone is required — buyers always need someone to contact.';
+    msg.style.display = 'block';
+    return;
+  }
+  const contactBody = {
+    role:     document.getElementById('f-contact-role').value || 'other',
+    name:     document.getElementById('f-contact-name').value.trim() || null,
+    phone:    contactPhone,
+    whatsapp: document.getElementById('f-contact-whatsapp').value.trim() || contactPhone,
+    party_id: _selAgent ? _selAgent.id : null
+  };
+  let resolvedContactId;
+  try {
+    const forkRequested = document.getElementById('f-contact-fork') && document.getElementById('f-contact-fork').checked;
+    if (_editingContactId && _editingContactSharedCount === 0) {
+      await sbApi('PATCH', `contacts?id=eq.${_editingContactId}`, contactBody);
+      resolvedContactId = _editingContactId;
+    } else if (_editingContactId && _editingContactSharedCount > 0 && !forkRequested) {
+      await sbApi('PATCH', `contacts?id=eq.${_editingContactId}`, contactBody);
+      resolvedContactId = _editingContactId;
+    } else {
+      const created = await sbApi('POST', 'contacts', contactBody);
+      resolvedContactId = Array.isArray(created) ? created[0].id : created.id;
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Save Listing';
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message error';
+    msg.textContent = '✗ Error saving contact: ' + err.message;
+    msg.style.display = 'block';
+    return;
+  }
 
   const titleEn = document.getElementById('f-title-en').value.trim();
   const slugBase = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
@@ -1511,17 +1654,9 @@ async function saveListing(e) {
     video_url:         document.getElementById('f-video').value.trim() || null,
     facebook_video_url:document.getElementById('f-facebook-video').value.trim() || null,
     download_url:      document.getElementById('f-download-url').value.trim() || null,
-    agent_id:            _selAgent ? _selAgent.id         : null,
+    managed_by_party_id: _selAgent ? _selAgent.id : null,
     agent_title:         document.getElementById('f-agent-title').value.trim() || null,
-    agent_name:          _selAgent ? (_selAgent.name_en   || null) : null,
-    agent_name_lo:       _selAgent ? (_selAgent.name_lo   || null) : null,
-    agent_photo:         _selAgent ? (_selAgent.photo_url || null) : null,
-    agent_photo_url:     _selAgent ? (_selAgent.photo_url || null) : null,
-    agent_whatsapp:      _selAgent ? (_selAgent.whatsapp  || null) : null,
-    agent_phone:         null,
-    agent_rating:        null,
-    agent_listing_count: null,
-    agent_response_time: null
+    contact_id:          resolvedContactId
   };
 
   const editId = document.getElementById('edit-id').value;
@@ -2124,12 +2259,50 @@ function populateFormFromImport(data) {
   document.getElementById('f-facebook-video').value  = '';
   document.getElementById('f-download-url').value    = '';
 
-  // Clear agent selection
+  // Clear agent (Platform Identity) selection — Smart Import never assigns one
   document.getElementById('f-agent-id').value = '';
   document.getElementById('f-agent-search').value = '';
   document.getElementById('f-agent-title').value = '';
   document.getElementById('agent-preview').style.display = 'none';
-  document.getElementById('agent-legacy-note').style.display = 'none';
+
+  // Buyer Contact: populate from whatever Smart Import could extract from the
+  // source text, but never silently leave it blank — always visually flag the
+  // section so staff must look at it before the listing can be published.
+  _editingContactId = null;
+  _editingContactSharedCount = 0;
+  document.getElementById('contact-shared-note').style.display = 'none';
+  document.getElementById('f-contact-role').value     = data.contact_role || 'other';
+  document.getElementById('f-contact-name').value     = data.contact_name || '';
+  document.getElementById('f-contact-phone').value    = data.contact_phone || '';
+  document.getElementById('f-contact-whatsapp').value = data.contact_phone || '';
+  flagContactSectionForReview(!data.contact_phone);
+}
+
+// Visually flags the Buyer Contact section amber so staff notices it needs
+// confirmation — used after Smart Import, whether or not it found a phone.
+function flagContactSectionForReview(needsAttention) {
+  const section = document.getElementById('f-contact-phone').closest('.form-section');
+  if (section) section.style.outline = needsAttention ? '2px solid #B8860B' : '2px solid var(--teal)';
+}
+
+// Sentinel contact used whenever a draft is saved with no Buyer Contact
+// phone yet (e.g. straight out of Smart Import) — see
+// 20260705000300_backfill_contacts_from_properties.sql for the matching
+// seed row. publishDraft() refuses to publish while this is still set.
+const PENDING_CONTACT_ID = '00000000-0000-0000-0000-0000000000c1';
+
+async function resolveDraftContactId() {
+  const contactPhone = document.getElementById('f-contact-phone').value.trim();
+  if (!contactPhone) return PENDING_CONTACT_ID;
+  const contactBody = {
+    role:     document.getElementById('f-contact-role').value || 'other',
+    name:     document.getElementById('f-contact-name').value.trim() || null,
+    phone:    contactPhone,
+    whatsapp: document.getElementById('f-contact-whatsapp').value.trim() || contactPhone,
+    party_id: document.getElementById('f-agent-id').value || null
+  };
+  const created = await sbApi('POST', 'contacts', contactBody);
+  return Array.isArray(created) ? created[0].id : created.id;
 }
 
 async function saveDraft() {
@@ -2179,7 +2352,8 @@ async function saveDraft() {
     neighborhood_insight_zh: document.getElementById('f-neighborhood-zh').value.trim() || null,
     neighborhood_description: document.getElementById('f-neighborhood-en').value.trim() || null,
     images:                 uploadedImages.length ? uploadedImages : null,
-    agent_id:               document.getElementById('f-agent-id').value || null,
+    managed_by_party_id:    document.getElementById('f-agent-id').value || null,
+    contact_id:             await resolveDraftContactId(),
     slug
   };
 
@@ -2206,6 +2380,13 @@ async function saveDraft() {
 async function publishDraft() {
   const editId = document.getElementById('edit-id').value;
   if (!editId) return;
+  if (_editingContactId === PENDING_CONTACT_ID || !document.getElementById('f-contact-phone').value.trim()) {
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message error';
+    msg.textContent = '✗ Fill in the Buyer Contact section (at least a phone number) and save before publishing.';
+    msg.style.display = 'block';
+    return;
+  }
   if (!confirm('Publish this listing? It will become live on the site immediately.')) return;
   const btn = document.getElementById('publish-btn');
   btn.disabled = true;
@@ -2231,7 +2412,7 @@ async function publishDraft() {
 
 // ── INIT ──────────────────────────────────────────────────────────
 initCheckGrid('features-grid', FEATURES);
-initCheckGrid('amenities-grid', AMENITIES);
+initGroupedCheckGrid('amenities-grid', AMENITIES, AMENITY_CATEGORIES);
 initHighlightPresets();
 </script>
 </body>

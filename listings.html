@@ -80,7 +80,24 @@ nav{
 
 /* ─── FILTER BAR ─────────────────────────────────────────────────────── */
 .filter-bar{background:var(--white);border-bottom:1px solid var(--border);padding:12px 48px;}
-.filter-bar-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:10px;}
+.filter-bar-inner{max-width:1200px;margin:0 auto;}
+.filter-bar-row{display:flex;align-items:center;gap:10px;}
+.filter-bar-row + .filter-bar-row{margin-top:10px;}
+
+/* Rent/Sale — the primary, highest-priority control on this page. Visually
+   dominant (larger buttons, teal fill on active) so it reads as the first
+   decision a visitor makes, not an equal-weight pill among property types. */
+.tx-toggle{display:flex;gap:6px;width:100%;}
+.tx-btn{
+  flex:1;font-size:13px;font-weight:500;padding:11px 16px;
+  border-radius:3px;
+  border:1px solid var(--border-mid);background:var(--white);color:var(--ink-soft);
+  cursor:pointer;transition:all 0.2s;font-family:'DM Sans',sans-serif;
+  letter-spacing:0.01em;text-align:center;
+}
+.tx-btn.active{background:var(--teal);color:#fff;border-color:var(--teal);box-shadow:0 2px 10px rgba(45,140,140,0.25);}
+.tx-btn:hover:not(.active){background:rgba(45,140,140,0.06);border-color:rgba(45,140,140,0.28);}
+
 .filters{display:flex;gap:6px;flex:1;overflow-x:auto;scrollbar-width:none;}
 .filters::-webkit-scrollbar{display:none;}
 .filter-btn{
@@ -93,6 +110,13 @@ nav{
 .filter-btn.active{background:var(--ink);color:#fff;border-color:var(--ink);}
 .filter-btn:hover:not(.active){background:rgba(26,32,36,0.04);border-color:rgba(26,32,36,0.15);}
 .filter-sep{width:1px;height:18px;background:var(--border);flex-shrink:0;}
+
+/* All Listings / Available Only — a visible status toggle in its own
+   control, not a pill buried inside .filters. */
+.avail-toggle{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;flex-shrink:0;}
+.avail-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans',sans-serif;white-space:nowrap;letter-spacing:0.02em;}
+.avail-btn.active{background:var(--ink);color:#fff;}
+.avail-btn:hover:not(.active){background:rgba(26,32,36,0.06);}
 .sort-select{
   font-size:11px;font-weight:400;padding:5px 24px 5px 10px;
   border-radius:2px;
@@ -253,8 +277,18 @@ nav{
 .card-specs{
   display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;
 }
-.card-spec{font-size:11px;font-weight:400;color:var(--ink-muted);}
+.card-spec{font-size:11px;font-weight:400;color:var(--ink-muted);display:inline-flex;align-items:center;gap:4px;}
 .card-spec span{font-weight:500;color:var(--ink-soft);}
+
+/* 3-4 top-priority amenity icons (see amenities.js AMENITY_PRIORITY) —
+   icon-only for compactness, label available via title/aria-label. */
+.card-amenities{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.card-amenity{
+  font-size:13px;line-height:1;opacity:0.82;
+  width:24px;height:24px;border-radius:50%;
+  background:var(--off);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
 .card-price{
   font-size:16px;font-weight:500;color:var(--ink);
   letter-spacing:-0.01em;margin-bottom:14px;
@@ -316,6 +350,15 @@ nav{
   .filter-bar{padding:10px 20px;}
   .page-content{padding:28px 20px 60px;}
   .trust-strip{gap:14px;}
+
+  /* Second filter-bar row wraps for one-handed reach: scrollable type
+     pills get their own line, status/sort/view controls share the next. */
+  .filter-bar-row.filter-bar-row2{flex-wrap:wrap;row-gap:8px;}
+  .filter-bar-row2 .filters{flex:1 1 100%;order:1;}
+  .filter-bar-row2 .filter-sep{display:none;}
+  .filter-bar-row2 .avail-toggle{order:2;}
+  .filter-bar-row2 .sort-select{order:3;flex:1;min-width:0;}
+  .filter-bar-row2 .view-toggle{order:4;margin-left:0;}
 }
 @media(max-width:500px){
   .listings-grid{
@@ -442,49 +485,80 @@ nav{
 
 <div class="filter-bar">
   <div class="filter-bar-inner">
-    <div class="filters" id="filters">
-      <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">
-        <span class="lo-i">ທັງໝົດ</span><span class="en-i">All</span><span class="zh-i">全部</span>
-      </button>
-      <button class="filter-btn" data-filter="for_sale" onclick="setFilter('for_sale',this)">
-        <span class="lo-i">ຂາຍ</span><span class="en-i">For Sale</span><span class="zh-i">出售</span>
-      </button>
-      <button class="filter-btn" data-filter="for_rent" onclick="setFilter('for_rent',this)">
-        <span class="lo-i">ໃຫ້ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">租房</span>
-      </button>
-      <button class="filter-btn" data-filter="sale_or_rent" onclick="setFilter('sale_or_rent',this)">
-        <span class="lo-i">ຊື້ / ເຊົ່າ</span><span class="en-i">Sale or Rent</span><span class="zh-i">售/租</span>
-      </button>
-      <button class="filter-btn" data-filter="house" onclick="setFilter('house',this)">
-        <span class="lo-i">ເຮືອນ</span><span class="en-i">House</span><span class="zh-i">住宅</span>
-      </button>
-      <button class="filter-btn" data-filter="villa" onclick="setFilter('villa',this)">
-        <span class="lo-i">ວິລລ່າ</span><span class="en-i">Villa</span><span class="zh-i">别墅</span>
-      </button>
-      <button class="filter-btn" data-filter="apartment" onclick="setFilter('apartment',this)">
-        <span class="lo-i">ຄອນໂດ</span><span class="en-i">Condo</span><span class="zh-i">公寓</span>
-      </button>
-      <button class="filter-btn" data-filter="land" onclick="setFilter('land',this)">
-        <span class="lo-i">ທີ່ດິນ</span><span class="en-i">Land</span><span class="zh-i">土地</span>
-      </button>
+    <!-- Priority 1: Rent/Sale is the first decision a visitor makes — kept
+         as its own prominent row, separate from the secondary property-type
+         pills below. Listing Type (this row) and Property Type (the row
+         below) are independent filter groups combined with AND logic via
+         setTxFilter()/setTypeFilter() and currentTxFilter/currentTypeFilter
+         — selecting one must never clear the other. -->
+    <div class="filter-bar-row">
+      <div class="tx-toggle" id="tx-toggle">
+        <button class="tx-btn active" data-filter="all" onclick="setTxFilter('all',this)">
+          <span class="lo-i">ທັງໝົດ</span><span class="en-i">All</span><span class="zh-i">全部</span>
+        </button>
+        <button class="tx-btn" data-filter="for_rent" onclick="setTxFilter('for_rent',this)">
+          <span class="lo-i">ໃຫ້ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">租房</span>
+        </button>
+        <button class="tx-btn" data-filter="for_sale" onclick="setTxFilter('for_sale',this)">
+          <span class="lo-i">ຂາຍ</span><span class="en-i">For Sale</span><span class="zh-i">出售</span>
+        </button>
+      </div>
     </div>
-    <div class="filter-sep"></div>
-    <select class="sort-select" id="sort-select" onchange="setSort(this.value)">
-      <option value="newest"     data-lo="ໃໝ່ສຸດ"         data-en="Newest"          data-zh="最新">ໃໝ່ສຸດ</option>
-      <option value="featured"   data-lo="ຄັດເລືອກ"        data-en="Featured"        data-zh="精选">ຄັດເລືອກ</option>
-      <option value="price_asc"  data-lo="ລາຄາ: ຕ່ຳ→ສູງ"  data-en="Price: Low→High" data-zh="价格: 低→高">ລາຄາ: ຕ່ຳ→ສູງ</option>
-      <option value="price_desc" data-lo="ລາຄາ: ສູງ→ຕ່ຳ"  data-en="Price: High→Low" data-zh="价格: 高→低">ລາຄາ: ສູງ→ຕ່ຳ</option>
-    </select>
-    <div class="filter-sep"></div>
-    <div class="view-toggle">
-      <button class="vt-btn active" id="btn-list" onclick="showListView()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-        <span class="lo-i">ລາຍການ</span><span class="en-i">List</span><span class="zh-i">列表</span>
-      </button>
-      <button class="vt-btn" id="btn-map" onclick="showMapView()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-        <span class="lo-i">ແຜນທີ່</span><span class="en-i">Map</span><span class="zh-i">地图</span>
-      </button>
+    <div class="filter-bar-row filter-bar-row2">
+      <div class="filters" id="filters">
+        <button class="filter-btn active" data-filter="all" onclick="setTypeFilter('all',this)">
+          <span class="lo-i">ທັງໝົດ</span><span class="en-i">All Types</span><span class="zh-i">全部</span>
+        </button>
+        <button class="filter-btn" data-filter="house" onclick="setTypeFilter('house',this)">
+          <span class="lo-i">ເຮືອນ</span><span class="en-i">House</span><span class="zh-i">住宅</span>
+        </button>
+        <button class="filter-btn" data-filter="townhouse" onclick="setTypeFilter('townhouse',this)">
+          <span class="lo-i">ທາວເຮົາ</span><span class="en-i">Townhouse</span><span class="zh-i">联排别墅</span>
+        </button>
+        <button class="filter-btn" data-filter="villa" onclick="setTypeFilter('villa',this)">
+          <span class="lo-i">ວິລລ່າ</span><span class="en-i">Villa</span><span class="zh-i">别墅</span>
+        </button>
+        <button class="filter-btn" data-filter="apartment" onclick="setTypeFilter('apartment',this)">
+          <span class="lo-i">ອາພາດເມັນ</span><span class="en-i">Apartment</span><span class="zh-i">公寓</span>
+        </button>
+        <button class="filter-btn" data-filter="condo" onclick="setTypeFilter('condo',this)">
+          <span class="lo-i">ຄອນໂດ</span><span class="en-i">Condo</span><span class="zh-i">公寓楼</span>
+        </button>
+        <button class="filter-btn" data-filter="commercial" onclick="setTypeFilter('commercial',this)">
+          <span class="lo-i">ອາຄານພານິດ</span><span class="en-i">Commercial</span><span class="zh-i">商业</span>
+        </button>
+        <button class="filter-btn" data-filter="land" onclick="setTypeFilter('land',this)">
+          <span class="lo-i">ທີ່ດິນ</span><span class="en-i">Land</span><span class="zh-i">土地</span>
+        </button>
+      </div>
+      <div class="filter-sep"></div>
+      <!-- Priority 2: All Listings / Available Only — its own visible
+           control, not a pill hidden inside .filters. -->
+      <div class="avail-toggle" id="avail-toggle">
+        <button class="avail-btn active" data-avail="all" onclick="setAvailFilter('all',this)">
+          <span class="lo-i">ທັງໝົດ</span><span class="en-i">All Listings</span><span class="zh-i">全部</span>
+        </button>
+        <button class="avail-btn" data-avail="available" onclick="setAvailFilter('available',this)">
+          <span class="lo-i">ວ່າງເທົ່ານັ້ນ</span><span class="en-i">Available Only</span><span class="zh-i">仅在售/租</span>
+        </button>
+      </div>
+      <div class="filter-sep"></div>
+      <select class="sort-select" id="sort-select" onchange="setSort(this.value)">
+        <option value="newest"     data-lo="ໃໝ່ສຸດ"         data-en="Newest"          data-zh="最新">ໃໝ່ສຸດ</option>
+        <option value="featured"   data-lo="ຄັດເລືອກ"        data-en="Featured"        data-zh="精选">ຄັດເລືອກ</option>
+        <option value="price_asc"  data-lo="ລາຄາ: ຕ່ຳ→ສູງ"  data-en="Price: Low→High" data-zh="价格: 低→高">ລາຄາ: ຕ່ຳ→ສູງ</option>
+        <option value="price_desc" data-lo="ລາຄາ: ສູງ→ຕ່ຳ"  data-en="Price: High→Low" data-zh="价格: 高→低">ລາຄາ: ສູງ→ຕ່ຳ</option>
+      </select>
+      <div class="view-toggle">
+        <button class="vt-btn active" id="btn-list" onclick="showListView()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="lo-i">ລາຍການ</span><span class="en-i">List</span><span class="zh-i">列表</span>
+        </button>
+        <button class="vt-btn" id="btn-map" onclick="showMapView()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+          <span class="lo-i">ແຜນທີ່</span><span class="en-i">Map</span><span class="zh-i">地图</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -532,10 +606,13 @@ nav{
   </div>
 </div>
 
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
+<script src="amenities.js"></script>
 <script>
 
-const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
+const SUPABASE_URL = window.PINTAG.supabaseUrl;
+const SUPABASE_ANON = window.PINTAG.anonKey;
 
 function esc(s) {
   if (s == null) return '';
@@ -544,8 +621,29 @@ function esc(s) {
 }
 
 let allProperties = [];
-let currentFilter = 'all';
+// Listing Type (Rent/Sale/All) and Property Type (House/Condo/etc.) are
+// independent filter groups, combined with AND logic — see setTxFilter/
+// setTypeFilter below. Neither selection clears the other.
+let currentTxFilter = 'all';
+let currentTypeFilter = 'all';
 let currentSort = 'newest';
+let currentAvailOnly = false;
+
+// "Available Only" excludes sold/rented/under_offer; a null/undefined/
+// literal 'available' status all count as available (matches getBadgeHtml's
+// existing status handling below).
+function isAvailableStatus(p) {
+  return !p.status || p.status === 'available';
+}
+
+function setAvailFilter(val, btn) {
+  currentAvailOnly = (val === 'available');
+  document.querySelectorAll('.avail-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  closeMapPreview();
+  if (_viewMode === 'map') renderMap();
+  else renderListings();
+}
 
 function getCurrentLang() {
   if (document.body.classList.contains('lang-en')) return 'en';
@@ -590,18 +688,42 @@ function getBadgeHtml(p, lang, isFeaturedCard) {
   return                                 '<span class="status-badge badge-available">' + L.available[lang] + '</span>';
 }
 
+// Role-appropriate label — only listings with a real linked Pintag Agent
+// Profile (parties.type === 'agent') get the "Pintag Agent" badge; every
+// other contact (owner, reception, sales office, etc.) shows its own role,
+// so buyers can tell who they're actually about to contact.
+var CONTACT_ROLE_LABELS_LO = {
+  owner: 'ເຈົ້າຂອງ', agent: 'ຕົວແທນ', property_manager: 'ຜູ້ຈັດການອາຄານ',
+  reception: 'ພະນັກງານຕ້ອນຮັບ', sales_office: 'ຫ້ອງການຂາຍ', developer: 'ຜູ້ພັດທະນາ',
+  family_representative: 'ຕົວແທນຄອບຄົວ', other: 'ຜູ້ຕິດຕໍ່'
+};
+
+function getContactDisplay(p) {
+  var contact = p.contacts;
+  var party = p.parties;
+  var isAgent = !!(party && party.type === 'agent');
+  var name = isAgent ? (party.name_en || (contact && contact.name) || '') : ((contact && contact.name) || '');
+  if (!name) return null;
+  return {
+    name: name,
+    photo: isAgent ? party.photo_url : null,
+    platformLabel: isAgent ? 'ຕົວແທນ Pintag' : (CONTACT_ROLE_LABELS_LO[contact && contact.role] || CONTACT_ROLE_LABELS_LO.other)
+  };
+}
+
 function getAgentHtml(p) {
-  if (!p.agent_name) return '';
-  var initial = esc(p.agent_name.trim().charAt(0) || 'P');
-  var avatarInner = p.agent_photo
-    ? '<img src="' + esc(p.agent_photo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+  var d = getContactDisplay(p);
+  if (!d) return '';
+  var initial = esc(d.name.trim().charAt(0) || 'P');
+  var avatarInner = d.photo
+    ? '<img src="' + esc(d.photo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
     : initial;
   return '<div class="card-divider"></div>' +
     '<div class="card-agent">' +
       '<div class="agent-avatar">' + avatarInner + '</div>' +
       '<div>' +
-        '<div class="agent-name">' + esc(p.agent_name) + '</div>' +
-        '<div class="agent-platform">ຕົວແທນ Pintag</div>' +
+        '<div class="agent-name">' + esc(d.name) + '</div>' +
+        '<div class="agent-platform">' + esc(d.platformLabel) + '</div>' +
       '</div>' +
     '</div>';
 }
@@ -786,8 +908,11 @@ function renderMap() {
   _markers = [];
   _activeSlug = null;
 
-  var filtered = currentFilter === 'all' ? allProperties : allProperties.filter(function(p){
-    return p.transaction_type === currentFilter || p.property_type === currentFilter;
+  var filtered = allProperties.filter(function(p){
+    var matchesTx = currentTxFilter === 'all' || p.transaction_type === currentTxFilter;
+    var matchesType = currentTypeFilter === 'all' || p.property_type === currentTypeFilter;
+    var matchesAvail = !currentAvailOnly || isAvailableStatus(p);
+    return matchesTx && matchesType && matchesAvail;
   });
 
   filtered.forEach(function(p) {
@@ -856,17 +981,18 @@ function showMapPreview(p) {
     (district ? esc(district) + ', ' : '') +
     {lo:'ວຽງຈັນ',en:'Vientiane',zh:'万象'}[lang];
 
-  // Agent
+  // Agent / Buyer Contact
   var agentRow = document.getElementById('mp-agent-row');
-  if (p.agent_name) {
-    var agentInitial = esc(p.agent_name.charAt(0) || 'P');
-    var avatarInner = p.agent_photo
-      ? '<img src="' + esc(p.agent_photo) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.style.display=\'none\'">'
+  var mpContact = getContactDisplay(p);
+  if (mpContact) {
+    var agentInitial = esc(mpContact.name.charAt(0) || 'P');
+    var avatarInner = mpContact.photo
+      ? '<img src="' + esc(mpContact.photo) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.style.display=\'none\'">'
       : agentInitial;
     agentRow.innerHTML =
       '<div class="agent-avatar">' + avatarInner + '</div>' +
-      '<div><div class="agent-name">' + esc(p.agent_name) + '</div>' +
-      '<div class="agent-platform">ຕົວແທນ Pintag</div></div>';
+      '<div><div class="agent-name">' + esc(mpContact.name) + '</div>' +
+      '<div class="agent-platform">' + esc(mpContact.platformLabel) + '</div></div>';
     agentRow.style.display = 'flex';
   } else {
     agentRow.style.display = 'none';
@@ -889,7 +1015,7 @@ function closeMapPreview() {
 
 async function loadListings() {
   try {
-    var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc', {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&select=*,contacts(role,name),parties(type,name_en,photo_url)', {
       headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
     });
     allProperties = await res.json();
@@ -900,8 +1026,17 @@ async function loadListings() {
   }
 }
 
-function setFilter(filter, btn) {
-  currentFilter = filter;
+function setTxFilter(filter, btn) {
+  currentTxFilter = filter;
+  document.querySelectorAll('.tx-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  closeMapPreview();
+  if (_viewMode === 'map') renderMap();
+  else renderListings();
+}
+
+function setTypeFilter(filter, btn) {
+  currentTypeFilter = filter;
   document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
   closeMapPreview();
@@ -915,8 +1050,11 @@ function setSort(val) {
 }
 
 function renderListings() {
-  var filtered = currentFilter === 'all' ? allProperties : allProperties.filter(function(p){
-    return p.transaction_type === currentFilter || p.property_type === currentFilter;
+  var filtered = allProperties.filter(function(p){
+    var matchesTx = currentTxFilter === 'all' || p.transaction_type === currentTxFilter;
+    var matchesType = currentTypeFilter === 'all' || p.property_type === currentTypeFilter;
+    var matchesAvail = !currentAvailOnly || isAvailableStatus(p);
+    return matchesTx && matchesType && matchesAvail;
   });
   var sorted = sortProperties(filtered);
 
@@ -1022,10 +1160,20 @@ function renderListings() {
     var isSaved = saved.has(p.slug);
 
     var specsHtml = [
-      p.bedrooms  ? '<span class="card-spec"><span>' + p.bedrooms  + '</span> <span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">beds</span><span class="zh-i">卧</span></span>' : '',
-      p.bathrooms ? '<span class="card-spec"><span>' + p.bathrooms + '</span> <span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">baths</span><span class="zh-i">浴</span></span>' : '',
-      p.sqm       ? '<span class="card-spec"><span>' + p.sqm       + '</span> sqm</span>' : ''
+      p.bedrooms  ? '<span class="card-spec">🛏 <span>' + p.bedrooms  + '</span> <span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">Bed</span><span class="zh-i">卧</span></span>' : '',
+      p.bathrooms ? '<span class="card-spec">🛁 <span>' + p.bathrooms + '</span> <span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">Bath</span><span class="zh-i">浴</span></span>' : '',
+      p.sqm       ? '<span class="card-spec">📐 <span>' + p.sqm       + '</span> sqm</span>' : ''
     ].filter(Boolean).join('');
+
+    // Priority 3-4 amenity icons only (compact card), per the fixed
+    // AMENITY_PRIORITY order in amenities.js — full list shows on listing.html.
+    var topAms = (typeof topAmenities === 'function') ? topAmenities(p.amenities, 4) : [];
+    var amenitiesHtml = topAms.length
+      ? '<div class="card-amenities">' + topAms.map(function(am){
+          var resAm = resolveAmenityData(am, lang);
+          return '<span class="card-amenity" title="' + esc(resAm.label) + '" aria-label="' + esc(resAm.label) + '">' + resAm.icon + '</span>';
+        }).join('') + '</div>'
+      : '';
 
     var perMo = { lo: '/ ເດືອນ', en: '/ month', zh: '/ 月' };
     var rawPrice = esc((p.price_display || '').replace(/\s*\/\s*(ເດືອນ|mo|月|month)\s*/i, '').trim());
@@ -1079,6 +1227,7 @@ function renderListings() {
           '<span class="lo-i">ວຽງຈັນ</span><span class="en-i">Vientiane</span><span class="zh-i">万象</span>' +
         '</p>' +
         (specsHtml ? '<div class="card-specs">' + specsHtml + '</div>' : '') +
+        amenitiesHtml +
         priceHtml +
         getAgentHtml(p) +
         actLineHtml +

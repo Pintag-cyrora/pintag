@@ -501,10 +501,13 @@ DELETE FROM properties WHERE slug LIKE 'pentest-%';
 
 ### Suite 02 — Row Level Security (~25s)
 
-**properties** — anon SELECT active ✓, draft/sold filtered ✓, anon INSERT/UPDATE/DELETE → 403 ✓  
-**agents** — anon SELECT all ✓, anon/non-admin INSERT/UPDATE/DELETE → 403 ✓  
+**properties** — anon SELECT active ✓, draft/sold filtered ✓, anon INSERT/UPDATE/DELETE → 403 ✓, non-admin can now INSERT/UPDATE their own listings with a contact_id (previously broken — see below) ✓  
+**parties** (renamed from `agents`) — anon SELECT all ✓, anon/non-admin INSERT → 403 ✓, non-admin can update only their own profile row ✓  
+**contacts** (new) — anon SELECT scoped to active-listing contacts only ✓, anon/non-admin writes to others' contacts → 403 ✓, staff full access ✓  
 **lead_events** — anon INSERT active listing ✓, non-existent listing → 403 ✓, anon SELECT → empty ✓  
 **listing_events** — anon INSERT active ✓, duplicate within window → 403 ✓, anon SELECT → empty ✓
+
+> Note: prior to this suite's Stage C RLS rewrite, non-admin agents had SELECT/DELETE on their own listings but **no INSERT/UPDATE grant at all** — the self-service `add-property.html`/`edit-listing.html` pages were silently non-functional (403) for real agents. The RLS rewrite fixes this, scoped via `managed_by_party_id` ownership, and requires a mandatory `contact_id` on every insert.
 
 ### Suite 03 — Edge Functions (~20s)
 - Auth gating on `generate-listing-content` and `smart-listing-importer`

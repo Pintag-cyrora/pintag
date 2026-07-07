@@ -43,6 +43,13 @@ run_xss_tests() {
 
   local ts="${RUN_ID_SHORT}"
 
+  # Buyer Contact is mandatory going forward — one shared contact for all
+  # payload rows in this loop (title/contact are unrelated concerns here).
+  r=$(api_post "contacts" '{"role":"other","phone":"02055555555"}' "${ADMIN_JWT}")
+  local xss_contact_id
+  xss_contact_id=$(resp_body "$r" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+  [[ -n "$xss_contact_id" ]] && register_cleanup_contact "$xss_contact_id"
+
   for i in "${!PAYLOADS[@]}"; do
     local payload="${PAYLOADS[$i]}"
     local slug="pentest-xss-${ts}-${i}"
@@ -54,7 +61,7 @@ run_xss_tests() {
 
     # ── Insert via admin ───────────────────────────────────────────────
     r=$(api_post "properties" \
-      "{\"title_en\":${json_payload},\"status\":\"draft\",\"slug\":\"${slug}\",\"transaction_type\":\"for_sale\"}" \
+      "{\"title_en\":${json_payload},\"status\":\"draft\",\"slug\":\"${slug}\",\"transaction_type\":\"for_sale\",\"contact_id\":$( [[ -n "$xss_contact_id" ]] && echo "\"${xss_contact_id}\"" || echo null )}" \
       "${ADMIN_JWT}")
     status="$(resp_status "$r")"
 
