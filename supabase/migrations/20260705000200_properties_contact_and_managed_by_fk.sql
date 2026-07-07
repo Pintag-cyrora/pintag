@@ -35,6 +35,32 @@ begin
 end;
 $function$;
 
+-- Defensive: drop any pre-existing FK from properties to parties before
+-- adding our own named one. Production turned out to already have one
+-- (auto-named properties_agent_id_fkey, a holdover from when this column
+-- was called agent_id — invisible to this file's original "confirmed: not
+-- defined in any tracked migration" claim above, since it predates tracked
+-- migrations). Without this, adding a second, differently-named constraint
+-- on the same column/target creates a duplicate relationship, which breaks
+-- PostgREST's embed resolution ("Could not embed because more than one
+-- relationship was found for 'properties' and 'parties'").
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT con.conname
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_class frel ON frel.oid = con.confrelid
+    WHERE con.contype = 'f'
+      AND rel.relname = 'properties'
+      AND frel.relname = 'parties'
+  LOOP
+    EXECUTE format('ALTER TABLE properties DROP CONSTRAINT %I', r.conname);
+  END LOOP;
+END $$;
+
 ALTER TABLE properties
   ADD CONSTRAINT properties_managed_by_party_id_fkey
   FOREIGN KEY (managed_by_party_id) REFERENCES parties(id) ON DELETE SET NULL;
