@@ -1,4 +1,4 @@
-# Pintag Marketing AI — Architecture & Roadmap (v2.3, approved)
+# Pintag Marketing AI — Architecture & Roadmap (v2.4, approved)
 
 *This is the canonical, version-controlled copy of the approved architecture. Read this before touching anything else in this directory — it explains why the folders below are shaped the way they are.*
 
@@ -16,7 +16,9 @@ The founder (Keomany) wants an internal, Claude-Code-driven "AI marketing depart
 
 **v2.2** adds one explicitly-justified extension on top of the frozen v2.1 base: the **Knowledge Layer** (§5A) — a lifecycle-managed, retrievable, agent-writable fourth Archive-plane component, distinct from the existing curated `knowledge-base/`.
 
-**v2.3** adds a second explicitly-justified extension: the **Three-Layer Model** (§5B) — naming and mapping today's system onto Intelligence Layer / Business Memory / Integrations, so no future department couples them. Everything else in this document is unchanged and still frozen on the same terms as v2.1.
+**v2.3** adds a second explicitly-justified extension: a three-layer model (§5B) — naming and mapping today's system onto Intelligence Layer / Business Memory / Integrations, so no future department couples them.
+
+**v2.4** refines v2.3 after further founder clarification, without changing its underlying finding: "Business Memory" is renamed **Organizational Memory** (same concept, clearer name), and a third, previously-implicit memory layer is named explicitly — **Operational Memory** (temporary, per-workflow execution state). `MEMORY_MODEL.md` is now the canonical definition; §5B maps the current system onto it. Everything else in this document is unchanged and still frozen on the same terms as v2.1.
 
 ---
 
@@ -175,19 +177,20 @@ Every entry is a markdown file with a frontmatter lifecycle: `status` (`draft �
 
 ---
 
-## 5B. Three-Layer Model: Intelligence Layer, Business Memory, Integrations *(approved post-freeze extension)*
+## 5B. Memory Model: Intelligence Layer, Organizational Memory, Operational Memory, Integrations *(approved post-freeze extension)*
 
-**Also extends the frozen v2.1 architecture**, for the same reason §5A does: it names a distinction (which of three layers a piece of information belongs to) that nothing in the original design made explicit, and the founder's stated multi-tenant goal (one engine, many businesses, never mixing their data) genuinely depends on it. The canonical definition of the model lives in `DEPARTMENTS.md` → "Three layers every department must keep separate" (it governs every department, not just this architecture doc); this section maps *today's actual system* onto it.
+**Also extends the frozen v2.1 architecture**, for the same reason §5A does: it names a distinction (which layer a piece of information belongs to) that nothing in the original design made explicit, and the founder's stated multi-tenant goal (one engine, many organizations, never mixing their data) genuinely depends on it. **The canonical definition is `MEMORY_MODEL.md`** (governs every department and every future agent, not just this architecture doc); this section maps *today's actual system* onto it.
 
 | Layer | Rule | What it is today |
 |---|---|---|
-| **Intelligence Layer** (shared) | Never contains customer-specific information. Every business benefits from it. | `knowledge/` + `brain/lao/` (§5A). |
-| **Business Memory** (private) | Isolated per business; never leaks between them. | For Pintag, the only tenant that exists: `brain/`, `knowledge-base/`, `content-vault/`, and every `org_id`-scoped Supabase control-plane table (`content_items`, `campaigns`, `performance_metrics`, `trend_signals`, `competitor_notes`, `org_settings`, ... — full contract in `DEPARTMENT.md` §11). The `org_id text not null default 'pintag'` pattern already present on every table since the very first migration is what makes this genuinely tenant-isolated today, not just in intent. |
-| **Integrations** (transport only, never source of truth) | If one disconnects, Marketing OS keeps functioning — the integration disappears, Business Memory remains. | Meta Graph API (Publisher, Stage 08) and the read-only Pintag listings feed edge function. Both are called at the moment their data is needed and the *result* is persisted to Supabase — Publisher writes `content_calendar`/`content_items` state itself rather than treating Meta as the record; Marketing Analyst (Stage 09, M5) is specified the same way, fetching once and writing `performance_metrics` rather than re-querying Meta live on every Dashboard load. Supabase is the source of truth; the Graph API is transport. |
+| **Intelligence Layer** (global, shared) | Never contains customer-specific information. Every organization benefits from it. | `knowledge/` + `brain/lao/` (§5A). |
+| **Organizational Memory** (private, per-organization) | Isolated per organization; never leaks between them. | For Pintag, the only organization that exists: `brain/`, `knowledge-base/`, `content-vault/`, and every `org_id`-scoped Supabase control-plane table (`content_items`, `campaigns`, `performance_metrics`, `trend_signals`, `competitor_notes`, `org_settings`, ... — full contract in `DEPARTMENT.md` §11). The `org_id text not null default 'pintag'` pattern already present on every table since the very first migration is what makes this genuinely tenant-isolated today, not just in intent. |
+| **Operational Memory** (temporary, per-workflow) | Exists only for the current execution; graduates to Organizational Memory on completion or is discarded. | `ContentBrief`/`ResearchPacket`/`Draft` (`pipeline/lib/types.ts`) as they pass between pipeline stages; `content_items` rows while `status` is `draft`/`in_review`/`revising`; `approvals_queue` rows before a decision; `generated-content/` staging. |
+| **Integrations** (transport only, never source of truth — not itself a memory layer) | If one disconnects, Marketing OS keeps functioning — the integration disappears, Organizational Memory remains. | Meta Graph API (Publisher, Stage 08) and the read-only Pintag listings feed edge function. Both are called at the moment their data is needed and the *result* is persisted to Supabase — Publisher writes `content_calendar`/`content_items` state itself rather than treating Meta as the record; Marketing Analyst (Stage 09, M5) is specified the same way, fetching once and writing `performance_metrics` rather than re-querying Meta live on every Dashboard load. Supabase is the source of truth; the Graph API is transport. |
 
-**Known current exception, not fixed:** `knowledge/brands/<tenant>/` physically sits inside the Intelligence Layer but holds Business-Memory-shaped content — flagged in detail in `knowledge/README.md` → "Relationship to Business Memory," not corrected here per an explicit "no large refactor now" instruction.
+**Known current exception, not fixed:** `knowledge/brands/<tenant>/` physically sits inside the Intelligence Layer but holds Organizational-Memory-shaped content — flagged in detail in `knowledge/README.md` and `MEMORY_MODEL.md`, not corrected here per an explicit "no large refactor now" instruction.
 
-**Every Department Playbook** (`departments/_TEMPLATE.md`) should be able to state which of these three layers it reads from and writes to — see `DEPARTMENTS.md` for the three-question framework departments use to decide.
+**Every Department Playbook** (`departments/_TEMPLATE.md`) should be able to state which of these layers it reads from and writes to — see `MEMORY_MODEL.md`'s guiding principle ("knowledge lives at the highest layer where it remains reusable") and `DEPARTMENTS.md`'s decision framework.
 
 ---
 

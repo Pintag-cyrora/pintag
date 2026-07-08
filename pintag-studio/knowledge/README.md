@@ -16,16 +16,16 @@ Everything Marketing OS learns that's worth keeping past a single workflow run: 
 - **Phase 2 (future, once this layer's schema has proven itself):** a controlled migration of `brain/lao/`'s content into this layer, preserving every entry and its richer per-term template (Lao term, English equivalent, definition, when to use/not use, common mistakes, legal-verification status, preferred wording, related knowledge) — that template is more sophisticated for terminology than this layer's generic frontmatter and should inform how `knowledge/language/` entries are shaped once merged, not be flattened away.
 - **Long-term:** one Intelligence Layer, not two parallel language systems — `Language` (dictionary/grammar/spelling/style), `Culture`, `Marketing`, `Psychology`, `Industries`, `Brands`, `Research`, `Trends`, `Performance`, all behind the same `retrieveKnowledge()`/`proposeKnowledgeEntry()` API regardless of what's storing them underneath (today: markdown files across two directories; tomorrow: Postgres + embeddings + semantic search). `brain/lao/`'s current content is the beginning of that future `Language` module, not a separate thing to reconcile away later.
 
-## Relationship to Business Memory (a known exception, flagged not fixed)
+## Relationship to Organizational Memory (a known exception, flagged not fixed)
 
-`DEPARTMENTS.md` establishes a three-layer architecture principle: the Intelligence Layer is shared across every business Marketing OS ever serves and **must never contain customer-specific information**; anything specific to one business is Business Memory (private, today standing in as `brain/`, `knowledge-base/`, `content-vault/`, and the `org_id`-scoped Supabase tables — see `DEPARTMENTS.md` → "Three layers every department must keep separate").
+`MEMORY_MODEL.md` (the canonical definition) establishes that the Intelligence Layer is shared across every organization Marketing OS ever serves and **must never contain customer-specific information**; anything specific to one organization is Organizational Memory (private — today standing in as `brain/`, `knowledge-base/`, `content-vault/`, and the `org_id`-scoped Supabase tables).
 
-`knowledge/brands/<tenant>/` (e.g. `brands/pintag/brand-voice-summary.md`) doesn't cleanly satisfy that rule — it holds Pintag-specific facts inside the shared Intelligence Layer. It was adopted early, before the three-layer principle was made explicit, as a reasonable-looking place for "brand-specific knowledge" to live per-tenant. Under the clarified model, it's actually misplaced: it's Business Memory content, not shared intelligence.
+`knowledge/brands/<tenant>/` (e.g. `brands/pintag/brand-voice-summary.md`) doesn't cleanly satisfy that rule — it holds Pintag-specific facts inside the shared Intelligence Layer. It was adopted early, before this model was made explicit, as a reasonable-looking place for "brand-specific knowledge" to live per-tenant. Under the clarified model, it's actually misplaced: it's Organizational Memory content, not shared intelligence.
 
 **Nothing is being moved right now** — this is flagged, not fixed, per an explicit "no large refactor" instruction. Practical implications until it is addressed:
-- Don't add new business-specific facts to `knowledge/brands/<tenant>/` going forward — put them in that business's Business Memory stand-in instead (for Pintag: `brain/` or `knowledge-base/`).
-- `industries/<vertical>/` is not affected by this exception — general industry/market knowledge (e.g. `industries/real-estate/vientiane-market-structure.md`) is genuinely shared across any business in that vertical, which is exactly what belongs in the Intelligence Layer.
-- A real fix — migrating `brands/<tenant>/` content out to a proper Business Memory location — is a legitimate future cleanup, not committed to a timeline here.
+- Don't add new organization-specific facts to `knowledge/brands/<tenant>/` going forward — put them in that organization's Organizational Memory stand-in instead (for Pintag: `brain/` or `knowledge-base/`).
+- `industries/<vertical>/` is not affected by this exception — general industry/market knowledge (e.g. `industries/real-estate/vientiane-market-structure.md`) is genuinely shared across any organization in that vertical, which is exactly what belongs in the Intelligence Layer — reusable marketing/industry knowledge, per `MEMORY_MODEL.md`'s guiding principle.
+- A real fix — migrating `brands/<tenant>/` content out to a proper Organizational Memory location — is a legitimate future cleanup, not committed to a timeline here.
 
 ## Category guide
 
@@ -38,7 +38,7 @@ Everything Marketing OS learns that's worth keeping past a single workflow run: 
 | `research/` | Market research, competitive intel, trend findings — including knowledge gaps the Researcher flags mid-pipeline (see "Where this plugs in" below) |
 | `prompts/` | Reusable, tested prompt fragments per agent role |
 | `industries/<vertical>/` | Vertical-specific knowledge, e.g. `industries/real-estate/`. New verticals (education, parenting, jewelry, ...) get sibling folders as new tenant apps come online. |
-| `brands/<tenant>/` | Brand-specific voice/facts, e.g. `brands/pintag/`. **Known exception to the three-layer model — see "Relationship to Business Memory" above before adding here.** |
+| `brands/<tenant>/` | Brand-specific voice/facts, e.g. `brands/pintag/`. **Known exception — see "Relationship to Organizational Memory" above before adding here.** |
 
 ## Entry format
 

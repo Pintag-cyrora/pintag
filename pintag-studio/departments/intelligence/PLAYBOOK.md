@@ -32,11 +32,12 @@ World-class looks like this: no agent in Marketing OS ever re-derives a fact, a 
 - Granting legal or foreign-ownership sign-off. Intelligence can store a `Legal Verification: Pending` status on an entry (as `brain/lao/dictionary.md` already does) but cannot itself confer verification — that still requires founder/counsel per `CLAUDE.md`'s foreign-ownership rule, regardless of what status a knowledge entry carries.
 - Writing to `brain/lao/` — that directory is read-only from this department's perspective during Phase 1 of the reconciliation plan; nothing here duplicates or rewrites it.
 
-**Three-layer boundary** (`../DEPARTMENTS.md` → "Three layers every department must keep separate"):
+**Memory-layer boundary** (`../../MEMORY_MODEL.md`):
 - **Intelligence Layer** — this department *is* it. Everything it owns (above) must stay free of customer-specific information.
-- **Business Memory** — reads none, owns none. `brain/`, `knowledge-base/`, and `content-vault/` (Pintag's Business Memory today) are untouched by this department.
+- **Organizational Memory** — reads none, owns none. `brain/`, `knowledge-base/`, and `content-vault/` (Pintag's Organizational Memory today) are untouched by this department.
+- **Operational Memory** — reads it (transiently) but doesn't own it. `retrieveKnowledge()` is called with a `ContentBrief` in flight (Stage 02's operational state) but this department tracks no per-workflow state of its own — it's stateless with respect to any single pipeline run.
 - **Integrations** — touches none directly. No external platform call originates from this department's own code.
-- **Known exception, not fixed:** `knowledge/brands/<tenant>/` is owned by this department but holds Business-Memory-shaped content (see `knowledge/README.md` → "Relationship to Business Memory"). This department's own Responsibilities list above is, strictly, slightly wrong until that's resolved — named here rather than quietly corrected, per the same "flag, don't silently fix" standard this Playbook has held to throughout.
+- **Known exception, not fixed:** `knowledge/brands/<tenant>/` is owned by this department but holds Organizational-Memory-shaped content (see `knowledge/README.md` → "Relationship to Organizational Memory"). This department's own Responsibilities list above is, strictly, slightly wrong until that's resolved — named here rather than quietly corrected, per the same "flag, don't silently fix" standard this Playbook has held to throughout.
 
 ## 5. Inputs
 

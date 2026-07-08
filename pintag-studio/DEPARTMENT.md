@@ -176,7 +176,7 @@ Who reads what, drawn from each agent file's `## Inputs` section:
 
 ## 11. Shared Brand Memory (the Memory layer contract)
 
-*Naming note (post-hoc, doesn't change anything below): "shared" here means shared across Pintag's own 11 AI employees — not shared across Marketing OS customers. Under the three-layer model (`DEPARTMENTS.md` → "Intelligence Layer, Business Memory, and Integrations"), everything in this section is **Business Memory**: private to Pintag, never mixed with another business's data, and structurally distinct from the actual cross-customer shared layer, which is the Intelligence Layer (`knowledge/`). Flagging this explicitly because the word "shared" appearing in both names is exactly the kind of blurred boundary that principle exists to prevent.*
+*Naming note (post-hoc, doesn't change anything below): "shared" here means shared across Pintag's own 11 AI employees — not shared across Marketing OS customers. Under the memory model (`MEMORY_MODEL.md`), everything in this section is **Organizational Memory**: private to Pintag, never mixed with another organization's data, and structurally distinct from the actual cross-customer shared layer, which is the Intelligence Layer (`knowledge/`). Flagging this explicitly because the word "shared" appearing in both names is exactly the kind of blurred boundary that model exists to prevent.*
 
 Formalizes what's implicit in `ARCHITECTURE.md` Section 5 into an explicit write/read contract.
 
