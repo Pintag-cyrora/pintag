@@ -12,7 +12,8 @@ import type { ContentBrief, ResearchPacket } from '../lib/types.js';
 import { withHealthReport } from '../lib/health.js';
 import { runAgent, parseJsonResponse } from '../lib/agent.js';
 import { REPO_ROOT } from '../lib/config.js';
-import { retrieveKnowledge, proposeKnowledgeEntry, relativeKnowledgePath } from '../lib/knowledge.js';
+import { retrieveKnowledge, relativeKnowledgePath } from '../lib/knowledge.js';
+import { proposeSuggestion } from '../lib/suggestions.js';
 
 export async function research(brief: ContentBrief): Promise<ResearchPacket> {
   return withHealthReport('researcher', async () => {
@@ -91,20 +92,26 @@ export async function research(brief: ContentBrief): Promise<ResearchPacket> {
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, 'research.json'), JSON.stringify(packet, null, 2), 'utf-8');
 
-    // Knowledge Layer capture (proof-of-concept): a knowledge gap is exactly
-    // "a reusable insight that would otherwise remain in a log line" — turn
-    // each one into a structured draft entry under knowledge/research/ for
-    // founder review, instead of only console-logging it.
+    // Knowledge Suggestion System (Intelligence Department, curated-not-
+    // autonomous capture — see departments/intelligence/PLAYBOOK.md §17).
+    // A knowledge gap is exactly "a reusable insight that would otherwise
+    // remain in a log line," but as of this change it no longer becomes a
+    // real knowledge/ draft automatically — it's dropped in the mailbox
+    // for a human to approve, edit, or reject first. Approval is what
+    // creates the actual knowledge/ draft entry (pipeline/lib/suggestions.ts
+    // approveSuggestion()), which then still goes through the existing
+    // draft->verified Review Queue. Two human checkpoints, not one.
     for (const gap of packet.knowledgeGaps ?? []) {
-      const captured = proposeKnowledgeEntry({
-        category: 'research',
+      const suggestion = proposeSuggestion({
+        kind: 'knowledge-gap',
+        sourceAgent: 'researcher',
         title: gap.slice(0, 100),
-        body: `Flagged by the Researcher while grounding brief "${brief.topic}" (${brief.vaultPath}) — the reference material did not cover this:\n\n${gap}`,
-        tags: ['knowledge-gap', brief.contentType],
-        source: { type: 'agent-inference', reference: `content_items ${brief.contentItemId}` },
-        contributedBy: 'researcher',
+        body: `Flagged by the Researcher while grounding brief "${brief.topic}" — the reference material did not cover this:\n\n${gap}`,
+        suggestedCategory: 'research',
+        suggestedTags: ['knowledge-gap', brief.contentType],
+        context: `content_items ${brief.contentItemId} (${brief.vaultPath})`,
       });
-      console.log(`[Stage 02 — Research] Knowledge gap captured → knowledge/${relativeKnowledgePath(captured)}`);
+      console.log(`[Stage 02 — Research] Knowledge gap suggested → knowledge-suggestions/${suggestion.id}.md`);
     }
 
     console.log(

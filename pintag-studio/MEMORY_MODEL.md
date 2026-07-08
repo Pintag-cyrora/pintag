@@ -32,6 +32,8 @@ The working memory for the current execution: current workflow, active campaign,
 
 Today, already present, just not previously named as one thing: `ContentBrief`, `ResearchPacket`, and `Draft` (`pipeline/lib/types.ts`) as they pass between pipeline stages within a single run; `content_items` rows while `status` is `draft`/`in_review`/`revising` (before they either publish into the permanent record or die as an abandoned attempt); `approvals_queue` rows before a decision is made; `generated-content/` as pre-Guardian, pre-approval staging. None of this is meant to persist as a lasting asset — a `content_items` row's operational life ends the moment it's published (at which point it's Organizational Memory, part of the Vault and content history) or discarded.
 
+**One variant worth naming explicitly:** a pending Knowledge Suggestion (`knowledge-suggestions/`, `pipeline/lib/suggestions.ts`) is also Operational Memory — temporary, exists only until a human reviews it — but its graduation destination on approval is the **Intelligence Layer** (a `knowledge/` draft entry), not Organizational Memory. Most Operational Memory graduates "sideways" into the same organization's long-term record; a suggestion is the one case that graduates "up" into the shared layer, which is exactly why it needs a human checkpoint the ordinary Operational→Organizational path doesn't require.
+
 ## AI retrieval order
 
 Every AI agent should conceptually think in this order:
