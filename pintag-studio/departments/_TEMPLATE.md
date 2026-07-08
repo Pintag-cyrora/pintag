@@ -24,6 +24,13 @@ What does world-class look like for this department? Describe the ideal future s
 
 Everything this department owns. Clearly define boundaries — what is *not* this department's responsibility, and whose is it instead?
 
+**Also state which of the three layers this department touches** (see `../DEPARTMENTS.md` → "Three layers every department must keep separate" for the canonical definitions — don't redefine them here, just answer for this department):
+- **Intelligence Layer** (shared, never customer-specific) — what does this department read or write here?
+- **Business Memory** (private, per-business) — what does this department read or write here, and for which organization(s)?
+- **Integrations** (transport only) — which external platforms does this department call, and what does it persist rather than treat as the record of truth?
+
+If a department can't answer one of these cleanly, that's worth resolving before writing the rest of the Playbook — coupling these layers is the mistake this section exists to catch early.
+
 ## 5. Inputs
 
 What information does this department receive? (e.g. business goals, research, knowledge, brand, customer feedback, performance data.)

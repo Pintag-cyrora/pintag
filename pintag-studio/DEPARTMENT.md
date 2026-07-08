@@ -176,6 +176,8 @@ Who reads what, drawn from each agent file's `## Inputs` section:
 
 ## 11. Shared Brand Memory (the Memory layer contract)
 
+*Naming note (post-hoc, doesn't change anything below): "shared" here means shared across Pintag's own 11 AI employees — not shared across Marketing OS customers. Under the three-layer model (`DEPARTMENTS.md` → "Intelligence Layer, Business Memory, and Integrations"), everything in this section is **Business Memory**: private to Pintag, never mixed with another business's data, and structurally distinct from the actual cross-customer shared layer, which is the Intelligence Layer (`knowledge/`). Flagging this explicitly because the word "shared" appearing in both names is exactly the kind of blurred boundary that principle exists to prevent.*
+
 Formalizes what's implicit in `ARCHITECTURE.md` Section 5 into an explicit write/read contract.
 
 **What's stored:** Vault item embeddings and lineage (`content_items.embedding`, `derived_from`, `repurposed_into`), performance outcomes (`performance_metrics`), campaign state (`campaigns`), trend and competitor signals (`trend_signals`, `competitor_notes`).

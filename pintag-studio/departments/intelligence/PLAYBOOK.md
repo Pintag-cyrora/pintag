@@ -32,6 +32,12 @@ World-class looks like this: no agent in Marketing OS ever re-derives a fact, a 
 - Granting legal or foreign-ownership sign-off. Intelligence can store a `Legal Verification: Pending` status on an entry (as `brain/lao/dictionary.md` already does) but cannot itself confer verification — that still requires founder/counsel per `CLAUDE.md`'s foreign-ownership rule, regardless of what status a knowledge entry carries.
 - Writing to `brain/lao/` — that directory is read-only from this department's perspective during Phase 1 of the reconciliation plan; nothing here duplicates or rewrites it.
 
+**Three-layer boundary** (`../DEPARTMENTS.md` → "Three layers every department must keep separate"):
+- **Intelligence Layer** — this department *is* it. Everything it owns (above) must stay free of customer-specific information.
+- **Business Memory** — reads none, owns none. `brain/`, `knowledge-base/`, and `content-vault/` (Pintag's Business Memory today) are untouched by this department.
+- **Integrations** — touches none directly. No external platform call originates from this department's own code.
+- **Known exception, not fixed:** `knowledge/brands/<tenant>/` is owned by this department but holds Business-Memory-shaped content (see `knowledge/README.md` → "Relationship to Business Memory"). This department's own Responsibilities list above is, strictly, slightly wrong until that's resolved — named here rather than quietly corrected, per the same "flag, don't silently fix" standard this Playbook has held to throughout.
+
 ## 5. Inputs
 
 - Knowledge gaps flagged by the Researcher agent while grounding a content brief (`packet.knowledgeGaps`, Stage 02).

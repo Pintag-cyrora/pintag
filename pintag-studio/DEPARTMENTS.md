@@ -8,6 +8,23 @@
 
 `departments/` (plural, this file's subject) is **Marketing OS's own internal functional structure** — Intelligence, Research, Strategy, Creation, Distribution, Performance, Learning, Brand, Business, Platform. It's cross-brand: it describes how the *company* organizes its work, not how any one brand's team is organized. These are two different axes that happen to share a name root. Neither supersedes the other.
 
+## Three layers every department must keep separate
+
+Before any department reads or writes anything, it should be able to answer which of three layers that information belongs to. Coupling them is the single architectural mistake this section exists to prevent.
+
+1. **Intelligence Layer (shared)** — Marketing OS's own proprietary asset. Lao language, dictionary, grammar, culture, consumer psychology, marketing principles, industry knowledge, department playbooks, reasoning patterns. Every business Marketing OS ever serves benefits from this. **Nothing here may contain customer-specific information.** Today: `knowledge/` + `brain/lao/` (see `ARCHITECTURE.md` §5A).
+2. **Business Memory (private)** — every business's own isolated memory: listings/products, campaign history, brand voice, FAQs, customer questions, audience, competitors, performance history. Never leaks between businesses. Belongs to the customer, not to Marketing OS. Every department operates *primarily* against the Business Memory of the organization it's serving. Today, for Pintag (the only tenant that exists): `brain/`, `knowledge-base/`, `content-vault/`, and the `org_id`-scoped Supabase control-plane tables (`content_items`, `campaigns`, `performance_metrics`, etc. — see `DEPARTMENT.md` §11, whose "Shared Brand Memory" section is exactly this, despite the now-confusing name).
+3. **Integrations (temporary/transport only)** — Facebook, Instagram, TikTok, GA4, Search Console, Gmail, Shopify, Stripe, WhatsApp, CRMs. Not Marketing OS's product — connectors that move information in and out. **Integrations never become the source of truth.** If Facebook disconnects tomorrow, Marketing OS keeps functioning: the integration disappears, Business Memory remains. Today: Meta Graph API (Publisher, Stage 08) and the read-only Pintag listings feed edge function — both called at the moment they're needed, with the result persisted to Supabase rather than re-read live each time, which is what makes Supabase (not Meta) the actual source of truth today.
+
+**Before reading or writing anything, ask:**
+1. Is this shared knowledge, useful to any business Marketing OS could ever serve? → **Intelligence Layer.**
+2. Is this specific to the business being served right now? → **Business Memory.**
+3. Is this data passing through an external platform? → **Integration — never treat its response as the record of truth; persist what matters and move on.**
+
+Every Department Playbook (see `_TEMPLATE.md`) should be explicit about which layers it touches. **Known current exception, not yet fixed:** `knowledge/brands/<tenant>/` (e.g. `knowledge/brands/pintag/`) physically lives inside the Intelligence Layer today but holds Business-Memory-shaped content (Pintag's own brand-voice facts) — a stand-in adopted before this three-layer principle was made explicit, not a violation to silently accept going forward. See `knowledge/README.md` for the full note. No file has been moved to fix this yet — that's a deliberate, deferred decision, not an oversight, per the "no large refactor right now" instruction.
+
+**Future shape** (not built yet — documented here as direction, not a commitment to build it this way): a physical `organization/<tenant>/` root (Business Memory, Departments-in-use, Campaigns, Assets, tenant-scoped Knowledge) alongside a top-level `intelligence/` and `integrations/`, with every tenant getting its own Business Memory + Integrations while sharing the same Intelligence Layer and the same AI Departments. Today's `pintag-studio/` root *is* that future `organization/pintag/`, physically flattened because only one tenant exists — the same "logical, not yet physical" separation already used for `pintag-studio/` itself (`ARCHITECTURE.md` §1) and for the Knowledge Layer (§5A).
+
 ## The methodology: Department-Driven Development
 
 We no longer build Marketing OS feature-first. We build it department-first:
