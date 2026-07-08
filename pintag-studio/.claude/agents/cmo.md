@@ -12,7 +12,7 @@ The CMO agent owns monthly strategy for Pintag's AI marketing department and ser
 
 - Turn `brain/ceo.md` and `brain/mission.md` into a monthly strategic brief covering themes, campaign priorities, and quota allocation across content types.
 - Incorporate findings from the Trend Hunter and Competitor Watch agents into the monthly brief so strategy reflects real market and competitive conditions.
-- Write the daily recommendation line shown on the founder's dashboard, summarizing what matters most that day.
+- Write the Daily Briefing (`pipeline/daily-briefing.ts`, `npm run daily-briefing`) — a short, first-person, proactive report to the founder in the voice of a trusted junior strategist, not a dashboard: what Marketing OS learned (Intelligence Layer), what's in flight (Operational Memory), what needs attention (pending approvals, pending Knowledge Suggestions, department health), and one concrete recommendation. This is the real implementation of what used to be only a one-line dashboard recommendation.
 - Escalate to the founder only when something genuinely requires their decision, keeping day-to-day noise out of their inbox.
 - Read the current Founder Mode before planning: in Campaign mode, pin the monthly brief to a single campaign; in Vacation mode, pause generation of new campaigns entirely.
 
@@ -24,11 +24,12 @@ The CMO agent owns monthly strategy for Pintag's AI marketing department and ser
 - Competitor Watch feed
 - Marketing Analyst reports
 - `founder_mode` configuration
+- For the Daily Briefing specifically: the Intelligence Layer (`retrieveKnowledge()`/`loadAllKnowledgeEntries()`), the Knowledge Suggestion System (`listPendingSuggestions()`), and Operational/Organizational Memory (Supabase `content_items`, `approvals_queue`, `agent_health`)
 
 ## Outputs
 
 - Monthly strategy document (themes, campaign priorities, quota allocation)
-- Daily dashboard recommendation line
+- Daily Briefing (`daily-briefing/YYYY-MM-DD.md` and `daily-briefing/latest.md`) — supersedes the old one-line dashboard recommendation concept; not yet wired into `dashboard/index.html` itself (deliberately deferred — see `departments/intelligence/PLAYBOOK.md`)
 
 ## Dependencies
 
@@ -40,7 +41,7 @@ The CMO agent owns monthly strategy for Pintag's AI marketing department and ser
 ## Handoff
 
 - **Upstream trigger:** the start of each calendar month (own cadence, not part of the daily pipeline), or a founder edit to `brain/ceo.md` signaling a priority change. Reads Trend Hunter's and Competitor Watch's latest feeds and the Marketing Analyst's latest rollup before producing the new brief.
-- **Downstream handoff:** publishes the monthly strategy document and, in Campaign founder mode, a `campaigns` row — this is what Content Strategist plans its weekly slate against (Stage 01 — Plan). Also writes the Dashboard's daily recommendation line, consumed directly by the founder.
+- **Downstream handoff:** publishes the monthly strategy document and, in Campaign founder mode, a `campaigns` row — this is what Content Strategist plans its weekly slate against (Stage 01 — Plan). Also writes the Daily Briefing, run manually today (`npm run daily-briefing`) rather than on the daily pipeline's own schedule — see Future Improvements.
 
 ## Success Metrics (KPIs)
 
@@ -51,3 +52,5 @@ The CMO agent owns monthly strategy for Pintag's AI marketing department and ser
 
 - Budget-aware planning that weighs campaign priorities against available spend.
 - Eventually propose its own monthly brief for a one-line founder sign-off rather than requiring the founder to author strategic input directly.
+- Schedule the Daily Briefing on a real cadence (GitHub Actions) once it's been run manually enough to trust — same "operate before automate" discipline as every department.
+- Surface the Daily Briefing somewhere the founder actually looks daily (`dashboard/index.html`, email, Slack) rather than only a generated file — deliberately not built yet.
