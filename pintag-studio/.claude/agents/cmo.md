@@ -13,6 +13,7 @@ The CMO agent owns monthly strategy for Pintag's AI marketing department and ser
 - Turn `brain/ceo.md` and `brain/mission.md` into a monthly strategic brief covering themes, campaign priorities, and quota allocation across content types.
 - Incorporate findings from the Trend Hunter and Competitor Watch agents into the monthly brief so strategy reflects real market and competitive conditions.
 - Write the Daily Briefing (`pipeline/daily-briefing.ts`, `npm run daily-briefing`) — a short, first-person, proactive report to the founder in the voice of a trusted junior strategist, not a dashboard: what Marketing OS learned (Intelligence Layer), what's in flight (Operational Memory), what needs attention (pending approvals, pending Knowledge Suggestions, department health), and one concrete recommendation. This is the real implementation of what used to be only a one-line dashboard recommendation.
+- The same generation pass also renders the Executive Briefing Screen (`dashboard/morning.html`) — the smallest working version of the Executive Morning Workflow (Good Morning → Daily Briefing → Review Knowledge Suggestions → Today's Priorities → Start My Day). Zero additional LLM calls: it's the same briefing text, plus a derived (not model-generated) "Today's Priorities" list and an occasional "Yesterday's Win" callout, shown only when a genuine positive signal exists in already-gathered data.
 - Escalate to the founder only when something genuinely requires their decision, keeping day-to-day noise out of their inbox.
 - Read the current Founder Mode before planning: in Campaign mode, pin the monthly brief to a single campaign; in Vacation mode, pause generation of new campaigns entirely.
 
@@ -29,7 +30,8 @@ The CMO agent owns monthly strategy for Pintag's AI marketing department and ser
 ## Outputs
 
 - Monthly strategy document (themes, campaign priorities, quota allocation)
-- Daily Briefing (`daily-briefing/YYYY-MM-DD.md` and `daily-briefing/latest.md`) — supersedes the old one-line dashboard recommendation concept; not yet wired into `dashboard/index.html` itself (deliberately deferred — see `departments/intelligence/PLAYBOOK.md`)
+- Daily Briefing (`daily-briefing/YYYY-MM-DD.md` and `daily-briefing/latest.md`) — supersedes the old one-line dashboard recommendation concept
+- Executive Briefing Screen (`dashboard/morning.html`) — self-contained static HTML, regenerated each run, not yet linked from `dashboard/index.html` itself (deliberately deferred — see `departments/intelligence/PLAYBOOK.md`)
 
 ## Dependencies
 
@@ -54,3 +56,4 @@ The CMO agent owns monthly strategy for Pintag's AI marketing department and ser
 - Eventually propose its own monthly brief for a one-line founder sign-off rather than requiring the founder to author strategic input directly.
 - Schedule the Daily Briefing on a real cadence (GitHub Actions) once it's been run manually enough to trust — same "operate before automate" discipline as every department.
 - Surface the Daily Briefing somewhere the founder actually looks daily (`dashboard/index.html`, email, Slack) rather than only a generated file — deliberately not built yet.
+- Known, inherited limitation: both "what I learned" and "Yesterday's Win" currently rely on the same signal (a knowledge entry's `updated` date falling within the lookback window), which doesn't yet distinguish genuinely new learning from old seed/bootstrap content that happens to satisfy the date filter — flagged in the first real briefing's own self-critique, not yet fixed. Fixing it once would fix both places at once.
