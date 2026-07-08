@@ -53,6 +53,10 @@ export interface KnowledgeEntry {
   relatedIds: string[];
   /** Set when this entry has been replaced by a better one. Never delete the old entry — mirrors content-vault's superseded_by. */
   supersededBy?: string;
+  /** Who reviewed this entry's current status (a promotion, rejection, or merge) — set by reviewKnowledgeEntry(). Absent for never-reviewed drafts. */
+  reviewedBy?: string;
+  /** Why the reviewer made the call they made — required for reject/merge, optional for approve. */
+  reviewNotes?: string;
   body: string;
   /** Absolute path on disk, for debugging/traceability — not part of the portable entry data. */
   filePath: string;
@@ -149,6 +153,8 @@ function toKnowledgeEntry(meta: Record<string, unknown>, body: string, filePath:
     updated: String(meta.updated ?? ''),
     relatedIds: Array.isArray(meta.relatedIds) ? (meta.relatedIds as string[]) : [],
     supersededBy: meta.supersededBy ? String(meta.supersededBy) : undefined,
+    reviewedBy: meta.reviewedBy ? String(meta.reviewedBy) : undefined,
+    reviewNotes: meta.reviewNotes ? String(meta.reviewNotes) : undefined,
     body,
     filePath,
   };
@@ -245,6 +251,9 @@ function serializeEntry(entry: KnowledgeEntry): string {
   lines.push(`updated: ${entry.updated}`);
   lines.push(`relatedIds: [${entry.relatedIds.join(', ')}]`);
   if (entry.supersededBy) lines.push(`supersededBy: ${entry.supersededBy}`);
+  if (entry.reviewedBy) lines.push(`reviewedBy: ${entry.reviewedBy}`);
+  // Single-line only, per the frontmatter subset this parser supports — a multi-line note would break parseFrontmatter's line scan.
+  if (entry.reviewNotes) lines.push(`reviewNotes: ${entry.reviewNotes.replace(/\n+/g, ' ').trim()}`);
   lines.push('---', '', entry.body, '');
   return lines.join('\n');
 }
@@ -302,4 +311,60 @@ export function proposeKnowledgeEntry(input: ProposeKnowledgeEntryInput): Knowle
 /** For debugging/tooling: the entry's path relative to KNOWLEDGE_ROOT, e.g. "language/lo-property-terms-a1b2c.md". */
 export function relativeKnowledgePath(entry: KnowledgeEntry): string {
   return relative(KNOWLEDGE_ROOT, entry.filePath).split(sep).join('/');
+}
+
+/** True for entries this module can write to — i.e. real files under knowledge/, not brain/lao/-sourced entries (read-only, see knowledge-sources/lao-brain.ts). */
+export function isWritableEntry(entry: KnowledgeEntry): boolean {
+  return entry.filePath.startsWith(KNOWLEDGE_ROOT);
+}
+
+export function getKnowledgeEntryById(id: string): KnowledgeEntry | undefined {
+  return loadAllKnowledgeEntries().find((e) => e.id === id);
+}
+
+export interface ReviewKnowledgeEntryInput {
+  id: string;
+  toStatus: KnowledgeStatus;
+  reviewedBy: string;
+  /** Required for 'deprecated' (why it was rejected/merged), optional for promotion. */
+  reviewNotes?: string;
+  /** Set when toStatus is 'deprecated' because this entry duplicates a better one. */
+  supersededBy?: string;
+}
+
+/**
+ * The one write path the Knowledge Review Queue (pipeline/knowledge-review.ts)
+ * uses to promote, reject, or merge an existing entry — as distinct from
+ * proposeKnowledgeEntry(), which only ever creates new 'draft' entries.
+ * No automatic promotion happens anywhere in this codebase: this function
+ * exists specifically so every status change beyond 'draft' has a
+ * `reviewedBy` on record, per the Playbook's "no automatic promotion, ever"
+ * rule. Never deletes a file — a rejected or merged entry is deprecated in
+ * place, preserving its history in both the frontmatter and git log, the
+ * same permanence guarantee the Content Vault already makes.
+ */
+export function reviewKnowledgeEntry(input: ReviewKnowledgeEntryInput): KnowledgeEntry {
+  const entry = getKnowledgeEntryById(input.id);
+  if (!entry) throw new Error(`No knowledge entry found with id "${input.id}"`);
+  if (!isWritableEntry(entry)) {
+    throw new Error(
+      `"${input.id}" is sourced from brain/lao/ (read-only from the Knowledge Layer per the Phase 1 reconciliation decision — see knowledge/README.md). ` +
+        `Edit brain/lao/dictionary.md directly to change its status instead.`
+    );
+  }
+  if (input.toStatus === 'deprecated' && !input.reviewNotes) {
+    throw new Error('reviewNotes is required when deprecating an entry — a rejection or merge should always record why.');
+  }
+
+  const updated: KnowledgeEntry = {
+    ...entry,
+    status: input.toStatus,
+    updated: new Date().toISOString().slice(0, 10),
+    reviewedBy: input.reviewedBy,
+    reviewNotes: input.reviewNotes ?? entry.reviewNotes,
+    supersededBy: input.supersededBy ?? entry.supersededBy,
+  };
+
+  writeFileSync(updated.filePath, serializeEntry(updated), 'utf-8');
+  return updated;
 }

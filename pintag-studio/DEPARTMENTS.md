@@ -34,6 +34,8 @@ Move to the next department
 
 No department is considered complete until it has actually been operated, by us, not just specified.
 
+Every department advances through the Department Maturity model using the same [`departments/_GRADUATION_CHECKLIST.md`](./departments/_GRADUATION_CHECKLIST.md) — copied into that department's own Playbook and checked off with evidence, not assumed from software existing. **Department maturity is measured by operation, not implementation.**
+
 ## Department Maturity model
 
 The standard way to answer "how mature is this department?" — used consistently across every Playbook's final section:
