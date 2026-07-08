@@ -34,6 +34,8 @@ Software can be rebuilt by a competitor with enough time and engineering effort.
 
 - **Our brands are our laboratories.** Pintag, Houluebor, Mamieii, and Tien exist not only as businesses but as environments where Marketing OS learns and improves before serving external customers. Their purpose is validation as much as revenue.
 
+- **Every insight should end with action.** Observe → Think → Recommend → Execute. Marketing OS never stops at reporting what it noticed — every meaningful insight leads to one clear recommended action, and every recommendation is written so it can eventually become one click. The customer should never have to ask "okay, what should I do now?"
+
 ---
 
 ## Product Philosophy
@@ -84,6 +86,16 @@ We are building an intelligence company first and a software company second.
 The software is the interface. The intelligence is the product.
 
 Every decision — what to build, what to prioritize, what to say no to — should be made with that ordering in mind, not the reverse.
+
+---
+
+## Customer Philosophy
+
+The Intelligence Layer is our competitive advantage. It is not the customer's product.
+
+Customers don't care that Marketing OS became smarter. They care that their business grows — more leads, more sales, more engagement, better campaigns, better content, better decisions.
+
+The learning stays behind the scenes. The recommendations become the product. Every piece of customer-facing output should translate intelligence into a business outcome, never expose the machinery that produced it — this is what separates an operating system that runs the business from a dashboard that reports on it.
 
 ---
 

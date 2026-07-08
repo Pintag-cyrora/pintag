@@ -155,14 +155,20 @@ export function buildPrompt(sections: { intelligence: string; suggestions: strin
   return [
     "Write today's daily briefing for the founder — a short, first-person report in the voice of a trusted junior marketing strategist checking in with their manager. Warm but plain-spoken, confident without overselling, proactive rather than waiting to be asked. This is a message Marketing OS is initiating, not a form being filled out.",
     '',
+    "Customers care about business outcomes, not about the machinery that produced them — never mention \"the Intelligence Layer\" or other internal system names in the prose itself. Translate what was learned into what it means for the business: trends, what customers are asking, what content works, what to do about it.",
+    '',
     'Structure it as:',
     '1. One-line headline capturing the single most important thing today.',
-    '2. What I learned (from the Intelligence Layer).',
-    '3. What\'s in flight (from Operational Memory) — if unavailable, say so plainly rather than guessing.',
+    '2. What I learned — framed as business implications (trends, what customers ask, what content performs), grounded in the reference material below but never naming it as a system or layer.',
+    '3. What\'s in flight — if unavailable, say so plainly rather than guessing.',
     '4. What needs your attention (pending approvals + pending knowledge suggestions + any department health issues).',
-    '5. What I recommend — one concrete, specific next action, not a generic platitude.',
+    '5. A short closing narrative sentence on what to do next.',
     '',
     'Keep it under 200 words. No headers/bullet-heavy dashboard formatting inside the prose — write it as something a person would actually say out loud.',
+    '',
+    'Then, on its own final line, after the narrative, output exactly one line in this precise form (no other text on that line):',
+    'RECOMMENDED ACTION: <a short, imperative, one-click-shaped action>',
+    'This is the single most important thing to do today if only one thing gets done — written the way a button label would read, e.g. "Generate Today\'s Educational Post", "Create a Financing FAQ", "Schedule Today\'s Content", "Restore the Supabase Connection". Exactly one action, never zero, never a list.',
     '',
     '## What I learned (Intelligence Layer — newly verified knowledge since yesterday)',
     sections.intelligence,
@@ -201,10 +207,20 @@ function readFounderName(): string {
   }
 }
 
-/** Defensive extraction of the CMO's "what I recommend" line — LLM output structure isn't 100% guaranteed run to run, so this falls back gracefully rather than assuming a rigid shape. */
-function extractRecommendation(briefingText: string): string | undefined {
-  const match = briefingText.match(/(?:\*\*)?what i recommend(?:\*\*)?:?\s*([^\n]+)/i);
-  return match ? match[1].trim() : undefined;
+/**
+ * Extracts the CMO's structured "RECOMMENDED ACTION:" line — the product
+ * pattern from FOUNDING_PRINCIPLES.md's "Observe -> Think -> Recommend ->
+ * Execute": every briefing ends with exactly one clear, imperative,
+ * one-click-shaped action. This marker is the primary contract (the prompt
+ * explicitly requires it); the older loose "what I recommend" match is kept
+ * only as a fallback for briefings generated before this change, since LLM
+ * output structure isn't 100% guaranteed run to run.
+ */
+function extractRecommendedAction(briefingText: string): string | undefined {
+  const strict = briefingText.match(/^RECOMMENDED ACTION:\s*(.+)$/im);
+  if (strict) return strict[1].trim();
+  const fallback = briefingText.match(/(?:\*\*)?what i recommend(?:\*\*)?:?\s*([^\n]+)/i);
+  return fallback ? fallback[1].trim() : undefined;
 }
 
 interface Priority {
@@ -212,21 +228,21 @@ interface Priority {
   href?: string;
 }
 
-/** Derived, not LLM-synthesized — real counts already gathered, nothing invented. Shows fewer than 3 items rather than padding with filler when reality has fewer. */
-function derivePriorities(
-  operational: SupabaseGatherResult,
-  pendingSuggestionsCount: number,
-  recommendation: string | undefined
-): Priority[] {
+/**
+ * Derived, not LLM-synthesized — real counts already gathered, nothing
+ * invented. Everything that needs attention today, distinct from the one
+ * Recommended Action ("if you only did one thing"): can legitimately be
+ * empty on a quiet day, same "don't pad with filler" standard as
+ * elsewhere — the Recommended Action section is where "always show
+ * something" lives instead.
+ */
+function derivePriorities(operational: SupabaseGatherResult, pendingSuggestionsCount: number): Priority[] {
   const priorities: Priority[] = [];
   if (operational.available && (operational.pendingApprovalsCount ?? 0) > 0) {
     priorities.push({ label: `Approve ${operational.pendingApprovalsCount} item${operational.pendingApprovalsCount === 1 ? '' : 's'} waiting in the queue`, href: 'index.html' });
   }
   if (pendingSuggestionsCount > 0) {
     priorities.push({ label: `Review ${pendingSuggestionsCount} knowledge suggestion${pendingSuggestionsCount === 1 ? '' : 's'}` });
-  }
-  if (recommendation) {
-    priorities.push({ label: recommendation });
   }
   return priorities;
 }
@@ -262,8 +278,13 @@ export function renderMorningScreen(input: {
   organizational: SupabaseGatherResult;
   generatedAt: Date;
 }): string {
-  const recommendation = extractRecommendation(input.briefingText);
-  const priorities = derivePriorities(input.operational, input.pendingSuggestions.length, recommendation);
+  const recommendedAction = extractRecommendedAction(input.briefingText);
+  // The RECOMMENDED ACTION: line is a machine-parseable marker, not customer
+  // prose — it gets its own prominent card below, so strip it from the
+  // narrative display to avoid showing the same thing twice (once raw and
+  // shouty, once formatted).
+  const narrativeOnly = input.briefingText.replace(/\n*^RECOMMENDED ACTION:.*$/im, '').trim();
+  const priorities = derivePriorities(input.operational, input.pendingSuggestions.length);
   const win = deriveWin(input.organizational);
   const dateLabel = input.generatedAt.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -306,6 +327,10 @@ a{color:var(--teal);font-weight:600;text-decoration:none;}
 a:hover{color:var(--teal-light);}
 .tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-muted);background:var(--warm-deep);border-radius:10px;padding:2px 8px;margin-left:8px;}
 .cli-hint{font-size:13px;color:var(--ink-muted);margin-top:10px;font-family:monospace;background:var(--warm-deep);padding:8px 12px;border-radius:4px;display:inline-block;}
+.action-card{background:var(--white);border:1.5px solid var(--teal-border);border-radius:8px;padding:18px 20px;}
+.action-label{font-size:12px;color:var(--ink-muted);margin-bottom:10px;}
+.action-button{display:inline-block;background:var(--teal);color:#fff;font-size:15px;font-weight:600;border:none;border-radius:6px;padding:12px 22px;cursor:pointer;font-family:inherit;}
+.action-button:hover{background:var(--teal-light);}
 .start{background:var(--ink);border-radius:8px;padding:22px 24px;margin-top:8px;}
 .start a{color:#fff;font-size:15px;display:block;padding:6px 0;}
 .start a:hover{color:var(--teal-light);}
@@ -327,7 +352,7 @@ a:hover{color:var(--teal-light);}
 
   <div class="section">
     <div class="section-title">🧠 Daily Briefing</div>
-    <div class="briefing-text">${escapeHtml(input.briefingText)}</div>
+    <div class="briefing-text">${escapeHtml(narrativeOnly)}</div>
   </div>
 
   <hr class="divider">
@@ -341,11 +366,22 @@ a:hover{color:var(--teal-light);}
   <hr class="divider">
 
   <div class="section">
-    <div class="section-title">🎯 Today's Priorities</div>
+    <div class="section-title">📋 Today's Priorities</div>
     <ul>${priorityItems}</ul>
   </div>
 
   <hr class="divider">
+
+  ${recommendedAction ? `
+  <div class="section">
+    <div class="section-title">🎯 Recommended Action</div>
+    <div class="action-card">
+      <div class="action-label">If you only do one thing today</div>
+      <button class="action-button" onclick="alert('One-click execution isn\\'t built yet — this is the recommended action Marketing OS would run for you.'); return false;">${escapeHtml(recommendedAction)}</button>
+    </div>
+  </div>
+
+  <hr class="divider">` : ''}
 
   <div class="start">
     <div class="section-title" style="color:rgba(255,255,255,0.5);">🚀 Start My Day</div>
