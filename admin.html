@@ -840,11 +840,25 @@ function filterRegistry(registry, keys) {
   return out;
 }
 
+// Converts a field's {value, label:{en,...}} options into the
+// {key:{en,...}} registry shape initCheckGrid/getCheckedKeys/setChecked
+// already expect, so multi_checkbox fields (e.g. Best Use) reuse that
+// infrastructure verbatim instead of a second checkbox implementation.
+function optionsToRegistry(options) {
+  const out = {};
+  (options || []).forEach(o => { if (o.value) out[o.value] = { en: o.label.en }; });
+  return out;
+}
+
 function renderTypedField(f) {
   if (f.kind === 'select') {
     const opts = f.options.map(o => `<option value="${esc(o.value)}">${esc(o.label.en)}</option>`).join('');
     return `<div class="form-group"><label class="form-label">${esc(f.label.en)}</label>
       <select class="form-select" id="${f.id}">${opts}</select></div>`;
+  }
+  if (f.kind === 'multi_checkbox') {
+    return `<div class="form-group" style="grid-column:1/-1"><label class="form-label">${esc(f.label.en)}</label>
+      <div class="check-grid" id="${f.id}-grid"></div></div>`;
   }
   return `<div class="form-group"><label class="form-label">${esc(f.label.en)}</label>
     <input class="form-input" id="${f.id}" type="${f.kind === 'text' ? 'text' : 'number'}"
@@ -858,11 +872,14 @@ function renderPropertyTypeFields(typeKey) {
   if (!grid) return;
   const fields = PROPERTY_TYPE_FIELDS[typeKey] || [];
 
-  // Preserve any already-checked feature/amenity keys across a type switch
-  // mid-edit — initCheckGrid/initGroupedCheckGrid rebuild innerHTML, which
-  // would otherwise silently drop in-progress selections.
+  // Preserve any already-checked feature/amenity/multi_checkbox keys across
+  // a type switch mid-edit — initCheckGrid/innerHTML both wipe state that
+  // would otherwise be silently dropped.
   const prevFeatures  = getCheckedKeys('features-grid');
   const prevAmenities = getCheckedKeys('amenities-grid');
+  const multiFields = fields.filter(f => f.kind === 'multi_checkbox');
+  const prevMulti = {};
+  multiFields.forEach(f => { prevMulti[f.id] = getCheckedKeys(f.id + '-grid'); });
 
   grid.innerHTML = fields.filter(f => f.kind !== 'checkbox_ref').map(renderTypedField).join('');
 
@@ -872,6 +889,11 @@ function renderPropertyTypeFields(typeKey) {
   initGroupedCheckGrid('amenities-grid', filterRegistry(AMENITIES, amenityField ? amenityField.keys : []), AMENITY_CATEGORIES);
   setChecked('features-grid', prevFeatures);
   setChecked('amenities-grid', prevAmenities);
+
+  multiFields.forEach(f => {
+    initCheckGrid(f.id + '-grid', optionsToRegistry(f.options));
+    setChecked(f.id + '-grid', prevMulti[f.id] || []);
+  });
 }
 
 // Populates the currently-rendered typed fields from a fetched properties
@@ -880,6 +902,11 @@ function renderPropertyTypeFields(typeKey) {
 function populateTypedFields(typeKey, sourceRow) {
   (PROPERTY_TYPE_FIELDS[typeKey] || []).forEach(f => {
     if (!f.column) return;
+    if (f.kind === 'multi_checkbox') {
+      const values = Array.isArray(sourceRow && sourceRow[f.column]) ? sourceRow[f.column] : [];
+      setChecked(f.id + '-grid', values);
+      return;
+    }
     const el = document.getElementById(f.id);
     if (!el) return;
     const v = sourceRow ? sourceRow[f.column] : null;
@@ -903,6 +930,7 @@ function buildTypedFieldsPayload(typeKey) {
     const f = allColumns[column];
     const active = activeIds[f.id];
     if (!active) { out[column] = null; return; }
+    if (f.kind === 'multi_checkbox') { out[column] = getCheckedKeys(f.id + '-grid'); return; }
     const el = document.getElementById(f.id);
     if (!el) { out[column] = null; return; }
     out[column] = f.kind === 'number' ? (parseInt(el.value) || null) : (el.value.trim() || null);
