@@ -293,7 +293,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Property Type <span class="required">*</span></label>
-              <select class="form-select" id="f-type" required>
+              <select class="form-select" id="f-type" required onchange="renderPropertyTypeFields(this.value)">
                 <option value="">Select type</option>
                 <option value="house">House</option>
                 <option value="townhouse">Townhouse</option>
@@ -443,48 +443,14 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           </div>
         </div>
 
-        <!-- PROPERTY DETAILS -->
+        <!-- PROPERTY DETAILS — rendered dynamically from PROPERTY_TYPE_FIELDS
+             (terminology.js) based on the selected Property Type; see
+             renderPropertyTypeFields(). Land, for example, renders none of
+             the building-scoped fields that used to show unconditionally
+             here. -->
         <div class="form-section">
           <p class="form-section-title">&#9315; Property Details</p>
-          <div class="form-grid-3">
-            <div class="form-group">
-              <label class="form-label">Bedrooms</label>
-              <input class="form-input" id="f-bedrooms" type="number" min="0" placeholder="4">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Bathrooms</label>
-              <input class="form-input" id="f-bathrooms" type="number" min="0" placeholder="4">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Size (sqm)</label>
-              <input class="form-input" id="f-sqm" type="number" min="0" placeholder="420">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Land (sqm)</label>
-              <input class="form-input" id="f-sqm-land" type="number" min="0" placeholder="720">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Floors</label>
-              <input class="form-input" id="f-floors" type="number" min="1" placeholder="2">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Year Built</label>
-              <input class="form-input" id="f-year-built" type="number" min="1950" max="2035" placeholder="2022">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Parking Spaces</label>
-              <input class="form-input" id="f-parking-spaces" type="number" min="0" placeholder="2">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Furnished</label>
-              <select class="form-select" id="f-furnished">
-                <option value="">Not specified</option>
-                <option value="fully">Fully Furnished</option>
-                <option value="partially">Partially Furnished</option>
-                <option value="unfurnished">Unfurnished</option>
-              </select>
-            </div>
-          </div>
+          <div class="form-grid-3" id="property-details-grid"></div>
         </div>
 
         <!-- FEATURES -->
@@ -735,6 +701,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
+<script src="terminology.js"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
@@ -860,6 +827,95 @@ function setChecked(containerId, values, registry) {
   document.querySelectorAll(`#${containerId} .check-item`).forEach(el => {
     el.classList.toggle('checked', normalizedIn.includes(el.dataset.key));
   });
+}
+
+// ── Property-type-specific fields (terminology.js: PROPERTY_TYPE_FIELDS) ──
+// Renders the "Property Details" section from the selected property type's
+// field schema, instead of showing every field for every type. Reuses
+// initCheckGrid/initGroupedCheckGrid for the type's filtered FEATURES/
+// AMENITIES subset rather than re-implementing checkbox rendering.
+function filterRegistry(registry, keys) {
+  const out = {};
+  (keys || []).forEach(k => { if (registry[k]) out[k] = registry[k]; });
+  return out;
+}
+
+function renderTypedField(f) {
+  if (f.kind === 'select') {
+    const opts = f.options.map(o => `<option value="${esc(o.value)}">${esc(o.label.en)}</option>`).join('');
+    return `<div class="form-group"><label class="form-label">${esc(f.label.en)}</label>
+      <select class="form-select" id="${f.id}">${opts}</select></div>`;
+  }
+  return `<div class="form-group"><label class="form-label">${esc(f.label.en)}</label>
+    <input class="form-input" id="${f.id}" type="${f.kind === 'text' ? 'text' : 'number'}"
+      ${f.min != null ? `min="${f.min}"` : ''} ${f.max != null ? `max="${f.max}"` : ''}
+      ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}>
+    </div>`;
+}
+
+function renderPropertyTypeFields(typeKey) {
+  const grid = document.getElementById('property-details-grid');
+  if (!grid) return;
+  const fields = PROPERTY_TYPE_FIELDS[typeKey] || [];
+
+  // Preserve any already-checked feature/amenity keys across a type switch
+  // mid-edit — initCheckGrid/initGroupedCheckGrid rebuild innerHTML, which
+  // would otherwise silently drop in-progress selections.
+  const prevFeatures  = getCheckedKeys('features-grid');
+  const prevAmenities = getCheckedKeys('amenities-grid');
+
+  grid.innerHTML = fields.filter(f => f.kind !== 'checkbox_ref').map(renderTypedField).join('');
+
+  const featureField  = fields.find(f => f.kind === 'checkbox_ref' && f.registry === 'FEATURES');
+  const amenityField  = fields.find(f => f.kind === 'checkbox_ref' && f.registry === 'AMENITIES');
+  initCheckGrid('features-grid', filterRegistry(FEATURES, featureField ? featureField.keys : []));
+  initGroupedCheckGrid('amenities-grid', filterRegistry(AMENITIES, amenityField ? amenityField.keys : []), AMENITY_CATEGORIES);
+  setChecked('features-grid', prevFeatures);
+  setChecked('amenities-grid', prevAmenities);
+}
+
+// Populates the currently-rendered typed fields from a fetched properties
+// row. Caller must have already called renderPropertyTypeFields(typeKey)
+// for the SAME typeKey so the right inputs exist in the DOM first.
+function populateTypedFields(typeKey, sourceRow) {
+  (PROPERTY_TYPE_FIELDS[typeKey] || []).forEach(f => {
+    if (!f.column) return;
+    const el = document.getElementById(f.id);
+    if (!el) return;
+    const v = sourceRow ? sourceRow[f.column] : null;
+    el.value = (v != null ? v : '');
+  });
+}
+
+// Builds the typed-fields portion of the save payload: writes the active
+// type's current input values, and explicitly nulls every OTHER type's
+// columns so switching a listing's type actually clears stale data
+// server-side instead of leaving orphaned values behind.
+function buildTypedFieldsPayload(typeKey) {
+  const activeIds = {};
+  (PROPERTY_TYPE_FIELDS[typeKey] || []).forEach(f => { if (f.column) activeIds[f.id] = f; });
+  const allColumns = {};
+  Object.keys(PROPERTY_TYPE_FIELDS).forEach(key => {
+    PROPERTY_TYPE_FIELDS[key].forEach(f => { if (f.column) allColumns[f.column] = f; });
+  });
+  const out = {};
+  Object.keys(allColumns).forEach(column => {
+    const f = allColumns[column];
+    const active = activeIds[f.id];
+    if (!active) { out[column] = null; return; }
+    const el = document.getElementById(f.id);
+    if (!el) { out[column] = null; return; }
+    out[column] = f.kind === 'number' ? (parseInt(el.value) || null) : (el.value.trim() || null);
+  });
+  return out;
+}
+
+// Safe accessor for non-critical read sites (e.g. the AI content helper)
+// that reference typed-field ids which may not currently be rendered for
+// the selected property type.
+function getFieldValueSafe(id) {
+  const el = document.getElementById(id);
+  return el ? el.value : '';
 }
 
 // ── Highlight pills ──────────────────────────────────────────────
@@ -1397,8 +1453,10 @@ function showForm(id) {
     document.getElementById('listing-form').reset();
     document.getElementById('nearby-list').innerHTML = '';
     addNearby();
-    setChecked('features-grid', [], FEATURES);
-    setChecked('amenities-grid', [], AMENITIES);
+    // form.reset() does not fire f-type's onchange, so Property Details
+    // must be re-rendered explicitly for the blank state (also clears
+    // features/amenities, which form.reset() likewise doesn't touch).
+    renderPropertyTypeFields('');
     setHighlights([]);
     customTags = [];
     populateExistingImages([]);
@@ -1434,6 +1492,7 @@ async function editListing(id) {
   const p = data[0];
 
   document.getElementById('f-type').value        = p.property_type || '';
+  renderPropertyTypeFields(p.property_type || '');
   document.getElementById('f-style').value       = p.property_style || '';
   document.getElementById('f-transaction').value = p.transaction_type || '';
   onTransactionChange();
@@ -1462,14 +1521,7 @@ async function editListing(id) {
   document.getElementById('f-desc-lo').value     = p.description_lo || p.desc_lo || '';
   document.getElementById('f-desc-zh').value     = p.description_zh || p.desc_zh || '';
 
-  document.getElementById('f-bedrooms').value     = p.bedrooms || '';
-  document.getElementById('f-bathrooms').value    = p.bathrooms || '';
-  document.getElementById('f-sqm').value          = p.sqm || '';
-  document.getElementById('f-sqm-land').value     = p.sqm_land || '';
-  document.getElementById('f-floors').value       = p.floors || '';
-  document.getElementById('f-year-built').value   = p.year_built || '';
-  document.getElementById('f-parking-spaces').value = p.parking_spaces || '';
-  document.getElementById('f-furnished').value    = p.furnished || '';
+  populateTypedFields(p.property_type || '', p);
 
   const rawFeatures = Array.isArray(p.features)
     ? p.features.map(f => typeof f === 'string' ? f : (f.key || f.label_en || f.name || ''))
@@ -1628,14 +1680,7 @@ async function saveListing(e) {
     description_en:          document.getElementById('f-desc-en').value.trim() || null,
     description_lo:          document.getElementById('f-desc-lo').value.trim() || null,
     description_zh:          document.getElementById('f-desc-zh').value.trim() || null,
-    bedrooms:          parseInt(document.getElementById('f-bedrooms').value) || null,
-    bathrooms:         parseInt(document.getElementById('f-bathrooms').value) || null,
-    sqm:               parseInt(document.getElementById('f-sqm').value) || null,
-    sqm_land:          parseInt(document.getElementById('f-sqm-land').value) || null,
-    floors:            parseInt(document.getElementById('f-floors').value) || null,
-    year_built:        parseInt(document.getElementById('f-year-built').value) || null,
-    parking_spaces:    parseInt(document.getElementById('f-parking-spaces').value) || null,
-    furnished:         document.getElementById('f-furnished').value || null,
+    ...buildTypedFieldsPayload(document.getElementById('f-type').value),
     features:          features.length ? features : null,
     amenities:         amenities.length ? amenities : null,
     district_en:       districtEn || null,
@@ -1855,15 +1900,15 @@ async function generateAIContent() {
     property_type:  document.getElementById('f-type').value,
     property_style: document.getElementById('f-style').value,
     transaction_type: document.getElementById('f-transaction').value,
-    bedrooms:       document.getElementById('f-bedrooms').value,
-    bathrooms:      document.getElementById('f-bathrooms').value,
-    sqm:            document.getElementById('f-sqm').value,
-    sqm_land:       document.getElementById('f-sqm-land').value,
+    bedrooms:       getFieldValueSafe('f-bedrooms'),
+    bathrooms:      getFieldValueSafe('f-bathrooms'),
+    sqm:            getFieldValueSafe('f-sqm'),
+    sqm_land:       getFieldValueSafe('f-sqm-land'),
     price_display:  document.getElementById('f-price').value,
     village:        village,
     district:       districtEn,
     features:       getCheckedKeys('features-grid'),
-    furnished:      document.getElementById('f-furnished').value,
+    furnished:      getFieldValueSafe('f-furnished'),
     nearby_places:  getNearbyPlaces()
   };
 
@@ -2181,6 +2226,7 @@ async function runSmartImport() {
 function populateFormFromImport(data) {
   // Populate form fields (form-panel may be hidden — values are set directly)
   document.getElementById('f-type').value        = data.property_type || '';
+  renderPropertyTypeFields(data.property_type || '');
   document.getElementById('f-style').value       = data.property_style || '';
   document.getElementById('f-transaction').value = data.transaction_type || 'for_sale';
   onTransactionChange();
@@ -2209,14 +2255,7 @@ function populateFormFromImport(data) {
   document.getElementById('f-desc-lo').value     = data.description_lo || '';
   document.getElementById('f-desc-zh').value     = data.description_zh || '';
 
-  document.getElementById('f-bedrooms').value    = data.bedrooms != null ? data.bedrooms : '';
-  document.getElementById('f-bathrooms').value   = data.bathrooms != null ? data.bathrooms : '';
-  document.getElementById('f-sqm').value         = data.sqm != null ? data.sqm : '';
-  document.getElementById('f-sqm-land').value    = data.sqm_land != null ? data.sqm_land : '';
-  document.getElementById('f-floors').value      = '';
-  document.getElementById('f-year-built').value  = '';
-  document.getElementById('f-parking-spaces').value = '';
-  document.getElementById('f-furnished').value   = data.furnished || '';
+  populateTypedFields(data.property_type || '', data);
 
   if (data.district) document.getElementById('f-district').value = data.district;
   else document.getElementById('f-district').value = '';
@@ -2338,11 +2377,7 @@ async function saveDraft() {
     description_en:         document.getElementById('f-desc-en').value.trim() || null,
     description_lo:         document.getElementById('f-desc-lo').value.trim() || null,
     description_zh:         document.getElementById('f-desc-zh').value.trim() || null,
-    bedrooms:               parseInt(document.getElementById('f-bedrooms').value) || null,
-    bathrooms:              parseInt(document.getElementById('f-bathrooms').value) || null,
-    sqm:                    parseInt(document.getElementById('f-sqm').value) || null,
-    sqm_land:               parseInt(document.getElementById('f-sqm-land').value) || null,
-    furnished:              document.getElementById('f-furnished').value || null,
+    ...buildTypedFieldsPayload(document.getElementById('f-type').value),
     district_en:            districtEn || null,
     district_lo:            districtMap.lo || null,
     district_zh:            districtMap.zh || null,
@@ -2411,8 +2446,7 @@ async function publishDraft() {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
-initCheckGrid('features-grid', FEATURES);
-initGroupedCheckGrid('amenities-grid', AMENITIES, AMENITY_CATEGORIES);
+renderPropertyTypeFields(document.getElementById('f-type').value || '');
 initHighlightPresets();
 </script>
 </body>
