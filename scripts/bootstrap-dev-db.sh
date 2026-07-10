@@ -29,10 +29,30 @@
 #      deliberately NOT using --clean/--if-exists means we never DROP the
 #      schema either, so Supabase's default grants on it are never at risk.
 #   3. Restores the filtered dump into pintag-dev.
+#   4. Detects admin@pintag.io in auth.users and, if found, seeds its
+#      `parties` staff row (idempotent — safe to re-run). This is the exact
+#      seed baked into 20260705000000_agents_becomes_parties.sql, which a
+#      schema-only dump never replays (it's DML, not structure) — confirmed
+#      necessary in practice (2026-07-09): a fresh bootstrap with no staff
+#      party seeded fails every staff-flow insert with 42501 (RLS), since
+#      is_pintag_staff(auth.uid()) has no row to find.
+#   5. Verifies RLS actually grants that staff party what it needs, by
+#      impersonating the admin auth uid (SET LOCAL role authenticated +
+#      request.jwt.claim(s)) and running a real INSERT into contacts inside
+#      a transaction that's always rolled back — never leaves a test row.
+#   6. Prints "✅ Dev environment ready." only if both of the above succeed.
+#
+# A brand-new developer should be able to go from an empty Supabase project
+# to a working Pintag dev environment with this one command (plus creating
+# the admin@pintag.io auth user via the dashboard first — see step 4 above,
+# this script deliberately does not attempt to create Supabase Auth users
+# itself; inserting directly into auth.users bypasses GoTrue and is not
+# supported/safe to script).
 #
 # ── What this does NOT do ─────────────────────────────────────────────────
-#   No data is copied (schema only, zero rows) — see seed-dev-from-prod.sh
-#   for a redacted, representative data copy after this has run once.
+#   No listing data is copied (schema + one staff party, zero properties/
+#   contacts) — see seed-dev-from-prod.sh for a redacted, representative
+#   data copy after this has run once.
 #   Any migrations newer than production's current state (i.e. anything
 #   still pending review/apply, like a not-yet-applied land-fields
 #   migration) are NOT included — production's dump can only reflect what's
@@ -90,9 +110,74 @@ echo "== Done. Tables now in pintag-dev =="
 psql "$PINTAG_DEV_DB_URL" -c "\dt public.*"
 
 echo
-echo "Next steps:"
-echo "  1. Apply any migrations newer than production's current state, e.g.:"
-echo "     psql \"\$PINTAG_DEV_DB_URL\" -v ON_ERROR_STOP=1 -f supabase/migrations/<newest>.sql"
-echo "  2. Create a dev staff auth user (Supabase dashboard) and seed its parties row, e.g.:"
-echo "     INSERT INTO parties (type, auth_user_id, name_en) SELECT 'staff', id, 'Dev Staff' FROM auth.users WHERE email = '<dev-admin email>';"
-echo "  3. Optionally run scripts/seed-dev-from-prod.sh for realistic sample listings."
+echo "== Detecting admin@pintag.io in auth.users =="
+ADMIN_UID="$(psql "$PINTAG_DEV_DB_URL" -v ON_ERROR_STOP=1 -t -A \
+  -c "SELECT id FROM auth.users WHERE email = 'admin@pintag.io';")"
+
+if [[ -z "$ADMIN_UID" ]]; then
+  echo "⚠ No auth.users row for admin@pintag.io yet." >&2
+  echo "  Create it first: Supabase dashboard → Authentication → Add User (email: admin@pintag.io)." >&2
+  echo "  Then re-run this script — every step here is idempotent, safe to run again." >&2
+  echo
+  echo "Schema restore succeeded, but the environment is NOT ready yet (see above)." >&2
+  exit 1
+fi
+echo "Found admin@pintag.io -> $ADMIN_UID"
+
+echo
+echo "== Seeding its parties staff row (skipped if one already exists) =="
+# Same seed as 20260705000000_agents_becomes_parties.sql's INSERT, run
+# directly since a schema-only dump never replays DML from migration
+# history. Slug is derived from the auth uid (deterministic, effectively
+# always unique) rather than hardcoded, so this is also safe if pintag-dev
+# ever already has an unrelated party using the production slug.
+psql "$PINTAG_DEV_DB_URL" -v ON_ERROR_STOP=1 -v admin_uid="$ADMIN_UID" <<'SQL'
+INSERT INTO parties (id, type, auth_user_id, name_en, slug)
+SELECT gen_random_uuid(), 'staff', :'admin_uid'::uuid, 'Pintag Staff',
+       'pintag-staff-' || substr(:'admin_uid', 1, 8)
+WHERE NOT EXISTS (
+  SELECT 1 FROM parties WHERE auth_user_id = :'admin_uid'::uuid
+);
+SQL
+
+echo
+echo "== Verifying RLS: staff INSERT into contacts, impersonated as admin@pintag.io =="
+# Impersonates the real auth uid the way PostgREST would (SET LOCAL role
+# authenticated + request.jwt claims), so this actually exercises the
+# "Staff full access contacts" policy rather than just testing table
+# permissions as the superuser connection role (which would bypass RLS
+# entirely and prove nothing). Wrapped in BEGIN/ROLLBACK — never leaves a
+# row behind. Sets both request.jwt.claim.sub and request.jwt.claims since
+# different Supabase/GoTrue versions' auth.uid() reads one or the other.
+# Uses set_config() (a function call, so it can take an expression) rather
+# than SET LOCAL (literal-only) for the value that needs building from the
+# uid variable; quoted heredoc + psql's own :'var' substitution throughout,
+# same as the seed step above, deliberately avoiding raw bash interpolation
+# into SQL text.
+if psql "$PINTAG_DEV_DB_URL" -v ON_ERROR_STOP=1 -v admin_uid="$ADMIN_UID" -q <<'SQL'
+BEGIN;
+SET LOCAL role authenticated;
+SELECT set_config('request.jwt.claim.sub', :'admin_uid', true);
+SELECT set_config('request.jwt.claims',
+  '{"sub":"' || :'admin_uid' || '","role":"authenticated"}', true);
+INSERT INTO contacts (role, phone, created_by)
+  VALUES ('other', '00000000', :'admin_uid'::uuid)
+  RETURNING id;
+ROLLBACK;
+SQL
+then
+  echo
+  echo "✅ Dev environment ready."
+else
+  echo
+  echo "✗ RLS verification insert failed — see the error above." >&2
+  echo "  Most likely cause: is_pintag_staff() isn't resolving true for $ADMIN_UID." >&2
+  echo "  Double check: SELECT type, auth_user_id FROM parties WHERE auth_user_id = '$ADMIN_UID';" >&2
+  exit 1
+fi
+
+echo
+echo "Optional next steps:"
+echo "  - Apply any migrations newer than production's current state, e.g.:"
+echo "    psql \"\$PINTAG_DEV_DB_URL\" -v ON_ERROR_STOP=1 -f supabase/migrations/<newest>.sql"
+echo "  - Run scripts/seed-dev-from-prod.sh for realistic sample listings."
