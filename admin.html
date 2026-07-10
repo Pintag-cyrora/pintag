@@ -669,16 +669,25 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
       </div>
 
       <div class="form-section">
-        <p class="form-section-title">&#9312; Paste Property Description</p>
+        <p class="form-section-title">&#9312; Paste Facebook Marketplace Link</p>
         <div class="form-group">
-          <label class="form-label">Facebook Post / Description Text</label>
-          <textarea class="form-textarea" id="import-description" rows="8"
+          <label class="form-label">Facebook Marketplace URL</label>
+          <input class="form-input" id="import-fb-url" type="url" placeholder="https://www.facebook.com/marketplace/item/...">
+          <p style="font-size:11px;color:var(--ink-muted);margin-top:6px;line-height:1.5;">Fetches the public page and pulls in whatever Facebook makes available (title, description, price, a photo). Facebook only exposes limited data to a non-logged-in fetch — if a listing comes back thin, paste details manually below instead.</p>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <p class="form-section-title">&#9313; Or Paste Description Manually</p>
+        <div class="form-group">
+          <label class="form-label">Facebook Post / Description Text <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;">— optional if a URL above already found one</span></label>
+          <textarea class="form-textarea" id="import-description" rows="6"
             placeholder="Paste the property description here (Lao, English, or Thai)...&#10;&#10;AI will extract: title, price, bedrooms, bathrooms, size, location, and generate full multilingual descriptions."></textarea>
         </div>
       </div>
 
       <div class="form-section">
-        <p class="form-section-title">&#9313; Upload Property Photos</p>
+        <p class="form-section-title">&#9314; Upload / Add Property Photos</p>
         <div class="form-group">
           <div class="upload-zone" id="import-upload-zone" onclick="document.getElementById('import-file-input').click()">
             <input type="file" id="import-file-input" multiple accept="image/*" style="display:none;" onchange="handleImportImageUpload(this.files)">
@@ -698,7 +707,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
         <button type="button" class="btn-ai-gen" id="import-gen-btn" onclick="runSmartImport()">
           &#9889; Generate Listing
         </button>
-        <p class="ai-gen-hint">AI will extract property details, translate to 3 languages, and analyze photos — populates the form for you to review and edit. Nothing is saved until you click Save Listing.</p>
+        <p class="ai-gen-hint">Fetches the Facebook link (if given), then AI extracts property details, translates to 3 languages, and analyzes photos — populates the form for you to review and edit. Nothing is saved until you click Save Listing.</p>
       </div>
 
       <div id="import-progress-steps" style="display:none;margin-bottom:24px;">
@@ -2076,6 +2085,7 @@ function showImportPanel() {
   document.getElementById('import-panel').style.display  = 'block';
   importImages = [];
   refreshImportImageGrid();
+  document.getElementById('import-fb-url').value = '';
   document.getElementById('import-description').value = '';
   document.getElementById('import-message').style.display = 'none';
   document.getElementById('import-progress-steps').style.display = 'none';
@@ -2193,16 +2203,17 @@ function removeImportImage(url) {
 }
 
 const IMPORT_STEPS = [
-  { id: 'step-upload',   label: 'Photos uploaded to storage' },
+  { id: 'step-fetch',    label: 'Fetching Facebook listing' },
+  { id: 'step-upload',   label: 'Photos ready' },
   { id: 'step-analyze',  label: 'Analyzing description and photos with AI' },
   { id: 'step-populate', label: 'Populating listing form' }
 ];
 
-function showImportSteps() {
+function showImportSteps(steps) {
   const stepsEl  = document.getElementById('import-progress-steps');
   const stepList = document.getElementById('import-step-list');
   stepsEl.style.display = 'block';
-  stepList.innerHTML = IMPORT_STEPS.map(s =>
+  stepList.innerHTML = steps.map(s =>
     `<div class="import-step" id="${s.id}">
        <div class="import-step-dot"></div>
        <span>${s.label}</span>
@@ -2222,12 +2233,39 @@ function setImportStep(stepId, state) {
                       : step.label;
 }
 
+// Stage 1 of the two-stage import pipeline (source-specific): turns a
+// Facebook Marketplace URL into { title, description, price_display,
+// image_urls }. Performs zero database-table writes — its only Supabase
+// side effect is uploading fetched photos to the property-images Storage
+// bucket, same bucket handleImportImageUpload() already uses for manually
+// picked photos. See supabase/functions/facebook-listing-fetcher/index.ts.
+async function fetchFacebookListing(url) {
+  const res = await fetch(SUPABASE_URL + '/functions/v1/facebook-listing-fetcher', {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'apikey':        SUPABASE_ANON,
+      'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
+    },
+    body: JSON.stringify({ url })
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(res.status + ': ' + err.slice(0, 200));
+  }
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
 async function runSmartImport() {
-  const description = document.getElementById('import-description').value.trim();
-  if (!description && importImages.length === 0) {
+  const fbUrl = document.getElementById('import-fb-url').value.trim();
+  let description = document.getElementById('import-description').value.trim();
+
+  if (!fbUrl && !description && importImages.length === 0) {
     const msg = document.getElementById('import-message');
     msg.className = 'form-message error';
-    msg.textContent = 'Please paste a property description or upload at least one photo.';
+    msg.textContent = 'Please paste a Facebook URL, a property description, or upload at least one photo.';
     msg.style.display = 'block';
     return;
   }
@@ -2237,13 +2275,35 @@ async function runSmartImport() {
   btn.disabled = true;
   btn.innerHTML = '&#8987; Processing...';
   msgEl.style.display = 'none';
-  showImportSteps();
+  showImportSteps(fbUrl ? IMPORT_STEPS : IMPORT_STEPS.filter(s => s.id !== 'step-fetch'));
 
   try {
-    // Step 1: images already in importImages[] — mark done
+    // Stage 1 (source-specific, only when a URL was given): fetch the
+    // Facebook page and fold whatever it found into the same description
+    // text + importImages[] that the manual-paste path already produces —
+    // everything downstream of this point is identical either way.
+    if (fbUrl) {
+      setImportStep('step-fetch', 'active');
+      const fetched = await fetchFacebookListing(fbUrl);
+      const fetchedParts = [];
+      if (fetched.title) fetchedParts.push('Title: ' + fetched.title);
+      if (fetched.price_display) fetchedParts.push('Price: ' + fetched.price_display);
+      if (fetched.description) fetchedParts.push(fetched.description);
+      const fetchedText = fetchedParts.join('\n\n');
+      description = [fetchedText, description].filter(Boolean).join('\n\n---\n\n');
+      if (Array.isArray(fetched.image_urls)) {
+        fetched.image_urls.forEach(u => { if (!importImages.includes(u)) importImages.push(u); });
+        refreshImportImageGrid();
+      }
+      setImportStep('step-fetch', 'done');
+    }
+
+    // Stage 2 (source-agnostic, unchanged): images already in
+    // importImages[] — mark ready, then hand the combined text + photos to
+    // Gemini for structured extraction, exactly the same call regardless
+    // of whether the input came from a URL fetch or manual paste.
     setImportStep('step-upload', 'done');
 
-    // Step 2: call AI edge function
     setImportStep('step-analyze', 'active');
     const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
       method: 'POST',
@@ -2262,7 +2322,7 @@ async function runSmartImport() {
     if (aiResult.error) throw new Error(aiResult.error);
     setImportStep('step-analyze', 'done');
 
-    // Step 3: populate form fields — Smart Import's job ends here. No
+    // Stage 3: populate form fields — Smart Import's job ends here. No
     // database write of any kind happens as part of import: no property
     // row, no contact row/lookup, no publish validation. The user reviews
     // and edits the now-populated form, then explicitly clicks Save
