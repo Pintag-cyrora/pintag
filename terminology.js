@@ -1,5 +1,6 @@
 // terminology.js — shared terminology registry, used by admin.html,
-// add-property.html, and edit-listing.html. Same convention as
+// add-property.html, edit-listing.html, and (via PROPERTY_TYPE_DISPLAY
+// below) listing.html, listings.html, and index.html. Same convention as
 // amenities.js: plain global vars, no build step, loaded via
 // <script src="terminology.js"> before each page's own inline <script>.
 //
@@ -208,3 +209,182 @@ var PROPERTY_TYPE_FIELDS = {
     _existingStructure(), _bestUse()
   ]
 };
+
+// ── Customer-facing presentation schema ─────────────────────────────────
+// PROPERTY_TYPE_DISPLAY drives what buyers see on the listing card and the
+// listing detail page — reusing PROPERTY_TYPE_FIELDS above as the single
+// source of truth for column/kind/label/options. Each entry only adds
+// presentation metadata:
+//   field:    id of an entry in this type's PROPERTY_TYPE_FIELDS array
+//   icon:     emoji icon, same convention as AMENITIES in amenities.js
+//   card:     shown on compact cards (search results, homepage, similar
+//             listings) — array order is display order
+//   priority: shown in the detail page's main spec grid; non-priority
+//             fields still appear, lower down, in a secondary details list
+//   pairWith/pairTemplate: combines this field with another into one
+//             display item (e.g. Land's Width × Length)
+//
+// A field with no PROPERTY_TYPE_FIELDS entry for a type (e.g. Land has no
+// "bedrooms") is already omitted structurally — nothing needed here for
+// that. A field that exists in PROPERTY_TYPE_FIELDS but isn't listed here
+// simply isn't customer-facing yet.
+var PROPERTY_TYPE_DISPLAY = {
+
+  house: [
+    {field:'f-bedrooms',       icon:'🛏️', card:true,  priority:true},
+    {field:'f-bathrooms',      icon:'🛁', card:true,  priority:true},
+    {field:'f-sqm',            icon:'📐', card:true,  priority:true},
+    {field:'f-sqm-land',       icon:'⬛', card:false, priority:true},
+    {field:'f-parking-spaces', icon:'🚗', card:false, priority:true},
+    {field:'f-furnished',      icon:'🛋️', card:false, priority:true},
+    {field:'f-floors',         icon:'🏢', card:false, priority:false},
+    {field:'f-year-built',     icon:'📅', card:false, priority:false}
+  ],
+
+  townhouse: [
+    {field:'f-bedrooms',       icon:'🛏️', card:true,  priority:true},
+    {field:'f-bathrooms',      icon:'🛁', card:true,  priority:true},
+    {field:'f-sqm',            icon:'📐', card:true,  priority:true},
+    {field:'f-sqm-land',       icon:'⬛', card:false, priority:true},
+    {field:'f-parking-spaces', icon:'🚗', card:false, priority:true},
+    {field:'f-furnished',      icon:'🛋️', card:false, priority:true},
+    {field:'f-floors',         icon:'🏢', card:false, priority:false},
+    {field:'f-year-built',     icon:'📅', card:false, priority:false}
+  ],
+
+  villa: [
+    {field:'f-bedrooms',       icon:'🛏️', card:true,  priority:true},
+    {field:'f-bathrooms',      icon:'🛁', card:true,  priority:true},
+    {field:'f-sqm',            icon:'📐', card:true,  priority:true},
+    {field:'f-sqm-land',       icon:'⬛', card:false, priority:true},
+    {field:'f-parking-spaces', icon:'🚗', card:false, priority:true},
+    {field:'f-furnished',      icon:'🛋️', card:false, priority:true},
+    {field:'f-floors',         icon:'🏢', card:false, priority:false},
+    {field:'f-year-built',     icon:'📅', card:false, priority:false}
+  ],
+
+  // Floor Number / Maintenance Fee / Building Amenities intentionally not
+  // listed — no floor_number/maintenance_fee/building_facilities columns
+  // exist yet (see file-level comment). Add entries here once that
+  // migration ships.
+  apartment: [
+    {field:'f-bedrooms',       icon:'🛏️', card:true,  priority:true},
+    {field:'f-bathrooms',      icon:'🛁', card:true,  priority:true},
+    {field:'f-sqm',            icon:'📐', card:true,  priority:true},
+    {field:'f-furnished',      icon:'🛋️', card:false, priority:true},
+    {field:'f-parking-spaces', icon:'🚗', card:false, priority:false},
+    {field:'f-year-built',     icon:'📅', card:false, priority:false}
+  ],
+
+  condo: [
+    {field:'f-bedrooms',       icon:'🛏️', card:true,  priority:true},
+    {field:'f-bathrooms',      icon:'🛁', card:true,  priority:true},
+    {field:'f-sqm',            icon:'📐', card:true,  priority:true},
+    {field:'f-furnished',      icon:'🛋️', card:false, priority:true},
+    {field:'f-parking-spaces', icon:'🚗', card:false, priority:false},
+    {field:'f-year-built',     icon:'📅', card:false, priority:false}
+  ],
+
+  // Shopfront Width / Suitable For intentionally not listed — no matching
+  // columns exist yet (see file-level comment).
+  commercial: [
+    {field:'f-sqm',            icon:'📐', card:true,  priority:true},
+    {field:'f-floors',         icon:'🏢', card:true,  priority:true},
+    {field:'f-parking-spaces', icon:'🚗', card:false, priority:true},
+    {field:'f-year-built',     icon:'📅', card:false, priority:false}
+  ],
+
+  land: [
+    {field:'f-land-width',         icon:'📐', card:true,  priority:true, pairWith:'f-land-length', pairTemplate:'{a} × {b} m'},
+    {field:'f-sqm-land',           icon:'⬛', card:true,  priority:true},
+    {field:'f-road-frontage',      icon:'🛣️', card:true,  priority:true},
+    {field:'f-road-surface',       icon:'🧱', card:false, priority:true},
+    {field:'f-land-category',      icon:'🏷️', card:false, priority:true},
+    {field:'f-land-terrain',       icon:'⛰️', card:false, priority:true},
+    {field:'f-existing-structure', icon:'🏚️', card:false, priority:true},
+    {field:'f-best-use',           icon:'🎯', card:false, priority:true},
+    {field:'f-road-width',         icon:'↔️', card:false, priority:false},
+    {field:'f-land-shape',         icon:'◻️', card:false, priority:false}
+  ]
+};
+
+function _findFieldDef(typeKey, fieldId) {
+  var fields = PROPERTY_TYPE_FIELDS[typeKey] || [];
+  for (var i = 0; i < fields.length; i++) {
+    if (fields[i].id === fieldId) return fields[i];
+  }
+  return null;
+}
+
+// Formats one field's current value per its kind. Returns null for
+// empty/missing values so callers can drop the fact entirely, matching
+// today's "just don't show it" behavior for absent data.
+function resolveFieldDisplayValue(fieldDef, row, lang) {
+  if (!fieldDef || !fieldDef.column) return null;
+  var raw = row ? row[fieldDef.column] : null;
+  if (raw === null || raw === undefined || raw === '') return null;
+
+  if (fieldDef.kind === 'select') {
+    var opts = fieldDef.options || [];
+    for (var i = 0; i < opts.length; i++) {
+      if (opts[i].value === raw) return opts[i].label[lang] || opts[i].label.en;
+    }
+    return raw;
+  }
+
+  if (fieldDef.kind === 'multi_checkbox') {
+    if (!Array.isArray(raw) || !raw.length) return null;
+    var opts2 = fieldDef.options || [];
+    return raw.map(function(v){
+      for (var j = 0; j < opts2.length; j++) {
+        if (opts2[j].value === v) return opts2[j].label[lang] || opts2[j].label.en;
+      }
+      return v;
+    }).join(', ');
+  }
+
+  return raw;
+}
+
+function _buildFactItem(typeKey, entry, row, lang) {
+  var fieldDef = _findFieldDef(typeKey, entry.field);
+  if (!fieldDef) return null;
+  var value = resolveFieldDisplayValue(fieldDef, row, lang);
+  if (value === null) return null;
+
+  if (entry.pairWith) {
+    var pairDef = _findFieldDef(typeKey, entry.pairWith);
+    var pairValue = pairDef ? resolveFieldDisplayValue(pairDef, row, lang) : null;
+    if (pairValue !== null) {
+      value = (entry.pairTemplate || '{a} × {b}').replace('{a}', value).replace('{b}', pairValue);
+    }
+  }
+
+  return {icon: entry.icon, label: fieldDef.label[lang] || fieldDef.label.en, value: value};
+}
+
+// Compact facts for cards (search results, homepage, similar listings).
+function getCardFacts(typeKey, row, lang) {
+  var entries = PROPERTY_TYPE_DISPLAY[typeKey] || [];
+  var out = [];
+  for (var i = 0; i < entries.length; i++) {
+    if (!entries[i].card) continue;
+    var item = _buildFactItem(typeKey, entries[i], row, lang);
+    if (item) out.push(item);
+  }
+  return out;
+}
+
+// Detail-page facts, split into the prominent main spec grid and a
+// secondary "Property Details" list for everything else that's still
+// relevant to this type.
+function getDetailFacts(typeKey, row, lang) {
+  var entries = PROPERTY_TYPE_DISPLAY[typeKey] || [];
+  var priority = [], secondary = [];
+  for (var i = 0; i < entries.length; i++) {
+    var item = _buildFactItem(typeKey, entries[i], row, lang);
+    if (!item) continue;
+    (entries[i].priority ? priority : secondary).push(item);
+  }
+  return {priority: priority, secondary: secondary};
+}
