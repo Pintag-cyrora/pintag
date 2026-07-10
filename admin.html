@@ -2358,18 +2358,58 @@ function flagContactSectionForReview(needsAttention) {
 // seed row. publishDraft() refuses to publish while this is still set.
 const PENDING_CONTACT_ID = '00000000-0000-0000-0000-0000000000c1';
 
+// The PENDING sentinel contact is normally seeded once by
+// 20260705000300_backfill_contacts_from_properties.sql. That's a one-time
+// DB-level step, easy to miss on a freshly bootstrapped environment (or an
+// environment where that migration just hasn't been run yet) — if it's
+// missing, referencing PENDING_CONTACT_ID below would 409 with
+// properties_contact_id_fkey the moment a draft is saved. Self-heal here
+// instead of hard-depending on migration state: check for the row, create
+// it if absent, then proceed.
+async function ensurePendingContact() {
+  try {
+    const existing = await sbApi('GET', `contacts?id=eq.${PENDING_CONTACT_ID}&select=id`);
+    if (Array.isArray(existing) && existing.length) return PENDING_CONTACT_ID;
+  } catch (err) {
+    console.warn('[resolveDraftContactId] lookup of PENDING sentinel contact failed, will attempt to create it:', err.message);
+  }
+  console.warn('[resolveDraftContactId] PENDING sentinel contact ' + PENDING_CONTACT_ID + ' not found — creating it now (see 20260705000300_backfill_contacts_from_properties.sql)');
+  try {
+    await sbApi('POST', 'contacts', {
+      id:       PENDING_CONTACT_ID,
+      role:     'other',
+      name:     'PENDING — Pintag staff to confirm buyer contact',
+      phone:    '0000000000',
+      whatsapp: null
+    });
+  } catch (err) {
+    // A concurrent save may have created it first (race) — that's fine as
+    // long as the row now exists. If it genuinely doesn't, the properties
+    // insert right after this will still fail, but now with contact_id
+    // logged below so the cause is obvious instead of a bare 409.
+    console.warn('[resolveDraftContactId] create attempt failed (may already exist from a concurrent save):', err.message);
+  }
+  return PENDING_CONTACT_ID;
+}
+
 async function resolveDraftContactId() {
   const contactPhone = document.getElementById('f-contact-phone').value.trim();
-  if (!contactPhone) return PENDING_CONTACT_ID;
-  const contactBody = {
-    role:     document.getElementById('f-contact-role').value || 'other',
-    name:     document.getElementById('f-contact-name').value.trim() || null,
-    phone:    contactPhone,
-    whatsapp: document.getElementById('f-contact-whatsapp').value.trim() || contactPhone,
-    party_id: document.getElementById('f-agent-id').value || null
-  };
-  const created = await sbApi('POST', 'contacts', contactBody);
-  return Array.isArray(created) ? created[0].id : created.id;
+  let contactId;
+  if (!contactPhone) {
+    contactId = await ensurePendingContact();
+  } else {
+    const contactBody = {
+      role:     document.getElementById('f-contact-role').value || 'other',
+      name:     document.getElementById('f-contact-name').value.trim() || null,
+      phone:    contactPhone,
+      whatsapp: document.getElementById('f-contact-whatsapp').value.trim() || contactPhone,
+      party_id: document.getElementById('f-agent-id').value || null
+    };
+    const created = await sbApi('POST', 'contacts', contactBody);
+    contactId = Array.isArray(created) ? created[0].id : created.id;
+  }
+  console.log('[resolveDraftContactId] resolved contact_id:', contactId);
+  return contactId;
 }
 
 async function saveDraft() {
@@ -2419,6 +2459,8 @@ async function saveDraft() {
     contact_id:             await resolveDraftContactId(),
     slug
   };
+
+  console.log('[saveDraft] inserting into properties with contact_id:', body.contact_id);
 
   const res = await fetch(`${SUPABASE_URL}/rest/v1/properties`, {
     method: 'POST',
