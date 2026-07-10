@@ -40,7 +40,10 @@
 #      impersonating the admin auth uid (SET LOCAL role authenticated +
 #      request.jwt.claim(s)) and running a real INSERT into contacts inside
 #      a transaction that's always rolled back — never leaves a test row.
-#   6. Prints "✅ Dev environment ready." only if both of the above succeed.
+#   6. Prints a readiness summary ("✅ Pintag Dev Environment Ready" + a
+#      checklist) only if both of the above succeed — makes it immediately
+#      obvious the environment is actually usable, not just that the script
+#      ran without crashing.
 #
 # A brand-new developer should be able to go from an empty Supabase project
 # to a working Pintag dev environment with this one command (plus creating
@@ -167,7 +170,23 @@ ROLLBACK;
 SQL
 then
   echo
-  echo "✅ Dev environment ready."
+  echo "✅ Pintag Dev Environment Ready"
+  echo
+  echo "✓ Schema restored"
+  echo "✓ Core migrations applied (reflects production's current state)"
+  echo "✓ Admin auth user found"
+  echo "✓ Staff party seeded"
+  echo "✓ RLS verification passed"
+  echo
+  echo "Next:"
+  echo "  1. Open admin.html"
+  echo "  2. Create a test listing"
+  echo "  3. Verify save/edit workflow"
+  echo
+  echo "Optional:"
+  echo "  - Apply any migrations newer than production's current state, e.g.:"
+  echo "    psql \"\$PINTAG_DEV_DB_URL\" -v ON_ERROR_STOP=1 -f supabase/migrations/<newest>.sql"
+  echo "  - Run scripts/seed-dev-from-prod.sh for realistic sample listings."
 else
   echo
   echo "✗ RLS verification insert failed — see the error above." >&2
@@ -175,9 +194,3 @@ else
   echo "  Double check: SELECT type, auth_user_id FROM parties WHERE auth_user_id = '$ADMIN_UID';" >&2
   exit 1
 fi
-
-echo
-echo "Optional next steps:"
-echo "  - Apply any migrations newer than production's current state, e.g.:"
-echo "    psql \"\$PINTAG_DEV_DB_URL\" -v ON_ERROR_STOP=1 -f supabase/migrations/<newest>.sql"
-echo "  - Run scripts/seed-dev-from-prod.sh for realistic sample listings."
