@@ -1,14 +1,16 @@
-// facebook-listing-fetcher — the "source-specific" half of Smart Import's
-// two-stage pipeline: (1) THIS function turns a Facebook Marketplace URL
-// into normalized { title, description, price_display, image_urls }, then
-// (2) admin.html feeds that straight into the existing, unchanged
-// smart-listing-importer function (the "source-agnostic" Gemini extraction
-// stage), exactly the same call it already makes for pasted text.
+// facebook-listing-fetcher — one ADAPTER in Smart Import's ingestion
+// pipeline: Source -> Adapter -> ImportResult -> AI Enrichment ->
+// Validation -> Populate Form. This adapter turns a Facebook Marketplace
+// URL into raw material (title, description, price_display, images[]) —
+// admin.html folds that into the same description text + image list the
+// manual-paste adapter already produces, then hands it to
+// smart-listing-importer (AI Enrichment), which is where the actual
+// confidence-tagged ImportResult gets assembled. See that function's
+// header comment for the full ImportResult/ImportImage/FieldValue shapes.
 //
-// Any future import source (a property portal, a PDF, a Word doc, OCR)
-// only needs its own small fetcher producing this same shape — the Gemini
-// extraction stage and populateFormFromImport() on the client never need
-// to know or care where the data came from.
+// Any future adapter (a property portal, a PDF, a Word doc, OCR, email)
+// only needs to produce this same raw-material shape — AI Enrichment and
+// Populate Form never need to know or care which adapter it came from.
 //
 // This function does NOT touch any database table (no properties, no
 // contacts) — the one Supabase-facing side effect it has is uploading
@@ -34,6 +36,17 @@
 // only yields 1 photo and a short description, that's expected, not a bug
 // — staff can still fall back to the manual paste-text + upload-photos
 // path in the same panel for anything auto-fetch comes back thin on.
+
+// Shared shape with smart-listing-importer's ImportImage — see that file
+// for the full ImportResult contract this adapter feeds into.
+interface ImportImage {
+  originalUrl?: string;
+  storageUrl?: string;
+  width?: number;   // reserved for future use (dedup/ranking) — not populated by this adapter
+  height?: number;  // reserved for future use — not populated by this adapter
+  primary?: boolean;
+  source: string;
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -140,10 +153,10 @@ async function fetchFacebookPage(url: string): Promise<{ html: string; finalUrl:
 }
 
 async function uploadImageToStorage(
-  imageUrl: string, supabaseUrl: string, anonKey: string, callerToken: string,
-): Promise<string | null> {
+  originalUrl: string, supabaseUrl: string, anonKey: string, callerToken: string,
+): Promise<ImportImage | null> {
   try {
-    const res = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
+    const res = await fetch(originalUrl, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
     const buffer = await res.arrayBuffer();
     const contentType = (res.headers.get('content-type') || 'image/jpeg').split(';')[0];
@@ -159,7 +172,11 @@ async function uploadImageToStorage(
       body: buffer,
     });
     if (!upload.ok) return null;
-    return `${supabaseUrl}/storage/v1/object/public/property-images/${fileName}`;
+    return {
+      originalUrl,
+      storageUrl: `${supabaseUrl}/storage/v1/object/public/property-images/${fileName}`,
+      source: 'facebook_og',
+    };
   } catch {
     return null;
   }
@@ -200,9 +217,17 @@ Deno.serve(async (req) => {
     const uploaded = await Promise.all(
       rawImageUrls.map(u => uploadImageToStorage(u, supabaseUrl, anonKey, token)),
     );
-    const image_urls = uploaded.filter((u): u is string => !!u);
+    const images = uploaded.filter((img): img is ImportImage => !!img);
+    // Best-effort default hero — og:image order usually puts the listing's
+    // main photo first. AI Enrichment's own photo analysis may override
+    // this once it actually looks at the images.
+    if (images.length) images[0].primary = true;
 
-    if (!title && !description && image_urls.length === 0) {
+    const warnings: string[] = [];
+    if (images.length <= 1) warnings.push('Facebook only exposed 1 photo (or none) to this unauthenticated fetch — the full gallery lives behind its login wall.');
+    if (!description) warnings.push('No description found — Facebook may be showing a login-wall page for this listing.');
+
+    if (!title && !description && images.length === 0) {
       throw new Error(
         'Could not extract anything from this Facebook page — it may be behind a login wall or the link is not public. ' +
         'Try pasting the description and photos manually below instead.'
@@ -210,7 +235,18 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ title, description, price_display: priceDisplay, image_urls }),
+      JSON.stringify({
+        title,
+        description,
+        price_display: priceDisplay,
+        images,
+        metadata: {
+          source: 'facebook_og',
+          fetchedAt: new Date().toISOString(),
+          sourceUrl: page.finalUrl,
+          warnings,
+        },
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error) {
