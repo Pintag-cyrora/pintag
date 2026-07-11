@@ -30,7 +30,9 @@
 //     bedrooms, bathrooms, sqm, sqm_land, furnished: FieldValue<...>;
 //     location: { district: FieldValue<string>, village: FieldValue<string> };
 //     contact: { name: FieldValue<string>, phone: FieldValue<string>, role: FieldValue<string> };
-//     images: ImportImage[];       // merged from the request's image_urls + photo analysis
+//     images: ImportImage[];       // CANONICAL, already in recommended display
+//                                  // order (hero first) — consumers read this
+//                                  // directly and never need recommended_order
 //     recommended_order: number[];
 //     metadata: { source, enrichedAt };
 //   }
@@ -376,17 +378,27 @@ Deno.serve(async (req) => {
       ? result.photo_analysis as Array<{ index: number; room_type?: string; quality_score?: number }>
       : [];
     const heroIndex = typeof result.hero_index === 'number' ? result.hero_index : 0;
-    enriched.images = urlsToFetch.map((url, i) => {
-      const analysis = photoAnalysis.find(p => p.index === i);
-      return {
-        storageUrl: url,
-        primary: i === heroIndex,
-        source: importSource,
-        roomType: analysis?.room_type,
-        qualityScore: analysis?.quality_score,
-      };
-    });
-    enriched.recommended_order = Array.isArray(result.recommended_order) ? result.recommended_order : [];
+    const recommendedOrder = Array.isArray(result.recommended_order) ? result.recommended_order as number[] : [];
+
+    const rawImages = urlsToFetch.map((url, i) => ({
+      storageUrl: url,
+      primary: i === heroIndex,
+      source: importSource,
+      roomType: photoAnalysis.find(p => p.index === i)?.room_type,
+      qualityScore: photoAnalysis.find(p => p.index === i)?.quality_score,
+    }));
+
+    // images[] IS the canonical, already-ordered source of truth for
+    // display sequence (hero first, per the prompt's own ordering rule) —
+    // consumers should read images[] directly and never need to
+    // cross-reference recommended_order for ordering. recommended_order is
+    // still included below, purely as a fallback/compatibility signal for
+    // any older or simpler consumer that only understands index arrays.
+    const orderedIndexes = recommendedOrder.length
+      ? [...recommendedOrder, ...rawImages.map((_, i) => i).filter(i => !recommendedOrder.includes(i))]
+      : rawImages.map((_, i) => i);
+    enriched.images = orderedIndexes.map(i => rawImages[i]).filter(Boolean);
+    enriched.recommended_order = recommendedOrder;
     enriched.metadata = { source: importSource, enrichedAt: new Date().toISOString() };
 
     return new Response(JSON.stringify(enriched), {

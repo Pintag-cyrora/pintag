@@ -1847,6 +1847,18 @@ async function deleteListing(id, title) {
 }
 
 // ── IMAGE UPLOAD ──────────────────────────────────────────────────
+// importImageModel is the canonical ImportImage[] — every mutation
+// (manual upload, cover selection, removal, Smart Import, loading an
+// existing listing) happens here, whatever the source. uploadedImages is
+// a pure projection of it (plain storageUrl strings) computed inside
+// refreshImageGrid() for the existing grid UI/#f-images to render and
+// read — never assigned to directly anywhere else, so the two can't
+// drift apart. This is also the ONE place the rich model flattens to
+// plain URLs, immediately before it reaches the hidden field saveListing()
+// persists from — properties.images stays a plain text[] in the DB
+// unchanged, but everything upstream of that keeps the full ImportImage
+// (source, primary, roomType, qualityScore) until this exact point.
+let importImageModel = [];
 let uploadedImages = [];
 
 const zone = document.getElementById('upload-zone');
@@ -1917,7 +1929,7 @@ async function handleImageUpload(files) {
 
       if (res.ok) {
         const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
-        uploadedImages.push(publicUrl);
+        importImageModel.push({ storageUrl: publicUrl, source: 'manual', primary: importImageModel.length === 0 });
         completed++;
         fill.style.width = `${(completed / fileArr.length) * 100}%`;
         status.style.color = '#166534';
@@ -1955,14 +1967,22 @@ async function handleImageUpload(files) {
 }
 
 function setCoverImage(url) {
-  uploadedImages = [url, ...uploadedImages.filter(u => u !== url)];
+  const idx = importImageModel.findIndex(img => img.storageUrl === url);
+  if (idx === -1) return;
+  const [entry] = importImageModel.splice(idx, 1);
+  importImageModel.unshift(entry);
+  importImageModel.forEach((img, i) => { img.primary = (i === 0); });
   refreshImageGrid();
 }
 function removeImage(url) {
-  uploadedImages = uploadedImages.filter(u => u !== url);
+  importImageModel = importImageModel.filter(img => img.storageUrl !== url);
+  if (importImageModel.length && !importImageModel.some(img => img.primary)) importImageModel[0].primary = true;
   refreshImageGrid();
 }
+// The one place importImageModel (ImportImage[]) flattens to plain
+// storageUrl strings — everything upstream of this keeps the rich model.
 function refreshImageGrid() {
+  uploadedImages = importImageModel.map(img => img.storageUrl).filter(Boolean);
   const grid = document.getElementById('image-preview-grid');
   grid.innerHTML = '';
   uploadedImages.forEach((url, i) => {
@@ -1981,7 +2001,7 @@ function refreshImageGrid() {
   document.getElementById('f-images').value = JSON.stringify(uploadedImages);
 }
 function populateExistingImages(images) {
-  uploadedImages = images || [];
+  importImageModel = (images || []).map((url, i) => ({ storageUrl: url, source: 'existing', primary: i === 0 }));
   refreshImageGrid();
 }
 
@@ -2554,18 +2574,26 @@ function populateFormFromImport(data) {
   document.getElementById('nearby-list').innerHTML = '';
   addNearby();
 
-  // Apply AI-recommended photo order
-  const order = Array.isArray(data.recommended_order) ? data.recommended_order : [];
-  if (order.length > 0 && importImages.length > 0) {
+  // data.images (ImportImage[]) is the canonical source of truth, already
+  // in the correct display order (hero first) — consumed directly, no
+  // reconstruction from recommended_order needed. recommended_order +
+  // the adapter's flat importImages[] are kept only as a fallback for a
+  // response that didn't include images[] at all. Whichever path builds
+  // it, importImageModel stays the rich model from here on — refreshImageGrid()
+  // is the one place it flattens to plain URLs, right before #f-images.
+  if (Array.isArray(data.images) && data.images.length) {
+    importImageModel = data.images.slice();
+  } else if (importImages.length) {
+    const order = Array.isArray(data.recommended_order) ? data.recommended_order : [];
     const mentioned = new Set(order);
-    const reordered = [
-      ...order.map(i => importImages[i]).filter(Boolean),
-      ...importImages.filter((_, i) => !mentioned.has(i))
-    ];
-    uploadedImages = reordered;
+    const orderedUrls = order.length
+      ? [...order.map(i => importImages[i]).filter(Boolean), ...importImages.filter((_, i) => !mentioned.has(i))]
+      : importImages.slice();
+    importImageModel = orderedUrls.map(url => ({ storageUrl: url, source: data.source || 'manual' }));
   } else {
-    uploadedImages = [...importImages];
+    importImageModel = [];
   }
+  if (importImageModel.length && !importImageModel.some(img => img.primary)) importImageModel[0].primary = true;
   refreshImageGrid();
 
   // Clear video/download fields
