@@ -9,7 +9,8 @@
     "pipeline:publish-queue": "tsx pipeline/publish-queue.ts",
     "knowledge:review": "tsx pipeline/knowledge-review.ts",
     "knowledge:dashboard": "tsx pipeline/knowledge-dashboard.ts",
-    "daily-briefing": "tsx pipeline/daily-briefing.ts"
+    "daily-briefing": "tsx pipeline/daily-briefing.ts",
+    "teach:os": "tsx pipeline/teach.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"

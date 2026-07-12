@@ -242,8 +242,11 @@ function readFounderName(): string {
  * pattern actually matched — computing these separately previously let a
  * fallback-matched line stay in the narrative *and* appear in the action
  * card, duplicating it on the page.
+ *
+ * Exported so pipeline/teach.ts (M2.1) can restate the same recommendation
+ * it's asking about, without re-deriving the extraction logic.
  */
-function extractRecommendedAction(briefingText: string): { action: string | undefined; narrativeOnly: string } {
+export function extractRecommendedAction(briefingText: string): { action: string | undefined; narrativeOnly: string } {
   const strict = briefingText.match(/^RECOMMENDED ACTION:\s*(.+)$/im);
   if (strict) {
     return {
@@ -464,6 +467,14 @@ a:hover{color:var(--teal-light);}
       <div class="action-label">If you only do one thing today</div>
       <button class="action-button" onclick="alert('One-click execution isn\\'t built yet — this is the recommended action Marketing OS would run for you.'); return false;">${escapeHtml(recommendedAction)}</button>
     </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section">
+    <div class="section-title">🧑‍🏫 Teach Marketing OS</div>
+    <div class="briefing-text">Would you have done something differently today? I'd like to understand how you think, not just whether you agree.</div>
+    <div class="cli-hint" style="margin-top:10px;">npm run teach:os</div>
   </div>
 
   <hr class="divider">` : ''}

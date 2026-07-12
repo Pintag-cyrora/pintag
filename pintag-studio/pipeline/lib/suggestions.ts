@@ -21,7 +21,7 @@ import { proposeKnowledgeEntry, type KnowledgeEntry, type KnowledgeSourceType } 
 
 export const SUGGESTIONS_ROOT = join(REPO_ROOT, 'knowledge-suggestions');
 
-export type SuggestionKind = 'knowledge-gap' | 'recurring-question' | 'wording-improvement' | 'marketing-observation' | 'other';
+export type SuggestionKind = 'knowledge-gap' | 'recurring-question' | 'wording-improvement' | 'marketing-observation' | 'founder-teaching' | 'other';
 export type SuggestionStatus = 'pending' | 'approved' | 'rejected';
 
 export interface SuggestionDiff {
