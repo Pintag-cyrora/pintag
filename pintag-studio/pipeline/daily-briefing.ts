@@ -28,6 +28,18 @@ function yesterday(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Everything gathered below, and the CEO Workspace rendered from it, is a
+// SNAPSHOT of current state at generation time — not change-aware. The
+// founder's stated long-term direction is for this to eventually surface
+// what changed since the last visit (new/completed/newly-blocked/resolved)
+// rather than just today's static state. Not built yet — no diffing, no
+// "since last visit" tracking, no persisted prior snapshots. Kept in mind
+// here: AttentionItem (below) carries a stable title per source item
+// specifically so a future diff pass can compare two runs' item lists
+// without another data-model change.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Intelligence Layer — what it learned recently (entries promoted to
 // verified/expert_reviewed since yesterday). Fully local, no credentials
 // needed — knowledge.ts already merges knowledge/ and brain/lao/.
@@ -64,6 +76,8 @@ interface SupabaseGatherResult {
   /** Structured counts, populated only when available: true — used by renderMorningScreen(), not the LLM prompt. */
   pendingApprovalsCount?: number;
   publishedCount?: number;
+  /** Same rows the count above is derived from, kept for real per-item rendering (Needs Your Attention) rather than just a number. */
+  pendingApprovals?: Array<{ title: string; contentType: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +117,10 @@ export async function gatherOperationalMemory(): Promise<SupabaseGatherResult> {
       available: true,
       summary: `In flight:\n${inFlightLines}\n\nAwaiting your approval:\n${approvalLines}`,
       pendingApprovalsCount: (pendingApprovals ?? []).length,
+      pendingApprovals: (pendingApprovals ?? []).map((r: any) => ({
+        title: r.content_items?.title ?? 'Untitled item',
+        contentType: r.content_items?.content_type ?? 'content',
+      })),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -185,13 +203,17 @@ export function buildPrompt(sections: { intelligence: string; suggestions: strin
 }
 
 // ---------------------------------------------------------------------------
-// Executive Briefing Screen (dashboard/morning.html) — the smallest working
-// version of the Executive Morning Workflow (Good Morning -> Daily Briefing
-// -> Review Knowledge Suggestions -> Today's Priorities -> Start My Day).
+// CEO Workspace (dashboard/morning.html, M2) — the screen the founder opens
+// every morning, answering five questions in order: what happened
+// (Executive Briefing), what needs a decision (Needs Your Attention), what's
+// the one thing to do (Recommended Action), which business (Active
+// Companies), which department (Start My Day). Guiding principle (see
+// FOUNDING_PRINCIPLES.md, "CEO Workspace Philosophy"): every section should
+// help answer "what should I do next" — nothing here is an analytics widget.
 // Built from the exact same data already gathered above for the markdown
 // briefing -- zero additional LLM calls. Self-contained static HTML, same
 // pattern as dashboard/intelligence.html: no live backend, no Supabase Auth,
-// regenerate on demand. Not a dashboard -- a morning workspace.
+// regenerate on demand. Not a dashboard -- a workspace.
 // ---------------------------------------------------------------------------
 
 function escapeHtml(str: string): string {
@@ -215,36 +237,92 @@ function readFounderName(): string {
  * explicitly requires it); the older loose "what I recommend" match is kept
  * only as a fallback for briefings generated before this change, since LLM
  * output structure isn't 100% guaranteed run to run.
+ *
+ * Returns the stripped narrative alongside the action, from whichever
+ * pattern actually matched — computing these separately previously let a
+ * fallback-matched line stay in the narrative *and* appear in the action
+ * card, duplicating it on the page.
  */
-function extractRecommendedAction(briefingText: string): string | undefined {
+function extractRecommendedAction(briefingText: string): { action: string | undefined; narrativeOnly: string } {
   const strict = briefingText.match(/^RECOMMENDED ACTION:\s*(.+)$/im);
-  if (strict) return strict[1].trim();
-  const fallback = briefingText.match(/(?:\*\*)?what i recommend(?:\*\*)?:?\s*([^\n]+)/i);
-  return fallback ? fallback[1].trim() : undefined;
-}
-
-interface Priority {
-  label: string;
-  href?: string;
+  if (strict) {
+    return {
+      action: strict[1].trim(),
+      narrativeOnly: briefingText.replace(/\n*^RECOMMENDED ACTION:.*$/im, '').trim(),
+    };
+  }
+  const fallback = briefingText.match(/^.*(?:\*\*)?what i recommend(?:\*\*)?:?\s*[^\n]+$/im);
+  if (fallback) {
+    return {
+      action: fallback[0].replace(/^.*(?:\*\*)?what i recommend(?:\*\*)?:?\s*/i, '').trim(),
+      narrativeOnly: briefingText.replace(fallback[0], '').replace(/\n{3,}/g, '\n\n').trim(),
+    };
+  }
+  return { action: undefined, narrativeOnly: briefingText.trim() };
 }
 
 /**
- * Derived, not LLM-synthesized — real counts already gathered, nothing
- * invented. Everything that needs attention today, distinct from the one
- * Recommended Action ("if you only did one thing"): can legitimately be
- * empty on a quiet day, same "don't pad with filler" standard as
- * elsewhere — the Recommended Action section is where "always show
- * something" lives instead.
+ * One real, pending item the founder needs to act on. Deliberately generic
+ * ("source" is a free string, not a closed union of today's two cases) so
+ * approvals, knowledge reviews, blocked work, infra issues, billing, or
+ * legal items can all become attention items later without a redesign —
+ * see FOUNDING_PRINCIPLES.md's CEO Workspace Philosophy: this section
+ * exists to answer "what should I do next," for any source that qualifies.
  */
-function derivePriorities(operational: SupabaseGatherResult, pendingSuggestionsCount: number): Priority[] {
-  const priorities: Priority[] = [];
-  if (operational.available && (operational.pendingApprovalsCount ?? 0) > 0) {
-    priorities.push({ label: `Approve ${operational.pendingApprovalsCount} item${operational.pendingApprovalsCount === 1 ? '' : 's'} waiting in the queue`, href: 'index.html' });
+interface AttentionItem {
+  source: string;
+  title: string;
+  /** Short tag shown next to the title, e.g. a content type or suggestion kind. */
+  badge: string;
+  detail: string;
+  link?: string;
+  cliHint?: string;
+}
+
+/**
+ * Derived, not LLM-synthesized — real rows already gathered, nothing
+ * invented. Distinct from the one Recommended Action ("if you only did one
+ * thing"): can legitimately be empty on a quiet day, same "don't pad with
+ * filler" standard as elsewhere. Today's two real sources: pending content
+ * approvals (a real, already-working Approve/Reject click lives at
+ * dashboard/index.html) and pending knowledge suggestions (no UI yet, so a
+ * CLI hint instead of a link — same honest-not-fake-button discipline used
+ * for the Recommended Action card).
+ */
+function deriveAttentionItems(
+  operational: SupabaseGatherResult,
+  pendingSuggestions: ReturnType<typeof listPendingSuggestions>
+): AttentionItem[] {
+  const items: AttentionItem[] = [];
+  for (const row of operational.pendingApprovals ?? []) {
+    items.push({
+      source: 'approval',
+      title: row.title,
+      badge: row.contentType,
+      detail: 'Awaiting your approval',
+      link: 'index.html',
+    });
   }
-  if (pendingSuggestionsCount > 0) {
-    priorities.push({ label: `Review ${pendingSuggestionsCount} knowledge suggestion${pendingSuggestionsCount === 1 ? '' : 's'}` });
+  for (const s of pendingSuggestions) {
+    items.push({
+      source: 'knowledge-suggestion',
+      title: s.title,
+      badge: s.kind,
+      detail: `Observed ${s.occurrences.length}x`,
+      cliHint: 'npm run knowledge:review',
+    });
   }
-  return priorities;
+  return items;
+}
+
+/** Reads today's single active company (org.name) from org-config.json. Not a switcher — no second company exists yet (Houluebor/Mamieii/Tien are Phase 5, not started); structured so a second org.name later is a data change, not a redesign. */
+function deriveActiveCompany(): string {
+  try {
+    const config = JSON.parse(readFileSync(join(REPO_ROOT, 'brain', 'org-config.json'), 'utf-8'));
+    return config.org?.name ?? 'Unknown';
+  } catch {
+    return 'Unknown';
+  }
 }
 
 /** Only surfaces a win when a genuine positive signal exists in already-gathered data — never fabricated, omitted entirely on a quiet day. Priority order: human+AI collaboration (approved suggestions) > new intelligence > published content. */
@@ -278,31 +356,40 @@ export function renderMorningScreen(input: {
   organizational: SupabaseGatherResult;
   generatedAt: Date;
 }): string {
-  const recommendedAction = extractRecommendedAction(input.briefingText);
-  // The RECOMMENDED ACTION: line is a machine-parseable marker, not customer
-  // prose — it gets its own prominent card below, so strip it from the
-  // narrative display to avoid showing the same thing twice (once raw and
-  // shouty, once formatted).
-  const narrativeOnly = input.briefingText.replace(/\n*^RECOMMENDED ACTION:.*$/im, '').trim();
-  const priorities = derivePriorities(input.operational, input.pendingSuggestions.length);
+  // The recommendation line (whichever pattern matched) is a machine-
+  // parseable marker, not customer prose — it gets its own prominent card
+  // below, so it's stripped from the narrative to avoid showing the same
+  // thing twice (once raw, once formatted).
+  const { action: recommendedAction, narrativeOnly } = extractRecommendedAction(input.briefingText);
+  const attentionItems = deriveAttentionItems(input.operational, input.pendingSuggestions);
+  const activeCompany = deriveActiveCompany();
   const win = deriveWin(input.organizational);
   const dateLabel = input.generatedAt.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  const suggestionPreview = input.pendingSuggestions
-    .slice(0, 3)
-    .map((s) => `<li>${escapeHtml(s.title)} <span class="tag">${escapeHtml(s.kind)}</span></li>`)
-    .join('');
+  // Capped, not exhaustive — protects the "under five minutes" goal as
+  // pending volume grows; overflow links to the real queue instead.
+  const ATTENTION_LIMIT = 5;
+  const visibleAttentionItems = attentionItems.slice(0, ATTENTION_LIMIT);
+  const overflowCount = attentionItems.length - visibleAttentionItems.length;
 
-  const priorityItems = priorities.length
-    ? priorities.map((p) => (p.href ? `<li><a href="${escapeHtml(p.href)}">${escapeHtml(p.label)}</a></li>` : `<li>${escapeHtml(p.label)}</li>`)).join('')
-    : '<li class="empty">Nothing urgent — a good day to get ahead on something.</li>';
+  const attentionListItems = attentionItems.length
+    ? visibleAttentionItems
+        .map((item) => {
+          const action = item.link
+            ? `<a href="${escapeHtml(item.link)}">Review →</a>`
+            : `<span class="cli-hint">${escapeHtml(item.cliHint ?? '')}</span>`;
+          return `<li><div class="attn-title">${escapeHtml(item.title)} <span class="tag">${escapeHtml(item.badge)}</span></div><div class="attn-detail">${escapeHtml(item.detail)} ${action}</div></li>`;
+        })
+        .join('') +
+      (overflowCount > 0 ? `<li class="empty"><a href="index.html">+${overflowCount} more — open the queue →</a></li>` : '')
+    : '<li class="empty">Nothing needs your attention right now.</li>';
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Good Morning — Marketing OS</title>
+<title>CEO Workspace — Marketing OS</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{--teal:#2D8C8C;--teal-light:#38A8A8;--teal-dim:rgba(45,140,140,0.08);--teal-border:rgba(45,140,140,0.22);
@@ -310,6 +397,7 @@ export function renderMorningScreen(input: {
   --border:rgba(26,36,40,0.1);--gold:#B8860B;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;background:var(--warm);color:var(--ink);line-height:1.65;}
 .wrap{max-width:640px;margin:0 auto;padding:48px 20px 80px;}
+.workspace-label{font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;}
 .greeting h1{font-size:28px;font-weight:600;margin-bottom:2px;}
 .greeting .date{font-size:13px;color:var(--ink-muted);margin-bottom:20px;}
 .intro{font-size:16px;color:var(--ink-soft);margin-bottom:28px;}
@@ -320,17 +408,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .section-title{font-size:13px;font-weight:700;letter-spacing:0.04em;color:var(--ink-muted);text-transform:uppercase;margin-bottom:10px;}
 .briefing-text{white-space:pre-wrap;font-size:15px;color:var(--ink-soft);}
 ul{list-style:none;}
-ul li{padding:8px 0;border-bottom:1px solid var(--border);font-size:15px;}
+ul li{padding:10px 0;border-bottom:1px solid var(--border);font-size:15px;}
 ul li:last-child{border-bottom:none;}
 ul li.empty{color:var(--ink-muted);font-style:italic;}
+.attn-title{font-weight:600;}
+.attn-detail{font-size:13px;color:var(--ink-muted);margin-top:2px;}
+.attn-detail a{margin-left:6px;}
 a{color:var(--teal);font-weight:600;text-decoration:none;}
 a:hover{color:var(--teal-light);}
 .tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-muted);background:var(--warm-deep);border-radius:10px;padding:2px 8px;margin-left:8px;}
-.cli-hint{font-size:13px;color:var(--ink-muted);margin-top:10px;font-family:monospace;background:var(--warm-deep);padding:8px 12px;border-radius:4px;display:inline-block;}
+.cli-hint{font-size:12px;color:var(--ink-muted);font-family:monospace;background:var(--warm-deep);padding:2px 8px;border-radius:4px;display:inline-block;}
 .action-card{background:var(--white);border:1.5px solid var(--teal-border);border-radius:8px;padding:18px 20px;}
 .action-label{font-size:12px;color:var(--ink-muted);margin-bottom:10px;}
 .action-button{display:inline-block;background:var(--teal);color:#fff;font-size:15px;font-weight:600;border:none;border-radius:6px;padding:12px 22px;cursor:pointer;font-family:inherit;}
 .action-button:hover{background:var(--teal-light);}
+.company-chip{display:inline-block;background:var(--teal-dim);border:1px solid var(--teal-border);color:var(--ink);font-size:14px;font-weight:600;padding:8px 16px;border-radius:20px;}
 .start{background:var(--ink);border-radius:8px;padding:22px 24px;margin-top:8px;}
 .start a{color:#fff;font-size:15px;display:block;padding:6px 0;}
 .start a:hover{color:var(--teal-light);}
@@ -342,6 +434,7 @@ a:hover{color:var(--teal-light);}
 
   <!-- Static snapshot — this greeting reflects when the page was generated (npm run daily-briefing), not the viewer's local time. Regenerate to refresh, same as dashboard/intelligence.html. -->
   <div class="greeting">
+    <div class="workspace-label">CEO Workspace</div>
     <h1>☀️ Good Morning, ${escapeHtml(input.founderName)}</h1>
     <div class="date">${escapeHtml(dateLabel)}</div>
   </div>
@@ -351,23 +444,15 @@ a:hover{color:var(--teal-light);}
   ${win ? `<div class="win"><span class="label">Yesterday's Win</span>${escapeHtml(win)}</div>` : ''}
 
   <div class="section">
-    <div class="section-title">🧠 Daily Briefing</div>
+    <div class="section-title">🧠 Executive Briefing</div>
     <div class="briefing-text">${escapeHtml(narrativeOnly)}</div>
   </div>
 
   <hr class="divider">
 
   <div class="section">
-    <div class="section-title">📚 Knowledge Suggestions — ${input.pendingSuggestions.length} waiting</div>
-    ${input.pendingSuggestions.length ? `<ul>${suggestionPreview}</ul>` : '<p class="briefing-text">Nothing waiting for review right now.</p>'}
-    ${input.pendingSuggestions.length ? '<div class="cli-hint">npm run knowledge:review</div>' : ''}
-  </div>
-
-  <hr class="divider">
-
-  <div class="section">
-    <div class="section-title">📋 Today's Priorities</div>
-    <ul>${priorityItems}</ul>
+    <div class="section-title">📋 Needs Your Attention${attentionItems.length ? ` — ${attentionItems.length}` : ''}</div>
+    <ul>${attentionListItems}</ul>
   </div>
 
   <hr class="divider">
@@ -383,10 +468,18 @@ a:hover{color:var(--teal-light);}
 
   <hr class="divider">` : ''}
 
+  <div class="section">
+    <div class="section-title">🏢 Active Companies</div>
+    <div class="company-chip">${escapeHtml(activeCompany)}</div>
+  </div>
+
+  <hr class="divider">
+
   <div class="start">
     <div class="section-title" style="color:rgba(255,255,255,0.5);">🚀 Start My Day</div>
     <a href="index.html">Open the approval queue →</a>
     <a href="#" onclick="alert('Run: npm run knowledge:review'); return false;">Review knowledge suggestions →</a>
+    <a href="intelligence.html">Explore the Knowledge Layer →</a>
   </div>
 
   <div class="footnote">Generated ${input.generatedAt.toLocaleString()} — regenerate any time with <code>npm run daily-briefing</code>.</div>

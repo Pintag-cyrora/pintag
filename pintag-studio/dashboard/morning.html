@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Good Morning — Marketing OS</title>
+<title>CEO Workspace — Marketing OS</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{--teal:#2D8C8C;--teal-light:#38A8A8;--teal-dim:rgba(45,140,140,0.08);--teal-border:rgba(45,140,140,0.22);
@@ -11,6 +11,7 @@
   --border:rgba(26,36,40,0.1);--gold:#B8860B;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;background:var(--warm);color:var(--ink);line-height:1.65;}
 .wrap{max-width:640px;margin:0 auto;padding:48px 20px 80px;}
+.workspace-label{font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;}
 .greeting h1{font-size:28px;font-weight:600;margin-bottom:2px;}
 .greeting .date{font-size:13px;color:var(--ink-muted);margin-bottom:20px;}
 .intro{font-size:16px;color:var(--ink-soft);margin-bottom:28px;}
@@ -21,13 +22,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .section-title{font-size:13px;font-weight:700;letter-spacing:0.04em;color:var(--ink-muted);text-transform:uppercase;margin-bottom:10px;}
 .briefing-text{white-space:pre-wrap;font-size:15px;color:var(--ink-soft);}
 ul{list-style:none;}
-ul li{padding:8px 0;border-bottom:1px solid var(--border);font-size:15px;}
+ul li{padding:10px 0;border-bottom:1px solid var(--border);font-size:15px;}
 ul li:last-child{border-bottom:none;}
 ul li.empty{color:var(--ink-muted);font-style:italic;}
+.attn-title{font-weight:600;}
+.attn-detail{font-size:13px;color:var(--ink-muted);margin-top:2px;}
+.attn-detail a{margin-left:6px;}
 a{color:var(--teal);font-weight:600;text-decoration:none;}
 a:hover{color:var(--teal-light);}
 .tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-muted);background:var(--warm-deep);border-radius:10px;padding:2px 8px;margin-left:8px;}
-.cli-hint{font-size:13px;color:var(--ink-muted);margin-top:10px;font-family:monospace;background:var(--warm-deep);padding:8px 12px;border-radius:4px;display:inline-block;}
+.cli-hint{font-size:12px;color:var(--ink-muted);font-family:monospace;background:var(--warm-deep);padding:2px 8px;border-radius:4px;display:inline-block;}
+.action-card{background:var(--white);border:1.5px solid var(--teal-border);border-radius:8px;padding:18px 20px;}
+.action-label{font-size:12px;color:var(--ink-muted);margin-bottom:10px;}
+.action-button{display:inline-block;background:var(--teal);color:#fff;font-size:15px;font-weight:600;border:none;border-radius:6px;padding:12px 22px;cursor:pointer;font-family:inherit;}
+.action-button:hover{background:var(--teal-light);}
+.company-chip{display:inline-block;background:var(--teal-dim);border:1px solid var(--teal-border);color:var(--ink);font-size:14px;font-weight:600;padding:8px 16px;border-radius:20px;}
 .start{background:var(--ink);border-radius:8px;padding:22px 24px;margin-top:8px;}
 .start a{color:#fff;font-size:15px;display:block;padding:6px 0;}
 .start a:hover{color:var(--teal-light);}
@@ -39,40 +48,49 @@ a:hover{color:var(--teal-light);}
 
   <!-- Static snapshot — this greeting reflects when the page was generated (npm run daily-briefing), not the viewer's local time. Regenerate to refresh, same as dashboard/intelligence.html. -->
   <div class="greeting">
+    <div class="workspace-label">CEO Workspace</div>
     <h1>☀️ Good Morning, Keomany</h1>
     <div class="date">Wednesday, July 8, 2026</div>
   </div>
 
   <div class="intro">I've already reviewed everything that happened while you were away. Before we begin, here's what I think deserves your attention today.</div>
 
-  <div class="win"><span class="label">Yesterday's Win</span>4 new pieces of intelligence went live since yesterday.</div>
+  
 
   <div class="section">
-    <div class="section-title">🧠 Daily Briefing</div>
+    <div class="section-title">🧠 Executive Briefing</div>
     <div class="briefing-text">Headline: Nothing&#39;s on fire today, but our knowledge base just leveled up, and I want to make sure we&#39;re actually using it.
 
 What I learned: four things got verified since yesterday, and they all point the same direction — our brand voice, our tri-lingual approach, and our psychology on the Investor persona are converging on one idea: lead with education, never gloss over legal complexity, and keep one consistent voice across Lao, English, and Chinese. The Investor insight is the sharpest one — they bail fast if legal nuance feels hand-waved, which tells me our investor-facing content needs to slow down, not speed up.
 
 What&#39;s in flight: I can&#39;t tell you — Supabase isn&#39;t reachable from here, so I have no visibility into active content or approvals right now. I don&#39;t want to guess at what&#39;s moving.
 
-What needs your attention: no knowledge suggestions waiting, and no approvals I can see (though that&#39;s partly because I&#39;m blind to the queue right now, not because it&#39;s empty).
-
-What I recommend: let&#39;s get the Supabase connection fixed first — I&#39;m flying without instruments on operational status. Once that&#39;s back, I&#39;d like to turn the Investor-persona insight into a checklist for legal-complexity content before we publish anything new in that lane.</div>
+What needs your attention: no knowledge suggestions waiting, and no approvals I can see (though that&#39;s partly because I&#39;m blind to the queue right now, not because it&#39;s empty).</div>
   </div>
 
   <hr class="divider">
 
   <div class="section">
-    <div class="section-title">📚 Knowledge Suggestions — 0 waiting</div>
-    <p class="briefing-text">Nothing waiting for review right now.</p>
-    
+    <div class="section-title">📋 Needs Your Attention</div>
+    <ul><li class="empty">Nothing needs your attention right now.</li></ul>
+  </div>
+
+  <hr class="divider">
+
+  
+  <div class="section">
+    <div class="section-title">🎯 Recommended Action</div>
+    <div class="action-card">
+      <div class="action-label">If you only do one thing today</div>
+      <button class="action-button" onclick="alert('One-click execution isn\'t built yet — this is the recommended action Marketing OS would run for you.'); return false;">let&#39;s get the Supabase connection fixed first — I&#39;m flying without instruments on operational status. Once that&#39;s back, I&#39;d like to turn the Investor-persona insight into a checklist for legal-complexity content before we publish anything new in that lane.</button>
+    </div>
   </div>
 
   <hr class="divider">
 
   <div class="section">
-    <div class="section-title">🎯 Today's Priorities</div>
-    <ul><li>let&#39;s get the Supabase connection fixed first — I&#39;m flying without instruments on operational status. Once that&#39;s back, I&#39;d like to turn the Investor-persona insight into a checklist for legal-complexity content before we publish anything new in that lane.</li></ul>
+    <div class="section-title">🏢 Active Companies</div>
+    <div class="company-chip">Pintag</div>
   </div>
 
   <hr class="divider">
@@ -81,9 +99,10 @@ What I recommend: let&#39;s get the Supabase connection fixed first — I&#39;m 
     <div class="section-title" style="color:rgba(255,255,255,0.5);">🚀 Start My Day</div>
     <a href="index.html">Open the approval queue →</a>
     <a href="#" onclick="alert('Run: npm run knowledge:review'); return false;">Review knowledge suggestions →</a>
+    <a href="intelligence.html">Explore the Knowledge Layer →</a>
   </div>
 
-  <div class="footnote">Generated 7/8/2026, 12:17:32 PM — regenerate any time with <code>npm run daily-briefing</code>.</div>
+  <div class="footnote">Generated 7/8/2026, 8:00:00 AM — regenerate any time with <code>npm run daily-briefing</code>.</div>
 
 </div>
 </body>

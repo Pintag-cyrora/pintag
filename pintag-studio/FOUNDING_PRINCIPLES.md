@@ -34,7 +34,7 @@ Software can be rebuilt by a competitor with enough time and engineering effort.
 
 - **Our brands are our laboratories.** Pintag, Houluebor, Mamieii, and Tien exist not only as businesses but as environments where Marketing OS learns and improves before serving external customers. Their purpose is validation as much as revenue.
 
-- **Every insight should end with action.** Observe → Think → Recommend → Execute. Marketing OS never stops at reporting what it noticed — every meaningful insight leads to one clear recommended action, and every recommendation is written so it can eventually become one click. The customer should never have to ask "okay, what should I do now?"
+- **Every insight should end with action.** Observe → Think → Recommend → Execute. Marketing OS never stops at reporting what it noticed — every meaningful insight leads to one clear recommended action, and every recommendation is written so it can eventually become one click. The customer should never have to ask "okay, what should I do now?" Today, one department (the CMO) produces one recommendation directly. As more departments learn to recommend actions of their own, a **Prioritize** step belongs between Think and Recommend — Observe → Think → Prioritize → Recommend → Execute — so the founder still sees exactly one action, not a growing list competing for attention. Not built until a second department actually produces a recommendation; naming it now so the single-action design isn't mistaken for a permanent constraint later.
 
 ---
 
@@ -96,6 +96,14 @@ The Intelligence Layer is our competitive advantage. It is not the customer's pr
 Customers don't care that Marketing OS became smarter. They care that their business grows — more leads, more sales, more engagement, better campaigns, better content, better decisions.
 
 The learning stays behind the scenes. The recommendations become the product. Every piece of customer-facing output should translate intelligence into a business outcome, never expose the machinery that produced it — this is what separates an operating system that runs the business from a dashboard that reports on it.
+
+---
+
+## CEO Workspace Philosophy
+
+The CEO Workspace exists to answer one question: **"What should I do next?"**
+
+Every section on it should reduce uncertainty or help the founder take action. If a future feature doesn't help answer that question, it doesn't belong on the CEO Workspace — this is the guardrail against it gradually becoming another analytics dashboard, the same failure mode this document already rejects in the Customer Philosophy above.
 
 ---
 
