@@ -57,6 +57,17 @@ Read-only — no posting. Lets the Daily Briefing report what actually happened 
 
 Not needed until you want real TikTok data in the Daily Briefing — everything else in this repo works without it (`gatherObservations()` degrades gracefully and says so honestly if TikTok isn't connected).
 
+## Daily use — starting Marketing OS (no Terminal needed)
+
+Once step 1 (Supabase) is done, this is the everyday way to open Marketing OS — the Founder Workspace (`npm run founder-ui`) is the browser front end for everything else in this file.
+
+1. **One-time only:** copy `.env.example` to `.env.local` (same folder, `pintag-studio/`) and fill in `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` from step 1. Any text editor works — no Terminal needed for this either.
+2. **Every day:** double-click `Start Marketing OS.command` in Finder. A window opens showing it starting up, and your browser opens automatically to the Founder Workspace a couple seconds later. **Closing that window stops Marketing OS** — the same as closing any other app.
+
+If macOS says it can't verify the developer the first time you double-click it, right-click the file and choose "Open" once instead — after that it opens normally.
+
+`PORT` defaults to 4321 if you ever need a different one (`PORT=5000` before the command, same as any other env var here).
+
 ## Running M1 locally (no cloud project needed yet)
 
 M1 was built and verified against a **local, ephemeral Supabase stack** (Docker + the Supabase CLI), not the real cloud project above — that's still yours to create before this runs in production, but proving the code is correct doesn't need to wait on it.
