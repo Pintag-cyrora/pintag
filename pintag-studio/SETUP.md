@@ -5,7 +5,7 @@ Everything in this repo is scaffolded to run once these are in place. None of it
 ## 1. Supabase project
 
 1. Create a **new, separate** Supabase project (do not reuse the production pintag.io project — see `ARCHITECTURE.md` Section 1 for why).
-2. Run the migrations in order: `supabase/migrations/0001_init_control_plane.sql`, `0002_agent_health.sql`, then `0003_publish_simulation.sql` (via the Supabase SQL editor, or the Supabase CLI once linked).
+2. Run the migrations in order: `supabase/migrations/0001_init_control_plane.sql`, `0002_agent_health.sql`, `0003_publish_simulation.sql`, then `0004_observation_sources.sql` (via the Supabase SQL editor, or the Supabase CLI once linked).
 3. Create one Supabase Auth user for yourself (email + password) — this is the account the Dashboard signs in as.
 4. Collect these values:
    - Project URL and anon key → paste into `dashboard/index.html` (`SUPABASE_URL`, `SUPABASE_ANON`)
@@ -44,13 +44,26 @@ The main repo's `supabase/functions/public-listings-feed` edge function (added a
 
 `dashboard/index.html` is a single static file — host it anywhere static (GitHub Pages, Vercel, Netlify, or just open it locally). No build step required. Bookmark it; per the architecture, it's meant to be your daily homepage. Until it's hosted, local Supabase Studio (see below) is the stand-in for approving items.
 
+## 8. TikTok (Observation Source, M2.2)
+
+Read-only — no posting. Lets the Daily Briefing report what actually happened on TikTok (account stats, recent-video performance) instead of relying only on internal knowledge. See `pipeline/lib/observation-sources/tiktok.ts` and `ARCHITECTURE.md`'s Observation Sources section.
+
+1. Create a TikTok Developer app at [developers.tiktok.com](https://developers.tiktok.com). Add the **Login Kit** product.
+2. Request these scopes: `user.info.basic`, `user.info.stats`, `video.list`. New apps start in sandbox mode (unaudited) — reading your own account's data should work there, but this hasn't been confirmed against a live app yet; if it turns out reads also need a full audit first, that's a review submission (functional demo + business verification), not a code change.
+3. Register a redirect URI in the app's settings (it doesn't need to be a live server — TikTok redirects the browser there with an authorization code in the query string, which you paste back into the CLI even if the page itself 404s).
+4. Set as GitHub Actions secrets (and locally, when running `npm run tiktok:connect` or `npm run daily-briefing`): `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`.
+5. Run migration `0004_observation_sources.sql` if you haven't already (step 1 above).
+6. Run `npm run tiktok:connect` once — it prints an authorization URL, you approve it as the Pintag TikTok account, and paste back the resulting redirect URL (or just the `code` from it). This stores the access/refresh token pair in Supabase (`observation_source_tokens`); the pipeline refreshes it automatically after that (TikTok refresh tokens last about a year, so this is a rare step, not a daily one).
+
+Not needed until you want real TikTok data in the Daily Briefing — everything else in this repo works without it (`gatherObservations()` degrades gracefully and says so honestly if TikTok isn't connected).
+
 ## Running M1 locally (no cloud project needed yet)
 
 M1 was built and verified against a **local, ephemeral Supabase stack** (Docker + the Supabase CLI), not the real cloud project above — that's still yours to create before this runs in production, but proving the code is correct doesn't need to wait on it.
 
 ```bash
 cd pintag-studio
-supabase start                     # prints local API URL + keys; applies 0001-0003 automatically
+supabase start                     # prints local API URL + keys; applies 0001-0004 automatically
 export SUPABASE_URL=...            # from the `supabase start` output
 export SUPABASE_SERVICE_ROLE_KEY=...
 npm run pipeline                   # Plan -> Research -> Write -> Guardian -> Schedule -> Publish-decision
@@ -66,4 +79,4 @@ npm run pipeline:publish-queue     # Publish (simulated) -> Analyze -> Memory Up
 
 ## What's NOT needed yet
 
-Steps 4-5 (Canva, TTS) aren't required until M2/M4. Step 3 (Meta) isn't required until you're ready to flip `META_PUBLISH_MODE` to `live` — M1 runs entirely in simulate mode. Step 6 (listings feed) isn't needed until M3/M4. Start with step 1 (Supabase) and step 2 (LLM provider) to run M1 for real against your own cloud project instead of the local stack.
+Steps 4-5 (Canva, TTS) aren't required until M2/M4. Step 3 (Meta) isn't required until you're ready to flip `META_PUBLISH_MODE` to `live` — M1 runs entirely in simulate mode. Step 6 (listings feed) isn't needed until M3/M4. Step 8 (TikTok) is optional at any point — the Daily Briefing works without it. Start with step 1 (Supabase) and step 2 (LLM provider) to run M1 for real against your own cloud project instead of the local stack.

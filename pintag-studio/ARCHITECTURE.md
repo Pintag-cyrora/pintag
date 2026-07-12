@@ -194,6 +194,18 @@ Every entry is a markdown file with a frontmatter lifecycle: `status` (`draft �
 
 ---
 
+## 5C. Observation Sources *(approved post-freeze extension, M2.2)*
+
+**A specialized kind of Integration (§5B), not a new memory layer:** external systems Marketing OS reads from to learn what happened in the real world — TikTok today, Facebook/Instagram/Gmail/Calendar/Google Analytics/Stripe/property portals/CRMs later. Same "transport only, never source of truth" rule as every Integration, with one addition: an Observation Source's output is never persisted anywhere (not even the graceful pattern the Integrations row describes for Publisher/Meta) — it's computed fresh every `npm run daily-briefing` run and consumed once, the same way `gatherOperationalMemory()` queries Supabase live rather than caching. If a source disconnects, the Daily Briefing says so honestly and keeps running.
+
+**The interface** (`pipeline/lib/observations.ts`): every source implements `{ name, isConfigured(), observe(): Promise<{available, observations, error?}> }` and returns `Observation[]`, each one already answering three questions — what happened, why it matters, what evidence supports it — not raw metrics. The Daily Briefing (`pipeline/daily-briefing.ts`'s `gatherObservations()`) never knows which source an observation came from; adding a second source is one new file under `pipeline/lib/observation-sources/` plus one line in `observations.ts`'s source list, nothing else changes. Same "stable interface, swappable/addable implementation" pattern as `retrieveKnowledge()`'s source adapters (§5A).
+
+**TikTok** (`pipeline/lib/observation-sources/tiktok.ts`) is the first real implementation: read-only, via TikTok's official Display API (Login Kit) — account stats + recent-video performance. No posting (Content Posting API, a separate product, is untouched). OAuth access tokens (24-hour lifetime) live in `observation_source_tokens` (`supabase/migrations/0004_observation_sources.sql`), the one piece of new infrastructure this required — justified as operational/rotating state, the same role Supabase already plays for `org_settings`/`agent_health`, not a new kind of store. One-time setup: `npm run tiktok:connect` (see `SETUP.md`).
+
+**Not built yet:** any source beyond TikTok (the interface supports them; nothing else is implemented), any persisted observation history/trend view (a deliberate future "change-aware, not snapshot" step, same direction already flagged in `daily-briefing.ts` from M2), and any action taken *from* an observation — read and narrate only.
+
+---
+
 ## 6. Technology Recommendations
 
 | Concern | Choice | Why |

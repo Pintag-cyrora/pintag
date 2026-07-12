@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { REPO_ROOT } from './lib/config.js';
 import { loadAllKnowledgeEntries } from './lib/knowledge.js';
 import { listPendingSuggestions, loadAllSuggestions } from './lib/suggestions.js';
+import { gatherAllObservations, formatObservation } from './lib/observations.js';
 import { runAgent } from './lib/agent.js';
 import { supabase } from './lib/supabase.js';
 
@@ -68,6 +69,27 @@ export function gatherSuggestions(): string {
   return pending
     .map((s) => `- [${s.kind}] ${s.title} — confidence ${s.confidence}, observed ${s.occurrences.length}x, suggested category: ${s.suggestedCategory}`)
     .join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Observation Sources (M2.2) — what happened in the real world (TikTok
+// today; Facebook/Instagram/etc. later, same interface — see
+// pipeline/lib/observations.ts). Each Observation already answers what
+// happened / why it matters / evidence, so this just formats and reports
+// gaps honestly, the same graceful-degradation discipline as the Supabase
+// gatherers below.
+// ---------------------------------------------------------------------------
+export async function gatherObservations(): Promise<string> {
+  const { observations, unavailable } = await gatherAllObservations();
+
+  const parts: string[] = [];
+  if (observations.length > 0) {
+    parts.push(observations.map(formatObservation).join('\n\n'));
+  }
+  for (const u of unavailable) {
+    parts.push(`### ${u.source}\n${u.source} isn't reporting right now (${u.reason}).`);
+  }
+  return parts.length > 0 ? parts.join('\n\n') : 'No Observation Sources are connected yet.';
 }
 
 interface SupabaseGatherResult {
@@ -169,15 +191,15 @@ export async function gatherOrganizationalMemory(): Promise<SupabaseGatherResult
   }
 }
 
-export function buildPrompt(sections: { intelligence: string; suggestions: string; operational: SupabaseGatherResult; organizational: SupabaseGatherResult }): string {
+export function buildPrompt(sections: { intelligence: string; suggestions: string; observations: string; operational: SupabaseGatherResult; organizational: SupabaseGatherResult }): string {
   return [
     "Write today's daily briefing for the founder — a short, first-person report in the voice of a trusted junior marketing strategist checking in with their manager. Warm but plain-spoken, confident without overselling, proactive rather than waiting to be asked. This is a message Marketing OS is initiating, not a form being filled out.",
     '',
-    "Customers care about business outcomes, not about the machinery that produced them — never mention \"the Intelligence Layer\" or other internal system names in the prose itself. Translate what was learned into what it means for the business: trends, what customers are asking, what content works, what to do about it.",
+    "Customers care about business outcomes, not about the machinery that produced them — never mention \"the Intelligence Layer\", \"Observation Sources\", \"TikTok's Display API\", or any other internal system/platform-API name in the prose itself. Translate what was learned (including what happened on TikTok) into what it means for the business: trends, what customers are asking, what content works, what to do about it.",
     '',
     'Structure it as:',
     '1. One-line headline capturing the single most important thing today.',
-    '2. What I learned — framed as business implications (trends, what customers ask, what content performs), grounded in the reference material below but never naming it as a system or layer.',
+    '2. What I learned — framed as business implications (trends, what customers ask, what content performs, how recent content actually performed), grounded in the reference material below but never naming it as a system, layer, or platform API.',
     '3. What\'s in flight — if unavailable, say so plainly rather than guessing.',
     '4. What needs your attention (pending approvals + pending knowledge suggestions + any department health issues).',
     '5. A short closing narrative sentence on what to do next.',
@@ -193,6 +215,9 @@ export function buildPrompt(sections: { intelligence: string; suggestions: strin
     '',
     '## Knowledge Suggestions pending review',
     sections.suggestions,
+    '',
+    '## What happened in the real world (Observation Sources — already analyzed, each already answers what happened / why it matters / evidence; weave the substance into "What I learned" without naming the source platform\'s API)',
+    sections.observations,
     '',
     '## Operational Memory (what\'s actively in flight)',
     sections.operational.summary,
@@ -502,10 +527,15 @@ a:hover{color:var(--teal-light);}
 }
 
 export async function generateDailyBriefing(): Promise<string> {
-  const [operational, organizational] = await Promise.all([gatherOperationalMemory(), gatherOrganizationalMemory()]);
+  const [operational, organizational, observations] = await Promise.all([
+    gatherOperationalMemory(),
+    gatherOrganizationalMemory(),
+    gatherObservations(),
+  ]);
   const sections = {
     intelligence: gatherIntelligence(),
     suggestions: gatherSuggestions(),
+    observations,
     operational,
     organizational,
   };
