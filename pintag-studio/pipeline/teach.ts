@@ -20,7 +20,7 @@ import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { REPO_ROOT } from './lib/config.js';
 import { extractRecommendedAction } from './daily-briefing.js';
-import { proposeSuggestion } from './lib/suggestions.js';
+import { proposeSuggestion, type ProposeSuggestionInput } from './lib/suggestions.js';
 
 // Same readline-async-iterator pattern as knowledge-review.ts — plain
 // readline/promises' rl.question() drops input under piped stdin when
@@ -34,7 +34,8 @@ async function ask(question: string): Promise<string> {
   return done ? '' : value.trim();
 }
 
-function readTodaysRecommendation(): { action: string | undefined; date: string } {
+/** Exported so pipeline/founder-server.ts's /teach page can show the same recommendation the CLI would, without re-deriving the file-reading/extraction logic. */
+export function readTodaysRecommendation(): { action: string | undefined; date: string } {
   let raw: string;
   try {
     raw = readFileSync(join(REPO_ROOT, 'daily-briefing', 'latest.md'), 'utf-8');
@@ -49,6 +50,34 @@ function readTodaysRecommendation(): { action: string | undefined; date: string 
 
 function slugTitle(text: string): string {
   return text.length > 100 ? `${text.slice(0, 97)}...` : text;
+}
+
+/**
+ * The founder-teaching-suggestion field mapping, extracted so both this
+ * CLI and pipeline/founder-server.ts's web form produce byte-identical
+ * suggestions for the same answers — one definition of what a "teaching
+ * moment" becomes, not two.
+ */
+export function buildFounderTeachingSuggestionInput(
+  recommendedAction: string,
+  date: string,
+  insteadAnswer: string,
+  whyAnswer: string
+): ProposeSuggestionInput {
+  return {
+    kind: 'founder-teaching',
+    sourceAgent: 'founder',
+    title: slugTitle(insteadAnswer),
+    body: whyAnswer || '(no reason given)',
+    diff: { current: recommendedAction, suggested: insteadAnswer },
+    suggestedCategory: 'business/founder-judgment',
+    suggestedTags: ['founder-teaching'],
+    // Founder-sourced, not agent-inferred — a higher starting point than the
+    // 0.5 default, but still just a draft pending the same review as
+    // everything else (see reviewKnowledgeEntry() — no automatic promotion).
+    confidence: 0.7,
+    context: date ? `CEO Workspace Recommended Action, ${date}` : 'CEO Workspace Recommended Action',
+  };
 }
 
 async function main(): Promise<void> {
@@ -88,20 +117,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const suggestion = proposeSuggestion({
-    kind: 'founder-teaching',
-    sourceAgent: 'founder',
-    title: slugTitle(insteadAnswer),
-    body: whyAnswer || '(no reason given)',
-    diff: { current: recommendedAction, suggested: insteadAnswer },
-    suggestedCategory: 'business/founder-judgment',
-    suggestedTags: ['founder-teaching'],
-    // Founder-sourced, not agent-inferred — a higher starting point than the
-    // 0.5 default, but still just a draft pending the same review as
-    // everything else (see reviewKnowledgeEntry() — no automatic promotion).
-    confidence: 0.7,
-    context: date ? `CEO Workspace Recommended Action, ${date}` : 'CEO Workspace Recommended Action',
-  });
+  const suggestion = proposeSuggestion(buildFounderTeachingSuggestionInput(recommendedAction, date, insteadAnswer, whyAnswer));
 
   console.log('');
   console.log(`Got it — thank you for teaching me. Saved as a Knowledge Suggestion (knowledge-suggestions/${suggestion.id}.md).`);
@@ -109,8 +125,14 @@ async function main(): Promise<void> {
   rl.close();
 }
 
-main().catch((err) => {
-  console.error(err);
-  rl.close();
-  process.exit(1);
-});
+// Guards against running main() if this module is ever imported rather than
+// executed directly (e.g. pipeline/founder-server.ts reuses
+// buildFounderTeachingSuggestionInput() below without wanting an
+// interactive CLI session to start) — same pattern daily-briefing.ts uses.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error(err);
+    rl.close();
+    process.exit(1);
+  });
+}

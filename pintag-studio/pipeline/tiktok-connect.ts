@@ -101,8 +101,12 @@ async function main(): Promise<void> {
   rl.close();
 }
 
-main().catch((err) => {
-  console.error(err);
-  rl.close();
-  process.exit(1);
-});
+// Guards against running main() if this module is ever imported rather than
+// executed directly — same pattern daily-briefing.ts uses.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error(err);
+    rl.close();
+    process.exit(1);
+  });
+}

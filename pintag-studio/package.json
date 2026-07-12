@@ -11,7 +11,8 @@
     "knowledge:dashboard": "tsx pipeline/knowledge-dashboard.ts",
     "daily-briefing": "tsx pipeline/daily-briefing.ts",
     "teach:os": "tsx pipeline/teach.ts",
-    "tiktok:connect": "tsx pipeline/tiktok-connect.ts"
+    "tiktok:connect": "tsx pipeline/tiktok-connect.ts",
+    "founder-ui": "tsx pipeline/founder-server.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"

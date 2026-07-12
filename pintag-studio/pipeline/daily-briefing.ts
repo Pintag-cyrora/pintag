@@ -245,7 +245,8 @@ function escapeHtml(str: string): string {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 }
 
-function readFounderName(): string {
+/** Exported for reuse by pipeline/founder-server.ts (review actions need a reviewedBy name). */
+export function readFounderName(): string {
   try {
     const config = JSON.parse(readFileSync(join(REPO_ROOT, 'brain', 'org-config.json'), 'utf-8'));
     return config.org?.founder ?? 'there';
