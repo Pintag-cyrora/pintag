@@ -20,6 +20,7 @@ The Writer agent produces the actual copy for every content type Pintag publishe
 - `brain/brand-voice.md`
 - `brain/style-guide.md`
 - Relevant `templates/*.template.md`
+- Knowledge Layer writing craft (`knowledge/language/`, `brain/lao/dictionary.md` — retrieved via `retrieveKnowledge()`, `verified`+ only): terminology, writing principles, hook/social-style patterns, and other reusable Lao editorial knowledge. This is craft knowledge only — brand voice always comes from `brain/brand-voice.md` above, never from this shared layer. See `knowledge/language/README.md`.
 
 ## Outputs
 

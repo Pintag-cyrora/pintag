@@ -2,7 +2,8 @@
 //
 // Corresponding agent: .claude/agents/writer.md
 // Reads from: brief + research packet, brain/brand-voice.md, brain/style-guide.md,
-// relevant templates/*.template.md
+// relevant templates/*.template.md, knowledge/ (Knowledge Layer — language/
+// marketing/psychology categories only; see knowledge/language/README.md)
 // Writes to: generated-content/{type}/{date}/{slug}/draft.md, content_items (status='in_review')
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -12,6 +13,7 @@ import { withHealthReport } from '../lib/health.js';
 import { runAgent, parseJsonResponse } from '../lib/agent.js';
 import { supabase } from '../lib/supabase.js';
 import { REPO_ROOT } from '../lib/config.js';
+import { retrieveKnowledge, relativeKnowledgePath } from '../lib/knowledge.js';
 
 interface WriterOutput {
   title: string;
@@ -38,6 +40,26 @@ export async function write(brief: ContentBrief, research: ResearchPacket): Prom
     // before the Content Vault's reuse-over-recreate principle actually holds.
     const { brandVoice, styleGuide, template } = loadWritingContext();
 
+    // Knowledge Layer retrieval — writing-craft categories only (language,
+    // marketing, psychology), deliberately narrower than Stage 02's set.
+    // Stage 02 retrieves real-estate facts and brand-specific knowledge to
+    // ground claims; this stage needs craft knowledge that improves *how*
+    // the piece is written, not what it claims. Brand voice stays exclusive
+    // to Organizational Memory (brain/brand-voice.md above) — never pulled
+    // from this shared, cross-brand layer — per the three-layer separation
+    // in MEMORY_MODEL.md. `categories: ['language']` also transparently
+    // reaches brain/lao/dictionary.md's canonical terminology, since the
+    // lao-brain source adapter tags those entries category: 'language' too
+    // (see pipeline/lib/knowledge-sources/lao-brain.ts) — no separate call
+    // needed to include it.
+    const knowledgeEntries = retrieveKnowledge({
+      categories: ['language', 'marketing', 'psychology'],
+      minStatus: 'verified',
+    });
+    const knowledgeSection = knowledgeEntries
+      .map((e) => `### knowledge/${relativeKnowledgePath(e)}\n${e.body}`)
+      .join('\n\n');
+
     const userPrompt = [
       `Write an educational post for Pintag.`,
       `Topic: ${brief.topic}`,
@@ -50,6 +72,9 @@ export async function write(brief: ContentBrief, research: ResearchPacket): Prom
       styleGuide,
       '## Structural template',
       template,
+      knowledgeSection
+        ? `\n## Writing craft — verified knowledge (terminology, tone, hook patterns, persona sensitivity)\n${knowledgeSection}`
+        : '',
       '',
       '## Sourced facts to draw on (do not introduce claims beyond these)',
       JSON.stringify(research.facts, null, 2),

@@ -17,7 +17,7 @@ Every agent run (yours included, in this session or a future one) should read, i
 - **Nothing in `content-vault/` is ever deleted.** Superseded items get `superseded_by`, not removal.
 - **Check Memory before creating anything new.** The Content Strategist's job (`pipeline/stages/01-plan.ts`) is to prefer update/repurpose over from-scratch duplication.
 - **`pipeline/` code must stay config-driven, never hardcode Pintag specifics** — district names, languages, thresholds all come from `brain/org-config.json`, not inline constants. This is what keeps the engine reusable if it ever becomes "Pintag Studio" for other tenants.
-- **Check `knowledge/` (the Knowledge Layer, `ARCHITECTURE.md` §5A) before generating content, and propose new entries for anything reusable.** Call `retrieveKnowledge()` from `pipeline/lib/knowledge.ts` rather than re-deriving something the layer already has; call `proposeKnowledgeEntry()` for insights (better wording, an objection, a cultural note) that would otherwise only live in a log line or a chat transcript. See `knowledge/README.md`.
+- **Check `knowledge/` (the Knowledge Layer, `ARCHITECTURE.md` §5A) before generating content, and propose new entries for anything reusable.** Call `retrieveKnowledge()` from `pipeline/lib/knowledge.ts` rather than re-deriving something the layer already has; call `proposeKnowledgeEntry()` for insights (better wording, an objection, a cultural note) that would otherwise only live in a log line or a chat transcript. See `knowledge/README.md`. For Lao-language writing craft specifically (terminology, tone, hook patterns), see `knowledge/language/` and canonical `brain/lao/dictionary.md`.
 
 ## Current state (M0)
 
