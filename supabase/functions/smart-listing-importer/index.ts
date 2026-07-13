@@ -278,7 +278,7 @@ Deno.serve(async (req) => {
 
     const RETRY_DELAYS = [2000, 5000, 10000];
 
-    let response: Response;
+    let response!: Response;
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
       response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
