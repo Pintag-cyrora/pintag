@@ -1689,15 +1689,16 @@ async function saveListing(e) {
   // is deliberately custom JS validation, not native HTML `required` —
   // native constraint validation blocks form submission silently (no
   // error banner, easy to mistake for a dead button) and can't be
-  // conditional on draft status, so f-type/f-transaction/f-title-en/
-  // f-district are NOT marked required in the markup; this is the one
-  // place that enforces them, with a real error message.
+  // conditional on draft status, so f-type/f-transaction/f-title-en are
+  // NOT marked required in the markup; this is the one place that
+  // enforces them, with a real error message. Location (District) and
+  // Price are intentionally NOT required — a listing can be published
+  // with either left blank; only owner/buyer contact info is mandatory.
   if (status !== 'draft') {
     const requiredChecks = [
       [document.getElementById('f-type').value,        'Property Type'],
       [document.getElementById('f-transaction').value,  'Transaction'],
       [document.getElementById('f-title-en').value.trim(), 'Title (English)'],
-      [document.getElementById('f-district').value,     'District'],
       [contactPhone,                                    'Buyer Contact phone'],
     ];
     const missingLabels = requiredChecks.filter(([v]) => !v).map(([, label]) => label);
