@@ -609,6 +609,7 @@ nav{
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
+<script src="terminology.js"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -1159,11 +1160,12 @@ function renderListings() {
     var slugSafe = p.slug.replace(/'/g, '%27');
     var isSaved = saved.has(p.slug);
 
-    var specsHtml = [
-      p.bedrooms  ? '<span class="card-spec">🛏 <span>' + p.bedrooms  + '</span> <span class="lo-i">ຫ້ອງນອນ</span><span class="en-i">Bed</span><span class="zh-i">卧</span></span>' : '',
-      p.bathrooms ? '<span class="card-spec">🛁 <span>' + p.bathrooms + '</span> <span class="lo-i">ຫ້ອງນ້ຳ</span><span class="en-i">Bath</span><span class="zh-i">浴</span></span>' : '',
-      p.sqm       ? '<span class="card-spec">📐 <span>' + p.sqm       + '</span> sqm</span>' : ''
-    ].filter(Boolean).join('');
+    // Card facts driven by PROPERTY_TYPE_DISPLAY (terminology.js) — which
+    // facts appear, in what order, and with what icon, is per property type.
+    var cardFacts = (typeof getCardFacts === 'function') ? getCardFacts(p.property_type, p, lang) : [];
+    var specsHtml = cardFacts.map(function(f){
+      return '<span class="card-spec">' + f.icon + ' <span>' + esc(String(f.value)) + '</span> <span class="card-spec-lbl">' + esc(f.label) + '</span></span>';
+    }).join('');
 
     // Priority 3-4 amenity icons only (compact card), per the fixed
     // AMENITY_PRIORITY order in amenities.js — full list shows on listing.html.

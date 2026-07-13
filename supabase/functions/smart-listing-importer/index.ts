@@ -1,3 +1,47 @@
+// smart-listing-importer — the AI ENRICHMENT stage of Smart Import's
+// ingestion pipeline: Source -> Adapter -> ImportResult -> AI Enrichment
+// -> Validation -> Populate Form. This function never knows or cares which
+// adapter produced its input (Facebook OG fetch, manual paste, and future
+// PDF/OCR/portal/email adapters all call it the same way) — its only job
+// is turning raw { description, image_urls } into the canonical,
+// confidence-tagged ImportResult every adapter ultimately feeds:
+//
+//   interface FieldValue<T> { value: T | null; confidence: number }  // 0..1
+//
+//   interface ImportImage {
+//     originalUrl?: string; storageUrl?: string;
+//     width?: number; height?: number;   // reserved, not populated yet
+//     primary?: boolean; source: string;
+//     roomType?: string; qualityScore?: number;  // from this stage's own photo analysis
+//   }
+//
+//   interface ImportResult {
+//     source: string;  // the ORIGINATING adapter, passed through from the request
+//     // Generated/translated prose — Gemini AUTHORS these; there's no
+//     // single "correct" answer to be uncertain about, so no confidence.
+//     title, title_lo, title_zh: string;
+//     description_en, description_lo, description_zh: string;
+//     property_highlight_en/lo/zh, neighborhood_insight_en/lo/zh: string;
+//     // Factual/extracted fields — Gemini INFERS these, so its own
+//     // uncertainty is exactly the signal staff should see. Each is a
+//     // FieldValue so the UI can flag low-confidence values instead of
+//     // blindly trusting them.
+//     transaction_type, property_type, property_style, price_display,
+//     bedrooms, bathrooms, sqm, sqm_land, furnished: FieldValue<...>;
+//     location: { district: FieldValue<string>, village: FieldValue<string> };
+//     contact: { name: FieldValue<string>, phone: FieldValue<string>, role: FieldValue<string> };
+//     images: ImportImage[];       // CANONICAL, already in recommended display
+//                                  // order (hero first) — consumers read this
+//                                  // directly and never need recommended_order
+//     recommended_order: number[];
+//     metadata: { source, enrichedAt };
+//   }
+//
+// Type-specific sub-fields (e.g. Land's road_surface, House's floors) are
+// deliberately NOT confidence-tagged in this pass — this covers the common,
+// most decision-relevant fields across every property type; the same
+// pattern extends to more fields later without changing this contract.
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -89,12 +133,22 @@ No photos provided. Return empty arrays.`;
 
 TASK A — EXTRACT from the property description below.
 The description may be in Lao (ລາວ script), English, Thai, or a mix. Extract structured fields.
-Use null for any field that cannot be reliably determined.
+
+CONFIDENCE-TAGGED FIELDS — every field listed below under "CONFIDENCE-TAGGED SCHEMA" must be
+returned as an object {"value": <the value, or null>, "confidence": <number 0.0-1.0>}, not a bare value.
+Confidence guidance:
+- 1.0 = explicitly and unambiguously stated in the text (or, for photo-derived fields, clearly visible)
+- 0.5-0.8 = reasonably inferred but not explicitly stated (e.g. guessed from context or a photo)
+- below 0.5 = a rough guess, or the source text was ambiguous or self-contradictory
+- confidence 0 when value is null (nothing found) — do not return high confidence for a null value
+Never inflate confidence to seem helpful — an honest low score is more useful to a human reviewer than false certainty.
+
+Use null for any value that cannot be reliably determined — even inside a confidence-tagged object.
 
 LANGUAGE RULES — follow exactly:
 1. Lao script (Unicode U+0E80–U+0EFF) and Khmer script (U+1780–U+17FF) look visually similar but are completely different languages. Khmer is used in Cambodia, NOT Laos. If the text contains Khmer characters, do NOT treat them as Lao — identify the input language correctly.
 2. All _lo output fields MUST be written in authentic Lao script (ພາສາລາວ). Never substitute Thai script, Khmer script, or romanised transliteration for Lao. If you are unsure, produce a proper Lao translation from the English.
-3. price_display: preserve the original currency and number as written (₭ or LAK for Lao Kip, ฿ for Thai Baht, $ for USD). Example: "450,000,000 ₭" or "$1,500/month". Do not convert currencies.
+3. price_display.value: preserve the original currency and number as written (₭ or LAK for Lao Kip, ฿ for Thai Baht, $ for USD). Example: "450,000,000 ₭" or "$1,500/month". Do not convert currencies.
 4. title_lo and title_zh are REQUIRED — never return null for these fields. Always translate the English title into authentic Lao script and Simplified Chinese.
 
 Valid districts (use exact spelling or null): ${DISTRICTS.join(', ')}
@@ -104,10 +158,10 @@ Valid transaction_type values: for_sale, for_rent
 Valid furnished values: fully, partially, unfurnished
 
 TASK C — EXTRACT BUYER CONTACT (best-effort, never guess a phone number):
-If the description mentions who to contact (e.g. "call Somchai 020XXXXXXXX", "contact reception", "sales office: 020..."), extract:
-- contact_name: the person's name, if mentioned, else null
-- contact_phone: a phone/WhatsApp number exactly as written, only if one is actually present in the text — never fabricate one
-- contact_role: one of exactly: owner, agent, property_manager, reception, sales_office, developer, family_representative, other — best guess from context, or null if unclear
+If the description mentions who to contact (e.g. "call Somchai 020XXXXXXXX", "contact reception", "sales office: 020..."), extract into the confidence-tagged schema below:
+- contact_name.value: the person's name, if mentioned, else null
+- contact_phone.value: a phone/WhatsApp number exactly as written, only if one is actually present in the text — never fabricate one (confidence 0 if null)
+- contact_role.value: one of exactly: owner, agent, property_manager, reception, sales_office, developer, family_representative, other — best guess from context, or null if unclear
 This is only ever a suggestion — Pintag staff always confirms it in the admin form before the listing can be published.
 
 PROPERTY DESCRIPTION:
@@ -123,21 +177,18 @@ Example of correct title format:
   "title_lo": "ວິລລ່າ 4 ຫ້ອງນອນພ້ອມສະລອຍນໍ້າໃກ້ທາດຫລວງ",
   "title_zh": "现代4卧室泳池别墅近塔銮"
 
+Example of a correct confidence-tagged field:
+  "bedrooms": {"value": 4, "confidence": 0.95}
+  "village": {"value": null, "confidence": 0}
+
+Every field from "transaction_type" through "contact_role" in the schema below is
+confidence-tagged ({value, confidence}) — the title/description/highlight/insight
+fields above them are plain strings, not confidence-tagged.
+
 {
   "title": "concise English title, max 80 chars",
   "title_lo": "Lao script translation of the title — REQUIRED, never null",
   "title_zh": "Simplified Chinese translation of the title — REQUIRED, never null",
-  "transaction_type": "for_sale",
-  "property_type": "villa",
-  "property_style": null,
-  "price_display": null,
-  "bedrooms": null,
-  "bathrooms": null,
-  "sqm": null,
-  "sqm_land": null,
-  "district": null,
-  "village": null,
-  "furnished": null,
   "description_en": "2–4 paragraphs of professional English property description",
   "description_lo": "2–4 paragraphs in authentic Lao script (ພາສາລາວ)",
   "description_zh": "2–4 paragraphs in Simplified Chinese (中文)",
@@ -147,12 +198,49 @@ Example of correct title format:
   "neighborhood_insight_en": "One sentence about the neighbourhood in English",
   "neighborhood_insight_lo": "One sentence in authentic Lao script",
   "neighborhood_insight_zh": "One sentence in Simplified Chinese",
-  "contact_name": null,
-  "contact_phone": null,
-  "contact_role": null,
+
+  "transaction_type": {"value": "for_sale", "confidence": 0},
+  "property_type": {"value": "villa", "confidence": 0},
+  "property_style": {"value": null, "confidence": 0},
+  "price_display": {"value": null, "confidence": 0},
+  "bedrooms": {"value": null, "confidence": 0},
+  "bathrooms": {"value": null, "confidence": 0},
+  "sqm": {"value": null, "confidence": 0},
+  "sqm_land": {"value": null, "confidence": 0},
+  "district": {"value": null, "confidence": 0},
+  "village": {"value": null, "confidence": 0},
+  "furnished": {"value": null, "confidence": 0},
+  "contact_name": {"value": null, "confidence": 0},
+  "contact_phone": {"value": null, "confidence": 0},
+  "contact_role": {"value": null, "confidence": 0},
+
   ${photoJsonSection}
 }`;
 }
+
+interface FieldValue<T> { value: T | null; confidence: number }
+
+// Gemini is asked to return {value, confidence} for factual fields, but LLM
+// output isn't a guaranteed contract — normalize defensively rather than
+// letting one malformed field break the whole response. A bare value that
+// slipped through ungrouped gets confidence 0.5 (present, but Gemini didn't
+// self-report certainty) rather than being discarded.
+function normalizeFieldValue<T>(raw: unknown): FieldValue<T> {
+  if (raw && typeof raw === 'object' && 'value' in (raw as Record<string, unknown>)) {
+    const obj = raw as { value: T | null; confidence?: unknown };
+    const confidence = typeof obj.confidence === 'number'
+      ? Math.max(0, Math.min(1, obj.confidence))
+      : (obj.value == null ? 0 : 0.5);
+    return { value: obj.value ?? null, confidence };
+  }
+  const value = (raw ?? null) as T | null;
+  return { value, confidence: value == null ? 0 : 0.5 };
+}
+
+const CONFIDENCE_FIELDS = [
+  'transaction_type', 'property_type', 'property_style', 'price_display',
+  'bedrooms', 'bathrooms', 'sqm', 'sqm_land', 'furnished',
+] as const;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -168,7 +256,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { description, image_urls } = await req.json();
+    const { description, image_urls, source } = await req.json();
+    const importSource: string = typeof source === 'string' && source ? source : 'manual';
 
     const apiKey = Deno.env.get('GEMINI_API_KEY');
     if (!apiKey) {
@@ -250,7 +339,69 @@ Deno.serve(async (req) => {
       throw new Error(`JSON parse failed (${msg}). Response length: ${text.length} chars, finishReason: ${finishReason}`);
     }
 
-    return new Response(JSON.stringify(result), {
+    // Assemble the canonical ImportResult — see the file-level comment for
+    // the full shape. Generated prose passes through as-is; factual fields
+    // get normalized into {value, confidence}; location/contact are
+    // nested; images are rebuilt from the request's image_urls merged with
+    // this stage's own photo analysis (room type, quality, hero pick).
+    const enriched: Record<string, unknown> = {
+      source: importSource,
+      title: result.title ?? null,
+      title_lo: result.title_lo ?? null,
+      title_zh: result.title_zh ?? null,
+      description_en: result.description_en ?? null,
+      description_lo: result.description_lo ?? null,
+      description_zh: result.description_zh ?? null,
+      property_highlight_en: result.property_highlight_en ?? null,
+      property_highlight_lo: result.property_highlight_lo ?? null,
+      property_highlight_zh: result.property_highlight_zh ?? null,
+      neighborhood_insight_en: result.neighborhood_insight_en ?? null,
+      neighborhood_insight_lo: result.neighborhood_insight_lo ?? null,
+      neighborhood_insight_zh: result.neighborhood_insight_zh ?? null,
+    };
+
+    for (const field of CONFIDENCE_FIELDS) {
+      enriched[field] = normalizeFieldValue(result[field]);
+    }
+
+    enriched.location = {
+      district: normalizeFieldValue<string>(result.district),
+      village: normalizeFieldValue<string>(result.village),
+    };
+    enriched.contact = {
+      name: normalizeFieldValue<string>(result.contact_name),
+      phone: normalizeFieldValue<string>(result.contact_phone),
+      role: normalizeFieldValue<string>(result.contact_role),
+    };
+
+    const photoAnalysis = Array.isArray(result.photo_analysis)
+      ? result.photo_analysis as Array<{ index: number; room_type?: string; quality_score?: number }>
+      : [];
+    const heroIndex = typeof result.hero_index === 'number' ? result.hero_index : 0;
+    const recommendedOrder = Array.isArray(result.recommended_order) ? result.recommended_order as number[] : [];
+
+    const rawImages = urlsToFetch.map((url, i) => ({
+      storageUrl: url,
+      primary: i === heroIndex,
+      source: importSource,
+      roomType: photoAnalysis.find(p => p.index === i)?.room_type,
+      qualityScore: photoAnalysis.find(p => p.index === i)?.quality_score,
+    }));
+
+    // images[] IS the canonical, already-ordered source of truth for
+    // display sequence (hero first, per the prompt's own ordering rule) —
+    // consumers should read images[] directly and never need to
+    // cross-reference recommended_order for ordering. recommended_order is
+    // still included below, purely as a fallback/compatibility signal for
+    // any older or simpler consumer that only understands index arrays.
+    const orderedIndexes = recommendedOrder.length
+      ? [...recommendedOrder, ...rawImages.map((_, i) => i).filter(i => !recommendedOrder.includes(i))]
+      : rawImages.map((_, i) => i);
+    enriched.images = orderedIndexes.map(i => rawImages[i]).filter(Boolean);
+    enriched.recommended_order = recommendedOrder;
+    enriched.metadata = { source: importSource, enrichedAt: new Date().toISOString() };
+
+    return new Response(JSON.stringify(enriched), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {

@@ -72,6 +72,10 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .form-input,.form-select,.form-textarea{padding:10px 13px;border:1px solid var(--border);background:var(--white);font-size:14px;font-weight:300;font-family:'DM Sans',sans-serif;color:var(--ink);border-radius:4px;transition:border-color 0.2s;width:100%;}
 .form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--teal);}
 .form-textarea{resize:vertical;min-height:72px;line-height:1.7;}
+/* AI Enrichment found a value but reported low confidence in it — same
+   amber-for-review language as flagContactSectionForReview(), scoped to
+   one field instead of a whole section. */
+.field-low-confidence{border-color:var(--gold)!important;box-shadow:0 0 0 1px var(--gold);}
 .form-hint{font-size:11px;color:var(--ink-muted);margin-top:3px;line-height:1.5;}
 .char-count{font-size:10px;color:var(--ink-muted);text-align:right;margin-top:3px;}
 .char-count.near-limit{color:#9A6200;}
@@ -87,6 +91,14 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .form-message{padding:12px 16px;border-radius:4px;font-size:13px;margin-top:12px;display:none;}
 .form-message.success{display:block;background:rgba(30,107,69,0.08);color:var(--green);border:1px solid rgba(30,107,69,0.2);}
 .form-message.error{display:block;background:rgba(192,57,43,0.06);color:var(--red);border:1px solid rgba(192,57,43,0.2);}
+/* Smart Import Found/Missing summary banner */
+.import-summary{padding:16px 20px;border-radius:6px;background:rgba(30,107,69,0.06);border:1px solid rgba(30,107,69,0.18);margin:0 0 20px;}
+.import-summary-title{font-size:14px;font-weight:600;color:var(--green);margin-bottom:10px;}
+.import-summary-col-label{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:6px;}
+.import-summary-item{font-size:13px;line-height:1.7;}
+.import-summary-item.found{color:var(--ink-soft);}
+.import-summary-item.missing{color:#B8860B;}
+.import-summary-note{font-size:12px;color:var(--ink-muted);margin-top:12px;font-style:italic;}
 /* Checkbox grid */
 .check-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:8px;margin-top:4px;}
 .check-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:all 0.15s;background:var(--white);user-select:none;}
@@ -284,6 +296,11 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
         <h2 id="form-title">New Listing</h2>
       </div>
 
+      <!-- Shown only right after Smart Import populates the form — a
+           Found/Missing checklist so staff know what to review before
+           saving. Hidden otherwise (blank New Listing, Edit Listing). -->
+      <div id="import-summary-banner" style="display:none;"></div>
+
       <form id="listing-form" onsubmit="saveListing(event)">
         <input type="hidden" id="edit-id" value="">
 
@@ -293,7 +310,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Property Type <span class="required">*</span></label>
-              <select class="form-select" id="f-type" required>
+              <select class="form-select" id="f-type" onchange="renderPropertyTypeFields(this.value)">
                 <option value="">Select type</option>
                 <option value="house">House</option>
                 <option value="townhouse">Townhouse</option>
@@ -319,7 +336,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             </div>
             <div class="form-group">
               <label class="form-label">Transaction <span class="required">*</span></label>
-              <select class="form-select" id="f-transaction" required onchange="onTransactionChange()">
+              <select class="form-select" id="f-transaction" onchange="onTransactionChange()">
                 <option value="">Select</option>
                 <option value="for_sale">For Sale</option>
                 <option value="for_rent">For Rent</option>
@@ -396,7 +413,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           <div class="form-grid">
             <div class="form-group form-full">
               <label class="form-label">Title (English) <span class="required">*</span></label>
-              <input class="form-input" id="f-title-en" type="text" required placeholder="Modern Pool Villa Near That Luang">
+              <input class="form-input" id="f-title-en" type="text" placeholder="Modern Pool Villa Near That Luang">
             </div>
             <div class="form-group form-full">
               <label class="form-label">Title (Lao)</label>
@@ -443,48 +460,14 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           </div>
         </div>
 
-        <!-- PROPERTY DETAILS -->
+        <!-- PROPERTY DETAILS — rendered dynamically from PROPERTY_TYPE_FIELDS
+             (terminology.js) based on the selected Property Type; see
+             renderPropertyTypeFields(). Land, for example, renders none of
+             the building-scoped fields that used to show unconditionally
+             here. -->
         <div class="form-section">
           <p class="form-section-title">&#9315; Property Details</p>
-          <div class="form-grid-3">
-            <div class="form-group">
-              <label class="form-label">Bedrooms</label>
-              <input class="form-input" id="f-bedrooms" type="number" min="0" placeholder="4">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Bathrooms</label>
-              <input class="form-input" id="f-bathrooms" type="number" min="0" placeholder="4">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Size (sqm)</label>
-              <input class="form-input" id="f-sqm" type="number" min="0" placeholder="420">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Land (sqm)</label>
-              <input class="form-input" id="f-sqm-land" type="number" min="0" placeholder="720">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Floors</label>
-              <input class="form-input" id="f-floors" type="number" min="1" placeholder="2">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Year Built</label>
-              <input class="form-input" id="f-year-built" type="number" min="1950" max="2035" placeholder="2022">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Parking Spaces</label>
-              <input class="form-input" id="f-parking-spaces" type="number" min="0" placeholder="2">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Furnished</label>
-              <select class="form-select" id="f-furnished">
-                <option value="">Not specified</option>
-                <option value="fully">Fully Furnished</option>
-                <option value="partially">Partially Furnished</option>
-                <option value="unfurnished">Unfurnished</option>
-              </select>
-            </div>
-          </div>
+          <div class="form-grid-3" id="property-details-grid"></div>
         </div>
 
         <!-- FEATURES -->
@@ -505,7 +488,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">District <span class="required">*</span></label>
-              <select class="form-select" id="f-district" required>
+              <select class="form-select" id="f-district">
                 <option value="">Select district</option>
                 <option value="Sisattanak">Sisattanak &#x0EAA;&#x0EB5;&#x0EAA;&#x0EB1;&#x0E94;&#x0E95;&#x0EB0;&#x0E99;&#x0EB2;&#x0A01;</option>
                 <option value="Saysettha">Saysettha &#x0EC4;&#x0EAB;&#x0EC0;&#x0EAA;&#x0E94;&#x0E96;&#x0EB2;</option>
@@ -688,16 +671,25 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
       </div>
 
       <div class="form-section">
-        <p class="form-section-title">&#9312; Paste Property Description</p>
+        <p class="form-section-title">&#9312; Paste Facebook Marketplace Link</p>
         <div class="form-group">
-          <label class="form-label">Facebook Post / Description Text</label>
-          <textarea class="form-textarea" id="import-description" rows="8"
+          <label class="form-label">Facebook Marketplace URL</label>
+          <input class="form-input" id="import-fb-url" type="url" placeholder="https://www.facebook.com/marketplace/item/...">
+          <p style="font-size:11px;color:var(--ink-muted);margin-top:6px;line-height:1.5;">Fetches the public page and pulls in whatever Facebook makes available (title, description, price, a photo). Facebook only exposes limited data to a non-logged-in fetch — if a listing comes back thin, paste details manually below instead.</p>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <p class="form-section-title">&#9313; Or Paste Description Manually</p>
+        <div class="form-group">
+          <label class="form-label">Facebook Post / Description Text <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;">— optional if a URL above already found one</span></label>
+          <textarea class="form-textarea" id="import-description" rows="6"
             placeholder="Paste the property description here (Lao, English, or Thai)...&#10;&#10;AI will extract: title, price, bedrooms, bathrooms, size, location, and generate full multilingual descriptions."></textarea>
         </div>
       </div>
 
       <div class="form-section">
-        <p class="form-section-title">&#9313; Upload Property Photos</p>
+        <p class="form-section-title">&#9314; Upload / Add Property Photos</p>
         <div class="form-group">
           <div class="upload-zone" id="import-upload-zone" onclick="document.getElementById('import-file-input').click()">
             <input type="file" id="import-file-input" multiple accept="image/*" style="display:none;" onchange="handleImportImageUpload(this.files)">
@@ -717,7 +709,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
         <button type="button" class="btn-ai-gen" id="import-gen-btn" onclick="runSmartImport()">
           &#9889; Generate Listing
         </button>
-        <p class="ai-gen-hint">AI will extract property details, translate to 3 languages, analyze photos, and save a draft — ready for your review.</p>
+        <p class="ai-gen-hint">Fetches the Facebook link (if given), then AI extracts property details, translates to 3 languages, and analyzes photos — populates the form for you to review and edit. Nothing is saved until you click Save Listing.</p>
       </div>
 
       <div id="import-progress-steps" style="display:none;margin-bottom:24px;">
@@ -735,6 +727,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
+<script src="terminology.js"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
@@ -860,6 +853,128 @@ function setChecked(containerId, values, registry) {
   document.querySelectorAll(`#${containerId} .check-item`).forEach(el => {
     el.classList.toggle('checked', normalizedIn.includes(el.dataset.key));
   });
+}
+
+// ── Property-type-specific fields (terminology.js: PROPERTY_TYPE_FIELDS) ──
+// Renders the "Property Details" section from the selected property type's
+// field schema, instead of showing every field for every type. Reuses
+// initCheckGrid/initGroupedCheckGrid for the type's filtered FEATURES/
+// AMENITIES subset rather than re-implementing checkbox rendering.
+function filterRegistry(registry, keys) {
+  const out = {};
+  (keys || []).forEach(k => { if (registry[k]) out[k] = registry[k]; });
+  return out;
+}
+
+// Converts a field's {value, label:{en,...}} options into the
+// {key:{en,...}} registry shape initCheckGrid/getCheckedKeys/setChecked
+// already expect, so multi_checkbox fields (e.g. Best Use) reuse that
+// infrastructure verbatim instead of a second checkbox implementation.
+function optionsToRegistry(options) {
+  const out = {};
+  (options || []).forEach(o => { if (o.value) out[o.value] = { en: o.label.en }; });
+  return out;
+}
+
+function renderTypedField(f) {
+  if (f.kind === 'select') {
+    const opts = f.options.map(o => `<option value="${esc(o.value)}">${esc(o.label.en)}</option>`).join('');
+    return `<div class="form-group"><label class="form-label">${esc(f.label.en)}</label>
+      <select class="form-select" id="${f.id}">${opts}</select></div>`;
+  }
+  if (f.kind === 'multi_checkbox') {
+    return `<div class="form-group" style="grid-column:1/-1"><label class="form-label">${esc(f.label.en)}</label>
+      <div class="check-grid" id="${f.id}-grid"></div></div>`;
+  }
+  return `<div class="form-group"><label class="form-label">${esc(f.label.en)}</label>
+    <input class="form-input" id="${f.id}" type="${f.kind === 'text' ? 'text' : 'number'}"
+      ${f.min != null ? `min="${f.min}"` : ''} ${f.max != null ? `max="${f.max}"` : ''}
+      ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}>
+    </div>`;
+}
+
+function renderPropertyTypeFields(typeKey) {
+  const grid = document.getElementById('property-details-grid');
+  if (!grid) return;
+  const fields = PROPERTY_TYPE_FIELDS[typeKey] || [];
+
+  // Preserve any already-checked feature/amenity/multi_checkbox keys across
+  // a type switch mid-edit — initCheckGrid/innerHTML both wipe state that
+  // would otherwise be silently dropped.
+  const prevFeatures  = getCheckedKeys('features-grid');
+  const prevAmenities = getCheckedKeys('amenities-grid');
+  const multiFields = fields.filter(f => f.kind === 'multi_checkbox');
+  const prevMulti = {};
+  multiFields.forEach(f => { prevMulti[f.id] = getCheckedKeys(f.id + '-grid'); });
+
+  grid.innerHTML = fields.filter(f => f.kind !== 'checkbox_ref').map(renderTypedField).join('');
+
+  const featureField  = fields.find(f => f.kind === 'checkbox_ref' && f.registry === 'FEATURES');
+  const amenityField  = fields.find(f => f.kind === 'checkbox_ref' && f.registry === 'AMENITIES');
+  initCheckGrid('features-grid', filterRegistry(FEATURES, featureField ? featureField.keys : []));
+  initGroupedCheckGrid('amenities-grid', filterRegistry(AMENITIES, amenityField ? amenityField.keys : []), AMENITY_CATEGORIES);
+  setChecked('features-grid', prevFeatures);
+  setChecked('amenities-grid', prevAmenities);
+
+  multiFields.forEach(f => {
+    initCheckGrid(f.id + '-grid', optionsToRegistry(f.options));
+    setChecked(f.id + '-grid', prevMulti[f.id] || []);
+  });
+}
+
+// Populates the currently-rendered typed fields from either a fetched
+// properties row (plain values, from editListing()) or an AI Enrichment
+// ImportResult (some columns wrapped as {value, confidence}, from
+// populateFormFromImport()) — fv() unwraps either shape the same way, so
+// this one function serves both callers unchanged. Caller must have
+// already called renderPropertyTypeFields(typeKey) for the SAME typeKey so
+// the right inputs exist in the DOM first.
+function populateTypedFields(typeKey, sourceRow) {
+  (PROPERTY_TYPE_FIELDS[typeKey] || []).forEach(f => {
+    if (!f.column) return;
+    if (f.kind === 'multi_checkbox') {
+      const raw = sourceRow && sourceRow[f.column];
+      const values = Array.isArray(raw) ? raw : (Array.isArray(fv(raw)) ? fv(raw) : []);
+      setChecked(f.id + '-grid', values);
+      return;
+    }
+    const el = document.getElementById(f.id);
+    if (!el) return;
+    const v = sourceRow ? fv(sourceRow[f.column]) : null;
+    el.value = (v != null ? v : '');
+  });
+}
+
+// Builds the typed-fields portion of the save payload: writes the active
+// type's current input values, and explicitly nulls every OTHER type's
+// columns so switching a listing's type actually clears stale data
+// server-side instead of leaving orphaned values behind.
+function buildTypedFieldsPayload(typeKey) {
+  const activeIds = {};
+  (PROPERTY_TYPE_FIELDS[typeKey] || []).forEach(f => { if (f.column) activeIds[f.id] = f; });
+  const allColumns = {};
+  Object.keys(PROPERTY_TYPE_FIELDS).forEach(key => {
+    PROPERTY_TYPE_FIELDS[key].forEach(f => { if (f.column) allColumns[f.column] = f; });
+  });
+  const out = {};
+  Object.keys(allColumns).forEach(column => {
+    const f = allColumns[column];
+    const active = activeIds[f.id];
+    if (!active) { out[column] = null; return; }
+    if (f.kind === 'multi_checkbox') { out[column] = getCheckedKeys(f.id + '-grid'); return; }
+    const el = document.getElementById(f.id);
+    if (!el) { out[column] = null; return; }
+    out[column] = f.kind === 'number' ? (parseInt(el.value) || null) : (el.value.trim() || null);
+  });
+  return out;
+}
+
+// Safe accessor for non-critical read sites (e.g. the AI content helper)
+// that reference typed-field ids which may not currently be rendered for
+// the selected property type.
+function getFieldValueSafe(id) {
+  const el = document.getElementById(id);
+  return el ? el.value : '';
 }
 
 // ── Highlight pills ──────────────────────────────────────────────
@@ -1385,20 +1500,33 @@ function showListings() {
   document.getElementById('import-panel').style.display  = 'none';
   loadListings();
 }
-function showForm(id) {
+// Panel-visibility switch only — no field reset, no field population.
+// Reused by showForm() (which additionally resets/loads fields below) and
+// by runSmartImport() (which has already populated fields itself via
+// populateFormFromImport() and must not have them wiped out again here).
+function revealFormPanel(titleText, id) {
   document.getElementById('listings-panel').style.display = 'none';
   document.getElementById('import-panel').style.display  = 'none';
   document.getElementById('form-panel').style.display = 'block';
-  document.getElementById('form-title').textContent = id ? 'Edit Listing' : 'New Listing';
+  document.getElementById('form-title').textContent = titleText;
   document.getElementById('edit-id').value = id || '';
   document.getElementById('form-message').style.display = 'none';
   document.getElementById('publish-btn').style.display = 'none';
+  // Stale from a previous Smart Import — only renderImportSummary() (called
+  // right after this, on the import path) makes it visible again.
+  document.getElementById('import-summary-banner').style.display = 'none';
+}
+
+function showForm(id) {
+  revealFormPanel(id ? 'Edit Listing' : 'New Listing', id);
   if (!id) {
     document.getElementById('listing-form').reset();
     document.getElementById('nearby-list').innerHTML = '';
     addNearby();
-    setChecked('features-grid', [], FEATURES);
-    setChecked('amenities-grid', [], AMENITIES);
+    // form.reset() does not fire f-type's onchange, so Property Details
+    // must be re-rendered explicitly for the blank state (also clears
+    // features/amenities, which form.reset() likewise doesn't touch).
+    renderPropertyTypeFields('');
     setHighlights([]);
     customTags = [];
     populateExistingImages([]);
@@ -1434,6 +1562,7 @@ async function editListing(id) {
   const p = data[0];
 
   document.getElementById('f-type').value        = p.property_type || '';
+  renderPropertyTypeFields(p.property_type || '');
   document.getElementById('f-style').value       = p.property_style || '';
   document.getElementById('f-transaction').value = p.transaction_type || '';
   onTransactionChange();
@@ -1462,14 +1591,7 @@ async function editListing(id) {
   document.getElementById('f-desc-lo').value     = p.description_lo || p.desc_lo || '';
   document.getElementById('f-desc-zh').value     = p.description_zh || p.desc_zh || '';
 
-  document.getElementById('f-bedrooms').value     = p.bedrooms || '';
-  document.getElementById('f-bathrooms').value    = p.bathrooms || '';
-  document.getElementById('f-sqm').value          = p.sqm || '';
-  document.getElementById('f-sqm-land').value     = p.sqm_land || '';
-  document.getElementById('f-floors').value       = p.floors || '';
-  document.getElementById('f-year-built').value   = p.year_built || '';
-  document.getElementById('f-parking-spaces').value = p.parking_spaces || '';
-  document.getElementById('f-furnished').value    = p.furnished || '';
+  populateTypedFields(p.property_type || '', p);
 
   const rawFeatures = Array.isArray(p.features)
     ? p.features.map(f => typeof f === 'string' ? f : (f.key || f.label_en || f.name || ''))
@@ -1558,35 +1680,63 @@ async function saveListing(e) {
   const _selAgentId = document.getElementById('f-agent-id').value;
   const _selAgent = _selAgentId ? (_agentsAll.find(a => a.id === _selAgentId) || null) : null;
 
+  const status = document.getElementById('f-status').value || 'active';
   const contactPhone = document.getElementById('f-contact-phone').value.trim();
-  if (!contactPhone) {
-    btn.disabled = false;
-    btn.textContent = 'Save Listing';
-    const msg = document.getElementById('form-message');
-    msg.className = 'form-message error';
-    msg.textContent = '✗ Buyer Contact phone is required — buyers always need someone to contact.';
-    msg.style.display = 'block';
-    return;
+  // A draft may be saved with any of these still blank — straight out of
+  // Smart Import, before staff has reviewed/filled them in. Any other
+  // status (active/available/etc.) requires all of them; publishDraft()
+  // enforces this too for the existing-draft-being-published path. This
+  // is deliberately custom JS validation, not native HTML `required` —
+  // native constraint validation blocks form submission silently (no
+  // error banner, easy to mistake for a dead button) and can't be
+  // conditional on draft status, so f-type/f-transaction/f-title-en/
+  // f-district are NOT marked required in the markup; this is the one
+  // place that enforces them, with a real error message.
+  if (status !== 'draft') {
+    const requiredChecks = [
+      [document.getElementById('f-type').value,        'Property Type'],
+      [document.getElementById('f-transaction').value,  'Transaction'],
+      [document.getElementById('f-title-en').value.trim(), 'Title (English)'],
+      [document.getElementById('f-district').value,     'District'],
+      [contactPhone,                                    'Buyer Contact phone'],
+    ];
+    const missingLabels = requiredChecks.filter(([v]) => !v).map(([, label]) => label);
+    if (missingLabels.length) {
+      btn.disabled = false;
+      btn.textContent = 'Save Listing';
+      const msg = document.getElementById('form-message');
+      msg.className = 'form-message error';
+      msg.textContent = '✗ Required before publishing: ' + missingLabels.join(', ') + '.';
+      msg.style.display = 'block';
+      return;
+    }
   }
-  const contactBody = {
-    role:     document.getElementById('f-contact-role').value || 'other',
-    name:     document.getElementById('f-contact-name').value.trim() || null,
-    phone:    contactPhone,
-    whatsapp: document.getElementById('f-contact-whatsapp').value.trim() || contactPhone,
-    party_id: _selAgent ? _selAgent.id : null
-  };
   let resolvedContactId;
   try {
-    const forkRequested = document.getElementById('f-contact-fork') && document.getElementById('f-contact-fork').checked;
-    if (_editingContactId && _editingContactSharedCount === 0) {
-      await sbApi('PATCH', `contacts?id=eq.${_editingContactId}`, contactBody);
-      resolvedContactId = _editingContactId;
-    } else if (_editingContactId && _editingContactSharedCount > 0 && !forkRequested) {
-      await sbApi('PATCH', `contacts?id=eq.${_editingContactId}`, contactBody);
-      resolvedContactId = _editingContactId;
+    if (!contactPhone) {
+      // Don't touch _editingContactId here even if set — it may be the
+      // shared PENDING sentinel, and PATCHing it with blank values would
+      // corrupt every other pending draft that also references it.
+      resolvedContactId = await ensurePendingContact();
     } else {
-      const created = await sbApi('POST', 'contacts', contactBody);
-      resolvedContactId = Array.isArray(created) ? created[0].id : created.id;
+      const contactBody = {
+        role:     document.getElementById('f-contact-role').value || 'other',
+        name:     document.getElementById('f-contact-name').value.trim() || null,
+        phone:    contactPhone,
+        whatsapp: document.getElementById('f-contact-whatsapp').value.trim() || contactPhone,
+        party_id: _selAgent ? _selAgent.id : null
+      };
+      const forkRequested = document.getElementById('f-contact-fork') && document.getElementById('f-contact-fork').checked;
+      if (_editingContactId && _editingContactSharedCount === 0) {
+        await sbApi('PATCH', `contacts?id=eq.${_editingContactId}`, contactBody);
+        resolvedContactId = _editingContactId;
+      } else if (_editingContactId && _editingContactSharedCount > 0 && !forkRequested) {
+        await sbApi('PATCH', `contacts?id=eq.${_editingContactId}`, contactBody);
+        resolvedContactId = _editingContactId;
+      } else {
+        const created = await sbApi('POST', 'contacts', contactBody);
+        resolvedContactId = Array.isArray(created) ? created[0].id : created.id;
+      }
     }
   } catch (err) {
     btn.disabled = false;
@@ -1628,14 +1778,7 @@ async function saveListing(e) {
     description_en:          document.getElementById('f-desc-en').value.trim() || null,
     description_lo:          document.getElementById('f-desc-lo').value.trim() || null,
     description_zh:          document.getElementById('f-desc-zh').value.trim() || null,
-    bedrooms:          parseInt(document.getElementById('f-bedrooms').value) || null,
-    bathrooms:         parseInt(document.getElementById('f-bathrooms').value) || null,
-    sqm:               parseInt(document.getElementById('f-sqm').value) || null,
-    sqm_land:          parseInt(document.getElementById('f-sqm-land').value) || null,
-    floors:            parseInt(document.getElementById('f-floors').value) || null,
-    year_built:        parseInt(document.getElementById('f-year-built').value) || null,
-    parking_spaces:    parseInt(document.getElementById('f-parking-spaces').value) || null,
-    furnished:         document.getElementById('f-furnished').value || null,
+    ...buildTypedFieldsPayload(document.getElementById('f-type').value),
     features:          features.length ? features : null,
     amenities:         amenities.length ? amenities : null,
     district_en:       districtEn || null,
@@ -1704,6 +1847,18 @@ async function deleteListing(id, title) {
 }
 
 // ── IMAGE UPLOAD ──────────────────────────────────────────────────
+// importImageModel is the canonical ImportImage[] — every mutation
+// (manual upload, cover selection, removal, Smart Import, loading an
+// existing listing) happens here, whatever the source. uploadedImages is
+// a pure projection of it (plain storageUrl strings) computed inside
+// refreshImageGrid() for the existing grid UI/#f-images to render and
+// read — never assigned to directly anywhere else, so the two can't
+// drift apart. This is also the ONE place the rich model flattens to
+// plain URLs, immediately before it reaches the hidden field saveListing()
+// persists from — properties.images stays a plain text[] in the DB
+// unchanged, but everything upstream of that keeps the full ImportImage
+// (source, primary, roomType, qualityScore) until this exact point.
+let importImageModel = [];
 let uploadedImages = [];
 
 const zone = document.getElementById('upload-zone');
@@ -1774,7 +1929,7 @@ async function handleImageUpload(files) {
 
       if (res.ok) {
         const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
-        uploadedImages.push(publicUrl);
+        importImageModel.push({ storageUrl: publicUrl, source: 'manual', primary: importImageModel.length === 0 });
         completed++;
         fill.style.width = `${(completed / fileArr.length) * 100}%`;
         status.style.color = '#166534';
@@ -1812,14 +1967,22 @@ async function handleImageUpload(files) {
 }
 
 function setCoverImage(url) {
-  uploadedImages = [url, ...uploadedImages.filter(u => u !== url)];
+  const idx = importImageModel.findIndex(img => img.storageUrl === url);
+  if (idx === -1) return;
+  const [entry] = importImageModel.splice(idx, 1);
+  importImageModel.unshift(entry);
+  importImageModel.forEach((img, i) => { img.primary = (i === 0); });
   refreshImageGrid();
 }
 function removeImage(url) {
-  uploadedImages = uploadedImages.filter(u => u !== url);
+  importImageModel = importImageModel.filter(img => img.storageUrl !== url);
+  if (importImageModel.length && !importImageModel.some(img => img.primary)) importImageModel[0].primary = true;
   refreshImageGrid();
 }
+// The one place importImageModel (ImportImage[]) flattens to plain
+// storageUrl strings — everything upstream of this keeps the rich model.
 function refreshImageGrid() {
+  uploadedImages = importImageModel.map(img => img.storageUrl).filter(Boolean);
   const grid = document.getElementById('image-preview-grid');
   grid.innerHTML = '';
   uploadedImages.forEach((url, i) => {
@@ -1838,7 +2001,7 @@ function refreshImageGrid() {
   document.getElementById('f-images').value = JSON.stringify(uploadedImages);
 }
 function populateExistingImages(images) {
-  uploadedImages = images || [];
+  importImageModel = (images || []).map((url, i) => ({ storageUrl: url, source: 'existing', primary: i === 0 }));
   refreshImageGrid();
 }
 
@@ -1855,15 +2018,15 @@ async function generateAIContent() {
     property_type:  document.getElementById('f-type').value,
     property_style: document.getElementById('f-style').value,
     transaction_type: document.getElementById('f-transaction').value,
-    bedrooms:       document.getElementById('f-bedrooms').value,
-    bathrooms:      document.getElementById('f-bathrooms').value,
-    sqm:            document.getElementById('f-sqm').value,
-    sqm_land:       document.getElementById('f-sqm-land').value,
+    bedrooms:       getFieldValueSafe('f-bedrooms'),
+    bathrooms:      getFieldValueSafe('f-bathrooms'),
+    sqm:            getFieldValueSafe('f-sqm'),
+    sqm_land:       getFieldValueSafe('f-sqm-land'),
     price_display:  document.getElementById('f-price').value,
     village:        village,
     district:       districtEn,
     features:       getCheckedKeys('features-grid'),
-    furnished:      document.getElementById('f-furnished').value,
+    furnished:      getFieldValueSafe('f-furnished'),
     nearby_places:  getNearbyPlaces()
   };
 
@@ -1964,6 +2127,7 @@ function showImportPanel() {
   document.getElementById('import-panel').style.display  = 'block';
   importImages = [];
   refreshImportImageGrid();
+  document.getElementById('import-fb-url').value = '';
   document.getElementById('import-description').value = '';
   document.getElementById('import-message').style.display = 'none';
   document.getElementById('import-progress-steps').style.display = 'none';
@@ -2081,17 +2245,17 @@ function removeImportImage(url) {
 }
 
 const IMPORT_STEPS = [
-  { id: 'step-upload',   label: 'Photos uploaded to storage' },
+  { id: 'step-fetch',    label: 'Fetching Facebook listing' },
+  { id: 'step-upload',   label: 'Photos ready' },
   { id: 'step-analyze',  label: 'Analyzing description and photos with AI' },
-  { id: 'step-populate', label: 'Populating listing form' },
-  { id: 'step-save',     label: 'Saving as draft' }
+  { id: 'step-populate', label: 'Populating listing form' }
 ];
 
-function showImportSteps() {
+function showImportSteps(steps) {
   const stepsEl  = document.getElementById('import-progress-steps');
   const stepList = document.getElementById('import-step-list');
   stepsEl.style.display = 'block';
-  stepList.innerHTML = IMPORT_STEPS.map(s =>
+  stepList.innerHTML = steps.map(s =>
     `<div class="import-step" id="${s.id}">
        <div class="import-step-dot"></div>
        <span>${s.label}</span>
@@ -2111,12 +2275,39 @@ function setImportStep(stepId, state) {
                       : step.label;
 }
 
+// Stage 1 of the two-stage import pipeline (source-specific): turns a
+// Facebook Marketplace URL into { title, description, price_display,
+// image_urls }. Performs zero database-table writes — its only Supabase
+// side effect is uploading fetched photos to the property-images Storage
+// bucket, same bucket handleImportImageUpload() already uses for manually
+// picked photos. See supabase/functions/facebook-listing-fetcher/index.ts.
+async function fetchFacebookListing(url) {
+  const res = await fetch(SUPABASE_URL + '/functions/v1/facebook-listing-fetcher', {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'apikey':        SUPABASE_ANON,
+      'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
+    },
+    body: JSON.stringify({ url })
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(res.status + ': ' + err.slice(0, 200));
+  }
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
 async function runSmartImport() {
-  const description = document.getElementById('import-description').value.trim();
-  if (!description && importImages.length === 0) {
+  const fbUrl = document.getElementById('import-fb-url').value.trim();
+  let description = document.getElementById('import-description').value.trim();
+
+  if (!fbUrl && !description && importImages.length === 0) {
     const msg = document.getElementById('import-message');
     msg.className = 'form-message error';
-    msg.textContent = 'Please paste a property description or upload at least one photo.';
+    msg.textContent = 'Please paste a Facebook URL, a property description, or upload at least one photo.';
     msg.style.display = 'block';
     return;
   }
@@ -2126,13 +2317,40 @@ async function runSmartImport() {
   btn.disabled = true;
   btn.innerHTML = '&#8987; Processing...';
   msgEl.style.display = 'none';
-  showImportSteps();
+  showImportSteps(fbUrl ? IMPORT_STEPS : IMPORT_STEPS.filter(s => s.id !== 'step-fetch'));
 
   try {
-    // Step 1: images already in importImages[] — mark done
+    // Stage 1 (ADAPTER, only when a URL was given): the Facebook adapter
+    // returns raw material — images: ImportImage[] (already Storage-hosted,
+    // via storageUrl), plus plain title/description/price text. Fold that
+    // into the same description text + importImages[] the manual-paste
+    // adapter already produces — everything downstream of this point is
+    // identical regardless of which adapter ran.
+    const importSource = fbUrl ? 'facebook_og' : 'manual';
+    if (fbUrl) {
+      setImportStep('step-fetch', 'active');
+      const fetched = await fetchFacebookListing(fbUrl);
+      const fetchedParts = [];
+      if (fetched.title) fetchedParts.push('Title: ' + fetched.title);
+      if (fetched.price_display) fetchedParts.push('Price: ' + fetched.price_display);
+      if (fetched.description) fetchedParts.push(fetched.description);
+      const fetchedText = fetchedParts.join('\n\n');
+      description = [fetchedText, description].filter(Boolean).join('\n\n---\n\n');
+      if (Array.isArray(fetched.images)) {
+        fetched.images.forEach(img => {
+          if (img.storageUrl && !importImages.includes(img.storageUrl)) importImages.push(img.storageUrl);
+        });
+        refreshImportImageGrid();
+      }
+      setImportStep('step-fetch', 'done');
+    }
+
+    // Stage 2 (AI ENRICHMENT, source-agnostic): images already in
+    // importImages[] — mark ready, then hand the combined text + photos +
+    // originating adapter's name to Gemini for structured extraction,
+    // exactly the same call regardless of which adapter produced the input.
     setImportStep('step-upload', 'done');
 
-    // Step 2: call AI edge function
     setImportStep('step-analyze', 'active');
     const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
       method: 'POST',
@@ -2141,7 +2359,7 @@ async function runSmartImport() {
         'apikey':        SUPABASE_ANON,
         'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
       },
-      body: JSON.stringify({ description, image_urls: importImages })
+      body: JSON.stringify({ description, image_urls: importImages, source: importSource })
     });
     if (!res.ok) {
       const err = await res.text();
@@ -2151,18 +2369,19 @@ async function runSmartImport() {
     if (aiResult.error) throw new Error(aiResult.error);
     setImportStep('step-analyze', 'done');
 
-    // Step 3: populate form fields
+    // Stage 3: populate form fields — Smart Import's job ends here. No
+    // database write of any kind happens as part of import: no property
+    // row, no contact row/lookup, no publish validation. The user reviews
+    // and edits the now-populated form, then explicitly clicks Save
+    // Listing (or Publish, once saved) to persist anything — see
+    // saveListing() and publishDraft() below, the only two functions that
+    // write to `properties`.
     setImportStep('step-populate', 'active');
     populateFormFromImport(aiResult);
     setImportStep('step-populate', 'done');
 
-    // Step 4: auto-save as draft
-    setImportStep('step-save', 'active');
-    const draftId = await saveDraft();
-    setImportStep('step-save', 'done');
-
-    // Transition to edit form for the saved draft
-    await editListing(draftId);
+    revealFormPanel('New Listing (from Smart Import)', '');
+    renderImportSummary(aiResult, importImages);
 
   } catch (err) {
     console.error('[Smart Import]', err);
@@ -2178,17 +2397,133 @@ async function runSmartImport() {
   }
 }
 
+// What Smart Import checks for when telling staff what to review — not an
+// exhaustive field list, just the handful that most affect whether a
+// listing is ready to publish. `bedrooms`/`bathrooms` are only checked for
+// property types that actually have them (reuses PROPERTY_TYPE_FIELDS from
+// terminology.js, the same schema the form itself renders from), so a Land
+// import is never flagged as "missing" a field it was never going to have.
+function typeHasField(propertyType, fieldId) {
+  const fields = (typeof PROPERTY_TYPE_FIELDS !== 'undefined' && PROPERTY_TYPE_FIELDS[propertyType]) || [];
+  return fields.some(f => f.id === fieldId);
+}
+
+// A field "needs attention" if it's missing OR present-but-uncertain — a
+// low-confidence value is exactly as actionable as a missing one, just
+// phrased differently ("Verify the price" vs. "Add a price").
+function importFieldNeedsAttention(fieldValue) {
+  const val = fv(fieldValue);
+  if (val == null || val === '') return true;
+  return !!(fieldValue && typeof fieldValue === 'object' && typeof fieldValue.confidence === 'number' && fieldValue.confidence < IMPORT_CONFIDENCE_THRESHOLD);
+}
+
+// Builds the human-facing "what we got / what's left" summary — a curated
+// handful of the most decision-relevant fields, not an exhaustive dump.
+// bedrooms/bathrooms only enter the check for property types that actually
+// have them (reuses PROPERTY_TYPE_FIELDS from terminology.js), so a Land
+// import is never told to "verify" a field it was never going to have.
+function buildImportSummary(data, importImages) {
+  const found = [];
+  const remaining = [];
+  const location = data.location || {};
+  const contact  = data.contact  || {};
+
+  if (importImages.length > 0) found.push(`${importImages.length} Photo${importImages.length === 1 ? '' : 's'}`);
+  else remaining.push('Add photos');
+
+  if ((data.description_en || '').trim()) found.push('Description');
+  else remaining.push('Add a description');
+
+  if (!importFieldNeedsAttention(data.price_display)) found.push('Price');
+  else remaining.push(fv(data.price_display) ? 'Verify the price' : 'Add a price');
+
+  const hasBeds  = typeHasField(fv(data.property_type), 'f-bedrooms');
+  const hasBaths = typeHasField(fv(data.property_type), 'f-bathrooms');
+  if (hasBeds || hasBaths) {
+    const ok = (!hasBeds || !importFieldNeedsAttention(data.bedrooms)) && (!hasBaths || !importFieldNeedsAttention(data.bathrooms));
+    if (ok) found.push('Property details');
+    else remaining.push('Verify property details');
+  }
+
+  if (!importFieldNeedsAttention(location.district) && !importFieldNeedsAttention(location.village)) found.push('Location');
+  else remaining.push('Verify location');
+
+  if (!importFieldNeedsAttention(contact.phone)) found.push('Contact information');
+  else remaining.push('Add contact information');
+
+  return { found, remaining };
+}
+
+function formatEstimate(seconds) {
+  if (seconds < 60) return seconds + ' seconds';
+  const mins = Math.round(seconds / 60);
+  return mins + ' minute' + (mins === 1 ? '' : 's');
+}
+
+function renderImportSummary(data, importImages) {
+  const banner = document.getElementById('import-summary-banner');
+  if (!banner) return;
+  const { found, remaining } = buildImportSummary(data, importImages);
+
+  const foundHtml = found.map(label => `<div class="import-summary-item found">✓ ${esc(label)}</div>`).join('');
+  const remainingHtml = remaining.length ? `
+      <div class="import-summary-col-label" style="margin-top:16px;">To finish this listing:</div>
+      ${remaining.map(label => `<div class="import-summary-item missing">• ${esc(label)}</div>`).join('')}
+      <div class="import-summary-note">Estimated time: ${formatEstimate(Math.max(15, remaining.length * 15))}</div>`
+    : `<div class="import-summary-note" style="margin-top:12px;">Everything's here — just give it a look before saving.</div>`;
+
+  banner.innerHTML = `
+    <div class="import-summary">
+      <div class="import-summary-title">Import complete!</div>
+      <div class="import-summary-col-label">We imported:</div>
+      ${foundHtml}
+      ${remainingHtml}
+    </div>`;
+  banner.style.display = 'block';
+}
+
+// ── Reusable importer contract ──────────────────────────────────────────
+// Smart Import's only job is: get a Listing JSON (today: paste text/photos
+// → Gemini via the smart-listing-importer edge function) and hand it to
+// populateFormFromImport(), which applies it to the form. Any future import
+// source (a property website, a PDF, a Word doc, image OCR) just needs its
+// own "get a Listing JSON" step that produces this same field shape, then
+// calls populateFormFromImport() the same way runSmartImport() does above —
+// this function has no knowledge of where the data came from, and neither
+// it nor anything it calls ever touches the database. Persistence only
+// happens later, when the user explicitly clicks Save Listing or Publish.
+// AI ENRICHMENT returns factual fields as FieldValue<T> ({value, confidence})
+// rather than bare values, so the form can flag uncertain ones instead of
+// blindly trusting them. fv() safely reads .value whether or not a field
+// actually arrived wrapped (defensive — matches the edge function's own
+// normalizeFieldValue()). applyConfidence() puts an amber outline on the
+// specific input when a *present* value's confidence is below threshold —
+// reusing the same amber-for-review visual language flagContactSectionForReview()
+// already established, just scoped to one field instead of a whole section.
+function fv(x) { return (x && typeof x === 'object' && 'value' in x) ? x.value : (x != null ? x : null); }
+const IMPORT_CONFIDENCE_THRESHOLD = 0.7;
+function applyConfidence(elId, fieldValue) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const val = fv(fieldValue);
+  const low = val != null && fieldValue && typeof fieldValue === 'object' && fieldValue.confidence < IMPORT_CONFIDENCE_THRESHOLD;
+  el.classList.toggle('field-low-confidence', !!low);
+}
+
 function populateFormFromImport(data) {
   // Populate form fields (form-panel may be hidden — values are set directly)
-  document.getElementById('f-type').value        = data.property_type || '';
-  document.getElementById('f-style').value       = data.property_style || '';
-  document.getElementById('f-transaction').value = data.transaction_type || 'for_sale';
+  document.getElementById('f-type').value        = fv(data.property_type) || '';
+  renderPropertyTypeFields(fv(data.property_type) || '');
+  document.getElementById('f-style').value       = fv(data.property_style) || '';
+  applyConfidence('f-style', data.property_style);
+  document.getElementById('f-transaction').value = fv(data.transaction_type) || 'for_sale';
   onTransactionChange();
   document.getElementById('f-status').value      = 'draft';
-  document.getElementById('f-price').value          = data.price_display || '';
-  document.getElementById('f-sale-price').value     = data.sale_price || '';
-  document.getElementById('f-rent-price').value     = data.rent_price || '';
-  document.getElementById('f-rent-period').value    = data.rent_period || 'month';
+  document.getElementById('f-price').value          = fv(data.price_display) || '';
+  applyConfidence('f-price', data.price_display);
+  document.getElementById('f-sale-price').value     = '';
+  document.getElementById('f-rent-price').value     = '';
+  document.getElementById('f-rent-period').value    = 'month';
   document.getElementById('f-price-previous').value = '';
   document.getElementById('f-land-title').value  = '';
   document.getElementById('f-featured').value    = 'false';
@@ -2209,18 +2544,17 @@ function populateFormFromImport(data) {
   document.getElementById('f-desc-lo').value     = data.description_lo || '';
   document.getElementById('f-desc-zh').value     = data.description_zh || '';
 
-  document.getElementById('f-bedrooms').value    = data.bedrooms != null ? data.bedrooms : '';
-  document.getElementById('f-bathrooms').value   = data.bathrooms != null ? data.bathrooms : '';
-  document.getElementById('f-sqm').value         = data.sqm != null ? data.sqm : '';
-  document.getElementById('f-sqm-land').value    = data.sqm_land != null ? data.sqm_land : '';
-  document.getElementById('f-floors').value      = '';
-  document.getElementById('f-year-built').value  = '';
-  document.getElementById('f-parking-spaces').value = '';
-  document.getElementById('f-furnished').value   = data.furnished || '';
+  populateTypedFields(fv(data.property_type) || '', data);
+  ['f-bedrooms','f-bathrooms','f-sqm','f-sqm-land','f-furnished'].forEach(id => {
+    const src = { 'f-bedrooms':data.bedrooms, 'f-bathrooms':data.bathrooms, 'f-sqm':data.sqm, 'f-sqm-land':data.sqm_land, 'f-furnished':data.furnished }[id];
+    applyConfidence(id, src);
+  });
 
-  if (data.district) document.getElementById('f-district').value = data.district;
-  else document.getElementById('f-district').value = '';
-  document.getElementById('f-village').value     = data.village || '';
+  const location = data.location || {};
+  document.getElementById('f-district').value = fv(location.district) || '';
+  applyConfidence('f-district', location.district);
+  document.getElementById('f-village').value     = fv(location.village) || '';
+  applyConfidence('f-village', location.village);
   document.getElementById('f-map').value         = '';
 
   ['en','lo','zh'].forEach(lang => {
@@ -2240,18 +2574,26 @@ function populateFormFromImport(data) {
   document.getElementById('nearby-list').innerHTML = '';
   addNearby();
 
-  // Apply AI-recommended photo order
-  const order = Array.isArray(data.recommended_order) ? data.recommended_order : [];
-  if (order.length > 0 && importImages.length > 0) {
+  // data.images (ImportImage[]) is the canonical source of truth, already
+  // in the correct display order (hero first) — consumed directly, no
+  // reconstruction from recommended_order needed. recommended_order +
+  // the adapter's flat importImages[] are kept only as a fallback for a
+  // response that didn't include images[] at all. Whichever path builds
+  // it, importImageModel stays the rich model from here on — refreshImageGrid()
+  // is the one place it flattens to plain URLs, right before #f-images.
+  if (Array.isArray(data.images) && data.images.length) {
+    importImageModel = data.images.slice();
+  } else if (importImages.length) {
+    const order = Array.isArray(data.recommended_order) ? data.recommended_order : [];
     const mentioned = new Set(order);
-    const reordered = [
-      ...order.map(i => importImages[i]).filter(Boolean),
-      ...importImages.filter((_, i) => !mentioned.has(i))
-    ];
-    uploadedImages = reordered;
+    const orderedUrls = order.length
+      ? [...order.map(i => importImages[i]).filter(Boolean), ...importImages.filter((_, i) => !mentioned.has(i))]
+      : importImages.slice();
+    importImageModel = orderedUrls.map(url => ({ storageUrl: url, source: data.source || 'manual' }));
   } else {
-    uploadedImages = [...importImages];
+    importImageModel = [];
   }
+  if (importImageModel.length && !importImageModel.some(img => img.primary)) importImageModel[0].primary = true;
   refreshImageGrid();
 
   // Clear video/download fields
@@ -2271,11 +2613,13 @@ function populateFormFromImport(data) {
   _editingContactId = null;
   _editingContactSharedCount = 0;
   document.getElementById('contact-shared-note').style.display = 'none';
-  document.getElementById('f-contact-role').value     = data.contact_role || 'other';
-  document.getElementById('f-contact-name').value     = data.contact_name || '';
-  document.getElementById('f-contact-phone').value    = data.contact_phone || '';
-  document.getElementById('f-contact-whatsapp').value = data.contact_phone || '';
-  flagContactSectionForReview(!data.contact_phone);
+  const contact = data.contact || {};
+  const contactPhone = fv(contact.phone);
+  document.getElementById('f-contact-role').value     = fv(contact.role) || 'other';
+  document.getElementById('f-contact-name').value     = fv(contact.name) || '';
+  document.getElementById('f-contact-phone').value    = contactPhone || '';
+  document.getElementById('f-contact-whatsapp').value = contactPhone || '';
+  flagContactSectionForReview(!contactPhone);
 }
 
 // Visually flags the Buyer Contact section amber so staff notices it needs
@@ -2285,96 +2629,44 @@ function flagContactSectionForReview(needsAttention) {
   if (section) section.style.outline = needsAttention ? '2px solid #B8860B' : '2px solid var(--teal)';
 }
 
-// Sentinel contact used whenever a draft is saved with no Buyer Contact
-// phone yet (e.g. straight out of Smart Import) — see
+// Sentinel contact used whenever saveListing() persists a draft with no
+// Buyer Contact phone yet (e.g. straight out of Smart Import) — see
 // 20260705000300_backfill_contacts_from_properties.sql for the matching
 // seed row. publishDraft() refuses to publish while this is still set.
 const PENDING_CONTACT_ID = '00000000-0000-0000-0000-0000000000c1';
 
-async function resolveDraftContactId() {
-  const contactPhone = document.getElementById('f-contact-phone').value.trim();
-  if (!contactPhone) return PENDING_CONTACT_ID;
-  const contactBody = {
-    role:     document.getElementById('f-contact-role').value || 'other',
-    name:     document.getElementById('f-contact-name').value.trim() || null,
-    phone:    contactPhone,
-    whatsapp: document.getElementById('f-contact-whatsapp').value.trim() || contactPhone,
-    party_id: document.getElementById('f-agent-id').value || null
-  };
-  const created = await sbApi('POST', 'contacts', contactBody);
-  return Array.isArray(created) ? created[0].id : created.id;
-}
-
-async function saveDraft() {
-  const districtEn  = document.getElementById('f-district').value;
-  const districtMap = DISTRICT_MAP[districtEn] || {};
-  const village     = document.getElementById('f-village').value.trim();
-  const titleEn     = document.getElementById('f-title-en').value.trim() || 'Draft Listing';
-  const slugBase    = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-')
-                       .replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
-  const slug        = slugBase + '-' + Date.now().toString().slice(-6);
-
-  const body = {
-    property_type:          document.getElementById('f-type').value || null,
-    property_style:         document.getElementById('f-style').value || null,
-    transaction_type:       document.getElementById('f-transaction').value || null,
-    status:                 'draft',
-    price_display:          (document.getElementById('f-transaction').value === 'sale_or_rent'
-                               ? document.getElementById('f-sale-price').value.trim()
-                               : document.getElementById('f-price').value.trim()) || null,
-    sale_price:             document.getElementById('f-sale-price').value.trim() || null,
-    rent_price:             document.getElementById('f-rent-price').value.trim() || null,
-    rent_period:            (document.getElementById('f-transaction').value === 'sale_or_rent'
-                               ? document.getElementById('f-rent-period').value || 'month'
-                               : null),
-    price_previous:         null,
-    title_en:               titleEn,
-    title_lo:               document.getElementById('f-title-lo').value.trim() || null,
-    title_zh:               document.getElementById('f-title-zh').value.trim() || null,
-    property_highlight_en:  document.getElementById('f-highlight-en').value.trim() || null,
-    property_highlight_lo:  document.getElementById('f-highlight-lo').value.trim() || null,
-    property_highlight_zh:  document.getElementById('f-highlight-zh').value.trim() || null,
-    property_highlight:     document.getElementById('f-highlight-en').value.trim() || null,
-    description_en:         document.getElementById('f-desc-en').value.trim() || null,
-    description_lo:         document.getElementById('f-desc-lo').value.trim() || null,
-    description_zh:         document.getElementById('f-desc-zh').value.trim() || null,
-    bedrooms:               parseInt(document.getElementById('f-bedrooms').value) || null,
-    bathrooms:              parseInt(document.getElementById('f-bathrooms').value) || null,
-    sqm:                    parseInt(document.getElementById('f-sqm').value) || null,
-    sqm_land:               parseInt(document.getElementById('f-sqm-land').value) || null,
-    furnished:              document.getElementById('f-furnished').value || null,
-    district_en:            districtEn || null,
-    district_lo:            districtMap.lo || null,
-    district_zh:            districtMap.zh || null,
-    village_en:             village || null,
-    neighborhood_insight_en: document.getElementById('f-neighborhood-en').value.trim() || null,
-    neighborhood_insight_lo: document.getElementById('f-neighborhood-lo').value.trim() || null,
-    neighborhood_insight_zh: document.getElementById('f-neighborhood-zh').value.trim() || null,
-    neighborhood_description: document.getElementById('f-neighborhood-en').value.trim() || null,
-    images:                 uploadedImages.length ? uploadedImages : null,
-    managed_by_party_id:    document.getElementById('f-agent-id').value || null,
-    contact_id:             await resolveDraftContactId(),
-    slug
-  };
-
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/properties`, {
-    method: 'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'apikey':        SUPABASE_ANON,
-      'Authorization': 'Bearer ' + _adminToken,
-      'Prefer':        'return=representation'
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error('Draft save failed ' + res.status + ': ' + errText.slice(0, 200));
+// The PENDING sentinel contact is normally seeded once by
+// 20260705000300_backfill_contacts_from_properties.sql. That's a one-time
+// DB-level step, easy to miss on a freshly bootstrapped environment (or an
+// environment where that migration just hasn't been run yet) — if it's
+// missing, referencing PENDING_CONTACT_ID below would 409 with
+// properties_contact_id_fkey the moment a draft is saved. Self-heal here
+// instead of hard-depending on migration state: check for the row, create
+// it if absent, then proceed.
+async function ensurePendingContact() {
+  try {
+    const existing = await sbApi('GET', `contacts?id=eq.${PENDING_CONTACT_ID}&select=id`);
+    if (Array.isArray(existing) && existing.length) return PENDING_CONTACT_ID;
+  } catch (err) {
+    console.warn('[ensurePendingContact] lookup of PENDING sentinel contact failed, will attempt to create it:', err.message);
   }
-  const result = await res.json();
-  const saved = Array.isArray(result) ? result[0] : result;
-  if (!saved || !saved.id) throw new Error('Draft saved but no record ID returned');
-  return saved.id;
+  console.warn('[ensurePendingContact] PENDING sentinel contact ' + PENDING_CONTACT_ID + ' not found — creating it now (see 20260705000300_backfill_contacts_from_properties.sql)');
+  try {
+    await sbApi('POST', 'contacts', {
+      id:       PENDING_CONTACT_ID,
+      role:     'other',
+      name:     'PENDING — Pintag staff to confirm buyer contact',
+      phone:    '0000000000',
+      whatsapp: null
+    });
+  } catch (err) {
+    // A concurrent save may have created it first (race) — that's fine as
+    // long as the row now exists. If it genuinely doesn't, the properties
+    // insert right after this will still fail, but now with contact_id
+    // logged below so the cause is obvious instead of a bare 409.
+    console.warn('[ensurePendingContact] create attempt failed (may already exist from a concurrent save):', err.message);
+  }
+  return PENDING_CONTACT_ID;
 }
 
 async function publishDraft() {
@@ -2411,8 +2703,7 @@ async function publishDraft() {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
-initCheckGrid('features-grid', FEATURES);
-initGroupedCheckGrid('amenities-grid', AMENITIES, AMENITY_CATEGORIES);
+renderPropertyTypeFields(document.getElementById('f-type').value || '');
 initHighlightPresets();
 </script>
 </body>

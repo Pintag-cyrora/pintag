@@ -88,8 +88,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .spec-icon{color:var(--ink-muted);display:block;line-height:1;}
 .spec-val{font-size:15px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;line-height:1.2;}
 .spec-lbl{font-size:9px;color:var(--ink-muted);letter-spacing:0.04em;text-transform:uppercase;line-height:1.3;}
-.year-row{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);margin-top:22px;padding-top:22px;border-top:1px solid var(--border);}
-.year-row-lbl{font-size:11px;color:var(--ink-muted);}
 .highlight-pills{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0 0;}
 .highlight-pill{display:inline-flex;align-items:center;padding:5px 11px;border-radius:999px;background:rgba(45,140,140,0.07);border:1px solid rgba(45,140,140,0.12);color:var(--teal);font-size:11px;font-weight:500;line-height:1;white-space:nowrap;flex:0 0 auto;}
 .sidebar-insight{font-size:12.5px;color:var(--ink-muted);line-height:1.85;margin-top:16px;}
@@ -160,6 +158,14 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
    desktop where the original .detail-grid copy is the visible one). */
 .mobile-amenities-slot{display:none;}
 .mobile-amenities-slot .amenity-row{margin-top:0;padding-top:0;border-top:none;}
+/* Secondary "Property Details" list — type-relevant facts that don't
+   make the main spec grid (see getDetailFacts() in terminology.js). */
+.pdetail-list{margin-top:28px;padding-top:22px;border-top:1px solid var(--border);}
+.pdetail-row{display:flex;align-items:center;gap:10px;font-size:12.5px;padding:9px 0;border-bottom:1px solid var(--border);}
+.pdetail-row:last-child{border-bottom:none;}
+.pdetail-icon{width:26px;height:26px;border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;background:rgba(45,140,140,0.03);}
+.pdetail-lbl{color:var(--ink-muted);flex:1;}
+.pdetail-val{font-weight:500;color:var(--ink);}
 /* Features — editorial, premium spacing */
 .features-list{display:flex;flex-direction:column;gap:0;}
 .feature-item{display:flex;align-items:center;gap:12px;font-size:13px;font-weight:400;color:var(--ink-soft);padding:11px 0;border-bottom:1px solid var(--border);line-height:1.4;}
@@ -292,7 +298,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   .hero-left .property-highlight{order:6;}
   .hero-left .hero-location{order:7;}
   .hero-left .spec-grid{order:8;}
-  .hero-left .year-row{order:9;}
   .hero-left .highlight-pills{order:10;}
   .hero-left .sidebar-insight{order:11;}
   .hero-left .left-actions{order:12;}
@@ -329,8 +334,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   .body-narrative{font-size:13.5px;line-height:1.9;}
   /* Spec grid — tighter vertical rhythm */
   .spec-grid{gap:14px 8px;margin:18px 0 0;}
-  /* Year row — tighter */
-  .year-row{margin-top:16px;padding-top:16px;}
+  /* Property details list — tighter */
+  .pdetail-list{margin-top:16px;padding-top:16px;}
   /* Highlight pills — slightly tighter top margin */
   .highlight-pills{margin:16px 0 0;}
   .sidebar-insight{margin-top:12px;font-size:12px;}
@@ -476,6 +481,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
+<script src="terminology.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // PINTAG · listing.html v4 — fully dynamic, no hardcoded content
@@ -748,6 +754,17 @@ function esc(str){
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Fills {{PLACEHOLDER}} tokens in a template string — the one small piece
+// of i18n infrastructure this file didn't already have. Word order is
+// free to differ per language (see WA_MESSAGE_TEMPLATES below); everything
+// else about how a language is chosen/labeled still goes through the
+// existing {lo,en,zh}[lang] lookup pattern used everywhere else in this file.
+function fillTemplate(template, vars){
+  return String(template).replace(/\{\{(\w+)\}\}/g, function(_, key){
+    return (vars && vars[key] != null) ? vars[key] : '';
+  });
+}
+
 function isSafeUrl(url){
   if(!url||typeof url!=='string')return false;
   var t=url.trim().toLowerCase();
@@ -1002,11 +1019,6 @@ function renderSimilarGrid(similar){
   if(!Array.isArray(similar)||!similar.length){hideSimilarSection();return;}
   secEl.style.display='block';
   var lang=getCurrentLang();
-  var sI={
-    bed:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4v16M22 4v16M2 8h20M2 14h20"/></svg>',
-    bath:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18a4 4 0 0 0 8 0v-4H4zM12 14V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>',
-    sqm:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>'
-  };
   var frag=document.createDocumentFragment();
   similar.forEach(function(p){
     if(!p||!p.slug)return;
@@ -1014,10 +1026,10 @@ function renderSimilarGrid(similar){
     var district=esc(p['district_'+lang]||p.district_en||'');
     var imgs=Array.isArray(p.images)?p.images.filter(Boolean):[];
     var imgHtml=imgs[0]?'<img src="'+esc(imgs[0])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)">':'<div class="sim-no-img"></div>';
-    var specs=[];
-    if(p.bedrooms)specs.push('<span class="sim-spec-item">'+sI.bed+' '+esc(String(p.bedrooms))+'</span>');
-    if(p.bathrooms)specs.push('<span class="sim-spec-item">'+sI.bath+' '+esc(String(p.bathrooms))+'</span>');
-    if(p.sqm)specs.push('<span class="sim-spec-item">'+sI.sqm+' '+esc(String(p.sqm))+'</span>');
+    // Facts driven by PROPERTY_TYPE_DISPLAY (terminology.js) — same schema
+    // that drives the main spec grid and the search-result cards.
+    var cardFacts=(typeof getCardFacts==='function')?getCardFacts(p.property_type,p,lang):[];
+    var specs=cardFacts.map(function(f){return '<span class="sim-spec-item">'+f.icon+' '+esc(String(f.value))+'</span>';});
 
     // Label: Popular Alternative > Best Value Nearby > New Listing > Similar Property
     var labelHtml = '';
@@ -1126,16 +1138,10 @@ function buildMockupLayout(){
     mapOpen:{lo:'ເປີດໃນ Google Maps',en:'Open in Google Maps',zh:'在谷歌地图中打开'},
     video  :{lo:'ວິດີໂອນຳຊົມ',en:'Property walk-through',zh:'实景视频'},
     verified:{lo:'ກວດສອບແລ້ວ',en:'Verified',zh:'平台已核验'},
-    inquire:{lo:'ສອບຖາມລາຄາ',en:'Inquire for price',zh:'意向询价'},
-    year   :{lo:'ປີທີ່ສ້າງສຳເລັດ',en:'Year built',zh:'建成岁次'}
+    inquire:{lo:'ສອບຖາມລາຄາ',en:'Inquire for price',zh:'意向询价'}
   };
 
   var I={
-    bed:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 4v16M22 4v16M2 8h20M2 14h20"/></svg>',
-    bath:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18a4 4 0 0 0 8 0v-4H4zM12 14V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>',
-    sqm:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>',
-    car:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="22" height="13" rx="2"/><path d="M7 16v2M17 16v2"/></svg>',
-    cal:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
     heart:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
     play:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
     pin:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
@@ -1162,14 +1168,20 @@ function buildMockupLayout(){
     resolvedPriceHtml='<p class="price-inquire">'+L.inquire[lang]+'</p>';
   }
 
-  // ── Specs ──
-  var specsHtml='';
-  if(data.bedrooms)      specsHtml+='<div class="spec-item"><span class="spec-icon">'+I.bed+'</span><span class="spec-val">'+esc(String(data.bedrooms))+'</span><span class="spec-lbl">BEDROOMS</span></div>';
-  if(data.bathrooms)     specsHtml+='<div class="spec-item"><span class="spec-icon">'+I.bath+'</span><span class="spec-val">'+esc(String(data.bathrooms))+'</span><span class="spec-lbl">BATHROOMS</span></div>';
-  if(data.sqm)           specsHtml+='<div class="spec-item"><span class="spec-icon">'+I.sqm+'</span><span class="spec-val">'+esc(String(data.sqm))+'&#13217;</span><span class="spec-lbl">AREA</span></div>';
-  if(data.parking_spaces)specsHtml+='<div class="spec-item"><span class="spec-icon">'+I.car+'</span><span class="spec-val">'+esc(String(data.parking_spaces))+'</span><span class="spec-lbl">PARKING</span></div>';
+  // ── Specs ── driven by PROPERTY_TYPE_DISPLAY (terminology.js): which
+  // facts show here (main grid) vs. the secondary Property Details list
+  // below, in what order, with what icon, is per property type — no more
+  // hardcoded per-field checks, no more type-blind "just skip if null".
+  var detailFacts=(typeof getDetailFacts==='function')?getDetailFacts(data.property_type,data,lang):{priority:[],secondary:[]};
+  var specsHtml=detailFacts.priority.map(function(f){
+    return '<div class="spec-item"><span class="spec-icon">'+esc(f.icon)+'</span><span class="spec-val">'+esc(String(f.value))+'</span><span class="spec-lbl">'+esc(f.label.toUpperCase())+'</span></div>';
+  }).join('');
 
-  var yearHtml=data.year_built?'<div class="year-row"><span class="year-row-lbl">'+L.year[lang]+'</span><span class="agent-stat-icon">'+I.cal+'</span><strong>'+esc(String(data.year_built))+'</strong></div>':'';
+  var pdetailHtml=detailFacts.secondary.length
+    ? '<div class="pdetail-list">'+detailFacts.secondary.map(function(f){
+        return '<div class="pdetail-row"><span class="pdetail-icon">'+esc(f.icon)+'</span><span class="pdetail-lbl">'+esc(f.label)+'</span><span class="pdetail-val">'+esc(String(f.value))+'</span></div>';
+      }).join('')+'</div>'
+    : '';
 
   var typeBadgeText=isSor?(lang==='lo'?'ຊື້ / ເຊົ່າ':lang==='zh'?'售/租':' Sale or Rent'):isSale?(lang==='lo'?'ຂາຍ':lang==='zh'?'出售':'For Sale'):(lang==='lo'?'ໃຫ້ເຊົ່າ':lang==='zh'?'出租':'For Rent');
 
@@ -1206,8 +1218,19 @@ function buildMockupLayout(){
   var contact=data.contacts||null;
   var contactPhone=contact?(contact.whatsapp||contact.phone||''):'';
   var cleanPhone=String(contactPhone).replace(/[^0-9]/g,'');
-  var waTitleShort=String(data.title_en||data.title_lo||'').slice(0,80);
-  var waMessage=encodeURIComponent('Hello, I am interested in '+waTitleShort+' (Ref: '+(data.id||'')+')');
+  // Localized pre-filled WhatsApp message — {{PLACEHOLDER}} template per
+  // language so word order can differ freely (Chinese puts location before
+  // property type; Lao has no article). Property type name reuses the same
+  // PROPERTY_TYPES registry (terminology.js) admin.html/listings.html
+  // already use, so it's never translated in two different places.
+  var waPropertyType=(typeof PROPERTY_TYPES!=='undefined' && PROPERTY_TYPES[data.property_type] && PROPERTY_TYPES[data.property_type][lang]) || data.property_type || '';
+  var waDistrictRaw=data['district_'+lang] || data.district_en || '';
+  var waLocation=resolvedVillage ? (resolvedVillage+', '+waDistrictRaw) : waDistrictRaw;
+  var waMessage=encodeURIComponent(fillTemplate(WA_MESSAGE_TEMPLATES[lang]||WA_MESSAGE_TEMPLATES.en, {
+    PROPERTY_TYPE: waPropertyType,
+    LOCATION: waLocation,
+    REFERENCE: data.id || ''
+  }));
   var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
   var CONTACT_ROLE_LABELS={
     owner:{lo:'ເຈົ້າຂອງ',en:'Owner',zh:'业主'},
@@ -1272,6 +1295,7 @@ function buildMockupLayout(){
     '<span class="section-label">'+L.overview[lang]+'</span>'+
     '<p class="body-narrative">'+resolvedDesc+'</p>'+
     amenityRowHtml+
+    pdetailHtml+
     '</div>'
   );
 
@@ -1542,7 +1566,6 @@ function buildMockupLayout(){
     '<div class="price-block">'+resolvedPriceHtml+'</div>'+
     '<div class="sp-metrics-row"><span class="sp-metric" id="sp-views" style="display:none;"></span><span class="sp-metric" id="sp-inquiries" style="display:none;"></span></div>'+
     (specsHtml?'<div class="spec-grid">'+specsHtml+'</div>':'')+
-    yearHtml+
     highlightPillsHtml+
     sidebarInsightHtml+
     '<div class="left-actions">'+
@@ -1685,6 +1708,17 @@ function wireMobileGalleryTrack(){
 function checkSmartFitLayout(){}
 
 var WA_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
+
+// Pre-filled WhatsApp contact message, per language. {{PLACEHOLDER}} tokens
+// (filled via fillTemplate(), see above) rather than string concatenation,
+// specifically so word order can differ per language — Chinese puts the
+// location before the property type, Lao has no article — without any
+// language needing special-case code.
+var WA_MESSAGE_TEMPLATES={
+  lo:'ສະບາຍດີ, ຂ້ອຍສົນໃຈ{{PROPERTY_TYPE}} {{LOCATION}}. ຂໍລາຍລະອຽດເພີ່ມແນ່. (Ref: {{REFERENCE}})',
+  en:'Hello, I am interested in the {{PROPERTY_TYPE}} in {{LOCATION}}. Could you provide more details? (Ref: {{REFERENCE}})',
+  zh:'您好，我对位于{{LOCATION}}的{{PROPERTY_TYPE}}很感兴趣。请问可以提供更多详细信息吗？（Ref: {{REFERENCE}}）'
+};
 
 // ── Lightbox ─────────────────────────────────────────────────────
 var LB={

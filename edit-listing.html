@@ -282,6 +282,11 @@ label{
   </div>
 
   <div class="field">
+    <label>ປະເພດ</label>
+    <select class="select" id="propertyType" onchange="renderPropertyTypeFields(this.value)"></select>
+  </div>
+
+  <div class="field">
     <label>ລາຄາ</label>
     <input type="text" class="input" id="price">
   </div>
@@ -308,6 +313,20 @@ label{
     <label>ບ້ານ</label>
     <input type="text" class="input" id="village">
   </div>
+
+</div>
+
+<div class="section">
+
+  <div class="section-title">
+    ລາຍລະອຽດ
+  </div>
+
+  <!-- Rendered dynamically from PROPERTY_TYPE_FIELDS (terminology.js)
+       based on the selected property type; see renderPropertyTypeFields().
+       No wrapping .field class here — each rendered field is its own
+       .field div, matching this page's single-column layout. -->
+  <div id="property-details-grid"></div>
 
 </div>
 
@@ -364,29 +383,10 @@ label{
     ສິ່ງອຳນວຍຄວາມສະດວກ
   </div>
 
-  <div class="features">
-
-    <label class="feature">
-      <input type="checkbox" value="furnished">
-      ເຟີນີເຈີ
-    </label>
-
-    <label class="feature">
-      <input type="checkbox" value="pool">
-      ສະລອຍນ້ຳ
-    </label>
-
-    <label class="feature">
-      <input type="checkbox" value="parking">
-      ບ່ອນຈອດລົດ
-    </label>
-
-    <label class="feature">
-      <input type="checkbox" value="security">
-      ຄວາມປອດໄພ
-    </label>
-
-  </div>
+  <!-- Rendered dynamically from PROPERTY_TYPE_FIELDS's amenities
+       checkbox_ref for the selected property type; see
+       renderPropertyTypeFields() below. -->
+  <div class="features" id="property-features-grid"></div>
 
 </div>
 
@@ -472,6 +472,8 @@ label{
 
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
+<script src="terminology.js"></script>
+<script src="amenities.js"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -580,6 +582,121 @@ async function resolveMyPartyId(userId){
   return (data && data[0]) || null;
 }
 
+// Populate the Property Type dropdown from PROPERTY_TYPES (terminology.js)
+// using Lao labels, since this page is Lao-only UI.
+(function populatePropertyTypeOptions(){
+  const sel = document.getElementById('propertyType');
+  sel.innerHTML = Object.keys(PROPERTY_TYPES).map(function(key){
+    return '<option value="' + key + '">' + PROPERTY_TYPES[key].lo + '</option>';
+  }).join('');
+})();
+
+function getCheckedFeatureKeys(){
+  return Array.from(document.querySelectorAll('#property-features-grid input:checked')).map(function(el){ return el.value; });
+}
+
+// Renders the Property Details fields and the Features checkboxes for the
+// selected property type from PROPERTY_TYPE_FIELDS (terminology.js). Only
+// the AMENITIES-registry checkbox_ref is used here (not FEATURES), since
+// this page has a single combined features/amenities checkbox list mapped
+// to the `amenities` column. presetChecked, when given (on initial load),
+// wins over whatever's currently checked in the DOM; when omitted (a
+// mid-edit type switch), currently-checked keys are preserved instead.
+function getCheckedMultiKeys(gridId){
+  const el = document.getElementById(gridId);
+  return el ? Array.from(el.querySelectorAll('input:checked')).map(function(cb){ return cb.value; }) : [];
+}
+
+function renderPropertyTypeFields(typeKey, presetChecked){
+  const detailsGrid = document.getElementById('property-details-grid');
+  const featuresGrid = document.getElementById('property-features-grid');
+  if(!detailsGrid || !featuresGrid) return;
+  const fields = PROPERTY_TYPE_FIELDS[typeKey] || [];
+  const toCheck = presetChecked || getCheckedFeatureKeys();
+  const multiFields = fields.filter(function(f){ return f.kind === 'multi_checkbox'; });
+  const prevMulti = {};
+  multiFields.forEach(function(f){ prevMulti[f.id] = getCheckedMultiKeys(f.id + '-grid'); });
+
+  detailsGrid.innerHTML = fields.filter(function(f){ return f.kind !== 'checkbox_ref'; }).map(function(f){
+    if(f.kind === 'select'){
+      const opts = f.options.map(function(o){
+        return '<option value="' + o.value + '">' + o.label.lo + '</option>';
+      }).join('');
+      return '<div class="field"><label>' + f.label.lo + '</label><select class="select" id="' + f.id + '">' + opts + '</select></div>';
+    }
+    if(f.kind === 'multi_checkbox'){
+      const items = f.options.map(function(o){
+        return '<label class="feature"><input type="checkbox" value="' + o.value + '">' + o.label.lo + '</label>';
+      }).join('');
+      return '<div class="field"><label>' + f.label.lo + '</label><div class="features" id="' + f.id + '-grid">' + items + '</div></div>';
+    }
+    return '<div class="field"><label>' + f.label.lo + '</label><input type="' + (f.kind === 'text' ? 'text' : 'number') + '" class="input" id="' + f.id + '"' +
+      (f.min != null ? ' min="' + f.min + '"' : '') + (f.max != null ? ' max="' + f.max + '"' : '') +
+      (f.placeholder ? ' placeholder="' + f.placeholder + '"' : '') + '></div>';
+  }).join('');
+
+  multiFields.forEach(function(f){
+    const container = document.getElementById(f.id + '-grid');
+    if(!container) return;
+    (prevMulti[f.id] || []).forEach(function(v){
+      const cb = container.querySelector('input[value="' + v + '"]');
+      if(cb) cb.checked = true;
+    });
+  });
+
+  const amenityField = fields.find(function(f){ return f.kind === 'checkbox_ref' && f.registry === 'AMENITIES'; });
+  const keys = amenityField ? amenityField.keys : [];
+  featuresGrid.innerHTML = keys.map(function(key){
+    const a = AMENITIES[key];
+    if(!a) return '';
+    return '<label class="feature"><input type="checkbox" value="' + key + '">' + a.lo + '</label>';
+  }).join('');
+  keys.forEach(function(key){
+    if(toCheck.indexOf(key) === -1) return;
+    const input = featuresGrid.querySelector('input[value="' + key + '"]');
+    if(input) input.checked = true;
+  });
+}
+
+function populateTypedFields(typeKey, sourceRow){
+  (PROPERTY_TYPE_FIELDS[typeKey] || []).forEach(function(f){
+    if(!f.column) return;
+    if(f.kind === 'multi_checkbox'){
+      const container = document.getElementById(f.id + '-grid');
+      if(!container) return;
+      const values = Array.isArray(sourceRow && sourceRow[f.column]) ? sourceRow[f.column] : [];
+      container.querySelectorAll('input[type="checkbox"]').forEach(function(cb){
+        cb.checked = values.indexOf(cb.value) !== -1;
+      });
+      return;
+    }
+    const el = document.getElementById(f.id);
+    if(!el) return;
+    const v = sourceRow ? sourceRow[f.column] : null;
+    el.value = (v != null ? v : '');
+  });
+}
+
+function buildTypedFieldsPayload(typeKey){
+  const activeIds = {};
+  (PROPERTY_TYPE_FIELDS[typeKey] || []).forEach(function(f){ if(f.column) activeIds[f.id] = f; });
+  const allColumns = {};
+  Object.keys(PROPERTY_TYPE_FIELDS).forEach(function(key){
+    PROPERTY_TYPE_FIELDS[key].forEach(function(f){ if(f.column) allColumns[f.column] = f; });
+  });
+  const out = {};
+  Object.keys(allColumns).forEach(function(column){
+    const f = allColumns[column];
+    const active = activeIds[f.id];
+    if(!active){ out[column] = null; return; }
+    if(f.kind === 'multi_checkbox'){ out[column] = getCheckedMultiKeys(f.id + '-grid'); return; }
+    const el = document.getElementById(f.id);
+    if(!el){ out[column] = null; return; }
+    out[column] = f.kind === 'number' ? (parseInt(el.value) || null) : (el.value.trim() || null);
+  });
+  return out;
+}
+
 async function loadProperty(){
 
   const { data,error } =
@@ -614,6 +731,12 @@ async function loadProperty(){
 
   document.getElementById('status').value =
   data.status || 'published';
+
+  document.getElementById('propertyType').value =
+  data.property_type || '';
+
+  renderPropertyTypeFields(data.property_type || '', data.amenities || []);
+  populateTypedFields(data.property_type || '', data);
 
   editingContactId = data.contact_id || null;
   document.getElementById('contactName').value =
@@ -754,11 +877,10 @@ async function saveProperty(){
     await uploadImages();
 
   const amenities =
-    Array.from(
-      document.querySelectorAll(
-        '.feature input:checked'
-      )
-    ).map(el=>el.value);
+    getCheckedFeatureKeys();
+
+  const propertyType =
+    document.getElementById('propertyType').value;
 
   const contactPhone =
     document.getElementById('contactPhone').value.trim();
@@ -851,11 +973,15 @@ async function saveProperty(){
         'status'
       ).value,
 
+    property_type: propertyType,
+
     amenities,
 
     images,
 
-    contact_id: editingContactId
+    contact_id: editingContactId,
+
+    ...buildTypedFieldsPayload(propertyType)
 
   };
 

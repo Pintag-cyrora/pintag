@@ -558,6 +558,7 @@ nav{
 
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
+<script src="terminology.js"></script>
 <script>
 const SB_URL = window.PINTAG.supabaseUrl;
 const SB_KEY = window.PINTAG.anonKey;
@@ -598,9 +599,6 @@ function renderCards(props, lang) {
   const grid = document.getElementById('card-grid');
   if (!props || !props.length) { grid.innerHTML = ''; return; }
 
-  const BED_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v16M2 12h20M22 4v16M6 12V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"/></svg>';
-  const BATH_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M2 13h20M2 13v4a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-4"/></svg>';
-  const SQM_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/></svg>';
   const PIN_SVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
   const HEART_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2024" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
 
@@ -621,10 +619,11 @@ function renderCards(props, lang) {
     const imgHtml = (p.images && p.images.length)
       ? '<img src="' + esc(p.images[0]) + '" alt="" loading="lazy">'
       : '<div class="card-img-placeholder"></div>';
-    const specs = [];
-    if (p.bedrooms) specs.push('<span class="card-spec">' + BED_SVG + ' ' + Number(p.bedrooms) + '</span>');
-    if (p.bathrooms) specs.push('<span class="card-spec">' + BATH_SVG + ' ' + Number(p.bathrooms) + '</span>');
-    if (p.sqm) specs.push('<span class="card-spec">' + SQM_SVG + ' ' + Number(p.sqm) + '</span>');
+    // Card facts driven by PROPERTY_TYPE_DISPLAY (terminology.js) — same
+    // per-type schema listings.html/listing.html use, kept icon+value only
+    // here to match this page's more compact card.
+    const cardFacts = (typeof getCardFacts === 'function') ? getCardFacts(p.property_type, p, lang) : [];
+    const specs = cardFacts.map(f => '<span class="card-spec">' + f.icon + ' ' + esc(String(f.value)) + '</span>');
     const priceUnit = (!isSale && !isSor && p.price_display) ? '<span class="card-price-unit">' + perMo[lang] + '</span>' : '';
     const sorPriceHtml = isSor && (p.sale_price || p.rent_price)
       ? (p.sale_price ? esc(p.sale_price) : '') + (p.sale_price && p.rent_price ? ' / ' : '') + (p.rent_price ? esc(p.rent_price) : '')

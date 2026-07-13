@@ -30,7 +30,34 @@ Deploying the *website* is fully automatic (above). Getting new tables/columns o
 - [ ] Apply any new `supabase/migrations/*.sql` files to `pintag-dev` (`supabase link --project-ref ebtgoqrywdywuqrvudcp` + `supabase db push`, run from a machine with normal network access — see the repo's earlier bootstrap notes for why this can't run from a sandboxed session)
 - [ ] Deploy any new/changed edge functions (`supabase functions deploy <name> --project-ref ebtgoqrywdywuqrvudcp`)
 
-Known gap: the base schema (`properties`, `parties`, `contacts`, `lead_events`, `listing_events`) can't be fully recreated by `supabase db push` alone on a brand-new project, since the original tables predate tracked migrations. Tracked in [#37](https://github.com/Pintag-cyrora/pintag/issues/37) — once fixed, provisioning a fresh dev/staging project becomes a single command.
+Known gap: `properties` and `agents`/`parties` can't be recreated by `supabase db push` (or by running `supabase/migrations/*.sql` in order) on a brand-new/empty project — those two tables were created by hand in the Supabase dashboard before migrations were tracked, so the earliest tracked migration already assumes they exist and fails immediately against an empty schema. Tracked in [#37](https://github.com/Pintag-cyrora/pintag/issues/37) — once fixed, provisioning a fresh dev/staging project becomes a single `supabase db push`.
+
+**If `pintag-dev`'s `public` schema is ever empty** (fresh project, or recovering from a wipe), bootstrap it first with `scripts/bootstrap-dev-db.sh` (see below) before applying any migrations — confirmed necessary in practice (2026-07-09): the dev project's schema had never actually been populated, so testing frontend behavior alone didn't surface it until an actual save was attempted.
+
+## Bootstrapping a fresh/empty pintag-dev schema
+
+`scripts/bootstrap-dev-db.sh` takes a schema-only `pg_dump` of production's *current* structure and restores it into `pintag-dev`, sidestepping the untracked-base-schema gap above entirely — it reflects what the tables look like today, regardless of which migration (tracked or not) created them. Run it from a machine with normal network access (not a sandboxed session):
+
+```
+PINTAG_PROD_DB_URL="<production Session Pooler connection string>" \
+PINTAG_DEV_DB_URL="<pintag-dev Session Pooler connection string>" \
+./scripts/bootstrap-dev-db.sh
+```
+
+After the schema restore, the script also automatically:
+- Detects `admin@pintag.io` in `auth.users` — if it's not there yet, the script stops and tells you to create it via Supabase dashboard → Authentication → Add User, then re-run (safe to re-run; every step is idempotent).
+- Seeds its `parties` staff row (the exact seed `20260705000000_agents_becomes_parties.sql` runs against production — a schema-only dump never replays that, since it's data, not structure). Slug is derived from the auth uid, not hardcoded, so this can't collide with an unrelated party.
+- Verifies RLS actually works by impersonating that uid (`SET LOCAL role authenticated` + `request.jwt.claim(s)`, the same mechanism PostgREST uses) and running a real `INSERT` into `contacts`, rolled back immediately so no test row is left behind.
+- Prints `✅ Dev environment ready.` only if that insert succeeds — if it doesn't, something about the staff party/RLS setup is still wrong and the script tells you exactly what to check.
+
+This turns what was previously a manual debugging session (confirmed 2026-07-09: a fresh bootstrap with no staff party seeded failed every staff-flow `INSERT` on `contacts` with `42501`, row-level security) into one command producing a working, verified dev environment.
+
+Notes:
+- Schema only — zero rows besides the one staff `parties` row above. Run `scripts/seed-dev-from-prod.sh` afterward for realistic sample listings.
+- Only reflects migrations already live in production. Anything newer (e.g. a migration still pending review) needs applying on top separately, the same as you'd apply it to production.
+- Not destructive — it doesn't drop or truncate anything, so if `pintag-dev` already has tables, it fails loudly (and safely) on the first "already exists" rather than silently double-applying.
+- The one edit this makes to the raw `pg_dump` output: it strips the unconditional `CREATE SCHEMA public;` line, since every Supabase project already has a `public` schema (with its own default grants) and that line otherwise fails with "schema already exists." Nothing else is touched — deliberately not using `pg_dump --clean --if-exists`, since that would `DROP SCHEMA public CASCADE` and, combined with `--no-privileges`, permanently lose Supabase's default `anon`/`authenticated`/`service_role` grants on the schema.
+- Does **not** create the `admin@pintag.io` Supabase Auth user itself — inserting directly into `auth.users` bypasses GoTrue and isn't safe to script. That one step stays manual (dashboard → Authentication → Add User), everything after it is automatic.
 
 ## Refreshing dev data from production
 
