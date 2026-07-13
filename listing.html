@@ -754,6 +754,17 @@ function esc(str){
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Fills {{PLACEHOLDER}} tokens in a template string — the one small piece
+// of i18n infrastructure this file didn't already have. Word order is
+// free to differ per language (see WA_MESSAGE_TEMPLATES below); everything
+// else about how a language is chosen/labeled still goes through the
+// existing {lo,en,zh}[lang] lookup pattern used everywhere else in this file.
+function fillTemplate(template, vars){
+  return String(template).replace(/\{\{(\w+)\}\}/g, function(_, key){
+    return (vars && vars[key] != null) ? vars[key] : '';
+  });
+}
+
 function isSafeUrl(url){
   if(!url||typeof url!=='string')return false;
   var t=url.trim().toLowerCase();
@@ -1207,8 +1218,19 @@ function buildMockupLayout(){
   var contact=data.contacts||null;
   var contactPhone=contact?(contact.whatsapp||contact.phone||''):'';
   var cleanPhone=String(contactPhone).replace(/[^0-9]/g,'');
-  var waTitleShort=String(data.title_en||data.title_lo||'').slice(0,80);
-  var waMessage=encodeURIComponent('Hello, I am interested in '+waTitleShort+' (Ref: '+(data.id||'')+')');
+  // Localized pre-filled WhatsApp message — {{PLACEHOLDER}} template per
+  // language so word order can differ freely (Chinese puts location before
+  // property type; Lao has no article). Property type name reuses the same
+  // PROPERTY_TYPES registry (terminology.js) admin.html/listings.html
+  // already use, so it's never translated in two different places.
+  var waPropertyType=(typeof PROPERTY_TYPES!=='undefined' && PROPERTY_TYPES[data.property_type] && PROPERTY_TYPES[data.property_type][lang]) || data.property_type || '';
+  var waDistrictRaw=data['district_'+lang] || data.district_en || '';
+  var waLocation=resolvedVillage ? (resolvedVillage+', '+waDistrictRaw) : waDistrictRaw;
+  var waMessage=encodeURIComponent(fillTemplate(WA_MESSAGE_TEMPLATES[lang]||WA_MESSAGE_TEMPLATES.en, {
+    PROPERTY_TYPE: waPropertyType,
+    LOCATION: waLocation,
+    REFERENCE: data.id || ''
+  }));
   var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
   var CONTACT_ROLE_LABELS={
     owner:{lo:'ເຈົ້າຂອງ',en:'Owner',zh:'业主'},
@@ -1686,6 +1708,17 @@ function wireMobileGalleryTrack(){
 function checkSmartFitLayout(){}
 
 var WA_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>';
+
+// Pre-filled WhatsApp contact message, per language. {{PLACEHOLDER}} tokens
+// (filled via fillTemplate(), see above) rather than string concatenation,
+// specifically so word order can differ per language — Chinese puts the
+// location before the property type, Lao has no article — without any
+// language needing special-case code.
+var WA_MESSAGE_TEMPLATES={
+  lo:'ສະບາຍດີ, ຂ້ອຍສົນໃຈ{{PROPERTY_TYPE}} {{LOCATION}}. ຂໍລາຍລະອຽດເພີ່ມແນ່. (Ref: {{REFERENCE}})',
+  en:'Hello, I am interested in the {{PROPERTY_TYPE}} in {{LOCATION}}. Could you provide more details? (Ref: {{REFERENCE}})',
+  zh:'您好，我对位于{{LOCATION}}的{{PROPERTY_TYPE}}很感兴趣。请问可以提供更多详细信息吗？（Ref: {{REFERENCE}}）'
+};
 
 // ── Lightbox ─────────────────────────────────────────────────────
 var LB={
