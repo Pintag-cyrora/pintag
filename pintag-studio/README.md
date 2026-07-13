@@ -4,9 +4,10 @@ Pintag's internal AI marketing department — a small team of specialized Claude
 
 This is **not** a Pintag customer-facing feature. It's an internal tool used only by the founder, via `dashboard/index.html`.
 
-- **Read first:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) — the full approved design (why every folder here exists).
+- **Using Marketing OS day to day (non-technical, start here):** [`FIRST_TIME_SETUP.md`](./FIRST_TIME_SETUP.md) — one-time setup, then a single double-click every morning. No Terminal, no code.
+- **Read first (technical):** [`ARCHITECTURE.md`](./ARCHITECTURE.md) — the full approved design (why every folder here exists).
 - **Read second:** [`DEPARTMENT.md`](./DEPARTMENT.md) — the operations manual: why the department exists, the org chart, handoffs, KPIs, approval workflow, and how success is actually measured.
-- **Setting up for real:** [`SETUP.md`](./SETUP.md) — the manual steps only the founder can do (Supabase project, Meta app, Canva, TTS credentials).
+- **Setting up for real (technical reference):** [`SETUP.md`](./SETUP.md) — the fuller manual steps (Supabase project, Meta app, Canva, TTS credentials, TikTok) that `FIRST_TIME_SETUP.md` is a friendlier front door to.
 - **Working in this repo as an AI agent:** [`CLAUDE.md`](./CLAUDE.md).
 
 ## Status
