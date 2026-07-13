@@ -50,6 +50,9 @@ export interface ObservationSource {
   observe(): Promise<ObservationSourceResult>;
 }
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { REPO_ROOT } from './config.js';
 import { tiktokObservationSource } from './observation-sources/tiktok.js';
 
 const SOURCES: ObservationSource[] = [tiktokObservationSource];
@@ -68,6 +71,16 @@ export interface GatherAllObservationsResult {
  * approvals_queue rather than caching them. A real trend/diff view over time
  * is a deliberate future step (same "change-aware, not snapshot" direction
  * already flagged in daily-briefing.ts from M2), not built here.
+ *
+ * `unavailable` stays a simple, unclassified diagnostic list — the Founder
+ * Workspace's /observations page reads it directly to answer "is this
+ * connected at all," which should never depend on a routing decision. A
+ * genuine failure of an already-configured source (not simply "never
+ * connected yet") ALSO becomes a real `source_error` Observation, so
+ * Observation Intelligence (M2.5) can route it like anything else — this is
+ * what makes "Integration failure -> Platform" possible. "Not configured"
+ * deliberately does NOT synthesize one: there's nothing broken to route,
+ * just a one-time setup step (npm run tiktok:connect) nobody's done yet.
  */
 export async function gatherAllObservations(): Promise<GatherAllObservationsResult> {
   const observations: Observation[] = [];
@@ -82,7 +95,18 @@ export async function gatherAllObservations(): Promise<GatherAllObservationsResu
     if (result.available) {
       observations.push(...result.observations);
     } else {
-      unavailable.push({ source: src.name, reason: result.error ?? 'unavailable' });
+      const reason = result.error ?? 'unavailable';
+      unavailable.push({ source: src.name, reason });
+      observations.push({
+        id: `${src.name}-source-error-${new Date().toISOString().slice(0, 10)}`,
+        source: src.name,
+        kind: 'source_error',
+        observedAt: new Date().toISOString(),
+        whatHappened: `${src.name} stopped reporting: ${reason}.`,
+        whyItMatters: 'A source that was working is no longer providing data — worth checking before it affects tomorrow\'s briefing too.',
+        evidence: [reason],
+        data: { reason },
+      });
     }
   }
 
@@ -92,4 +116,33 @@ export async function gatherAllObservations(): Promise<GatherAllObservationsResu
 /** One Observation formatted in its three-question shape, for the CMO prompt. */
 export function formatObservation(o: Observation): string {
   return [`### ${o.source} — ${o.kind}`, `What happened: ${o.whatHappened}`, `Why it matters: ${o.whyItMatters}`, `Evidence: ${o.evidence.join('; ')}`].join('\n');
+}
+
+export interface ObservationIntelligenceThresholds {
+  outperformRatio: number;
+  underperformRatio: number;
+}
+
+const DEFAULT_THRESHOLDS: ObservationIntelligenceThresholds = { outperformRatio: 1.3, underperformRatio: 0.7 };
+
+/**
+ * Read once, from one place, by both the TikTok source (which describes a
+ * video's performance in prose) and observation-intelligence.ts (which
+ * routes on the same comparison) — so the two can never disagree about
+ * what counts as "significant." brain/org-config.json is the config-driven
+ * home for this per CLAUDE.md's standing rule; a missing/malformed value
+ * falls back to the documented defaults rather than crashing observation
+ * gathering over a config typo.
+ */
+export function readObservationIntelligenceThresholds(): ObservationIntelligenceThresholds {
+  try {
+    const config = JSON.parse(readFileSync(join(REPO_ROOT, 'brain', 'org-config.json'), 'utf-8'));
+    const oi = config.observation_intelligence;
+    return {
+      outperformRatio: typeof oi?.video_performance_outperform_ratio === 'number' ? oi.video_performance_outperform_ratio : DEFAULT_THRESHOLDS.outperformRatio,
+      underperformRatio: typeof oi?.video_performance_underperform_ratio === 'number' ? oi.video_performance_underperform_ratio : DEFAULT_THRESHOLDS.underperformRatio,
+    };
+  } catch {
+    return DEFAULT_THRESHOLDS;
+  }
 }

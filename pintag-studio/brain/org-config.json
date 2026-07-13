@@ -88,6 +88,12 @@
     }
   },
 
+  "observation_intelligence": {
+    "video_performance_outperform_ratio": 1.3,
+    "video_performance_underperform_ratio": 0.7,
+    "note": "A video's views vs. the average of other recently observed videos, same run. >= outperform_ratio routes to Executive (Daily Briefing); <= underperform_ratio routes to Department: writer. See departments/intelligence/OBSERVATION_INTELLIGENCE_DESIGN.md and pipeline/lib/observation-intelligence.ts. Both the TikTok source's own wording and the routing rule read these same two numbers, so they can never disagree with each other."
+  },
+
   "competitor_watchlist": [],
 
   "budget": {

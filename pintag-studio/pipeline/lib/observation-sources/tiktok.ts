@@ -20,7 +20,7 @@
 // refreshes the access token in place on every run that needs it.
 
 import { supabase } from '../supabase.js';
-import type { Observation, ObservationSource, ObservationSourceResult } from '../observations.js';
+import { readObservationIntelligenceThresholds, type Observation, type ObservationSource, type ObservationSourceResult } from '../observations.js';
 
 export const TIKTOK_AUTH_URL = 'https://www.tiktok.com/v2/auth/authorize/';
 export const TIKTOK_TOKEN_URL = 'https://open.tiktokapis.com/v2/oauth/token/';
@@ -195,11 +195,16 @@ export function buildObservations(user: TikTokUserInfo, videos: TikTokVideo[], o
 
     const mostNotable = [...withAverage].sort((a, b) => Math.abs(b.ratio - 1) - Math.abs(a.ratio - 1)).slice(0, NOTABLE_VIDEO_LIMIT);
 
+    // Read once here, not per-video — and from the same function
+    // observation-intelligence.ts reads, so this prose and that routing
+    // decision can never disagree about what counts as "significant."
+    const { outperformRatio, underperformRatio } = readObservationIntelligenceThresholds();
+
     for (const { video, avgViews, ratio } of mostNotable) {
       const whyItMatters =
-        ratio >= 1.3
+        ratio >= outperformRatio
           ? 'This significantly outperformed your recent average — worth understanding what worked.'
-          : ratio <= 0.7
+          : ratio <= underperformRatio
             ? "This underperformed your recent average — may be worth reviewing what didn't land."
             : 'This performed in line with your recent average.';
 
@@ -217,7 +222,10 @@ export function buildObservations(user: TikTokUserInfo, videos: TikTokVideo[], o
           `${video.comment_count.toLocaleString()} comments`,
           `${video.share_count.toLocaleString()} shares`,
         ],
-        data: { ...video },
+        // ratio/avgViews are real numbers, not re-derivable from evidence's
+        // prose — this is what lets observation-intelligence.ts classify on
+        // real data instead of parsing generated sentences.
+        data: { ...video, ratio, avgViews },
       });
     }
   }

@@ -1,8 +1,8 @@
-# Observation Intelligence — Deferred Design
+# Observation Intelligence — Design (implemented in M2.5)
 
-**Status: approved design, not implemented.** Paused deliberately — not for a technical reason, but a product one: the founder isn't yet using Marketing OS daily through a real interface (see the Founder Test Interface milestone, built instead). Pick this up once genuine daily usage exists, so the rules below are refined "from real experience rather than assumptions" (the founder's own words) rather than built ahead of any real signal to tune them against.
+**Status: implemented, as designed, in M2.5** (`pipeline/lib/observation-intelligence.ts`). Originally paused after this design was approved — not implemented until real daily usage (via the Founder Workspace) surfaced that TikTok's raw observations were reaching the Daily Briefing completely unclassified, which M2.5 needed to be true for anyway ("nothing should bypass Observation Intelligence"). Built exactly as designed below — no redesign.
 
-*This document is the proposal as agreed before the pause — not retroactively rewritten. If real usage changes any of the reasoning below, that's expected; update this doc when implementation actually starts.*
+*This document is the original proposal, preserved as-is below rather than retroactively rewritten — it's still an accurate description of what was built. See `pipeline/lib/observation-intelligence.ts` for the real, current implementation if the two ever drift.*
 
 ## Problem
 
@@ -92,10 +92,10 @@ Once source failures flow through the classifier as `source_error` → Platform,
 - **"Research notices recurring questions in TikTok comments"** — TikTok's Display API returns `comment_count`, never comment *text*. There is no official, non-scraping way to know what a comment says. Not fakeable without inventing capability that doesn't exist.
 - **"Writer notices unusually strong content performance" (as a pattern, not a single outlier)** — this implies reasoning across multiple observations over time. A stateless, no-persisted-history classifier can't do that. Same "change-aware, not snapshot" future direction already flagged twice (M2, M2.2), still not built.
 
-## Not in scope when this is eventually built
+## Not in scope (still true after M2.5)
 
-Any real Platform-department inbox beyond `console.warn`. Any cross-observation/trend-based rules (needs persisted history — a separate future step). Any rule for a second Observation Source (none exists yet). Any LLM/ML involvement anywhere in this stage.
+Any real Platform-department inbox beyond `console.warn`. Any cross-observation/trend-based rules (needs persisted history — a separate future step). Any rule for a second Observation Source (none exists yet — still only TikTok). Any LLM/ML involvement anywhere in this stage.
 
-## Trigger to resume
+## Trigger to resume — fired
 
-Real daily usage of the Founder Test Interface producing an actual signal-to-noise problem worth solving — not a fixed calendar date. Per Department-Driven Development's standing discipline: build from operation, not from anticipation.
+Real usage of the Founder Workspace surfaced that unclassified TikTok observations were the gap left to complete the loop (M2.5 — First Live Observation). Built exactly as designed above, once real signal existed to build it against — not on a fixed calendar date. Per Department-Driven Development's standing discipline: build from operation, not from anticipation.

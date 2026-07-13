@@ -29,6 +29,7 @@ import { readTodaysRecommendation, buildFounderTeachingSuggestionInput } from '.
 import { listPendingSuggestions, approveSuggestion, rejectSuggestion, proposeSuggestion, type KnowledgeSuggestion } from './lib/suggestions.js';
 import { loadAllKnowledgeEntries, reviewKnowledgeEntry, isWritableEntry, type KnowledgeEntry } from './lib/knowledge.js';
 import { gatherAllObservations } from './lib/observations.js';
+import { classifyObservation, type RoutingOutcome } from './lib/observation-intelligence.js';
 
 const PORT = Number(process.env.PORT ?? 4321);
 
@@ -263,44 +264,68 @@ function renderReview(): string {
 // Observation Sources
 // ---------------------------------------------------------------------------
 
+const OUTCOME_LABEL: Record<RoutingOutcome['decision'], string> = {
+  executive: '🎯 In today\'s briefing',
+  department: '📨 Routed, not shown to you',
+  ignore: '— Not meaningful',
+};
+
 async function renderObservations(): Promise<string> {
+  const asOf = new Date();
   const { observations, unavailable } = await gatherAllObservations();
 
-  const availableHtml = observations.length
+  // Connection status first and plainly — every registered source gets a
+  // clear connected/not-connected line regardless of whether it produced
+  // any observations this run. "The goal is confidence, not analytics."
+  const configuredSources = new Set(observations.map((o) => o.source));
+  const notConfigured = new Set(unavailable.filter((u) => u.reason === 'not configured').map((u) => u.source));
+  const allSourceNames = new Set([...configuredSources, ...unavailable.map((u) => u.source)]);
+  const statusHtml = [...allSourceNames]
+    .map((name) => {
+      if (notConfigured.has(name)) {
+        return `<div class="entry"><div class="entry-title">${escapeHtml(name)} — <span style="color:var(--red);">Not connected</span></div><div class="entry-meta">Run <code>npm run tiktok:connect</code> in Terminal, once, to connect it.</div></div>`;
+      }
+      const failure = unavailable.find((u) => u.source === name);
+      if (failure) {
+        return `<div class="entry"><div class="entry-title">${escapeHtml(name)} — <span style="color:var(--gold);">Connected, but not reporting right now</span></div><div class="entry-meta">${escapeHtml(failure.reason)}</div></div>`;
+      }
+      return `<div class="entry"><div class="entry-title">${escapeHtml(name)} — <span style="color:var(--green);">Connected</span></div><div class="entry-meta">Reporting as of this page load.</div></div>`;
+    })
+    .join('');
+
+  // Every observation shown with what it actually became — not just the
+  // raw fact, but whether Observation Intelligence sent it to the CEO
+  // Workspace, routed it elsewhere, or decided it wasn't meaningful. This
+  // is the same classification gatherObservations() applies for real; shown
+  // here for transparency, not recomputed differently.
+  const observationsHtml = observations.length
     ? observations
-        .map(
-          (o) => `
+        .map((o) => {
+          const outcome = classifyObservation(o);
+          return `
     <div class="entry">
-      <div class="entry-title">${escapeHtml(o.source)} <span class="badge">${escapeHtml(o.kind)}</span></div>
+      <div class="entry-title">${escapeHtml(o.source)} <span class="badge">${escapeHtml(o.kind)}</span> <span class="badge">${escapeHtml(OUTCOME_LABEL[outcome.decision])}</span></div>
       <div class="entry-body">${escapeHtml(o.whatHappened)}</div>
       <div class="entry-meta">${escapeHtml(o.whyItMatters)}</div>
       <div class="evidence">${o.evidence.map((e) => escapeHtml(e)).join(' · ')}</div>
-    </div>`
-        )
+    </div>`;
+        })
         .join('')
-    : '<p class="empty">No observations right now.</p>';
-
-  const unavailableHtml = unavailable.length
-    ? unavailable
-        .map(
-          (u) =>
-            `<div class="entry"><div class="entry-title">${escapeHtml(u.source)}</div><div class="entry-meta">Not reporting: ${escapeHtml(u.reason)}${u.reason === 'not configured' ? ' — run <code>npm run tiktok:connect</code> in Terminal to connect.' : ''}</div></div>`
-        )
-        .join('')
-    : '<p class="empty">Every registered source is reporting.</p>';
+    : '<p class="empty">Nothing observed this run.</p>';
 
   return pageShell(
     'Observation Sources',
     `
     <a class="back" href="/">← Home</a>
     <h1>📡 Observation Sources</h1>
-    <div class="subtitle">What Marketing OS can currently observe about the real world.</div>
+    <div class="subtitle">What Marketing OS can currently observe about the real world — as of ${escapeHtml(asOf.toLocaleString())}, since this page always checks live.</div>
 
-    <div class="section-title">Reporting</div>
-    ${availableHtml}
+    <div class="section-title">Connection status</div>
+    ${statusHtml || '<p class="empty">No Observation Sources are registered.</p>'}
 
-    <div class="section-title">Not reporting</div>
-    ${unavailableHtml}
+    <div class="section-title">What was observed this run, and what happened to it</div>
+    ${observationsHtml}
+    <p class="hint">"Routed, not shown to you" and "Not meaningful" observations are working as intended, not a bug — see <code>departments/intelligence/OBSERVATION_INTELLIGENCE_DESIGN.md</code>.</p>
     `
   );
 }

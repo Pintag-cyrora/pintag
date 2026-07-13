@@ -19,6 +19,7 @@ import { REPO_ROOT } from './lib/config.js';
 import { loadAllKnowledgeEntries } from './lib/knowledge.js';
 import { listPendingSuggestions, loadAllSuggestions } from './lib/suggestions.js';
 import { gatherAllObservations, formatObservation } from './lib/observations.js';
+import { routeObservations, dispatchDepartmentObservations } from './lib/observation-intelligence.js';
 import { runAgent } from './lib/agent.js';
 import { supabase } from './lib/supabase.js';
 
@@ -72,24 +73,29 @@ export function gatherSuggestions(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Observation Sources (M2.2) — what happened in the real world (TikTok
-// today; Facebook/Instagram/etc. later, same interface — see
-// pipeline/lib/observations.ts). Each Observation already answers what
-// happened / why it matters / evidence, so this just formats and reports
-// gaps honestly, the same graceful-degradation discipline as the Supabase
-// gatherers below.
+// Observation Sources (M2.2) + Observation Intelligence (M2.5) — what
+// happened in the real world (TikTok today; Facebook/Instagram/etc. later,
+// same interface — see pipeline/lib/observations.ts), filtered through the
+// deterministic Ignore/Department/Executive routing stage
+// (pipeline/lib/observation-intelligence.ts) before anything reaches this
+// prompt. Nothing bypasses that classification — only Executive-routed
+// observations are ever formatted here; Department-routed ones are
+// dispatched to their existing system (proposeSuggestion() or a Platform
+// warning) as a side effect, never surfaced in the Daily Briefing itself.
 // ---------------------------------------------------------------------------
 export async function gatherObservations(): Promise<string> {
   const { observations, unavailable } = await gatherAllObservations();
+  const routed = routeObservations(observations);
+  dispatchDepartmentObservations(routed.department);
 
   const parts: string[] = [];
-  if (observations.length > 0) {
-    parts.push(observations.map(formatObservation).join('\n\n'));
+  if (routed.executive.length > 0) {
+    parts.push(routed.executive.map(formatObservation).join('\n\n'));
   }
   for (const u of unavailable) {
     parts.push(`### ${u.source}\n${u.source} isn't reporting right now (${u.reason}).`);
   }
-  return parts.length > 0 ? parts.join('\n\n') : 'No Observation Sources are connected yet.';
+  return parts.length > 0 ? parts.join('\n\n') : 'No Observation Sources have anything meaningful to report right now.';
 }
 
 interface SupabaseGatherResult {
