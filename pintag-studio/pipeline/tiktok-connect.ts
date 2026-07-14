@@ -91,7 +91,8 @@ async function main(): Promise<void> {
   authUrl.searchParams.set('code_challenge_method', 'S256');
 
   console.log('Before you continue: your TikTok Developer app must have this exact redirect URI registered');
-  console.log('(Developer Portal -> your app -> Login Kit -> Redirect URI, app type "Desktop"):');
+  console.log('under the Login Kit product (app/platform type "Desktop") — NOT under "URL Properties," which is');
+  console.log('a different, unrelated feature (Content Posting API domain verification) this tool doesn\'t need:');
   console.log('');
   console.log(`  ${CANONICAL_TIKTOK_REDIRECT_URI}`);
   console.log('');
