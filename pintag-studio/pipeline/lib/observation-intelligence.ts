@@ -16,7 +16,8 @@
 // Sources themselves — a third application, not a new one.
 
 import { proposeSuggestion } from './suggestions.js';
-import { readObservationIntelligenceThresholds, type Observation } from './observations.js';
+import { readObservationIntelligenceThresholds } from './config.js';
+import type { Observation } from './observations.js';
 
 export type RoutingOutcome =
   | { decision: 'ignore'; reason: string }

@@ -59,6 +59,39 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
   };
 }
 
+export interface ObservationIntelligenceThresholds {
+  outperformRatio: number;
+  underperformRatio: number;
+}
+
+const DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS: ObservationIntelligenceThresholds = { outperformRatio: 1.3, underperformRatio: 0.7 };
+
+/**
+ * Read once, from one place, by both the TikTok source (which describes a
+ * video's performance in prose) and observation-intelligence.ts (which
+ * routes on the same comparison) — so the two can never disagree about what
+ * counts as "significant." Lives here rather than in observations.ts
+ * because observation-sources/tiktok.ts needs it and is itself imported by
+ * observations.ts — putting it there created a real circular import
+ * (tiktok.ts -> observations.ts -> tiktok.ts), not just a type-only one.
+ * config.ts sits below both, with no dependency on either, so nothing
+ * importing this creates a cycle. A missing/malformed config value falls
+ * back to the documented defaults rather than crashing observation
+ * gathering over a config typo.
+ */
+export function readObservationIntelligenceThresholds(): ObservationIntelligenceThresholds {
+  try {
+    const config = JSON.parse(readFileSync(ORG_CONFIG_PATH, 'utf-8'));
+    const oi = config.observation_intelligence;
+    return {
+      outperformRatio: typeof oi?.video_performance_outperform_ratio === 'number' ? oi.video_performance_outperform_ratio : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.outperformRatio,
+      underperformRatio: typeof oi?.video_performance_underperform_ratio === 'number' ? oi.video_performance_underperform_ratio : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.underperformRatio,
+    };
+  } catch {
+    return DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS;
+  }
+}
+
 /**
  * Given the runtime config and a content item, decides whether Publisher
  * should auto-publish or hold for founder approval. Kept as one small pure

@@ -44,7 +44,7 @@ Supabase is the database Marketing OS uses to remember things like which posts a
    Paste your **Project URL** right after `SUPABASE_URL=`, and your **service_role** key right after `SUPABASE_SERVICE_ROLE_KEY=` — no spaces, no quotation marks.
 7. Save the file: `Cmd + S`.
 
-You can leave every other line in `.env.local` blank for now — they're optional, for things you haven't set up yet (like TikTok).
+You can leave every other line in `.env.local` blank for now — they're optional, for things you haven't set up yet (like TikTok — see [Section 5](#5-connect-tiktok-optional)).
 
 ---
 
@@ -70,6 +70,42 @@ Once the one-time setup above is done, this is your entire daily routine:
 7. When you're done for the day, close the window that opened in step 1 — that stops Marketing OS, the same way closing any other app would.
 
 That's the whole thing. No commands to type, no files to find, no code to read.
+
+---
+
+## 5. Connect TikTok (optional)
+
+This step is what lets Marketing OS talk about your actual TikTok performance in the morning briefing — real view counts, not just internal knowledge. Everything in Sections 1–4 works fine without it; do this whenever you're ready, not before.
+
+**Honest heads-up:** step 6 below needs Terminal, once. Every other capability in this guide works entirely from your browser — this is the one exception, because TikTok itself requires you to personally approve access in a login screen, which isn't something a web page here can do on its own yet. Making this a real one-click browser button instead is a reasonable future improvement, just not built yet.
+
+> Same note as the Supabase section: I can't screenshot TikTok's own Developer site since I don't have access to it. The value below is exact and won't change — that part doesn't depend on what TikTok's page looks like.
+
+1. Go to [developers.tiktok.com](https://developers.tiktok.com) and create a Developer app. TikTok will ask what **type** of app this is — choose **Desktop**, not Web.
+2. Add the **Login Kit** product to your app.
+3. TikTok will ask for a **Redirect URI**. Enter this exactly, including `http://`:
+   ```
+   http://127.0.0.1:4322/callback
+   ```
+   This is fixed — Marketing OS is already built around this exact value, so there's nothing to decide here. It won't open a real page if you visit it; that's expected.
+4. TikTok will give you a **Client Key** and a **Client Secret**. Switch to TextEdit, where `.env.local` is open, and find these two lines near the bottom:
+   ```
+   TIKTOK_CLIENT_KEY=
+   TIKTOK_CLIENT_SECRET=
+   ```
+   Paste your Client Key and Client Secret after each `=`. Leave the `TIKTOK_REDIRECT_URI=` line beneath them exactly as it already is — it's already set to the value from step 3. Save the file (`Cmd + S`).
+5. Restart Marketing OS if it's currently running (close the window, double-click `Start Marketing OS.command` again).
+6. This last step needs Terminal, just this once — everything else in this guide doesn't. Open the **Terminal** app (`Cmd + Space`, type `Terminal`, press Enter), type:
+   ```
+   cd
+   ```
+   then drag your `pintag-studio` folder from Finder into the Terminal window and press Enter — that moves Terminal into the right folder without you having to type a path. Then type:
+   ```
+   npm run tiktok:connect
+   ```
+   and press Enter. It'll print a link — open it, log into TikTok as the Pintag account, and approve it. Your browser will land on a page that looks broken (`127.0.0.1 refused to connect` or similar) — that's expected, nothing is supposed to load there. Copy the entire address from your browser's address bar and paste it back into Terminal when it asks, then press Enter.
+
+You should see "Connected." Close Terminal — you're done, and won't need to open it again for this. From tomorrow's briefing onward, "Generate Morning Briefing" will include real TikTok data.
 
 ---
 

@@ -20,7 +20,8 @@
 // refreshes the access token in place on every run that needs it.
 
 import { supabase } from '../supabase.js';
-import { readObservationIntelligenceThresholds, type Observation, type ObservationSource, type ObservationSourceResult } from '../observations.js';
+import { readObservationIntelligenceThresholds } from '../config.js';
+import type { Observation, ObservationSource, ObservationSourceResult } from '../observations.js';
 
 export const TIKTOK_AUTH_URL = 'https://www.tiktok.com/v2/auth/authorize/';
 export const TIKTOK_TOKEN_URL = 'https://open.tiktokapis.com/v2/oauth/token/';
@@ -31,6 +32,24 @@ const TIKTOK_VIDEO_LIST_URL = 'https://open.tiktokapis.com/v2/video/list/';
 // read-only; no posting scope is requested since publishing is explicitly
 // out of scope this milestone.
 export const TIKTOK_SCOPES = ['user.info.basic', 'user.info.stats', 'video.list'];
+
+/**
+ * The one canonical redirect URI for Marketing OS's TikTok connection —
+ * chosen, not configurable, so there's nothing for a founder to invent or
+ * get wrong (M2.5 follow-up: this used to be a blank env var with no
+ * documented value, which made setup genuinely impossible without reading
+ * source code).
+ *
+ * Verified against TikTok's published Login Kit requirements: "Desktop"
+ * app types (the right type for a local CLI tool like this — not "Web")
+ * allow `http://` loopback (`localhost`/`127.0.0.1`) redirect URIs with a
+ * port number; "Web" app types require a real https:// domain, which this
+ * tool deliberately avoids needing. Nothing needs to actually listen on
+ * this port — tiktok-connect.ts never binds it, it's just the value
+ * registered with TikTok and echoed back in the browser's address bar for
+ * the founder to copy from, same as before.
+ */
+export const CANONICAL_TIKTOK_REDIRECT_URI = 'http://127.0.0.1:4322/callback';
 
 const ORG_ID = 'pintag';
 const SOURCE_NAME = 'tiktok';

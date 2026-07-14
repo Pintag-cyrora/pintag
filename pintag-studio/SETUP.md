@@ -49,11 +49,16 @@ The main repo's `supabase/functions/public-listings-feed` edge function (added a
 Read-only — no posting. Lets the Daily Briefing report what actually happened on TikTok (account stats, recent-video performance) instead of relying only on internal knowledge. See `pipeline/lib/observation-sources/tiktok.ts` and `ARCHITECTURE.md`'s Observation Sources section.
 
 1. Create a TikTok Developer app at [developers.tiktok.com](https://developers.tiktok.com). Add the **Login Kit** product.
-2. Request these scopes: `user.info.basic`, `user.info.stats`, `video.list`. New apps start in sandbox mode (unaudited) — reading your own account's data should work there, but this hasn't been confirmed against a live app yet; if it turns out reads also need a full audit first, that's a review submission (functional demo + business verification), not a code change.
-3. Register a redirect URI in the app's settings (it doesn't need to be a live server — TikTok redirects the browser there with an authorization code in the query string, which you paste back into the CLI even if the page itself 404s).
-4. Set as GitHub Actions secrets (and locally, when running `npm run tiktok:connect` or `npm run daily-briefing`): `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`.
-5. Run migration `0004_observation_sources.sql` if you haven't already (step 1 above).
-6. Run `npm run tiktok:connect` once — it prints an authorization URL, you approve it as the Pintag TikTok account, and paste back the resulting redirect URL (or just the `code` from it). This stores the access/refresh token pair in Supabase (`observation_source_tokens`); the pipeline refreshes it automatically after that (TikTok refresh tokens last about a year, so this is a rare step, not a daily one).
+2. **App type: choose "Desktop", not "Web."** This matters — TikTok requires Web apps to use a real `https://` domain you own, but Desktop apps can use a local `http://127.0.0.1` redirect with no domain at all, which is what this tool (a local CLI script, not a hosted server) actually needs.
+3. Request these scopes: `user.info.basic`, `user.info.stats`, `video.list`. New apps start in sandbox mode (unaudited) — reading your own account's data should work there, but this hasn't been confirmed against a live app yet; if it turns out reads also need a full audit first, that's a review submission (functional demo + business verification), not a code change.
+4. **Redirect URI — use exactly this value, it's not something you choose:**
+   ```
+   http://127.0.0.1:4322/callback
+   ```
+   Paste it into the app's Redirect URI field precisely as shown. It doesn't need to be a live server — TikTok redirects the browser there with an authorization code in the query string, which you paste back into the CLI even if the page itself 404s. This exact value is also already filled in for you in `.env.example`'s `TIKTOK_REDIRECT_URI` — leave that line as-is when you copy it to `.env.local`.
+5. Set as GitHub Actions secrets (and locally, in `.env.local` — see `FIRST_TIME_SETUP.md`): `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` (the value above).
+6. Run migration `0004_observation_sources.sql` if you haven't already (step 1 above).
+7. Run `npm run tiktok:connect` once — it prints the exact redirect URI to double-check against your Developer app, then an authorization URL. Approve it as the Pintag TikTok account, and paste back the resulting redirect URL (or just the `code` from it). This stores the access/refresh token pair in Supabase (`observation_source_tokens`); the pipeline refreshes it automatically after that (TikTok refresh tokens last about a year, so this is a rare step, not a daily one). If `TIKTOK_REDIRECT_URI` in `.env.local` is ever missing or doesn't match the value above, `npm run tiktok:connect` says so plainly and tells you exactly what to fix, rather than failing partway through.
 
 Not needed until you want real TikTok data in the Daily Briefing — everything else in this repo works without it (`gatherObservations()` degrades gracefully and says so honestly if TikTok isn't connected).
 

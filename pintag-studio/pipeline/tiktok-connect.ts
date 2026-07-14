@@ -6,16 +6,17 @@
 //
 // Run: npm run tiktok:connect
 //
-// Requires TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, and TIKTOK_REDIRECT_URI
-// already set (see SETUP.md's TikTok section) — the redirect URI must
-// exactly match what's registered in the TikTok Developer app. It does not
-// need to be a live, listening server: TikTok redirects the founder's
+// Requires TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET already set (see
+// SETUP.md's TikTok section). The redirect URI is NOT something you choose
+// — it's CANONICAL_TIKTOK_REDIRECT_URI (see lib/observation-sources/
+// tiktok.ts), the one fixed value this whole tool is built around. It does
+// not need to be a live, listening server: TikTok redirects the founder's
 // browser there with the authorization code in the query string, and the
 // founder pastes that URL back here even if the page itself 404s.
 
 import { randomBytes, createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
-import { TIKTOK_AUTH_URL, TIKTOK_SCOPES, exchangeCodeForToken, storeToken } from './lib/observation-sources/tiktok.js';
+import { TIKTOK_AUTH_URL, TIKTOK_SCOPES, CANONICAL_TIKTOK_REDIRECT_URI, exchangeCodeForToken, storeToken } from './lib/observation-sources/tiktok.js';
 
 const rl = createInterface({ input: process.stdin });
 const lines = rl[Symbol.asyncIterator]();
@@ -50,11 +51,29 @@ export function extractCode(pasted: string): string | undefined {
 async function main(): Promise<void> {
   const clientKey = process.env.TIKTOK_CLIENT_KEY;
   const clientSecret = process.env.TIKTOK_CLIENT_SECRET;
-  const redirectUri = process.env.TIKTOK_REDIRECT_URI;
 
-  if (!clientKey || !clientSecret || !redirectUri) {
-    console.log('Missing TikTok credentials — set TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, and TIKTOK_REDIRECT_URI first.');
-    console.log('See SETUP.md\'s TikTok section for how to create the Developer app and register a redirect URI.');
+  if (!clientKey || !clientSecret) {
+    console.log("I can't connect TikTok yet — TIKTOK_CLIENT_KEY and/or TIKTOK_CLIENT_SECRET aren't set.");
+    console.log('');
+    console.log('Add them to .env.local (see FIRST_TIME_SETUP.md, or SETUP.md\'s TikTok section for how to get them from developers.tiktok.com).');
+    rl.close();
+    return;
+  }
+
+  // The redirect URI is a fixed constant, not something the founder
+  // chooses — but .env.local can still override it (matching every other
+  // credential in this tool), so this is a safety net for a stale or
+  // hand-edited value, not the primary path. If it's simply unset,
+  // .env.example already pre-fills the canonical value, so this only
+  // fires for someone who removed or changed that line.
+  const redirectUri = process.env.TIKTOK_REDIRECT_URI ?? CANONICAL_TIKTOK_REDIRECT_URI;
+  if (redirectUri !== CANONICAL_TIKTOK_REDIRECT_URI) {
+    console.log("I can't connect TikTok — TIKTOK_REDIRECT_URI in your .env.local doesn't match the value Marketing OS expects.");
+    console.log('');
+    console.log(`  Your .env.local has:  ${redirectUri}`);
+    console.log(`  It needs to be:       ${CANONICAL_TIKTOK_REDIRECT_URI}`);
+    console.log('');
+    console.log('Fix TIKTOK_REDIRECT_URI in .env.local to match exactly, then run this again.');
     rl.close();
     return;
   }
@@ -71,12 +90,17 @@ async function main(): Promise<void> {
   authUrl.searchParams.set('code_challenge', challenge);
   authUrl.searchParams.set('code_challenge_method', 'S256');
 
+  console.log('Before you continue: your TikTok Developer app must have this exact redirect URI registered');
+  console.log('(Developer Portal -> your app -> Login Kit -> Redirect URI, app type "Desktop"):');
+  console.log('');
+  console.log(`  ${CANONICAL_TIKTOK_REDIRECT_URI}`);
+  console.log('');
   console.log('Open this URL, log in as the Pintag TikTok account, and approve the requested permissions:');
   console.log('');
   console.log(authUrl.toString());
   console.log('');
-  console.log("TikTok will redirect your browser to your registered redirect URI — that page may 404, that's expected.");
-  console.log('Paste the full URL you land on (or just the `code` value from it) below.');
+  console.log("TikTok will redirect your browser to that address — the page will 404, and that's expected (nothing is running there).");
+  console.log('Copy the full address from your browser\'s address bar and paste it below.');
   console.log('');
 
   const pasted = await ask('Redirect URL or code: ');
@@ -96,7 +120,7 @@ async function main(): Promise<void> {
   } catch (err) {
     console.log('');
     console.log(`Token exchange failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    console.log('Nothing saved — double check the redirect URI matches exactly what\'s registered in the TikTok Developer app, and that the code hasn\'t already been used (codes are single-use).');
+    console.log(`Nothing saved — double check ${CANONICAL_TIKTOK_REDIRECT_URI} is registered exactly as shown in your TikTok Developer app, and that the code hasn't already been used (codes are single-use, and expire quickly — if it's been more than a minute, just run this again for a fresh one).`);
   }
   rl.close();
 }
