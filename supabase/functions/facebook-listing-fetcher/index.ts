@@ -107,10 +107,19 @@ function extractMeta(html: string, property: string): string | null {
 }
 
 function extractAllMeta(html: string, property: string): string[] {
-  const re = new RegExp(`<meta[^>]+property=["']${property}["'][^>]*content=["']([^"']*)["']`, 'gi');
+  // Same dual-order matching as extractMeta() above — Facebook doesn't
+  // consistently emit `property` before `content` across every og:image
+  // tag on a page, and a single-order regex would silently under-count
+  // the gallery instead of just missing one field.
+  const patterns = [
+    new RegExp(`<meta[^>]+property=["']${property}["'][^>]*content=["']([^"']*)["']`, 'gi'),
+    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*property=["']${property}["']`, 'gi'),
+  ];
   const out: string[] = [];
-  let m;
-  while ((m = re.exec(html)) !== null) out.push(decodeHtmlEntities(m[1]).trim());
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(html)) !== null) out.push(decodeHtmlEntities(m[1]).trim());
+  }
   return out;
 }
 
