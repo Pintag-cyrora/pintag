@@ -77,26 +77,28 @@ That's the whole thing. No commands to type, no files to find, no code to read.
 
 This step is what lets Marketing OS talk about your actual TikTok performance in the morning briefing — real view counts, not just internal knowledge. Everything in Sections 1–4 works fine without it; do this whenever you're ready, not before.
 
-**Honest heads-up:** step 7 below needs Terminal, once. Every other capability in this guide works entirely from your browser — this is the one exception, because TikTok itself requires you to personally approve access in a login screen, which isn't something a web page here can do on its own yet. Making this a real one-click browser button instead is a reasonable future improvement, just not built yet.
+**Honest heads-up:** step 9 below needs Terminal, once. Every other capability in this guide works entirely from your browser — this is the one exception, because TikTok itself requires you to personally approve access in a login screen, which isn't something a web page here can do on its own yet. Making this a real one-click browser button instead is a reasonable future improvement, just not built yet.
 
-> Same note as the Supabase section: I can't screenshot TikTok's own Developer site since I don't have access to it — but this section has one extra caveat worth being upfront about. TikTok's site changes its layout sometimes, and a previous version of this guide sent someone to the wrong screen ("URL Properties," which turned out to be for a feature Marketing OS doesn't use at all). What's below is re-checked against TikTok's own current documentation. If it still doesn't match what you see, tell me exactly what's on your screen and I'll fix this guide again — that's a real gap, not something to work around on your own.
+> Same note as the Supabase section: I can't screenshot TikTok's own Developer site since I don't have access to it. Two things below have been confirmed against the real site (thank you for testing and reporting back): "Configure for Desktop" on a normal app leads straight to a review process, and "URL Properties" is a different feature entirely. One thing is still unconfirmed — exactly where the redirect URI field appears inside Sandbox mode — flagged below rather than guessed at. If anything still doesn't match what you see, tell me exactly what's on your screen and this gets corrected precisely, not guessed at again.
 
 1. Go to [developers.tiktok.com](https://developers.tiktok.com) and create a Developer app.
-2. Find **Login Kit** among the available products and add it to your app. **Don't go looking in a section called "URL Properties"** — that's for a different TikTok feature (publishing content directly, which Marketing OS doesn't do) and has no redirect URI field at all; if you land there, that's the wrong screen.
-3. Adding Login Kit should prompt you directly for a **Redirect URI** — that's the field you want. Somewhere in this step, TikTok will also ask what **type** of app/platform this is for: choose **Desktop**, not Web.
-4. Enter this exactly, including `http://`:
+2. Find **Login Kit** among the available products and add it to your app. **Don't go looking in a section called "URL Properties"** — that's for a different TikTok feature (publishing content directly, which Marketing OS doesn't do).
+3. **Don't click "Configure for Desktop" yet either** — on a normal app that leads straight into a review process asking for demo videos, which isn't what you want for testing. Instead, look for a **Production/Sandbox switch near your app's name**, and switch it to **Sandbox**. Click **Create Sandbox**, give it any name.
+4. Under **Target users**, click **Add account** and log in with the Pintag TikTok account — this authorizes that account to test with this sandbox.
+5. On the Sandbox app's page, find the **Client Key** and **Client Secret** — there should be an eye icon to reveal them. **These are different from any production app's Client Key/Secret** — TikTok treats them as two separate pairs, and using the wrong one is the most common reason the connection gets rejected. Use the Sandbox app's own values.
+6. Somewhere in this Sandbox/Login Kit setup, TikTok will ask for a **Redirect URI** — exactly where isn't confirmed yet, so look around the Login Kit configuration for this sandbox specifically. Enter this exactly, including `http://`:
    ```
    http://127.0.0.1:4322/callback
    ```
-   This is fixed — Marketing OS is already built around this exact value, so there's nothing to decide here. It won't open a real page if you visit it; that's expected.
-5. TikTok will give you a **Client Key** and a **Client Secret**. Switch to TextEdit, where `.env.local` is open, and find these two lines near the bottom:
+   This value is fixed — Marketing OS is already built around it, so there's nothing to decide here. It won't open a real page if you visit it; that's expected. If TikTok also asks what **type** of app/platform this redirect URI is for, choose **Desktop**, not Web.
+7. Switch to TextEdit, where `.env.local` is open, and find these two lines near the bottom:
    ```
    TIKTOK_CLIENT_KEY=
    TIKTOK_CLIENT_SECRET=
    ```
-   Paste your Client Key and Client Secret after each `=`. Leave the `TIKTOK_REDIRECT_URI=` line beneath them exactly as it already is — it's already set to the value from step 4. Save the file (`Cmd + S`).
-6. Restart Marketing OS if it's currently running (close the window, double-click `Start Marketing OS.command` again).
-7. This last step needs Terminal, just this once — everything else in this guide doesn't. Open the **Terminal** app (`Cmd + Space`, type `Terminal`, press Enter), type:
+   Paste the **Sandbox app's** Client Key and Client Secret (from step 5) after each `=`. Leave the `TIKTOK_REDIRECT_URI=` line beneath them exactly as it already is. Save the file (`Cmd + S`).
+8. Restart Marketing OS if it's currently running (close the window, double-click `Start Marketing OS.command` again).
+9. This last step needs Terminal, just this once — everything else in this guide doesn't. Open the **Terminal** app (`Cmd + Space`, type `Terminal`, press Enter), type:
    ```
    cd
    ```

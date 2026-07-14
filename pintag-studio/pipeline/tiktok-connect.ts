@@ -56,6 +56,10 @@ async function main(): Promise<void> {
     console.log("I can't connect TikTok yet — TIKTOK_CLIENT_KEY and/or TIKTOK_CLIENT_SECRET aren't set.");
     console.log('');
     console.log('Add them to .env.local (see FIRST_TIME_SETUP.md, or SETUP.md\'s TikTok section for how to get them from developers.tiktok.com).');
+    console.log('While testing (before App Review), these must be your Sandbox app\'s own Client Key/Secret —');
+    console.log('revealed via the eye icon on the Sandbox app\'s page — not your production app\'s credentials.');
+    console.log('TikTok treats these as two separate credential pairs; using the wrong one is rejected as an');
+    console.log('invalid client_key even though the OAuth URL itself is otherwise correctly formed.');
     rl.close();
     return;
   }
@@ -96,6 +100,10 @@ async function main(): Promise<void> {
   console.log('');
   console.log(`  ${CANONICAL_TIKTOK_REDIRECT_URI}`);
   console.log('');
+  console.log('Also confirm TIKTOK_CLIENT_KEY/SECRET above are your Sandbox app\'s credentials (eye icon on the');
+  console.log('Sandbox app\'s page), not a production app\'s — TikTok will reject the client_key otherwise, before');
+  console.log('App Review is complete.');
+  console.log('');
   console.log('Open this URL, log in as the Pintag TikTok account, and approve the requested permissions:');
   console.log('');
   console.log(authUrl.toString());
@@ -121,7 +129,7 @@ async function main(): Promise<void> {
   } catch (err) {
     console.log('');
     console.log(`Token exchange failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    console.log(`Nothing saved — double check ${CANONICAL_TIKTOK_REDIRECT_URI} is registered exactly as shown in your TikTok Developer app, and that the code hasn't already been used (codes are single-use, and expire quickly — if it's been more than a minute, just run this again for a fresh one).`);
+    console.log(`Nothing saved — double check ${CANONICAL_TIKTOK_REDIRECT_URI} is registered exactly as shown in your TikTok Developer app, that TIKTOK_CLIENT_KEY/SECRET in .env.local are your Sandbox app's own credentials (not a production app's — TikTok rejects a mismatched pair), and that the code hasn't already been used (codes are single-use, and expire quickly — if it's been more than a minute, just run this again for a fresh one).`);
   }
   rl.close();
 }
