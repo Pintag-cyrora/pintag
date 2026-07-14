@@ -2320,6 +2320,7 @@ async function runSmartImport() {
   msgEl.style.display = 'none';
   showImportSteps(fbUrl ? IMPORT_STEPS : IMPORT_STEPS.filter(s => s.id !== 'step-fetch'));
 
+  let fbWarnings = [];
   try {
     // Stage 1 (ADAPTER, only when a URL was given): the Facebook adapter
     // returns raw material — images: ImportImage[] (already Storage-hosted,
@@ -2343,6 +2344,13 @@ async function runSmartImport() {
         });
         refreshImportImageGrid();
       }
+      // Facebook only exposes its full photo gallery behind a login wall —
+      // a plain unauthenticated fetch (see facebook-listing-fetcher's own
+      // header comment) realistically yields just the preview image most
+      // of the time. The function already computes a plain-language
+      // explanation for exactly this; surface it instead of leaving staff
+      // to wonder why only 1 photo showed up.
+      fbWarnings = (fetched.metadata && Array.isArray(fetched.metadata.warnings)) ? fetched.metadata.warnings : [];
       setImportStep('step-fetch', 'done');
     }
 
@@ -2382,7 +2390,7 @@ async function runSmartImport() {
     setImportStep('step-populate', 'done');
 
     revealFormPanel('New Listing (from Smart Import)', '');
-    renderImportSummary(aiResult, importImages);
+    renderImportSummary(aiResult, importImages, fbWarnings);
 
   } catch (err) {
     console.error('[Smart Import]', err);
@@ -2461,7 +2469,7 @@ function formatEstimate(seconds) {
   return mins + ' minute' + (mins === 1 ? '' : 's');
 }
 
-function renderImportSummary(data, importImages) {
+function renderImportSummary(data, importImages, fbWarnings) {
   const banner = document.getElementById('import-summary-banner');
   if (!banner) return;
   const { found, remaining } = buildImportSummary(data, importImages);
@@ -2472,6 +2480,14 @@ function renderImportSummary(data, importImages) {
       ${remaining.map(label => `<div class="import-summary-item missing">• ${esc(label)}</div>`).join('')}
       <div class="import-summary-note">Estimated time: ${formatEstimate(Math.max(15, remaining.length * 15))}</div>`
     : `<div class="import-summary-note" style="margin-top:12px;">Everything's here — just give it a look before saving.</div>`;
+  // Adapter-level caveats (e.g. Facebook only exposing 1 photo behind its
+  // login wall) are a different kind of note than "missing" fields above —
+  // nothing staff forgot to fill in, just a fetch limitation worth knowing
+  // about before assuming the importer is broken.
+  const warningsHtml = (fbWarnings && fbWarnings.length)
+    ? `<div class="import-summary-col-label" style="margin-top:16px;">Heads up:</div>
+       ${fbWarnings.map(w => `<div class="import-summary-note">⚠ ${esc(w)}</div>`).join('')}`
+    : '';
 
   banner.innerHTML = `
     <div class="import-summary">
@@ -2479,6 +2495,7 @@ function renderImportSummary(data, importImages) {
       <div class="import-summary-col-label">We imported:</div>
       ${foundHtml}
       ${remainingHtml}
+      ${warningsHtml}
     </div>`;
   banner.style.display = 'block';
 }
