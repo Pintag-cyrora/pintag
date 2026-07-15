@@ -365,14 +365,26 @@ body{
 .lead-table tr:last-child td{border-bottom:none;}
 .lead-badge{display:inline-block;background:rgba(45,140,140,0.1);color:var(--teal);font-weight:600;font-size:12px;padding:2px 8px;border-radius:20px;}
 
-/* Lead status — a plain <select> is the "one click" status changer */
-.status-select{
-  font-family:"DM Sans",sans-serif;font-size:12.5px;font-weight:600;
-  color:var(--teal);background:rgba(45,140,140,0.08);
-  border:1px solid rgba(45,140,140,0.18);border-radius:8px;
-  padding:6px 10px;cursor:pointer;
+/* Lead outcome — Closed/Lost are the two buttons worth one click; the
+   intermediate stages (Contacted/Viewing/Negotiating) are available via
+   a small, visually secondary <select> next to them, not the primary
+   action. Once a lead is Closed or Lost it renders as a plain badge —
+   the decision is made, nothing left to click. */
+.outcome-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.outcome-btn{
+  font-family:"DM Sans",sans-serif;font-size:12px;font-weight:600;
+  border-radius:8px;padding:6px 10px;cursor:pointer;border:1px solid transparent;
 }
-.status-select:disabled{opacity:0.5;cursor:wait;}
+.outcome-btn:disabled{opacity:0.5;cursor:wait;}
+.outcome-btn-closed{background:rgba(45,140,140,0.08);color:var(--teal);border-color:rgba(45,140,140,0.18);}
+.outcome-btn-lost{background:#F8F4F0;color:#A24B4B;border-color:rgba(162,75,75,0.18);}
+.outcome-badge{display:inline-block;font-size:12.5px;font-weight:600;color:var(--text);}
+.status-select-sm{
+  font-family:"DM Sans",sans-serif;font-size:11px;color:var(--muted);
+  background:none;border:1px solid var(--line);border-radius:6px;
+  padding:4px 6px;cursor:pointer;
+}
+.status-select-sm:disabled{opacity:0.5;cursor:wait;}
 
 /* Conversion funnel — a simple vertical list, not a custom chart */
 .funnel{display:flex;flex-direction:column;gap:2px;max-width:320px;}
@@ -457,10 +469,61 @@ body{
 
     </section>
 
+    <!-- Property Performance — views, lead clicks, and lead rate are
+         recorded automatically the moment a listing gets browsed; no
+         agent action is needed for any number here to be accurate.
+         Shown first, above the optional pipeline below, because this is
+         the data worth trusting on day one. -->
     <div style="margin-top:28px;">
-      <!-- Current pipeline snapshot — how many leads sit in each status
-           right now (mutually exclusive counts). The Conversion Funnel
-           below is the complementary cumulative view. -->
+      <section class="section">
+        <div class="section-head">
+          <h2>Property Performance</h2>
+        </div>
+        <div class="lead-table-wrap">
+          <table class="lead-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Views</th>
+                <th>Lead Clicks</th>
+                <th>Lead Rate</th>
+                <th>Open Leads</th>
+                <th>Closed Deals</th>
+              </tr>
+            </thead>
+            <tbody id="prop-analytics-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- Pipeline (optional) — everything here depends on you updating a
+         lead's status. The one thing worth doing is marking a deal
+         Closed or Lost once it's over; the rest is here if you want it,
+         not something you need to maintain. -->
+    <div style="margin-top:28px;">
+      <section class="section" style="margin-bottom:28px;">
+        <div class="section-head">
+          <h2>Leads</h2>
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);margin:-10px 0 16px;">A lead appears here automatically when a buyer clicks "Message Agent." Updating its status is optional — the one that matters most is marking it Closed or Lost once you know the outcome.</p>
+        <div class="lead-table-wrap">
+          <table class="lead-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Customer</th>
+                <th>Contact</th>
+                <th>Created</th>
+                <th>Outcome</th>
+                <th>Last Updated</th>
+              </tr>
+            </thead>
+            <tbody id="lead-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
       <div class="lead-stats">
         <div class="stat-card">
           <div class="stat-label">🆕 New</div>
@@ -486,58 +549,16 @@ body{
 
       <section class="section" style="margin-bottom:28px;">
         <div class="section-head">
-          <h2>Leads</h2>
-        </div>
-        <div class="lead-table-wrap">
-          <table class="lead-table">
-            <thead>
-              <tr>
-                <th>Property</th>
-                <th>Customer</th>
-                <th>Contact</th>
-                <th>Created</th>
-                <th>Status</th>
-                <th>Last Updated</th>
-              </tr>
-            </thead>
-            <tbody id="lead-tbody"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="section" style="margin-bottom:28px;">
-        <div class="section-head">
           <h2>Conversion Funnel</h2>
         </div>
         <div class="funnel" id="funnel-body"></div>
-      </section>
-
-      <section class="section" style="margin-bottom:28px;">
-        <div class="section-head">
-          <h2>Property Analytics</h2>
-        </div>
-        <div class="lead-table-wrap">
-          <table class="lead-table">
-            <thead>
-              <tr>
-                <th>Property</th>
-                <th>Views</th>
-                <th>Lead Clicks</th>
-                <th>Lead Rate</th>
-                <th>Open Leads</th>
-                <th>Closed Deals</th>
-              </tr>
-            </thead>
-            <tbody id="prop-analytics-tbody"></tbody>
-          </table>
-        </div>
       </section>
 
       <section class="section">
         <div class="section-head">
           <h2>Agent Analytics — This Month</h2>
         </div>
-        <div class="stats" style="margin-bottom:0;">
+        <div class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:0;">
           <div class="stat-card">
             <div class="stat-label">Listings</div>
             <div class="stat-value" id="agm-listings">—</div>
@@ -550,23 +571,8 @@ body{
             <div class="stat-label">Lead Clicks</div>
             <div class="stat-value" id="agm-clicks">—</div>
           </div>
-          <div class="stat-card">
-            <div class="stat-label">Contacted</div>
-            <div class="stat-value" id="agm-contacted">—</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Viewings</div>
-            <div class="stat-value" id="agm-viewings">—</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Deals Closed</div>
-            <div class="stat-value" id="agm-closed">—</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Conversion Rate</div>
-            <div class="stat-value" id="agm-conversion">—</div>
-          </div>
         </div>
+        <div id="agm-pipeline-stats"></div>
       </section>
     </div>
 
@@ -813,6 +819,14 @@ function renderLeadStatusTiles(leads) {
   document.getElementById('lead-count-lost').innerText      = counts.lost;
 }
 
+// The one action worth one click is marking a lead Closed or Lost — those
+// render as two small buttons. The intermediate stages (Contacted/Viewing
+// Scheduled/Negotiating) are available via a small, visually secondary
+// <select> next to them for any agent who wants to track them, but
+// they're not the primary ask. Once a lead is Closed or Lost, it renders
+// as a plain badge — the decision is made, nothing left to click.
+var NON_TERMINAL_STATUSES = ['new','contacted','viewing_scheduled','negotiating'];
+
 function renderLeadsTable(leads, propMap) {
   var tbody = document.getElementById('lead-tbody');
   if (!leads.length) {
@@ -825,47 +839,91 @@ function renderLeadsTable(leads, propMap) {
     var customer = l.customer_name ? esc(l.customer_name) : '<span style="color:var(--muted)">—</span>';
     var created = new Date(l.created_at).toLocaleDateString();
     var updated = new Date(l.updated_at).toLocaleDateString();
-    var options = Object.keys(STATUS_LABELS).map(function(s) {
-      return '<option value="' + s + '"' + (s === l.status ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>';
-    }).join('');
+
+    var isTerminal = l.status === 'closed' || l.status === 'lost';
+    var outcomeHtml;
+    if (isTerminal) {
+      outcomeHtml = '<span class="outcome-badge">' + STATUS_LABELS[l.status] + '</span>';
+    } else {
+      var options = NON_TERMINAL_STATUSES.map(function(s) {
+        return '<option value="' + s + '"' + (s === l.status ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>';
+      }).join('');
+      outcomeHtml =
+        '<div class="outcome-actions">' +
+        '<button class="outcome-btn outcome-btn-closed" data-id="' + esc(l.id) + '" onclick="markLeadOutcome(this,\'closed\')">🎉 Closed</button>' +
+        '<button class="outcome-btn outcome-btn-lost" data-id="' + esc(l.id) + '" onclick="markLeadOutcome(this,\'lost\')">❌ Lost</button>' +
+        '<select class="status-select-sm" data-id="' + esc(l.id) + '" onchange="updateLeadStatus(this)">' + options + '</select>' +
+        '</div>';
+    }
+
     return '<tr>' +
       '<td style="font-weight:500;">' + title + '</td>' +
       '<td>' + customer + '</td>' +
       '<td>💬 WhatsApp</td>' +
       '<td>' + created + '</td>' +
-      '<td><select class="status-select" data-id="' + esc(l.id) + '" onchange="updateLeadStatus(this)">' + options + '</select></td>' +
+      '<td>' + outcomeHtml + '</td>' +
       '<td style="color:var(--muted);">' + updated + '</td>' +
       '</tr>';
   }).join('');
 }
 
-// One click: change the <select>, PATCH just that row, re-render from the
-// updated in-memory cache — no extra round trip beyond the PATCH itself.
+// One click: PATCH just that row, re-render from the updated in-memory
+// cache — no extra round trip beyond the PATCH itself. Shared by both the
+// Closed/Lost buttons and the secondary status <select>.
+async function markLeadOutcome(btn, status) {
+  var row = btn.closest('tr');
+  row.querySelectorAll('button,select').forEach(function(el) { el.disabled = true; });
+  const { error } = await supabaseClient.from('leads').update({ status: status }).eq('id', btn.dataset.id);
+  if (error) {
+    row.querySelectorAll('button,select').forEach(function(el) { el.disabled = false; });
+    alert('Could not update lead status');
+    return;
+  }
+  applyLeadStatusUpdate(btn.dataset.id, status);
+}
+
 async function updateLeadStatus(selectEl) {
   var id = selectEl.dataset.id;
   var newStatus = selectEl.value;
   selectEl.disabled = true;
-  const { error } = await supabaseClient
-    .from('leads')
-    .update({ status: newStatus })
-    .eq('id', id);
+  const { error } = await supabaseClient.from('leads').update({ status: newStatus }).eq('id', id);
   selectEl.disabled = false;
   if (error) {
     alert('Could not update lead status');
     return;
   }
+  applyLeadStatusUpdate(id, newStatus);
+}
+
+function applyLeadStatusUpdate(id, newStatus) {
   var lead = (_leadsCache || []).find(function(l) { return l.id === id; });
   if (lead) { lead.status = newStatus; lead.updated_at = new Date().toISOString(); }
   renderLeadStatusTiles(_leadsCache);
   renderLeadsTable(_leadsCache, _propMapCache);
 }
 
+// A confidently-rendered 0% funnel from a handful of never-updated leads
+// reads as a real measurement ("nobody converts") when the truth might
+// just be "nobody's updated their status yet." Below this sample size, an
+// honest "not enough data" message beats a wrong-looking number.
+var MIN_PIPELINE_SAMPLE = 3;
+
 // Cumulative "reached this stage or beyond" — the complementary view to
 // the status-snapshot tiles above. Message Clicks comes from lead_events
 // directly (every whatsapp_click, whether or not its lead has moved past
-// New yet); everything downstream comes from leads.status.
+// New yet — always accurate regardless of manual updates); everything
+// downstream comes from leads.status, which is only as fresh as the last
+// time an agent touched it.
 function renderConversionFunnel(leads, events) {
   var messageClicks = events.length;
+  var el = document.getElementById('funnel-body');
+  var updatedCount = leads.filter(function(l) { return l.status !== 'new'; }).length;
+  if (updatedCount < MIN_PIPELINE_SAMPLE) {
+    el.innerHTML =
+      '<div class="funnel-row"><span class="funnel-label">Message Clicks</span><span class="funnel-value">' + messageClicks + '</span></div>' +
+      '<p style="color:var(--muted);font-size:12.5px;padding:6px 4px 0;">The rest of the funnel needs a few leads marked Closed or Lost before it\'s reliable — not shown yet.</p>';
+    return;
+  }
   var reached = function(statuses) {
     return leads.filter(function(l) { return statuses.indexOf(l.status) !== -1; }).length;
   };
@@ -876,7 +934,7 @@ function renderConversionFunnel(leads, events) {
     ['Negotiating',     reached(['negotiating','closed'])],
     ['Closed',          reached(['closed'])]
   ];
-  document.getElementById('funnel-body').innerHTML = stages.map(function(s, i) {
+  el.innerHTML = stages.map(function(s, i) {
     return '<div class="funnel-row"><span class="funnel-label">' + s[0] + '</span><span class="funnel-value">' + s[1] + '</span></div>' +
       (i < stages.length - 1 ? '<div class="funnel-arrow">↓</div>' : '');
   }).join('');
@@ -925,19 +983,30 @@ function renderAgentAnalyticsThisMonth(properties, leads, events) {
   var listingsThisMonth = properties.filter(function(p) { return p.created_at >= monthStart; }).length;
   var viewsTotal = properties.reduce(function(a, p) { return a + (Number(p.view_count) || 0); }, 0);
   var clicksThisMonth = events.filter(function(e) { return e.created_at >= monthStart; }).length;
+  document.getElementById('agm-listings').innerText = listingsThisMonth;
+  document.getElementById('agm-views').innerText    = viewsTotal;
+  document.getElementById('agm-clicks').innerText   = clicksThisMonth;
+
+  // Contacted/Viewings/Deals Closed/Conversion Rate depend entirely on
+  // manual status updates — gated the same way as the funnel above,
+  // rather than rendering a confident 0%/"—" from an empty sample.
   var leadsThisMonth = leads.filter(function(l) { return l.created_at >= monthStart; });
   var contactedTM = leadsThisMonth.filter(function(l) { return l.status !== 'new'; }).length;
-  var viewingTM   = leadsThisMonth.filter(function(l) { return ['viewing_scheduled','negotiating','closed'].indexOf(l.status) !== -1; }).length;
-  var closedTM    = leadsThisMonth.filter(function(l) { return l.status === 'closed'; }).length;
+  var pipelineEl = document.getElementById('agm-pipeline-stats');
+  if (contactedTM < MIN_PIPELINE_SAMPLE) {
+    pipelineEl.innerHTML = '<p style="color:var(--muted);font-size:12.5px;margin-top:14px;">Contacted, Viewings, Deals Closed, and Conversion Rate need a few leads with an updated status this month before they\'re reliable — not shown yet.</p>';
+    return;
+  }
+  var viewingTM = leadsThisMonth.filter(function(l) { return ['viewing_scheduled','negotiating','closed'].indexOf(l.status) !== -1; }).length;
+  var closedTM  = leadsThisMonth.filter(function(l) { return l.status === 'closed'; }).length;
   var conversionRate = clicksThisMonth > 0 ? ((closedTM / clicksThisMonth) * 100).toFixed(1) + '%' : '—';
-
-  document.getElementById('agm-listings').innerText   = listingsThisMonth;
-  document.getElementById('agm-views').innerText      = viewsTotal;
-  document.getElementById('agm-clicks').innerText     = clicksThisMonth;
-  document.getElementById('agm-contacted').innerText  = contactedTM;
-  document.getElementById('agm-viewings').innerText   = viewingTM;
-  document.getElementById('agm-closed').innerText     = closedTM;
-  document.getElementById('agm-conversion').innerText = conversionRate;
+  pipelineEl.innerHTML =
+    '<div class="stats" style="grid-template-columns:repeat(4,1fr);margin-top:14px;margin-bottom:0;">' +
+    '<div class="stat-card"><div class="stat-label">Contacted</div><div class="stat-value">' + contactedTM + '</div></div>' +
+    '<div class="stat-card"><div class="stat-label">Viewings</div><div class="stat-value">' + viewingTM + '</div></div>' +
+    '<div class="stat-card"><div class="stat-label">Deals Closed</div><div class="stat-value">' + closedTM + '</div></div>' +
+    '<div class="stat-card"><div class="stat-label">Conversion Rate</div><div class="stat-value">' + conversionRate + '</div></div>' +
+    '</div>';
 }
 
 initDashboard();

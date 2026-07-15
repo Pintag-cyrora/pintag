@@ -610,6 +610,7 @@ nav{
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
+<script src="session.js"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -1050,6 +1051,48 @@ function setSort(val) {
   if (_viewMode === 'list') renderListings();
 }
 
+// ── BEHAVIORAL EVENT TRACKING (Intelligence layer) ────
+// Pure instrumentation of the existing search/browse/click flow — no
+// change to what's searchable or how results are filtered/sorted.
+// Fire-and-forget: never blocks rendering or navigation.
+function postEvent(table, body) {
+  fetch(SUPABASE_URL + '/rest/v1/' + table, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify(body),
+    keepalive: true
+  }).catch(function(){});
+}
+
+var _searchEventTimer = null;
+function scheduleBehavioralEvents(sorted) {
+  // Debounced so adjusting several filters in a row logs one settled
+  // search, not one per intermediate click.
+  clearTimeout(_searchEventTimer);
+  _searchEventTimer = setTimeout(function() {
+    var sessionId = getOrCreateSessionId();
+    postEvent('search_events', {
+      session_id: sessionId,
+      property_type: currentTypeFilter === 'all' ? null : currentTypeFilter,
+      transaction_type: currentTxFilter === 'all' ? null : currentTxFilter,
+      result_count: sorted.length
+    });
+    if (!sorted.length) return;
+    var filtersSnapshot = { tx: currentTxFilter, type: currentTypeFilter, avail: currentAvailOnly, sort: currentSort };
+    var rows = sorted.filter(function(p){ return p.id; }).map(function(p, idx){
+      return {
+        property_id: p.id,
+        event_type: 'impression',
+        session_id: sessionId,
+        source: 'search',
+        search_position: idx + 1,
+        search_filters: filtersSnapshot
+      };
+    });
+    if (rows.length) postEvent('listing_events', rows);
+  }, 500);
+}
+
 function renderListings() {
   var filtered = allProperties.filter(function(p){
     var matchesTx = currentTxFilter === 'all' || p.transaction_type === currentTxFilter;
@@ -1088,6 +1131,8 @@ function renderListings() {
     var k = (p.district_en||'') + '|' + (p.property_type||'') + '|' + (p.transaction_type||'');
     p._isBestValue = !!(np && _grpAvg[k] && np < _grpAvg[k] * 0.85);
   });
+
+  scheduleBehavioralEvents(sorted);
 
   var lang = getCurrentLang();
   var saved = getSavedSet();
@@ -1234,6 +1279,18 @@ function renderListings() {
         getAgentHtml(p) +
         actLineHtml +
       '</div>';
+
+    if (p.id) {
+      card.addEventListener('click', function() {
+        postEvent('listing_events', {
+          property_id: p.id,
+          event_type: 'click',
+          session_id: getOrCreateSessionId(),
+          source: 'search',
+          search_position: idx + 1
+        });
+      });
+    }
 
     container.appendChild(card);
   });

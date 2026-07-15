@@ -1457,16 +1457,29 @@ async function loadAnalytics() {
     }
 
     // Best conversion rates — per agent, closed deals ÷ message clicks.
-    // Requires at least 3 clicks before ranking an agent, same "avoid a
-    // misleading 100% from a single lucky click" safeguard already used
-    // for Best Value pricing in listings.html (_grpAvg, min 3 peers).
+    // Two separate gates, not one: >=3 clicks avoids a misleading 100%
+    // from a single lucky click (same safeguard as Best Value pricing in
+    // listings.html, _grpAvg, min 3 peers) — but click volume alone isn't
+    // enough. An agent who has never updated a single lead's status would
+    // otherwise show a confident "0%" here, which reads as "this agent
+    // doesn't close deals" when the truth might just be "this agent
+    // hasn't logged an outcome yet." Also require a minimum number of
+    // leads with a non-'new' status before ranking an agent at all —
+    // evidence they actually use the status field, not just that leads
+    // exist for them.
     if (crmLeads) {
+      const MIN_PIPELINE_SAMPLE = 3;
       const clicksByAgent = {};
       leads.forEach(l => { if (l.agent_id && l.event_type === 'whatsapp_click') clicksByAgent[l.agent_id] = (clicksByAgent[l.agent_id]||0) + 1; });
       const closedByAgent = {};
-      crmLeads.forEach(l => { if (l.party_id && l.status === 'closed') closedByAgent[l.party_id] = (closedByAgent[l.party_id]||0) + 1; });
+      const updatedByAgent = {};
+      crmLeads.forEach(l => {
+        if (!l.party_id) return;
+        if (l.status === 'closed') closedByAgent[l.party_id] = (closedByAgent[l.party_id]||0) + 1;
+        if (l.status !== 'new') updatedByAgent[l.party_id] = (updatedByAgent[l.party_id]||0) + 1;
+      });
       const rateByAgent = Object.keys(clicksByAgent)
-        .filter(id => clicksByAgent[id] >= 3)
+        .filter(id => clicksByAgent[id] >= 3 && (updatedByAgent[id]||0) >= MIN_PIPELINE_SAMPLE)
         .map(id => ({ id, rate: (closedByAgent[id]||0) / clicksByAgent[id] }))
         .sort((a,b) => b.rate - a.rate)
         .slice(0,10);
@@ -1477,7 +1490,7 @@ async function loadAnalytics() {
           `<tr><td style="font-weight:500;">${esc(nameMap[r.id]||'—')}</td><td><span class="lead-pill">${(r.rate*100).toFixed(0)}%</span></td></tr>`
         ).join('');
       } else {
-        document.getElementById('adm-conversion-rates').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">Not enough data yet</td></tr>';
+        document.getElementById('adm-conversion-rates').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">Not enough agents updating lead status yet</td></tr>';
       }
     }
 

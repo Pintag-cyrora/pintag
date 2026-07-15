@@ -298,9 +298,20 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
+<script src="session.js"></script>
 <script>
 const SB=window.PINTAG.supabaseUrl;
 const KEY=window.PINTAG.anonKey;
+
+// ── Behavioral event tracking (Intelligence layer) ─────────────────
+function postEvent(table,body){
+  fetch(SB+'/rest/v1/'+table,{
+    method:'POST',
+    headers:{'apikey':KEY,'Authorization':'Bearer '+KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
+    body:JSON.stringify(body),
+    keepalive:true
+  }).catch(function(){});
+}
 const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-interior.png';
 
 function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -422,7 +433,7 @@ async function load(){
     var a=ag[0];
     console.log('Agent ID:', a.id);
     var r2=await fetch(
-      SB+'/rest/v1/properties?managed_by_party_id=eq.'+encodeURIComponent(a.id)+'&order=is_featured.desc,created_at.desc&select=slug,title_lo,title_en,price_display,district_lo,district_en,images,transaction_type,is_featured',
+      SB+'/rest/v1/properties?managed_by_party_id=eq.'+encodeURIComponent(a.id)+'&order=is_featured.desc,created_at.desc&select=id,slug,title_lo,title_en,price_display,district_lo,district_en,images,transaction_type,is_featured',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var listings=await r2.json();
     console.log('Listings returned:', listings);
@@ -521,7 +532,19 @@ function render(a,listings){
     if(p.price_display){var pe=document.createElement('p');pe.className='p-price';pe.textContent=p.price_display;body.appendChild(pe);}
     if(p.district_lo||p.district_en){var de=document.createElement('p');de.className='p-loc';de.textContent=p.district_lo||p.district_en;body.appendChild(de);}
     card.appendChild(imgDiv);card.appendChild(body);grid.appendChild(card);
+
+    if(p.id){
+      card.addEventListener('click',function(){
+        postEvent('listing_events',{property_id:p.id,event_type:'click',session_id:getOrCreateSessionId(),source:'agent_profile',search_position:i+1});
+      });
+    }
   });
+
+  var sessionId=getOrCreateSessionId();
+  var impressionRows=listings.filter(function(p){return p&&p.id;}).map(function(p,idx){
+    return {property_id:p.id,event_type:'impression',session_id:sessionId,source:'agent_profile',search_position:idx+1};
+  });
+  if(impressionRows.length) postEvent('listing_events',impressionRows);
 }
 
 load();
