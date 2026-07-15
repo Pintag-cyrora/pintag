@@ -16,7 +16,7 @@
 
 import { randomBytes, createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
-import { TIKTOK_AUTH_URL, TIKTOK_SCOPES, CANONICAL_TIKTOK_REDIRECT_URI, exchangeCodeForToken, storeToken } from './lib/observation-sources/tiktok.js';
+import { TIKTOK_AUTH_URL, TIKTOK_SCOPES, CANONICAL_TIKTOK_REDIRECT_URI, exchangeCodeForToken, storeToken, fetchUserInfo } from './lib/observation-sources/tiktok.js';
 
 const rl = createInterface({ input: process.stdin });
 const lines = rl[Symbol.asyncIterator]();
@@ -92,17 +92,6 @@ async function main(): Promise<void> {
   const { verifier, challenge } = generatePkce();
   const state = base64url(randomBytes(16));
 
-  // Debug logging (M2.5 follow-up — real PKCE failure reported: "Code
-  // verifier or code challenge is invalid"). Requested explicitly: verifier
-  // length/value and the generated challenge, logged once, before anything
-  // is sent anywhere — so a real run's actual values are on record rather
-  // than inferred after the fact.
-  console.log('--- PKCE debug ---');
-  console.log(`code_verifier (length ${verifier.length}, RFC 7636 requires 43-128): ${verifier}`);
-  console.log(`code_challenge (S256 of the verifier above): ${challenge}`);
-  console.log('------------------');
-  console.log('');
-
   const authUrl = new URL(TIKTOK_AUTH_URL);
   authUrl.searchParams.set('client_key', clientKey);
   authUrl.searchParams.set('scope', TIKTOK_SCOPES.join(','));
@@ -142,7 +131,24 @@ async function main(): Promise<void> {
     const token = await exchangeCodeForToken(code, redirectUri, verifier);
     await storeToken(token.accessToken, token.refreshToken, token.expiresIn);
     console.log('');
-    console.log('Connected. TikTok observations will now appear in the next `npm run daily-briefing` run.');
+    console.log('✓ Connected to TikTok');
+
+    // Immediately prove the stored token actually reaches the intended
+    // account, not just that TikTok returned some token — a real call, not
+    // a re-statement of what was just saved. A failure here doesn't mean
+    // the connection failed (the token above is already saved and usable),
+    // just that this extra confirmation couldn't complete.
+    try {
+      const user = await fetchUserInfo(token.accessToken);
+      console.log(`✓ Account: @${user.username}`);
+      console.log(`✓ Followers: ${user.follower_count.toLocaleString()}`);
+      console.log(`✓ Videos: ${user.video_count.toLocaleString()}`);
+    } catch (err) {
+      console.log(`(Token saved, but couldn't confirm account details: ${err instanceof Error ? err.message : 'Unknown error'})`);
+    }
+
+    console.log('');
+    console.log('TikTok observations will now appear in the next `npm run daily-briefing` run.');
     console.log('The access token refreshes automatically — you shouldn\'t need to run this again unless the refresh token expires (TikTok\'s refresh tokens last about a year).');
   } catch (err) {
     console.log('');
