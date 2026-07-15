@@ -32,6 +32,8 @@ export interface Observation {
   whyItMatters: string;
   /** Concrete, real numbers/facts backing whyItMatters — never invented, never left implicit. */
   evidence: string[];
+  /** A real external URL to the source-of-truth for this fact (e.g. the TikTok video itself), when the source has one. Absent, not fabricated, when no single-item deep link exists (e.g. account_snapshot). */
+  link?: string;
   /** Raw structured payload, for anything a future consumer needs beyond the three fields above. */
   data: Record<string, unknown>;
 }

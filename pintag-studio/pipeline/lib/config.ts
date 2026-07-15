@@ -62,9 +62,21 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
 export interface ObservationIntelligenceThresholds {
   outperformRatio: number;
   underperformRatio: number;
+  /** Minimum occurrences for "medium" confidence (M2.6 — Emerging Playbooks). */
+  confidenceMediumMinOccurrences: number;
+  /** Minimum occurrences for "high" confidence. */
+  confidenceHighMinOccurrences: number;
+  /** Minimum days between the first and last occurrence for "high" confidence — a burst of same-day posts isn't the same evidence as a pattern proven over time. */
+  confidenceHighMinSpanDays: number;
 }
 
-const DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS: ObservationIntelligenceThresholds = { outperformRatio: 1.3, underperformRatio: 0.7 };
+const DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS: ObservationIntelligenceThresholds = {
+  outperformRatio: 1.3,
+  underperformRatio: 0.7,
+  confidenceMediumMinOccurrences: 2,
+  confidenceHighMinOccurrences: 5,
+  confidenceHighMinSpanDays: 14,
+};
 
 /**
  * Read once, from one place, by both the TikTok source (which describes a
@@ -86,6 +98,12 @@ export function readObservationIntelligenceThresholds(): ObservationIntelligence
     return {
       outperformRatio: typeof oi?.video_performance_outperform_ratio === 'number' ? oi.video_performance_outperform_ratio : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.outperformRatio,
       underperformRatio: typeof oi?.video_performance_underperform_ratio === 'number' ? oi.video_performance_underperform_ratio : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.underperformRatio,
+      confidenceMediumMinOccurrences:
+        typeof oi?.confidence_medium_min_occurrences === 'number' ? oi.confidence_medium_min_occurrences : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.confidenceMediumMinOccurrences,
+      confidenceHighMinOccurrences:
+        typeof oi?.confidence_high_min_occurrences === 'number' ? oi.confidence_high_min_occurrences : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.confidenceHighMinOccurrences,
+      confidenceHighMinSpanDays:
+        typeof oi?.confidence_high_min_span_days === 'number' ? oi.confidence_high_min_span_days : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.confidenceHighMinSpanDays,
     };
   } catch {
     return DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS;

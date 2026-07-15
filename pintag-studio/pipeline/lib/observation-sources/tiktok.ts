@@ -189,6 +189,8 @@ export async function fetchUserInfo(accessToken: string): Promise<TikTokUserInfo
 interface TikTokVideo {
   id: string;
   title: string;
+  video_description: string;
+  share_url: string;
   create_time: number;
   view_count: number;
   like_count: number;
@@ -198,7 +200,13 @@ interface TikTokVideo {
 
 async function fetchRecentVideos(accessToken: string): Promise<TikTokVideo[]> {
   const url = new URL(TIKTOK_VIDEO_LIST_URL);
-  url.searchParams.set('fields', 'id,title,create_time,view_count,like_count,comment_count,share_count');
+  // share_url: a real link back to the video itself, for the CEO Workspace's
+  // "Open TikTok Video ->" evidence action. video_description: the video's
+  // real caption — used only to ground the Pattern Registry's naming step
+  // (pipeline/lib/patterns.ts) in what the post actually says, never shown
+  // directly in the briefing itself. Both confirmed available under the
+  // video.list scope already granted (M2.5 follow-up) — no new permission.
+  url.searchParams.set('fields', 'id,title,video_description,share_url,create_time,view_count,like_count,comment_count,share_count');
   const res = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -269,9 +277,12 @@ export function buildObservations(user: TikTokUserInfo, videos: TikTokVideo[], o
           `${video.comment_count.toLocaleString()} comments`,
           `${video.share_count.toLocaleString()} shares`,
         ],
+        link: video.share_url || undefined,
         // ratio/avgViews are real numbers, not re-derivable from evidence's
         // prose — this is what lets observation-intelligence.ts classify on
-        // real data instead of parsing generated sentences.
+        // real data instead of parsing generated sentences. video_description
+        // (the real caption) rides along here for the Pattern Registry's
+        // naming step to read — never surfaced directly in the briefing.
         data: { ...video, ratio, avgViews },
       });
     }

@@ -24,12 +24,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT } from './lib/config.js';
-import { generateDailyBriefing, readFounderName } from './daily-briefing.js';
+import { generateDailyBriefing, readFounderName, SUGGESTION_KIND_LABELS } from './daily-briefing.js';
 import { readTodaysRecommendation, buildFounderTeachingSuggestionInput } from './teach.js';
 import { listPendingSuggestions, approveSuggestion, rejectSuggestion, proposeSuggestion, type KnowledgeSuggestion } from './lib/suggestions.js';
 import { loadAllKnowledgeEntries, reviewKnowledgeEntry, isWritableEntry, type KnowledgeEntry } from './lib/knowledge.js';
 import { gatherAllObservations } from './lib/observations.js';
-import { classifyObservation, type RoutingOutcome } from './lib/observation-intelligence.js';
+import { classifyObservation, computeConfidence, type RoutingOutcome } from './lib/observation-intelligence.js';
+import { listCandidatePatterns, approvePattern, ignorePattern, keepObservingPattern, type CandidatePattern } from './lib/patterns.js';
 
 const PORT = Number(process.env.PORT ?? 4321);
 
@@ -126,7 +127,8 @@ function readRequestBody(req: IncomingMessage): Promise<URLSearchParams> {
 function renderHome(): string {
   const pendingSuggestions = listPendingSuggestions().length;
   const pendingDrafts = loadAllKnowledgeEntries().filter((e) => e.status === 'draft' && isWritableEntry(e)).length;
-  const pendingTotal = pendingSuggestions + pendingDrafts;
+  const pendingPatterns = listCandidatePatterns().length;
+  const pendingTotal = pendingSuggestions + pendingDrafts + pendingPatterns;
 
   return pageShell(
     'Founder Workspace',
@@ -204,10 +206,16 @@ function renderTeach(status?: string, savedId?: string): string {
 
 function renderSuggestion(s: KnowledgeSuggestion): string {
   const diffHtml = s.diff ? `<div class="diff"><div><strong>Current:</strong> ${escapeHtml(s.diff.current)}</div><div><strong>Suggested:</strong> ${escapeHtml(s.diff.suggested)}</div></div>` : '';
+  // Confidence (M2.6) shown for marketing-observation items — same
+  // deterministic computeConfidence() the Emerging Playbooks below use, so
+  // the two surfaces never disagree about the same occurrences.
+  const confidence = s.kind === 'marketing-observation' ? computeConfidence(s.occurrences) : undefined;
+  const confidenceHtml = confidence ? `<div class="entry-meta">Confidence: ${escapeHtml(confidence.level)} — ${escapeHtml(confidence.reason)}</div>` : '';
   return `
   <div class="entry">
-    <div class="entry-title">${escapeHtml(s.title)} <span class="badge">${escapeHtml(s.kind)}</span></div>
-    <div class="entry-meta">from ${escapeHtml(s.sourceAgent)} · confidence ${s.confidence} · observed ${s.occurrences.length}x · suggested category: ${escapeHtml(s.suggestedCategory)}</div>
+    <div class="entry-title">${escapeHtml(s.title)} <span class="badge">${escapeHtml(SUGGESTION_KIND_LABELS[s.kind] ?? s.kind)}</span></div>
+    <div class="entry-meta">from ${escapeHtml(s.sourceAgent)} · observed ${s.occurrences.length}x · suggested category: ${escapeHtml(s.suggestedCategory)}</div>
+    ${confidenceHtml}
     ${diffHtml}
     <div class="entry-body">${escapeHtml(s.body)}</div>
     <div class="actions">
@@ -215,6 +223,25 @@ function renderSuggestion(s: KnowledgeSuggestion): string {
       <form class="reject-form" method="POST" action="/review/suggestions/${encodeURIComponent(s.id)}/reject">
         <input type="text" name="reason" placeholder="Reason (required)" required>
         <button class="btn btn-reject" type="submit">Reject</button>
+      </form>
+    </div>
+  </div>`;
+}
+
+function renderPlaybookCard(p: CandidatePattern): string {
+  const bulletsHtml = p.observedPattern.map((b) => `<li>${escapeHtml(b)}</li>`).join('');
+  return `
+  <div class="entry">
+    <div class="entry-title">${escapeHtml(p.name)} <span class="badge">Emerging Playbook</span></div>
+    <div class="entry-meta">observed ${p.occurrences.length}x · Confidence: ${escapeHtml(p.confidence.level)} — ${escapeHtml(p.confidence.reason)}</div>
+    <div class="section-title" style="margin:10px 0 6px;">Observed pattern</div>
+    <ul style="list-style:none;padding:0;margin-bottom:10px;">${bulletsHtml}</ul>
+    <div class="actions">
+      <form method="POST" action="/review/patterns/${encodeURIComponent(p.id)}/approve"><button class="btn" type="submit">Approve as Playbook</button></form>
+      <form method="POST" action="/review/patterns/${encodeURIComponent(p.id)}/keep-observing"><button class="btn" style="background:var(--white);color:var(--ink-soft);border:1.5px solid var(--border);" type="submit">Keep Observing</button></form>
+      <form class="reject-form" method="POST" action="/review/patterns/${encodeURIComponent(p.id)}/ignore">
+        <input type="text" name="reason" placeholder="Reason (required)" required>
+        <button class="btn btn-reject" type="submit">Ignore</button>
       </form>
     </div>
   </div>`;
@@ -242,6 +269,7 @@ function renderReview(): string {
   const allEntries = loadAllKnowledgeEntries();
   const writableDrafts = allEntries.filter((e) => e.status === 'draft' && isWritableEntry(e));
   const readOnlyDraftCount = allEntries.filter((e) => e.status === 'draft' && !isWritableEntry(e)).length;
+  const patterns = listCandidatePatterns();
 
   return pageShell(
     'Review Knowledge',
@@ -249,6 +277,9 @@ function renderReview(): string {
     <a class="back" href="/">← Home</a>
     <h1>📚 Review Knowledge</h1>
     <div class="subtitle">Nothing becomes Intelligence without a decision here.</div>
+
+    <div class="section-title">Emerging Playbooks (${patterns.length})</div>
+    ${patterns.length ? patterns.map(renderPlaybookCard).join('') : '<p class="empty">No repeating pattern has emerged yet.</p>'}
 
     <div class="section-title">Pending Knowledge Suggestions (${suggestions.length})</div>
     ${suggestions.length ? suggestions.map(renderSuggestion).join('') : '<p class="empty">Nothing waiting for review.</p>'}
@@ -401,6 +432,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       } else if (action === 'reject') {
         const body = await readRequestBody(req);
         reviewKnowledgeEntry({ id, toStatus: 'deprecated', reviewedBy: founderName, reviewNotes: (body.get('reason') ?? '').trim() || 'No reason given' });
+      }
+      redirect(res, '/review');
+    } else if (req.method === 'POST' && pathname.startsWith('/review/patterns/')) {
+      const rest = pathname.slice('/review/patterns/'.length);
+      const [id, action] = rest.split('/');
+      if (action === 'approve') {
+        approvePattern({ id, reviewedBy: founderName });
+      } else if (action === 'ignore') {
+        const body = await readRequestBody(req);
+        ignorePattern({ id, reviewedBy: founderName, reason: (body.get('reason') ?? '').trim() || 'No reason given' });
+      } else if (action === 'keep-observing') {
+        keepObservingPattern({ id, reviewedBy: founderName });
       }
       redirect(res, '/review');
     } else if (req.method === 'GET' && pathname === '/observations') {

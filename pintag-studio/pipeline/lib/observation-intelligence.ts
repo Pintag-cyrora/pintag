@@ -93,6 +93,52 @@ export interface RoutedObservations {
   ignored: Array<{ observation: Observation; outcome: Extract<RoutingOutcome, { decision: 'ignore' }> }>;
 }
 
+export interface Confidence {
+  level: 'high' | 'medium' | 'low';
+  reason: string;
+}
+
+/**
+ * Confidence (M2.6, Emerging Playbooks) — computed here, deterministically,
+ * from real occurrence data only, staying true to this file's "no LLM, no
+ * ML" rule above. The CMO may explain a confidence level in prose, but the
+ * level and its reason always come from this function, never asserted by
+ * the model. Shared by marketing-observation Knowledge Suggestions
+ * (daily-briefing.ts's deriveAttentionItems()) and Candidate Patterns
+ * (pipeline/lib/patterns.ts) — same occurrences shape, same scoring, so the
+ * two can never disagree with each other either.
+ */
+export function computeConfidence(occurrences: Array<{ date: string }>, contradictingCount = 0): Confidence {
+  const { confidenceMediumMinOccurrences, confidenceHighMinOccurrences, confidenceHighMinSpanDays } = readObservationIntelligenceThresholds();
+  const count = occurrences.length;
+  const dates = [...occurrences.map((o) => o.date)].sort();
+  const spanDays = dates.length > 1 ? Math.round((new Date(dates[dates.length - 1]).getTime() - new Date(dates[0]).getTime()) / 86_400_000) : 0;
+
+  let level: Confidence['level'];
+  let reason: string;
+  if (count >= confidenceHighMinOccurrences && spanDays >= confidenceHighMinSpanDays) {
+    level = 'high';
+    reason = `Observed across ${count} posts over ${spanDays} days.`;
+  } else if (count >= confidenceMediumMinOccurrences) {
+    level = 'medium';
+    reason =
+      spanDays >= confidenceHighMinSpanDays
+        ? `Observed across ${count} recent posts over ${spanDays} days.`
+        : `Observed across ${count} recent posts. Continue watching before changing strategy.`;
+  } else {
+    level = 'low';
+    reason = count <= 1 ? 'Only one observation so far.' : `Only ${count} observations so far — not enough yet to call this a pattern.`;
+  }
+
+  if (contradictingCount > 0) {
+    if (level === 'high') level = 'medium';
+    else if (level === 'medium') level = 'low';
+    reason += ` ${contradictingCount} recent post${contradictingCount === 1 ? " didn't" : "s didn't"} repeat this result.`;
+  }
+
+  return { level, reason };
+}
+
 export function routeObservations(observations: Observation[]): RoutedObservations {
   const result: RoutedObservations = { executive: [], department: [], ignored: [] };
   for (const observation of observations) {

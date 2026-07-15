@@ -19,7 +19,8 @@ import { REPO_ROOT } from './lib/config.js';
 import { loadAllKnowledgeEntries } from './lib/knowledge.js';
 import { listPendingSuggestions, loadAllSuggestions, type SuggestionKind } from './lib/suggestions.js';
 import { gatherAllObservations, formatObservation, type Observation } from './lib/observations.js';
-import { routeObservations, dispatchDepartmentObservations } from './lib/observation-intelligence.js';
+import { routeObservations, dispatchDepartmentObservations, computeConfidence } from './lib/observation-intelligence.js';
+import { matchExecutiveObservationsToPatterns, listCandidatePatterns, type CandidatePattern } from './lib/patterns.js';
 import { runAgent } from './lib/agent.js';
 import { supabase } from './lib/supabase.js';
 
@@ -94,6 +95,15 @@ export async function gatherObservations(): Promise<GatherObservationsResult> {
   const { observations, unavailable } = await gatherAllObservations();
   const routed = routeObservations(observations);
   dispatchDepartmentObservations(routed.department);
+
+  // Emerging Playbooks (M2.6): outperforming video_performance observations
+  // feed the deterministic Pattern Registry (pipeline/lib/patterns.ts) —
+  // matches an existing candidate or starts a new one. Underperforming ones
+  // from this same run are passed along as the "contradicting observations"
+  // confidence signal. A side effect on real data, same shape as
+  // dispatchDepartmentObservations() above, not something this function's
+  // return value depends on.
+  await matchExecutiveObservationsToPatterns(routed.executive, routed.department.map((d) => d.observation));
 
   const parts: string[] = [];
   if (routed.executive.length > 0) {
@@ -330,8 +340,7 @@ interface AttentionItem {
   /** Short tag shown next to the title — always founder-facing prose, never a raw kind/category slug. */
   badge: string;
   detail: string;
-  /** Absent for items with no real page yet (knowledge suggestions) — rendered as a "Review →" prompt pointing at the founder's own Review Knowledge action instead of a link, never a literal command. */
-  link?: string;
+  link: string;
 }
 
 /**
@@ -339,7 +348,12 @@ interface AttentionItem {
  * never render a raw kind slug (e.g. "marketing-observation") as if it were
  * copy. Every kind needs an entry here, not just the ones seen so far.
  */
-const SUGGESTION_KIND_LABELS: Record<SuggestionKind, string> = {
+/** Evidence action label per Observation Source, when it has a real external link — falls back to "Open Source Data" for any future source not listed here. */
+const EVIDENCE_LINK_LABELS: Record<string, string> = {
+  tiktok: 'Open TikTok Video',
+};
+
+export const SUGGESTION_KIND_LABELS: Record<SuggestionKind, string> = {
   'knowledge-gap': 'Knowledge Gap',
   'recurring-question': 'Recurring Question',
   'wording-improvement': 'Wording Suggestion',
@@ -354,11 +368,18 @@ const SUGGESTION_KIND_LABELS: Record<SuggestionKind, string> = {
  * thing"): can legitimately be empty on a quiet day, same "don't pad with
  * filler" standard as elsewhere. Today's two real sources: pending content
  * approvals (a real, already-working Approve/Reject click lives at
- * dashboard/index.html) and pending knowledge suggestions (no dedicated
- * review page yet, so "Review →" here points at the founder's own daily
- * "Review Knowledge" action rather than a link — same honest-not-fake-
- * button discipline used for the Recommended Action card, but never
- * exposing the underlying CLI command it currently runs).
+ * dashboard/index.html) and pending knowledge suggestions (a real,
+ * already-working Approve/Reject click lives at /review, served by the same
+ * founder-server.ts process this page itself is served from — confirmed
+ * live, not an alert-fallback).
+ *
+ * marketing-observation items additionally show a deterministic Confidence
+ * (computeConfidence(), pipeline/lib/observation-intelligence.ts) — the same
+ * occurrences shape and scoring Emerging Playbooks use, so the two surfaces
+ * can never disagree. Other suggestion kinds don't carry the same
+ * "repeating real-world pattern" meaning, so they keep their existing
+ * occurrence-count phrasing rather than a confidence label that wouldn't
+ * mean the same thing for them.
  */
 function deriveAttentionItems(
   operational: SupabaseGatherResult,
@@ -375,14 +396,15 @@ function deriveAttentionItems(
     });
   }
   for (const s of pendingSuggestions) {
+    const baseDetail =
+      s.occurrences.length > 1 ? `Noticed ${s.occurrences.length} times — starting to look like a repeatable pattern.` : 'Worth a look before it gets lost.';
+    const confidenceSuffix = s.kind === 'marketing-observation' ? ` Confidence: ${computeConfidence(s.occurrences).level}.` : '';
     items.push({
       source: 'knowledge-suggestion',
       title: s.title,
       badge: SUGGESTION_KIND_LABELS[s.kind] ?? 'Knowledge Suggestion',
-      detail:
-        s.occurrences.length > 1
-          ? `Noticed ${s.occurrences.length} times — starting to look like a repeatable pattern.`
-          : 'Worth a look before it gets lost.',
+      detail: `${baseDetail}${confidenceSuffix}`,
+      link: '/review',
     });
   }
   return items;
@@ -430,6 +452,8 @@ export function renderMorningScreen(input: {
   generatedAt: Date;
   /** Real, unmodified Executive-routed Observations (see gatherObservations()) — rendered as the Evidence section below the narrative, straight from each Observation's own evidence[], never re-derived or paraphrased by an LLM. */
   executiveObservations: Observation[];
+  /** listCandidatePatterns() (pipeline/lib/patterns.ts) — rendered as the Emerging Playbooks section below Recommended Action. */
+  candidatePatterns: CandidatePattern[];
 }): string {
   // The recommendation line (whichever pattern matched) is a machine-
   // parseable marker, not customer prose — it gets its own prominent card
@@ -449,12 +473,10 @@ export function renderMorningScreen(input: {
 
   const attentionListItems = attentionItems.length
     ? visibleAttentionItems
-        .map((item) => {
-          const action = item.link
-            ? `<a href="${escapeHtml(item.link)}">Review →</a>`
-            : `<a href="#" onclick="alert('Open Marketing OS and choose Review Knowledge to look at this.'); return false;">Review →</a>`;
-          return `<li><div class="attn-title">${escapeHtml(item.title)} <span class="tag">${escapeHtml(item.badge)}</span></div><div class="attn-detail">${escapeHtml(item.detail)} ${action}</div></li>`;
-        })
+        .map(
+          (item) =>
+            `<li><div class="attn-title">${escapeHtml(item.title)} <span class="tag">${escapeHtml(item.badge)}</span></div><div class="attn-detail">${escapeHtml(item.detail)} <a href="${escapeHtml(item.link)}">Review →</a></div></li>`
+        )
         .join('') +
       (overflowCount > 0 ? `<li class="empty"><a href="index.html">+${overflowCount} more — open the queue →</a></li>` : '')
     : '<li class="empty">Nothing needs your attention right now.</li>';
@@ -467,9 +489,48 @@ export function renderMorningScreen(input: {
   // the ones Observation Intelligence classified on, not a paraphrase.
   const evidenceItems = input.executiveObservations.filter((o) => o.evidence.length > 0);
   const evidenceListItems = evidenceItems
+    .map((o) => {
+      // A real external link when the source has one (e.g. TikTok's own
+      // share_url) opens the actual post; otherwise "View Observation ->"
+      // points at the live /observations page (founder-server.ts), which
+      // already shows this exact observation's full detail — reused, not
+      // rebuilt, and keeps this section itself from having to duplicate it.
+      const action = o.link
+        ? `<a href="${escapeHtml(o.link)}" target="_blank" rel="noopener">${escapeHtml(EVIDENCE_LINK_LABELS[o.source] ?? 'Open Source Data')} →</a>`
+        : `<a href="/observations">View Observation →</a>`;
+      return `<li><div class="ev-title">${escapeHtml(o.whatHappened)}</div><ul class="ev-facts">${o.evidence.map((fact) => `<li>${escapeHtml(fact)}</li>`).join('')}</ul><div class="ev-action">${action}</div></li>`;
+    })
+    .join('');
+
+  // Emerging Playbooks (M2.6) — real Candidate Patterns from the
+  // deterministic Pattern Registry (pipeline/lib/patterns.ts), not
+  // generated here. Three real POST forms per card, same live
+  // founder-server.ts routes /review's own suggestion approve/reject
+  // buttons already use — nothing here is an alert-fallback.
+  const playbookCardsHtml = input.candidatePatterns
     .map(
-      (o) =>
-        `<li><div class="ev-title">${escapeHtml(o.whatHappened)}</div><ul class="ev-facts">${o.evidence.map((fact) => `<li>${escapeHtml(fact)}</li>`).join('')}</ul></li>`
+      (p) => `
+    <div class="action-card playbook-card">
+      <div class="playbook-name">${escapeHtml(p.name)}</div>
+      <div class="playbook-label">Observed pattern</div>
+      <ul class="playbook-bullets">${p.observedPattern.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}</ul>
+      <div class="action-reasoning">
+        <span class="action-reasoning-label">Confidence: ${escapeHtml(p.confidence.level)}</span>
+        <div class="action-reasoning-text">${escapeHtml(p.confidence.reason)}</div>
+      </div>
+      <div class="playbook-actions">
+        <form method="POST" action="/review/patterns/${encodeURIComponent(p.id)}/approve">
+          <button class="playbook-btn" type="submit">Approve as Playbook →</button>
+        </form>
+        <form method="POST" action="/review/patterns/${encodeURIComponent(p.id)}/keep-observing">
+          <button class="playbook-btn-secondary" type="submit">Keep Observing →</button>
+        </form>
+        <form method="POST" action="/review/patterns/${encodeURIComponent(p.id)}/ignore" style="display:flex;gap:8px;align-items:center;">
+          <input type="text" name="reason" placeholder="Why? (required)" required class="playbook-reason-input">
+          <button class="playbook-btn-secondary" type="submit">Ignore →</button>
+        </form>
+      </div>
+    </div>`
     )
     .join('');
 
@@ -514,6 +575,7 @@ a:hover{color:var(--teal-light);}
 .ev-title::before{content:"• ";color:var(--teal);}
 .ev-facts{list-style:none;padding-left:14px;margin-top:2px;}
 .ev-facts li{font-size:13px;color:var(--ink-muted);padding:1px 0;border:none;}
+.ev-action{padding-left:14px;margin-top:4px;font-size:13px;}
 .action-card{background:var(--white);border:1.5px solid var(--teal-border);border-radius:8px;padding:18px 20px;}
 .action-label{font-size:12px;color:var(--ink-muted);margin-bottom:10px;}
 .action-button{display:inline-block;background:var(--teal);color:#fff;font-size:15px;font-weight:600;border:none;border-radius:6px;padding:12px 22px;cursor:pointer;font-family:inherit;}
@@ -521,6 +583,18 @@ a:hover{color:var(--teal-light);}
 .action-reasoning{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
 .action-reasoning-label{display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:5px;}
 .action-reasoning-text{font-size:14px;color:var(--ink-soft);line-height:1.5;}
+.playbook-card{margin-bottom:14px;}
+.playbook-name{font-weight:600;font-size:15px;color:var(--ink);margin-bottom:12px;}
+.playbook-label{font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:6px;}
+.playbook-bullets{list-style:none;margin-bottom:2px;}
+.playbook-bullets li{font-size:14px;color:var(--ink-soft);padding:2px 0;border:none;}
+.playbook-bullets li::before{content:"• ";color:var(--teal);}
+.playbook-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);}
+.playbook-btn{background:var(--teal);color:#fff;font-size:14px;font-weight:600;border:none;border-radius:6px;padding:9px 16px;cursor:pointer;font-family:inherit;}
+.playbook-btn:hover{background:var(--teal-light);}
+.playbook-btn-secondary{background:var(--white);color:var(--ink-soft);border:1.5px solid var(--border);border-radius:6px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
+.playbook-btn-secondary:hover{border-color:var(--ink-muted);}
+.playbook-reason-input{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--warm);color:var(--ink);width:150px;}
 .company-chip{display:inline-block;background:var(--teal-dim);border:1px solid var(--teal-border);color:var(--ink);font-size:14px;font-weight:600;padding:8px 16px;border-radius:20px;}
 .start{background:var(--ink);border-radius:8px;padding:22px 24px;margin-top:8px;}
 .start a{color:#fff;font-size:15px;display:block;padding:6px 0;}
@@ -588,6 +662,14 @@ a:hover{color:var(--teal-light);}
 
   <hr class="divider">` : ''}
 
+  ${playbookCardsHtml ? `
+  <div class="section">
+    <div class="section-title">🧭 Emerging Playbooks</div>
+    ${playbookCardsHtml}
+  </div>
+
+  <hr class="divider">` : ''}
+
   <div class="section">
     <div class="section-title">🏢 Active Companies</div>
     <div class="company-chip">${escapeHtml(activeCompany)}</div>
@@ -598,7 +680,7 @@ a:hover{color:var(--teal-light);}
   <div class="start">
     <div class="section-title" style="color:rgba(255,255,255,0.5);">🚀 Start My Day</div>
     <a href="index.html">Open the approval queue →</a>
-    <a href="#" onclick="alert('Open Marketing OS and choose Review Knowledge to look at what\\'s waiting.'); return false;">Review knowledge suggestions →</a>
+    <a href="/review">Review knowledge suggestions →</a>
     <a href="intelligence.html">Explore the Knowledge Layer →</a>
   </div>
 
@@ -647,6 +729,7 @@ export async function generateDailyBriefing(): Promise<string> {
     organizational,
     generatedAt,
     executiveObservations: observationsResult.executiveObservations,
+    candidatePatterns: listCandidatePatterns(),
   });
   const dashboardDir = join(REPO_ROOT, 'dashboard');
   mkdirSync(dashboardDir, { recursive: true });
