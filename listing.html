@@ -1727,18 +1727,17 @@ var WA_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
 // Pre-filled WhatsApp contact message, per language. {{PLACEHOLDER}} tokens
 // (filled via fillTemplate(), see above) rather than string concatenation.
 //
-// Primary template: leads with the canonical listing URL rather than
-// restating the property type/location/reference inline. WhatsApp renders
-// its own og:title/og:description/og:image preview for the link (see
-// updateOGTags() above), so the agent identifies the property from that
-// rich preview instead of from prose in the message; forwarding the
-// message still lets the recipient open the exact listing; and it drives
-// return traffic to the site. Requires a real slug — see
-// WA_MESSAGE_TEMPLATES_FALLBACK below for when one isn't available.
+// Primary template: kept short — just a greeting/interest line plus the
+// canonical listing URL. Production's existing Cloudflare setup already
+// generates the rich WhatsApp link preview (image/title/description) for
+// that URL, so the message itself doesn't need to restate the property's
+// type/location/reference; the preview card carries that. Requires a real
+// slug — see WA_MESSAGE_TEMPLATES_FALLBACK below for when one isn't
+// available.
 var WA_MESSAGE_TEMPLATES={
-  lo:'ສະບາຍດີ, ຂ້ອຍສົນໃຈຊັບສິນນີ້.\n\n🔗 {{CANONICAL_LISTING_URL}}\n\nຂໍລາຍລະອຽດເພີ່ມແນ່.',
-  en:'Hello,\n\nI\'m interested in this property.\n\n🔗 {{CANONICAL_LISTING_URL}}\n\nCould you provide more details?',
-  zh:'您好，\n\n我对这处房产很感兴趣。\n\n🔗 {{CANONICAL_LISTING_URL}}\n\n请提供更多详细信息，谢谢！'
+  lo:'ສະບາຍດີ,\n\nຂ້ອຍສົນໃຈຊັບສິນນີ້. ຂໍລາຍລະອຽດເພີ່ມແນ່.\n\n{{CANONICAL_LISTING_URL}}',
+  en:'Hello,\n\nI\'m interested in this property. Could you provide more details?\n\n{{CANONICAL_LISTING_URL}}',
+  zh:'您好，\n\n我对这处房产很感兴趣，请提供更多详细信息。\n\n{{CANONICAL_LISTING_URL}}'
 };
 
 // Fallback template: used only when getCanonicalListingUrl() returns null
