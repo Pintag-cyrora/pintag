@@ -77,7 +77,7 @@ That's the whole thing. No commands to type, no files to find, no code to read.
 
 This step is what lets Marketing OS talk about your actual TikTok performance in the morning briefing — real view counts, not just internal knowledge. Everything in Sections 1–4 works fine without it; do this whenever you're ready, not before.
 
-**Honest heads-up:** step 9 below needs Terminal, once. Every other capability in this guide works entirely from your browser — this is the one exception, because TikTok itself requires you to personally approve access in a login screen, which isn't something a web page here can do on its own yet. Making this a real one-click browser button instead is a reasonable future improvement, just not built yet.
+**Honest heads-up:** step 10 below needs Terminal, once. Every other capability in this guide works entirely from your browser — this is the one exception, because TikTok itself requires you to personally approve access in a login screen, which isn't something a web page here can do on its own yet. Making this a real one-click browser button instead is a reasonable future improvement, just not built yet.
 
 > Same note as the Supabase section: I can't screenshot TikTok's own Developer site since I don't have access to it. Two things below have been confirmed against the real site (thank you for testing and reporting back): "Configure for Desktop" on a normal app leads straight to a review process, and "URL Properties" is a different feature entirely. One thing is still unconfirmed — exactly where the redirect URI field appears inside Sandbox mode — flagged below rather than guessed at. If anything still doesn't match what you see, tell me exactly what's on your screen and this gets corrected precisely, not guessed at again.
 
@@ -98,7 +98,8 @@ This step is what lets Marketing OS talk about your actual TikTok performance in
    ```
    Paste the **Sandbox app's** Client Key and Client Secret (from step 5) after each `=`. Leave the `TIKTOK_REDIRECT_URI=` line beneath them exactly as it already is. Save the file (`Cmd + S`).
 8. Restart Marketing OS if it's currently running (close the window, double-click `Start Marketing OS.command` again).
-9. This last step needs Terminal, just this once — everything else in this guide doesn't. Open the **Terminal** app (`Cmd + Space`, type `Terminal`, press Enter), type:
+9. Marketing OS needs one more thing from Supabase before it can remember your TikTok connection between runs — a small table to hold the login token. This is a one-time step, still entirely in your browser: go to your Supabase project (same one from Section 2), click **SQL Editor** in the left sidebar, then **New query**. In TextEdit (or Finder's Quick Look), open the file `supabase/migrations/0004_observation_sources.sql` inside your `pintag-studio` folder, select all its contents, and paste them into the SQL Editor. Click **Run**. You should see a success message at the bottom — that's it, this never needs to be done again.
+10. This last step needs Terminal, just this once — everything else in this guide doesn't. Open the **Terminal** app (`Cmd + Space`, type `Terminal`, press Enter), type:
    ```
    cd
    ```
@@ -108,7 +109,7 @@ This step is what lets Marketing OS talk about your actual TikTok performance in
    ```
    and press Enter. It'll print a link — open it, log into TikTok as the Pintag account, and approve it. Your browser will land on a page that looks broken (`127.0.0.1 refused to connect` or similar) — that's expected, nothing is supposed to load there. Copy the entire address from your browser's address bar and paste it back into Terminal when it asks, then press Enter.
 
-You should see "Connected." Close Terminal — you're done, and won't need to open it again for this. From tomorrow's briefing onward, "Generate Morning Briefing" will include real TikTok data.
+You should see "✓ Connected to TikTok" along with your account's username, follower count, and video count — that's Marketing OS confirming it actually reached your real account, not just that it saved something. Close Terminal — you're done, and won't need to open it again for this. From tomorrow's briefing onward, "Generate Morning Briefing" will include real TikTok data.
 
 ---
 

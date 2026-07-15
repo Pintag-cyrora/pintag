@@ -76,17 +76,29 @@ async function loadStoredToken(): Promise<StoredToken | null> {
     .eq('org_id', ORG_ID)
     .eq('source', SOURCE_NAME)
     .maybeSingle();
-  if (error || !data) return null;
+  // A genuine query error (missing table, permissions, network) is not the
+  // same condition as "no row yet" — collapsing them here previously made
+  // both look identical to getValidAccessToken() below, which reports the
+  // latter as "isn't connected yet, run tiktok:connect" even when the real
+  // problem is that the read itself is failing (in which case re-running
+  // tiktok:connect wouldn't fix anything — its own write would fail the
+  // same silent way tiktok.ts's storeToken() used to).
+  if (error) throw new Error(`Failed to read the stored TikTok token from Supabase: ${error.message}`);
+  if (!data) return null;
   return { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: data.expires_at };
 }
 
 /** Shared by tiktok-connect.ts (after the initial authorization-code exchange) and refreshAccessToken() below (after a refresh) — one write path for this table. */
 export async function storeToken(accessToken: string, refreshToken: string | null, expiresInSeconds: number): Promise<void> {
   const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
-  await supabase.from('observation_source_tokens').upsert(
+  const { error } = await supabase.from('observation_source_tokens').upsert(
     { org_id: ORG_ID, source: SOURCE_NAME, access_token: accessToken, refresh_token: refreshToken, expires_at: expiresAt, updated_at: new Date().toISOString() },
     { onConflict: 'org_id,source' }
   );
+  // Previously discarded entirely — a failed write (e.g. the table not
+  // existing yet) looked exactly like a successful one to every caller,
+  // including tiktok-connect.ts's own "✓ Connected to TikTok" message.
+  if (error) throw new Error(`Failed to store the TikTok token in Supabase: ${error.message}`);
 }
 
 /** The initial authorization-code -> token exchange, called once by tiktok-connect.ts. Exported here so both the one-time setup CLI and this file's own refresh logic share one client/secret-reading path. */
