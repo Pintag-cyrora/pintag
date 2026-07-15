@@ -140,7 +140,7 @@ async function main(): Promise<void> {
     // just that this extra confirmation couldn't complete.
     try {
       const user = await fetchUserInfo(token.accessToken);
-      console.log(`✓ Account: @${user.username}`);
+      console.log(`✓ Account: ${user.display_name}`);
       console.log(`✓ Followers: ${user.follower_count.toLocaleString()}`);
       console.log(`✓ Videos: ${user.video_count.toLocaleString()}`);
     } catch (err) {

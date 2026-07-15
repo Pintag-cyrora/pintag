@@ -155,17 +155,31 @@ async function getValidAccessToken(): Promise<string> {
 }
 
 interface TikTokUserInfo {
-  username: string;
+  display_name: string;
   follower_count: number;
   following_count: number;
   likes_count: number;
   video_count: number;
 }
 
-/** Exported so tiktok-connect.ts can confirm, right after storing a token, which real account it just reached — not just that a token was returned. */
+/**
+ * Exported so tiktok-connect.ts can confirm, right after storing a token,
+ * which real account it just reached — not just that a token was returned.
+ *
+ * Field/scope note (M2.5 follow-up — real "did not authorize the scope
+ * required" failure): `username` is not a field of this endpoint at all
+ * under Login Kit's Display API scopes (confirmed against TikTok's current
+ * scope docs) — it only appears under the separate, unrelated Research API.
+ * TikTok rejects the whole `fields` list if any one entry isn't authorized,
+ * which is why this used to fail even for follower_count/video_count
+ * (genuinely covered by user.info.stats, already requested below).
+ * `display_name` is the closest "which account did we reach" field that's
+ * actually covered by the already-requested user.info.basic scope, so no
+ * scope/connection-flow change is needed.
+ */
 export async function fetchUserInfo(accessToken: string): Promise<TikTokUserInfo> {
   const url = new URL(TIKTOK_USER_INFO_URL);
-  url.searchParams.set('fields', 'username,follower_count,following_count,likes_count,video_count');
+  url.searchParams.set('fields', 'display_name,follower_count,following_count,likes_count,video_count');
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   const json = await res.json();
   if (!res.ok || json.error?.code !== 'ok') throw new Error(`TikTok user/info failed: ${json.error?.message ?? res.statusText}`);

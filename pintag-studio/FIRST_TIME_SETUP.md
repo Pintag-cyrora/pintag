@@ -109,7 +109,7 @@ This step is what lets Marketing OS talk about your actual TikTok performance in
    ```
    and press Enter. It'll print a link — open it, log into TikTok as the Pintag account, and approve it. Your browser will land on a page that looks broken (`127.0.0.1 refused to connect` or similar) — that's expected, nothing is supposed to load there. Copy the entire address from your browser's address bar and paste it back into Terminal when it asks, then press Enter.
 
-You should see "✓ Connected to TikTok" along with your account's username, follower count, and video count — that's Marketing OS confirming it actually reached your real account, not just that it saved something. Close Terminal — you're done, and won't need to open it again for this. From tomorrow's briefing onward, "Generate Morning Briefing" will include real TikTok data.
+You should see "✓ Connected to TikTok" along with your account's display name, follower count, and video count — that's Marketing OS confirming it actually reached your real account, not just that it saved something. Close Terminal — you're done, and won't need to open it again for this. From tomorrow's briefing onward, "Generate Morning Briefing" will include real TikTok data.
 
 ---
 
