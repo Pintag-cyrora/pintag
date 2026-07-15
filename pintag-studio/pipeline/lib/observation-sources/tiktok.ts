@@ -90,24 +90,59 @@ export async function storeToken(accessToken: string, refreshToken: string | nul
 }
 
 /** The initial authorization-code -> token exchange, called once by tiktok-connect.ts. Exported here so both the one-time setup CLI and this file's own refresh logic share one client/secret-reading path. */
+/** Shows enough of a credential to visually confirm it's the right one, without printing it in full to a terminal/log. */
+function maskCredential(value: string): string {
+  if (value.length <= 8) return '*'.repeat(value.length);
+  return `${value.slice(0, 4)}${'*'.repeat(value.length - 8)}${value.slice(-4)}`;
+}
+
 export async function exchangeCodeForToken(code: string, redirectUri: string, codeVerifier: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
   const clientKey = process.env.TIKTOK_CLIENT_KEY;
   const clientSecret = process.env.TIKTOK_CLIENT_SECRET;
   if (!clientKey || !clientSecret) throw new Error('TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET are not set.');
 
+  const requestBody = {
+    client_key: clientKey,
+    client_secret: clientSecret,
+    code,
+    grant_type: 'authorization_code',
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+  };
+
+  // Debug logging (M2.5 follow-up — real PKCE failure reported). Every
+  // field actually sent, with only the two real secrets masked — code and
+  // code_verifier are shown in full since they're exactly what's under
+  // investigation and are single-use/short-lived regardless.
+  console.log('--- Token request (POST ' + TIKTOK_TOKEN_URL + ') ---');
+  console.log(`  client_key:    ${maskCredential(requestBody.client_key)}`);
+  console.log(`  client_secret: ${maskCredential(requestBody.client_secret)}`);
+  console.log(`  code:          ${requestBody.code}`);
+  console.log(`  grant_type:    ${requestBody.grant_type}`);
+  console.log(`  redirect_uri:  ${requestBody.redirect_uri}`);
+  console.log(`  code_verifier: ${requestBody.code_verifier} (length ${requestBody.code_verifier.length})`);
+  console.log('---------------------------------------------');
+
   const res = await fetch(TIKTOK_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Cache-Control': 'no-cache' },
-    body: new URLSearchParams({
-      client_key: clientKey,
-      client_secret: clientSecret,
-      code,
-      grant_type: 'authorization_code',
-      redirect_uri: redirectUri,
-      code_verifier: codeVerifier,
-    }),
+    body: new URLSearchParams(requestBody),
   });
-  const json = await res.json();
+
+  // Read as text first, always — so the complete raw body is on record
+  // even if it isn't valid JSON or has fields the code below doesn't
+  // already know to look for.
+  const rawBody = await res.text();
+  console.log(`--- Token response (HTTP ${res.status}) ---`);
+  console.log(rawBody);
+  console.log('--------------------------------------');
+
+  let json: any;
+  try {
+    json = JSON.parse(rawBody);
+  } catch {
+    throw new Error(`TikTok token exchange failed: HTTP ${res.status}, non-JSON response: ${rawBody}`);
+  }
   if (!res.ok || json.error) throw new Error(`TikTok token exchange failed: ${json.error_description ?? json.error ?? res.statusText}`);
   return { accessToken: json.access_token, refreshToken: json.refresh_token, expiresIn: json.expires_in };
 }

@@ -85,6 +85,17 @@ async function main(): Promise<void> {
   const { verifier, challenge } = generatePkce();
   const state = base64url(randomBytes(16));
 
+  // Debug logging (M2.5 follow-up — real PKCE failure reported: "Code
+  // verifier or code challenge is invalid"). Requested explicitly: verifier
+  // length/value and the generated challenge, logged once, before anything
+  // is sent anywhere — so a real run's actual values are on record rather
+  // than inferred after the fact.
+  console.log('--- PKCE debug ---');
+  console.log(`code_verifier (length ${verifier.length}, RFC 7636 requires 43-128): ${verifier}`);
+  console.log(`code_challenge (S256 of the verifier above): ${challenge}`);
+  console.log('------------------');
+  console.log('');
+
   const authUrl = new URL(TIKTOK_AUTH_URL);
   authUrl.searchParams.set('client_key', clientKey);
   authUrl.searchParams.set('scope', TIKTOK_SCOPES.join(','));
