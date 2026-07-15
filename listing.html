@@ -195,26 +195,24 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .similar-title{font-size:19px;font-weight:600;color:var(--ink);letter-spacing:-0.025em;}
 .similar-view-all{font-size:12.5px;font-weight:500;color:var(--teal);text-decoration:none;display:flex;align-items:center;gap:4px;transition:gap 0.15s;}
 .similar-view-all:hover{gap:7px;}
-.similar-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;}
-.sim-card{background:var(--white);border:1px solid var(--border-mid);border-radius:16px;overflow:hidden;text-decoration:none;transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;display:block;}
-.sim-card:hover{transform:translateY(-3px);border-color:rgba(26,36,40,0.11);box-shadow:0 16px 36px rgba(0,0,0,0.05);}
-.sim-card-img{position:relative;aspect-ratio:16/10;overflow:hidden;background:var(--warm-deep);}
-.sim-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .6s cubic-bezier(.16,1,.3,1);}
-.sim-card:hover .sim-card-img img{transform:scale(1.04);}
+/* Card design mirrors listings.html's .prop-card (same border-radius,
+   image aspect-ratio, spacing, and typography scale) so this section
+   matches the Listings page rather than a separate one-off design. */
+.similar-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;}
+.sim-card{background:var(--white);border:1px solid var(--border-mid);border-radius:3px;overflow:hidden;text-decoration:none;transition:border-color .3s,box-shadow .3s;display:block;}
+.sim-card:hover{border-color:rgba(26,36,40,0.14);box-shadow:0 6px 28px rgba(26,36,40,0.05);}
+.sim-card-img{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--warm-deep);}
+.sim-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .7s cubic-bezier(.16,1,.3,1);}
+.sim-card:hover .sim-card-img img{transform:scale(1.025);}
 .sim-no-img{width:100%;height:100%;background:linear-gradient(135deg,#2A3A35,#1A2828);}
-.sim-heart{position:absolute;top:10px;right:10px;z-index:2;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.88);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;}
-.sim-heart:hover{background:#fff;}
-.sim-body{padding:16px 16px 18px;}
-.sim-title{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:5px;line-height:1.35;}
-.sim-loc{font-size:11.5px;color:var(--ink-muted);margin-bottom:9px;display:flex;align-items:center;gap:4px;}
-.sim-specs{font-size:11px;color:var(--ink-muted);margin-bottom:10px;display:flex;gap:12px;}
-.sim-spec-item{display:flex;align-items:center;gap:3px;}
-.sim-price{font-size:16px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;}
-.sim-label{font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:3px;display:inline-block;margin-bottom:5px;}
-.sim-label-sim{background:rgba(45,140,140,0.09);color:var(--teal);border:1px solid rgba(45,140,140,0.18);}
-.sim-label-pop{background:rgba(194,65,0,0.09);color:#C24100;border:1px solid rgba(194,65,0,0.20);}
-.sim-label-val{background:rgba(0,127,63,0.09);color:#0a7a3e;border:1px solid rgba(0,127,63,0.18);}
-.sim-label-new{background:rgba(22,101,52,0.09);color:#15803D;border:1px solid rgba(22,101,52,0.18);}
+.sim-body{padding:18px 20px 20px;}
+.sim-title{font-size:14px;font-weight:400;color:var(--ink);margin-bottom:6px;line-height:1.4;letter-spacing:-0.005em;}
+.sim-loc{font-size:11px;color:var(--ink-muted);margin-bottom:14px;display:flex;align-items:center;gap:5px;}
+.sim-specs{display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
+.sim-spec{font-size:11px;font-weight:400;color:var(--ink-muted);display:inline-flex;align-items:center;gap:4px;}
+.sim-spec span{font-weight:500;color:var(--ink-soft);}
+.sim-price{font-size:16px;font-weight:500;color:var(--ink);letter-spacing:-0.01em;}
+.sim-price-req{font-size:12px;font-weight:400;color:var(--ink-muted);font-style:italic;}
 /* ── Editorial presentation layer (desktop) ── */
 .emotional-intro{max-width:640px;margin:0 auto;padding:100px 48px 0;text-align:center;background:var(--white);}
 .emotional-statement{font-size:24px;font-weight:300;line-height:1.7;color:var(--ink-soft);letter-spacing:0.01em;}
@@ -351,30 +349,28 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   .nearby-list{gap:8px;margin-top:14px;padding-top:14px;}
   .nearby-item{font-size:12.5px;padding-bottom:8px;}
   .nearby-icon{width:28px;height:28px;font-size:12px;}
-  /* Similar section — single column, tight */
-  .similar-section{padding:28px 16px 72px;}
-  .similar-header{margin-bottom:16px;}
+  /* Similar section — horizontal swipe carousel on mobile */
+  .similar-section{padding:28px 0 72px;}
+  .similar-header{margin-bottom:16px;padding:0 16px;}
   .similar-title{font-size:16px;}
-  .similar-grid{grid-template-columns:1fr;gap:14px;}
-  /* Similar cards — stacked layout for mobile readability */
+  .similar-grid{
+    display:flex;
+    gap:14px;
+    overflow-x:auto;
+    scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;
+    padding:0 16px 4px;
+    scrollbar-width:none;
+  }
+  .similar-grid::-webkit-scrollbar{display:none;}
   .sim-card{
-    display:block;
+    flex:0 0 78%;
+    scroll-snap-align:start;
   }
-  .sim-card-img{
-    aspect-ratio:16/10;
-    min-height:auto;
-    width:100%;
-  }
-  .sim-card-img img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-  }
-  .sim-heart{width:28px;height:28px;top:8px;right:8px;}
   .sim-body{padding:12px 13px 14px;}
-  .sim-title{font-size:14px;font-weight:500;margin-bottom:3px;}
-  .sim-loc{margin-bottom:5px;}
-  .sim-specs{margin-bottom:6px;}
+  .sim-title{font-size:14px;margin-bottom:4px;}
+  .sim-loc{margin-bottom:10px;}
+  .sim-specs{margin-bottom:10px;}
   .sim-price{font-size:15px;}
   /* Media section */
   .media-section{padding:20px 16px;}
@@ -390,9 +386,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   .similar-section{padding:36px 32px 48px;}
   .similar-grid{grid-template-columns:repeat(2,1fr);}
   .media-section{padding:32px 32px;}
-}
-@media(min-width:1101px) and (max-width:1280px){
-  .similar-grid{grid-template-columns:repeat(3,1fr);}
 }
 /* Social proof */
 .sp-badges-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;min-height:0;}
@@ -445,9 +438,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   <div id="similar-section" class="similar-section" style="display:none;">
     <div class="similar-header">
       <span class="similar-title">
-        <span class="lo-i">ທ່ານອາດຈະມັກ</span>
-        <span class="en-i">You May Also Like</span>
-        <span class="zh-i">您可能喜欢</span>
+        <span class="lo-i">ຊັບສິນທີ່ຄ້າຍຄືກັນ</span>
+        <span class="en-i">Similar Properties</span>
+        <span class="zh-i">相似房源</span>
       </span>
       <a href="listings.html" class="similar-view-all">
         <span class="lo-i">ເບິ່ງທັງໝົດ</span><span class="en-i">View all</span><span class="zh-i">查看全部</span>
@@ -918,89 +911,87 @@ async function fetchProperty(slug){
 }
 
 // ══════════════════════════════════════════════════════════════════
-// fetchSimilarProperties — 3-stage priority:
-//   Stage 1: same district + same transaction_type
-//   Stage 2: same transaction_type (any district), fill gap
-//   Stage 3: any active (any type/district), fill remaining gap
-// Excludes current listing ID at every stage.
+// fetchSimilarProperties — progressive relaxation through 4 priority
+// tiers, stopping as soon as MAX cards are collected:
+//   Tier 1: same property_type + same transaction_type + same district
+//           (results then sorted by closeness to this listing's price —
+//           the 4th-priority signal, applied as a tiebreaker within the
+//           fully-matched tier rather than its own hard filter, since
+//           price_display is free text and not every listing has one)
+//   Tier 2: same property_type + same transaction_type (any district)
+//   Tier 3: same property_type (any transaction_type/district)
+//   Tier 4: no filters — latest active listings. This is both the last
+//           relaxation step AND the explicit "not enough matches" empty
+//           state fallback (show latest active rather than hide the
+//           section) — the same query serves both purposes.
+// Each tier fetches only the remaining gap (never a flat oversized
+// pool), and already-collected ids are excluded at every tier so
+// nothing appears twice across tiers. A tier is skipped outright when
+// the current listing itself lacks that field (e.g. no district) —
+// falls straight through to the next tier down instead of wasting a
+// query that could never match anything.
 // ══════════════════════════════════════════════════════════════════
 async function fetchSimilarProperties(prop){
   PT.time('fetchSimilar');
-  var SHOW = 6;   // cards to display
-  var POOL = 30;  // candidates to fetch for scoring
+  var MAX = 8;   // upper bound of the requested 4–8 cards
   var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,' +
-             'images,bedrooms,bathrooms,sqm,price_display,price_previous,transaction_type,' +
-             'status,property_type,is_featured,views_week,created_at';
-  var candidates = [];
+             'images,bedrooms,bathrooms,sqm,price_display,transaction_type,' +
+             'status,property_type,created_at';
+  var results = [];
 
   function excludeParam(ids){
     return 'id=not.in.('+ids.map(function(x){return encodeURIComponent(x);}).join(',')+')';
   }
+  async function fetchTier(extraFilters, limit){
+    if(limit <= 0) return [];
+    var usedIds = [prop.id].concat(results.map(function(p){return p.id;}));
+    var q = '/rest/v1/properties?'+excludeParam(usedIds)+extraFilters
+      +'&status=eq.active&order=created_at.desc&limit='+limit+'&select='+cols;
+    var rows = await sbFetch(q);
+    return Array.isArray(rows) ? rows.filter(Boolean) : [];
+  }
 
   try{
-    // Fetch a wide pool: same district first, then same type, then catch-all
-    if(prop.district_en && prop.transaction_type){
-      var q1 = '/rest/v1/properties?'+excludeParam([prop.id])
-        +'&district_en=eq.'+encodeURIComponent(prop.district_en)
+    if(prop.property_type && prop.transaction_type && prop.district_en){
+      var t1 = await fetchTier(
+        '&property_type=eq.'+encodeURIComponent(prop.property_type)
         +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type)
-        +'&status=eq.active&order=created_at.desc&limit=20&select='+cols;
-      var s1 = await sbFetch(q1);
-      if(Array.isArray(s1)) candidates = s1.filter(Boolean);
+        +'&district_en=eq.'+encodeURIComponent(prop.district_en),
+        MAX
+      );
+      var propPrice = parseSimPrice(prop.price_display);
+      t1.sort(function(a,b){
+        var pa=parseSimPrice(a.price_display), pb=parseSimPrice(b.price_display);
+        if(!propPrice||!pa||!pb) return 0; // no price data — keep latest-first order
+        return Math.abs(pa-propPrice) - Math.abs(pb-propPrice);
+      });
+      results = results.concat(t1);
     }
-    if(candidates.length < POOL && prop.transaction_type){
-      var usedIds = [prop.id].concat(candidates.map(function(p){return p.id;}));
-      var q2 = '/rest/v1/properties?'+excludeParam(usedIds)
-        +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type)
-        +'&status=eq.active&order=created_at.desc&limit='+(POOL - candidates.length)+'&select='+cols;
-      var s2 = await sbFetch(q2);
-      if(Array.isArray(s2)) candidates = candidates.concat(s2.filter(Boolean));
+    if(results.length < MAX && prop.property_type && prop.transaction_type){
+      var t2 = await fetchTier(
+        '&property_type=eq.'+encodeURIComponent(prop.property_type)
+        +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type),
+        MAX - results.length
+      );
+      results = results.concat(t2);
     }
-    if(candidates.length < POOL){
-      var usedIds2 = [prop.id].concat(candidates.map(function(p){return p.id;}));
-      var q3 = '/rest/v1/properties?'+excludeParam(usedIds2)
-        +'&status=eq.active&order=created_at.desc&limit='+(POOL - candidates.length)+'&select='+cols;
-      var s3 = await sbFetch(q3);
-      if(Array.isArray(s3)) candidates = candidates.concat(s3.filter(Boolean));
+    if(results.length < MAX && prop.property_type){
+      var t3 = await fetchTier(
+        '&property_type=eq.'+encodeURIComponent(prop.property_type),
+        MAX - results.length
+      );
+      results = results.concat(t3);
+    }
+    if(results.length < MAX){
+      var t4 = await fetchTier('', MAX - results.length);
+      results = results.concat(t4);
     }
 
     PT.timeEnd('fetchSimilar');
-    if(!candidates.length){hideSimilarSection();return;}
+    if(!results.length){hideSimilarSection();return;}
 
-    // Score each candidate for relevance (higher = better match)
-    var propPrice = parseSimPrice(prop.price_display);
-    candidates.forEach(function(c){
-      var sc = 0;
-      if(c.district_en && c.district_en === prop.district_en) sc += 40;
-      if(c.property_type && c.property_type === prop.property_type) sc += 30;
-      if(c.transaction_type && c.transaction_type === prop.transaction_type) sc += 20;
-      if(prop.bedrooms && c.bedrooms && Math.abs(c.bedrooms - prop.bedrooms) <= 1) sc += 10;
-      var cp = parseSimPrice(c.price_display);
-      if(propPrice && cp && cp > 0) {
-        var ratio = propPrice / cp;
-        if(ratio > 0.5 && ratio < 2) sc += 10; // within 50-200% of current price
-      }
-      if((c.views_week || 0) >= 5) sc += 5;
-      if(daysOld(c) <= 7) sc += 5;
-      c._simScore = sc;
-    });
-
-    // Sort by relevance and take top SHOW
-    candidates.sort(function(a,b){ return b._simScore - a._simScore; });
-    var top = candidates.slice(0, SHOW);
-
-    // Compute average price within candidates for Best Value label
-    var candidatePrices = top.map(function(c){ return parseSimPrice(c.price_display); }).filter(Boolean);
-    var candAvg = candidatePrices.length ? candidatePrices.reduce(function(a,b){return a+b;},0) / candidatePrices.length : 0;
-    var candAvgW = top.reduce(function(a,c){ return a + (c.views_week||0); },0) / (top.length || 1);
-
-    top.forEach(function(c){
-      var cp = parseSimPrice(c.price_display);
-      c._simBestValue = !!(cp && candAvg && cp < candAvg * 0.85);
-      c._simHot = candAvgW > 0 && (c.views_week||0) >= candAvgW * 1.5;
-    });
-
-    similarCache = top;
-    renderSimilarGrid(top);
+    similarCache = results;
+    renderSimilarGrid(results);
 
   }catch(e){
     PT.timeEnd('fetchSimilar');
@@ -1022,6 +1013,13 @@ function hideSimilarSection(){
   if(el)el.style.display='none';
 }
 
+// Card markup/classes mirror listings.html's .prop-card component (same
+// image/price/title/location/specs structure and CSS proportions — see
+// the .sim-* rules in <style>) so this section visually matches the
+// Listings page rather than inventing a separate card design. Trimmed to
+// exactly what's requested: cover image, price, title, location,
+// bedrooms/bathrooms (via getCardFacts(), which already omits bed/bath
+// for property types that don't have them, e.g. Land).
 function renderSimilarGrid(similar){
   var secEl=document.getElementById('similar-section');
   var gridEl=document.getElementById('similar-grid');
@@ -1037,39 +1035,26 @@ function renderSimilarGrid(similar){
     var imgs=Array.isArray(p.images)?p.images.filter(Boolean):[];
     var imgHtml=imgs[0]?'<img src="'+esc(imgs[0])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)">':'<div class="sim-no-img"></div>';
     // Facts driven by PROPERTY_TYPE_DISPLAY (terminology.js) — same schema
-    // that drives the main spec grid and the search-result cards.
+    // that drives the main spec grid and the search-result cards, so
+    // bedrooms/bathrooms only appear "when applicable" automatically.
     var cardFacts=(typeof getCardFacts==='function')?getCardFacts(p.property_type,p,lang):[];
-    var specs=cardFacts.map(function(f){return '<span class="sim-spec-item">'+f.icon+' '+esc(String(f.value))+'</span>';});
-
-    // Label: Popular Alternative > Best Value Nearby > New Listing > Similar Property
-    var labelHtml = '';
-    if(p._simHot){
-      labelHtml='<span class="sim-label sim-label-pop">'+ {lo:'ທາງເລືອກຍອດນິຍົມ',en:'Popular Alternative',zh:'热门备选'}[lang] +'</span>';
-    } else if(p._simBestValue){
-      labelHtml='<span class="sim-label sim-label-val">'+ {lo:'ສະຖານທີ່ດີທີ່ສຸດໃກ້ຄຽງ',en:'Best Value Nearby',zh:'周边超值'}[lang] +'</span>';
-    } else if(daysOld(p) <= 7){
-      labelHtml='<span class="sim-label sim-label-new">'+ {lo:'ລາຍການໃໝ່',en:'New Listing',zh:'新房源'}[lang] +'</span>';
-    } else {
-      labelHtml='<span class="sim-label sim-label-sim">'+ {lo:'ຄ້າຍຄືກັນ',en:'Similar Property',zh:'相似房源'}[lang] +'</span>';
-    }
+    var specsHtml=cardFacts.length?'<div class="sim-specs">'+cardFacts.map(function(f){
+      return '<span class="sim-spec">'+f.icon+' <span>'+esc(String(f.value))+'</span></span>';
+    }).join('')+'</div>':'';
+    var priceHtml=p.price_display
+      ? '<p class="sim-price">'+esc(p.price_display)+'</p>'
+      : '<p class="sim-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
 
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug);
     card.className='sim-card';
-    var simStatusBadge=getStatusBadgeHtml(p.status||'active',lang);
-    var simStatusOverlay='<div style="position:absolute;top:8px;left:8px;z-index:3;pointer-events:none;">'+simStatusBadge+'</div>';
     card.innerHTML=(
-      '<div class="sim-card-img">'+imgHtml+
-      simStatusOverlay+
-      '<button class="sim-heart" onclick="event.preventDefault()" aria-label="Save">'+
-      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>'+
-      '</button></div>'+
+      '<div class="sim-card-img">'+imgHtml+'</div>'+
       '<div class="sim-body">'+
-      labelHtml+
       '<p class="sim-title">'+title+'</p>'+
       '<p class="sim-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>'+district+'</p>'+
-      (specs.length?'<div class="sim-specs">'+specs.join('')+'</div>':'')+
-      (p.price_display?'<p class="sim-price">'+esc(p.price_display)+'</p>':'')+
+      specsHtml+
+      priceHtml+
       '</div>'
     );
     frag.appendChild(card);
