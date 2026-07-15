@@ -41,7 +41,18 @@ export interface PatternOccurrence {
 }
 
 export interface CandidatePattern {
+  /** This record's own identity — a specific candidate or (future) revision proposal, NOT the playbook itself. Compare playbookId below. */
   id: string;
+  /**
+   * The playbook's stable identity (e.g. "PLAYBOOK-0007") — survives across
+   * revisions, unset until first approval, never reassigned after
+   * (M2.7 follow-up: preparing for future Playbook Versioning without
+   * building it yet). A future revision-candidate would be created with
+   * this already set to the existing target playbook's id, inherited
+   * rather than minted — see nextPlaybookId() and approvePattern() below,
+   * which already do the right thing either way.
+   */
+  playbookId?: string;
   name: string;
   /** Set once, at creation, from the founding observation(s) — later matches add occurrences, never rewrite this. See this file's header note on why: reclustering/rewriting on every run is exactly what the founder asked NOT to build. */
   observedPattern: string[];
@@ -54,8 +65,8 @@ export interface CandidatePattern {
   reviewedBy?: string;
   reviewedAt?: string;
   reviewNotes?: string;
-  /** Set on approval — links this pattern to the KnowledgeEntry it became. */
-  resultingKnowledgeEntryId?: string;
+  /** Set on approval — the KnowledgeEntry THIS record resulted in. Renamed from resultingKnowledgeEntryId to pair cleanly with playbookId: this is "which document is live right now," playbookId is "which playbook this document is a revision of." */
+  knowledgeEntryId?: string;
   filePath: string;
 }
 
@@ -129,6 +140,7 @@ function toPattern(meta: Record<string, unknown>, filePath: string): CandidatePa
   const occurrencesRaw = Array.isArray(meta.occurrences) ? (meta.occurrences as unknown[]) : [];
   return {
     id: String(meta.id ?? ''),
+    playbookId: meta.playbookId ? String(meta.playbookId) : undefined,
     name: String(meta.name ?? ''),
     status: (meta.status as PatternStatus) ?? 'candidate',
     observedPattern: Array.isArray(meta.observedPattern) ? (meta.observedPattern as string[]) : [],
@@ -148,7 +160,7 @@ function toPattern(meta: Record<string, unknown>, filePath: string): CandidatePa
     reviewedBy: meta.reviewedBy ? String(meta.reviewedBy) : undefined,
     reviewedAt: meta.reviewedAt ? String(meta.reviewedAt) : undefined,
     reviewNotes: meta.reviewNotes ? String(meta.reviewNotes) : undefined,
-    resultingKnowledgeEntryId: meta.resultingKnowledgeEntryId ? String(meta.resultingKnowledgeEntryId) : undefined,
+    knowledgeEntryId: meta.knowledgeEntryId ? String(meta.knowledgeEntryId) : undefined,
     filePath,
   };
 }
@@ -164,6 +176,7 @@ function slugify(text: string): string {
 function serializePattern(p: CandidatePattern): string {
   const lines: string[] = ['---'];
   lines.push(`id: ${p.id}`);
+  if (p.playbookId) lines.push(`playbookId: ${p.playbookId}`);
   lines.push(`name: ${p.name}`);
   lines.push(`status: ${p.status}`);
   lines.push('observedPattern:');
@@ -184,7 +197,7 @@ function serializePattern(p: CandidatePattern): string {
   if (p.reviewedBy) lines.push(`reviewedBy: ${p.reviewedBy}`);
   if (p.reviewedAt) lines.push(`reviewedAt: ${p.reviewedAt}`);
   if (p.reviewNotes) lines.push(`reviewNotes: ${p.reviewNotes.replace(/\n+/g, ' ').trim()}`);
-  if (p.resultingKnowledgeEntryId) lines.push(`resultingKnowledgeEntryId: ${p.resultingKnowledgeEntryId}`);
+  if (p.knowledgeEntryId) lines.push(`knowledgeEntryId: ${p.knowledgeEntryId}`);
   lines.push('---', '');
   return lines.join('\n');
 }
@@ -424,10 +437,35 @@ export async function matchExecutiveObservationsToPatterns(executive: Observatio
 // same review queue as everything else.
 // ---------------------------------------------------------------------------
 
+/**
+ * Deterministic, no LLM — the next stable playbook identity, derived from
+ * real committed data (existing playbookIds already on disk), same
+ * discipline as everything else in this file. Only ever called when a
+ * pattern being approved doesn't already carry a playbookId of its own
+ * (i.e. it's not a future revision-candidate that already knows which
+ * existing playbook it's proposing to improve — see approvePattern()).
+ */
+function nextPlaybookId(): string {
+  const existingNumbers = loadAllPatterns()
+    .map((p) => p.playbookId)
+    .filter((id): id is string => !!id)
+    .map((id) => Number(id.replace('PLAYBOOK-', '')))
+    .filter((n) => !Number.isNaN(n));
+  const next = existingNumbers.length > 0 ? Math.max(...existingNumbers) + 1 : 1;
+  return `PLAYBOOK-${String(next).padStart(4, '0')}`;
+}
+
 export function approvePattern(input: { id: string; reviewedBy: string }): { pattern: CandidatePattern; entry: KnowledgeEntry } {
   const pattern = getPatternById(input.id);
   if (!pattern) throw new Error(`No candidate pattern found with id "${input.id}"`);
   if (pattern.status !== 'candidate') throw new Error(`Pattern "${input.id}" is already ${pattern.status} — only candidate patterns can be approved.`);
+
+  // Mint a new stable playbook identity, unless this pattern already
+  // carries one (M2.7 follow-up — preparing for future Playbook
+  // Versioning: a revision-candidate not built yet would be created with
+  // playbookId already pointing at the existing playbook it's proposing to
+  // improve, and this line already does the right thing for that case too).
+  const playbookId = pattern.playbookId ?? nextPlaybookId();
 
   const entry = proposeKnowledgeEntry({
     category: 'marketing/playbooks',
@@ -438,8 +476,10 @@ export function approvePattern(input: { id: string; reviewedBy: string }): { pat
       `Confidence at approval: ${pattern.confidence.level} — ${pattern.confidence.reason}`,
       '',
       `Supporting evidence: ${pattern.occurrences.map((o) => `${o.context} (${o.date})`).join('; ')}`,
+      '',
+      `Playbook ID: ${playbookId}`,
     ].join('\n'),
-    tags: ['playbook'],
+    tags: ['playbook', playbookId],
     source: { type: 'agent-inference', reference: `pattern-registry/${pattern.id}.md` },
     contributedBy: 'observation-intelligence',
     // Confidence level -> a starting numeric score for the new entry, same
@@ -450,7 +490,7 @@ export function approvePattern(input: { id: string; reviewedBy: string }): { pat
   });
 
   const today = new Date().toISOString().slice(0, 10);
-  const updated: CandidatePattern = { ...pattern, status: 'approved', updatedAt: today, reviewedBy: input.reviewedBy, reviewedAt: today, resultingKnowledgeEntryId: entry.id };
+  const updated: CandidatePattern = { ...pattern, status: 'approved', playbookId, updatedAt: today, reviewedBy: input.reviewedBy, reviewedAt: today, knowledgeEntryId: entry.id };
   writePattern(updated);
   return { pattern: updated, entry };
 }
