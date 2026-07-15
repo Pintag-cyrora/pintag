@@ -475,6 +475,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
+<script src="session.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // PINTAG · listing.html v4 — fully dynamic, no hardcoded content
@@ -499,8 +500,20 @@ function trackLead(listingId, agentId, eventType) {
       agent_id:   agentId   || null,
       event_type: eventType,
       user_agent: navigator.userAgent,
-      referrer:   document.referrer || null
+      referrer:   document.referrer || null,
+      session_id: getOrCreateSessionId()
     })
+  }).catch(function(){});
+}
+
+// ── Behavioral event tracking (Intelligence layer) ─────────────────
+// Fire-and-forget, mirrors the pattern in listings.html/index.html.
+function postEvent(table, body) {
+  fetch(BASE_DB + '/rest/v1/' + table, {
+    method: 'POST',
+    headers: { 'apikey': SEC_KEY, 'Authorization': 'Bearer ' + SEC_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify(body),
+    keepalive: true
   }).catch(function(){});
 }
 
@@ -1028,6 +1041,7 @@ function renderSimilarGrid(similar){
   secEl.style.display='block';
   var lang=getCurrentLang();
   var frag=document.createDocumentFragment();
+  var idxCounter=1;
   similar.forEach(function(p){
     if(!p||!p.slug)return;
     var title=esc(p['title_'+lang]||p.title_en||'');
@@ -1057,10 +1071,22 @@ function renderSimilarGrid(similar){
       priceHtml+
       '</div>'
     );
+    if(p.id){
+      var simIdx=idxCounter++;
+      card.addEventListener('click',function(){
+        postEvent('listing_events',{property_id:p.id,event_type:'click',session_id:getOrCreateSessionId(),source:'similar',search_position:simIdx});
+      });
+    }
     frag.appendChild(card);
   });
   gridEl.innerHTML='';
   gridEl.appendChild(frag);
+
+  var sessionId=getOrCreateSessionId();
+  var impressionRows=similar.filter(function(p){return p&&p.id;}).map(function(p,idx){
+    return {property_id:p.id,event_type:'impression',session_id:sessionId,source:'similar',search_position:idx+1};
+  });
+  if(impressionRows.length) postEvent('listing_events',impressionRows);
 }
 
 function showErrorState(msg){
