@@ -284,6 +284,16 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             <table class="analytics-table"><thead><tr><th>District</th><th>Leads</th></tr></thead>
             <tbody id="adm-top-districts"></tbody></table>
           </div>
+          <div class="analytics-section">
+            <div class="analytics-section-title">Top Property Types</div>
+            <table class="analytics-table"><thead><tr><th>Type</th><th>Leads</th></tr></thead>
+            <tbody id="adm-top-types"></tbody></table>
+          </div>
+          <div class="analytics-section">
+            <div class="analytics-section-title">Best Conversion Rates</div>
+            <table class="analytics-table"><thead><tr><th>Agent</th><th>Closed / Clicks</th></tr></thead>
+            <tbody id="adm-conversion-rates"></tbody></table>
+          </div>
         </div>
       </div>
 
@@ -1380,7 +1390,10 @@ async function loadAnalytics() {
     const weekStart  = new Date(now - 7  * 86400000).toISOString();
     const monthStart = new Date(now - 30 * 86400000).toISOString();
 
-    const leads = await sbApi('GET', 'lead_events?select=id,listing_id,agent_id,event_type,created_at&order=created_at.desc&limit=2000');
+    const [leads, crmLeads] = await Promise.all([
+      sbApi('GET', 'lead_events?select=id,listing_id,agent_id,event_type,created_at&order=created_at.desc&limit=2000'),
+      sbApi('GET', 'leads?select=id,property_id,party_id,status')
+    ]);
     if (!leads) return;
 
     document.getElementById('adm-leads-total').textContent = leads.length;
@@ -1416,23 +1429,56 @@ async function loadAnalytics() {
       document.getElementById('adm-top-agents').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
     }
 
-    // Top districts — fetch listings for all listing_ids seen
+    // Top districts + Top property types — one shared properties fetch
+    // (same listing_ids already collected above), just carrying an extra
+    // column, rather than a second round trip for property_type alone.
     const allListingIds = [...new Set(leads.map(l => l.listing_id).filter(Boolean))];
+    let distMap = {}, typeMap = {};
     if (allListingIds.length) {
-      const distProps = await sbApi('GET', 'properties?id=in.('+allListingIds.join(',')+')&select=id,district_en');
-      const distMap = Object.fromEntries((distProps||[]).map(p => [p.id, p.district_en||'Unknown']));
+      const distProps = await sbApi('GET', 'properties?id=in.('+allListingIds.join(',')+')&select=id,district_en,property_type');
+      (distProps||[]).forEach(p => { distMap[p.id] = p.district_en||'Unknown'; typeMap[p.id] = p.property_type||'Unknown'; });
+
       const byDistrict = {};
-      leads.forEach(l => {
-        if (!l.listing_id) return;
-        const d = distMap[l.listing_id] || 'Unknown';
-        byDistrict[d] = (byDistrict[d] || 0) + 1;
-      });
+      leads.forEach(l => { if (l.listing_id) byDistrict[distMap[l.listing_id]||'Unknown'] = (byDistrict[distMap[l.listing_id]||'Unknown']||0) + 1; });
       const topDists = Object.keys(byDistrict).sort((a,b) => byDistrict[b]-byDistrict[a]).slice(0,10);
       document.getElementById('adm-top-districts').innerHTML = topDists.map(d =>
         `<tr><td style="font-weight:500;">${esc(d)}</td><td><span class="lead-pill">${Number(byDistrict[d])}</span></td></tr>`
       ).join('');
+
+      const byType = {};
+      leads.forEach(l => { if (l.listing_id) byType[typeMap[l.listing_id]||'Unknown'] = (byType[typeMap[l.listing_id]||'Unknown']||0) + 1; });
+      const topTypes = Object.keys(byType).sort((a,b) => byType[b]-byType[a]).slice(0,10);
+      document.getElementById('adm-top-types').innerHTML = topTypes.map(t =>
+        `<tr><td style="font-weight:500;text-transform:capitalize;">${esc(t)}</td><td><span class="lead-pill">${Number(byType[t])}</span></td></tr>`
+      ).join('');
     } else {
       document.getElementById('adm-top-districts').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
+      document.getElementById('adm-top-types').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
+    }
+
+    // Best conversion rates — per agent, closed deals ÷ message clicks.
+    // Requires at least 3 clicks before ranking an agent, same "avoid a
+    // misleading 100% from a single lucky click" safeguard already used
+    // for Best Value pricing in listings.html (_grpAvg, min 3 peers).
+    if (crmLeads) {
+      const clicksByAgent = {};
+      leads.forEach(l => { if (l.agent_id && l.event_type === 'whatsapp_click') clicksByAgent[l.agent_id] = (clicksByAgent[l.agent_id]||0) + 1; });
+      const closedByAgent = {};
+      crmLeads.forEach(l => { if (l.party_id && l.status === 'closed') closedByAgent[l.party_id] = (closedByAgent[l.party_id]||0) + 1; });
+      const rateByAgent = Object.keys(clicksByAgent)
+        .filter(id => clicksByAgent[id] >= 3)
+        .map(id => ({ id, rate: (closedByAgent[id]||0) / clicksByAgent[id] }))
+        .sort((a,b) => b.rate - a.rate)
+        .slice(0,10);
+      if (rateByAgent.length) {
+        const agents = await sbApi('GET', 'parties?id=in.('+rateByAgent.map(r=>r.id).join(',')+')&select=id,name_en');
+        const nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.name_en||'—']));
+        document.getElementById('adm-conversion-rates').innerHTML = rateByAgent.map(r =>
+          `<tr><td style="font-weight:500;">${esc(nameMap[r.id]||'—')}</td><td><span class="lead-pill">${(r.rate*100).toFixed(0)}%</span></td></tr>`
+        ).join('');
+      } else {
+        document.getElementById('adm-conversion-rates').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">Not enough data yet</td></tr>';
+      }
     }
 
   } catch(e) { console.error('loadAnalytics', e); }

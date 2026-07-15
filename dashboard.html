@@ -357,13 +357,33 @@ body{
 }
 
 /* Lead Analytics */
-.lead-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:28px;}
+.lead-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:18px;margin-bottom:28px;}
 .lead-table-wrap{overflow-x:auto;}
 .lead-table{width:100%;border-collapse:collapse;font-size:13px;}
 .lead-table th{text-align:left;padding:10px 12px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);}
 .lead-table td{padding:10px 12px;border-bottom:1px solid var(--line);}
 .lead-table tr:last-child td{border-bottom:none;}
 .lead-badge{display:inline-block;background:rgba(45,140,140,0.1);color:var(--teal);font-weight:600;font-size:12px;padding:2px 8px;border-radius:20px;}
+
+/* Lead status — a plain <select> is the "one click" status changer */
+.status-select{
+  font-family:"DM Sans",sans-serif;font-size:12.5px;font-weight:600;
+  color:var(--teal);background:rgba(45,140,140,0.08);
+  border:1px solid rgba(45,140,140,0.18);border-radius:8px;
+  padding:6px 10px;cursor:pointer;
+}
+.status-select:disabled{opacity:0.5;cursor:wait;}
+
+/* Conversion funnel — a simple vertical list, not a custom chart */
+.funnel{display:flex;flex-direction:column;gap:2px;max-width:320px;}
+.funnel-row{display:flex;align-items:baseline;justify-content:space-between;padding:10px 4px;}
+.funnel-label{font-size:13px;color:var(--text);}
+.funnel-value{font-size:18px;font-weight:700;letter-spacing:-0.02em;}
+.funnel-arrow{display:block;text-align:center;color:var(--muted);font-size:13px;margin:-2px 0;}
+
+@media(max-width:960px){
+  .lead-stats{grid-template-columns:repeat(2,1fr);}
+}
 
 </style>
 </head>
@@ -438,41 +458,114 @@ body{
     </section>
 
     <div style="margin-top:28px;">
+      <!-- Current pipeline snapshot — how many leads sit in each status
+           right now (mutually exclusive counts). The Conversion Funnel
+           below is the complementary cumulative view. -->
       <div class="lead-stats">
         <div class="stat-card">
-          <div class="stat-label">Leads Today</div>
-          <div class="stat-value" id="leads-today">—</div>
+          <div class="stat-label">🆕 New</div>
+          <div class="stat-value" id="lead-count-new">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">This Week</div>
-          <div class="stat-value" id="leads-week">—</div>
+          <div class="stat-label">💬 Contacted</div>
+          <div class="stat-value" id="lead-count-contacted">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">This Month</div>
-          <div class="stat-value" id="leads-month">—</div>
+          <div class="stat-label">📅 Viewings</div>
+          <div class="stat-value" id="lead-count-viewing">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Total Leads</div>
-          <div class="stat-value" id="leads-total">—</div>
+          <div class="stat-label">🎉 Closed</div>
+          <div class="stat-value" id="lead-count-closed">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">❌ Lost</div>
+          <div class="stat-value" id="lead-count-lost">—</div>
         </div>
       </div>
 
-      <section class="section">
+      <section class="section" style="margin-bottom:28px;">
         <div class="section-head">
-          <h2>Lead Analytics</h2>
+          <h2>Leads</h2>
         </div>
         <div class="lead-table-wrap">
           <table class="lead-table">
             <thead>
               <tr>
-                <th>Listing</th>
-                <th>WhatsApp</th>
-                <th>Call</th>
-                <th>Total</th>
+                <th>Property</th>
+                <th>Customer</th>
+                <th>Contact</th>
+                <th>Created</th>
+                <th>Status</th>
+                <th>Last Updated</th>
               </tr>
             </thead>
             <tbody id="lead-tbody"></tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="section" style="margin-bottom:28px;">
+        <div class="section-head">
+          <h2>Conversion Funnel</h2>
+        </div>
+        <div class="funnel" id="funnel-body"></div>
+      </section>
+
+      <section class="section" style="margin-bottom:28px;">
+        <div class="section-head">
+          <h2>Property Analytics</h2>
+        </div>
+        <div class="lead-table-wrap">
+          <table class="lead-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Views</th>
+                <th>Lead Clicks</th>
+                <th>Lead Rate</th>
+                <th>Open Leads</th>
+                <th>Closed Deals</th>
+              </tr>
+            </thead>
+            <tbody id="prop-analytics-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Agent Analytics — This Month</h2>
+        </div>
+        <div class="stats" style="margin-bottom:0;">
+          <div class="stat-card">
+            <div class="stat-label">Listings</div>
+            <div class="stat-value" id="agm-listings">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Views</div>
+            <div class="stat-value" id="agm-views">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Lead Clicks</div>
+            <div class="stat-value" id="agm-clicks">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Contacted</div>
+            <div class="stat-value" id="agm-contacted">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Viewings</div>
+            <div class="stat-value" id="agm-viewings">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Deals Closed</div>
+            <div class="stat-value" id="agm-closed">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Conversion Rate</div>
+            <div class="stat-value" id="agm-conversion">—</div>
+          </div>
         </div>
       </section>
     </div>
@@ -542,7 +635,7 @@ async function initDashboard(){
 
   renderStats(properties);
   renderListings(properties);
-  loadLeadStats(agent.id);
+  loadLeads(agent.id, properties);
 
 }
 
@@ -656,65 +749,195 @@ async function logout(){
 
 }
 
-async function loadLeadStats(agentId) {
+// ── Leads CRM ────────────────────────────────────────────────────────────
+// A lead is created automatically (server-side, via a trigger on
+// lead_events — see 20260715000000_leads_crm.sql) the moment a buyer
+// clicks "Message Agent" on one of this agent's listings. Nothing here
+// creates leads; this only reads and updates them.
+
+var STATUS_LABELS = {
+  new:               '🆕 New',
+  contacted:         '💬 Contacted',
+  viewing_scheduled: '📅 Viewing Scheduled',
+  negotiating:       '🤝 Negotiating',
+  closed:            '🎉 Closed',
+  lost:              '❌ Lost'
+};
+
+var _leadsCache = null;
+var _propMapCache = {};
+
+async function loadLeads(agentId, properties) {
   try {
-    const now = new Date();
-    const todayStart  = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const weekStart   = new Date(now - 7  * 86400000).toISOString();
-    const monthStart  = new Date(now - 30 * 86400000).toISOString();
+    // `properties` is already fetched by initDashboard() — reused here for
+    // titles/view_count instead of a second properties query. Only two new
+    // requests are made: the agent's own leads, and their whatsapp_click
+    // events (needed for the funnel's "Message Clicks" stage and the
+    // per-property "Lead clicks" column, which leads alone can't give —
+    // a lead only exists once contact has already been made).
+    const [{ data: leads, error: leadsErr }, { data: events, error: eventsErr }] = await Promise.all([
+      supabaseClient.from('leads')
+        .select('id,property_id,status,customer_name,customer_phone,contact_method,created_at,updated_at')
+        .eq('party_id', agentId)
+        .order('created_at', { ascending: false }),
+      supabaseClient.from('lead_events')
+        .select('id,listing_id,event_type,created_at')
+        .eq('agent_id', agentId)
+        .eq('event_type', 'whatsapp_click')
+    ]);
+    if (leadsErr || eventsErr || !leads) { console.error('loadLeads', leadsErr || eventsErr); return; }
 
-    const { data: leads, error } = await supabaseClient
-      .from('lead_events')
-      .select('id,listing_id,event_type,created_at')
-      .eq('agent_id', agentId);
+    _leadsCache = leads;
+    _propMapCache = {};
+    (properties || []).forEach(function(p) { _propMapCache[p.id] = p; });
 
-    if (error || !leads) return;
+    renderLeadStatusTiles(leads);
+    renderLeadsTable(leads, _propMapCache);
+    renderConversionFunnel(leads, events);
+    renderPropertyAnalytics(properties || [], leads, events);
+    renderAgentAnalyticsThisMonth(properties || [], leads, events);
+  } catch(e) { console.error('loadLeads', e); }
+}
 
-    document.getElementById('leads-total').innerText = leads.length;
-    document.getElementById('leads-today').innerText  = leads.filter(l => l.created_at >= todayStart).length;
-    document.getElementById('leads-week').innerText   = leads.filter(l => l.created_at >= weekStart).length;
-    document.getElementById('leads-month').innerText  = leads.filter(l => l.created_at >= monthStart).length;
+// Current pipeline snapshot — mutually exclusive counts of "how many leads
+// sit in each status right now." Negotiating has no tile of its own here
+// (only New/Contacted/Viewings/Closed/Lost do) — it still shows correctly
+// per-row in the leads table, just isn't one of these five summary tiles.
+function renderLeadStatusTiles(leads) {
+  var counts = { new: 0, contacted: 0, viewing_scheduled: 0, closed: 0, lost: 0 };
+  leads.forEach(function(l) { if (counts.hasOwnProperty(l.status)) counts[l.status]++; });
+  document.getElementById('lead-count-new').innerText       = counts.new;
+  document.getElementById('lead-count-contacted').innerText = counts.contacted;
+  document.getElementById('lead-count-viewing').innerText   = counts.viewing_scheduled;
+  document.getElementById('lead-count-closed').innerText    = counts.closed;
+  document.getElementById('lead-count-lost').innerText      = counts.lost;
+}
 
-    // Build per-listing breakdown
-    const byListing = {};
-    leads.forEach(function(l) {
-      var lid = l.listing_id || 'unknown';
-      if (!byListing[lid]) byListing[lid] = { whatsapp: 0, call: 0 };
-      if (l.event_type === 'whatsapp_click') byListing[lid].whatsapp++;
-      else if (l.event_type === 'call_click') byListing[lid].call++;
-    });
-
-    // Fetch listing titles for the listing ids we have
-    var listingIds = Object.keys(byListing).filter(id => id !== 'unknown');
-    var titleMap = {};
-    if (listingIds.length) {
-      var { data: props } = await supabaseClient
-        .from('properties')
-        .select('id,title_en,title_lo')
-        .in('id', listingIds);
-      (props || []).forEach(function(p) { titleMap[p.id] = p.title_en || p.title_lo || '—'; });
-    }
-
-    // Sort by total desc
-    var rows = Object.keys(byListing).map(function(lid) {
-      return { lid, title: titleMap[lid] || '—', wa: byListing[lid].whatsapp, call: byListing[lid].call };
-    }).sort(function(a, b) { return (b.wa + b.call) - (a.wa + a.call); });
-
-    var tbody = document.getElementById('lead-tbody');
-    if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:20px;">No leads recorded yet</td></tr>';
-      return;
-    }
-    tbody.innerHTML = rows.map(function(r) {
-      var total = Number(r.wa) + Number(r.call);
-      return '<tr>' +
-        '<td style="font-weight:500;">' + esc(r.title) + '</td>' +
-        '<td>' + (r.wa   ? '<span class="lead-badge">' + Number(r.wa)   + '</span>' : '<span style="color:var(--muted)">0</span>') + '</td>' +
-        '<td>' + (r.call ? '<span class="lead-badge">' + Number(r.call) + '</span>' : '<span style="color:var(--muted)">0</span>') + '</td>' +
-        '<td><strong>' + total + '</strong></td>' +
-        '</tr>';
+function renderLeadsTable(leads, propMap) {
+  var tbody = document.getElementById('lead-tbody');
+  if (!leads.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px;">No leads yet — a lead appears here automatically as soon as a buyer clicks "Message Agent" on one of your listings.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = leads.map(function(l) {
+    var p = propMap[l.property_id];
+    var title = p ? esc(p.title_en || p.title_lo || '—') : '—';
+    var customer = l.customer_name ? esc(l.customer_name) : '<span style="color:var(--muted)">—</span>';
+    var created = new Date(l.created_at).toLocaleDateString();
+    var updated = new Date(l.updated_at).toLocaleDateString();
+    var options = Object.keys(STATUS_LABELS).map(function(s) {
+      return '<option value="' + s + '"' + (s === l.status ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>';
     }).join('');
-  } catch(e) { console.error('loadLeadStats', e); }
+    return '<tr>' +
+      '<td style="font-weight:500;">' + title + '</td>' +
+      '<td>' + customer + '</td>' +
+      '<td>💬 WhatsApp</td>' +
+      '<td>' + created + '</td>' +
+      '<td><select class="status-select" data-id="' + esc(l.id) + '" onchange="updateLeadStatus(this)">' + options + '</select></td>' +
+      '<td style="color:var(--muted);">' + updated + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+// One click: change the <select>, PATCH just that row, re-render from the
+// updated in-memory cache — no extra round trip beyond the PATCH itself.
+async function updateLeadStatus(selectEl) {
+  var id = selectEl.dataset.id;
+  var newStatus = selectEl.value;
+  selectEl.disabled = true;
+  const { error } = await supabaseClient
+    .from('leads')
+    .update({ status: newStatus })
+    .eq('id', id);
+  selectEl.disabled = false;
+  if (error) {
+    alert('Could not update lead status');
+    return;
+  }
+  var lead = (_leadsCache || []).find(function(l) { return l.id === id; });
+  if (lead) { lead.status = newStatus; lead.updated_at = new Date().toISOString(); }
+  renderLeadStatusTiles(_leadsCache);
+  renderLeadsTable(_leadsCache, _propMapCache);
+}
+
+// Cumulative "reached this stage or beyond" — the complementary view to
+// the status-snapshot tiles above. Message Clicks comes from lead_events
+// directly (every whatsapp_click, whether or not its lead has moved past
+// New yet); everything downstream comes from leads.status.
+function renderConversionFunnel(leads, events) {
+  var messageClicks = events.length;
+  var reached = function(statuses) {
+    return leads.filter(function(l) { return statuses.indexOf(l.status) !== -1; }).length;
+  };
+  var stages = [
+    ['Message Clicks', messageClicks],
+    ['Contacted',       reached(['contacted','viewing_scheduled','negotiating','closed'])],
+    ['Viewing',         reached(['viewing_scheduled','negotiating','closed'])],
+    ['Negotiating',     reached(['negotiating','closed'])],
+    ['Closed',          reached(['closed'])]
+  ];
+  document.getElementById('funnel-body').innerHTML = stages.map(function(s, i) {
+    return '<div class="funnel-row"><span class="funnel-label">' + s[0] + '</span><span class="funnel-value">' + s[1] + '</span></div>' +
+      (i < stages.length - 1 ? '<div class="funnel-arrow">↓</div>' : '');
+  }).join('');
+}
+
+function renderPropertyAnalytics(properties, leads, events) {
+  var leadsByProp = {};
+  leads.forEach(function(l) { (leadsByProp[l.property_id] = leadsByProp[l.property_id] || []).push(l); });
+  var clicksByProp = {};
+  events.forEach(function(e) { if (e.listing_id) clicksByProp[e.listing_id] = (clicksByProp[e.listing_id] || 0) + 1; });
+
+  var tbody = document.getElementById('prop-analytics-tbody');
+  if (!properties.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px;">No listings yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = properties.map(function(p) {
+    var views  = Number(p.view_count) || 0;
+    var clicks = clicksByProp[p.id] || 0;
+    var propLeads = leadsByProp[p.id] || [];
+    var open   = propLeads.filter(function(l) { return l.status !== 'closed' && l.status !== 'lost'; }).length;
+    var closedDeals = propLeads.filter(function(l) { return l.status === 'closed'; }).length;
+    var rate = views > 0 ? ((clicks / views) * 100).toFixed(1) + '%' : '—';
+    return '<tr>' +
+      '<td style="font-weight:500;">' + esc(p.title_en || p.title_lo || '—') + '</td>' +
+      '<td>' + views + '</td>' +
+      '<td>' + clicks + '</td>' +
+      '<td>' + rate + '</td>' +
+      '<td>' + open + '</td>' +
+      '<td>' + closedDeals + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+// "This month" = the current calendar month, applied consistently as a
+// creation-date cohort: new listings created this month, and leads
+// created this month grouped by their current status. Views is the one
+// exception — properties.view_count is a lifetime counter (there's no
+// monthly view log in the schema; listing_events exists but nothing
+// actually writes to it today), so this shows lifetime views rather than
+// fabricate a monthly figure that doesn't exist.
+function renderAgentAnalyticsThisMonth(properties, leads, events) {
+  var now = new Date();
+  var monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  var listingsThisMonth = properties.filter(function(p) { return p.created_at >= monthStart; }).length;
+  var viewsTotal = properties.reduce(function(a, p) { return a + (Number(p.view_count) || 0); }, 0);
+  var clicksThisMonth = events.filter(function(e) { return e.created_at >= monthStart; }).length;
+  var leadsThisMonth = leads.filter(function(l) { return l.created_at >= monthStart; });
+  var contactedTM = leadsThisMonth.filter(function(l) { return l.status !== 'new'; }).length;
+  var viewingTM   = leadsThisMonth.filter(function(l) { return ['viewing_scheduled','negotiating','closed'].indexOf(l.status) !== -1; }).length;
+  var closedTM    = leadsThisMonth.filter(function(l) { return l.status === 'closed'; }).length;
+  var conversionRate = clicksThisMonth > 0 ? ((closedTM / clicksThisMonth) * 100).toFixed(1) + '%' : '—';
+
+  document.getElementById('agm-listings').innerText   = listingsThisMonth;
+  document.getElementById('agm-views').innerText      = viewsTotal;
+  document.getElementById('agm-clicks').innerText     = clicksThisMonth;
+  document.getElementById('agm-contacted').innerText  = contactedTM;
+  document.getElementById('agm-viewings').innerText   = viewingTM;
+  document.getElementById('agm-closed').innerText     = closedTM;
+  document.getElementById('agm-conversion').innerText = conversionRate;
 }
 
 initDashboard();
