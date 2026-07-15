@@ -32,7 +32,14 @@ function base64url(input: Buffer): string {
 
 export function generatePkce(): { verifier: string; challenge: string } {
   const verifier = base64url(randomBytes(32));
-  const challenge = base64url(createHash('sha256').update(verifier).digest());
+  // TikTok's own Login Kit for Desktop docs specify hex encoding of the
+  // SHA256 digest for code_challenge (`CryptoJS.SHA256(code_verifier)
+  // .toString(CryptoJS.enc.Hex)`) — a deviation from RFC 7636's S256, which
+  // defines the challenge as BASE64URL(SHA256(verifier)). Confirmed as the
+  // cause of a real "Code verifier or code challenge is invalid" failure:
+  // the base64url-encoded challenge this used to send couldn't match what
+  // TikTok's server computes in hex when validating at the token endpoint.
+  const challenge = createHash('sha256').update(verifier).digest('hex');
   return { verifier, challenge };
 }
 
