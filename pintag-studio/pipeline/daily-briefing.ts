@@ -17,8 +17,8 @@ import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT } from './lib/config.js';
 import { loadAllKnowledgeEntries } from './lib/knowledge.js';
-import { listPendingSuggestions, loadAllSuggestions } from './lib/suggestions.js';
-import { gatherAllObservations, formatObservation } from './lib/observations.js';
+import { listPendingSuggestions, loadAllSuggestions, type SuggestionKind } from './lib/suggestions.js';
+import { gatherAllObservations, formatObservation, type Observation } from './lib/observations.js';
 import { routeObservations, dispatchDepartmentObservations } from './lib/observation-intelligence.js';
 import { runAgent } from './lib/agent.js';
 import { supabase } from './lib/supabase.js';
@@ -83,7 +83,14 @@ export function gatherSuggestions(): string {
 // dispatched to their existing system (proposeSuggestion() or a Platform
 // warning) as a side effect, never surfaced in the Daily Briefing itself.
 // ---------------------------------------------------------------------------
-export async function gatherObservations(): Promise<string> {
+export interface GatherObservationsResult {
+  /** Fed into the CMO prompt as reference material — prose, not rendered directly anywhere. */
+  promptText: string;
+  /** The same Executive-routed Observations, real and unmodified — so the CEO Workspace can render their already-real evidence[] directly instead of asking the LLM to reproduce numbers it might paraphrase or drop. */
+  executiveObservations: Observation[];
+}
+
+export async function gatherObservations(): Promise<GatherObservationsResult> {
   const { observations, unavailable } = await gatherAllObservations();
   const routed = routeObservations(observations);
   dispatchDepartmentObservations(routed.department);
@@ -95,7 +102,8 @@ export async function gatherObservations(): Promise<string> {
   for (const u of unavailable) {
     parts.push(`### ${u.source}\n${u.source} isn't reporting right now (${u.reason}).`);
   }
-  return parts.length > 0 ? parts.join('\n\n') : 'No Observation Sources have anything meaningful to report right now.';
+  const promptText = parts.length > 0 ? parts.join('\n\n') : 'No Observation Sources have anything meaningful to report right now.';
+  return { promptText, executiveObservations: routed.executive };
 }
 
 interface SupabaseGatherResult {
@@ -212,9 +220,11 @@ export function buildPrompt(sections: { intelligence: string; suggestions: strin
     '',
     'Keep it under 200 words. No headers/bullet-heavy dashboard formatting inside the prose — write it as something a person would actually say out loud.',
     '',
-    'Then, on its own final line, after the narrative, output exactly one line in this precise form (no other text on that line):',
+    'Then, on their own final two lines, after the narrative, output exactly these two lines in this precise form (no other text on either line):',
     'RECOMMENDED ACTION: <a short, imperative, one-click-shaped action>',
-    'This is the single most important thing to do today if only one thing gets done — written the way a button label would read, e.g. "Generate Today\'s Educational Post", "Create a Financing FAQ", "Schedule Today\'s Content", "Restore the Supabase Connection". Exactly one action, never zero, never a list.',
+    'WHY THIS MATTERS: <1-2 sentences explaining why this specific action is today\'s single highest-leverage move>',
+    'The action is written the way a button label would read, e.g. "Generate Today\'s Educational Post", "Create a Financing FAQ", "Schedule Today\'s Content", "Restore the Supabase Connection". Exactly one action, never zero, never a list.',
+    'The reasoning should teach the founder how Marketing OS is thinking — ground it in what actually happened (from the reference material below), not a generic justification. For example: "Two information-rich listing posts significantly outperformed the recent baseline while no other content format showed the same consistency. Repeating a winning format while audience demand is high is likely to produce the best return today."',
     '',
     '## What I learned (Intelligence Layer — newly verified knowledge since yesterday)',
     sections.intelligence,
@@ -277,23 +287,33 @@ export function readFounderName(): string {
  *
  * Exported so pipeline/teach.ts (M2.1) can restate the same recommendation
  * it's asking about, without re-deriving the extraction logic.
+ *
+ * Also extracts the sibling WHY THIS MATTERS: line the prompt now requires
+ * right after RECOMMENDED ACTION — same "structured marker, not prose
+ * parsing" contract, stripped from the narrative the same way. Only present
+ * alongside a strict match; the older loose fallback predates this and
+ * simply has no reasoning to show, which the Recommended Action card
+ * already renders as optional.
  */
-export function extractRecommendedAction(briefingText: string): { action: string | undefined; narrativeOnly: string } {
+export function extractRecommendedAction(briefingText: string): { action: string | undefined; reasoning: string | undefined; narrativeOnly: string } {
   const strict = briefingText.match(/^RECOMMENDED ACTION:\s*(.+)$/im);
   if (strict) {
-    return {
-      action: strict[1].trim(),
-      narrativeOnly: briefingText.replace(/\n*^RECOMMENDED ACTION:.*$/im, '').trim(),
-    };
+    const reasoning = briefingText.match(/^WHY THIS MATTERS:\s*(.+)$/im);
+    const narrativeOnly = briefingText
+      .replace(/\n*^RECOMMENDED ACTION:.*$/im, '')
+      .replace(/\n*^WHY THIS MATTERS:.*$/im, '')
+      .trim();
+    return { action: strict[1].trim(), reasoning: reasoning ? reasoning[1].trim() : undefined, narrativeOnly };
   }
   const fallback = briefingText.match(/^.*(?:\*\*)?what i recommend(?:\*\*)?:?\s*[^\n]+$/im);
   if (fallback) {
     return {
       action: fallback[0].replace(/^.*(?:\*\*)?what i recommend(?:\*\*)?:?\s*/i, '').trim(),
+      reasoning: undefined,
       narrativeOnly: briefingText.replace(fallback[0], '').replace(/\n{3,}/g, '\n\n').trim(),
     };
   }
-  return { action: undefined, narrativeOnly: briefingText.trim() };
+  return { action: undefined, reasoning: undefined, narrativeOnly: briefingText.trim() };
 }
 
 /**
@@ -307,12 +327,26 @@ export function extractRecommendedAction(briefingText: string): { action: string
 interface AttentionItem {
   source: string;
   title: string;
-  /** Short tag shown next to the title, e.g. a content type or suggestion kind. */
+  /** Short tag shown next to the title — always founder-facing prose, never a raw kind/category slug. */
   badge: string;
   detail: string;
+  /** Absent for items with no real page yet (knowledge suggestions) — rendered as a "Review →" prompt pointing at the founder's own Review Knowledge action instead of a link, never a literal command. */
   link?: string;
-  cliHint?: string;
 }
+
+/**
+ * Founder-facing label for each SuggestionKind — the CEO Workspace should
+ * never render a raw kind slug (e.g. "marketing-observation") as if it were
+ * copy. Every kind needs an entry here, not just the ones seen so far.
+ */
+const SUGGESTION_KIND_LABELS: Record<SuggestionKind, string> = {
+  'knowledge-gap': 'Knowledge Gap',
+  'recurring-question': 'Recurring Question',
+  'wording-improvement': 'Wording Suggestion',
+  'marketing-observation': 'Potential Knowledge Pattern',
+  'founder-teaching': 'Founder Teaching Note',
+  other: 'Knowledge Suggestion',
+};
 
 /**
  * Derived, not LLM-synthesized — real rows already gathered, nothing
@@ -320,9 +354,11 @@ interface AttentionItem {
  * thing"): can legitimately be empty on a quiet day, same "don't pad with
  * filler" standard as elsewhere. Today's two real sources: pending content
  * approvals (a real, already-working Approve/Reject click lives at
- * dashboard/index.html) and pending knowledge suggestions (no UI yet, so a
- * CLI hint instead of a link — same honest-not-fake-button discipline used
- * for the Recommended Action card).
+ * dashboard/index.html) and pending knowledge suggestions (no dedicated
+ * review page yet, so "Review →" here points at the founder's own daily
+ * "Review Knowledge" action rather than a link — same honest-not-fake-
+ * button discipline used for the Recommended Action card, but never
+ * exposing the underlying CLI command it currently runs).
  */
 function deriveAttentionItems(
   operational: SupabaseGatherResult,
@@ -342,9 +378,11 @@ function deriveAttentionItems(
     items.push({
       source: 'knowledge-suggestion',
       title: s.title,
-      badge: s.kind,
-      detail: `Observed ${s.occurrences.length}x`,
-      cliHint: 'npm run knowledge:review',
+      badge: SUGGESTION_KIND_LABELS[s.kind] ?? 'Knowledge Suggestion',
+      detail:
+        s.occurrences.length > 1
+          ? `Noticed ${s.occurrences.length} times — starting to look like a repeatable pattern.`
+          : 'Worth a look before it gets lost.',
     });
   }
   return items;
@@ -390,12 +428,14 @@ export function renderMorningScreen(input: {
   operational: SupabaseGatherResult;
   organizational: SupabaseGatherResult;
   generatedAt: Date;
+  /** Real, unmodified Executive-routed Observations (see gatherObservations()) — rendered as the Evidence section below the narrative, straight from each Observation's own evidence[], never re-derived or paraphrased by an LLM. */
+  executiveObservations: Observation[];
 }): string {
   // The recommendation line (whichever pattern matched) is a machine-
   // parseable marker, not customer prose — it gets its own prominent card
   // below, so it's stripped from the narrative to avoid showing the same
   // thing twice (once raw, once formatted).
-  const { action: recommendedAction, narrativeOnly } = extractRecommendedAction(input.briefingText);
+  const { action: recommendedAction, reasoning: recommendedActionReasoning, narrativeOnly } = extractRecommendedAction(input.briefingText);
   const attentionItems = deriveAttentionItems(input.operational, input.pendingSuggestions);
   const activeCompany = deriveActiveCompany();
   const win = deriveWin(input.organizational);
@@ -412,12 +452,26 @@ export function renderMorningScreen(input: {
         .map((item) => {
           const action = item.link
             ? `<a href="${escapeHtml(item.link)}">Review →</a>`
-            : `<span class="cli-hint">${escapeHtml(item.cliHint ?? '')}</span>`;
+            : `<a href="#" onclick="alert('Open Marketing OS and choose Review Knowledge to look at this.'); return false;">Review →</a>`;
           return `<li><div class="attn-title">${escapeHtml(item.title)} <span class="tag">${escapeHtml(item.badge)}</span></div><div class="attn-detail">${escapeHtml(item.detail)} ${action}</div></li>`;
         })
         .join('') +
       (overflowCount > 0 ? `<li class="empty"><a href="index.html">+${overflowCount} more — open the queue →</a></li>` : '')
     : '<li class="empty">Nothing needs your attention right now.</li>';
+
+  // Real data, not LLM prose — each Observation already carries its own
+  // evidence[] (see observations.ts), computed straight from the source
+  // API's numbers. Rendering it directly here, rather than asking the CMO
+  // prompt to reproduce it in the narrative, is what lets the founder
+  // "instantly trust the recommendation": the numbers on screen are exactly
+  // the ones Observation Intelligence classified on, not a paraphrase.
+  const evidenceItems = input.executiveObservations.filter((o) => o.evidence.length > 0);
+  const evidenceListItems = evidenceItems
+    .map(
+      (o) =>
+        `<li><div class="ev-title">${escapeHtml(o.whatHappened)}</div><ul class="ev-facts">${o.evidence.map((fact) => `<li>${escapeHtml(fact)}</li>`).join('')}</ul></li>`
+    )
+    .join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -453,10 +507,20 @@ a{color:var(--teal);font-weight:600;text-decoration:none;}
 a:hover{color:var(--teal-light);}
 .tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-muted);background:var(--warm-deep);border-radius:10px;padding:2px 8px;margin-left:8px;}
 .cli-hint{font-size:12px;color:var(--ink-muted);font-family:monospace;background:var(--warm-deep);padding:2px 8px;border-radius:4px;display:inline-block;}
+.evidence-list{margin-top:2px;}
+.evidence-list>li{padding:10px 0;border-bottom:1px solid var(--border);}
+.evidence-list>li:last-child{border-bottom:none;}
+.ev-title{font-weight:600;font-size:14px;color:var(--ink);margin-bottom:4px;}
+.ev-title::before{content:"• ";color:var(--teal);}
+.ev-facts{list-style:none;padding-left:14px;margin-top:2px;}
+.ev-facts li{font-size:13px;color:var(--ink-muted);padding:1px 0;border:none;}
 .action-card{background:var(--white);border:1.5px solid var(--teal-border);border-radius:8px;padding:18px 20px;}
 .action-label{font-size:12px;color:var(--ink-muted);margin-bottom:10px;}
 .action-button{display:inline-block;background:var(--teal);color:#fff;font-size:15px;font-weight:600;border:none;border-radius:6px;padding:12px 22px;cursor:pointer;font-family:inherit;}
 .action-button:hover{background:var(--teal-light);}
+.action-reasoning{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+.action-reasoning-label{display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:5px;}
+.action-reasoning-text{font-size:14px;color:var(--ink-soft);line-height:1.5;}
 .company-chip{display:inline-block;background:var(--teal-dim);border:1px solid var(--teal-border);color:var(--ink);font-size:14px;font-weight:600;padding:8px 16px;border-radius:20px;}
 .start{background:var(--ink);border-radius:8px;padding:22px 24px;margin-top:8px;}
 .start a{color:#fff;font-size:15px;display:block;padding:6px 0;}
@@ -483,6 +547,13 @@ a:hover{color:var(--teal-light);}
     <div class="briefing-text">${escapeHtml(narrativeOnly)}</div>
   </div>
 
+  ${evidenceListItems ? `
+  <div class="section" style="margin-top:20px;">
+    <div class="section-title">📊 Evidence</div>
+    <ul class="evidence-list">${evidenceListItems}</ul>
+  </div>
+  ` : ''}
+
   <hr class="divider">
 
   <div class="section">
@@ -498,6 +569,12 @@ a:hover{color:var(--teal-light);}
     <div class="action-card">
       <div class="action-label">If you only do one thing today</div>
       <button class="action-button" onclick="alert('One-click execution isn\\'t built yet — this is the recommended action Marketing OS would run for you.'); return false;">${escapeHtml(recommendedAction)}</button>
+      ${recommendedActionReasoning ? `
+      <div class="action-reasoning">
+        <span class="action-reasoning-label">Why this is today's highest-leverage action</span>
+        <div class="action-reasoning-text">${escapeHtml(recommendedActionReasoning)}</div>
+      </div>
+      ` : ''}
     </div>
   </div>
 
@@ -521,7 +598,7 @@ a:hover{color:var(--teal-light);}
   <div class="start">
     <div class="section-title" style="color:rgba(255,255,255,0.5);">🚀 Start My Day</div>
     <a href="index.html">Open the approval queue →</a>
-    <a href="#" onclick="alert('Run: npm run knowledge:review'); return false;">Review knowledge suggestions →</a>
+    <a href="#" onclick="alert('Open Marketing OS and choose Review Knowledge to look at what\\'s waiting.'); return false;">Review knowledge suggestions →</a>
     <a href="intelligence.html">Explore the Knowledge Layer →</a>
   </div>
 
@@ -534,7 +611,7 @@ a:hover{color:var(--teal-light);}
 }
 
 export async function generateDailyBriefing(): Promise<string> {
-  const [operational, organizational, observations] = await Promise.all([
+  const [operational, organizational, observationsResult] = await Promise.all([
     gatherOperationalMemory(),
     gatherOrganizationalMemory(),
     gatherObservations(),
@@ -542,7 +619,7 @@ export async function generateDailyBriefing(): Promise<string> {
   const sections = {
     intelligence: gatherIntelligence(),
     suggestions: gatherSuggestions(),
-    observations,
+    observations: observationsResult.promptText,
     operational,
     organizational,
   };
@@ -569,6 +646,7 @@ export async function generateDailyBriefing(): Promise<string> {
     operational,
     organizational,
     generatedAt,
+    executiveObservations: observationsResult.executiveObservations,
   });
   const dashboardDir = join(REPO_ROOT, 'dashboard');
   mkdirSync(dashboardDir, { recursive: true });
