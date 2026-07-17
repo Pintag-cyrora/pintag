@@ -2,11 +2,11 @@
 // pipeline: Metrics Engine (SQL) -> Insight Engine (deterministic TS) ->
 // Report Composer (TS) -> Gemini (narration only) -> persisted report.
 //
-// See the plan doc, "The Intelligence Layer" section, for the full design
-// and the rationale for each decision below. In short: Gemini never decides
-// what's important — insight-engine.js already did that, deterministically,
-// before Gemini ever sees a prompt. Gemini's only job is to explain and
-// connect the insights it's handed.
+// This file is a thin orchestrator. Each layer's actual logic lives in its
+// own module: insight-engine.js (detection + lifecycle), report-composer.js
+// (what a report discusses + the prompt), gemini-client.js (the one place
+// that talks to Gemini). See INTELLIGENCE_ARCHITECTURE.md for the
+// invariants this split exists to protect.
 //
 // Auth: either a staff JWT (mirrors requireAdmin() in generate-listing-content,
 // reused verbatim per the plan's explicit note that modernizing it to
@@ -18,8 +18,13 @@
 // only ever gets read access to intelligence_reports/intelligence_insights/
 // report_insights via the API, matching every other analytics table.
 
-import { runInsightEngine, priorityScore } from './insight-engine.js';
-import { sumMetrics, bucketSnapshots, isoWeekKey, monthKey } from './metrics-utils.js';
+import { runInsightEngine } from './insight-engine.js';
+import { sumMetrics } from './metrics-utils.js';
+import {
+  composeReportInput, buildPrompt, isQuietPeriod, buildQuietDayReport,
+  buildReportInsightLinks, CANONICAL_DISTRICTS, CANONICAL_PROPERTY_TYPES,
+} from './report-composer.js';
+import { callGemini } from './gemini-client.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,16 +32,11 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const CANONICAL_DISTRICTS = [
-  'Chanthabouly', 'Sikhottabong', 'Xaythany', 'Sisattanak',
-  'Hadxaifong', 'Saysettha', 'Naxaithong',
-];
-const CANONICAL_PROPERTY_TYPES = [
-  'house', 'townhouse', 'villa', 'apartment', 'condo', 'commercial', 'land',
-];
-
 const TRAILING_WINDOW_DAYS = 30;
-const MAX_DISCUSSED_INSIGHTS = 8;
+// A stale lock (the previous run crashed without releasing it) is
+// reclaimable after this long — long enough to cover a real run plus
+// retries, short enough that a genuine crash doesn't wedge tomorrow's run.
+const SWEEP_LOCK_STALE_AFTER_MS = 10 * 60 * 1000;
 
 // ── Auth ─────────────────────────────────────────────────────────────────
 async function requireStaffOrService(req: Request): Promise<string | null> {
@@ -137,14 +137,72 @@ class Db {
     return returning ? r.json() : [];
   }
 
-  async patch(table: string, id: string, patch: Record<string, unknown>): Promise<void> {
-    const r = await fetch(`${this.url}/rest/v1/${table}?id=eq.${id}`, {
+  async patchWhere(table: string, filterQuery: string, patch: Record<string, unknown>, returning = false): Promise<any[]> {
+    const r = await fetch(`${this.url}/rest/v1/${table}?${filterQuery}`, {
       method: 'PATCH',
-      headers: this.headers({ Prefer: 'return=minimal' }),
+      headers: this.headers({ Prefer: returning ? 'return=representation' : 'return=minimal' }),
       body: JSON.stringify(patch),
     });
     if (!r.ok) throw new Error(`PATCH ${table} failed: ${r.status} ${await r.text()}`);
+    return returning ? r.json() : [];
   }
+
+  async patch(table: string, id: string, patch: Record<string, unknown>): Promise<void> {
+    await this.patchWhere(table, `id=eq.${id}`, patch, false);
+  }
+
+  async delete(table: string, id: string): Promise<void> {
+    const r = await fetch(`${this.url}/rest/v1/${table}?id=eq.${id}`, {
+      method: 'DELETE',
+      headers: this.headers({ Prefer: 'return=minimal' }),
+    });
+    if (!r.ok) throw new Error(`DELETE ${table} failed: ${r.status} ${await r.text()}`);
+  }
+}
+
+// ── Idempotency ──────────────────────────────────────────────────────────
+// A duplicate cron fire (or any accidental double invocation) for a period
+// that's already been generated should be a cheap, safe no-op — not a
+// second Gemini charge and not a second row. See
+// INTELLIGENCE_ARCHITECTURE.md's Database Invariants: the partial unique
+// index on intelligence_reports is the actual guarantee; this check is
+// what makes the common case return fast and cleanly rather than relying
+// on that index to reject it after doing all the work.
+async function findExistingReport(db: Db, reportType: ReportType, period: { start: string; end: string }): Promise<any | null> {
+  const rows = await db.select(
+    'intelligence_reports',
+    `report_type=eq.${reportType}&period_start=eq.${period.start}&period_end=eq.${period.end}&status=eq.generated&limit=1`
+  );
+  return rows[0] || null;
+}
+
+// ── Sweep lock ───────────────────────────────────────────────────────────
+// Prevents two concurrent daily Insight Engine sweeps from both reading
+// "no open insight for key X" before either commits and both inserting —
+// which would produce two open insights tracking the same real-world
+// condition, breaking the "one insight = one tracked condition" invariant.
+//
+// A single-row claim table via an atomic PATCH, not a Postgres session-
+// level advisory lock: Supabase's REST API is served over a pooled
+// connection where consecutive HTTP calls are not guaranteed to land on
+// the same underlying database session, so a lock acquired in one request
+// and released in another could silently be released by (or held forever
+// by) the wrong connection. A row-level UPDATE's WHERE clause is
+// re-evaluated under Postgres's own row locking, which is race-safe
+// regardless of connection pooling, and needs no matching "same session"
+// requirement to release correctly.
+async function acquireSweepLock(db: Db): Promise<boolean> {
+  const staleBefore = new Date(Date.now() - SWEEP_LOCK_STALE_AFTER_MS).toISOString();
+  const rows = await db.patchWhere(
+    'intelligence_sweep_lock',
+    `id=eq.daily_sweep&or=(locked_at.is.null,locked_at.lt.${encodeURIComponent(staleBefore)})`,
+    { locked_at: new Date().toISOString() },
+    true
+  );
+  return rows.length > 0;
+}
+async function releaseSweepLock(db: Db): Promise<void> {
+  await db.patchWhere('intelligence_sweep_lock', 'id=eq.daily_sweep', { locked_at: null }, false);
 }
 
 // ── Metrics Engine access ───────────────────────────────────────────────
@@ -186,176 +244,6 @@ async function runDailyInsightSweep(db: Db, today: DailySnapshot, trailing: Dail
   return { inserted, updatedIds: toUpdate.map((u: any) => u.id), resolvedIds: toResolve };
 }
 
-// ── Report Composer ──────────────────────────────────────────────────────
-// Selects which insights this report discusses and assembles Gemini's
-// structured input. Gemini never sees raw database rows — only this.
-async function composeReportInput(db: Db, reportType: ReportType, period: { start: string; end: string }, dailySweep?: { inserted: any[]; updatedIds: string[]; resolvedIds: string[] }) {
-  let newInsights: any[] = [];
-  let continuingInsights: any[] = [];
-  let resolvedInsights: any[] = [];
-
-  if (reportType === 'daily' && dailySweep) {
-    newInsights = dailySweep.inserted;
-    if (dailySweep.updatedIds.length) {
-      continuingInsights = await db.select('intelligence_insights', `select=*&id=in.(${dailySweep.updatedIds.join(',')})`);
-    }
-    if (dailySweep.resolvedIds.length) {
-      resolvedInsights = await db.select('intelligence_insights', `select=*&id=in.(${dailySweep.resolvedIds.join(',')})`);
-    }
-  } else {
-    // Weekly/Monthly are pure readers of insight state — no detection here.
-    // "New" = opened within this period; "resolved" = resolved within this
-    // period; "continuing" = still open, opened before this period, active
-    // during it (last_seen falls inside the window).
-    newInsights = await db.select(
-      'intelligence_insights',
-      `select=*&first_seen=gte.${period.start}&first_seen=lte.${period.end}`
-    );
-    resolvedInsights = await db.select(
-      'intelligence_insights',
-      `select=*&resolved_at=gte.${period.start}T00:00:00&resolved_at=lte.${period.end}T23:59:59`
-    );
-    const stillOpen = await db.select(
-      'intelligence_insights',
-      `select=*&resolved_at=is.null&last_seen=gte.${period.start}`
-    );
-    const newIds = new Set(newInsights.map((i) => i.id));
-    continuingInsights = stillOpen.filter((i: any) => !newIds.has(i.id));
-  }
-
-  // Rank by read-time priority; always keep every new/resolved insight
-  // regardless of rank (continuity matters more than rank for those), cap
-  // the total so reports don't bloat as open insights accumulate.
-  const withPriority = (arr: any[]) => arr.map((i) => ({ ...i, _priority: priorityScore(i) }));
-  const rankedContinuing = withPriority(continuingInsights).sort((a, b) => b._priority - a._priority);
-
-  const mustKeep = [...newInsights, ...resolvedInsights];
-  const remainingSlots = Math.max(0, MAX_DISCUSSED_INSIGHTS - mustKeep.length);
-  const discussedContinuing = rankedContinuing.slice(0, remainingSlots);
-
-  return {
-    period,
-    new_insights: newInsights.map(stripInternal),
-    continuing_insights: discussedContinuing.map(stripInternal),
-    resolved_insights: resolvedInsights.map(stripInternal),
-  };
-}
-
-function stripInternal(i: any) {
-  const { _priority, ...rest } = i;
-  return rest;
-}
-
-// ── Gemini prompt construction ──────────────────────────────────────────
-function insightSummaryLine(i: any): string {
-  const dims = [i.dimension_district, i.dimension_property_type].filter(Boolean).join('/');
-  return `- [${i.type}] ${i.title}${dims ? ` (${dims})` : ''} — severity: ${i.severity}, confidence: ${Math.round((i.confidence || 0) * 100)}%, trend: ${i.trend}${i.recommendation ? `, suggested action: ${i.recommendation}` : ''}`;
-}
-
-function buildPrompt(reportType: ReportType, composed: any, rawMetricsSummary: any, supply: { byDistrict: Record<string, number>; byType: Record<string, number> } | null) {
-  const newBlock = composed.new_insights.length
-    ? composed.new_insights.map(insightSummaryLine).join('\n')
-    : '(none)';
-  const continuingBlock = composed.continuing_insights.length
-    ? composed.continuing_insights.map(insightSummaryLine).join('\n')
-    : '(none)';
-  const resolvedBlock = composed.resolved_insights.length
-    ? composed.resolved_insights.map(insightSummaryLine).join('\n')
-    : '(none)';
-
-  const supplyBlock = supply
-    ? `\nCURRENT ACTIVE SUPPLY (live snapshot, not historical):\nBy district: ${JSON.stringify(supply.byDistrict)}\nBy property type: ${JSON.stringify(supply.byType)}\n`
-    : '';
-
-  const commonRules = `You are writing for Pintag, a real estate marketplace in Vientiane, Laos. You are given a set of insights that deterministic code has ALREADY detected, ranked, and classified as new/continuing/resolved — these are the only findings that exist. Your job is strictly to explain, connect, and narrate them clearly.
-
-Do NOT:
-- Discover anomalies yourself
-- Decide what's significant
-- Invent any statistic, percentage, or number not present in the data below
-- State a number without it appearing in the evidence provided
-
-You MAY:
-- Explain WHY something might be happening, in plain business terms
-- Connect related insights into one narrative (e.g. a demand spike + a supply shortage in the same district becomes one recruiting recommendation)
-- Reference the raw metrics summary below for period totals
-
-NEW INSIGHTS (🟢):\n${newBlock}\n
-CONTINUING INSIGHTS (🔴):\n${continuingBlock}\n
-RESOLVED INSIGHTS (✅):\n${resolvedBlock}
-${supplyBlock}
-RAW METRICS SUMMARY (period totals, safe to cite verbatim):
-${JSON.stringify(rawMetricsSummary)}
-
-Canonical districts: ${CANONICAL_DISTRICTS.join(', ')}. Canonical property types: ${CANONICAL_PROPERTY_TYPES.join(', ')}.`;
-
-  const structureByType: Record<ReportType, string> = {
-    daily: `Write a DAILY INTELLIGENCE REPORT, 300-600 words, readable in under two minutes. Natural prose, not a list of statistics. Structure with these markdown headings, in order:
-# Executive Summary
-## Biggest Story
-## Marketplace
-## Buyer Behaviour
-## Property Performance
-## Product Insights
-## Opportunities
-## AI Recommendations
-Skip a section entirely (omit the heading) if there is truly nothing worth saying in it today — do not pad.`,
-    weekly: `Write a WEEKLY INTELLIGENCE REPORT. Compare this week to the previous week; highlight TRENDS, not just totals. Structure with these markdown headings:
-# Executive Summary
-## What Changed This Week
-## Continuing Trends
-## Resolved This Week
-## Recommendations`,
-    monthly: `Write a MONTHLY INTELLIGENCE REPORT. Professional executive market summary — should read like a CBRE, JLL or Savills market report, suitable for management or investors, not like raw analytics. Structure with these markdown headings:
-# Executive Summary
-## Market Overview
-## Demand & Supply
-## Notable Trends This Month
-## Outlook & Recommendations`,
-  };
-
-  return `${commonRules}\n\n${structureByType[reportType]}\n\nReturn ONLY valid JSON, no additional text, in this exact format:
-{
-  "title": "a short descriptive title for this report, max 100 characters",
-  "executive_summary": "2-3 sentences, the absolute headline takeaway",
-  "body_markdown": "the full report body using the headings above",
-  "mentioned_districts": ["array of canonical district names actually discussed"],
-  "mentioned_property_types": ["array of canonical property type keys actually discussed"]
-}`;
-}
-
-async function callGemini(apiKey: string, prompt: string): Promise<any> {
-  const RETRY_DELAYS = [2000, 5000, 10000];
-  let response!: Response;
-  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
-    response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
-        }),
-      }
-    );
-    if (response.ok) break;
-    if ((response.status === 429 || response.status === 503) && attempt < RETRY_DELAYS.length) {
-      await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
-      continue;
-    }
-    const errText = await response.text();
-    throw new Error(`Gemini API ${response.status}: ${errText.slice(0, 200)}`);
-  }
-
-  const geminiData = await response.json();
-  const text = geminiData.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('');
-  if (!text) throw new Error('No text content in Gemini response');
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Could not parse JSON from Gemini response');
-  return JSON.parse(jsonMatch[0]);
-}
-
 // ── Main handler ──────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -374,14 +262,30 @@ Deno.serve(async (req) => {
 
   let reportType: ReportType = 'daily';
   let period = { start: '', end: '' };
+  let sweepLockHeld = false;
 
   try {
     const body = await req.json().catch(() => ({}));
     reportType = (['daily', 'weekly', 'monthly'].includes(body.report_type) ? body.report_type : 'daily') as ReportType;
     period = resolvePeriod(reportType, body.period_end);
+    const force = body.force === true;
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
-    if (!apiKey) throw new Error('GEMINI_API_KEY is not configured. Add it in Supabase Dashboard → Edge Functions → Manage secrets.');
+    // Idempotency: a duplicate invocation for an already-generated period
+    // either returns the existing report (no force) or replaces it
+    // (force — the UI's Regenerate button, and the manual preview
+    // workflow's "Generate Again" after Delete). Deleting-then-inserting
+    // rather than updating in place keeps this consistent with a plain
+    // Delete followed by a fresh Generate, and avoids colliding with the
+    // partial unique index on (report_type, period_start, period_end).
+    const existing = await findExistingReport(db, reportType, period);
+    if (existing) {
+      if (!force) {
+        return new Response(JSON.stringify(existing), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      await db.delete('intelligence_reports', existing.id);
+    }
 
     // Fetch trailing window + the report's own period in one call: for
     // daily, trailingStart is 30 days before period.start; for weekly/
@@ -399,7 +303,19 @@ Deno.serve(async (req) => {
 
     if (reportType === 'daily') {
       const today = periodDays[periodDays.length - 1] || { day: period.end, metrics: {} };
-      dailySweep = await runDailyInsightSweep(db, today, trailingDays, period.end);
+
+      const gotLock = await acquireSweepLock(db);
+      if (!gotLock) {
+        throw new Error('Another daily Insight Engine sweep is already in progress — skipping this invocation to avoid duplicate insight detection.');
+      }
+      sweepLockHeld = true;
+      try {
+        dailySweep = await runDailyInsightSweep(db, today, trailingDays, period.end);
+      } finally {
+        await releaseSweepLock(db);
+        sweepLockHeld = false;
+      }
+
       rawMetricsSummary = today.metrics;
       supply = await fetchCurrentSupply(db);
     } else {
@@ -408,8 +324,25 @@ Deno.serve(async (req) => {
     }
 
     const composed = await composeReportInput(db, reportType, period, dailySweep);
-    const prompt = buildPrompt(reportType, composed, rawMetricsSummary, supply);
-    const gemini = await callGemini(apiKey, prompt);
+
+    // Quiet period: nothing new/continuing/resolved to discuss. Skip
+    // Gemini entirely rather than asking it to write 300-600 words about
+    // nothing — saves cost and removes the padding/hallucination risk a
+    // near-empty prompt invites. Weekly/Monthly still always narrate,
+    // since a wider window summarizing "nothing changed" is itself a
+    // legitimate, useful thing to say in an executive-style report.
+    let gemini: any;
+    let modelUsed: string;
+    if (reportType === 'daily' && isQuietPeriod(composed)) {
+      gemini = buildQuietDayReport(reportType, period);
+      modelUsed = 'deterministic';
+    } else {
+      const apiKey = Deno.env.get('GEMINI_API_KEY');
+      if (!apiKey) throw new Error('GEMINI_API_KEY is not configured. Add it in Supabase Dashboard → Edge Functions → Manage secrets.');
+      const prompt = buildPrompt(reportType, composed, rawMetricsSummary, supply);
+      gemini = await callGemini(apiKey, prompt);
+      modelUsed = 'gemini-2.5-flash';
+    }
 
     const mentionedDistricts = Array.isArray(gemini.mentioned_districts)
       ? gemini.mentioned_districts.filter((d: string) => CANONICAL_DISTRICTS.includes(d))
@@ -429,34 +362,31 @@ Deno.serve(async (req) => {
       metrics_snapshot: rawMetricsSummary,
       mentioned_districts: mentionedDistricts,
       mentioned_property_types: mentionedPropertyTypes,
-      model_used: 'gemini-2.5-flash',
+      model_used: modelUsed,
     }]);
 
-    // report_insights links — biggest_story is whichever new/continuing
-    // insight ranks highest by read-time priority; everything else
-    // discussed gets 'mentioned'. Simple, defensible default; Gemini's own
-    // prose is free to weave a richer narrative, but the *link table* only
-    // needs "was this insight part of the report," not a precise per-role
-    // taxonomy Gemini would have to output correctly every time.
-    const candidates = [...composed.new_insights, ...composed.continuing_insights];
-    if (candidates.length) {
-      const withPriority = candidates.map((i: any) => ({ ...i, _priority: priorityScore(i) }));
-      withPriority.sort((a, b) => b._priority - a._priority);
-      const biggestStoryId = withPriority[0]?.id;
-      const links = [
-        ...withPriority.map((i: any) => ({
-          report_id: report.id, insight_id: i.id,
-          role: i.id === biggestStoryId ? 'biggest_story' : 'mentioned',
-        })),
-        ...composed.resolved_insights.map((i: any) => ({ report_id: report.id, insight_id: i.id, role: 'mentioned' })),
-      ];
-      if (links.length) await db.insert('report_insights', links, false);
+    // report_insights links: deduplicated and role-assigned by the Report
+    // Composer (buildReportInsightLinks). Wrapped in its own try/catch —
+    // the report itself already committed successfully above; a links-
+    // table hiccup must never retroactively mislabel a good report as
+    // 'failed'. Degrades gracefully: the report still renders, just
+    // without NEW/CONTINUING/RESOLVED chips for this one run.
+    const links = buildReportInsightLinks(composed).map((l) => ({ report_id: report.id, ...l }));
+    if (links.length) {
+      try {
+        await db.insert('report_insights', links, false);
+      } catch (linkErr) {
+        console.error('report_insights insert failed (report already saved):', linkErr);
+      }
     }
 
     return new Response(JSON.stringify(report), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
+    if (sweepLockHeld) {
+      await releaseSweepLock(db).catch(() => {});
+    }
     const message = error instanceof Error ? error.message : 'Unknown error';
     try {
       await db.insert('intelligence_reports', [{

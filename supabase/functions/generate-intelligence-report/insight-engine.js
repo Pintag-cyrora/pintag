@@ -7,10 +7,15 @@
 // `node` (unit tests) — no build step, no type-stripping flags, matches
 // this codebase's zero-tooling convention.
 //
-// Pluggability: a future tracked metric (a new module's output, a price
-// time series once one exists, etc.) is one more entry in
-// TRACKED_SCALAR_METRICS or TRACKED_BREAKDOWN_METRICS below — the
-// detection/persistence loop in runInsightEngine() never changes.
+// Architecture: detection is pluggable, the lifecycle is not. A Detector
+// only ever produces RawFinding objects (see below); everything after that
+// — matching against open insights, inserting, updating, resolving with
+// hysteresis, computing trend — is one shared loop that has no idea which
+// detector produced a given finding. Adding a new detector shape
+// (percentile-based, ratio-based, rule-based, ML-based) means writing a
+// new object satisfying the Detector interface and adding it to
+// DEFAULT_DETECTORS — it never requires touching the lifecycle loop or any
+// other detector. See INTELLIGENCE_ARCHITECTURE.md.
 
 // ── Pure statistics ──────────────────────────────────────────────────
 export function mean(arr) {
@@ -25,23 +30,41 @@ export function stddev(arr, m) {
   return Math.sqrt(variance);
 }
 
+// Keeps only genuinely-measured numeric values, dropping entries where a
+// metric could not be read at all (undefined/null/NaN — see the
+// schema-drift note on detectSignificance/isStillSignificant below). A
+// real measured 0 always survives this filter; a missing key never does.
+function definedValues(arr) {
+  return arr.filter((v) => typeof v === 'number' && !Number.isNaN(v));
+}
+
 // Is today's value significant enough to OPEN a new insight (or confirm
 // an existing one)? Per-metric, self-adjusting bar (its own trailing
 // stddev), not a universal percentage. minSample/minMean are the
 // disclosed, deliberate exceptions — without them, a metric going from 1
 // to 3 reads as "+200%" even though it's just noise on a near-zero base.
+//
+// Schema-drift safety: if today's value itself can't be read as a number
+// (the metrics key is missing, not genuinely zero), this returns null
+// rather than fabricating a reading from garbage — a missing key must
+// never be able to open a new insight. Same for the trailing series: only
+// genuinely-measured entries count toward minSample; a metric that only
+// started being measured recently is correctly treated as "not enough
+// history yet," not as 30 phantom zero-days.
 export function detectSignificance(todayValue, trailingValues, opts) {
   opts = opts || {};
   const openZ = opts.openZ !== undefined ? opts.openZ : 1.5;
   const minSample = opts.minSample !== undefined ? opts.minSample : 7;
   const minMean = opts.minMean !== undefined ? opts.minMean : 3;
 
-  const validSample = trailingValues.filter((v) => v !== null && v !== undefined).length;
-  if (validSample < minSample) return null;
+  if (typeof todayValue !== 'number' || Number.isNaN(todayValue)) return null;
 
-  const mu = mean(trailingValues);
+  const valid = definedValues(trailingValues);
+  if (valid.length < minSample) return null;
+
+  const mu = mean(valid);
   if (mu < minMean) return null;
-  const sd = stddev(trailingValues, mu);
+  const sd = stddev(valid, mu);
   if (sd === 0) return null;
 
   const z = (todayValue - mu) / sd;
@@ -53,12 +76,27 @@ export function detectSignificance(todayValue, trailingValues, opts) {
 // Hysteresis: the bar to STAY open is deliberately lower than the bar to
 // open in the first place, so a value sitting right at the boundary
 // doesn't flap open/resolved/open/resolved on ordinary day-to-day noise.
+//
+// Returns true/false when it can genuinely evaluate, or null when it
+// can't (today's value unreadable, or no genuinely-measured trailing
+// data at all). null is a distinct outcome from false on purpose: a
+// metric whose key vanished from the SQL output must never be able to
+// silently force-resolve a real, ongoing insight just because its
+// coerced-to-zero series looks like "back to normal" — the caller must
+// treat null as "leave this insight alone," not as "resolve it."
 export function isStillSignificant(todayValue, trailingValues, opts) {
   opts = opts || {};
   const resolveZ = opts.resolveZ !== undefined ? opts.resolveZ : 1.0;
-  const mu = mean(trailingValues);
-  const sd = stddev(trailingValues, mu);
-  if (sd === 0) return false;
+
+  if (typeof todayValue !== 'number' || Number.isNaN(todayValue)) return null;
+
+  const valid = definedValues(trailingValues);
+  if (!valid.length) return null;
+
+  const mu = mean(valid);
+  const sd = stddev(valid, mu);
+  if (sd === 0) return null;
+
   const z = (todayValue - mu) / sd;
   return Math.abs(z) >= resolveZ;
 }
@@ -110,11 +148,26 @@ export function insightKey(type, metricKey, dims) {
   return [type, metricKey, dims.district || '', dims.propertyType || '', dims.propertyId || ''].join('|');
 }
 
-// ── Tracked metrics registry — the pluggability point ───────────────────
-export const TRACKED_SCALAR_METRICS = [
-  { metricKey: 'search.total', label: 'total searches', type: 'search_trend', extract: (m) => m.search.total },
-  { metricKey: 'search.zero_result', label: 'zero-result searches', type: 'search_trend', extract: (m) => m.search.zero_result },
-  { metricKey: 'listing_ctr', label: 'listing click-through rate', type: { up: 'ctr_improvement', down: 'ctr_decline' }, extract: (m) => m.listing_ctr * 100 },
+// ── z-score detector — the built-in, and currently only, Detector ───────
+// A Detector is: { key, detect(context) -> RawFinding[], reevaluate?(insight, context) -> {stillSignificant} | null }.
+//
+// context: { todaySnapshot: {day, metrics}, trailingSnapshots: [{day, metrics}, ...] }.
+// RawFinding: { type, metricKey, dimensionDistrict, dimensionPropertyType,
+//               dimensionPropertyId, title, summary, evidence, severity, confidence }.
+//
+// reevaluate is optional and only needed if a detector's insights should
+// ever be able to auto-resolve when they stop being significant — the
+// lifecycle loop calls it once per open insight it didn't re-match this
+// run, tries each registered detector in turn, and force-resolves any
+// insight no detector claims (an orphaned metric_key — e.g. because a
+// detector was removed). Returning null means "not mine, ask someone
+// else" (or, if none claim it, force-resolve); returning
+// { stillSignificant: null } means "mine, but I can't tell right now —
+// leave it alone" (the schema-drift safety case above).
+const TRACKED_SCALAR_METRICS = [
+  { metricKey: 'search.total', label: 'total searches', type: 'search_trend', extract: (m) => (m.search ? m.search.total : undefined) },
+  { metricKey: 'search.zero_result', label: 'zero-result searches', type: 'search_trend', extract: (m) => (m.search ? m.search.zero_result : undefined) },
+  { metricKey: 'listing_ctr', label: 'listing click-through rate', type: { up: 'ctr_improvement', down: 'ctr_decline' }, extract: (m) => (typeof m.listing_ctr === 'number' ? m.listing_ctr * 100 : undefined) },
   { metricKey: 'whatsapp_clicks', label: 'WhatsApp clicks', type: 'conversion_anomaly', extract: (m) => m.whatsapp_clicks },
   { metricKey: 'leads_created', label: 'leads created', type: 'conversion_anomaly', extract: (m) => m.leads_created },
   { metricKey: 'gallery_events', label: 'gallery interactions', type: 'ux_anomaly', extract: (m) => m.gallery_events },
@@ -123,23 +176,37 @@ export const TRACKED_SCALAR_METRICS = [
   { metricKey: 'map_events', label: 'map usage', type: 'ux_anomaly', extract: (m) => m.map_events },
 ];
 
-export const TRACKED_BREAKDOWN_METRICS = [
-  { metricKey: 'search.by_district', label: 'searches', type: 'demand_spike', extract: (m) => m.search.by_district, dimension: 'district' },
-  { metricKey: 'search.by_property_type', label: 'searches', type: 'demand_spike', extract: (m) => m.search.by_property_type, dimension: 'propertyType' },
+const TRACKED_BREAKDOWN_METRICS = [
+  { metricKey: 'search.by_district', label: 'searches', type: 'demand_spike', extract: (m) => (m.search ? m.search.by_district : undefined), dimension: 'district' },
+  { metricKey: 'search.by_property_type', label: 'searches', type: 'demand_spike', extract: (m) => (m.search ? m.search.by_property_type : undefined), dimension: 'propertyType' },
   { metricKey: 'views_by_district', label: 'listing views', type: 'demand_spike', extract: (m) => m.views_by_district, dimension: 'district' },
   { metricKey: 'views_by_property_type', label: 'listing views', type: 'demand_spike', extract: (m) => m.views_by_property_type, dimension: 'propertyType' },
 ];
+
+// Re-exported for tests/tooling that want to inspect what's currently
+// wired without reaching into the detector's closure.
+export { TRACKED_SCALAR_METRICS, TRACKED_BREAKDOWN_METRICS };
 
 function findSpec(metricKey) {
   return TRACKED_SCALAR_METRICS.find((s) => s.metricKey === metricKey) ||
     TRACKED_BREAKDOWN_METRICS.find((s) => s.metricKey === metricKey) || null;
 }
 
+// Raw extracted values only, undefined preserved (no zero-coercion) — the
+// significance functions above are what decide how to treat a gap.
 function seriesFor(trailingSnapshots, extract) {
-  return trailingSnapshots.map((s) => {
-    const v = extract(s.metrics);
-    return typeof v === 'number' ? v : 0;
-  });
+  return trailingSnapshots.map((s) => extract(s.metrics));
+}
+
+// A breakdown dict entry that's simply absent (this district had no
+// searches that day) is a real, legitimate zero. A breakdown dict that's
+// itself entirely absent (the whole feature's key vanished from the SQL
+// output) is schema drift and must propagate as undefined, not as an
+// empty-dict-full-of-zeros.
+function breakdownValueAt(spec, metrics, key) {
+  const dict = spec.extract(metrics);
+  if (dict === undefined) return undefined;
+  return typeof dict[key] === 'number' ? dict[key] : 0;
 }
 
 function buildTitle(label, sig) {
@@ -150,43 +217,36 @@ function buildTitle(label, sig) {
     : `${label[0].toUpperCase()}${label.slice(1)} ${dir} vs. 30-day average`;
 }
 
-// ── Main entry point ─────────────────────────────────────────────────
-// todaySnapshot: { day, metrics } for the period being evaluated.
-// trailingSnapshots: array of { day, metrics } for the 30 days before it,
-//   oldest first (does NOT include todaySnapshot).
-// openInsights: current intelligence_insights rows where resolved_at IS NULL.
-// today: 'YYYY-MM-DD' string for first_seen/last_seen.
-//
-// Returns { toInsert, toUpdate, toResolve } — plain data, no side effects.
-// The caller (index.ts) is responsible for actually writing these via the
-// service-role REST client.
-export function runInsightEngine(todaySnapshot, trailingSnapshots, openInsights, today) {
-  const detected = [];
-
+function detectScalarFindings(todaySnapshot, trailingSnapshots) {
+  const findings = [];
   TRACKED_SCALAR_METRICS.forEach((spec) => {
-    const todayVal = spec.extract(todaySnapshot.metrics) || 0;
+    const todayVal = spec.extract(todaySnapshot.metrics);
     const series = seriesFor(trailingSnapshots, spec.extract);
     const sig = detectSignificance(todayVal, series);
     if (!sig) return;
     const type = typeof spec.type === 'string' ? spec.type : spec.type[sig.direction];
-    detected.push({
+    findings.push({
       type, metricKey: spec.metricKey, dimensionDistrict: null, dimensionPropertyType: null, dimensionPropertyId: null,
       title: buildTitle(spec.label, sig), summary: buildTitle(spec.label, sig),
       evidence: sig, severity: severityFromZ(sig.z), confidence: confidenceFromZ(sig.z),
     });
   });
+  return findings;
+}
 
+function detectBreakdownFindings(todaySnapshot, trailingSnapshots) {
+  const findings = [];
   TRACKED_BREAKDOWN_METRICS.forEach((spec) => {
     const keys = new Set();
     trailingSnapshots.forEach((s) => Object.keys(spec.extract(s.metrics) || {}).forEach((k) => keys.add(k)));
     Object.keys(spec.extract(todaySnapshot.metrics) || {}).forEach((k) => keys.add(k));
 
     keys.forEach((key) => {
-      const todayVal = (spec.extract(todaySnapshot.metrics) || {})[key] || 0;
-      const series = trailingSnapshots.map((s) => (spec.extract(s.metrics) || {})[key] || 0);
+      const todayVal = breakdownValueAt(spec, todaySnapshot.metrics, key);
+      const series = trailingSnapshots.map((s) => breakdownValueAt(spec, s.metrics, key));
       const sig = detectSignificance(todayVal, series);
       if (!sig) return;
-      detected.push({
+      findings.push({
         type: spec.type, metricKey: spec.metricKey,
         dimensionDistrict: spec.dimension === 'district' ? key : null,
         dimensionPropertyType: spec.dimension === 'propertyType' ? key : null,
@@ -195,6 +255,59 @@ export function runInsightEngine(todaySnapshot, trailingSnapshots, openInsights,
         evidence: sig, severity: severityFromZ(sig.z), confidence: confidenceFromZ(sig.z),
       });
     });
+  });
+  return findings;
+}
+
+export const zScoreDetector = {
+  key: 'z_score',
+  detect(context) {
+    return [
+      ...detectScalarFindings(context.todaySnapshot, context.trailingSnapshots),
+      ...detectBreakdownFindings(context.todaySnapshot, context.trailingSnapshots),
+    ];
+  },
+  reevaluate(insight, context) {
+    const spec = findSpec(insight.metric_key);
+    if (!spec) return null;
+
+    if (spec.dimension) {
+      const key = spec.dimension === 'district' ? insight.dimension_district : insight.dimension_property_type;
+      const todayVal = breakdownValueAt(spec, context.todaySnapshot.metrics, key);
+      const series = context.trailingSnapshots.map((s) => breakdownValueAt(spec, s.metrics, key));
+      return { stillSignificant: isStillSignificant(todayVal, series) };
+    }
+
+    const todayVal = spec.extract(context.todaySnapshot.metrics);
+    const series = seriesFor(context.trailingSnapshots, spec.extract);
+    return { stillSignificant: isStillSignificant(todayVal, series) };
+  },
+};
+
+// The pluggability point: add a new detector object here (or pass a
+// custom array into runInsightEngine) to wire in a new detection shape.
+// Nothing below this line — or in index.ts — needs to change.
+export const DEFAULT_DETECTORS = [zScoreDetector];
+
+// ── Main entry point ─────────────────────────────────────────────────
+// todaySnapshot: { day, metrics } for the period being evaluated.
+// trailingSnapshots: array of { day, metrics } for the 30 days before it,
+//   oldest first (does NOT include todaySnapshot).
+// openInsights: current intelligence_insights rows where resolved_at IS NULL.
+// today: 'YYYY-MM-DD' string for first_seen/last_seen.
+// detectors: optional array of Detector objects; defaults to DEFAULT_DETECTORS.
+//
+// Returns { toInsert, toUpdate, toResolve } — plain data, no side effects.
+// The caller (index.ts) is responsible for actually writing these via the
+// service-role REST client. This function itself never inspects which
+// detector produced a finding — see INTELLIGENCE_ARCHITECTURE.md.
+export function runInsightEngine(todaySnapshot, trailingSnapshots, openInsights, today, detectors) {
+  detectors = detectors || DEFAULT_DETECTORS;
+  const context = { todaySnapshot, trailingSnapshots };
+
+  const detected = [];
+  detectors.forEach((detector) => {
+    (detector.detect(context) || []).forEach((finding) => detected.push(finding));
   });
 
   const openByKey = new Map();
@@ -232,16 +345,18 @@ export function runInsightEngine(todaySnapshot, trailingSnapshots, openInsights,
   const toResolve = [];
   openInsights.forEach((ins) => {
     if (matchedOpenIds.has(ins.id)) return;
-    const spec = findSpec(ins.metric_key);
-    if (!spec) { toResolve.push(ins.id); return; }
-    const extract = spec.dimension
-      ? (m) => (spec.extract(m) || {})[
-          ins.dimension_district && spec.dimension === 'district' ? ins.dimension_district : ins.dimension_property_type
-        ] || 0
-      : spec.extract;
-    const todayVal = extract(todaySnapshot.metrics) || 0;
-    const series = seriesFor(trailingSnapshots, extract);
-    if (!isStillSignificant(todayVal, series)) {
+
+    let result = null;
+    for (const detector of detectors) {
+      if (typeof detector.reevaluate === 'function') {
+        result = detector.reevaluate(ins, context);
+        if (result) break;
+      }
+    }
+
+    if (!result) { toResolve.push(ins.id); return; } // no detector claims this metric_key — orphaned, force-resolve.
+    if (result.stillSignificant === null) return;     // claimed, but unreadable this run — leave untouched (schema-drift safety).
+    if (!result.stillSignificant) {
       toResolve.push(ins.id);
     } else {
       toUpdate.push({ id: ins.id, last_seen: today, trend: 'weakening' });

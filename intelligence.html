@@ -56,6 +56,9 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 .insp-btn.secondary{background:var(--warm-deep);color:var(--ink-soft);}
 .insp-btn.secondary:hover{background:var(--border-mid);}
 select.prev-reports{font-family:'DM Sans',sans-serif;font-size:12.5px;padding:8px 10px;border:1px solid var(--border-mid);border-radius:5px;background:var(--white);color:var(--ink);}
+.date-input{font-family:'DM Sans',sans-serif;font-size:12.5px;padding:8px 10px;border:1px solid var(--border-mid);border-radius:5px;background:var(--white);color:var(--ink);}
+.insp-btn.danger{background:var(--white);color:var(--red);border:1px solid rgba(192,57,43,0.3);}
+.insp-btn.danger:hover{background:rgba(192,57,43,0.08);}
 
 .report-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:28px 30px;margin-bottom:20px;}
 .report-meta{font-size:11px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px;}
@@ -157,8 +160,10 @@ select.prev-reports{font-family:'DM Sans',sans-serif;font-size:12.5px;padding:8p
           <select class="prev-reports" id="prev-reports-select" onchange="onPickPreviousReport(this.value)">
             <option value="">Previous reports…</option>
           </select>
+          <input type="date" class="date-input" id="generate-date-input" title="Leave blank for the default period (yesterday for Daily, last 7 days for Weekly, current month for Monthly)">
+          <button class="insp-btn" id="generate-btn" onclick="generateReport()">Generate Report</button>
         </div>
-        <button class="insp-btn" id="regenerate-btn" onclick="regenerateReport()">🔄 Regenerate</button>
+        <button class="insp-btn danger" id="delete-btn" onclick="deleteCurrentReport()" disabled>🗑 Delete</button>
       </div>
       <div id="report-container"><div class="insp-loading">Loading report…</div></div>
     </div>
@@ -258,16 +263,27 @@ async function sbGet(path) {
   const text = await res.text();
   return text ? JSON.parse(text) : [];
 }
-async function callGenerateReport(reportType, periodEnd) {
+async function callGenerateReport(reportType, periodEnd, force) {
   const token = _adminToken || SUPABASE_ANON;
+  const payload = { report_type: reportType };
+  if (periodEnd) payload.period_end = periodEnd;
+  if (force) payload.force = true;
   const res = await fetch(SUPABASE_URL + '/functions/v1/generate-intelligence-report', {
     method: 'POST',
     headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify(periodEnd ? { report_type: reportType, period_end: periodEnd } : { report_type: reportType })
+    body: JSON.stringify(payload)
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || ('Request failed: ' + res.status));
   return body;
+}
+async function sbDelete(path) {
+  const token = _adminToken || SUPABASE_ANON;
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    method: 'DELETE',
+    headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token }
+  });
+  if (!res.ok) throw new Error('Delete failed: ' + res.status);
 }
 
 function esc(s) {
@@ -333,9 +349,11 @@ function renderMarkdown(md) {
 // Tabs
 // ══════════════════════════════════════════════════════════════════
 let currentTab = 'daily';
+let currentReportId = null;
 
 function switchTab(tab) {
   currentTab = tab;
+  currentReportId = null;
   document.querySelectorAll('#intel-tabs .tab').forEach((el) => el.classList.toggle('active', el.dataset.tab === tab));
   document.getElementById('report-view').style.display = tab === 'archive' ? 'none' : 'block';
   document.getElementById('archive-view').style.display = tab === 'archive' ? 'block' : 'none';
@@ -344,6 +362,8 @@ function switchTab(tab) {
   if (tab === 'archive') {
     resetArchiveFilters();
   } else {
+    document.getElementById('generate-date-input').value = '';
+    document.getElementById('delete-btn').disabled = true;
     loadReportTab(tab);
   }
 }
@@ -359,7 +379,9 @@ async function loadReportTab(reportType) {
   ]);
   populatePreviousReportsSelect(prevList);
   if (!reports.length) {
-    document.getElementById('report-container').innerHTML = '<div class="insp-empty">No ' + reportType + ' report has been generated yet. Click 🔄 Regenerate to create the first one.</div>';
+    document.getElementById('report-container').innerHTML = '<div class="insp-empty">No ' + reportType + ' report has been generated yet. Pick a date (optional) and click Generate Report to create the first one.</div>';
+    currentReportId = null;
+    document.getElementById('delete-btn').disabled = true;
     return;
   }
   await renderReport(reports[0]);
@@ -380,6 +402,9 @@ async function onPickPreviousReport(id) {
 
 async function renderReport(report) {
   const container = document.getElementById('report-container');
+  currentReportId = report.id;
+  document.getElementById('delete-btn').disabled = false;
+  document.getElementById('generate-date-input').value = report.period_end || '';
 
   if (report.status === 'failed') {
     container.innerHTML =
@@ -431,16 +456,38 @@ async function renderReport(report) {
     '</div>';
 }
 
-async function regenerateReport() {
-  const btn = document.getElementById('regenerate-btn');
+// Manual preview workflow: Generate (any date) -> Review -> Delete ->
+// Generate Again. Always sends force:true — an explicit staff-initiated
+// click should always produce a fresh report for the chosen period, even
+// if one already exists (the edge function replaces it, matching a plain
+// Delete followed by a fresh Generate — see the Intelligence Layer
+// hardening plan's idempotency section).
+async function generateReport() {
+  const btn = document.getElementById('generate-btn');
+  const dateValue = document.getElementById('generate-date-input').value || undefined;
   btn.disabled = true; btn.textContent = 'Generating…';
   try {
-    await callGenerateReport(currentTab);
+    await callGenerateReport(currentTab, dateValue, true);
     await loadReportTab(currentTab);
   } catch (e) {
     alert('Failed to generate report: ' + e.message);
   } finally {
-    btn.disabled = false; btn.textContent = '🔄 Regenerate';
+    btn.disabled = false; btn.textContent = 'Generate Report';
+  }
+}
+
+async function deleteCurrentReport() {
+  if (!currentReportId) return;
+  if (!confirm('Delete this report? Its NEW/CONTINUING/RESOLVED links are removed too, but the underlying insights themselves are not affected.')) return;
+  const btn = document.getElementById('delete-btn');
+  btn.disabled = true;
+  try {
+    await sbDelete('intelligence_reports?id=eq.' + currentReportId);
+    currentReportId = null;
+    await loadReportTab(currentTab);
+  } catch (e) {
+    alert('Failed to delete report: ' + e.message);
+    btn.disabled = false;
   }
 }
 
