@@ -458,13 +458,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
   </button>
   <div class="lb-stage">
-    <button class="lb-arrow lb-prev" id="lb-prev" aria-label="Previous">
+    <button class="lb-arrow lb-prev" id="lb-prev" aria-label="Previous" data-track="gallery-lightbox-prev" data-track-type="button" data-track-label="Previous photo">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
     <div class="lb-img-wrap">
       <img class="lb-img" id="lb-img" alt="" decoding="async">
     </div>
-    <button class="lb-arrow lb-next" id="lb-next" aria-label="Next">
+    <button class="lb-arrow lb-next" id="lb-next" aria-label="Next" data-track="gallery-lightbox-next" data-track-type="button" data-track-label="Next photo">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
   </div>
@@ -476,6 +476,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
 <script src="session.js"></script>
+<script src="tracking.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // PINTAG · listing.html v4 — fully dynamic, no hardcoded content
@@ -908,6 +909,10 @@ async function fetchProperty(slug){
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
+    // Single-property page — every data-track element here implicitly
+    // refers to this listing; tracking.js falls back to this when an
+    // element has no explicit data-track-property-id of its own.
+    window.PINTAG_CURRENT_PROPERTY_ID=propertyContext.id||null;
     PT.log('Loaded',{id:propertyContext.id,title:propertyContext.title_en});
     try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout',e);showErrorState('Display error. Please refresh.');return;}
     updateOGTags(propertyContext);
@@ -1062,6 +1067,12 @@ function renderSimilarGrid(similar){
     var card=document.createElement('a');
     card.href='listing.html?slug='+encodeURIComponent(p.slug);
     card.className='sim-card';
+    if(p.id){
+      card.setAttribute('data-track','similar-property-card');
+      card.setAttribute('data-track-type','card');
+      card.setAttribute('data-track-property-id',p.id);
+      card.setAttribute('data-track-label',title);
+    }
     card.innerHTML=(
       '<div class="sim-card-img">'+imgHtml+'</div>'+
       '<div class="sim-body">'+
@@ -1269,7 +1280,7 @@ function buildMockupLayout(){
     other:{lo:'ຜູ້ຕິດຕໍ່',en:'Contact',zh:'联系人'}
   };
   var roleLabel=CONTACT_ROLE_LABELS[contact&&contact.role]||CONTACT_ROLE_LABELS.other;
-  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.managed_by_party_id||'')+'\',\'call_click\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" data-track="contact-phone" data-track-type="cta" data-track-label="Call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.managed_by_party_id||'')+'\',\'call_click\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
   var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
     '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
@@ -1277,7 +1288,7 @@ function buildMockupLayout(){
     '<div><div class="agent-name-en">'+esc((contact&&contact.name)||roleLabel.en)+'</div></div>'+
     '</div></div>'+
     '<div class="agent-ctas">'+
-    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',\'whatsapp_click\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" data-track="contact-whatsapp" data-track-type="cta" data-track-label="WhatsApp" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',\'whatsapp_click\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
     '</div></div>'
   );
@@ -1308,7 +1319,9 @@ function buildMockupLayout(){
   // ════════════════════════════════════════════════════════════════
   var amenityRowHtml='';
   if(Array.isArray(data.amenities)&&data.amenities.filter(Boolean).length){
-    amenityRowHtml='<div class="amenity-row">';
+    // Not collapsible in this build (static list, no expand/collapse
+    // control) — tracked at the section level rather than per-toggle.
+    amenityRowHtml='<div class="amenity-row" data-track="amenities-section" data-track-type="section" data-track-label="Amenities section">';
     data.amenities.filter(Boolean).forEach(function(am){
       var resAm=resolveAmenityData(am,lang);
       amenityRowHtml+='<div class="amenity-item"><div class="amenity-icon">'+resAm.icon+'</div>'+esc(resAm.label)+'</div>';
@@ -1406,8 +1419,8 @@ function buildMockupLayout(){
   var mapHtml='';
   if(gmapsHref){
     mapHtml=(
-      (mapSrc?'<div class="map-frame"><iframe src="'+esc(mapSrc)+'" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe></div>':'')+
-      '<a href="'+esc(gmapsHref)+'" target="_blank" rel="noopener noreferrer" class="map-open-link">'+L.mapOpen[lang]+' '+I.ext+'</a>'
+      (mapSrc?'<div class="map-frame" data-track="map-embed" data-track-type="map"><iframe src="'+esc(mapSrc)+'" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe></div>':'')+
+      '<a href="'+esc(gmapsHref)+'" target="_blank" rel="noopener noreferrer" class="map-open-link" data-track="map-open-link" data-track-type="cta" data-track-label="Open in Google Maps">'+L.mapOpen[lang]+' '+I.ext+'</a>'
     );
   }
 
@@ -1595,8 +1608,8 @@ function buildMockupLayout(){
     highlightPillsHtml+
     sidebarInsightHtml+
     '<div class="left-actions">'+
-    '<button class="action-link">'+I.heart+' <span class="lo-i">ບັນທຶກ</span><span class="en-i">Save property</span><span class="zh-i">收藏房源</span></button>'+
-    '<button class="action-link" id="share-btn" onclick="handleShare(this)">'+I.share+' <span class="lo-i">ແຊຣ໌</span><span class="en-i">Share</span><span class="zh-i">分享</span></button>'+
+    '<button class="action-link" data-track="favorite-property" data-track-type="button" data-track-label="Save property">'+I.heart+' <span class="lo-i">ບັນທຶກ</span><span class="en-i">Save property</span><span class="zh-i">收藏房源</span></button>'+
+    '<button class="action-link" id="share-btn" data-track="share-property" data-track-type="button" data-track-label="Share" onclick="handleShare(this)">'+I.share+' <span class="lo-i">ແຊຣ໌</span><span class="en-i">Share</span><span class="zh-i">分享</span></button>'+
     '<span class="pintag-verified">'+L.verified[lang]+'</span>'+
     '</div></div>'+
     '<div class="hero-right">'+desktopGalleryMarkup+'</div>'+
@@ -1646,20 +1659,20 @@ function buildDesktopGallery(images){
     if(i<clean.length){
       if(i===maxThumbs-1&&clean.length>maxThumbs){
         var remaining=clean.length-maxThumbs;
-        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'"><img src="'+esc(clean[i])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
+        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(clean[i])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
       }else{
-        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'"><img src="'+esc(clean[i])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"></div>';
+        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(clean[i])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"></div>';
       }
     }else{
       thumbsHtml+='<div class="dg-thumb" style="cursor:default;opacity:0.12;"><div style="width:100%;height:100%;background:var(--warm-deep);"></div></div>';
     }
   }
   return(
-    '<div class="desktop-gallery" id="dg-hero-frame">'+
+    '<div class="desktop-gallery" id="dg-hero-frame" data-track="gallery-hero-image" data-track-type="image" data-track-label="Hero image">'+
     '<div class="dg-hero" id="dg-hero-box">'+
     '<img src="'+esc(clean[0])+'" id="dg-hero-img" alt="" decoding="async" onerror="handleImageError(this)">'+
     '<span class="dg-coord" id="dg-coord-lbl">01 / '+String(clean.length).padStart(2,'0')+'</span>'+
-    '<button class="dg-view-all" id="dg-view-all-btn">'+
+    '<button class="dg-view-all" id="dg-view-all-btn" data-track="gallery-view-all" data-track-type="button" data-track-label="View all photos">'+
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>'+
     '<span class="lo-i">ເບິ່ງທັງຫມົດ</span><span class="en-i">View all</span><span class="zh-i">查看全部</span>'+
     '</button>'+
@@ -1699,8 +1712,8 @@ function buildMobileGallery(images, statusBadgeHtml){
   var slidesHtml='',dotsHtml='';
   clean.forEach(function(img,i){
     var loading=i===0?'eager':'lazy';
-    slidesHtml+='<div class="mg-slide" data-idx="'+i+'"><img src="'+esc(img)+'" alt="" loading="'+loading+'" decoding="async" onerror="handleImageError(this)"></div>';
-    dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'"></div>';
+    slidesHtml+='<div class="mg-slide" data-idx="'+i+'" data-track="gallery-mobile-slide" data-track-type="image" data-track-label="Photo '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(img)+'" alt="" loading="'+loading+'" decoding="async" onerror="handleImageError(this)"></div>';
+    dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'" data-track="gallery-mobile-dot" data-track-type="dot" data-track-label="Dot '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'></div>';
   });
   var overlayHtml=statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'';
   return '<div class="mobile-gallery">'+overlayHtml+'<div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
