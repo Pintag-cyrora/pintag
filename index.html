@@ -430,7 +430,7 @@ nav{
     <button class="nav-lang-item" onclick="setLang('zh',this)">中文</button>
   </div>
   <div class="nav-right">
-    <a href="for-agents.html" class="nav-agent-btn">
+    <a href="for-agents.html" class="nav-agent-btn" data-track="nav-agent-login" data-track-type="cta" data-track-label="Agent login">
       <span class="lo-i">ເຂົ້າສູ່ລະບົບ</span>
       <span class="en-i">Agent login</span>
       <span class="zh-i">经纪登录</span>
@@ -446,7 +446,7 @@ nav{
   <div class="hero-divider"></div>
 
   <!-- BUYER -->
-  <a href="listings.html" class="panel panel-buyer">
+  <a href="listings.html" class="panel panel-buyer" data-track="home-buyer-panel" data-track-type="panel" data-track-label="Buyer panel — Browse listings">
     <div class="panel-bg"></div>
     <div class="panel-overlay"></div>
     <div class="panel-content">
@@ -466,7 +466,7 @@ nav{
   </a>
 
   <!-- AGENT -->
-  <a href="for-agents.html" class="panel panel-agent">
+  <a href="for-agents.html" class="panel panel-agent" data-track="home-agent-panel" data-track-type="panel" data-track-label="Agent panel — List your property">
     <div class="panel-bg"></div>
     <div class="panel-overlay"></div>
     <div class="panel-content">
@@ -521,7 +521,7 @@ nav{
         <span class="zh-i">经认证经纪颉选优质房源</span>
       </p>
     </div>
-    <a href="listings.html" class="featured-view-all">
+    <a href="listings.html" class="featured-view-all" data-track="home-featured-view-all" data-track-type="cta" data-track-label="View all listings">
       <span class="lo-i">ເບິ່ງທັງຫມດ</span>
       <span class="en-i">View all</span>
       <span class="zh-i">查看全部</span>
@@ -548,11 +548,11 @@ nav{
   <div class="footer-right">
     <span class="footer-link">ວຽງຈັນ, ລາວ</span>
     <span class="footer-sep">·</span>
-    <a href="listings.html" class="footer-link">Listings</a>
+    <a href="listings.html" class="footer-link" data-track="footer-listings-link" data-track-type="cta" data-track-label="Footer — Listings">Listings</a>
     <span class="footer-sep">·</span>
-    <a href="for-agents.html" class="footer-link">For Agents</a>
+    <a href="for-agents.html" class="footer-link" data-track="footer-for-agents-link" data-track-type="cta" data-track-label="Footer — For Agents">For Agents</a>
     <span class="footer-sep">·</span>
-    <a href="https://wa.me/85620542966655" class="footer-link" target="_blank" rel="noopener">WhatsApp</a>
+    <a href="https://wa.me/85620542966655" class="footer-link" target="_blank" rel="noopener" data-track="footer-whatsapp-link" data-track-type="cta" data-track-label="Footer — WhatsApp">WhatsApp</a>
   </div>
 </footer>
 
@@ -560,6 +560,7 @@ nav{
 <script src="dev-banner.js"></script>
 <script src="terminology.js"></script>
 <script src="session.js"></script>
+<script src="tracking.js"></script>
 <script>
 const SB_URL = window.PINTAG.supabaseUrl;
 const SB_KEY = window.PINTAG.anonKey;
@@ -680,7 +681,8 @@ function renderCards(props, lang) {
           '<span class="card-agent-name">' + agentName + '</span>' +
         '</div>'
       : '';
-    return '<a href="listing.html?slug=' + encodeURIComponent(p.slug) + '" class="prop-card" data-pid="' + esc(p.id||'') + '" data-position="' + (idx+1) + '">' +
+    return '<a href="listing.html?slug=' + encodeURIComponent(p.slug) + '" class="prop-card" data-pid="' + esc(p.id||'') + '" data-position="' + (idx+1) + '"' +
+      ' data-track="home-featured-card" data-track-type="card" data-track-property-id="' + esc(p.id||'') + '" data-track-label="' + esc(p['title_' + lang] || p.title_en || '') + '" data-track-meta=\'' + esc(JSON.stringify({position: idx + 1})) + '\'>' +
       '<div class="card-img">' +
         imgHtml +
         '<span class="card-badge ' + badgeClass + '">' + tx + '</span>' +
