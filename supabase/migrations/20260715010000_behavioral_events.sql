@@ -14,12 +14,51 @@
 -- instrumentation of interactions that already exist. See the plan doc's
 -- "Scope discipline" section.
 
+-- ── listing_events bootstrap ────────────────────────────────────────────────
+-- Some production environments never had this table created via a tracked
+-- migration (its origin, 20260622000000_engagement_metrics.sql, was never
+-- actually applied there). This recreates it with its original schema,
+-- indexes, RLS, and dedup insert policy if missing; a no-op wherever it
+-- already exists.
+CREATE TABLE IF NOT EXISTS listing_events (
+  id          BIGSERIAL    PRIMARY KEY,
+  property_id UUID         REFERENCES properties(id) ON DELETE CASCADE,
+  event_type  TEXT         NOT NULL CHECK (event_type IN ('view','contact','save','share')),
+  session_id  TEXT,
+  created_at  TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_listing_events_property ON listing_events(property_id);
+CREATE INDEX IF NOT EXISTS idx_listing_events_type     ON listing_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_listing_events_created  ON listing_events(created_at DESC);
+
+ALTER TABLE listing_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow anon event inserts" ON listing_events;
+CREATE POLICY "Allow anon event inserts"
+  ON listing_events FOR INSERT TO anon
+  WITH CHECK (
+    property_id IN (
+      SELECT id FROM properties WHERE status IN ('active', 'available')
+    )
+    AND (
+      session_id IS NULL
+      OR NOT EXISTS (
+        SELECT 1 FROM listing_events existing
+        WHERE existing.property_id = listing_events.property_id
+          AND existing.session_id  = listing_events.session_id
+          AND existing.event_type  = listing_events.event_type
+          AND existing.created_at  > NOW() - INTERVAL '30 minutes'
+      )
+    )
+  );
+
 -- ── search_events — one row per search performed ───────────────────────────
 -- Flat filter columns, not a JSONB blob — matches this schema's existing
 -- convention (properties itself is flat columns for exactly the same
 -- reason: filterable/aggregable directly in SQL). result_count = 0 is the
 -- literal "zero-result search = unmet demand" signal; no separate flag.
-CREATE TABLE search_events (
+CREATE TABLE IF NOT EXISTS search_events (
   id                bigserial PRIMARY KEY,
   session_id        text,
   district          text,
@@ -32,9 +71,9 @@ CREATE TABLE search_events (
   created_at        timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_search_events_created ON search_events(created_at DESC);
-CREATE INDEX idx_search_events_district ON search_events(district);
-CREATE INDEX idx_search_events_type ON search_events(property_type);
+CREATE INDEX IF NOT EXISTS idx_search_events_created ON search_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_events_district ON search_events(district);
+CREATE INDEX IF NOT EXISTS idx_search_events_type ON search_events(property_type);
 
 COMMENT ON TABLE search_events IS
   'One row per search performed on listings.html — filters used, result count, and (via result_count = 0) unmet demand. Fires once per settled search, not per keystroke.';
@@ -54,10 +93,12 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION check_search_event_rate_limit(text) TO anon;
 
+DROP POLICY IF EXISTS "Allow anon search event inserts" ON search_events;
 CREATE POLICY "Allow anon search event inserts"
   ON search_events FOR INSERT TO anon
   WITH CHECK (check_search_event_rate_limit(session_id));
 
+DROP POLICY IF EXISTS "Staff read search_events" ON search_events;
 CREATE POLICY "Staff read search_events"
   ON search_events FOR SELECT TO authenticated
   USING (is_pintag_staff(auth.uid()));
@@ -106,6 +147,7 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION check_listing_event_burst_limit(text) TO anon;
 
+DROP POLICY IF EXISTS "Allow anon impression and click inserts" ON listing_events;
 CREATE POLICY "Allow anon impression and click inserts"
   ON listing_events FOR INSERT TO anon
   WITH CHECK (
@@ -117,10 +159,12 @@ CREATE POLICY "Allow anon impression and click inserts"
 -- listing_events had RLS enabled but no SELECT policy at all — meaning
 -- nothing, not even staff, could read it back. Adding read access is
 -- required for any of this to be usable, not optional follow-up.
+DROP POLICY IF EXISTS "Staff read listing_events" ON listing_events;
 CREATE POLICY "Staff read listing_events"
   ON listing_events FOR SELECT TO authenticated
   USING (is_pintag_staff(auth.uid()));
 
+DROP POLICY IF EXISTS "Party read own listing_events" ON listing_events;
 CREATE POLICY "Party read own listing_events"
   ON listing_events FOR SELECT TO authenticated
   USING (
@@ -145,6 +189,7 @@ CREATE POLICY "Party read own listing_events"
 -- not blanket read access. This makes the *existing* dedup behavior
 -- (unchanged rule, unchanged intent) actually take effect for the first
 -- time; it does not change what gets deduped or how.
+DROP POLICY IF EXISTS "Allow anon dedup self-check" ON listing_events;
 CREATE POLICY "Allow anon dedup self-check"
   ON listing_events FOR SELECT TO anon
   USING (

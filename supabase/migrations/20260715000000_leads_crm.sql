@@ -10,7 +10,7 @@
 -- Buyer Contact/Platform Identity work (20260705*) already fixed once for
 -- properties/agents. `leads` is a separate, additive table instead.
 
-CREATE TABLE leads (
+CREATE TABLE IF NOT EXISTS leads (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   property_id     uuid NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
   party_id        uuid REFERENCES parties(id) ON DELETE SET NULL,
@@ -32,16 +32,17 @@ CREATE TABLE leads (
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_leads_property_id ON leads(property_id);
-CREATE INDEX idx_leads_party_id    ON leads(party_id);
-CREATE INDEX idx_leads_status      ON leads(status);
-CREATE INDEX idx_leads_created_at  ON leads(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_leads_property_id ON leads(property_id);
+CREATE INDEX IF NOT EXISTS idx_leads_party_id    ON leads(party_id);
+CREATE INDEX IF NOT EXISTS idx_leads_status      ON leads(status);
+CREATE INDEX IF NOT EXISTS idx_leads_created_at  ON leads(created_at DESC);
 
 COMMENT ON TABLE leads IS
   'The agent-managed CRM pipeline — one row per "Message Agent" (WhatsApp) click, created automatically by trg_lead_events_create_lead. Distinct from lead_events, which stays the raw anonymous click log.';
 
 -- Reuses the existing global update_updated_at() trigger function (defined
 -- in 20260622000000_engagement_metrics.sql) rather than redefining it.
+DROP TRIGGER IF EXISTS trg_leads_updated_at ON leads;
 CREATE TRIGGER trg_leads_updated_at
   BEFORE UPDATE ON leads
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -74,6 +75,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_lead_events_create_lead ON lead_events;
 CREATE TRIGGER trg_lead_events_create_lead
   AFTER INSERT ON lead_events
   FOR EACH ROW EXECUTE FUNCTION create_lead_from_event();
@@ -86,15 +88,18 @@ CREATE TRIGGER trg_lead_events_create_lead
 -- runs as SECURITY DEFINER, bypassing RLS for that one insert).
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Staff full access leads" ON leads;
 CREATE POLICY "Staff full access leads"
   ON leads TO authenticated
   USING (is_pintag_staff(auth.uid()))
   WITH CHECK (is_pintag_staff(auth.uid()));
 
+DROP POLICY IF EXISTS "Party manage own leads" ON leads;
 CREATE POLICY "Party manage own leads"
   ON leads FOR SELECT TO authenticated
   USING (party_id IN (SELECT owned_party_ids(auth.uid())));
 
+DROP POLICY IF EXISTS "Party update own leads" ON leads;
 CREATE POLICY "Party update own leads"
   ON leads FOR UPDATE TO authenticated
   USING (party_id IN (SELECT owned_party_ids(auth.uid())))
