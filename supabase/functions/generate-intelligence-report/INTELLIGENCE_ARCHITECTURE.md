@@ -7,6 +7,22 @@ downstream of this system. If a change would require breaking one of
 these rules, that's a signal to stop and reconsider the design, not to
 edit this file to match the change.
 
+## Baseline
+
+The commit tagged `intelligence-layer-baseline` is the reference
+implementation: the pipeline, the pluggable Detector interface, and every
+invariant below, as reviewed and approved in the pre-merge architecture
+review. Treat it as the thing future changes are diffed against, not just
+the current state of the branch.
+
+Future changes to this subsystem should be incremental and explicitly
+justified against that baseline — e.g. "adds detector X per the Adding a
+Detector section below" — rather than casual refactors of the core
+pipeline, the detector interface, or the invariants documented here. A
+change that would require rewriting or contradicting the baseline's
+architecture is a signal to raise it for review explicitly, not to just
+make it.
+
 ## Pipeline
 
 ```
