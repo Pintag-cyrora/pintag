@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
+<title>Pintag Admin · Analytics Inspector</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --teal:#2D8C8C;--teal-light:#38A8A8;--teal-dim:rgba(45,140,140,0.08);--teal-border:rgba(45,140,140,0.22);
+  --ink:#1A2428;--ink-soft:#3D5058;--ink-muted:#7A9098;
+  --warm:#F7F3EC;--warm-deep:#EDE8E0;--white:#fff;
+  --border:rgba(26,36,40,0.1);--border-mid:rgba(26,36,40,0.13);
+  --red:#C0392B;--green:#1E6B45;--gold:#B8860B;
+  --mono:'SF Mono',ui-monospace,'Cascadia Code',Consolas,monospace;
+}
+body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);color:var(--ink);line-height:1.6;}
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ink);}
+.login-box{width:100%;max-width:360px;padding:48px 40px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);text-align:center;}
+.login-logo{font-size:22px;font-weight:600;color:#fff;margin-bottom:6px;}
+.login-sub{font-size:12px;color:rgba(255,255,255,0.35);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:32px;}
+.login-input{width:100%;padding:12px 16px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#fff;font-size:15px;font-family:'DM Sans',sans-serif;margin-bottom:12px;border-radius:3px;}
+.login-input::placeholder{color:rgba(255,255,255,0.3);}
+.login-btn{width:100%;padding:13px;background:var(--teal);color:#fff;border:none;font-size:14px;font-weight:500;cursor:pointer;border-radius:3px;font-family:'DM Sans',sans-serif;transition:background 0.2s;}
+.login-btn:hover{background:var(--teal-light);}
+.login-error{color:#e74c3c;font-size:13px;margin-top:8px;display:none;}
+#insp-screen{display:none;}
+
+/* ── NAV ─────────────────────────────────────────────────────────── */
+.admin-nav{background:var(--ink);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.admin-nav-logo{font-size:15px;font-weight:600;color:#fff;display:flex;align-items:center;gap:8px;}
+.admin-nav-logo span{color:var(--teal-light);}
+.admin-nav-crumb{font-size:12px;color:rgba(255,255,255,0.4);}
+.admin-nav-right{display:flex;align-items:center;gap:10px;}
+.admin-nav-btn{font-size:12px;font-weight:500;padding:7px 14px;border-radius:3px;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all 0.2s;text-decoration:none;display:inline-block;}
+.btn-back{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.75);}
+.btn-back:hover{background:rgba(255,255,255,0.15);}
+.btn-logout{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);}
+.btn-logout:hover{background:rgba(255,255,255,0.15);}
+
+.insp-body{max-width:1080px;margin:0 auto;padding:28px 24px 80px;}
+
+/* ── SEARCH BAR ──────────────────────────────────────────────────── */
+.insp-search-bar{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;}
+.insp-field{display:flex;flex-direction:column;gap:4px;}
+.insp-field label{font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);}
+.insp-field input{font-family:var(--mono);font-size:12.5px;padding:8px 10px;border:1px solid var(--border-mid);border-radius:5px;background:var(--warm);color:var(--ink);min-width:160px;}
+.insp-field input:disabled{opacity:0.45;cursor:not-allowed;background:var(--warm-deep);}
+.insp-field input[type="datetime-local"]{font-family:'DM Sans',sans-serif;min-width:170px;}
+.insp-btn{font-size:12px;font-weight:600;padding:9px 16px;border-radius:5px;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;background:var(--teal);color:#fff;transition:background 0.2s;white-space:nowrap;}
+.insp-btn:hover{background:var(--teal-light);}
+.insp-btn.secondary{background:var(--warm-deep);color:var(--ink-soft);}
+.insp-btn.secondary:hover{background:var(--border-mid);}
+.insp-badge-soon{font-size:8.5px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);background:var(--warm-deep);padding:2px 6px;border-radius:8px;margin-left:6px;}
+.insp-search-spacer{flex:1 1 auto;min-width:12px;}
+
+/* ── LATEST SESSIONS ─────────────────────────────────────────────── */
+.insp-section-title{font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);margin:22px 0 10px;}
+.sessions-table{width:100%;border-collapse:collapse;background:var(--white);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.sessions-table th{text-align:left;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);padding:10px 14px;background:var(--warm);border-bottom:1px solid var(--border);}
+.sessions-table td{padding:11px 14px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--ink-soft);vertical-align:middle;}
+.sessions-table tr:last-child td{border-bottom:none;}
+.sessions-table tr.clickable{cursor:pointer;transition:background 0.15s;}
+.sessions-table tr.clickable:hover{background:var(--teal-dim);}
+.sessions-table .sid{font-family:var(--mono);font-size:11.5px;color:var(--ink);}
+.sessions-table .count-pill{display:inline-block;background:var(--warm-deep);color:var(--ink-soft);font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:20px;margin-right:4px;}
+.insp-empty{padding:40px 20px;text-align:center;color:var(--ink-muted);font-size:13px;}
+
+/* ── SUMMARY PANEL ───────────────────────────────────────────────── */
+.insp-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:6px;}
+.insp-stat{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+.insp-stat-label{font-size:10px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:5px;}
+.insp-stat-value{font-size:22px;font-weight:600;letter-spacing:-0.02em;color:var(--ink);}
+.insp-stat-value.crm-new{color:var(--gold);}
+.insp-stat-value.crm-closed{color:var(--green);}
+.insp-stat-value.crm-lost{color:var(--red);}
+.insp-stat-value.crm-none{color:var(--ink-muted);font-size:15px;font-weight:500;}
+@media(max-width:820px){.insp-summary-grid{grid-template-columns:repeat(2,1fr);}}
+
+/* ── HEALTH CHECKS ───────────────────────────────────────────────── */
+.health-panel{margin-top:16px;}
+.health-row{display:flex;align-items:flex-start;gap:8px;padding:9px 14px;border-radius:7px;font-size:12.5px;margin-bottom:6px;}
+.health-row.warn{background:rgba(184,134,11,0.08);color:#8A6100;border:1px solid rgba(184,134,11,0.2);}
+.health-row.fail{background:rgba(192,57,43,0.08);color:var(--red);border:1px solid rgba(192,57,43,0.2);}
+.health-row.ok{background:rgba(30,107,69,0.07);color:var(--green);border:1px solid rgba(30,107,69,0.16);}
+.health-icon{flex-shrink:0;}
+
+/* ── FILTERS ─────────────────────────────────────────────────────── */
+.insp-filters{display:flex;gap:6px;flex-wrap:wrap;margin:20px 0 16px;}
+.insp-filter-btn{font-size:11.5px;font-weight:500;padding:6px 13px;border-radius:20px;cursor:pointer;border:1px solid var(--border-mid);background:var(--white);color:var(--ink-soft);font-family:'DM Sans',sans-serif;transition:all 0.15s;}
+.insp-filter-btn.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+.insp-filter-btn:hover:not(.active){background:var(--warm-deep);}
+
+/* ── TIMELINE ────────────────────────────────────────────────────── */
+.timeline{position:relative;padding-left:34px;}
+.timeline::before{content:'';position:absolute;left:14px;top:6px;bottom:6px;width:1.5px;background:var(--border-mid);}
+.tl-event{position:relative;margin-bottom:10px;}
+.tl-dot{position:absolute;left:-34px;top:12px;width:26px;height:26px;border-radius:50%;background:var(--white);border:1.5px solid var(--border-mid);display:flex;align-items:center;justify-content:center;font-size:12px;z-index:2;}
+.tl-dot.cat-ui{border-color:var(--teal-border);}
+.tl-dot.cat-search{border-color:rgba(184,134,11,0.35);}
+.tl-dot.cat-listing{border-color:rgba(30,107,69,0.35);}
+.tl-dot.cat-lead{border-color:rgba(192,57,43,0.35);}
+.tl-dot.cat-crm{border-color:rgba(124,58,237,0.35);}
+.tl-dot.cat-page{border-color:transparent;background:transparent;}
+.tl-card{background:var(--white);border:1px solid var(--border);border-radius:9px;padding:10px 14px;margin-left:4px;}
+.tl-card.is-page-marker{background:none;border:none;padding:2px 14px;margin-bottom:2px;margin-top:8px;}
+.tl-page-marker-text{font-size:10.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--ink-muted);}
+.tl-row1{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;}
+.tl-main{display:flex;align-items:baseline;gap:10px;min-width:0;}
+.tl-time{font-family:var(--mono);font-size:11px;color:var(--ink-muted);flex-shrink:0;}
+.tl-title{font-size:13px;color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tl-subtitle{font-size:11.5px;color:var(--ink-muted);margin-left:6px;}
+.tl-table-tag{font-size:9px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--ink-muted);background:var(--warm);border:1px solid var(--border);padding:2px 6px;border-radius:4px;flex-shrink:0;}
+.tl-expand-chev{color:var(--ink-muted);flex-shrink:0;transition:transform 0.15s;font-size:10px;}
+.tl-event.expanded .tl-expand-chev{transform:rotate(90deg);}
+.tl-detail{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);}
+.tl-event.expanded .tl-detail{display:block;}
+.tl-detail-grid{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12px;margin-bottom:10px;}
+.tl-detail-grid dt{color:var(--ink-muted);font-weight:500;}
+.tl-detail-grid dd{font-family:var(--mono);color:var(--ink-soft);word-break:break-all;}
+.tl-json{background:var(--ink);color:#B8E8E8;font-family:var(--mono);font-size:11.5px;padding:12px 14px;border-radius:6px;overflow-x:auto;white-space:pre;line-height:1.5;}
+.tl-flag{display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;margin-left:8px;background:rgba(184,134,11,0.14);color:#8A6100;}
+.tl-crm-badge{font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:2px 8px;border-radius:4px;margin-left:8px;}
+.tl-crm-badge.new{background:rgba(184,134,11,0.14);color:#8A6100;}
+.tl-crm-badge.closed{background:rgba(30,107,69,0.14);color:var(--green);}
+.tl-crm-badge.lost{background:rgba(192,57,43,0.14);color:var(--red);}
+.tl-crm-badge.other{background:var(--warm-deep);color:var(--ink-soft);}
+
+.insp-loadmore{display:block;margin:16px auto 0;}
+.insp-loading{padding:40px;text-align:center;color:var(--ink-muted);font-size:13px;}
+.insp-back-link{font-size:12px;color:var(--teal);text-decoration:none;display:inline-block;margin-bottom:14px;}
+.insp-back-link:hover{text-decoration:underline;}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-box">
+    <p class="login-logo">Pintag</p>
+    <p class="login-sub">Analytics Inspector</p>
+    <input type="password" class="login-input" id="password-input" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()">
+    <button class="login-btn" onclick="login()">Sign In</button>
+    <p class="login-error" id="login-error">Incorrect password</p>
+  </div>
+</div>
+
+<div id="insp-screen">
+  <nav class="admin-nav">
+    <p class="admin-nav-logo">Pintag <span>Admin</span> <span class="admin-nav-crumb">/ Analytics / Analytics Inspector</span></p>
+    <div class="admin-nav-right">
+      <a href="admin.html" class="admin-nav-btn btn-back">← Admin</a>
+      <button class="admin-nav-btn btn-logout" onclick="logout()">Sign Out</button>
+    </div>
+  </nav>
+
+  <div class="insp-body">
+
+    <!-- ── SEARCH BAR ─────────────────────────────────────────── -->
+    <div class="insp-search-bar">
+      <div class="insp-field">
+        <label>Session ID</label>
+        <input type="text" id="f-session-id" placeholder="e.g. 7f35ed31-..." onkeydown="if(event.key==='Enter')searchBySessionId()">
+      </div>
+      <button class="insp-btn" onclick="searchBySessionId()">Open Session</button>
+
+      <div class="insp-field">
+        <label>From</label>
+        <input type="datetime-local" id="f-date-from">
+      </div>
+      <div class="insp-field">
+        <label>To</label>
+        <input type="datetime-local" id="f-date-to">
+      </div>
+      <button class="insp-btn secondary" onclick="searchByDateRange()">Filter Sessions</button>
+
+      <div class="insp-field">
+        <label>Property ID</label>
+        <input type="text" id="f-property-id" placeholder="UUID" onkeydown="if(event.key==='Enter')searchByPropertyId()">
+      </div>
+      <button class="insp-btn secondary" onclick="searchByPropertyId()">Find Sessions</button>
+
+      <div class="insp-field">
+        <label>Lead ID <span class="insp-badge-soon">Soon</span></label>
+        <input type="text" id="f-lead-id" placeholder="Coming soon" disabled>
+      </div>
+
+      <div class="insp-search-spacer"></div>
+      <button class="insp-btn secondary" onclick="resetToLatestSessions()">↺ Latest Sessions</button>
+    </div>
+
+    <!-- ── LATEST SESSIONS VIEW ───────────────────────────────── -->
+    <div id="sessions-view">
+      <p class="insp-section-title" id="sessions-view-title">Latest Sessions</p>
+      <div id="sessions-list"><div class="insp-loading">Loading sessions…</div></div>
+    </div>
+
+    <!-- ── SESSION TIMELINE VIEW ──────────────────────────────── -->
+    <div id="session-view" style="display:none;">
+      <a href="#" class="insp-back-link" onclick="resetToLatestSessions();return false;">← Back to Latest Sessions</a>
+
+      <div class="insp-summary-grid" id="summary-grid"></div>
+
+      <div class="health-panel" id="health-panel"></div>
+
+      <div class="insp-filters" id="insp-filters"></div>
+
+      <div class="timeline" id="timeline"></div>
+
+      <button class="insp-btn secondary insp-loadmore" id="load-more-btn" style="display:none;" onclick="loadMoreEvents()">Show more events</button>
+    </div>
+
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="dev-banner.js"></script>
+<script>
+const SUPABASE_URL  = window.PINTAG.supabaseUrl;
+const SUPABASE_ANON = window.PINTAG.anonKey;
+const ADMIN_EMAIL   = 'admin@pintag.io';
+const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let _adminToken = null;
+sbClient.auth.onAuthStateChange((event, session) => { _adminToken = session ? session.access_token : null; });
+
+async function login() {
+  const pw  = document.getElementById('password-input').value;
+  const btn = document.querySelector('.login-btn');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  const { data, error } = await sbClient.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
+  btn.disabled = false; btn.textContent = 'Sign In';
+  if (error) { document.getElementById('login-error').style.display = 'block'; return; }
+  _adminToken = data.session.access_token;
+  showInspectorScreen();
+}
+async function logout() { _adminToken = null; await sbClient.auth.signOut(); location.reload(); }
+function showInspectorScreen() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('insp-screen').style.display = 'block';
+  resetToLatestSessions();
+}
+sbClient.auth.getSession().then(({ data: { session } }) => {
+  if (session) { _adminToken = session.access_token; showInspectorScreen(); }
+});
+
+// ── REST helper — same pattern as admin.html's sbApi() ─────────────
+async function sbGet(path) {
+  const token = _adminToken || SUPABASE_ANON;
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token }
+  });
+  if (!res.ok) { console.error('[Inspector] REST error', path, res.status); return []; }
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString(undefined, { hour12: false });
+}
+function fmtDateTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:false });
+}
+function fmtDuration(ms) {
+  if (ms < 0) ms = 0;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60), rs = s % 60;
+  if (m < 60) return m + 'm ' + rs + 's';
+  const h = Math.floor(m / 60), rm = m % 60;
+  return h + 'h ' + rm + 'm';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Icon / label lookups — the only place table-specific display rules
+// live. A future table (page_events, notification_events, ai_events,
+// recommendation_events) needs one normalize*() function following the
+// same shape below plus a line in fetchSessionData()/discoverSessions()
+// — nothing else changes.
+// ══════════════════════════════════════════════════════════════════
+var UI_ICON_MAP = {
+  'home-buyer-panel':'🖱','home-agent-panel':'🖱','home-featured-view-all':'🖱','nav-agent-login':'🖱',
+  'footer-listings-link':'🖱','footer-for-agents-link':'🖱','footer-whatsapp-link':'💬',
+  'home-featured-card':'🖱','listing-card':'🖱','similar-property-card':'🖱','agent-listing-card':'🖱',
+  'filter-transaction':'🔍','filter-property-type':'🔍','filter-availability':'🔍','sort-select':'🔍',
+  'view-toggle-list':'🗺','view-toggle-map':'🗺',
+  'gallery-thumbnail':'🖼','gallery-hero-image':'🖼','gallery-view-all':'🖼','gallery-mobile-slide':'🖼',
+  'gallery-mobile-dot':'🖼','gallery-lightbox-prev':'🖼','gallery-lightbox-next':'🖼',
+  'share-property':'📤','favorite-property':'❤️','contact-phone':'📞','contact-whatsapp':'💬',
+  'map-open-link':'🗺','map-embed':'🗺','amenities-section':'🏷','agent-whatsapp':'💬'
+};
+// Elements where a null property_id is a real problem, not expected —
+// panels/filters/sort legitimately have no property context.
+var PROPERTY_SCOPED_UI_ELEMENTS = [
+  'home-featured-card','listing-card','similar-property-card','agent-listing-card',
+  'share-property','favorite-property','contact-phone','contact-whatsapp',
+  'gallery-thumbnail','gallery-hero-image','gallery-mobile-slide','agent-whatsapp'
+];
+// Elements whose metadata is always populated by tracking.js — a null
+// here means the batch/position data got lost somewhere.
+var METADATA_EXPECTED_UI_ELEMENTS = [
+  'home-featured-card','listing-card','similar-property-card','agent-listing-card',
+  'sort-select','gallery-thumbnail','gallery-mobile-slide','gallery-mobile-dot'
+];
+var LISTING_EVENT_ICON  = { impression:'👁', click:'🖱', view:'🏡', contact:'📇', save:'⭐', share:'📤' };
+var LISTING_EVENT_TITLE = { impression:'Listing impression', click:'Listing clicked', view:'Listing viewed', contact:'Listing contact', save:'Listing saved', share:'Listing shared' };
+var LEAD_EVENT_ICON     = { whatsapp_click:'💬', call_click:'📞' };
+
+function propertyLabel(propertyMap, id) {
+  if (!id) return null;
+  var p = propertyMap[id];
+  if (!p) return id.slice(0, 8) + '…';
+  return p.title_en || p.title_lo || p.slug || id.slice(0, 8);
+}
+
+function normalizeUiEvent(row, ctx) {
+  return {
+    id: 'ui_events:' + row.id, ts: new Date(row.created_at),
+    table: 'ui_events', category: 'ui', categoryLabel: 'UI',
+    icon: UI_ICON_MAP[row.element_id] || '🖱',
+    title: row.label || row.element_id,
+    subtitle: row.property_id ? propertyLabel(ctx.propertyMap, row.property_id) : null,
+    propertyId: row.property_id || null, sessionId: row.session_id, raw: row,
+    detailFields: [
+      ['Page', row.page], ['Element ID', row.element_id], ['Element Type', row.element_type],
+      ['Label', row.label], ['Property ID', row.property_id],
+      ['Metadata', row.metadata ? JSON.stringify(row.metadata) : null]
+    ]
+  };
+}
+function normalizeSearchEvent(row) {
+  var filters = [row.property_type, row.transaction_type, row.district].filter(Boolean).join(' · ') || 'all listings';
+  return {
+    id: 'search_events:' + row.id, ts: new Date(row.created_at),
+    table: 'search_events', category: 'search', categoryLabel: 'Search',
+    icon: '🔍', title: 'Search: ' + filters,
+    subtitle: row.result_count + ' result' + (row.result_count === 1 ? '' : 's'),
+    propertyId: null, sessionId: row.session_id, raw: row,
+    detailFields: [
+      ['District', row.district], ['Property Type', row.property_type], ['Transaction Type', row.transaction_type],
+      ['Price Min', row.price_min], ['Price Max', row.price_max], ['Bedrooms', row.bedrooms],
+      ['Result Count', row.result_count]
+    ]
+  };
+}
+function normalizeListingEvent(row, ctx) {
+  return {
+    id: 'listing_events:' + row.id, ts: new Date(row.created_at),
+    table: 'listing_events', category: 'listing', categoryLabel: 'Listing',
+    icon: LISTING_EVENT_ICON[row.event_type] || '🏡',
+    title: LISTING_EVENT_TITLE[row.event_type] || row.event_type,
+    subtitle: propertyLabel(ctx.propertyMap, row.property_id),
+    propertyId: row.property_id || null, sessionId: row.session_id, raw: row,
+    detailFields: [
+      ['Event Type', row.event_type], ['Property ID', row.property_id], ['Source', row.source],
+      ['Search Position', row.search_position],
+      ['Search Filters', row.search_filters ? JSON.stringify(row.search_filters) : null]
+    ],
+    // Batched impressions share one INSERT statement, so NOW() (and thus
+    // created_at) is identical across the whole batch — a reliable key
+    // for collapsing them into one timeline entry.
+    groupKey: row.event_type === 'impression' ? ('impression:' + row.created_at) : null
+  };
+}
+function normalizeLeadEvent(row, ctx) {
+  return {
+    id: 'lead_events:' + row.id, ts: new Date(row.created_at),
+    table: 'lead_events', category: 'lead', categoryLabel: 'Lead',
+    icon: LEAD_EVENT_ICON[row.event_type] || '📇',
+    title: row.event_type === 'whatsapp_click' ? 'WhatsApp clicked' : row.event_type === 'call_click' ? 'Call clicked' : row.event_type,
+    subtitle: propertyLabel(ctx.propertyMap, row.listing_id),
+    propertyId: row.listing_id || null, sessionId: row.session_id, raw: row,
+    detailFields: [
+      ['Event Type', row.event_type], ['Listing ID', row.listing_id], ['Agent ID', row.agent_id],
+      ['Referrer', row.referrer], ['User Agent', row.user_agent]
+    ]
+  };
+}
+function normalizeLead(row) {
+  return {
+    id: 'leads:' + row.id, ts: new Date(row.created_at),
+    table: 'leads', category: 'crm', categoryLabel: 'CRM',
+    icon: '🧾', title: 'Lead created', subtitle: null, crmStatus: row.status,
+    propertyId: row.property_id || null, sessionId: null, raw: row,
+    detailFields: [
+      ['Lead ID', row.id], ['Property ID', row.property_id], ['Party ID', row.party_id],
+      ['Status', row.status], ['Contact Method', row.contact_method],
+      ['Customer Name', row.customer_name], ['Customer Phone', row.customer_phone],
+      ['Notes', row.notes], ['Updated At', row.updated_at]
+    ]
+  };
+}
+
+// ── Fetch everything for one session_id, plus property enrichment ──
+async function fetchSessionData(sessionId) {
+  var enc = encodeURIComponent(sessionId);
+  var results = await Promise.all([
+    sbGet('ui_events?session_id=eq.' + enc + '&order=created_at.asc&select=*'),
+    sbGet('search_events?session_id=eq.' + enc + '&order=created_at.asc&select=*'),
+    sbGet('listing_events?session_id=eq.' + enc + '&order=created_at.asc&select=*'),
+    sbGet('lead_events?session_id=eq.' + enc + '&order=created_at.asc&select=*')
+  ]);
+  var uiRows = results[0], searchRows = results[1], listingRows = results[2], leadEventRows = results[3];
+
+  var leadEventIds = leadEventRows.map(function(r) { return r.id; });
+  var leadsRows = leadEventIds.length
+    ? await sbGet('leads?lead_event_id=in.(' + leadEventIds.map(encodeURIComponent).join(',') + ')&select=*')
+    : [];
+
+  var propertyIds = new Set();
+  uiRows.forEach(function(r) { if (r.property_id) propertyIds.add(r.property_id); });
+  listingRows.forEach(function(r) { if (r.property_id) propertyIds.add(r.property_id); });
+  leadEventRows.forEach(function(r) { if (r.listing_id) propertyIds.add(r.listing_id); });
+  leadsRows.forEach(function(r) { if (r.property_id) propertyIds.add(r.property_id); });
+
+  var propertyMap = {};
+  if (propertyIds.size) {
+    var idsParam = Array.from(propertyIds).map(encodeURIComponent).join(',');
+    var props = await sbGet('properties?id=in.(' + idsParam + ')&select=id,slug,title_en,title_lo');
+    props.forEach(function(p) { propertyMap[p.id] = p; });
+  }
+  return { uiRows: uiRows, searchRows: searchRows, listingRows: listingRows, leadEventRows: leadEventRows, leadsRows: leadsRows, propertyMap: propertyMap };
+}
+
+// ── Merge into one chronological timeline ───────────────────────────
+function buildTimeline(data) {
+  var ctx = { propertyMap: data.propertyMap };
+  var events = []
+    .concat(data.uiRows.map(function(r) { return normalizeUiEvent(r, ctx); }))
+    .concat(data.searchRows.map(normalizeSearchEvent))
+    .concat(data.listingRows.map(function(r) { return normalizeListingEvent(r, ctx); }))
+    .concat(data.leadEventRows.map(function(r) { return normalizeLeadEvent(r, ctx); }))
+    .concat(data.leadsRows.map(normalizeLead));
+  events.sort(function(a, b) { return a.ts - b.ts; });
+
+  // Collapse consecutive same-batch impressions into one entry.
+  var collapsed = [];
+  var i = 0;
+  while (i < events.length) {
+    var e = events[i];
+    if (e.groupKey) {
+      var group = [e], j = i + 1;
+      while (j < events.length && events[j].groupKey === e.groupKey) { group.push(events[j]); j++; }
+      if (group.length > 1) {
+        collapsed.push({
+          id: 'group:' + e.groupKey, ts: e.ts, table: e.table, category: e.category, categoryLabel: e.categoryLabel,
+          icon: e.icon, title: group.length + ' listings shown (impressions)',
+          subtitle: null, propertyId: null, sessionId: e.sessionId, raw: null,
+          isGroup: true, groupRows: group, detailFields: []
+        });
+        i = j;
+        continue;
+      }
+    }
+    collapsed.push(e);
+    i++;
+  }
+
+  // Synthetic page-transition markers, inferred from ui_events.page —
+  // Pintag only tracks interactions, not passive page views, so this is
+  // a best-effort inference and is labeled "(inferred)" in the UI.
+  var currentPage = null;
+  var uiSorted = data.uiRows.slice().sort(function(a, b) { return new Date(a.created_at) - new Date(b.created_at); });
+  var markers = [];
+  uiSorted.forEach(function(r) {
+    if (r.page !== currentPage) {
+      markers.push({ page: r.page, ts: new Date(new Date(r.created_at).getTime() - 1), isFirst: currentPage === null });
+      currentPage = r.page;
+    }
+  });
+  var merged = collapsed.concat(markers.map(function(m, idx) {
+    return {
+      id: 'page-marker:' + idx, ts: m.ts, table: null, category: 'page', categoryLabel: 'Page',
+      icon: (m.page === 'index.html' && m.isFirst) ? '🏠' : '📄',
+      title: ((m.page === 'index.html' && m.isFirst) ? 'Homepage opened' : 'Opened ' + m.page) + ' (inferred)',
+      subtitle: null, propertyId: null, sessionId: null, raw: null, isPageMarker: true, detailFields: []
+    };
+  }));
+  merged.sort(function(a, b) { return a.ts - b.ts; });
+  return merged;
+}
+
+// ── Health checks ────────────────────────────────────────────────────
+function computeHealthChecks(data) {
+  var checks = [];
+
+  var missingPid = [];
+  data.listingRows.forEach(function(r) { if (!r.property_id) missingPid.push('listing_events #' + r.id); });
+  data.leadEventRows.forEach(function(r) { if (!r.listing_id) missingPid.push('lead_events #' + r.id); });
+  data.uiRows.forEach(function(r) { if (PROPERTY_SCOPED_UI_ELEMENTS.indexOf(r.element_id) !== -1 && !r.property_id) missingPid.push('ui_events "' + r.element_id + '"'); });
+  if (missingPid.length) checks.push({ severity: 'warn', text: missingPid.length + ' row(s) missing property_id where one was expected: ' + missingPid.slice(0, 5).join(', ') + (missingPid.length > 5 ? ' …' : '') });
+
+  // "Lead created without lead_event" is deliberately NOT checked here —
+  // leads only ever get associated with a session by joining through this
+  // session's lead_events rows, so a truly orphaned lead (null
+  // lead_event_id) can never be fetched into any session's view at all.
+  // That check runs globally instead — see fetchOrphanedLeadsCount() and
+  // the Latest Sessions banner.
+
+  var uiDupes = 0;
+  var sortedUi = data.uiRows.slice().sort(function(a, b) { return new Date(a.created_at) - new Date(b.created_at); });
+  for (var k = 1; k < sortedUi.length; k++) {
+    if (sortedUi[k].element_id === sortedUi[k - 1].element_id && (new Date(sortedUi[k].created_at) - new Date(sortedUi[k - 1].created_at)) < 300) uiDupes++;
+  }
+  if (uiDupes) checks.push({ severity: 'warn', text: uiDupes + ' ui_events row(s) fired under 300ms apart for the same element — client dedup may not have applied (e.g. across a page reload).' });
+
+  var dedupTypes = ['view', 'contact', 'save', 'share'];
+  var byKey = {};
+  data.listingRows.filter(function(r) { return dedupTypes.indexOf(r.event_type) !== -1; }).forEach(function(r) {
+    var key = r.property_id + '|' + r.event_type;
+    (byKey[key] = byKey[key] || []).push(r);
+  });
+  var dedupFails = 0;
+  Object.keys(byKey).forEach(function(key) {
+    var rows = byKey[key].sort(function(a, b) { return new Date(a.created_at) - new Date(b.created_at); });
+    for (var m = 1; m < rows.length; m++) {
+      if ((new Date(rows[m].created_at) - new Date(rows[m - 1].created_at)) < 30 * 60 * 1000) dedupFails++;
+    }
+  });
+  if (dedupFails) checks.push({ severity: 'fail', text: dedupFails + ' listing_events row(s) suggest the 30-minute view/contact/save/share dedup did not block a repeat.' });
+
+  var noImpr = 0;
+  data.searchRows.forEach(function(sr) {
+    var srTs = new Date(sr.created_at).getTime();
+    var hasImpr = data.listingRows.some(function(lr) {
+      var diff = new Date(lr.created_at).getTime() - srTs;
+      return lr.event_type === 'impression' && lr.source === 'search' && diff >= 0 && diff < 10000;
+    });
+    if (!hasImpr && sr.result_count > 0) noImpr++;
+  });
+  if (noImpr) checks.push({ severity: 'warn', text: noImpr + ' search(es) returned results but recorded no listing impressions within 10s — check for a failed batch POST or JS error.' });
+
+  var waWithoutLead = data.leadEventRows.filter(function(le) {
+    return le.event_type === 'whatsapp_click' && !data.leadsRows.some(function(l) { return l.lead_event_id === le.id; });
+  });
+  if (waWithoutLead.length) checks.push({ severity: 'fail', text: waWithoutLead.length + ' WhatsApp click(s) with no matching lead — create_lead_from_event may not have fired.' });
+
+  var nullMeta = data.uiRows.filter(function(r) { return METADATA_EXPECTED_UI_ELEMENTS.indexOf(r.element_id) !== -1 && !r.metadata; });
+  if (nullMeta.length) checks.push({ severity: 'warn', text: nullMeta.length + ' ui_events row(s) missing metadata on an element that normally carries it (' + Array.from(new Set(nullMeta.map(function(r) { return r.element_id; }))).join(', ') + ').' });
+
+  if (!checks.length) {
+    var total = data.uiRows.length + data.searchRows.length + data.listingRows.length + data.leadEventRows.length + data.leadsRows.length;
+    checks.push({ severity: 'ok', text: 'No issues detected across ' + total + ' row(s) in this session.' });
+  }
+  return checks;
+}
+
+// ── Summary panel ─────────────────────────────────────────────────
+function computeSummary(data, events) {
+  var real = events.filter(function(e) { return !e.isPageMarker; });
+  var first = real.length ? real[0].ts : null;
+  var last = real.length ? real[real.length - 1].ts : null;
+  return {
+    duration: (first && last) ? fmtDuration(last - first) : '—',
+    totalUi: data.uiRows.length,
+    totalSearches: data.searchRows.length,
+    listingsViewed: data.listingRows.filter(function(r) { return r.event_type === 'view'; }).length,
+    listingsClicked: data.listingRows.filter(function(r) { return r.event_type === 'click'; }).length,
+    galleryInteractions: data.uiRows.filter(function(r) { return r.element_id && r.element_id.indexOf('gallery-') === 0; }).length,
+    waClicks: data.leadEventRows.filter(function(r) { return r.event_type === 'whatsapp_click'; }).length,
+    leadCreated: data.leadsRows.length,
+    crmStatus: data.leadsRows.length ? data.leadsRows.map(function(r) { return r.status; }).join(', ') : null
+  };
+}
+
+// ── Rendering ────────────────────────────────────────────────────
+function renderSummary(summary) {
+  var tiles = [
+    ['Session Duration', summary.duration], ['Total UI Events', summary.totalUi], ['Searches', summary.totalSearches],
+    ['Listings Viewed', summary.listingsViewed], ['Listings Clicked', summary.listingsClicked],
+    ['Gallery Interactions', summary.galleryInteractions], ['WhatsApp Clicks', summary.waClicks],
+    ['Lead Created', summary.leadCreated ? 'Yes (' + summary.leadCreated + ')' : 'No']
+  ];
+  var html = tiles.map(function(t) {
+    return '<div class="insp-stat"><div class="insp-stat-label">' + esc(t[0]) + '</div><div class="insp-stat-value">' + esc(String(t[1])) + '</div></div>';
+  }).join('');
+  var crmClass = 'crm-none', crmText = 'No lead';
+  if (summary.crmStatus) {
+    crmText = summary.crmStatus;
+    crmClass = summary.crmStatus.indexOf('closed') !== -1 ? 'crm-closed' : summary.crmStatus.indexOf('lost') !== -1 ? 'crm-lost' : summary.crmStatus.indexOf('new') !== -1 ? 'crm-new' : '';
+  }
+  html += '<div class="insp-stat"><div class="insp-stat-label">CRM Status</div><div class="insp-stat-value ' + crmClass + '">' + esc(crmText) + '</div></div>';
+  document.getElementById('summary-grid').innerHTML = html;
+}
+function renderHealth(checks) {
+  var iconFor = { warn: '⚠', fail: '❌', ok: '✅' };
+  document.getElementById('health-panel').innerHTML = checks.map(function(c) {
+    return '<div class="health-row ' + c.severity + '"><span class="health-icon">' + iconFor[c.severity] + '</span><span>' + esc(c.text) + '</span></div>';
+  }).join('');
+}
+
+var CATEGORY_FILTERS = [
+  { key: 'all', label: 'All' }, { key: 'ui', label: 'UI Events' }, { key: 'search', label: 'Search' },
+  { key: 'listing', label: 'Listing' }, { key: 'lead', label: 'Lead' }, { key: 'crm', label: 'CRM' }
+];
+var _currentFilter = 'all', _currentEvents = [], _visibleCount = 60;
+
+function renderFilters() {
+  document.getElementById('insp-filters').innerHTML = CATEGORY_FILTERS.map(function(f) {
+    return '<button class="insp-filter-btn' + (f.key === _currentFilter ? ' active' : '') + '" onclick="setFilter(\'' + f.key + '\')">' + esc(f.label) + '</button>';
+  }).join('');
+}
+function setFilter(key) { _currentFilter = key; _visibleCount = 60; renderFilters(); renderTimeline(); }
+function loadMoreEvents() { _visibleCount += 60; renderTimeline(); }
+
+function renderTimeline() {
+  var filtered = _currentEvents.filter(function(e) { return _currentFilter === 'all' || e.isPageMarker || e.category === _currentFilter; });
+  var visible = filtered.slice(0, _visibleCount);
+  document.getElementById('timeline').innerHTML = visible.map(renderEventCard).join('');
+  document.getElementById('load-more-btn').style.display = filtered.length > _visibleCount ? 'block' : 'none';
+}
+function renderEventCard(e) {
+  if (e.isPageMarker) {
+    return '<div class="tl-event"><div class="tl-dot cat-page">' + e.icon + '</div><div class="tl-card is-page-marker"><span class="tl-page-marker-text">' + esc(e.title) + '</span></div></div>';
+  }
+  var subtitleHtml = e.subtitle ? '<span class="tl-subtitle">' + esc(e.subtitle) + '</span>' : '';
+  var crmBadge = '';
+  if (e.crmStatus) {
+    var cls = e.crmStatus === 'closed' ? 'closed' : e.crmStatus === 'lost' ? 'lost' : e.crmStatus === 'new' ? 'new' : 'other';
+    crmBadge = '<span class="tl-crm-badge ' + cls + '">' + esc(e.crmStatus.toUpperCase()) + '</span>';
+  }
+  var detailHtml;
+  if (e.isGroup) {
+    detailHtml = '<div class="tl-json">' + esc(JSON.stringify(e.groupRows.map(function(r) { return r.raw; }), null, 2)) + '</div>';
+  } else {
+    var fields = (e.detailFields || []).filter(function(f) { return f[1] !== null && f[1] !== undefined && f[1] !== ''; });
+    var gridHtml = fields.map(function(f) { return '<dt>' + esc(f[0]) + '</dt><dd>' + esc(String(f[1])) + '</dd>'; }).join('');
+    detailHtml = '<dl class="tl-detail-grid">' + gridHtml + '</dl><div class="tl-json">' + esc(JSON.stringify(e.raw, null, 2)) + '</div>';
+  }
+  return (
+    '<div class="tl-event">' +
+      '<div class="tl-dot cat-' + e.category + '">' + e.icon + '</div>' +
+      '<div class="tl-card">' +
+        '<div class="tl-row1" onclick="toggleEvent(this.closest(\'.tl-event\'))">' +
+          '<div class="tl-main"><span class="tl-time">' + fmtTime(e.ts) + '</span><span class="tl-title">' + esc(e.title) + '</span>' + subtitleHtml + crmBadge + '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;">' + (e.table ? '<span class="tl-table-tag">' + esc(e.table) + '</span>' : '') + '<span class="tl-expand-chev">▶</span></div>' +
+        '</div>' +
+        '<div class="tl-detail">' + detailHtml + '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function toggleEvent(el) { el.classList.toggle('expanded'); }
+
+// ── Latest Sessions discovery ────────────────────────────────────
+var LATEST_RECENT_LIMIT = 300;
+async function fetchRecentRows(table, dateFrom, dateTo) {
+  var params = ['select=session_id,created_at', 'order=created_at.desc'];
+  if (dateFrom) params.push('created_at=gte.' + encodeURIComponent(new Date(dateFrom).toISOString()));
+  if (dateTo) params.push('created_at=lte.' + encodeURIComponent(new Date(dateTo).toISOString()));
+  params.push('limit=' + (dateFrom || dateTo ? 1000 : LATEST_RECENT_LIMIT));
+  return sbGet(table + '?' + params.join('&'));
+}
+async function discoverSessions(dateFrom, dateTo) {
+  var tables = ['ui_events', 'search_events', 'listing_events', 'lead_events'];
+  var results = await Promise.all(tables.map(function(t) { return fetchRecentRows(t, dateFrom, dateTo); }));
+  var sessions = {}, nullSessionCounts = {};
+  tables.forEach(function(t, i) {
+    var nullCount = 0;
+    results[i].forEach(function(r) {
+      if (!r.session_id) { nullCount++; return; }
+      var ts = new Date(r.created_at);
+      var s = sessions[r.session_id] || (sessions[r.session_id] = { sessionId: r.session_id, first: ts, last: ts, counts: {} });
+      if (ts < s.first) s.first = ts;
+      if (ts > s.last) s.last = ts;
+      s.counts[t] = (s.counts[t] || 0) + 1;
+    });
+    nullSessionCounts[t] = nullCount;
+  });
+  var list = Object.keys(sessions).map(function(k) { return sessions[k]; });
+  list.sort(function(a, b) { return b.last - a.last; });
+  return { sessions: list.slice(0, 20), nullSessionCounts: nullSessionCounts };
+}
+// property_id lives under a different column per table.
+var PROPERTY_REF_SOURCES = [
+  { table: 'ui_events', col: 'property_id' },
+  { table: 'listing_events', col: 'property_id' },
+  { table: 'lead_events', col: 'listing_id' }
+];
+async function discoverSessionsForProperty(propertyId) {
+  var enc = encodeURIComponent(propertyId);
+  var results = await Promise.all(PROPERTY_REF_SOURCES.map(function(src) {
+    return sbGet(src.table + '?' + src.col + '=eq.' + enc + '&select=session_id,created_at&order=created_at.desc&limit=200');
+  }));
+  var sessions = {};
+  PROPERTY_REF_SOURCES.forEach(function(src, i) {
+    results[i].forEach(function(r) {
+      if (!r.session_id) return;
+      var ts = new Date(r.created_at);
+      var s = sessions[r.session_id] || (sessions[r.session_id] = { sessionId: r.session_id, first: ts, last: ts, counts: {} });
+      if (ts < s.first) s.first = ts;
+      if (ts > s.last) s.last = ts;
+      s.counts[src.table] = (s.counts[src.table] || 0) + 1;
+    });
+  });
+  var list = Object.keys(sessions).map(function(k) { return sessions[k]; });
+  list.sort(function(a, b) { return b.last - a.last; });
+  return list.slice(0, 20);
+}
+// Global check — a lead with no lead_event_id has no session to attach
+// to, so it can only ever be found by asking directly, not by joining
+// through any particular session's lead_events.
+async function fetchOrphanedLeadsCount() {
+  var rows = await sbGet('leads?lead_event_id=is.null&select=id&limit=50');
+  return rows.length;
+}
+function renderSessionsList(sessions, nullSessionCounts, orphanedLeadsCount) {
+  var banner = '';
+  if (nullSessionCounts) {
+    var nullTotal = Object.keys(nullSessionCounts).reduce(function(sum, k) { return sum + nullSessionCounts[k]; }, 0);
+    if (nullTotal > 0) {
+      var parts = Object.keys(nullSessionCounts).filter(function(k) { return nullSessionCounts[k] > 0; }).map(function(k) { return nullSessionCounts[k] + ' in ' + k; });
+      banner += '<div class="health-row warn" style="margin-bottom:14px;"><span class="health-icon">⚠</span><span>' + nullTotal + ' recent row(s) have no session_id (' + parts.join(', ') + ') — sessionStorage may be blocked for some visitors.</span></div>';
+    }
+  }
+  if (orphanedLeadsCount) {
+    banner += '<div class="health-row fail" style="margin-bottom:14px;"><span class="health-icon">❌</span><span>' + orphanedLeadsCount + ' lead(s) exist with no lead_event_id — create_lead_from_event may have been bypassed. Not attached to any session, so they won\'t appear in a session timeline.</span></div>';
+  }
+  if (!sessions.length) {
+    document.getElementById('sessions-list').innerHTML = banner + '<div class="insp-empty">No sessions found.</div>';
+    return;
+  }
+  var rows = sessions.map(function(s) {
+    var counts = ['ui_events', 'search_events', 'listing_events', 'lead_events'].map(function(t) {
+      var n = s.counts[t] || 0;
+      return n ? '<span class="count-pill">' + n + ' ' + t.replace('_events', '') + '</span>' : '';
+    }).join('');
+    return (
+      '<tr class="clickable" onclick="openSession(\'' + s.sessionId.replace(/'/g, "\\'") + '\')">' +
+        '<td class="sid">' + esc(s.sessionId.slice(0, 13)) + '…</td>' +
+        '<td>' + esc(fmtDateTime(s.first)) + '</td>' +
+        '<td>' + esc(fmtDuration(s.last - s.first)) + '</td>' +
+        '<td>' + counts + '</td>' +
+      '</tr>'
+    );
+  }).join('');
+  document.getElementById('sessions-list').innerHTML = banner +
+    '<table class="sessions-table"><thead><tr><th>Session ID</th><th>Start Time</th><th>Duration</th><th>Events</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+// ── Top-level flow ────────────────────────────────────────────────
+async function openSession(sessionId) {
+  document.getElementById('sessions-view').style.display = 'none';
+  document.getElementById('session-view').style.display = 'block';
+  document.getElementById('summary-grid').innerHTML = '';
+  document.getElementById('health-panel').innerHTML = '<div class="insp-loading">Loading session…</div>';
+  document.getElementById('insp-filters').innerHTML = '';
+  document.getElementById('timeline').innerHTML = '';
+  document.getElementById('load-more-btn').style.display = 'none';
+  document.getElementById('f-session-id').value = sessionId;
+
+  var data = await fetchSessionData(sessionId);
+  var totalRows = data.uiRows.length + data.searchRows.length + data.listingRows.length + data.leadEventRows.length + data.leadsRows.length;
+  if (!totalRows) {
+    document.getElementById('health-panel').innerHTML = '<div class="insp-empty">No events found for session "' + esc(sessionId) + '".</div>';
+    return;
+  }
+  var events = buildTimeline(data);
+  var summary = computeSummary(data, events);
+  var health = computeHealthChecks(data);
+
+  _currentEvents = events; _currentFilter = 'all'; _visibleCount = 60;
+  renderSummary(summary);
+  renderHealth(health);
+  renderFilters();
+  renderTimeline();
+}
+function searchBySessionId() {
+  var v = document.getElementById('f-session-id').value.trim();
+  if (v) openSession(v);
+}
+async function searchByDateRange() {
+  var from = document.getElementById('f-date-from').value;
+  var to = document.getElementById('f-date-to').value;
+  document.getElementById('session-view').style.display = 'none';
+  document.getElementById('sessions-view').style.display = 'block';
+  document.getElementById('sessions-view-title').textContent = 'Sessions' + (from || to ? ' (filtered by date)' : '');
+  document.getElementById('sessions-list').innerHTML = '<div class="insp-loading">Loading sessions…</div>';
+  var result = await discoverSessions(from || null, to || null);
+  var orphanedLeadsCount = await fetchOrphanedLeadsCount();
+  renderSessionsList(result.sessions, result.nullSessionCounts, orphanedLeadsCount);
+}
+async function searchByPropertyId() {
+  var v = document.getElementById('f-property-id').value.trim();
+  if (!v) return;
+  document.getElementById('session-view').style.display = 'none';
+  document.getElementById('sessions-view').style.display = 'block';
+  document.getElementById('sessions-view-title').textContent = 'Sessions touching property ' + v;
+  document.getElementById('sessions-list').innerHTML = '<div class="insp-loading">Searching…</div>';
+  var sessions = await discoverSessionsForProperty(v);
+  renderSessionsList(sessions, null, null);
+}
+async function resetToLatestSessions() {
+  document.getElementById('session-view').style.display = 'none';
+  document.getElementById('sessions-view').style.display = 'block';
+  document.getElementById('sessions-view-title').textContent = 'Latest Sessions';
+  document.getElementById('f-session-id').value = '';
+  document.getElementById('f-date-from').value = '';
+  document.getElementById('f-date-to').value = '';
+  document.getElementById('f-property-id').value = '';
+  document.getElementById('sessions-list').innerHTML = '<div class="insp-loading">Loading sessions…</div>';
+  var result = await discoverSessions(null, null);
+  var orphanedLeadsCount = await fetchOrphanedLeadsCount();
+  renderSessionsList(result.sessions, result.nullSessionCounts, orphanedLeadsCount);
+}
+</script>
+</body>
+</html>
+
