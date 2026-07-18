@@ -558,16 +558,35 @@ const HIGHLIGHT_TYPE_ICONS = {
 const HIGHLIGHT_SEVERITY_WEIGHT = { critical: 4, high: 3, medium: 2, low: 1 };
 const MAX_HIGHLIGHTS = 5;
 
-// Ranks by business significance (severity × confidence), not by which
-// section of the report an insight happened to land in or how early it
-// appears in body_markdown — this is what keeps highlights from just
-// echoing the report's first few lines.
+// Ranking factors — each is a small, independent function taking
+// (insight, group) and returning one numeric contribution to its
+// highlight rank. Kept as a list rather than one inline formula, the same
+// shape as DEFAULT_DETECTORS in insight-engine.js, so a future factor
+// (Business Impact, User Impact, Urgency — see INTELLIGENCE_ARCHITECTURE.md
+// discussion) is one more entry here, not a redesign of how ranking works.
+// A new factor should return a contribution on roughly the same 0-4ish
+// scale as the ones below, so it doesn't silently dominate the sum
+// without an explicit weighting decision.
+const HIGHLIGHT_RANK_FACTORS = [
+  // Technical significance: how statistically severe/confident the signal is.
+  (insight) => (HIGHLIGHT_SEVERITY_WEIGHT[insight.severity] || 1) * (typeof insight.confidence === 'number' ? insight.confidence : 0.5),
+  // Editorial weight: the report composer already judged this the lead story.
+  (insight) => (insight._role === 'biggest_story' ? 3 : 0),
+  // Recency: a newly-opened or newly-resolved insight is more "news" than
+  // one that's simply still open from before this period.
+  (insight, group) => (group === 'new' ? 1 : group === 'resolved' ? 0.5 : 0),
+  // Future factors slot in here as more entries, e.g.:
+  //   (insight) => businessImpactScore(insight),
+  //   (insight) => userImpactScore(insight),
+  //   (insight) => urgencyScore(insight),
+];
+
+// Ranks by the summed factors above — not by which section of the report
+// an insight happened to land in or how early it appears in
+// body_markdown — this is what keeps highlights from just echoing the
+// report's first few lines.
 function rankInsightForHighlight(insight, group) {
-  const severityWeight = HIGHLIGHT_SEVERITY_WEIGHT[insight.severity] || 1;
-  const confidence = typeof insight.confidence === 'number' ? insight.confidence : 0.5;
-  const roleBonus = insight._role === 'biggest_story' ? 3 : 0;
-  const recencyBonus = group === 'new' ? 1 : group === 'resolved' ? 0.5 : 0;
-  return severityWeight * confidence + roleBonus + recencyBonus;
+  return HIGHLIGHT_RANK_FACTORS.reduce((total, factor) => total + factor(insight, group), 0);
 }
 
 function deriveHighlights(groups) {
