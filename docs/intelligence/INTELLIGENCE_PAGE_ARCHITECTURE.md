@@ -24,6 +24,22 @@ page itself.** A report is a periodic narrative snapshot. The Intelligence
 page is the durable home for everything the platform knows, of which
 reports are a single, valuable, but non-exclusive view.
 
+### The scope test for every future widget/module
+
+**Every widget on this page should answer one of three questions:**
+
+1. **What happened?** (Reports, Report History, System Health)
+2. **What needs attention?** (Alerts, Listings Needing Attention, Data
+   Quality)
+3. **What should I do next?** (AI Recommendations, Opportunity Detection)
+
+If a proposed feature doesn't clearly answer one of these three, it
+probably belongs somewhere else — Analytics, Listings, Leads, or wherever
+its natural home actually is — not on the Intelligence page. This is the
+practical, growth-time version of the Purpose section above: the five
+questions there describe the vision; this three-question test is what to
+actually check a new module idea against before building it here.
+
 ## Design Principles
 
 - **Generate intelligence once.** All significance detection, ranking, and
