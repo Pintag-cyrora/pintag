@@ -49,6 +49,20 @@ async function requireStaffOrService(req: Request): Promise<string | null> {
   if (!auth.startsWith('Bearer ')) return 'Missing auth token';
   const token = auth.slice(7);
 
+  // TEMP DEBUG (2026-07-18) — diagnosing a production 401 on the pg_cron
+  // path. Logs only lengths/prefixes/suffixes, never the full secret.
+  // REMOVE once the 401 is root-caused and fixed — see INTELLIGENCE_ARCHITECTURE.md's
+  // "no debug artifacts" expectation; this must not become permanent.
+  console.log({
+    tokenLength: token.length,
+    serviceRoleKeyLength: serviceRoleKey.length,
+    tokenStartsWith: token.slice(0, 8),
+    serviceStartsWith: serviceRoleKey.slice(0, 8),
+    tokenEndsWith: token.slice(-8),
+    serviceEndsWith: serviceRoleKey.slice(-8),
+    matches: token === serviceRoleKey,
+  });
+
   // pg_cron's net.http_post has no user session — it authenticates with the
   // service-role key directly (stored in Supabase Vault, see the plan's
   // scheduling section). Recognize that up front rather than sending it
