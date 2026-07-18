@@ -202,8 +202,15 @@ async function loadOverview() {
 //      insight; "a lead just arrived" isn't a tracked condition).
 // See docs/intelligence/PHASE2_PLAN.md's "Confirmed Near-Term Scope".
 // ══════════════════════════════════════════════════════════════════
-const ALERT_TYPE_ICONS = {
-  missing_photos: '📷', missing_ai_description: '📝', stale_listing: '⏳',
+// Per-rule presentation, so each data-quality alert answers "what
+// happened / why it matters / what to do next" instead of a generic
+// icon + "Fix now" for all three. All three rules still resolve to the
+// same destination (the listing's edit form) -- only the label/reason
+// text differs, reflecting what staff actually does once there.
+const DATA_QUALITY_PRESENTATION = {
+  missing_photos: { icon: '📷', reason: "No photos — buyers can't preview this listing", actionLabel: 'Edit listing' },
+  missing_ai_description: { icon: '📝', reason: 'No description or AI highlight generated yet', actionLabel: 'Generate AI description' },
+  stale_listing: { icon: '⏳', reason: 'Old listing with very few views', actionLabel: 'Review listing' },
 };
 const NEW_LEAD_WINDOW_HOURS = 24;
 const MAX_ALERTS = 10;
@@ -230,12 +237,13 @@ async function loadAlerts(reportHistory) {
 
     insightRows.forEach((ins) => {
       if (ins.type === 'data_quality') {
+        const p = DATA_QUALITY_PRESENTATION[ins.metric_key] || { icon: '🧹', reason: 'Data quality issue', actionLabel: 'Fix now' };
         alerts.push({
           severity: ins.severity,
-          icon: ALERT_TYPE_ICONS[ins.metric_key] || '🧹',
+          icon: p.icon,
           title: ins.title,
-          reason: 'Data quality issue',
-          actionLabel: 'Fix now',
+          reason: p.reason,
+          actionLabel: p.actionLabel,
           actionHref: ins.dimension_property_id ? ('admin.html?edit=' + encodeURIComponent(ins.dimension_property_id)) : null,
         });
       } else {
@@ -250,26 +258,39 @@ async function loadAlerts(reportHistory) {
       }
     });
 
+    // "Regenerate report" reuses Section 4's existing generateReportType()
+    // (same function the manual Generate buttons call) rather than a
+    // second code path -- the alert just scrolls it into view and clicks
+    // it on the staff member's behalf.
     reportHistory.filter((r) => r.status === 'failed').forEach((r) => {
       alerts.push({
         severity: 'high',
         icon: '📄',
-        title: 'Report generation failed: ' + esc(r.report_type) + ' (' + fmtDate(r.period_end) + ')',
+        title: 'Report generation failed: ' + r.report_type + ' (' + fmtDate(r.period_end) + ')',
         reason: r.error_message || 'See Report History for details',
-        actionLabel: null,
-        actionHref: null,
+        actionLabel: 'Regenerate report',
+        actionOnClick: () => {
+          const btn = document.getElementById('gen-btn-' + r.report_type);
+          if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          generateReportType(r.report_type);
+        },
       });
     });
 
+    // No staff-facing single-lead view exists yet (dashboard.html's Leads
+    // tab is the agent-facing CRM, not a staff tool) -- "View listing"
+    // is the honest action available today: it takes staff to the
+    // property the lead is about, not a lead detail page that doesn't
+    // exist. Revisit once/if a staff lead view is built.
     leadRows.forEach((lead) => {
       const propertyTitle = (lead.properties && lead.properties.title_en) || 'a listing';
       alerts.push({
         severity: 'medium',
         icon: '📞',
         title: 'New lead: ' + propertyTitle,
-        reason: fmtRelative(lead.created_at),
-        actionLabel: null,
-        actionHref: null,
+        reason: 'Received ' + fmtRelative(lead.created_at),
+        actionLabel: lead.property_id ? 'View listing' : null,
+        actionHref: lead.property_id ? ('admin.html?edit=' + encodeURIComponent(lead.property_id)) : null,
       });
     });
 
@@ -287,7 +308,7 @@ function renderAlerts(alerts) {
     el.innerHTML = '<div class="alerts-empty">No alerts — everything looks healthy.</div>';
     return;
   }
-  el.innerHTML = '<ul class="alerts-list">' + alerts.map((a) =>
+  el.innerHTML = '<ul class="alerts-list">' + alerts.map((a, i) =>
     '<li class="alert-item">' +
       '<span class="alert-severity-dot ' + esc(a.severity) + '"></span>' +
       '<span class="alert-icon">' + a.icon + '</span>' +
@@ -295,9 +316,20 @@ function renderAlerts(alerts) {
         '<div class="alert-title">' + esc(a.title) + '</div>' +
         (a.reason ? '<div class="alert-reason">' + esc(a.reason) + '</div>' : '') +
       '</div>' +
-      (a.actionHref ? '<a class="alert-action" href="' + esc(a.actionHref) + '" target="_blank" rel="noopener">' + esc(a.actionLabel || 'View') + '</a>' : '') +
+      (a.actionHref ? '<a class="alert-action" href="' + esc(a.actionHref) + '" target="_blank" rel="noopener">' + esc(a.actionLabel || 'View') + '</a>' :
+       a.actionOnClick ? '<button type="button" class="alert-action alert-action-btn" data-alert-index="' + i + '">' + esc(a.actionLabel || 'View') + '</button>' : '') +
     '</li>'
   ).join('') + '</ul>';
+  // actionOnClick callbacks can't be serialized into the innerHTML string
+  // above, so they're wired up via delegation after the fact -- el itself
+  // is never replaced across renders (only its innerHTML), so this listener
+  // never needs to be re-attached or leak duplicates across loadAlerts() calls.
+  el.querySelectorAll('.alert-action-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const a = alerts[Number(btn.dataset.alertIndex)];
+      if (a && a.actionOnClick) a.actionOnClick();
+    });
+  });
 }
 
 // ── Today's Highlights — derived entirely from the latest report's own
