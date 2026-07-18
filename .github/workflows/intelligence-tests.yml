@@ -1,0 +1,76 @@
+name: Intelligence Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/generate-intelligence-report/**'
+      - 'intelligence.html'
+      - 'tests/intelligence/**'
+      - 'tests/security/suites/13_intelligence.sh'
+      - '.github/workflows/intelligence-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/functions/generate-intelligence-report/**'
+      - 'intelligence.html'
+      - 'tests/intelligence/**'
+      - 'tests/security/suites/13_intelligence.sh'
+      - '.github/workflows/intelligence-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Insight Engine / Report Composer / Gemini Client (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Plain node:test, no build step, no network access needed -- these
+      # modules are plain JS (dual-runtime with Deno) and every external
+      # call (fetch, for the Gemini client) is mocked within the tests
+      # themselves. See each *.test.js file's own header comment.
+      - name: Run unit tests
+        run: node --test 'supabase/functions/generate-intelligence-report/**/*.test.js'
+
+  frontend-tests:
+    name: intelligence.html (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install test dependencies
+        working-directory: tests/intelligence
+        run: npm install
+
+      - name: Install Chromium
+        working-directory: tests/intelligence
+        run: npx playwright install --with-deps chromium
+
+      # Fully mocked -- no real Supabase project, credentials, or network
+      # access required. See tests/intelligence/README.md.
+      - name: Run Playwright suite
+        working-directory: tests/intelligence
+        run: npm test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intelligence-playwright-report
+          path: tests/intelligence/playwright-report/
+          retention-days: 14
