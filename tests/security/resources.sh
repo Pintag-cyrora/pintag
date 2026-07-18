@@ -21,6 +21,7 @@ RESOURCE_FNS=(
   "generate-listing-content"
   "smart-listing-importer"
   "resolve-map-url"
+  "generate-intelligence-report"
 )
 
 # PostgREST-exposed tables under /rest/v1/
@@ -30,6 +31,10 @@ RESOURCE_TABLES=(
   "contacts"
   "lead_events"
   "listing_events"
+  "intelligence_reports"
+  "intelligence_insights"
+  "report_insights"
+  "intelligence_sweep_lock"
 )
 
 # Storage buckets under /storage/v1/object/

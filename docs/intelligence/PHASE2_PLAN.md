@@ -12,6 +12,84 @@ Turn Intelligence from an information dashboard into an operational
 assistant — a system that doesn't just tell staff what happened, but
 tells them what to do about it.
 
+## Scope test for every module below (confirmed)
+
+Every widget on the Intelligence page should answer one of three
+questions: **What happened?**, **What needs attention?**, or **What
+should I do next?** If a proposed feature doesn't fit one of those
+three, it belongs somewhere else (Analytics, Listings, Leads, etc.), not
+here. See `INTELLIGENCE_PAGE_ARCHITECTURE.md`'s "The scope test for every
+future widget/module" for the canonical statement of this — kept here
+too since it's the first thing to check every module in this plan
+against.
+
+---
+
+# Confirmed Near-Term Scope: Phase 2A (Alerts) and Phase 2B (Listings Needing Attention)
+
+Build order and rationale are unchanged from the Candidate Modules
+ranking below — Alerts first (no new detector required), then Listings
+Needing Attention. This section captures the confirmed concrete scope
+for each, superseding the more exploratory notes in the Candidate
+Modules entries where the two overlap.
+
+## Phase 2A — Alerts
+
+The Intelligence landing page's "action required" area — answers "what
+needs attention" directly. Confirmed example alert types:
+
+- New high-value lead
+- Listings missing photos
+- Listings missing AI description
+- Stale listings
+- Import failures
+- Scheduled report failures
+
+Note the range here: some of these (missing photos/description, stale
+listings) are listing-data conditions that overlap with Phase 2B: worth
+resolving explicitly during implementation (an Alert can reference the
+same underlying insight a Listings-Needing-Attention row surfaces,
+rather than each maintaining its own duplicate check — see the Guiding
+Principle below). Others (import failures, scheduled report failures)
+are operational/pipeline health signals, closer in spirit to the
+Platform Health candidate module than to a per-listing insight — these
+may need a new insight type or may be better read directly from
+`intelligence_reports.status`/existing import logs rather than forcing
+them through the same detector shape as everything else. Confirm the
+exact source for each before implementation, not by assumption.
+
+## Phase 2B — Listings Needing Attention
+
+A worklist, prioritized **by impact, not by listing ID or recency of
+creation**. Confirmed example conditions:
+
+- No primary photo
+- Missing AI highlight
+- Missing neighborhood insight
+- Missing price
+- Duplicate listings
+- Old listing with no views
+- Old listing with no leads
+- Missing location
+- Poor image quality (future AI — explicitly flagged as not buildable
+  yet, requires image-analysis capability that doesn't exist today)
+
+**Each item must explain why it appears** (not just flag it — state the
+specific condition, e.g. "No views in 45 days" rather than a bare
+"Attention needed") **and, ideally, include a one-click action to
+resolve it** where one exists (e.g. a direct link into the listing's
+edit form, pre-scrolled to the missing field). Where no one-click fix is
+possible (duplicate listings, "poor image quality"), the explanation
+alone is still the minimum bar — never show an item with no stated
+reason.
+
+Most of these conditions are simple presence/absence checks against
+`properties` columns, not statistical detections — confirms the Data
+Quality candidate module's note below about needing a rule-based (not
+z-score) detector shape, and reinforces resolving the conceptual overlap
+between Listings Needing Attention and Data Quality during
+implementation rather than shipping two separate, overlapping worklists.
+
 ---
 
 # Candidate Modules
