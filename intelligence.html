@@ -66,6 +66,15 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 .stat-value.status-none{color:var(--ink-muted);font-size:14px;font-weight:500;}
 @media(max-width:820px){.stat-grid{grid-template-columns:repeat(2,1fr);}}
 
+/* ── TODAY'S HIGHLIGHTS ───────────────────────────────────────────── */
+.highlights-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:6px 20px;}
+.highlights-list{list-style:none;}
+.highlights-item{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);font-size:13.5px;color:var(--ink-soft);}
+.highlights-item:last-child{border-bottom:none;}
+.highlights-icon{font-size:15px;line-height:1.4;flex-shrink:0;}
+.highlights-text{line-height:1.4;padding-top:1px;}
+.highlights-empty{padding:20px 0;text-align:center;color:var(--ink-muted);font-size:13px;}
+
 /* ── REPORT CARD ─────────────────────────────────────────────────── */
 .insp-btn{font-size:12px;font-weight:600;padding:9px 16px;border-radius:5px;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;background:var(--teal);color:#fff;transition:background 0.2s;white-space:nowrap;}
 .insp-btn:hover{background:var(--teal-light);}
@@ -208,6 +217,16 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
       <div class="section-block">
         <div class="section-header"><h2>Overview</h2></div>
         <div class="stat-grid" id="overview-stats"></div>
+      </div>
+
+      <!-- Today's Highlights — a 30-second scan of the latest report's most
+           important insights. Deliberately pinned to the LATEST report only
+           (not whatever's currently open below via History/Advanced), since
+           its job is "what should I know the moment I open this page,"
+           independent of what you're browsing further down. -->
+      <div class="section-block">
+        <div class="section-header"><h2>Today's Highlights</h2></div>
+        <div class="highlights-card" id="highlights-card"><div class="insp-loading">Loading highlights…</div></div>
       </div>
 
       <!-- Section 2 — Latest Intelligence Report -->
@@ -505,7 +524,76 @@ async function loadOverview() {
     currentReportId = null;
     document.getElementById('delete-btn').disabled = true;
     document.getElementById('back-to-latest-link').style.display = 'none';
+    renderHighlights([]);
   }
+}
+
+// ── Today's Highlights — derived entirely from the latest report's own
+// insight links (same data viewReportById already fetches for the chip
+// row below; no second fetch, no new business logic). Kept as its own
+// small pipeline — groupInsightsByRecency() -> deriveHighlights() ->
+// renderHighlights() — so the ranking heuristic can be improved later
+// without touching how it's fetched or displayed. ──────────────────────
+
+// Classifies a report's linked insights into new/continuing/resolved for
+// this specific report's period. Shared by the chip row (Section 2) and
+// Today's Highlights so both read the exact same classification.
+function groupInsightsByRecency(insights, report) {
+  const groups = { new: [], continuing: [], resolved: [] };
+  insights.forEach((ins) => {
+    const resolvedInPeriod = ins.resolved_at && ins.resolved_at.slice(0, 10) >= report.period_start && ins.resolved_at.slice(0, 10) <= report.period_end;
+    const firstSeenInPeriod = ins.first_seen >= report.period_start && ins.first_seen <= report.period_end;
+    if (resolvedInPeriod) groups.resolved.push(ins);
+    else if (firstSeenInPeriod) groups.new.push(ins);
+    else groups.continuing.push(ins);
+  });
+  return groups;
+}
+
+const HIGHLIGHT_TYPE_ICONS = {
+  demand_spike: '🔥', supply_shortage: '⚠️', ctr_decline: '📉', ctr_improvement: '📈',
+  high_performing_listing: '⭐', low_performing_listing: '⚠️', ux_anomaly: '🐞',
+  conversion_anomaly: '🚨', search_trend: '🔍', price_trend: '💰'
+};
+const HIGHLIGHT_SEVERITY_WEIGHT = { critical: 4, high: 3, medium: 2, low: 1 };
+const MAX_HIGHLIGHTS = 5;
+
+// Ranks by business significance (severity × confidence), not by which
+// section of the report an insight happened to land in or how early it
+// appears in body_markdown — this is what keeps highlights from just
+// echoing the report's first few lines.
+function rankInsightForHighlight(insight, group) {
+  const severityWeight = HIGHLIGHT_SEVERITY_WEIGHT[insight.severity] || 1;
+  const confidence = typeof insight.confidence === 'number' ? insight.confidence : 0.5;
+  const roleBonus = insight._role === 'biggest_story' ? 3 : 0;
+  const recencyBonus = group === 'new' ? 1 : group === 'resolved' ? 0.5 : 0;
+  return severityWeight * confidence + roleBonus + recencyBonus;
+}
+
+function deriveHighlights(groups) {
+  const ranked = []
+    .concat(groups.new.map((i) => ({ insight: i, group: 'new' })))
+    .concat(groups.continuing.map((i) => ({ insight: i, group: 'continuing' })))
+    .concat(groups.resolved.map((i) => ({ insight: i, group: 'resolved' })))
+    .map((x) => Object.assign({ score: rankInsightForHighlight(x.insight, x.group) }, x))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_HIGHLIGHTS);
+
+  return ranked.map(({ insight, group }) => ({
+    icon: group === 'resolved' ? '✅' : (HIGHLIGHT_TYPE_ICONS[insight.type] || '🔎'),
+    text: insight.title
+  }));
+}
+
+function renderHighlights(items) {
+  const el = document.getElementById('highlights-card');
+  if (!items.length) {
+    el.innerHTML = '<div class="highlights-empty">No major highlights today.</div>';
+    return;
+  }
+  el.innerHTML = '<ul class="highlights-list">' + items.map((h) =>
+    '<li class="highlights-item"><span class="highlights-icon">' + h.icon + '</span><span class="highlights-text">' + esc(h.text) + '</span></li>'
+  ).join('') + '</ul>';
 }
 
 // ── Section 1: Overview stat cards ──────────────────────────────────
@@ -549,20 +637,15 @@ async function viewReportById(id) {
     container.innerHTML =
       '<div class="report-card"><div class="report-meta">' + esc(report.report_type) + ' · ' + esc(fmtDateTime(report.generated_at)) + ' · FAILED</div>' +
       '<p style="color:var(--red);font-size:13.5px;">' + esc(report.error_message || 'Report generation failed.') + '</p></div>';
+    if (isLatest) renderHighlights([]);
     return;
   }
 
   const links = await sbGet('report_insights?report_id=eq.' + report.id + '&select=role,intelligence_insights(*)');
   const insights = links.map((l) => Object.assign({ _role: l.role }, l.intelligence_insights)).filter((i) => i && i.id);
 
-  const groups = { new: [], continuing: [], resolved: [] };
-  insights.forEach((ins) => {
-    const resolvedInPeriod = ins.resolved_at && ins.resolved_at.slice(0, 10) >= report.period_start && ins.resolved_at.slice(0, 10) <= report.period_end;
-    const firstSeenInPeriod = ins.first_seen >= report.period_start && ins.first_seen <= report.period_end;
-    if (resolvedInPeriod) groups.resolved.push(ins);
-    else if (firstSeenInPeriod) groups.new.push(ins);
-    else groups.continuing.push(ins);
-  });
+  const groups = groupInsightsByRecency(insights, report);
+  if (isLatest) renderHighlights(deriveHighlights(groups));
 
   const chipHtml = (arr, cls, dot) => arr.map((i) =>
     '<span class="chip ' + cls + '" onclick="openInsightTimelineById(\'' + i.id + '\')" title="' + esc(i.summary || '') + '">' +
