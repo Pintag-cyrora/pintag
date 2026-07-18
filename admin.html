@@ -1264,6 +1264,12 @@ function showAdminScreen() {
   loadListings();
   loadAgentsForDropdown();
   WM.init('assets/pintag-watermark.png');
+  // Deep-link support: ?edit=<property-id> opens straight into that
+  // listing's edit form, e.g. from an Intelligence Alert's one-click
+  // action ("Fix now"). editListing() fetches the property itself, so
+  // this doesn't need to wait on loadListings() to finish.
+  const editId = new URLSearchParams(location.search).get('edit');
+  if (editId) editListing(editId);
 }
 sbClient.auth.getSession().then(({ data: { session } }) => {
   if (session) { _adminToken = session.access_token; showAdminScreen(); }

@@ -18,7 +18,8 @@
 // only ever gets read access to intelligence_reports/intelligence_insights/
 // report_insights via the API, matching every other analytics table.
 
-import { runInsightEngine } from './insight-engine.js';
+import { runInsightEngine, DEFAULT_DETECTORS } from './insight-engine.js';
+import { dataQualityDetector } from './data-quality-detector.js';
 import { sumMetrics } from './metrics-utils.js';
 import {
   composeReportInput, buildPrompt, isQuietPeriod, buildQuietDayReport,
@@ -224,13 +225,30 @@ async function fetchCurrentSupply(db: Db): Promise<{ byDistrict: Record<string, 
   return { byDistrict, byType };
 }
 
+// Fetches the columns data-quality-detector.js's rule checks need, scoped
+// to actively-shown listings (a draft/sold/inactive listing's data quality
+// is not staff's morning priority the way a live listing's is). Only the
+// columns each rule actually reads — same lean-select convention as
+// fetchCurrentSupply() above.
+async function fetchDataQualityProperties(db: Db): Promise<any[]> {
+  return db.select(
+    'properties',
+    'select=id,title_en,images,description_en,property_highlight_en,district_en,property_type,created_at,view_count&status=in.(active,available)'
+  );
+}
+
 // ── Insight Engine step (daily only) ────────────────────────────────────
 async function runDailyInsightSweep(db: Db, today: DailySnapshot, trailing: DailySnapshot[], periodEnd: string) {
   const openInsights = await db.select(
     'intelligence_insights',
     'select=*&resolved_at=is.null'
   );
-  const { toInsert, toUpdate, toResolve } = runInsightEngine(today, trailing, openInsights, periodEnd);
+  const properties = await fetchDataQualityProperties(db);
+  const { toInsert, toUpdate, toResolve } = runInsightEngine(
+    today, trailing, openInsights, periodEnd,
+    [...DEFAULT_DETECTORS, dataQualityDetector],
+    { properties }
+  );
 
   const inserted = toInsert.length ? await db.insert('intelligence_insights', toInsert) : [];
   for (const u of toUpdate) {

@@ -174,6 +174,7 @@ async function loadOverview() {
   renderOverviewStats(reportHistory);
   renderReportHistoryTable(reportHistory);
   renderSystemHealth(reportHistory);
+  loadAlerts(reportHistory);
 
   latestReportId = reportHistory.length ? reportHistory[0].id : null;
   if (latestReportId) {
@@ -186,6 +187,149 @@ async function loadOverview() {
     document.getElementById('back-to-latest-link').style.display = 'none';
     renderHighlights([]);
   }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Alerts (Phase 2A) — the "action required" area. Independent of which
+// report is currently browsed (unlike Today's Highlights' latest-report
+// pinning): an alert reflects current state, not a specific report's
+// period. Three sources, none a new significance judgment:
+//   1. Open data_quality + high/critical-severity intelligence_insights
+//      (persistent conditions the Insight Engine already tracks).
+//   2. Failed reports — derived from the reportHistory this function is
+//      already handed by loadOverview(), no second query.
+//   3. Recent new leads — a direct, ephemeral read (not persisted as an
+//      insight; "a lead just arrived" isn't a tracked condition).
+// See docs/intelligence/PHASE2_PLAN.md's "Confirmed Near-Term Scope".
+// ══════════════════════════════════════════════════════════════════
+// Per-rule presentation, so each data-quality alert answers "what
+// happened / why it matters / what to do next" instead of a generic
+// icon + "Fix now" for all three. All three rules still resolve to the
+// same destination (the listing's edit form) -- only the label/reason
+// text differs, reflecting what staff actually does once there.
+const DATA_QUALITY_PRESENTATION = {
+  missing_photos: { icon: '📷', reason: "No photos — buyers can't preview this listing", actionLabel: 'Edit listing' },
+  missing_ai_description: { icon: '📝', reason: 'No description or AI highlight generated yet', actionLabel: 'Generate AI description' },
+  stale_listing: { icon: '⏳', reason: 'Old listing with very few views', actionLabel: 'Review listing' },
+};
+const NEW_LEAD_WINDOW_HOURS = 24;
+const MAX_ALERTS = 10;
+
+function alertSeverityRank(severity) {
+  return HIGHLIGHT_SEVERITY_WEIGHT[severity] || 1;
+}
+
+async function loadAlerts(reportHistory) {
+  const el = document.getElementById('alerts-card');
+  try {
+    const [insightRows, leadRows] = await Promise.all([
+      sbGet(
+        'intelligence_insights?resolved_at=is.null&or=(type.eq.data_quality,severity.in.(high,critical))' +
+        '&select=id,type,metric_key,severity,title,dimension_property_id&order=severity.desc&limit=25'
+      ),
+      sbGet(
+        'leads?status=eq.new&created_at=gte.' + new Date(Date.now() - NEW_LEAD_WINDOW_HOURS * 3600 * 1000).toISOString() +
+        '&select=id,created_at,property_id,properties(title_en)&order=created_at.desc&limit=10'
+      ),
+    ]);
+
+    const alerts = [];
+
+    insightRows.forEach((ins) => {
+      if (ins.type === 'data_quality') {
+        const p = DATA_QUALITY_PRESENTATION[ins.metric_key] || { icon: '🧹', reason: 'Data quality issue', actionLabel: 'Fix now' };
+        alerts.push({
+          severity: ins.severity,
+          icon: p.icon,
+          title: ins.title,
+          reason: p.reason,
+          actionLabel: p.actionLabel,
+          actionHref: ins.dimension_property_id ? ('admin.html?edit=' + encodeURIComponent(ins.dimension_property_id)) : null,
+        });
+      } else {
+        alerts.push({
+          severity: ins.severity,
+          icon: HIGHLIGHT_TYPE_ICONS[ins.type] || '🚨',
+          title: ins.title,
+          reason: 'Significant ' + ins.type.replace(/_/g, ' '),
+          actionLabel: null,
+          actionHref: null,
+        });
+      }
+    });
+
+    // "Regenerate report" reuses Section 4's existing generateReportType()
+    // (same function the manual Generate buttons call) rather than a
+    // second code path -- the alert just scrolls it into view and clicks
+    // it on the staff member's behalf.
+    reportHistory.filter((r) => r.status === 'failed').forEach((r) => {
+      alerts.push({
+        severity: 'high',
+        icon: '📄',
+        title: 'Report generation failed: ' + r.report_type + ' (' + fmtDate(r.period_end) + ')',
+        reason: r.error_message || 'See Report History for details',
+        actionLabel: 'Regenerate report',
+        actionOnClick: () => {
+          const btn = document.getElementById('gen-btn-' + r.report_type);
+          if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          generateReportType(r.report_type);
+        },
+      });
+    });
+
+    // No staff-facing single-lead view exists yet (dashboard.html's Leads
+    // tab is the agent-facing CRM, not a staff tool) -- "View listing"
+    // is the honest action available today: it takes staff to the
+    // property the lead is about, not a lead detail page that doesn't
+    // exist. Revisit once/if a staff lead view is built.
+    leadRows.forEach((lead) => {
+      const propertyTitle = (lead.properties && lead.properties.title_en) || 'a listing';
+      alerts.push({
+        severity: 'medium',
+        icon: '📞',
+        title: 'New lead: ' + propertyTitle,
+        reason: 'Received ' + fmtRelative(lead.created_at),
+        actionLabel: lead.property_id ? 'View listing' : null,
+        actionHref: lead.property_id ? ('admin.html?edit=' + encodeURIComponent(lead.property_id)) : null,
+      });
+    });
+
+    alerts.sort((a, b) => alertSeverityRank(b.severity) - alertSeverityRank(a.severity));
+    renderAlerts(alerts.slice(0, MAX_ALERTS));
+  } catch (e) {
+    console.error('[Intelligence] Failed to load alerts', e);
+    renderAlerts([]);
+  }
+}
+
+function renderAlerts(alerts) {
+  const el = document.getElementById('alerts-card');
+  if (!alerts.length) {
+    el.innerHTML = '<div class="alerts-empty">No alerts — everything looks healthy.</div>';
+    return;
+  }
+  el.innerHTML = '<ul class="alerts-list">' + alerts.map((a, i) =>
+    '<li class="alert-item">' +
+      '<span class="alert-severity-dot ' + esc(a.severity) + '"></span>' +
+      '<span class="alert-icon">' + a.icon + '</span>' +
+      '<div class="alert-body">' +
+        '<div class="alert-title">' + esc(a.title) + '</div>' +
+        (a.reason ? '<div class="alert-reason">' + esc(a.reason) + '</div>' : '') +
+      '</div>' +
+      (a.actionHref ? '<a class="alert-action" href="' + esc(a.actionHref) + '" target="_blank" rel="noopener">' + esc(a.actionLabel || 'View') + '</a>' :
+       a.actionOnClick ? '<button type="button" class="alert-action alert-action-btn" data-alert-index="' + i + '">' + esc(a.actionLabel || 'View') + '</button>' : '') +
+    '</li>'
+  ).join('') + '</ul>';
+  // actionOnClick callbacks can't be serialized into the innerHTML string
+  // above, so they're wired up via delegation after the fact -- el itself
+  // is never replaced across renders (only its innerHTML), so this listener
+  // never needs to be re-attached or leak duplicates across loadAlerts() calls.
+  el.querySelectorAll('.alert-action-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const a = alerts[Number(btn.dataset.alertIndex)];
+      if (a && a.actionOnClick) a.actionOnClick();
+    });
+  });
 }
 
 // ── Today's Highlights — derived entirely from the latest report's own

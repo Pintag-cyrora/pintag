@@ -55,4 +55,29 @@ function makeReportInsights() {
   ];
 }
 
-module.exports = { makeReports, makeInsights, makeReportInsights, isoDaysAgo, isoDateTimeHoursAgo, NOW };
+function makeLeads() {
+  return [
+    {
+      id: 'lead-1', status: 'new', property_id: 'p-1',
+      created_at: new Date(NOW.getTime() - 2 * 3600 * 1000).toISOString(),
+      properties: { title_en: 'Riverside Villa' },
+    },
+  ];
+}
+
+function makeDataQualityInsight() {
+  return {
+    'dq-1': {
+      id: 'dq-1', type: 'data_quality', metric_key: 'missing_photos', severity: 'high', confidence: 1,
+      dimension_district: 'Sisattanak', dimension_property_type: 'villa', dimension_property_id: 'p-2',
+      title: 'Missing photos: Riverside Condo', summary: 'Missing photos: Riverside Condo',
+      evidence: { rule: 'missing_photos', property_id: 'p-2' }, recommendation: null,
+      trend: 'emerging', first_seen: isoDaysAgo(1), last_seen: isoDaysAgo(0), resolved_at: null,
+    },
+  };
+}
+
+module.exports = {
+  makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight,
+  isoDaysAgo, isoDateTimeHoursAgo, NOW,
+};

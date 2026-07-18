@@ -7,7 +7,8 @@
 const fs = require('fs');
 const path = require('path');
 
-async function installSupabaseMocks(page, { reports, insights, reportInsights }) {
+async function installSupabaseMocks(page, { reports, insights, reportInsights, leads }) {
+  leads = leads || [];
   await page.route('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', async (route) => {
     const body = fs.readFileSync(path.join(__dirname, 'fake-supabase-js.js'), 'utf8');
     return route.fulfill({ status: 200, contentType: 'application/javascript', body });
@@ -73,6 +74,10 @@ async function installSupabaseMocks(page, { reports, insights, reportInsights })
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(insights[id] ? [insights[id]] : []) });
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.values(insights)) });
+    }
+
+    if (table === 'leads') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(leads) });
     }
 
     return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });

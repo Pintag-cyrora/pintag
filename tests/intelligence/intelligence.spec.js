@@ -4,7 +4,7 @@
 // this suite never needs real credentials or network access.
 const { test, expect } = require('@playwright/test');
 const { installSupabaseMocks } = require('./mock-supabase');
-const { makeReports, makeInsights, makeReportInsights } = require('./fixtures');
+const { makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight } = require('./fixtures');
 
 async function login(page) {
   await page.goto('/intelligence.html');
@@ -157,6 +157,69 @@ test.describe('XSS safety', () => {
     expect(titleHtml).toContain('&lt;img');
     expect(titleHtml).not.toContain('<img');
     expect(alertFired).toBe(false);
+  });
+});
+
+test.describe('Alerts (Phase 2A)', () => {
+  test('renders a data-quality alert with icon, title, reason, and an "Edit listing" action link to admin.html', async ({ page }) => {
+    const insights = { ...makeInsights(), ...makeDataQualityInsight() };
+    await installSupabaseMocks(page, { reports: makeReports(), insights, reportInsights: makeReportInsights(), leads: [] });
+    await login(page);
+    await page.waitForSelector('#alerts-card .alert-item');
+    const item = page.locator('#alerts-card .alert-item', { hasText: 'Missing photos: Riverside Condo' });
+    await expect(item).toBeVisible();
+    await expect(item.locator('.alert-icon')).toHaveText('📷');
+    await expect(item.locator('.alert-reason')).toContainText("buyers can't preview");
+    const action = item.locator('.alert-action');
+    await expect(action).toHaveText('Edit listing');
+    await expect(action).toHaveAttribute('href', 'admin.html?edit=p-2');
+  });
+
+  test('renders a failed-report alert with a "Regenerate report" button that triggers Section 4\'s generate action', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports(), insights: {}, reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#alerts-card .alert-item');
+    const item = page.locator('#alerts-card .alert-item', { hasText: 'Report generation failed' });
+    await expect(item).toBeVisible();
+    await expect(item.locator('.alert-reason')).toContainText('Gemini request timed out');
+    const action = item.locator('.alert-action-btn');
+    await expect(action).toHaveText('Regenerate report');
+    await action.click();
+    await expect(page.locator('#gen-status-weekly')).toContainText('Generated', { timeout: 10000 });
+  });
+
+  test('renders a new-lead alert with a relative time reason and a "View listing" action', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: {}, reportInsights: [], leads: makeLeads() });
+    await login(page);
+    await page.waitForSelector('#alerts-card .alert-item');
+    const item = page.locator('#alerts-card .alert-item', { hasText: 'New lead: Riverside Villa' });
+    await expect(item).toBeVisible();
+    await expect(item.locator('.alert-icon')).toHaveText('📞');
+    const action = item.locator('.alert-action');
+    await expect(action).toHaveText('View listing');
+    await expect(action).toHaveAttribute('href', 'admin.html?edit=p-1');
+  });
+
+  test('shows the empty state when there is nothing to act on', async ({ page }) => {
+    await installSupabaseMocks(page, {
+      reports: makeReports().filter((r) => r.status !== 'failed'),
+      insights: {}, reportInsights: [], leads: [],
+    });
+    await login(page);
+    await expect(page.locator('#alerts-card')).toContainText('No alerts — everything looks healthy.');
+  });
+
+  test('sorts alerts by severity, highest first', async ({ page }) => {
+    const insights = { ...makeDataQualityInsight() }; // severity: high
+    await installSupabaseMocks(page, { reports: makeReports(), insights, reportInsights: [], leads: makeLeads() }); // leads are medium severity
+    await login(page);
+    await page.waitForSelector('#alerts-card .alert-item');
+    const dots = await page.locator('#alerts-card .alert-severity-dot').evaluateAll(
+      (els) => els.map((el) => (el.classList.contains('high') || el.classList.contains('critical') ? 'high' : el.className.split(' ')[1]))
+    );
+    const lastHighIndex = dots.lastIndexOf('high');
+    const firstMediumIndex = dots.indexOf('medium');
+    expect(firstMediumIndex).toBeGreaterThan(lastHighIndex);
   });
 });
 
