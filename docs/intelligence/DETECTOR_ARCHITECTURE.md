@@ -179,16 +179,17 @@ below.
 
 - **Key:** `data_quality`
 - **Purpose:** flags active listings with a data-quality problem a buyer
-  would notice — missing photos, a missing AI-generated description, or
-  a listing that's gone stale (old with almost no views). Added as part
-  of Phase 2A (Alerts) — see `docs/intelligence/PHASE2_PLAN.md`.
+  or staff member would notice — missing photos, missing AI-generated
+  copy, missing price/location, staleness, or a lack of leads. Added as
+  part of Phase 2A (Alerts); extended with 5 more rules in Phase 2B
+  (Listings Needing Attention) — see `docs/intelligence/PHASE2_PLAN.md`.
 - **Shape: rule-based, not z-score-based.** This is the first detector
   that doesn't fit `zScoreDetector`'s pattern, and is the reason
   `extraContext` (above) exists: it evaluates a snapshot of current
   `properties` rows (fetched by `index.ts` via `fetchDataQualityProperties()`
   and passed in as `extraContext.properties`), not a daily metrics
   snapshot with a 30-day trailing baseline. Confidence is always `1.0`
-  (a photo is either missing or it isn't — no statistical uncertainty to
+  (a rule is either true or false — no statistical uncertainty to
   express) and severity is a fixed per-rule constant, not derived from a
   magnitude.
 - **Rules** (each independently evaluated per property, in
@@ -197,23 +198,38 @@ below.
   | Rule | Condition | Severity |
   |---|---|---|
   | `missing_photos` | no `images` | `high` |
-  | `missing_ai_description` | missing both `description_en` and `property_highlight_en` | `medium` |
+  | `missing_price` | no `price_display` (the one field every buyer-facing surface renders, regardless of transaction type) | `high` |
+  | `missing_ai_highlight` | no `property_highlight_en` | `medium` |
+  | `missing_ai_description` | no `description_en` | `medium` |
+  | `missing_location` | no `district_en` or no `village_en` | `medium` |
+  | `missing_neighborhood_insight` | no `neighborhood_insight_en` | `low` |
   | `stale_listing` | age ≥ `STALE_DAYS_THRESHOLD` (45 days) AND `view_count` < `STALE_VIEW_THRESHOLD` (3) | `medium` |
+  | `no_leads` | age ≥ `STALE_DAYS_THRESHOLD` (45 days, the same "old enough to judge" bar `stale_listing` uses) AND the property has zero rows in `leads` | `medium` |
+
+  `missing_ai_highlight` and `missing_ai_description` are checked
+  independently (Phase 2A originally combined them into one "missing both"
+  check; Phase 2B split them so a listing missing just one gets its own
+  specific reason). `no_leads` needs data beyond `properties` —
+  `extraContext.propertyIdsWithLeads` (a `Set` built by `index.ts` via
+  `fetchPropertyIdsWithLeads()`) is passed alongside `properties` for this
+  one rule to consult.
 
   Only listings with `status IN ('active', 'available')` (`TRACKED_STATUSES`)
   are evaluated — a sold/withdrawn listing's stale photos aren't a live
   problem.
 - **Insight type produced:** `data_quality` (one CHECK-constraint value,
   added specifically for this detector — see the
-  `20260718110000_data_quality_insight_type.sql` migration).
+  `20260718110000_data_quality_insight_type.sql` migration). `metric_key`
+  is a plain `text` column, not CHECK-constrained, so every rule above
+  (and `duplicateListingDetector`'s `duplicate_listing`, below) reuses this
+  same `type` without needing its own migration.
 - **`reevaluate`:** returns `{ stillSignificant: false }` when the
   property is no longer present in the current tracked-status fetch
   (deleted, or its status moved away from active/available) — the
   listing stopped being a live data-quality concern the moment it left
-  the tracked set, regardless of whether the underlying photo/description
-  gap was ever fixed. Otherwise it re-checks the rule against the
-  property's current data and reports whether the original condition
-  still holds.
+  the tracked set, regardless of whether the underlying gap was ever
+  fixed. Otherwise it re-checks the rule against the property's current
+  data and reports whether the original condition still holds.
 - **Known, accepted limitation:** because this detector's evidence never
   contains a `z` value, `classifyTrend`'s null-previousMagnitude
   short-circuit always classifies its insights as `trend: 'emerging'`,
@@ -221,6 +237,38 @@ below.
   no incorrect data) — a presence/absence condition doesn't really have a
   magnitude to trend anyway — and is deliberately left as-is rather than
   giving rule-based detectors a second, parallel trend concept.
+
+### `duplicateListingDetector`
+
+- **Key:** `duplicate_listing`
+- **Purpose:** flags likely duplicate listings — the one Phase 2B
+  condition that isn't a per-property presence/absence check. Added as
+  part of Phase 2B (Listings Needing Attention).
+- **Shape: cross-sectional, not per-row.** Unlike every rule in
+  `dataQualityDetector`, a finding here depends on comparing a property
+  against every *other* property in the same fetch — the reason this
+  lives in its own sibling module (`duplicate-listing-detector.js`)
+  rather than as a ninth rule in `dataQualityDetector`'s `RULES` array.
+  Shares the same `extraContext.properties` input `dataQualityDetector`
+  reads; needs nothing extra.
+- **Heuristic, deliberately conservative:** two active listings are
+  flagged only when they share the exact same (trimmed, case-insensitive)
+  `title_en`. A fuzzier combined-attributes heuristic (same district +
+  price + bedrooms, etc.) would catch more real duplicates but also more
+  coincidental matches — the simpler, lower-false-positive check ships
+  first, per this session's "ship what's reliable, defer speculative
+  logic" discipline. Untitled listings are never grouped (an empty title
+  is not a meaningful duplicate signal).
+- **Insight type produced:** `data_quality` (same type as
+  `dataQualityDetector`, distinguished by `metric_key = 'duplicate_listing'`
+  — see the `metric_key` note above).
+- **No one-click fix.** Per `PHASE2_PLAN.md`: "where no one-click fix is
+  possible (duplicate listings), the explanation alone is still the
+  minimum bar." The Intelligence page still offers an "Edit listing" link
+  (so staff can review/compare), but there's no automated resolution.
+- **`reevaluate`:** resolves when the property is gone from the tracked
+  set, or when it's no longer part of a same-title group of 2+ (e.g.
+  staff retitled one of the duplicates to disambiguate them).
 
 ## Evidence Schema
 
@@ -260,12 +308,28 @@ produces):
 }
 ```
 
-- `rule` — which of the three rules (above) triggered.
+- `rule` — which of the eight rules (above) triggered.
 - `property_id` — the specific listing this insight is about; also
   populated on `dimensionPropertyId` for indexed lookups, kept here too
   since `evidence` is meant to be a self-contained audit trail per
   detector, not something a reader must cross-reference the row's other
   columns to interpret.
+
+**`duplicateListingDetector`'s evidence shape:**
+
+```json
+{
+  "rule": "duplicate_listing",
+  "property_id": "b6b1e6b2-...",
+  "duplicate_of": ["a1c2d3e4-...", "f5g6h7i8-..."]
+}
+```
+
+- `rule` — always `'duplicate_listing'` (this detector has only one rule).
+- `property_id` — the listing this insight is about.
+- `duplicate_of` — every other property id sharing this listing's
+  normalized title, at detection time. A listing in a group of 3 lists
+  the other 2 ids here.
 
 Any future detector should document its own evidence shape in this same
 section when it's added, following the same worked-example format —

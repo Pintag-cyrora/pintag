@@ -35,6 +35,15 @@ Modules entries where the two overlap.
 
 ## Phase 2A — Alerts
 
+> **Status: implemented and merged to `main` (PR #41).** Ships 5 of the
+> 6 example types below — "Import failures" is deferred (see issue #43's
+> sibling tracking issue for import monitoring as its own reusable
+> subsystem, not bolted onto Alerts). Alerts is deliberately scoped to
+> only the 3 most urgent `data_quality` conditions (`missing_photos`,
+> `missing_ai_description`, `stale_listing`) now that Phase 2B covers the
+> full data-quality worklist — see Phase 2B's status note below for how
+> the overlap was resolved.
+
 The Intelligence landing page's "action required" area — answers "what
 needs attention" directly. Confirmed example alert types:
 
@@ -59,6 +68,20 @@ them through the same detector shape as everything else. Confirm the
 exact source for each before implementation, not by assumption.
 
 ## Phase 2B — Listings Needing Attention
+
+> **Status: implemented, on branch `claude/phase2b-listings-attention`,
+> not yet merged.** Ships 8 of the 9 example conditions below — "Poor
+> image quality" stays out of scope (needs image-analysis AI that
+> doesn't exist yet). The conceptual overlap with Alerts/Data Quality
+> was resolved exactly as anticipated below: `dataQualityDetector` was
+> extended (in place, no new detector shape) with 5 more per-property
+> rules, plus one new sibling detector (`duplicateListingDetector`,
+> genuinely cross-sectional — see `DETECTOR_ARCHITECTURE.md`) for
+> "Duplicate listings." Both detectors write the same `intelligence_
+> insights` rows Alerts already reads; Alerts was narrowed to an
+> explicit 3-metric_key allow-list so the two sections present the same
+> underlying data at two different granularities (urgent subset vs.
+> full per-listing worklist) rather than duplicating each other.
 
 A worklist, prioritized **by impact, not by listing ID or recency of
 creation**. Confirmed example conditions:

@@ -175,6 +175,7 @@ async function loadOverview() {
   renderReportHistoryTable(reportHistory);
   renderSystemHealth(reportHistory);
   loadAlerts(reportHistory);
+  loadListingsNeedingAttention();
 
   latestReportId = reportHistory.length ? reportHistory[0].id : null;
   if (latestReportId) {
@@ -222,9 +223,22 @@ function alertSeverityRank(severity) {
 async function loadAlerts(reportHistory) {
   const el = document.getElementById('alerts-card');
   try {
-    const [insightRows, leadRows] = await Promise.all([
+    // Two separate queries rather than one PostgREST or=(...) clause: the
+    // data-quality branch is scoped to an explicit metric_key allow-list
+    // (the 3 conditions urgent enough for Alerts), not "every data_quality
+    // insight regardless of severity" -- now that Phase 2B's Listings
+    // Needing Attention section covers the full data_quality worklist
+    // (including lower-priority conditions like missing_neighborhood_insight
+    // or duplicate_listing), Alerts would otherwise flood with the same
+    // items twice. See DATA_QUALITY_PRESENTATION below for the allow-list.
+    const [urgentDataQuality, otherHighSeverity, leadRows] = await Promise.all([
       sbGet(
-        'intelligence_insights?resolved_at=is.null&or=(type.eq.data_quality,severity.in.(high,critical))' +
+        'intelligence_insights?resolved_at=is.null&type=eq.data_quality' +
+        '&metric_key=in.(' + Object.keys(DATA_QUALITY_PRESENTATION).join(',') + ')' +
+        '&select=id,type,metric_key,severity,title,dimension_property_id&order=severity.desc&limit=25'
+      ),
+      sbGet(
+        'intelligence_insights?resolved_at=is.null&type=neq.data_quality&severity=in.(high,critical)' +
         '&select=id,type,metric_key,severity,title,dimension_property_id&order=severity.desc&limit=25'
       ),
       sbGet(
@@ -232,6 +246,7 @@ async function loadAlerts(reportHistory) {
         '&select=id,created_at,property_id,properties(title_en)&order=created_at.desc&limit=10'
       ),
     ]);
+    const insightRows = urgentDataQuality.concat(otherHighSeverity);
 
     const alerts = [];
 
@@ -330,6 +345,90 @@ function renderAlerts(alerts) {
       if (a && a.actionOnClick) a.actionOnClick();
     });
   });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Listings Needing Attention (Phase 2B) — a worklist, not a condition
+// list: every open data_quality insight is grouped by the listing it's
+// about, so a listing with 3 separate issues appears once with all 3
+// reasons, not 3 separate rows. Prioritized by impact (the sum of each
+// issue's severity weight for that listing), never by listing id or
+// creation date, per the confirmed Phase 2B scope in PHASE2_PLAN.md.
+//
+// Deliberately reuses the exact same intelligence_insights rows Alerts
+// reads (no second detector, no second significance judgment) -- this is
+// the "resolve the conceptual overlap rather than shipping two
+// overlapping worklists" instruction from PHASE2_PLAN.md, applied by
+// having Alerts show only the 3 most urgent conditions (see
+// DATA_QUALITY_PRESENTATION above) while this section shows the full
+// worklist across every data_quality condition, grouped per-listing.
+// ══════════════════════════════════════════════════════════════════
+const LISTING_ISSUE_PRESENTATION = {
+  missing_photos: { icon: '📷', label: 'No photos' },
+  missing_price: { icon: '💲', label: 'Missing price' },
+  missing_ai_highlight: { icon: '✨', label: 'Missing AI highlight' },
+  missing_ai_description: { icon: '📝', label: 'Missing description' },
+  missing_location: { icon: '📍', label: 'Missing location' },
+  missing_neighborhood_insight: { icon: '🏘️', label: 'Missing neighborhood insight' },
+  stale_listing: { icon: '⏳', label: 'Old listing, very few views' },
+  no_leads: { icon: '📉', label: 'No leads yet' },
+  duplicate_listing: { icon: '🧬', label: 'Possible duplicate' },
+};
+const MAX_ATTENTION_LISTINGS = 15;
+
+function listingImpactScore(issues) {
+  return issues.reduce((sum, i) => sum + (HIGHLIGHT_SEVERITY_WEIGHT[i.severity] || 1), 0);
+}
+
+async function loadListingsNeedingAttention() {
+  const el = document.getElementById('attention-card');
+  try {
+    const rows = await sbGet(
+      'intelligence_insights?resolved_at=is.null&type=eq.data_quality&dimension_property_id=not.is.null' +
+      '&select=id,metric_key,severity,dimension_property_id,properties(title_en)' +
+      '&order=severity.desc&limit=300'
+    );
+    const byListing = new Map();
+    rows.forEach((ins) => {
+      const id = ins.dimension_property_id;
+      if (!byListing.has(id)) {
+        byListing.set(id, {
+          propertyId: id,
+          title: (ins.properties && ins.properties.title_en) || 'Untitled listing',
+          issues: [],
+        });
+      }
+      byListing.get(id).issues.push({ metricKey: ins.metric_key, severity: ins.severity });
+    });
+    const listings = Array.from(byListing.values())
+      .map((l) => ({ ...l, impact: listingImpactScore(l.issues) }))
+      .sort((a, b) => b.impact - a.impact)
+      .slice(0, MAX_ATTENTION_LISTINGS);
+    renderListingsNeedingAttention(listings);
+  } catch (e) {
+    console.error('[Intelligence] Failed to load Listings Needing Attention', e);
+    renderListingsNeedingAttention([]);
+  }
+}
+
+function renderListingsNeedingAttention(listings) {
+  const el = document.getElementById('attention-card');
+  if (!listings.length) {
+    el.innerHTML = '<div class="alerts-empty">No listings need attention right now.</div>';
+    return;
+  }
+  el.innerHTML = '<ul class="attention-list">' + listings.map((l) =>
+    '<li class="attention-item">' +
+      '<div class="attention-body">' +
+        '<div class="attention-title">' + esc(l.title) + '</div>' +
+        '<div class="attention-issues">' + l.issues.map((i) => {
+          const p = LISTING_ISSUE_PRESENTATION[i.metricKey] || { icon: '🧹', label: i.metricKey };
+          return '<span class="attention-issue">' + p.icon + ' ' + esc(p.label) + '</span>';
+        }).join('') + '</div>' +
+      '</div>' +
+      '<a class="alert-action" href="' + esc('admin.html?edit=' + encodeURIComponent(l.propertyId)) + '" target="_blank" rel="noopener">Edit listing</a>' +
+    '</li>'
+  ).join('') + '</ul>';
 }
 
 // ── Today's Highlights — derived entirely from the latest report's own
