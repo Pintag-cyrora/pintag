@@ -24,9 +24,9 @@ job), or how long it stays open (the shared lifecycle loop's job, common
 to every detector).
 
 The Intelligence Engine is deliberately built so **new detectors can be
-added without changing existing ones**. Today there is exactly one
-detector (`zScoreDetector`). The architecture below is written so that
-remains true once there are five.
+added without changing existing ones**. Today there are two detectors
+(`zScoreDetector`, `dataQualityDetector`). The architecture below is
+written so that remains true as more are added.
 
 ## Detection Pipeline
 
@@ -68,17 +68,28 @@ Every detector must satisfy the same shape:
 }
 ```
 
-`context` is `{ todaySnapshot: { day, metrics }, trailingSnapshots: [{ day, metrics }, ...] }`
-— identical for every detector, every run.
+`context` is `{ todaySnapshot: { day, metrics }, trailingSnapshots: [{ day, metrics }, ...], ...extraContext }`
+— identical for every detector, every run. `extraContext` is an optional
+6th argument to `runInsightEngine(todaySnapshot, trailingSnapshots, openInsights, today, detectors, extraContext)`,
+merged flat into `context` alongside `todaySnapshot`/`trailingSnapshots`.
+It exists because not every detector is z-score-over-daily-metrics shaped
+— `dataQualityDetector` (see catalog below) evaluates raw `properties`
+rows, not daily snapshots, and has no meaningful "30-day trailing mean" to
+compare against. Rather than force every detector through the metrics
+snapshot shape, `extraContext` lets `index.ts` hand a detector-specific
+input (e.g. `{ properties }`) through the lifecycle loop untouched — the
+loop itself never reads or interprets `extraContext`, it only merges and
+forwards it. A detector that doesn't need it simply ignores the extra
+keys on `context`.
 
 A `RawFinding` is `{ type, metricKey, dimensionDistrict, dimensionPropertyType, dimensionPropertyId, title, summary, evidence, severity, confidence }`.
 
 Each detector should:
 
-- **Receive the same input structure.** No detector gets a special or
-  extended `context` — if a detector needs data no other detector needs,
-  that data belongs in the shared metrics snapshot, not a detector-specific
-  side channel.
+- **Receive the same input structure.** Every detector is handed the same
+  `context` object — `extraContext` (above) is the one sanctioned escape
+  valve for detector-specific input; a detector still never receives a
+  `context` shaped differently from any other detector's.
 - **Return zero or more candidate insights.** An empty array is a
   perfectly normal result (nothing significant today) — a detector never
   needs to report "no findings" any other way.
@@ -164,6 +175,53 @@ historical price series) — they are documented here as known gaps, not
 as bugs, and are natural candidates for the "Adding a Detector" checklist
 below.
 
+### `dataQualityDetector`
+
+- **Key:** `data_quality`
+- **Purpose:** flags active listings with a data-quality problem a buyer
+  would notice — missing photos, a missing AI-generated description, or
+  a listing that's gone stale (old with almost no views). Added as part
+  of Phase 2A (Alerts) — see `docs/intelligence/PHASE2_PLAN.md`.
+- **Shape: rule-based, not z-score-based.** This is the first detector
+  that doesn't fit `zScoreDetector`'s pattern, and is the reason
+  `extraContext` (above) exists: it evaluates a snapshot of current
+  `properties` rows (fetched by `index.ts` via `fetchDataQualityProperties()`
+  and passed in as `extraContext.properties`), not a daily metrics
+  snapshot with a 30-day trailing baseline. Confidence is always `1.0`
+  (a photo is either missing or it isn't — no statistical uncertainty to
+  express) and severity is a fixed per-rule constant, not derived from a
+  magnitude.
+- **Rules** (each independently evaluated per property, in
+  `data-quality-detector.js`):
+
+  | Rule | Condition | Severity |
+  |---|---|---|
+  | `missing_photos` | no `images` | `high` |
+  | `missing_ai_description` | missing both `description_en` and `property_highlight_en` | `medium` |
+  | `stale_listing` | age ≥ `STALE_DAYS_THRESHOLD` (45 days) AND `view_count` < `STALE_VIEW_THRESHOLD` (3) | `medium` |
+
+  Only listings with `status IN ('active', 'available')` (`TRACKED_STATUSES`)
+  are evaluated — a sold/withdrawn listing's stale photos aren't a live
+  problem.
+- **Insight type produced:** `data_quality` (one CHECK-constraint value,
+  added specifically for this detector — see the
+  `20260718110000_data_quality_insight_type.sql` migration).
+- **`reevaluate`:** returns `{ stillSignificant: false }` when the
+  property is no longer present in the current tracked-status fetch
+  (deleted, or its status moved away from active/available) — the
+  listing stopped being a live data-quality concern the moment it left
+  the tracked set, regardless of whether the underlying photo/description
+  gap was ever fixed. Otherwise it re-checks the rule against the
+  property's current data and reports whether the original condition
+  still holds.
+- **Known, accepted limitation:** because this detector's evidence never
+  contains a `z` value, `classifyTrend`'s null-previousMagnitude
+  short-circuit always classifies its insights as `trend: 'emerging'`,
+  never `strengthening`/`weakening`/`stable`. This is harmless (no crash,
+  no incorrect data) — a presence/absence condition doesn't really have a
+  magnitude to trend anyway — and is deliberately left as-is rather than
+  giving rule-based detectors a second, parallel trend concept.
+
 ## Evidence Schema
 
 `evidence` is intentionally detector-specific — there is no shared schema
@@ -192,6 +250,22 @@ produces):
 - `z` — `(today - mean) / stddev`; its sign gives `direction`, its
   magnitude drives `severity` and `confidence`.
 - `direction` — `'up'` or `'down'`.
+
+**`dataQualityDetector`'s evidence shape:**
+
+```json
+{
+  "rule": "missing_photos",
+  "property_id": "b6b1e6b2-..."
+}
+```
+
+- `rule` — which of the three rules (above) triggered.
+- `property_id` — the specific listing this insight is about; also
+  populated on `dimensionPropertyId` for indexed lookups, kept here too
+  since `evidence` is meant to be a self-contained audit trail per
+  detector, not something a reader must cross-reference the row's other
+  columns to interpret.
 
 Any future detector should document its own evidence shape in this same
 section when it's added, following the same worked-example format —

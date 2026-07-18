@@ -296,14 +296,21 @@ export const DEFAULT_DETECTORS = [zScoreDetector];
 // openInsights: current intelligence_insights rows where resolved_at IS NULL.
 // today: 'YYYY-MM-DD' string for first_seen/last_seen.
 // detectors: optional array of Detector objects; defaults to DEFAULT_DETECTORS.
+// extraContext: optional plain object merged into every detector's context,
+//   for detector-specific inputs the z-score shape doesn't need (e.g.
+//   data-quality-detector.js's `properties` array). zScoreDetector ignores
+//   fields it doesn't recognize; this keeps the lifecycle loop itself
+//   (matching/insert/update/resolve below) fully detector-agnostic and
+//   unchanged regardless of what a given detector needs to see — see
+//   docs/intelligence/DETECTOR_ARCHITECTURE.md's Detector Contract.
 //
 // Returns { toInsert, toUpdate, toResolve } — plain data, no side effects.
 // The caller (index.ts) is responsible for actually writing these via the
 // service-role REST client. This function itself never inspects which
 // detector produced a finding — see INTELLIGENCE_ARCHITECTURE.md.
-export function runInsightEngine(todaySnapshot, trailingSnapshots, openInsights, today, detectors) {
+export function runInsightEngine(todaySnapshot, trailingSnapshots, openInsights, today, detectors, extraContext) {
   detectors = detectors || DEFAULT_DETECTORS;
-  const context = { todaySnapshot, trailingSnapshots };
+  const context = { todaySnapshot, trailingSnapshots, ...(extraContext || {}) };
 
   const detected = [];
   detectors.forEach((detector) => {
@@ -327,6 +334,15 @@ export function runInsightEngine(todaySnapshot, trailingSnapshots, openInsights,
     const existing = openByKey.get(key);
     if (existing) {
       matchedOpenIds.add(existing.id);
+      // Rule-based findings (e.g. data-quality-detector.js) have no `z` in
+      // their evidence — prevMagnitude is then always null, so
+      // classifyTrend correctly (and harmlessly) reports 'emerging' on
+      // every match rather than computing a meaningless relative change.
+      // Known, accepted limitation: such insights never report
+      // strengthening/weakening/stable — only z-score-shaped detectors
+      // get a real trend label. Not a crash risk either way (classifyTrend
+      // short-circuits on a null previousMagnitude before touching
+      // currentMagnitude).
       const prevMagnitude = existing.evidence && typeof existing.evidence.z === 'number' ? Math.abs(existing.evidence.z) : null;
       toUpdate.push({
         id: existing.id, last_seen: today, evidence: d.evidence, severity: d.severity, confidence: d.confidence,

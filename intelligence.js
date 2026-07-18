@@ -174,6 +174,7 @@ async function loadOverview() {
   renderOverviewStats(reportHistory);
   renderReportHistoryTable(reportHistory);
   renderSystemHealth(reportHistory);
+  loadAlerts(reportHistory);
 
   latestReportId = reportHistory.length ? reportHistory[0].id : null;
   if (latestReportId) {
@@ -186,6 +187,117 @@ async function loadOverview() {
     document.getElementById('back-to-latest-link').style.display = 'none';
     renderHighlights([]);
   }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Alerts (Phase 2A) — the "action required" area. Independent of which
+// report is currently browsed (unlike Today's Highlights' latest-report
+// pinning): an alert reflects current state, not a specific report's
+// period. Three sources, none a new significance judgment:
+//   1. Open data_quality + high/critical-severity intelligence_insights
+//      (persistent conditions the Insight Engine already tracks).
+//   2. Failed reports — derived from the reportHistory this function is
+//      already handed by loadOverview(), no second query.
+//   3. Recent new leads — a direct, ephemeral read (not persisted as an
+//      insight; "a lead just arrived" isn't a tracked condition).
+// See docs/intelligence/PHASE2_PLAN.md's "Confirmed Near-Term Scope".
+// ══════════════════════════════════════════════════════════════════
+const ALERT_TYPE_ICONS = {
+  missing_photos: '📷', missing_ai_description: '📝', stale_listing: '⏳',
+};
+const NEW_LEAD_WINDOW_HOURS = 24;
+const MAX_ALERTS = 10;
+
+function alertSeverityRank(severity) {
+  return HIGHLIGHT_SEVERITY_WEIGHT[severity] || 1;
+}
+
+async function loadAlerts(reportHistory) {
+  const el = document.getElementById('alerts-card');
+  try {
+    const [insightRows, leadRows] = await Promise.all([
+      sbGet(
+        'intelligence_insights?resolved_at=is.null&or=(type.eq.data_quality,severity.in.(high,critical))' +
+        '&select=id,type,metric_key,severity,title,dimension_property_id&order=severity.desc&limit=25'
+      ),
+      sbGet(
+        'leads?status=eq.new&created_at=gte.' + new Date(Date.now() - NEW_LEAD_WINDOW_HOURS * 3600 * 1000).toISOString() +
+        '&select=id,created_at,property_id,properties(title_en)&order=created_at.desc&limit=10'
+      ),
+    ]);
+
+    const alerts = [];
+
+    insightRows.forEach((ins) => {
+      if (ins.type === 'data_quality') {
+        alerts.push({
+          severity: ins.severity,
+          icon: ALERT_TYPE_ICONS[ins.metric_key] || '🧹',
+          title: ins.title,
+          reason: 'Data quality issue',
+          actionLabel: 'Fix now',
+          actionHref: ins.dimension_property_id ? ('admin.html?edit=' + encodeURIComponent(ins.dimension_property_id)) : null,
+        });
+      } else {
+        alerts.push({
+          severity: ins.severity,
+          icon: HIGHLIGHT_TYPE_ICONS[ins.type] || '🚨',
+          title: ins.title,
+          reason: 'Significant ' + ins.type.replace(/_/g, ' '),
+          actionLabel: null,
+          actionHref: null,
+        });
+      }
+    });
+
+    reportHistory.filter((r) => r.status === 'failed').forEach((r) => {
+      alerts.push({
+        severity: 'high',
+        icon: '📄',
+        title: 'Report generation failed: ' + esc(r.report_type) + ' (' + fmtDate(r.period_end) + ')',
+        reason: r.error_message || 'See Report History for details',
+        actionLabel: null,
+        actionHref: null,
+      });
+    });
+
+    leadRows.forEach((lead) => {
+      const propertyTitle = (lead.properties && lead.properties.title_en) || 'a listing';
+      alerts.push({
+        severity: 'medium',
+        icon: '📞',
+        title: 'New lead: ' + propertyTitle,
+        reason: fmtRelative(lead.created_at),
+        actionLabel: null,
+        actionHref: null,
+      });
+    });
+
+    alerts.sort((a, b) => alertSeverityRank(b.severity) - alertSeverityRank(a.severity));
+    renderAlerts(alerts.slice(0, MAX_ALERTS));
+  } catch (e) {
+    console.error('[Intelligence] Failed to load alerts', e);
+    renderAlerts([]);
+  }
+}
+
+function renderAlerts(alerts) {
+  const el = document.getElementById('alerts-card');
+  if (!alerts.length) {
+    el.innerHTML = '<div class="alerts-empty">No alerts — everything looks healthy.</div>';
+    return;
+  }
+  el.innerHTML = '<ul class="alerts-list">' + alerts.map((a) =>
+    '<li class="alert-item">' +
+      '<span class="alert-severity-dot ' + esc(a.severity) + '"></span>' +
+      '<span class="alert-icon">' + a.icon + '</span>' +
+      '<div class="alert-body">' +
+        '<div class="alert-title">' + esc(a.title) + '</div>' +
+        (a.reason ? '<div class="alert-reason">' + esc(a.reason) + '</div>' : '') +
+      '</div>' +
+      (a.actionHref ? '<a class="alert-action" href="' + esc(a.actionHref) + '" target="_blank" rel="noopener">' + esc(a.actionLabel || 'View') + '</a>' : '') +
+    '</li>'
+  ).join('') + '</ul>';
 }
 
 // ── Today's Highlights — derived entirely from the latest report's own

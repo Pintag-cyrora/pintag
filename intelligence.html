@@ -65,6 +65,23 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 .stat-value.status-none{color:var(--ink-muted);font-size:14px;font-weight:500;}
 @media(max-width:820px){.stat-grid{grid-template-columns:repeat(2,1fr);}}
 
+/* ── ALERTS (Phase 2A) ────────────────────────────────────────────── */
+.alerts-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:6px 20px;}
+.alerts-list{list-style:none;}
+.alert-item{display:flex;align-items:flex-start;gap:12px;padding:13px 0;border-bottom:1px solid var(--border);}
+.alert-item:last-child{border-bottom:none;}
+.alert-icon{font-size:16px;line-height:1.4;flex-shrink:0;}
+.alert-body{flex:1;min-width:0;}
+.alert-title{font-size:13.5px;font-weight:500;color:var(--ink);}
+.alert-reason{font-size:12px;color:var(--ink-muted);margin-top:2px;}
+.alert-action{font-size:12px;font-weight:600;color:var(--teal);text-decoration:none;white-space:nowrap;flex-shrink:0;align-self:center;}
+.alert-action:hover{text-decoration:underline;}
+.alerts-empty{padding:20px 0;text-align:center;color:var(--ink-muted);font-size:13px;}
+.alert-severity-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:5px;}
+.alert-severity-dot.critical,.alert-severity-dot.high{background:var(--red);}
+.alert-severity-dot.medium{background:var(--gold);}
+.alert-severity-dot.low{background:var(--ink-muted);}
+
 /* ── TODAY'S HIGHLIGHTS ───────────────────────────────────────────── */
 .highlights-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:6px 20px;}
 .highlights-list{list-style:none;}
@@ -216,6 +233,23 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
       <div class="section-block">
         <div class="section-header"><h2>Overview</h2></div>
         <div class="stat-grid" id="overview-stats"></div>
+      </div>
+
+      <!-- Alerts — Phase 2A. The Intelligence page's "action required" area:
+           what needs attention right now, independent of any one report.
+           Sourced from three places, none of them a new significance
+           judgment: open data_quality + high/critical-severity
+           intelligence_insights (persistent conditions), failed reports
+           (already-fetched report history, no new query), and recent new
+           leads (a direct, ephemeral event read — not persisted as an
+           insight, since "a lead just came in" isn't a tracked condition
+           the way "this listing is missing photos" is). See
+           docs/intelligence/PHASE2_PLAN.md's "Confirmed Near-Term Scope"
+           section. Import failures are deliberately deferred — no
+           instrumentation exists yet to source them from. -->
+      <div class="section-block">
+        <div class="section-header"><h2>Alerts</h2></div>
+        <div class="alerts-card" id="alerts-card"><div class="insp-loading">Loading alerts…</div></div>
       </div>
 
       <!-- Today's Highlights — a 30-second scan of the latest report's most
