@@ -7,6 +7,32 @@
 const fs = require('fs');
 const path = require('path');
 
+// Minimal PostgREST filter-query interpreter -- just enough to make the
+// intelligence_insights mock route honest about eq/neq/in/is.null filters,
+// since loadAlerts() and loadListingsNeedingAttention() now issue several
+// differently-filtered queries against the same table and must not each
+// receive the same unfiltered full set (which would double-count rows).
+function matchesFilter(fieldValue, filterValue) {
+  if (filterValue === 'is.null') return fieldValue === null || fieldValue === undefined;
+  if (filterValue === 'not.is.null') return fieldValue !== null && fieldValue !== undefined;
+  const eqMatch = filterValue.match(/^eq\.(.*)$/);
+  if (eqMatch) return String(fieldValue) === decodeURIComponent(eqMatch[1]);
+  const neqMatch = filterValue.match(/^neq\.(.*)$/);
+  if (neqMatch) return String(fieldValue) !== decodeURIComponent(neqMatch[1]);
+  const inMatch = filterValue.match(/^in\.\((.*)\)$/);
+  if (inMatch) return inMatch[1].split(',').map(decodeURIComponent).includes(String(fieldValue));
+  return true; // unknown operator -- don't filter, safer default for a test mock
+}
+function applyPostgrestFilters(rows, url) {
+  const params = new URL(url).searchParams;
+  let result = rows;
+  for (const [key, value] of params.entries()) {
+    if (['select', 'order', 'limit', 'or'].includes(key)) continue;
+    result = result.filter((row) => matchesFilter(row[key], value));
+  }
+  return result;
+}
+
 async function installSupabaseMocks(page, { reports, insights, reportInsights, leads }) {
   leads = leads || [];
   await page.route('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', async (route) => {
@@ -73,7 +99,8 @@ async function installSupabaseMocks(page, { reports, insights, reportInsights, l
         const id = decodeURIComponent(idMatch[1]);
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(insights[id] ? [insights[id]] : []) });
       }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.values(insights)) });
+      const filtered = applyPostgrestFilters(Object.values(insights), url);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(filtered) });
     }
 
     if (table === 'leads') {

@@ -3,7 +3,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dataQualityDetector, isMissingPhotos, isMissingAiDescription, isStaleListing, STALE_DAYS_THRESHOLD } from './data-quality-detector.js';
+import {
+  dataQualityDetector, isMissingPhotos, isMissingAiHighlight, isMissingAiDescription,
+  isMissingNeighborhoodInsight, isMissingPrice, isMissingLocation, isStaleListing, isNoLeads,
+  STALE_DAYS_THRESHOLD,
+} from './data-quality-detector.js';
 import { runInsightEngine } from './insight-engine.js';
 
 const NOW = new Date('2026-07-18T00:00:00Z');
@@ -11,8 +15,9 @@ const NOW = new Date('2026-07-18T00:00:00Z');
 function property(overrides) {
   return {
     id: 'p-1', title_en: 'Test Listing', images: ['https://x/1.jpg'],
-    description_en: 'A lovely home.', property_highlight_en: null,
-    district_en: 'Sisattanak', property_type: 'villa',
+    description_en: 'A lovely home.', property_highlight_en: 'A great highlight.',
+    neighborhood_insight_en: 'A quiet, leafy street.', price_display: '$500,000',
+    district_en: 'Sisattanak', village_en: 'Thongkang', property_type: 'villa',
     created_at: '2026-07-01T00:00:00Z', view_count: 10,
     ...overrides,
   };
@@ -25,11 +30,30 @@ test('isMissingPhotos: true when images is empty or not an array', () => {
   assert.equal(isMissingPhotos(property({ images: undefined })), true);
   assert.equal(isMissingPhotos(property({ images: ['a.jpg'] })), false);
 });
-test('isMissingAiDescription: false if either description or highlight is present', () => {
-  assert.equal(isMissingAiDescription(property({ description_en: null, property_highlight_en: null })), true);
-  assert.equal(isMissingAiDescription(property({ description_en: '  ', property_highlight_en: null })), true);
-  assert.equal(isMissingAiDescription(property({ description_en: 'text', property_highlight_en: null })), false);
-  assert.equal(isMissingAiDescription(property({ description_en: null, property_highlight_en: 'highlight' })), false);
+test('isMissingAiHighlight: checks property_highlight_en independently of description', () => {
+  assert.equal(isMissingAiHighlight(property({ property_highlight_en: null })), true);
+  assert.equal(isMissingAiHighlight(property({ property_highlight_en: '  ' })), true);
+  assert.equal(isMissingAiHighlight(property({ property_highlight_en: 'highlight' })), false);
+});
+test('isMissingAiDescription: checks description_en independently of highlight', () => {
+  assert.equal(isMissingAiDescription(property({ description_en: null })), true);
+  assert.equal(isMissingAiDescription(property({ description_en: '  ' })), true);
+  assert.equal(isMissingAiDescription(property({ description_en: 'text' })), false);
+});
+test('isMissingNeighborhoodInsight: true when neighborhood_insight_en is blank or absent', () => {
+  assert.equal(isMissingNeighborhoodInsight(property({ neighborhood_insight_en: null })), true);
+  assert.equal(isMissingNeighborhoodInsight(property({ neighborhood_insight_en: '  ' })), true);
+  assert.equal(isMissingNeighborhoodInsight(property({ neighborhood_insight_en: 'text' })), false);
+});
+test('isMissingPrice: checks price_display regardless of transaction_type', () => {
+  assert.equal(isMissingPrice(property({ price_display: null })), true);
+  assert.equal(isMissingPrice(property({ price_display: '' })), true);
+  assert.equal(isMissingPrice(property({ price_display: '$1,200/mo' })), false);
+});
+test('isMissingLocation: true when either district or village is blank', () => {
+  assert.equal(isMissingLocation(property({ district_en: null })), true);
+  assert.equal(isMissingLocation(property({ village_en: null })), true);
+  assert.equal(isMissingLocation(property({ district_en: 'Sisattanak', village_en: 'Thongkang' })), false);
 });
 test('isStaleListing: false when younger than the threshold regardless of views', () => {
   const recentlyCreated = new Date(NOW);
@@ -45,6 +69,21 @@ test('isStaleListing: false when old enough but has meaningful views', () => {
   const oldEnough = new Date(NOW);
   oldEnough.setDate(oldEnough.getDate() - (STALE_DAYS_THRESHOLD + 5));
   assert.equal(isStaleListing(property({ created_at: oldEnough.toISOString(), view_count: 50 }), NOW), false);
+});
+test('isNoLeads: false when younger than the threshold, regardless of leads', () => {
+  const recentlyCreated = new Date(NOW);
+  recentlyCreated.setDate(recentlyCreated.getDate() - (STALE_DAYS_THRESHOLD - 5));
+  assert.equal(isNoLeads(property({ id: 'p-1', created_at: recentlyCreated.toISOString() }), NOW, new Set()), false);
+});
+test('isNoLeads: true when old enough and the property id has no lead', () => {
+  const oldEnough = new Date(NOW);
+  oldEnough.setDate(oldEnough.getDate() - (STALE_DAYS_THRESHOLD + 5));
+  assert.equal(isNoLeads(property({ id: 'p-1', created_at: oldEnough.toISOString() }), NOW, new Set(['p-2'])), true);
+});
+test('isNoLeads: false when old enough but the property id has a lead', () => {
+  const oldEnough = new Date(NOW);
+  oldEnough.setDate(oldEnough.getDate() - (STALE_DAYS_THRESHOLD + 5));
+  assert.equal(isNoLeads(property({ id: 'p-1', created_at: oldEnough.toISOString() }), NOW, new Set(['p-1'])), false);
 });
 
 // ── dataQualityDetector.detect ────────────────────────────────────────────
@@ -63,9 +102,20 @@ test('detect flags multiple simultaneous violations on the same listing', () => 
   const oldEnough = new Date(NOW);
   oldEnough.setDate(oldEnough.getDate() - (STALE_DAYS_THRESHOLD + 10));
   const troubled = property({ id: 'troubled-1', images: [], description_en: null, property_highlight_en: null, created_at: oldEnough.toISOString(), view_count: 0 });
+  // No propertyIdsWithLeads passed -- an old-enough listing with no leads
+  // data at all correctly reads as "no leads yet" too.
   const findings = dataQualityDetector.detect({ properties: [troubled], now: NOW });
   const metricKeys = findings.map((f) => f.metricKey).sort();
-  assert.deepEqual(metricKeys, ['missing_ai_description', 'missing_photos', 'stale_listing']);
+  assert.deepEqual(metricKeys, ['missing_ai_description', 'missing_ai_highlight', 'missing_photos', 'no_leads', 'stale_listing']);
+});
+test('detect does not flag no_leads when the property id is present in propertyIdsWithLeads', () => {
+  const oldEnough = new Date(NOW);
+  oldEnough.setDate(oldEnough.getDate() - (STALE_DAYS_THRESHOLD + 10));
+  const hasLead = property({ id: 'has-lead-1', created_at: oldEnough.toISOString(), view_count: 0 });
+  const findings = dataQualityDetector.detect({ properties: [hasLead], now: NOW, propertyIdsWithLeads: new Set(['has-lead-1']) });
+  const metricKeys = findings.map((f) => f.metricKey);
+  assert.ok(!metricKeys.includes('no_leads'));
+  assert.ok(metricKeys.includes('stale_listing')); // view_count still below the floor -- a separate condition
 });
 test('detect returns nothing when properties list is empty or absent', () => {
   assert.deepEqual(dataQualityDetector.detect({ properties: [], now: NOW }), []);

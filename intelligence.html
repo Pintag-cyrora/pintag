@@ -83,6 +83,15 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 .alert-severity-dot.medium{background:var(--gold);}
 .alert-severity-dot.low{background:var(--ink-muted);}
 
+/* ── LISTINGS NEEDING ATTENTION (Phase 2B) ───────────────────────────── */
+.attention-list{list-style:none;}
+.attention-item{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--border);}
+.attention-item:last-child{border-bottom:none;}
+.attention-body{flex:1;min-width:0;}
+.attention-title{font-size:13.5px;font-weight:500;color:var(--ink);}
+.attention-issues{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+.attention-issue{font-size:11.5px;color:var(--ink-muted);background:var(--bg-alt,rgba(0,0,0,0.04));border-radius:20px;padding:2px 9px;white-space:nowrap;}
+
 /* ── TODAY'S HIGHLIGHTS ───────────────────────────────────────────── */
 .highlights-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:6px 20px;}
 .highlights-list{list-style:none;}
@@ -251,6 +260,22 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
       <div class="section-block">
         <div class="section-header"><h2>Alerts</h2></div>
         <div class="alerts-card" id="alerts-card"><div class="insp-loading">Loading alerts…</div></div>
+      </div>
+
+      <!-- Listings Needing Attention (Phase 2B) — a worklist prioritized by
+           impact, not listing id or recency. Every currently-open
+           data_quality insight, grouped by the listing it's about (a
+           listing with 3 issues shows once with all 3 reasons). Deliberately
+           reuses the same intelligence_insights rows Alerts reads instead of
+           a second detector/query — Alerts surfaces only the 3 most urgent
+           conditions, this section is the comprehensive per-listing worklist.
+           See docs/intelligence/PHASE2_PLAN.md's "Phase 2B — Listings
+           Needing Attention" section. "Poor image quality" is out of scope
+           (needs image-analysis AI that doesn't exist yet); "Duplicate
+           listings" has no one-click fix, so the explanation is the action. -->
+      <div class="section-block">
+        <div class="section-header"><h2>Listings Needing Attention</h2></div>
+        <div class="alerts-card" id="attention-card"><div class="insp-loading">Loading listings…</div></div>
       </div>
 
       <!-- Today's Highlights — a 30-second scan of the latest report's most

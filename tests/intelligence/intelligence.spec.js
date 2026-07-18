@@ -4,7 +4,7 @@
 // this suite never needs real credentials or network access.
 const { test, expect } = require('@playwright/test');
 const { installSupabaseMocks } = require('./mock-supabase');
-const { makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight } = require('./fixtures');
+const { makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight, makeListingsNeedingAttentionInsights } = require('./fixtures');
 
 async function login(page) {
   await page.goto('/intelligence.html');
@@ -220,6 +220,51 @@ test.describe('Alerts (Phase 2A)', () => {
     const lastHighIndex = dots.lastIndexOf('high');
     const firstMediumIndex = dots.indexOf('medium');
     expect(firstMediumIndex).toBeGreaterThan(lastHighIndex);
+  });
+
+  test('data-quality conditions outside the 3-item allow-list do not appear in Alerts, even at high severity', async ({ page }) => {
+    // Only the 3 conditions in DATA_QUALITY_PRESENTATION (missing_photos,
+    // missing_ai_description, stale_listing) surface as Alerts -- the rest
+    // (including missing_price, itself "high" severity) belong to Listings
+    // Needing Attention instead, so the two sections never show the same
+    // items twice. This fixture's insights are all metric_keys outside that
+    // allow-list, so Alerts should render its empty state.
+    const insights = { ...makeListingsNeedingAttentionInsights() };
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights, reportInsights: [], leads: [] });
+    await login(page);
+    await expect(page.locator('#alerts-card')).toContainText('No alerts — everything looks healthy.');
+  });
+});
+
+test.describe('Listings Needing Attention (Phase 2B)', () => {
+  test('groups multiple issues on the same listing into one card, all reasons listed', async ({ page }) => {
+    const insights = { ...makeListingsNeedingAttentionInsights() };
+    await installSupabaseMocks(page, { reports: makeReports(), insights, reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#attention-card .attention-item');
+    const card = page.locator('#attention-card .attention-item', { hasText: 'Sunset Apartment' });
+    await expect(card).toBeVisible();
+    await expect(card.locator('.attention-issue')).toHaveCount(3);
+    await expect(card.locator('.attention-issue').nth(0)).toContainText('Missing price');
+    await expect(card.locator('.attention-issue').nth(1)).toContainText('Missing AI highlight');
+    await expect(card.locator('.attention-issue').nth(2)).toContainText('Missing location');
+    await expect(card.locator('.alert-action')).toHaveAttribute('href', 'admin.html?edit=p-4');
+  });
+
+  test('ranks by summed impact, not by listing id or recency', async ({ page }) => {
+    // p-4 has 3 issues (high+medium+medium); p-5 has 1 (low) -- p-4 must rank first.
+    const insights = { ...makeListingsNeedingAttentionInsights() };
+    await installSupabaseMocks(page, { reports: makeReports(), insights, reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#attention-card .attention-item');
+    const titles = await page.locator('#attention-card .attention-title').allTextContents();
+    expect(titles.indexOf('Sunset Apartment')).toBeLessThan(titles.indexOf('Quiet House'));
+  });
+
+  test('shows the empty state when no listings need attention', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: {}, reportInsights: [], leads: [] });
+    await login(page);
+    await expect(page.locator('#attention-card')).toContainText('No listings need attention right now.');
   });
 });
 

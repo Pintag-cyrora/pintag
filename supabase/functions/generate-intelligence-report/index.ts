@@ -20,6 +20,7 @@
 
 import { runInsightEngine, DEFAULT_DETECTORS } from './insight-engine.js';
 import { dataQualityDetector } from './data-quality-detector.js';
+import { duplicateListingDetector } from './duplicate-listing-detector.js';
 import { sumMetrics } from './metrics-utils.js';
 import {
   composeReportInput, buildPrompt, isQuietPeriod, buildQuietDayReport,
@@ -225,16 +226,26 @@ async function fetchCurrentSupply(db: Db): Promise<{ byDistrict: Record<string, 
   return { byDistrict, byType };
 }
 
-// Fetches the columns data-quality-detector.js's rule checks need, scoped
-// to actively-shown listings (a draft/sold/inactive listing's data quality
-// is not staff's morning priority the way a live listing's is). Only the
-// columns each rule actually reads — same lean-select convention as
-// fetchCurrentSupply() above.
+// Fetches the columns data-quality-detector.js's and duplicate-listing-
+// detector.js's rule checks need, scoped to actively-shown listings (a
+// draft/sold/inactive listing's data quality is not staff's morning
+// priority the way a live listing's is). Only the columns each rule
+// actually reads — same lean-select convention as fetchCurrentSupply()
+// above.
 async function fetchDataQualityProperties(db: Db): Promise<any[]> {
   return db.select(
     'properties',
-    'select=id,title_en,images,description_en,property_highlight_en,district_en,property_type,created_at,view_count&status=in.(active,available)'
+    'select=id,title_en,images,description_en,property_highlight_en,neighborhood_insight_en,' +
+    'price_display,district_en,village_en,property_type,created_at,view_count&status=in.(active,available)'
   );
+}
+
+// Every property id that has at least one row in `leads` (any status) —
+// used only by dataQualityDetector's no_leads rule. A plain Set, built
+// once per sweep rather than a per-property query.
+async function fetchPropertyIdsWithLeads(db: Db): Promise<Set<string>> {
+  const rows = await db.select('leads', 'select=property_id');
+  return new Set((rows || []).map((r: any) => r.property_id).filter(Boolean));
 }
 
 // ── Insight Engine step (daily only) ────────────────────────────────────
@@ -243,11 +254,14 @@ async function runDailyInsightSweep(db: Db, today: DailySnapshot, trailing: Dail
     'intelligence_insights',
     'select=*&resolved_at=is.null'
   );
-  const properties = await fetchDataQualityProperties(db);
+  const [properties, propertyIdsWithLeads] = await Promise.all([
+    fetchDataQualityProperties(db),
+    fetchPropertyIdsWithLeads(db),
+  ]);
   const { toInsert, toUpdate, toResolve } = runInsightEngine(
     today, trailing, openInsights, periodEnd,
-    [...DEFAULT_DETECTORS, dataQualityDetector],
-    { properties }
+    [...DEFAULT_DETECTORS, dataQualityDetector, duplicateListingDetector],
+    { properties, propertyIdsWithLeads }
   );
 
   const inserted = toInsert.length ? await db.insert('intelligence_insights', toInsert) : [];

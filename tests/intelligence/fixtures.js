@@ -73,11 +73,54 @@ function makeDataQualityInsight() {
       title: 'Missing photos: Riverside Condo', summary: 'Missing photos: Riverside Condo',
       evidence: { rule: 'missing_photos', property_id: 'p-2' }, recommendation: null,
       trend: 'emerging', first_seen: isoDaysAgo(1), last_seen: isoDaysAgo(0), resolved_at: null,
+      properties: { title_en: 'Riverside Condo' },
+    },
+  };
+}
+
+// Phase 2B fixture: two separate listings each with their own data_quality
+// issues, one of them (p-4) with THREE simultaneous issues -- this is what
+// Listings Needing Attention groups by dimension_property_id and ranks by
+// summed severity weight (p-4's 3 issues should out-rank p-5's single one).
+function makeListingsNeedingAttentionInsights() {
+  return {
+    'la-1': {
+      id: 'la-1', type: 'data_quality', metric_key: 'missing_price', severity: 'high', confidence: 1,
+      dimension_district: 'Chanthabouly', dimension_property_type: 'apartment', dimension_property_id: 'p-4',
+      title: 'Missing price: Sunset Apartment', summary: 'Missing price: Sunset Apartment',
+      evidence: { rule: 'missing_price', property_id: 'p-4' }, recommendation: null,
+      trend: 'emerging', first_seen: isoDaysAgo(2), last_seen: isoDaysAgo(0), resolved_at: null,
+      properties: { title_en: 'Sunset Apartment' },
+    },
+    'la-2': {
+      id: 'la-2', type: 'data_quality', metric_key: 'missing_ai_highlight', severity: 'medium', confidence: 1,
+      dimension_district: 'Chanthabouly', dimension_property_type: 'apartment', dimension_property_id: 'p-4',
+      title: 'Missing AI highlight: Sunset Apartment', summary: 'Missing AI highlight: Sunset Apartment',
+      evidence: { rule: 'missing_ai_highlight', property_id: 'p-4' }, recommendation: null,
+      trend: 'emerging', first_seen: isoDaysAgo(2), last_seen: isoDaysAgo(0), resolved_at: null,
+      properties: { title_en: 'Sunset Apartment' },
+    },
+    'la-3': {
+      id: 'la-3', type: 'data_quality', metric_key: 'missing_location', severity: 'medium', confidence: 1,
+      dimension_district: null, dimension_property_type: 'apartment', dimension_property_id: 'p-4',
+      title: 'Missing location: Sunset Apartment', summary: 'Missing location: Sunset Apartment',
+      evidence: { rule: 'missing_location', property_id: 'p-4' }, recommendation: null,
+      trend: 'emerging', first_seen: isoDaysAgo(2), last_seen: isoDaysAgo(0), resolved_at: null,
+      properties: { title_en: 'Sunset Apartment' },
+    },
+    'la-4': {
+      id: 'la-4', type: 'data_quality', metric_key: 'missing_neighborhood_insight', severity: 'low', confidence: 1,
+      dimension_district: 'Sikhottabong', dimension_property_type: 'house', dimension_property_id: 'p-5',
+      title: 'Missing neighborhood insight: Quiet House', summary: 'Missing neighborhood insight: Quiet House',
+      evidence: { rule: 'missing_neighborhood_insight', property_id: 'p-5' }, recommendation: null,
+      trend: 'emerging', first_seen: isoDaysAgo(3), last_seen: isoDaysAgo(0), resolved_at: null,
+      properties: { title_en: 'Quiet House' },
     },
   };
 }
 
 module.exports = {
   makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight,
+  makeListingsNeedingAttentionInsights,
   isoDaysAgo, isoDateTimeHoursAgo, NOW,
 };
