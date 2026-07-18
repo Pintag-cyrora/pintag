@@ -1,0 +1,11 @@
+{
+  "name": "pintag-intelligence-tests",
+  "private": true,
+  "description": "Playwright coverage for intelligence.html. Isolated from the app itself (which has no build step and no package.json) -- this package.json exists only so test tooling has somewhere to declare its one dependency.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
