@@ -1,2 +1,6 @@
 .env
 .env.*
+
+# Playwright output when run from the repo root instead of tests/intelligence/
+/test-results/
+/playwright-report/
