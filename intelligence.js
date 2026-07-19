@@ -205,17 +205,55 @@ async function loadOverview() {
 // happened / why it matters / what to do next" instead of a generic
 // icon + "Fix now" for all three. All three rules still resolve to the
 // same destination (the listing's edit form) -- only the label/reason
-// text differs, reflecting what staff actually does once there.
+// text differs, reflecting what staff actually does once there. `label`
+// (added Phase 3A WS2) is the short noun form used when several alerts
+// for the same condition get grouped into one row -- see groupAlerts().
 const DATA_QUALITY_PRESENTATION = {
-  missing_photos: { icon: '📷', reason: "No photos — buyers can't preview this listing", actionLabel: 'Edit listing' },
-  missing_ai_description: { icon: '📝', reason: 'No description or AI highlight generated yet', actionLabel: 'Generate AI description' },
-  stale_listing: { icon: '⏳', reason: 'Old listing with very few views', actionLabel: 'Review listing' },
+  missing_photos: { icon: '📷', label: 'Missing photos', reason: "No photos — buyers can't preview this listing", actionLabel: 'Edit listing' },
+  missing_ai_description: { icon: '📝', label: 'Missing descriptions', reason: 'No description or AI highlight generated yet', actionLabel: 'Generate AI description' },
+  stale_listing: { icon: '⏳', label: 'Stale listings', reason: 'Old listing with very few views', actionLabel: 'Review listing' },
 };
 const NEW_LEAD_WINDOW_HOURS = 24;
 const MAX_ALERTS = 10;
+// Phase 3A WS2: once a single condition affects this many listings or
+// more, showing one row per listing stops being scannable (see the
+// large-dataset screenshot in the Phase 3A UX review) -- collapse them
+// into one grouped row instead of listing each individually.
+const MIN_ALERT_GROUP_SIZE = 3;
 
 function alertSeverityRank(severity) {
   return HIGHLIGHT_SEVERITY_WEIGHT[severity] || 1;
+}
+
+// Collapses alerts that share the same groupKey (set only on data_quality
+// alerts, one key per metric_key -- see loadAlerts()) into a single row
+// once there are MIN_ALERT_GROUP_SIZE or more, keeping the highest
+// severity among them. Everything else (leads, failed reports,
+// non-data-quality insights) passes through unchanged -- those aren't
+// "the same condition repeated across many listings" the way a data
+// quality rule can be.
+function groupAlerts(alerts) {
+  const byKey = new Map();
+  const passthrough = [];
+  alerts.forEach((a) => {
+    if (!a.groupKey) { passthrough.push(a); return; }
+    if (!byKey.has(a.groupKey)) byKey.set(a.groupKey, []);
+    byKey.get(a.groupKey).push(a);
+  });
+  const result = passthrough;
+  byKey.forEach((items) => {
+    if (items.length < MIN_ALERT_GROUP_SIZE) { result.push(...items); return; }
+    const worst = items.reduce((a, b) => (alertSeverityRank(b.severity) > alertSeverityRank(a.severity) ? b : a));
+    result.push({
+      severity: worst.severity,
+      icon: worst.icon,
+      title: worst.groupLabel + ' — ' + items.length + ' listings',
+      reason: worst.reason,
+      actionLabel: 'Review in Listings Needing Attention',
+      actionOnClick: () => document.getElementById('attention-card').scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    });
+  });
+  return result;
 }
 
 async function loadAlerts(reportHistory) {
@@ -250,7 +288,7 @@ async function loadAlerts(reportHistory) {
 
     insightRows.forEach((ins) => {
       if (ins.type === 'data_quality') {
-        const p = DATA_QUALITY_PRESENTATION[ins.metric_key] || { icon: '🧹', reason: 'Data quality issue', actionLabel: 'Fix now' };
+        const p = DATA_QUALITY_PRESENTATION[ins.metric_key] || { icon: '🧹', label: 'Data quality issues', reason: 'Data quality issue', actionLabel: 'Fix now' };
         alerts.push({
           severity: ins.severity,
           icon: p.icon,
@@ -258,6 +296,8 @@ async function loadAlerts(reportHistory) {
           reason: p.reason,
           actionLabel: p.actionLabel,
           actionHref: ins.dimension_property_id ? ('admin.html?edit=' + encodeURIComponent(ins.dimension_property_id)) : null,
+          groupKey: 'dq:' + ins.metric_key,
+          groupLabel: p.label,
         });
       } else {
         alerts.push({
@@ -307,12 +347,22 @@ async function loadAlerts(reportHistory) {
       });
     });
 
-    alerts.sort((a, b) => alertSeverityRank(b.severity) - alertSeverityRank(a.severity));
-    renderAlerts(alerts.slice(0, MAX_ALERTS));
+    const grouped = groupAlerts(alerts);
+    grouped.sort((a, b) => alertSeverityRank(b.severity) - alertSeverityRank(a.severity));
+    renderAlerts(grouped.slice(0, MAX_ALERTS));
   } catch (e) {
     console.error('[Intelligence] Failed to load alerts', e);
-    renderAlerts([]);
+    renderAlertsError();
   }
+}
+
+// A failed fetch must never look identical to "nothing to report" -- the
+// two mean very different things to someone scanning this page first
+// thing in the morning. Reuses the same red/Retry pattern as
+// generate-status.err rather than inventing a second error convention.
+function renderAlertsError() {
+  document.getElementById('alerts-card').innerHTML =
+    '<div class="alerts-error">⚠ Couldn\'t load alerts.<button type="button" class="alerts-retry" onclick="loadAlerts(reportHistory)">Retry</button></div>';
 }
 
 function renderAlerts(alerts) {
@@ -405,7 +455,8 @@ async function loadListingsNeedingAttention() {
     renderListingsNeedingAttention(listings);
   } catch (e) {
     console.error('[Intelligence] Failed to load Listings Needing Attention', e);
-    renderListingsNeedingAttention([]);
+    document.getElementById('attention-card').innerHTML =
+      '<div class="alerts-error">⚠ Couldn\'t load listings needing attention.<button type="button" class="alerts-retry" onclick="loadListingsNeedingAttention()">Retry</button></div>';
   }
 }
 

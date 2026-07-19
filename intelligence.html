@@ -16,6 +16,12 @@
   --border:rgba(26,36,40,0.1);--border-mid:rgba(26,36,40,0.13);
   --red:#C0392B;--green:#1E6B45;--gold:#B8860B;
   --mono:'SF Mono',ui-monospace,'Cascadia Code',Consolas,monospace;
+  /* Severity legend (Phase 3A WS2) -- critical gets its own deeper shade
+     plus a ring (below) so it reads as distinct from high even without
+     color alone. Introduced here for Alerts first; WS3 propagates the
+     same tokens to Listings Needing Attention, Report History, and the
+     report chip row so every section shares one legend. */
+  --severity-critical:#8E2A1D;--severity-high:#C0392B;--severity-medium:#B8860B;--severity-low:#7A9098;
 }
 body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);color:var(--ink);line-height:1.6;}
 #login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--ink);}
@@ -52,6 +58,11 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 .section-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
 .section-header h2{font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);}
 .section-header-controls{display:flex;align-items:center;gap:10px;}
+/* .lead — Phase 3A WS2: Alerts is now the page's actual first section
+   (per the target workflow), so its header should read as heavier than
+   the sections below it, not identical. Scoped to Alerts only for now;
+   WS3 decides whether other sections need their own weight cues. */
+.section-header.lead h2{font-size:14px;color:var(--ink);}
 
 /* ── OVERVIEW STRIP — demoted (Phase 3A WS1): ambient context above
    Alerts, not a titled section competing for the page's lead position.
@@ -88,10 +99,18 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 .alert-action:hover{text-decoration:underline;}
 .alert-action-btn{background:none;border:none;padding:0;font-family:inherit;cursor:pointer;}
 .alerts-empty{padding:20px 0;text-align:center;color:var(--ink-muted);font-size:13px;}
+/* A failed fetch must look nothing like "everything looks healthy" --
+   reuses the .generate-status.err red rather than a new convention. */
+.alerts-error{padding:20px 0;text-align:center;color:var(--red);font-size:13px;}
+.alerts-retry{margin-left:8px;background:none;border:none;color:var(--teal);font-weight:600;font-size:13px;cursor:pointer;text-decoration:underline;padding:0;font-family:inherit;}
+/* Stronger severity differentiation (Phase 3A WS2): critical gets its
+   own deeper red PLUS a ring, so it doesn't just look like a slightly
+   different shade of "high" -- see --severity-* tokens above. */
 .alert-severity-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:5px;}
-.alert-severity-dot.critical,.alert-severity-dot.high{background:var(--red);}
-.alert-severity-dot.medium{background:var(--gold);}
-.alert-severity-dot.low{background:var(--ink-muted);}
+.alert-severity-dot.critical{background:var(--severity-critical);box-shadow:0 0 0 3px rgba(142,42,29,0.22);}
+.alert-severity-dot.high{background:var(--severity-high);}
+.alert-severity-dot.medium{background:var(--severity-medium);}
+.alert-severity-dot.low{background:var(--severity-low);}
 
 /* ── LISTINGS NEEDING ATTENTION (Phase 2B) ───────────────────────────── */
 .attention-list{list-style:none;}
@@ -269,7 +288,7 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
            section. Import failures are deliberately deferred — no
            instrumentation exists yet to source them from. -->
       <div class="section-block">
-        <div class="section-header"><h2>Alerts</h2></div>
+        <div class="section-header lead"><h2>Alerts</h2></div>
         <div class="alerts-card" id="alerts-card"><div class="insp-loading">Loading alerts…</div></div>
       </div>
 

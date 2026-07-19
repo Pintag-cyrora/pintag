@@ -256,6 +256,59 @@ test.describe('Alerts (Phase 2A)', () => {
     await login(page);
     await expect(page.locator('#alerts-card')).toContainText('No alerts — everything looks healthy.');
   });
+
+  function manyMissingPhotos(count) {
+    const insights = {};
+    for (let i = 0; i < count; i++) {
+      insights['mp-' + i] = {
+        id: 'mp-' + i, type: 'data_quality', metric_key: 'missing_photos', severity: 'high', confidence: 1,
+        dimension_district: 'Sisattanak', dimension_property_type: 'villa', dimension_property_id: 'p-mp-' + i,
+        title: 'Missing photos: Listing ' + i, summary: 'Missing photos: Listing ' + i,
+        evidence: { rule: 'missing_photos', property_id: 'p-mp-' + i }, recommendation: null,
+        trend: 'emerging', first_seen: '2026-07-17', last_seen: '2026-07-18', resolved_at: null,
+      };
+    }
+    return insights;
+  }
+
+  test('Phase 3A WS2: groups 3+ same-condition alerts into one row instead of one per listing', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: manyMissingPhotos(5), reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#alerts-card .alert-item');
+    await expect(page.locator('#alerts-card .alert-item')).toHaveCount(1);
+    const item = page.locator('#alerts-card .alert-item');
+    await expect(item).toContainText('Missing photos — 5 listings');
+    const action = item.locator('.alert-action-btn');
+    await expect(action).toHaveText('Review in Listings Needing Attention');
+    await action.click(); // must not throw; scrolls #attention-card into view
+    await expect(page.locator('#attention-card')).toBeInViewport();
+  });
+
+  test('Phase 3A WS2: below the grouping threshold, same-condition alerts still render individually', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: manyMissingPhotos(2), reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#alerts-card .alert-item');
+    await expect(page.locator('#alerts-card .alert-item')).toHaveCount(2);
+    await expect(page.locator('#alerts-card')).toContainText('Missing photos: Listing 0');
+    await expect(page.locator('#alerts-card')).toContainText('Missing photos: Listing 1');
+  });
+
+  test('Phase 3A WS2: a genuine fetch failure shows a distinct error state with Retry, not the healthy empty state', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: {}, reportInsights: [], leads: [] });
+    // Force a real network-level failure (not just an empty result set) on
+    // the intelligence_insights route specifically, so loadAlerts()'s catch
+    // block actually fires.
+    await page.route('**/*.supabase.co/**', (route) => {
+      const url = route.request().url();
+      if (url.includes('intelligence_insights')) return route.abort();
+      route.fallback();
+    });
+    await login(page);
+    await page.waitForSelector('#alerts-card .alerts-error');
+    await expect(page.locator('#alerts-card')).toContainText("Couldn't load alerts");
+    await expect(page.locator('#alerts-card')).not.toContainText('everything looks healthy');
+    await expect(page.locator('#alerts-card .alerts-retry')).toHaveText('Retry');
+  });
 });
 
 test.describe('Listings Needing Attention (Phase 2B)', () => {
