@@ -201,6 +201,16 @@ async function loadOverview() {
 //      insight; "a lead just arrived" isn't a tracked condition).
 // See docs/intelligence/PHASE2_PLAN.md's "Confirmed Near-Term Scope".
 // ══════════════════════════════════════════════════════════════════
+// Phase 3A WS3: one shared icon per data-quality condition, referenced by
+// both DATA_QUALITY_PRESENTATION (Alerts) and LISTING_ISSUE_PRESENTATION
+// (Listings Needing Attention) below, so the same condition can never
+// silently drift onto two different emoji across the two sections again.
+const METRIC_ICONS = {
+  missing_photos: '📷', missing_ai_description: '📝', stale_listing: '⏳',
+  missing_price: '💲', missing_ai_highlight: '✨', missing_location: '📍',
+  missing_neighborhood_insight: '🏘️', no_leads: '🔕', duplicate_listing: '🧬',
+};
+
 // Per-rule presentation, so each data-quality alert answers "what
 // happened / why it matters / what to do next" instead of a generic
 // icon + "Fix now" for all three. All three rules still resolve to the
@@ -209,9 +219,9 @@ async function loadOverview() {
 // (added Phase 3A WS2) is the short noun form used when several alerts
 // for the same condition get grouped into one row -- see groupAlerts().
 const DATA_QUALITY_PRESENTATION = {
-  missing_photos: { icon: '📷', label: 'Missing photos', reason: "No photos — buyers can't preview this listing", actionLabel: 'Edit listing' },
-  missing_ai_description: { icon: '📝', label: 'Missing descriptions', reason: 'No description or AI highlight generated yet', actionLabel: 'Generate AI description' },
-  stale_listing: { icon: '⏳', label: 'Stale listings', reason: 'Old listing with very few views', actionLabel: 'Review listing' },
+  missing_photos: { icon: METRIC_ICONS.missing_photos, label: 'Missing photos', reason: "No photos — buyers can't preview this listing", actionLabel: 'Edit listing' },
+  missing_ai_description: { icon: METRIC_ICONS.missing_ai_description, label: 'Missing descriptions', reason: 'No description or AI highlight generated yet', actionLabel: 'Generate AI description' },
+  stale_listing: { icon: METRIC_ICONS.stale_listing, label: 'Stale listings', reason: 'Old listing with very few views', actionLabel: 'Review listing' },
 };
 const NEW_LEAD_WINDOW_HOURS = 24;
 const MAX_ALERTS = 10;
@@ -373,8 +383,11 @@ function renderAlerts(alerts) {
   }
   el.innerHTML = '<ul class="alerts-list">' + alerts.map((a, i) =>
     '<li class="alert-item">' +
-      '<span class="alert-severity-dot ' + esc(a.severity) + '"></span>' +
-      '<span class="alert-icon">' + a.icon + '</span>' +
+      // Severity is otherwise color-only (the ring on .critical is a visual
+      // aid, not a substitute) -- role="img"+aria-label gives it a real
+      // text alternative for screen readers (Phase 3A WS3).
+      '<span class="alert-severity-dot ' + esc(a.severity) + '" role="img" aria-label="' + esc(a.severity) + ' severity"></span>' +
+      '<span class="alert-icon" aria-hidden="true">' + a.icon + '</span>' +
       '<div class="alert-body">' +
         '<div class="alert-title">' + esc(a.title) + '</div>' +
         (a.reason ? '<div class="alert-reason">' + esc(a.reason) + '</div>' : '') +
@@ -412,15 +425,17 @@ function renderAlerts(alerts) {
 // worklist across every data_quality condition, grouped per-listing.
 // ══════════════════════════════════════════════════════════════════
 const LISTING_ISSUE_PRESENTATION = {
-  missing_photos: { icon: '📷', label: 'No photos' },
-  missing_price: { icon: '💲', label: 'Missing price' },
-  missing_ai_highlight: { icon: '✨', label: 'Missing AI highlight' },
-  missing_ai_description: { icon: '📝', label: 'Missing description' },
-  missing_location: { icon: '📍', label: 'Missing location' },
-  missing_neighborhood_insight: { icon: '🏘️', label: 'Missing neighborhood insight' },
-  stale_listing: { icon: '⏳', label: 'Old listing, very few views' },
-  no_leads: { icon: '📉', label: 'No leads yet' },
-  duplicate_listing: { icon: '🧬', label: 'Possible duplicate' },
+  missing_photos: { icon: METRIC_ICONS.missing_photos, label: 'No photos' },
+  missing_price: { icon: METRIC_ICONS.missing_price, label: 'Missing price' },
+  missing_ai_highlight: { icon: METRIC_ICONS.missing_ai_highlight, label: 'Missing AI highlight' },
+  missing_ai_description: { icon: METRIC_ICONS.missing_ai_description, label: 'Missing description' },
+  missing_location: { icon: METRIC_ICONS.missing_location, label: 'Missing location' },
+  missing_neighborhood_insight: { icon: METRIC_ICONS.missing_neighborhood_insight, label: 'Missing neighborhood insight' },
+  stale_listing: { icon: METRIC_ICONS.stale_listing, label: 'Old listing, very few views' },
+  // 'No leads yet' used to share 📉 with ctr_decline (a marketplace-level
+  // metric, unrelated to this per-listing condition) -- now its own icon.
+  no_leads: { icon: METRIC_ICONS.no_leads, label: 'No leads yet' },
+  duplicate_listing: { icon: METRIC_ICONS.duplicate_listing, label: 'Possible duplicate' },
 };
 const MAX_ATTENTION_LISTINGS = 15;
 
@@ -472,7 +487,7 @@ function renderListingsNeedingAttention(listings) {
         '<div class="attention-title">' + esc(l.title) + '</div>' +
         '<div class="attention-issues">' + l.issues.map((i) => {
           const p = LISTING_ISSUE_PRESENTATION[i.metricKey] || { icon: '🧹', label: i.metricKey };
-          return '<span class="attention-issue">' + p.icon + ' ' + esc(p.label) + '</span>';
+          return '<span class="attention-issue"><span aria-hidden="true">' + p.icon + '</span> ' + esc(p.label) + '</span>';
         }).join('') + '</div>' +
       '</div>' +
       '<a class="alert-action" href="' + esc('admin.html?edit=' + encodeURIComponent(l.propertyId)) + '" target="_blank" rel="noopener">Edit listing</a>' +
@@ -510,10 +525,14 @@ function groupInsightsByRecency(insights, report) {
   return groups;
 }
 
+// Phase 3A WS3: each insight type gets its own icon -- low_performing_listing
+// and conversion_anomaly used to double up on ⚠️/🚨 with supply_shortage and
+// with the generic "unknown type" fallback (loadAlerts() below) respectively.
+// 🚨 is now reserved solely for that fallback case.
 const HIGHLIGHT_TYPE_ICONS = {
   demand_spike: '🔥', supply_shortage: '⚠️', ctr_decline: '📉', ctr_improvement: '📈',
-  high_performing_listing: '⭐', low_performing_listing: '⚠️', ux_anomaly: '🐞',
-  conversion_anomaly: '🚨', search_trend: '🔍', price_trend: '💰'
+  high_performing_listing: '⭐', low_performing_listing: '🐌', ux_anomaly: '🐞',
+  conversion_anomaly: '🎯', search_trend: '🔍', price_trend: '💰'
 };
 const HIGHLIGHT_SEVERITY_WEIGHT = { critical: 4, high: 3, medium: 2, low: 1 };
 const MAX_HIGHLIGHTS = 5;
@@ -571,7 +590,7 @@ function buildReportHighlightsHtml(items) {
   if (!items.length) return '';
   return '<div class="report-highlights"><div class="report-highlights-label">Today\'s Highlights</div>' +
     '<ul class="highlights-list">' + items.map((h) =>
-      '<li class="highlights-item"><span class="highlights-icon">' + h.icon + '</span><span class="highlights-text">' + esc(h.text) + '</span></li>'
+      '<li class="highlights-item"><span class="highlights-icon" aria-hidden="true">' + h.icon + '</span><span class="highlights-text">' + esc(h.text) + '</span></li>'
     ).join('') + '</ul></div>';
 }
 
