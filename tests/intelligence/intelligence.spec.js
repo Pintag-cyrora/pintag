@@ -15,45 +15,59 @@ async function login(page) {
 }
 
 test.describe('Overview tab', () => {
-  test('Section 1: overview stats show the latest report', async ({ page }) => {
+  test('Overview strip: a compact one-line readout, not a titled section', async ({ page }) => {
     await installSupabaseMocks(page, { reports: makeReports(), insights: makeInsights(), reportInsights: makeReportInsights() });
     await login(page);
     const text = await page.textContent('#overview-stats');
     expect(text).toContain('Healthy');
+    // Demoted (Phase 3A WS1): no section-header/h2 wraps it, and it's not
+    // a 4-card stat-grid anymore.
+    await expect(page.locator('#overview-stats')).toHaveClass(/overview-strip/);
+    await expect(page.locator('#overview-stats .stat-card')).toHaveCount(0);
   });
 
-  test('Section 1: shows the correct empty state with zero reports', async ({ page }) => {
+  test('Overview strip: shows the correct empty state with zero reports', async ({ page }) => {
     await installSupabaseMocks(page, { reports: [], insights: {}, reportInsights: [] });
     await login(page);
     const text = await page.textContent('#overview-stats');
-    expect(text).toContain('No reports yet');
+    expect(text).toContain('No reports have been generated yet');
     await expect(page.locator('#report-container')).toContainText('No reports have been generated yet');
   });
 
-  test("Today's Highlights: renders ranked insights for the latest report", async ({ page }) => {
+  test("Today's Highlights: folded into the top of the Report card, renders ranked insights for the latest report", async ({ page }) => {
     await installSupabaseMocks(page, { reports: makeReports(), insights: makeInsights(), reportInsights: makeReportInsights() });
     await login(page);
-    await page.waitForSelector('#highlights-card .highlights-item, #highlights-card .highlights-empty');
-    const items = await page.locator('#highlights-card .highlights-item').allTextContents();
+    await page.waitForSelector('.report-card');
+    // Lives inside .report-card now -- no standalone #highlights-card section.
+    await expect(page.locator('#highlights-card')).toHaveCount(0);
+    await expect(page.locator('.report-highlights .report-highlights-label')).toHaveText("Today's Highlights");
+    const items = await page.locator('.report-highlights .highlights-item').allTextContents();
     expect(items.length).toBeGreaterThanOrEqual(1);
     expect(items.some((t) => t.includes('Demand spike: Sisattanak villas'))).toBe(true);
   });
 
-  test("Today's Highlights: shows the empty message when the latest report has no linked insights", async ({ page }) => {
+  test("Today's Highlights: omitted entirely (not an empty-state message) when the latest report has no linked insights", async ({ page }) => {
     await installSupabaseMocks(page, { reports: makeReports(), insights: {}, reportInsights: [] });
     await login(page);
-    await expect(page.locator('#highlights-card')).toContainText('No major highlights today.');
+    await page.waitForSelector('.report-card');
+    await expect(page.locator('.report-highlights')).toHaveCount(0);
   });
 
   test("Today's Highlights: stays pinned to the latest report while browsing history", async ({ page }) => {
     await installSupabaseMocks(page, { reports: makeReports(), insights: makeInsights(), reportInsights: makeReportInsights() });
     await login(page);
-    await page.waitForSelector('#highlights-card .highlights-item');
-    const before = await page.textContent('#highlights-card');
+    await page.waitForSelector('.report-highlights .highlights-item');
+    const before = await page.textContent('.report-highlights');
     await page.click('.history-table tbody tr:nth-child(2)'); // r-2, non-latest
     await page.waitForTimeout(150);
     await expect(page.locator('#latest-report-heading')).toHaveText(/^Viewing:/);
-    const after = await page.textContent('#highlights-card');
+    // Browsing a non-latest report must not show ITS OWN highlights, nor
+    // lose the latest's -- the lead strip simply isn't rendered at all
+    // for a non-latest report (viewReportById only builds it when isLatest).
+    await expect(page.locator('.report-highlights')).toHaveCount(0);
+    await page.click('#back-to-latest-link');
+    await page.waitForTimeout(150);
+    const after = await page.textContent('.report-highlights');
     expect(after).toBe(before);
   });
 
@@ -119,10 +133,18 @@ test.describe('Overview tab', () => {
     expect(health).toContain('Gemini request timed out');
   });
 
-  test('Future modules: renders all 9 reserved placeholders', async ({ page }) => {
+  test('"Coming soon" placeholder section is removed entirely (Phase 3A WS1)', async ({ page }) => {
     await installSupabaseMocks(page, { reports: makeReports(), insights: makeInsights(), reportInsights: makeReportInsights() });
     await login(page);
-    await expect(page.locator('.future-card')).toHaveCount(9);
+    await expect(page.locator('.future-card')).toHaveCount(0);
+    await expect(page.locator('#future-modules-grid')).toHaveCount(0);
+  });
+
+  test('Section order matches the target workflow: Alerts, Attention, Report, History, Generate, Health', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports(), insights: makeInsights(), reportInsights: makeReportInsights() });
+    await login(page);
+    const headings = await page.locator('#overview-view .section-header h2').allTextContents();
+    expect(headings).toEqual(['Alerts', 'Listings Needing Attention', 'Latest Intelligence Report', 'Report History', 'Generate Report', 'System Health']);
   });
 
   test('Delete: removes the report from history and falls back to a new latest (or empty state)', async ({ page }) => {

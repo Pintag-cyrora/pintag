@@ -160,13 +160,12 @@ function switchTopTab(tab) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// Overview — orchestrates Sections 1, 2, 3, 5 + the reserved-modules
-// grid from one shared fetch of recent report history. Called on load
-// and after every generate/delete action ("automatically refresh").
+// Overview — orchestrates the Overview strip, Report History, System
+// Health, Alerts, and Listings Needing Attention from one shared fetch
+// of recent report history. Called on load and after every
+// generate/delete action ("automatically refresh").
 // ══════════════════════════════════════════════════════════════════
 async function loadOverview() {
-  renderFutureModules();
-
   reportHistory = await sbGet(
     'intelligence_reports?order=generated_at.desc&limit=50&select=id,report_type,title,period_start,period_end,generated_at,status,error_message'
   );
@@ -186,7 +185,6 @@ async function loadOverview() {
     currentReportId = null;
     document.getElementById('delete-btn').disabled = true;
     document.getElementById('back-to-latest-link').style.display = 'none';
-    renderHighlights([]);
   }
 }
 
@@ -435,8 +433,16 @@ function renderListingsNeedingAttention(listings) {
 // insight links (same data viewReportById already fetches for the chip
 // row below; no second fetch, no new business logic). Kept as its own
 // small pipeline — groupInsightsByRecency() -> deriveHighlights() ->
-// renderHighlights() — so the ranking heuristic can be improved later
-// without touching how it's fetched or displayed. ──────────────────────
+// buildReportHighlightsHtml() — so the ranking heuristic can be improved
+// later without touching how it's fetched or displayed.
+//
+// Folded into the top of the Report card as of Phase 3A WS1 (previously
+// its own section/card) — reinforcing that Highlights summarize the
+// latest report rather than reading as an independent source. Still
+// pinned to the LATEST report only regardless of what's browsed below
+// via History/Advanced: viewReportById() only computes/includes this
+// block when isLatest is true, exactly as the old renderHighlights([])
+// callsite used to gate on before the merge. ──────────────────────────
 
 // Classifies a report's linked insights into new/continuing/resolved for
 // this specific report's period. Shared by the chip row (Section 2) and
@@ -507,36 +513,33 @@ function deriveHighlights(groups) {
   }));
 }
 
-function renderHighlights(items) {
-  const el = document.getElementById('highlights-card');
-  if (!items.length) {
-    el.innerHTML = '<div class="highlights-empty">No major highlights today.</div>';
-    return;
-  }
-  el.innerHTML = '<ul class="highlights-list">' + items.map((h) =>
-    '<li class="highlights-item"><span class="highlights-icon">' + h.icon + '</span><span class="highlights-text">' + esc(h.text) + '</span></li>'
-  ).join('') + '</ul>';
+// Returns '' when there's nothing to highlight -- omitted entirely
+// rather than rendered as an empty state, since the report body right
+// below it already says so (e.g. "Quiet day, nothing notable").
+function buildReportHighlightsHtml(items) {
+  if (!items.length) return '';
+  return '<div class="report-highlights"><div class="report-highlights-label">Today\'s Highlights</div>' +
+    '<ul class="highlights-list">' + items.map((h) =>
+      '<li class="highlights-item"><span class="highlights-icon">' + h.icon + '</span><span class="highlights-text">' + esc(h.text) + '</span></li>'
+    ).join('') + '</ul></div>';
 }
 
-// ── Section 1: Overview stat cards ──────────────────────────────────
+// ── Overview strip: demoted (Phase 3A WS1) to a one-line "where am I"
+// readout above Alerts, not a titled section of its own. ────────────
 function renderOverviewStats(history) {
   const el = document.getElementById('overview-stats');
   if (!history.length) {
-    el.innerHTML =
-      '<div class="stat-card"><div class="stat-label">Latest Report</div><div class="stat-value status-none">No reports yet</div></div>' +
-      '<div class="stat-card"><div class="stat-label">Report Type</div><div class="stat-value status-none">—</div></div>' +
-      '<div class="stat-card"><div class="stat-label">Generation Time</div><div class="stat-value status-none">—</div></div>' +
-      '<div class="stat-card"><div class="stat-label">Status</div><div class="stat-value status-none">—</div></div>';
+    el.innerHTML = '<span>No reports have been generated yet.</span>';
     return;
   }
   const latest = history[0];
   const statusClass = latest.status === 'generated' ? 'status-ok' : 'status-error';
   const statusText = latest.status === 'generated' ? '✅ Healthy' : '⚠️ Last run failed';
   el.innerHTML =
-    '<div class="stat-card"><div class="stat-label">Latest Report</div><div class="stat-value">' + esc(fmtDate(latest.period_end)) + '</div><div class="stat-value sub">' + esc(fmtRelative(latest.generated_at)) + '</div></div>' +
-    '<div class="stat-card"><div class="stat-label">Report Type</div><div class="stat-value"><span class="type-pill">' + esc(latest.report_type) + '</span></div></div>' +
-    '<div class="stat-card"><div class="stat-label">Generation Time</div><div class="stat-value">' + esc(fmtDateTime(latest.generated_at)) + '</div></div>' +
-    '<div class="stat-card"><div class="stat-label">Status</div><div class="stat-value ' + statusClass + '">' + statusText + '</div></div>';
+    '<span><strong>' + esc(fmtDate(latest.period_end)) + '</strong> · ' + esc(fmtRelative(latest.generated_at)) + '</span>' +
+    '<span class="sep">·</span><span><span class="type-pill">' + esc(latest.report_type) + '</span></span>' +
+    '<span class="sep">·</span><span>Generated ' + esc(fmtDateTime(latest.generated_at)) + '</span>' +
+    '<span class="sep">·</span><span class="' + statusClass + '">' + statusText + '</span>';
 }
 
 // ── Section 2: Latest Intelligence Report (also used to view history rows) ──
@@ -559,7 +562,6 @@ async function viewReportById(id) {
     container.innerHTML =
       '<div class="report-card"><div class="report-meta">' + esc(report.report_type) + ' · ' + esc(fmtDateTime(report.generated_at)) + ' · FAILED</div>' +
       '<p style="color:var(--red);font-size:13.5px;">' + esc(report.error_message || 'Report generation failed.') + '</p></div>';
-    if (isLatest) renderHighlights([]);
     return;
   }
 
@@ -567,7 +569,9 @@ async function viewReportById(id) {
   const insights = links.map((l) => Object.assign({ _role: l.role }, l.intelligence_insights)).filter((i) => i && i.id);
 
   const groups = groupInsightsByRecency(insights, report);
-  if (isLatest) renderHighlights(deriveHighlights(groups));
+  // Today's Highlights (Phase 3A WS1: folded into this card) stays pinned
+  // to the latest report only, same as before the merge.
+  const reportHighlightsHtml = isLatest ? buildReportHighlightsHtml(deriveHighlights(groups)) : '';
 
   const chipHtml = (arr, cls, dot) => arr.map((i) =>
     '<span class="chip ' + cls + '" onclick="openInsightTimelineById(\'' + i.id + '\')" title="' + esc(i.summary || '') + '">' +
@@ -582,6 +586,7 @@ async function viewReportById(id) {
 
   container.innerHTML =
     '<div class="report-card">' +
+      reportHighlightsHtml +
       '<div class="report-meta">' + esc(report.report_type.toUpperCase()) + ' · ' + esc(fmtDate(report.period_start)) +
         (report.period_start !== report.period_end ? ' – ' + esc(fmtDate(report.period_end)) : '') +
         ' · generated ' + esc(fmtDateTime(report.generated_at)) + '</div>' +
@@ -705,25 +710,6 @@ function renderSystemHealth(history) {
         ? '<div class="stat-value status-error">' + esc(fmtRelative(lastError.generated_at)) + '</div><div class="stat-value sub" title="' + esc(lastError.error_message || '') + '">' + esc((lastError.error_message || '').slice(0, 60)) + '</div>'
         : '<div class="stat-value status-ok">No errors recorded</div>') +
     '</div>';
-}
-
-// ── Reserved future Intelligence modules — data-driven placeholder grid.
-// Adding a module later is a one-line addition here, not new markup. ──
-const FUTURE_MODULES = [
-  { icon: '🩺', label: 'Platform Health' },
-  { icon: '🏚️', label: 'Listings Needing Attention' },
-  { icon: '📞', label: 'Lead Activity' },
-  { icon: '🔍', label: 'Search Trends' },
-  { icon: '📈', label: 'Market Trends' },
-  { icon: '🧹', label: 'Data Quality' },
-  { icon: '🤖', label: 'AI Recommendations' },
-  { icon: '🔮', label: 'Forecasts' },
-  { icon: '🚨', label: 'Alerts' },
-];
-function renderFutureModules() {
-  document.getElementById('future-modules-grid').innerHTML = FUTURE_MODULES.map((m) =>
-    '<div class="future-card"><div class="future-icon">' + m.icon + '</div><div class="future-label">' + esc(m.label) + '</div></div>'
-  ).join('');
 }
 
 // ══════════════════════════════════════════════════════════════════

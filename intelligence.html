@@ -47,14 +47,24 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 .tab{padding:10px 20px;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:var(--ink-muted);transition:all 0.2s;background:none;border-top:none;border-left:none;border-right:none;font-family:'DM Sans',sans-serif;}
 .tab.active{color:var(--teal);border-bottom-color:var(--teal);}
 
-/* ── SECTION SCAFFOLDING — every Overview section (present + future) uses this ── */
+/* ── SECTION SCAFFOLDING — every Overview section uses this ─────── */
 .section-block{margin-bottom:32px;}
 .section-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
 .section-header h2{font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);}
 .section-header-controls{display:flex;align-items:center;gap:10px;}
-.soon-badge{font-size:9px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--ink-muted);background:var(--warm-deep);padding:2px 8px;border-radius:10px;margin-left:8px;vertical-align:middle;}
 
-/* ── STAT CARDS (Overview + System Health both use this) ─────────── */
+/* ── OVERVIEW STRIP — demoted (Phase 3A WS1): ambient context above
+   Alerts, not a titled section competing for the page's lead position.
+   System Health keeps the full stat-card treatment below (that's still
+   an intentional section with its own diagnostic job); this is just a
+   one-line "where am I" readout. ─────────────────────────────────── */
+.overview-strip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:0 0 16px;margin-bottom:20px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--ink-muted);}
+.overview-strip strong{color:var(--ink);font-weight:600;}
+.overview-strip .sep{color:var(--border-mid);}
+.overview-strip .status-ok{color:var(--green);font-weight:600;}
+.overview-strip .status-error{color:var(--red);font-weight:600;}
+
+/* ── STAT CARDS (System Health) ───────────────────────────────────── */
 .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
 .stat-card{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
 .stat-label{font-size:10px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;}
@@ -92,14 +102,18 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 .attention-issues{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
 .attention-issue{font-size:11.5px;color:var(--ink-muted);background:var(--bg-alt,rgba(0,0,0,0.04));border-radius:20px;padding:2px 9px;white-space:nowrap;}
 
-/* ── TODAY'S HIGHLIGHTS ───────────────────────────────────────────── */
-.highlights-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:6px 20px;}
+/* ── TODAY'S HIGHLIGHTS (folded into the Report card, Phase 3A WS1) ──
+   No longer its own section/card -- it's a lead-in list at the top of
+   .report-card, reinforcing "Highlights summarize the latest report"
+   rather than reading as an independent source. Omitted entirely (not
+   rendered as an empty state) when there's nothing to highlight, since
+   the report body itself already says so ("Quiet day, nothing notable"). */
+.report-highlights{margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.report-highlights-label{font-size:10px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:6px;}
 .highlights-list{list-style:none;}
-.highlights-item{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);font-size:13.5px;color:var(--ink-soft);}
-.highlights-item:last-child{border-bottom:none;}
-.highlights-icon{font-size:15px;line-height:1.4;flex-shrink:0;}
+.highlights-item{display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:13px;color:var(--ink-soft);}
+.highlights-icon{font-size:14px;line-height:1.4;flex-shrink:0;}
 .highlights-text{line-height:1.4;padding-top:1px;}
-.highlights-empty{padding:20px 0;text-align:center;color:var(--ink-muted);font-size:13px;}
 
 /* ── REPORT CARD ─────────────────────────────────────────────────── */
 .insp-btn{font-size:12px;font-weight:600;padding:9px 16px;border-radius:5px;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;background:var(--teal);color:#fff;transition:background 0.2s;white-space:nowrap;}
@@ -170,14 +184,6 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 .generate-status.err{color:var(--red);}
 @media(max-width:700px){.generate-grid{grid-template-columns:1fr;}}
 
-/* ── FUTURE MODULES (reserved, not built yet) ────────────────────── */
-.future-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
-.future-card{background:var(--white);border:1px dashed var(--border-mid);border-radius:10px;padding:16px;opacity:0.75;}
-.future-icon{font-size:20px;margin-bottom:8px;}
-.future-label{font-size:13px;font-weight:500;color:var(--ink-soft);}
-@media(max-width:700px){.future-grid{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:480px){.future-grid{grid-template-columns:1fr;}}
-
 /* ── ARCHIVE FILTERS ─────────────────────────────────────────────── */
 .archive-filters{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;}
 .insp-field{display:flex;flex-direction:column;gap:4px;}
@@ -232,18 +238,23 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
     </div>
 
     <!-- ══════════════════════════════════════════════════════════
-         OVERVIEW — the "every morning" landing view. Sections are
-         independent blocks on purpose: adding a new one later means
-         adding one more <div class="section-block"> + one render
+         OVERVIEW — the "every morning" landing view. Ordered around
+         how staff actually work through their day (Phase 3A WS1):
+         Alerts (urgent) → Listings Needing Attention (ongoing worklist)
+         → Latest Report (with Today's Highlights folded in) → Report
+         History → Generate Report → System Health. Overview Stats is
+         demoted to a slim context strip above Alerts, not its own
+         titled section -- see .overview-strip below. Sections are still
+         independent blocks below the strip: adding a new one later
+         means adding one more <div class="section-block"> + one render
          function, not restructuring this page.
          ══════════════════════════════════════════════════════════ -->
     <div id="overview-view">
 
-      <!-- Section 1 — Overview -->
-      <div class="section-block">
-        <div class="section-header"><h2>Overview</h2></div>
-        <div class="stat-grid" id="overview-stats"></div>
-      </div>
+      <!-- Demoted Overview Stats (Phase 3A WS1) — ambient "where am I"
+           context, not a competing lead section. Supports the page
+           rather than dominating it. -->
+      <div class="overview-strip" id="overview-stats"></div>
 
       <!-- Alerts — Phase 2A. The Intelligence page's "action required" area:
            what needs attention right now, independent of any one report.
@@ -278,17 +289,13 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
         <div class="alerts-card" id="attention-card"><div class="insp-loading">Loading listings…</div></div>
       </div>
 
-      <!-- Today's Highlights — a 30-second scan of the latest report's most
-           important insights. Deliberately pinned to the LATEST report only
-           (not whatever's currently open below via History/Advanced), since
-           its job is "what should I know the moment I open this page,"
-           independent of what you're browsing further down. -->
-      <div class="section-block">
-        <div class="section-header"><h2>Today's Highlights</h2></div>
-        <div class="highlights-card" id="highlights-card"><div class="insp-loading">Loading highlights…</div></div>
-      </div>
-
-      <!-- Section 2 — Latest Intelligence Report -->
+      <!-- Latest Intelligence Report — now leads with Today's Highlights
+           (Phase 3A WS1: folded in rather than kept as a separate section,
+           since Highlights already summarized this exact report's own
+           insight links). The lead strip stays pinned to the LATEST
+           report regardless of what's browsed below via History/Advanced
+           -- see renderReportHighlights()/viewReportById() in
+           intelligence.js for how that's preserved post-merge. -->
       <div class="section-block">
         <div class="section-header">
           <h2 id="latest-report-heading">Latest Intelligence Report</h2>
@@ -310,13 +317,13 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
         <div id="report-container"><div class="insp-loading">Loading report…</div></div>
       </div>
 
-      <!-- Section 3 — Report History -->
+      <!-- Report History -->
       <div class="section-block">
         <div class="section-header"><h2>Report History</h2></div>
         <div id="history-container"><div class="insp-loading">Loading history…</div></div>
       </div>
 
-      <!-- Section 4 — Generate Report -->
+      <!-- Generate Report -->
       <div class="section-block">
         <div class="section-header"><h2>Generate Report</h2></div>
         <div class="generate-grid">
@@ -335,17 +342,10 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
         </div>
       </div>
 
-      <!-- Section 5 — System Health -->
+      <!-- System Health -->
       <div class="section-block">
         <div class="section-header"><h2>System Health</h2></div>
         <div class="stat-grid" id="health-stats"></div>
-      </div>
-
-      <!-- Reserved — future Intelligence modules. Data-driven (FUTURE_MODULES
-           array below) so adding one is a one-line change, not new markup. -->
-      <div class="section-block">
-        <div class="section-header"><h2>More Intelligence <span class="soon-badge">Coming soon</span></h2></div>
-        <div class="future-grid" id="future-modules-grid"></div>
       </div>
 
     </div>
