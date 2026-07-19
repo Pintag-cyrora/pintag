@@ -133,6 +133,31 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 .attention-issues{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
 .attention-issue{font-size:var(--text-badge);color:var(--ink-muted);background:var(--bg-alt,rgba(0,0,0,0.04));border-radius:20px;padding:2px 9px;white-space:nowrap;}
 
+/* ── RECOMMENDED TODAY (Phase 3B, first implementation phase) ────────
+   Reuses .alerts-card/.alerts-empty/.alerts-error for the outer card --
+   the content inside is its own thing (scored, expandable task rows). */
+.reco-list{list-style:none;}
+.reco-task{border-bottom:1px solid var(--border);}
+.reco-task:last-child{border-bottom:none;}
+.reco-task-head{display:flex;align-items:center;gap:12px;padding:13px 0;}
+.reco-task-head.expandable{cursor:pointer;}
+.reco-score{font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--gold);background:rgba(184,134,11,0.13);border-radius:6px;padding:3px 8px;flex-shrink:0;min-width:32px;text-align:center;}
+.reco-title{font-size:13.5px;font-weight:500;color:var(--ink);flex:1;min-width:0;}
+.reco-action{font-size:12px;font-weight:600;color:#fff;background:var(--teal);text-decoration:none;white-space:nowrap;flex-shrink:0;padding:6px 12px;border-radius:5px;border:none;font-family:inherit;cursor:pointer;}
+.reco-action:hover{background:var(--teal-light);}
+.reco-detail{padding:0 0 12px 44px;}
+.reco-item{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--ink-soft);padding:5px 0;cursor:pointer;}
+.reco-item-score{font-family:var(--mono);color:var(--ink-muted);flex-shrink:0;}
+.reco-item-breakdown{background:var(--warm);border-radius:6px;padding:8px 12px;margin:0 0 8px;}
+.reco-item-breakdown .breakdown-row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-muted);padding:2px 0;}
+.reco-item-breakdown .breakdown-row span:last-child{font-family:var(--mono);}
+
+.how-priority-panel{background:var(--warm);border:1px solid var(--border);border-radius:var(--radius-inline);padding:14px 18px;margin-bottom:14px;font-size:13px;color:var(--ink-soft);}
+.how-priority-panel h4{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:8px;}
+.how-priority-panel ul{margin:8px 0 8px 18px;}
+.how-priority-panel li{margin-bottom:4px;}
+.how-priority-panel p{margin:8px 0 0;}
+
 /* ── TODAY'S HIGHLIGHTS (folded into the Report card, Phase 3A WS1) ──
    No longer its own section/card -- it's a lead-in list at the top of
    .report-card, reinforcing "Highlights summarize the latest report"
@@ -331,6 +356,24 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
       <div class="section-block">
         <div class="section-header lead"><h2>Alerts</h2></div>
         <div class="alerts-card" id="alerts-card"><div class="insp-loading">Loading alerts…</div></div>
+      </div>
+
+      <!-- Recommended Today (Phase 3B, first implementation phase) — a
+           synthesis layer over Listings Needing Attention + Report History,
+           not a new detector or score. Kept below Alerts for this release
+           (Phase 3B decision #5): Alerts keeps surfacing acute conditions on
+           its own, Recommendations summarizes the backlog into a small,
+           ranked set of tasks. See the Recommendations design (published
+           separately) for the clustering/scoring rationale. -->
+      <div class="section-block">
+        <div class="section-header">
+          <h2>Recommended Today</h2>
+          <div class="section-header-controls">
+            <button type="button" class="insp-btn secondary small" onclick="toggleHowPriorityWorks()">ⓘ How priorities are calculated</button>
+          </div>
+        </div>
+        <div class="how-priority-panel" id="how-priority-panel" style="display:none;"></div>
+        <div class="alerts-card" id="recommendations-card"><div class="insp-loading">Loading recommendations…</div></div>
       </div>
 
       <!-- Listings Needing Attention (Phase 2B) — a worklist prioritized by

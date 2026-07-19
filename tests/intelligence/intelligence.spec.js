@@ -140,11 +140,11 @@ test.describe('Overview tab', () => {
     await expect(page.locator('#future-modules-grid')).toHaveCount(0);
   });
 
-  test('Section order matches the target workflow: Alerts, Attention, Report, History, Generate, Health', async ({ page }) => {
+  test('Section order matches the target workflow: Alerts, Recommended Today, Attention, Report, History, Generate, Health', async ({ page }) => {
     await installSupabaseMocks(page, { reports: makeReports(), insights: makeInsights(), reportInsights: makeReportInsights() });
     await login(page);
     const headings = await page.locator('#overview-view .section-header h2').allTextContents();
-    expect(headings).toEqual(['Alerts', 'Listings Needing Attention', 'Latest Intelligence Report', 'Report History', 'Generate Report', 'System Health']);
+    expect(headings).toEqual(['Alerts', 'Recommended Today', 'Listings Needing Attention', 'Latest Intelligence Report', 'Report History', 'Generate Report', 'System Health']);
   });
 
   test('Delete: removes the report from history and falls back to a new latest (or empty state)', async ({ page }) => {
@@ -340,6 +340,136 @@ test.describe('Listings Needing Attention (Phase 2B)', () => {
     await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: {}, reportInsights: [], leads: [] });
     await login(page);
     await expect(page.locator('#attention-card')).toContainText('No listings need attention right now.');
+  });
+});
+
+test.describe('Recommendations (Phase 3B, first implementation phase)', () => {
+  // N synthetic listings sharing one metric_key, each on its own property --
+  // aged far enough in the past that the issue-age priority factor is fully
+  // saturated (deterministic regardless of small clock drift between this
+  // fixture's authored date and whatever real time the suite happens to run,
+  // matching the same real-Date.now()-based convention fmtRelative() and
+  // computeListingPriority() already use elsewhere on this page).
+  function manyIssueListings(metricKey, count, severity) {
+    const insights = {};
+    for (let i = 0; i < count; i++) {
+      insights['ri-' + metricKey + '-' + i] = {
+        id: 'ri-' + metricKey + '-' + i, type: 'data_quality', metric_key: metricKey, severity: severity || 'medium', confidence: 1,
+        dimension_district: 'Sisattanak', dimension_property_type: 'villa', dimension_property_id: 'p-ri-' + metricKey + '-' + i,
+        title: 'Listing ' + i, summary: 'Listing ' + i,
+        evidence: { rule: metricKey, property_id: 'p-ri-' + metricKey + '-' + i }, recommendation: null,
+        trend: 'emerging', first_seen: '2026-01-01', last_seen: '2026-01-01', resolved_at: null,
+        properties: { title_en: 'Listing ' + i },
+      };
+    }
+    return insights;
+  }
+
+  test('groups listings sharing a condition into one imperative task, not one row per listing', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: manyIssueListings('missing_ai_description', 4), reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#recommendations-card .reco-task');
+    await expect(page.locator('#recommendations-card .reco-task')).toHaveCount(1);
+    await expect(page.locator('#recommendations-card .reco-title')).toHaveText('Generate AI descriptions for 4 listings');
+    await expect(page.locator('#recommendations-card .reco-action')).toHaveText('View all');
+  });
+
+  test('below 2 listings, wording stays singular and links straight to the one listing', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: manyIssueListings('missing_price', 1), reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#recommendations-card .reco-task');
+    await expect(page.locator('#recommendations-card .reco-title')).toHaveText('Add pricing to 1 listing');
+    await expect(page.locator('#recommendations-card .reco-action')).toHaveAttribute('href', /admin\.html\?edit=p-ri-missing_price-0/);
+  });
+
+  test('cluster score is the top listing\'s priority plus a small, capped per-listing bonus', async ({ page }) => {
+    // 5 low-severity (weight 1), fully-aged listings: each item's priority
+    // is 1 (severity) + 1 (age, saturated) = 2.0. Cluster score is
+    // max(2.0) + min(0.2*(5-1), 2) = 2.0 + 0.8 = 2.8.
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: manyIssueListings('stale_listing', 5, 'low'), reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#recommendations-card .reco-task');
+    await expect(page.locator('#recommendations-card .reco-score')).toHaveText('2.8');
+  });
+
+  test('caps the list to a small number of recommendations, ranked by score', async ({ page }) => {
+    // 6 distinct conditions (6 candidate clusters), each with a different
+    // severity so ranking is unambiguous -- only the top 5 should render.
+    const insights = {
+      ...manyIssueListings('missing_photos', 2, 'critical'),
+      ...manyIssueListings('missing_price', 2, 'high'),
+      ...manyIssueListings('missing_ai_highlight', 2, 'high'),
+      ...manyIssueListings('missing_ai_description', 2, 'medium'),
+      ...manyIssueListings('missing_location', 2, 'medium'),
+      ...manyIssueListings('missing_neighborhood_insight', 2, 'low'),
+    };
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights, reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#recommendations-card .reco-task');
+    await expect(page.locator('#recommendations-card .reco-task')).toHaveCount(5);
+    // The critical-severity cluster must be among what's shown; the
+    // lowest-priority candidate (low severity, missing_neighborhood_insight)
+    // must be the one squeezed out.
+    await expect(page.locator('#recommendations-card')).toContainText('Add photos to 2 listings');
+    await expect(page.locator('#recommendations-card')).not.toContainText('Generate neighborhood insights for 2 listings');
+  });
+
+  test('a failed report becomes its own recommendation and triggers regeneration', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports(), insights: {}, reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#recommendations-card .reco-task');
+    const task = page.locator('#recommendations-card .reco-task', { hasText: 'Regenerate the failed weekly report' });
+    await expect(task).toBeVisible();
+    await task.locator('.reco-action').click();
+    // Assert the final state, not the transient "Generating…" text -- the
+    // mock resolves near-instantly, so waiting for the transient state is
+    // inherently racy (same reasoning as Section 4's own generate test).
+    await expect(page.locator('#gen-status-weekly')).toContainText('Generated', { timeout: 5000 });
+  });
+
+  test('expanding a task reveals its listings, and expanding a listing reveals its priority breakdown', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: manyIssueListings('missing_photos', 3, 'high'), reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#recommendations-card .reco-task');
+    // The items exist in the DOM from the first render (just inside a
+    // display:none parent) rather than being inserted on expand, so assert
+    // visibility of the container, not presence-count of its children.
+    await expect(page.locator('.reco-detail')).toBeHidden();
+    await page.click('.reco-task-head');
+    await expect(page.locator('.reco-detail')).toBeVisible();
+    await expect(page.locator('.reco-item')).toHaveCount(3);
+    await expect(page.locator('.reco-item-breakdown').first()).toBeHidden();
+    await page.click('.reco-item >> nth=0');
+    await expect(page.locator('.reco-item-breakdown').first()).toBeVisible();
+    await expect(page.locator('.reco-item-breakdown').first()).toContainText('severity');
+  });
+
+  test('"How priorities are calculated" opens a permanent, standing reference', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: {}, reportInsights: [], leads: [] });
+    await login(page);
+    await expect(page.locator('#how-priority-panel')).toBeHidden();
+    await page.click('button:has-text("How priorities are calculated")');
+    await expect(page.locator('#how-priority-panel')).toBeVisible();
+    await expect(page.locator('#how-priority-panel')).toContainText(/severity/i);
+    await expect(page.locator('#how-priority-panel')).toContainText('capped');
+  });
+
+  test('shows a distinct empty state when nothing is urgent enough to recommend', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: {}, reportInsights: [], leads: [] });
+    await login(page);
+    await expect(page.locator('#recommendations-card')).toContainText('No recommendations right now');
+  });
+
+  test('sits below Alerts and above Listings Needing Attention', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports().filter((r) => r.status !== 'failed'), insights: manyIssueListings('missing_photos', 1), reportInsights: [], leads: [] });
+    await login(page);
+    await page.waitForSelector('#recommendations-card .reco-task');
+    const order = await page.evaluate(() => {
+      const ids = ['alerts-card', 'recommendations-card', 'attention-card'];
+      return ids.map((id) => document.getElementById(id).getBoundingClientRect().top);
+    });
+    expect(order[0]).toBeLessThan(order[1]);
+    expect(order[1]).toBeLessThan(order[2]);
   });
 });
 

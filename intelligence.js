@@ -439,8 +439,52 @@ const LISTING_ISSUE_PRESENTATION = {
 };
 const MAX_ATTENTION_LISTINGS = 15;
 
-function listingImpactScore(issues) {
-  return issues.reduce((sum, i) => sum + (HIGHLIGHT_SEVERITY_WEIGHT[i.severity] || 1), 0);
+// ══════════════════════════════════════════════════════════════════
+// Priority v1 (Phase 3B §1, "Smart Prioritization") -- every constant is
+// named and isolated from the scoring formula itself, so the weights can
+// be retuned after observing real usage without redesigning the
+// algorithm. Featured status, listing-type conversion rate, and a staff
+// override are Phase 3B.2 -- deferred because they need new schema; this
+// pass (R1) only uses columns/tables that already exist (properties.
+// views_week, leads, intelligence_insights.first_seen).
+// ══════════════════════════════════════════════════════════════════
+const PRIORITY_CONFIG = {
+  RECENT_VIEWS_WEIGHT: 1.5,        // max contribution from this week's views
+  RECENT_VIEWS_SATURATION: 200,    // views/week treated as "fully active" for scoring purposes
+  RECENT_LEADS_WEIGHT: 1,          // max contribution from recent leads
+  RECENT_LEADS_SATURATION: 2,      // leads (within the window below) treated as "proven demand"
+  RECENT_LEADS_WINDOW_DAYS: 30,
+  ISSUE_AGE_WEIGHT: 1,             // max contribution from how long the issue has sat open
+  ISSUE_AGE_SATURATION_DAYS: 14,   // days open treated as "aged enough" for the max contribution
+};
+
+// Returns { total, breakdown } -- never just a number. `breakdown` is a
+// list of { label, value } the UI renders verbatim, so every score stays
+// inspectable: a listing's rank can always be explained by reading, never
+// by asking an AI to justify itself (the same discipline
+// INTELLIGENCE_ARCHITECTURE.md already holds insight significance to).
+function computeListingPriority(issues, meta) {
+  const breakdown = [];
+  const severitySum = issues.reduce((sum, i) => sum + (HIGHLIGHT_SEVERITY_WEIGHT[i.severity] || 1), 0);
+  breakdown.push({
+    label: issues.length === 1 ? 'Issue severity (' + issues[0].severity + ')' : issues.length + ' open issues (severity)',
+    value: severitySum,
+  });
+
+  const viewsWeek = (meta && meta.viewsWeek) || 0;
+  const viewsBoost = Math.min(viewsWeek / PRIORITY_CONFIG.RECENT_VIEWS_SATURATION, 1) * PRIORITY_CONFIG.RECENT_VIEWS_WEIGHT;
+  if (viewsBoost > 0) breakdown.push({ label: 'Views this week: ' + viewsWeek, value: viewsBoost });
+
+  const recentLeads = (meta && meta.recentLeadCount) || 0;
+  const leadsBoost = Math.min(recentLeads / PRIORITY_CONFIG.RECENT_LEADS_SATURATION, 1) * PRIORITY_CONFIG.RECENT_LEADS_WEIGHT;
+  if (leadsBoost > 0) breakdown.push({ label: recentLeads + ' lead' + (recentLeads === 1 ? '' : 's') + ' in the last ' + PRIORITY_CONFIG.RECENT_LEADS_WINDOW_DAYS + ' days', value: leadsBoost });
+
+  const ageDays = (meta && meta.oldestIssueAgeDays) || 0;
+  const ageBoost = Math.min(ageDays / PRIORITY_CONFIG.ISSUE_AGE_SATURATION_DAYS, 1) * PRIORITY_CONFIG.ISSUE_AGE_WEIGHT;
+  if (ageBoost > 0) breakdown.push({ label: 'Open ' + ageDays + ' day' + (ageDays === 1 ? '' : 's'), value: ageBoost });
+
+  const total = Math.round((severitySum + viewsBoost + leadsBoost + ageBoost) * 10) / 10;
+  return { total, breakdown };
 }
 
 async function loadListingsNeedingAttention() {
@@ -448,7 +492,7 @@ async function loadListingsNeedingAttention() {
   try {
     const rows = await sbGet(
       'intelligence_insights?resolved_at=is.null&type=eq.data_quality&dimension_property_id=not.is.null' +
-      '&select=id,metric_key,severity,dimension_property_id,properties(title_en)' +
+      '&select=id,metric_key,severity,first_seen,dimension_property_id,properties(title_en,views_week)' +
       '&order=severity.desc&limit=300'
     );
     const byListing = new Map();
@@ -458,20 +502,50 @@ async function loadListingsNeedingAttention() {
         byListing.set(id, {
           propertyId: id,
           title: (ins.properties && ins.properties.title_en) || 'Untitled listing',
+          viewsWeek: (ins.properties && ins.properties.views_week) || 0,
           issues: [],
+          oldestFirstSeen: ins.first_seen,
         });
       }
-      byListing.get(id).issues.push({ metricKey: ins.metric_key, severity: ins.severity });
+      const l = byListing.get(id);
+      l.issues.push({ metricKey: ins.metric_key, severity: ins.severity });
+      if (ins.first_seen && ins.first_seen < l.oldestFirstSeen) l.oldestFirstSeen = ins.first_seen;
     });
-    const listings = Array.from(byListing.values())
-      .map((l) => ({ ...l, impact: listingImpactScore(l.issues) }))
-      .sort((a, b) => b.impact - a.impact)
-      .slice(0, MAX_ATTENTION_LISTINGS);
-    renderListingsNeedingAttention(listings);
+
+    // One batched query for every listing's recent lead count rather than
+    // one request per listing -- same "don't fire N requests" discipline
+    // already used elsewhere on this page.
+    const propertyIds = Array.from(byListing.keys());
+    const recentLeadCounts = new Map();
+    if (propertyIds.length) {
+      const cutoff = new Date(Date.now() - PRIORITY_CONFIG.RECENT_LEADS_WINDOW_DAYS * 86400000).toISOString();
+      const leadRows = await sbGet(
+        'leads?property_id=in.(' + propertyIds.map(encodeURIComponent).join(',') + ')' +
+        '&created_at=gte.' + cutoff + '&select=property_id'
+      );
+      leadRows.forEach((r) => recentLeadCounts.set(r.property_id, (recentLeadCounts.get(r.property_id) || 0) + 1));
+    }
+
+    const scored = Array.from(byListing.values()).map((l) => {
+      const ageDays = l.oldestFirstSeen ? Math.floor((Date.now() - new Date(l.oldestFirstSeen).getTime()) / 86400000) : 0;
+      const { total, breakdown } = computeListingPriority(l.issues, {
+        viewsWeek: l.viewsWeek,
+        recentLeadCount: recentLeadCounts.get(l.propertyId) || 0,
+        oldestIssueAgeDays: ageDays,
+      });
+      return { ...l, priority: total, priorityBreakdown: breakdown };
+    }).sort((a, b) => b.priority - a.priority);
+
+    renderListingsNeedingAttention(scored.slice(0, MAX_ATTENTION_LISTINGS));
+    // Recommendations clusters over the FULL scored set, not just the
+    // top MAX_ATTENTION_LISTINGS shown here -- a condition affecting 20
+    // listings should read as "20", not silently cap at 15.
+    renderRecommendations(buildRecommendations(scored, reportHistory));
   } catch (e) {
     console.error('[Intelligence] Failed to load Listings Needing Attention', e);
     document.getElementById('attention-card').innerHTML =
       '<div class="alerts-error">⚠ Couldn\'t load listings needing attention.<button type="button" class="alerts-retry" onclick="loadListingsNeedingAttention()">Retry</button></div>';
+    renderRecommendationsError();
   }
 }
 
@@ -493,6 +567,169 @@ function renderListingsNeedingAttention(listings) {
       '<a class="alert-action" href="' + esc('admin.html?edit=' + encodeURIComponent(l.propertyId)) + '" target="_blank" rel="noopener">Edit listing</a>' +
     '</li>'
   ).join('') + '</ul>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Recommendations (Phase 3B, first implementation phase) -- a synthesis
+// layer over data Listings Needing Attention and Report History already
+// compute. Not a new detector, not a new score: two cluster types only
+// for this pass (agent workload and duplicate candidates are later
+// phases, since they need a new aggregate query and the Compare view
+// respectively) --
+//   1. Shared condition -- listings sharing the same open metric_key
+//      collapse into one task ("Add photos to 3 listings"), the same
+//      grouping precedent Phase 3A WS2 already proved out for Alerts,
+//      reused here at the task layer instead of reinvented.
+//   2. Failed report -- one task per distinct failed report.
+// Every constant below is named, not inlined into buildRecommendations()
+// itself, so the formula can be retuned after observing real usage
+// without redesigning the clustering algorithm.
+// ══════════════════════════════════════════════════════════════════
+const CLUSTER_COUNT_BONUS = 0.2;     // added per additional listing beyond the first
+const CLUSTER_SCORE_CAP = 2;         // max total the count bonus can contribute, regardless of cluster size
+const MAX_RECOMMENDATIONS = 5;       // keep the list small -- the goal is fewer decisions, not full coverage
+const FAILED_REPORT_TASK_SCORE = 5;  // fixed, not computed: a failed report always deserves prompt attention
+
+// Imperative verb per condition -- recommendations read as tasks
+// ("Generate AI descriptions for 8 listings"), never as passive reports
+// ("There are 8 listings missing descriptions"). duplicate_listing is
+// deliberately absent: it gets its own cluster type once the Compare view
+// (Phase 3B §2) exists, rather than a generic "review" phrasing now.
+const RECOMMENDATION_VERBS = {
+  missing_photos: 'Add photos to',
+  missing_price: 'Add pricing to',
+  missing_ai_highlight: 'Generate AI highlights for',
+  missing_ai_description: 'Generate AI descriptions for',
+  missing_location: 'Add location to',
+  missing_neighborhood_insight: 'Generate neighborhood insights for',
+  stale_listing: 'Review',
+  no_leads: 'Review',
+};
+
+function buildRecommendations(scoredListings, history) {
+  const byMetricKey = new Map();
+  scoredListings.forEach((l) => {
+    l.issues.forEach((issue) => {
+      if (!RECOMMENDATION_VERBS[issue.metricKey]) return;
+      if (!byMetricKey.has(issue.metricKey)) byMetricKey.set(issue.metricKey, new Map());
+      // Keyed by propertyId so a listing can't be double-counted within
+      // one cluster even if it somehow carried the same metric_key twice.
+      byMetricKey.get(issue.metricKey).set(l.propertyId, l);
+    });
+  });
+
+  const tasks = [];
+  byMetricKey.forEach((itemsByProperty, metricKey) => {
+    const items = Array.from(itemsByProperty.values());
+    const maxScore = Math.max(...items.map((i) => i.priority));
+    const countBonus = Math.min(CLUSTER_COUNT_BONUS * (items.length - 1), CLUSTER_SCORE_CAP);
+    tasks.push({
+      type: 'shared_condition',
+      score: Math.round((maxScore + countBonus) * 10) / 10,
+      title: RECOMMENDATION_VERBS[metricKey] + ' ' + items.length + ' listing' + (items.length === 1 ? '' : 's'),
+      actionLabel: items.length > 1 ? 'View all' : 'Edit listing',
+      actionHref: items.length === 1 ? ('admin.html?edit=' + encodeURIComponent(items[0].propertyId)) : null,
+      actionOnClick: items.length > 1 ? () => document.getElementById('attention-card').scrollIntoView({ behavior: 'smooth', block: 'start' }) : null,
+      items: items.map((i) => ({ label: i.title, score: i.priority, breakdown: i.priorityBreakdown })),
+    });
+  });
+
+  history.filter((r) => r.status === 'failed').forEach((r) => {
+    tasks.push({
+      type: 'failed_report',
+      score: FAILED_REPORT_TASK_SCORE,
+      title: 'Regenerate the failed ' + r.report_type + ' report (' + fmtDate(r.period_end) + ')',
+      actionLabel: 'Regenerate now',
+      actionOnClick: () => {
+        const btn = document.getElementById('gen-btn-' + r.report_type);
+        if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        generateReportType(r.report_type);
+      },
+      items: [],
+    });
+  });
+
+  tasks.sort((a, b) => b.score - a.score);
+  return tasks.slice(0, MAX_RECOMMENDATIONS);
+}
+
+function renderRecommendationsError() {
+  document.getElementById('recommendations-card').innerHTML =
+    '<div class="alerts-error">⚠ Couldn\'t load recommendations.<button type="button" class="alerts-retry" onclick="loadListingsNeedingAttention()">Retry</button></div>';
+}
+
+// Two more disclosure levels beyond the task itself: expanding a task
+// reveals its constituent listings (Cluster -> Listing); each listing's
+// score is itself clickable to reveal its factor breakdown (Listing ->
+// Priority factors) -- Recommendation -> Cluster -> Listing -> Priority
+// factors, exactly the chain explainability was asked to cover.
+function renderRecommendations(tasks) {
+  const el = document.getElementById('recommendations-card');
+  if (!tasks.length) {
+    el.innerHTML = '<div class="alerts-empty">No recommendations right now — nothing urgent enough to surface.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="reco-list">' + tasks.map((t, ti) =>
+    '<div class="reco-task">' +
+      '<div class="reco-task-head' + (t.items.length ? ' expandable' : '') + '"' + (t.items.length ? ' data-reco-toggle="' + ti + '"' : '') + '>' +
+        '<span class="reco-score">' + t.score.toFixed(1) + '</span>' +
+        '<span class="reco-title">' + esc(t.title) + '</span>' +
+        (t.actionHref ? '<a class="reco-action" href="' + esc(t.actionHref) + '" target="_blank" rel="noopener" onclick="event.stopPropagation();">' + esc(t.actionLabel) + '</a>' :
+         '<button type="button" class="reco-action reco-action-btn" data-reco-action-index="' + ti + '" onclick="event.stopPropagation();">' + esc(t.actionLabel) + '</button>') +
+      '</div>' +
+      (t.items.length ? '<div class="reco-detail" id="reco-detail-' + ti + '" style="display:none;">' +
+        t.items.map((item, ii) =>
+          '<div class="reco-item" data-reco-item-toggle="' + ti + '-' + ii + '">' +
+            '<span>' + esc(item.label) + '</span><span class="reco-item-score">' + item.score.toFixed(1) + '</span>' +
+          '</div>' +
+          '<div class="reco-item-breakdown" id="reco-item-breakdown-' + ti + '-' + ii + '" style="display:none;">' +
+            item.breakdown.map((b) => '<div class="breakdown-row"><span>' + esc(b.label) + '</span><span>' + (b.value >= 0 ? '+' : '') + b.value.toFixed(1) + '</span></div>').join('') +
+          '</div>'
+        ).join('') + '</div>' : '') +
+    '</div>'
+  ).join('') + '</div>';
+
+  el.querySelectorAll('[data-reco-toggle]').forEach((row) => {
+    row.addEventListener('click', () => {
+      const detail = document.getElementById('reco-detail-' + row.dataset.recoToggle);
+      if (detail) detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+    });
+  });
+  el.querySelectorAll('[data-reco-item-toggle]').forEach((row) => {
+    row.addEventListener('click', () => {
+      const b = document.getElementById('reco-item-breakdown-' + row.dataset.recoItemToggle);
+      if (b) b.style.display = b.style.display === 'none' ? 'block' : 'none';
+    });
+  });
+  el.querySelectorAll('.reco-action-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const t = tasks[Number(btn.dataset.recoActionIndex)];
+      if (t && t.actionOnClick) t.actionOnClick();
+    });
+  });
+}
+
+// The permanent, standing reference (Phase 3B decision #3) -- not tied to
+// any one card, generated directly from the same constants the scoring
+// functions use so it can never drift out of sync with what the code
+// actually does.
+function toggleHowPriorityWorks() {
+  const panel = document.getElementById('how-priority-panel');
+  const opening = panel.style.display === 'none';
+  if (opening && !panel.dataset.built) {
+    panel.innerHTML =
+      '<h4>How priorities are calculated</h4>' +
+      '<p>Every listing\'s priority is the sum of named factors, always visible in its breakdown:</p>' +
+      '<ul>' +
+        '<li>Severity of its open issue(s)</li>' +
+        '<li>Up to +' + PRIORITY_CONFIG.RECENT_VIEWS_WEIGHT + ' for recent views (scaled to ' + PRIORITY_CONFIG.RECENT_VIEWS_SATURATION + ' views/week)</li>' +
+        '<li>Up to +' + PRIORITY_CONFIG.RECENT_LEADS_WEIGHT + ' for recent leads (scaled to ' + PRIORITY_CONFIG.RECENT_LEADS_SATURATION + ' leads in ' + PRIORITY_CONFIG.RECENT_LEADS_WINDOW_DAYS + ' days)</li>' +
+        '<li>Up to +' + PRIORITY_CONFIG.ISSUE_AGE_WEIGHT + ' for how long the issue has been open (scaled to ' + PRIORITY_CONFIG.ISSUE_AGE_SATURATION_DAYS + ' days)</li>' +
+      '</ul>' +
+      '<p>Recommendations group listings sharing the same open condition into one task, scored as the group\'s highest listing priority, plus +' + CLUSTER_COUNT_BONUS + ' per additional listing (capped at +' + CLUSTER_SCORE_CAP + ' total). A failed report is always scored ' + FAILED_REPORT_TASK_SCORE + '. Only the top ' + MAX_RECOMMENDATIONS + ' tasks are shown — nothing here is decided by AI.</p>';
+    panel.dataset.built = '1';
+  }
+  panel.style.display = opening ? 'block' : 'none';
 }
 
 // ── Today's Highlights — derived entirely from the latest report's own
