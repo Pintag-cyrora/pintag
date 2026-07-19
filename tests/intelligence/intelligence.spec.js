@@ -197,17 +197,20 @@ test.describe('Alerts (Phase 2A)', () => {
     await expect(action).toHaveAttribute('href', 'admin.html?edit=p-2');
   });
 
-  test('renders a failed-report alert with a "Regenerate report" button that triggers Section 4\'s generate action', async ({ page }) => {
+  test('renders a failed-report alert with a "Regenerate report" action that gives inline feedback (Action Framework 3C.1)', async ({ page }) => {
     await installSupabaseMocks(page, { reports: makeReports(), insights: {}, reportInsights: [], leads: [] });
     await login(page);
     await page.waitForSelector('#alerts-card .alert-item');
     const item = page.locator('#alerts-card .alert-item', { hasText: 'Report generation failed' });
     await expect(item).toBeVisible();
     await expect(item.locator('.alert-reason')).toContainText('Gemini request timed out');
-    const action = item.locator('.alert-action-btn');
+    const action = item.locator('.action-invoke-btn');
     await expect(action).toHaveText('Regenerate report');
     await action.click();
-    await expect(page.locator('#gen-status-weekly')).toContainText('Generated', { timeout: 10000 });
+    // Feedback now appears inline on the alert row itself, retrofitted
+    // onto the Action Framework -- no more relying on a distant Section 4
+    // status span to know whether it worked.
+    await expect(item.locator('.generate-status')).toContainText('Generated', { timeout: 10000 });
   });
 
   test('renders a new-lead alert with a relative time reason and a "View listing" action', async ({ page }) => {
@@ -414,17 +417,20 @@ test.describe('Recommendations (Phase 3B, first implementation phase)', () => {
     await expect(page.locator('#recommendations-card')).not.toContainText('Generate neighborhood insights for 2 listings');
   });
 
-  test('a failed report becomes its own recommendation and triggers regeneration', async ({ page }) => {
+  test('a failed report becomes its own recommendation and gives inline feedback (Action Framework 3C.1)', async ({ page }) => {
     await installSupabaseMocks(page, { reports: makeReports(), insights: {}, reportInsights: [], leads: [] });
     await login(page);
     await page.waitForSelector('#recommendations-card .reco-task');
     const task = page.locator('#recommendations-card .reco-task', { hasText: 'Regenerate the failed weekly report' });
     await expect(task).toBeVisible();
-    await task.locator('.reco-action').click();
-    // Assert the final state, not the transient "Generating…" text -- the
+    await expect(task.locator('.action-invoke-btn')).toHaveText('Regenerate report');
+    await task.locator('.action-invoke-btn').click();
+    // Assert the final state, not the transient "Working…" text -- the
     // mock resolves near-instantly, so waiting for the transient state is
     // inherently racy (same reasoning as Section 4's own generate test).
-    await expect(page.locator('#gen-status-weekly')).toContainText('Generated', { timeout: 5000 });
+    // Feedback now appears inline on the task itself, retrofitted onto
+    // the Action Framework, rather than a distant Section 4 status span.
+    await expect(task.locator('.generate-status')).toContainText('Generated', { timeout: 5000 });
   });
 
   test('expanding a task reveals its listings, and expanding a listing reveals its priority breakdown', async ({ page }) => {

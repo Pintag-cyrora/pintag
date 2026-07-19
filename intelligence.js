@@ -189,6 +189,161 @@ async function loadOverview() {
 }
 
 // ══════════════════════════════════════════════════════════════════
+// Action Framework (Phase 3C.1) — one descriptor shape, one renderer, one
+// execution engine, reused by every section that offers an operational
+// action. This phase retrofits exactly two actions that already existed
+// as ad hoc objects (Edit listing, Regenerate report) -- proving the
+// abstraction before anything new is built on it. See the published
+// Phase 3C design proposal for the full rationale.
+//
+// Three action types only -- don't add a fourth until a real use case
+// needs it:
+//   'navigate' -- opens somewhere else; the destination handles it.
+//   'invoke'   -- runs an async operation in place, with running/success/
+//                 failure feedback (never silent).
+//   'compare'  -- opens a decision surface (e.g. resolve duplicates).
+//                 Deliberately NOT a Navigate variant: the destination is
+//                 built for a human to choose between two things before
+//                 anything mutates, not just to view or edit one thing.
+//                 No concrete compare action exists yet; the type is
+//                 defined now so nothing has to be redesigned later.
+// ══════════════════════════════════════════════════════════════════
+const ACTION_ICONS = {
+  edit: '✏️', generate: '✨', regenerate: '🔄', archive: '🗄️', contact: '📞', compare: '⚖️',
+};
+
+// The single action registry (Phase 3C decision #3) -- every operational
+// action on the page is built by one of these, never hand-rolled inline
+// at the call site. Each descriptor carries: id (stable, for de-dup and
+// re-wiring after a render), type, label, icon, targetIds (what it acts
+// on -- already array-shaped so a future batch action is the same
+// descriptor with more ids, not a redesign), batchable (declared now per
+// decision #6, not implemented), permission (a forward-looking hook --
+// every action on this page already requires staff auth via RLS/JWT, so
+// this is carried on the descriptor for when a second role exists, not
+// enforced as a second gate today), confirm, and (for 'invoke') run/
+// successMessage/failureMessage.
+const Actions = {
+  editListing(propertyId) {
+    return {
+      id: 'edit-listing:' + propertyId,
+      type: 'navigate',
+      label: 'Edit listing',
+      icon: ACTION_ICONS.edit,
+      targetIds: [propertyId],
+      batchable: false,
+      permission: 'staff',
+      href: 'admin.html?edit=' + encodeURIComponent(propertyId),
+    };
+  },
+
+  regenerateReport(reportType, periodEnd) {
+    return {
+      id: 'regenerate-report:' + reportType + ':' + (periodEnd || 'default'),
+      type: 'invoke',
+      label: 'Regenerate report',
+      icon: ACTION_ICONS.regenerate,
+      targetIds: [reportType],
+      batchable: false,
+      permission: 'staff',
+      confirm: null,
+      successMessage: '✅ Generated',
+      failureMessage: '❌',
+      run: async () => {
+        try {
+          await callGenerateReport(reportType, periodEnd, true);
+          return { ok: true };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
+      },
+      // Runs after the success message is already showing, not before --
+      // Alerts/Recommendations rebuild their whole list from
+      // loadOverview() (unlike Section 4's static status span), which
+      // would otherwise destroy the very element runAction() is about to
+      // write "✅ Generated" onto. See runAction()'s ordering below.
+      afterSuccess: () => loadOverview(),
+    };
+  },
+};
+
+// Builds the markup for one action -- the ONLY place that decides what an
+// action button looks like, regardless of which section calls it.
+// `className` lets each call site keep its own existing visual treatment
+// (.alert-action, .reco-action, ...) rather than forcing one new look in
+// this pass; a bare fallback style covers any future caller that doesn't
+// pass one. 'invoke' (and, later, 'compare') get an adjacent status
+// element reusing the exact `.generate-status`/.ok/.err classes Section 4
+// already established, so this doesn't introduce a second status-color
+// vocabulary for its first use outside Section 4.
+function renderActionButton(action, className) {
+  if (action.type === 'navigate') {
+    return '<a class="' + (className || 'action-btn') + '" href="' + esc(action.href) + '" target="_blank" rel="noopener">' + esc(action.label) + '</a>';
+  }
+  return '<span class="action-invoke-wrap">' +
+    '<button type="button" class="' + (className || 'action-btn') + ' action-invoke-btn" data-action-id="' + esc(action.id) + '">' + esc(action.label) + '</button>' +
+    '<span class="generate-status"></span>' +
+  '</span>';
+}
+
+// Finds every action button rendered by renderActionButton() within
+// `container` and wires its real behavior -- kept separate from the
+// renderer since event listeners can't be serialized into an HTML
+// string. Call once per render pass, after the HTML lands in the DOM.
+function wireActionButtons(container, actions) {
+  const byId = new Map(actions.filter((a) => a && a.id).map((a) => [a.id, a]));
+  container.querySelectorAll('.action-invoke-btn').forEach((btn) => {
+    const action = byId.get(btn.dataset.actionId);
+    if (!action) return;
+    const statusEl = btn.nextElementSibling;
+    btn.addEventListener('click', () => runAction(action, btn, statusEl));
+  });
+}
+
+// The one execution pipeline every invoke action goes through (Phase 3C
+// decision #4) -- Alerts, Recommendations, Listings Needing Attention,
+// and later Trends/Search all call this exact function; none of them
+// re-implement confirm, running/success/failure, or button-disabling
+// themselves. Preserves whatever layout classes are already on `statusEl`
+// (classList add/remove, never a full className replace) so this can
+// share Section 4's own static status span without disturbing its
+// existing layout.
+//
+// Ordering matters: the success message is written to `statusEl` BEFORE
+// `action.afterSuccess()` runs, never after. Several sections (Alerts,
+// Recommendations) rebuild their entire list via innerHTML once
+// afterSuccess() (typically loadOverview()) resolves -- writing the
+// success text afterwards would silently target a DOM node that's
+// already been replaced. Section 4's own static spans don't strictly
+// need this ordering, but it costs nothing to apply it everywhere.
+async function runAction(action, btn, statusEl) {
+  if (action.confirm && !confirm(action.confirm.message)) return;
+  btn.disabled = true;
+  statusEl.classList.remove('ok', 'err');
+  statusEl.classList.add('generate-status');
+  statusEl.textContent = 'Working…';
+  try {
+    const result = await action.run();
+    if (result && result.ok) {
+      statusEl.classList.add('ok');
+      statusEl.textContent = action.successMessage || '✅ Done';
+      if (action.afterSuccess) {
+        try { await action.afterSuccess(); } catch (e) { console.error('[Action] afterSuccess failed', e); }
+      }
+    } else {
+      statusEl.classList.add('err');
+      statusEl.textContent = (action.failureMessage || '❌') + (result && result.error ? ' ' + result.error : '');
+    }
+  } catch (e) {
+    statusEl.classList.add('err');
+    statusEl.textContent = (action.failureMessage || '❌') + ' ' + e.message;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { if (!statusEl.classList.contains('err')) statusEl.textContent = ''; }, 4000);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
 // Alerts (Phase 2A) — the "action required" area. Independent of which
 // report is currently browsed (unlike Today's Highlights' latest-report
 // pinning): an alert reflects current state, not a specific report's
@@ -299,6 +454,11 @@ async function loadAlerts(reportHistory) {
     insightRows.forEach((ins) => {
       if (ins.type === 'data_quality') {
         const p = DATA_QUALITY_PRESENTATION[ins.metric_key] || { icon: '🧹', label: 'Data quality issues', reason: 'Data quality issue', actionLabel: 'Fix now' };
+        // "Edit listing" is the one data-quality action retrofitted onto
+        // the Action Framework in 3C.1 -- the other two (Generate AI
+        // description, Review listing) stay on the legacy actionHref
+        // shape for now, out of scope for this pass.
+        const isEditListing = p.actionLabel === 'Edit listing' && ins.dimension_property_id;
         alerts.push({
           severity: ins.severity,
           icon: p.icon,
@@ -306,6 +466,7 @@ async function loadAlerts(reportHistory) {
           reason: p.reason,
           actionLabel: p.actionLabel,
           actionHref: ins.dimension_property_id ? ('admin.html?edit=' + encodeURIComponent(ins.dimension_property_id)) : null,
+          action: isEditListing ? Actions.editListing(ins.dimension_property_id) : undefined,
           groupKey: 'dq:' + ins.metric_key,
           groupLabel: p.label,
         });
@@ -321,22 +482,17 @@ async function loadAlerts(reportHistory) {
       }
     });
 
-    // "Regenerate report" reuses Section 4's existing generateReportType()
-    // (same function the manual Generate buttons call) rather than a
-    // second code path -- the alert just scrolls it into view and clicks
-    // it on the staff member's behalf.
+    // "Regenerate report" is retrofitted onto the Action Framework in
+    // 3C.1 -- feedback now appears inline on this row via the shared
+    // runAction() engine, rather than scrolling to Section 4's distant
+    // status span to see whether it worked.
     reportHistory.filter((r) => r.status === 'failed').forEach((r) => {
       alerts.push({
         severity: 'high',
         icon: '📄',
         title: 'Report generation failed: ' + r.report_type + ' (' + fmtDate(r.period_end) + ')',
         reason: r.error_message || 'See Report History for details',
-        actionLabel: 'Regenerate report',
-        actionOnClick: () => {
-          const btn = document.getElementById('gen-btn-' + r.report_type);
-          if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          generateReportType(r.report_type);
-        },
+        action: Actions.regenerateReport(r.report_type),
       });
     });
 
@@ -392,7 +548,8 @@ function renderAlerts(alerts) {
         '<div class="alert-title">' + esc(a.title) + '</div>' +
         (a.reason ? '<div class="alert-reason">' + esc(a.reason) + '</div>' : '') +
       '</div>' +
-      (a.actionHref ? '<a class="alert-action" href="' + esc(a.actionHref) + '" target="_blank" rel="noopener">' + esc(a.actionLabel || 'View') + '</a>' :
+      (a.action ? renderActionButton(a.action, 'alert-action') :
+       a.actionHref ? '<a class="alert-action" href="' + esc(a.actionHref) + '" target="_blank" rel="noopener">' + esc(a.actionLabel || 'View') + '</a>' :
        a.actionOnClick ? '<button type="button" class="alert-action alert-action-btn" data-alert-index="' + i + '">' + esc(a.actionLabel || 'View') + '</button>' : '') +
     '</li>'
   ).join('') + '</ul>';
@@ -406,6 +563,7 @@ function renderAlerts(alerts) {
       if (a && a.actionOnClick) a.actionOnClick();
     });
   });
+  wireActionButtons(el, alerts.map((a) => a.action).filter(Boolean));
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -564,7 +722,7 @@ function renderListingsNeedingAttention(listings) {
           return '<span class="attention-issue"><span aria-hidden="true">' + p.icon + '</span> ' + esc(p.label) + '</span>';
         }).join('') + '</div>' +
       '</div>' +
-      '<a class="alert-action" href="' + esc('admin.html?edit=' + encodeURIComponent(l.propertyId)) + '" target="_blank" rel="noopener">Edit listing</a>' +
+      renderActionButton(Actions.editListing(l.propertyId), 'alert-action') +
     '</li>'
   ).join('') + '</ul>';
 }
@@ -623,28 +781,32 @@ function buildRecommendations(scoredListings, history) {
     const items = Array.from(itemsByProperty.values());
     const maxScore = Math.max(...items.map((i) => i.priority));
     const countBonus = Math.min(CLUSTER_COUNT_BONUS * (items.length - 1), CLUSTER_SCORE_CAP);
+    const single = items.length === 1;
     tasks.push({
       type: 'shared_condition',
       score: Math.round((maxScore + countBonus) * 10) / 10,
       title: RECOMMENDATION_VERBS[metricKey] + ' ' + items.length + ' listing' + (items.length === 1 ? '' : 's'),
-      actionLabel: items.length > 1 ? 'View all' : 'Edit listing',
-      actionHref: items.length === 1 ? ('admin.html?edit=' + encodeURIComponent(items[0].propertyId)) : null,
-      actionOnClick: items.length > 1 ? () => document.getElementById('attention-card').scrollIntoView({ behavior: 'smooth', block: 'start' }) : null,
+      // A single-listing cluster is literally "Edit listing" -- retrofitted
+      // onto the Action Framework (3C.1). A multi-listing cluster still
+      // routes to the worklist below, unchanged: real batch execution
+      // needs the framework's batch support, not built yet (see the
+      // published Phase 3C proposal, §3).
+      action: single ? Actions.editListing(items[0].propertyId) : undefined,
+      actionLabel: single ? undefined : 'View all',
+      actionOnClick: single ? undefined : () => document.getElementById('attention-card').scrollIntoView({ behavior: 'smooth', block: 'start' }),
       items: items.map((i) => ({ label: i.title, score: i.priority, breakdown: i.priorityBreakdown })),
     });
   });
 
+  // "Regenerate report" is retrofitted onto the Action Framework in 3C.1
+  // -- feedback now appears inline on this task via runAction(), rather
+  // than scrolling to Section 4's status span.
   history.filter((r) => r.status === 'failed').forEach((r) => {
     tasks.push({
       type: 'failed_report',
       score: FAILED_REPORT_TASK_SCORE,
       title: 'Regenerate the failed ' + r.report_type + ' report (' + fmtDate(r.period_end) + ')',
-      actionLabel: 'Regenerate now',
-      actionOnClick: () => {
-        const btn = document.getElementById('gen-btn-' + r.report_type);
-        if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        generateReportType(r.report_type);
-      },
+      action: Actions.regenerateReport(r.report_type),
       items: [],
     });
   });
@@ -674,7 +836,8 @@ function renderRecommendations(tasks) {
       '<div class="reco-task-head' + (t.items.length ? ' expandable' : '') + '"' + (t.items.length ? ' data-reco-toggle="' + ti + '"' : '') + '>' +
         '<span class="reco-score">' + t.score.toFixed(1) + '</span>' +
         '<span class="reco-title">' + esc(t.title) + '</span>' +
-        (t.actionHref ? '<a class="reco-action" href="' + esc(t.actionHref) + '" target="_blank" rel="noopener" onclick="event.stopPropagation();">' + esc(t.actionLabel) + '</a>' :
+        (t.action ? '<span onclick="event.stopPropagation();">' + renderActionButton(t.action, 'reco-action') + '</span>' :
+         t.actionHref ? '<a class="reco-action" href="' + esc(t.actionHref) + '" target="_blank" rel="noopener" onclick="event.stopPropagation();">' + esc(t.actionLabel) + '</a>' :
          '<button type="button" class="reco-action reco-action-btn" data-reco-action-index="' + ti + '" onclick="event.stopPropagation();">' + esc(t.actionLabel) + '</button>') +
       '</div>' +
       (t.items.length ? '<div class="reco-detail" id="reco-detail-' + ti + '" style="display:none;">' +
@@ -707,6 +870,7 @@ function renderRecommendations(tasks) {
       if (t && t.actionOnClick) t.actionOnClick();
     });
   });
+  wireActionButtons(el, tasks.map((t) => t.action).filter(Boolean));
 }
 
 // The permanent, standing reference (Phase 3B decision #3) -- not tied to
@@ -944,24 +1108,18 @@ function renderReportHistoryTable(history) {
 // convention (see INTELLIGENCE_ARCHITECTURE.md): an explicit staff click
 // should always produce a fresh report for the default period, replacing
 // any existing one for that exact period rather than silently no-op'ing.
+// Thin wrapper over the shared Action Framework engine (Phase 3C.1) --
+// Section 4's own Generate buttons and every "Regenerate report" action
+// elsewhere on the page (Alerts, Recommendations) now go through the
+// exact same Actions.regenerateReport()/runAction() pipeline, so the
+// experience is identical regardless of where staff clicked from (Phase
+// 3C decision #4). The one disclosed wording change from before this
+// retrofit: the transient status reads "Working…" here too, matching
+// every other invoke action, instead of a Section-4-only "Generating…".
 async function generateReportType(type) {
   const btn = document.getElementById('gen-btn-' + type);
   const status = document.getElementById('gen-status-' + type);
-  btn.disabled = true;
-  status.className = 'generate-status';
-  status.textContent = 'Generating…';
-  try {
-    await callGenerateReport(type, undefined, true);
-    status.className = 'generate-status ok';
-    status.textContent = '✅ Generated';
-    await loadOverview();
-  } catch (e) {
-    status.className = 'generate-status err';
-    status.textContent = '❌ ' + e.message;
-  } finally {
-    btn.disabled = false;
-    setTimeout(() => { if (status.textContent.indexOf('❌') === -1) status.textContent = ''; }, 4000);
-  }
+  await runAction(Actions.regenerateReport(type), btn, status);
 }
 
 // ── Advanced: generate for a specific date/type (preserves the earlier
