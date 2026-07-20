@@ -156,6 +156,12 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .ut-avail-row{display:flex;align-items:center;gap:8px;}
 .ut-avail-row label{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);font-weight:400;white-space:nowrap;}
 .ut-remove-row{text-align:right;}
+.ut-photo-hint{font-size:11px;color:var(--ink-muted);margin-bottom:8px;line-height:1.5;}
+.ut-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;}
+.ut-photo-item{position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:2px solid var(--border);cursor:pointer;background:var(--warm);}
+.ut-photo-item.selected{border-color:var(--teal);}
+.ut-photo-item img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;}
+.ut-photo-item input{position:absolute;top:3px;left:3px;margin:0;pointer-events:none;}
 /* AI Generation */
 .ai-gen-card{background:linear-gradient(135deg,rgba(45,140,140,0.07),rgba(45,140,140,0.03));border:1px dashed var(--teal-border);border-radius:6px;padding:20px 24px;margin-bottom:24px;}
 .btn-ai-gen{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--teal);color:#fff;border:none;padding:13px 24px;border-radius:5px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.2s;width:100%;}
@@ -1187,7 +1193,12 @@ function addUnitType(data) {
   const sqm       = data && data.sqm       != null ? data.sqm       : '';
   const isAvailable    = data ? (data.is_available !== false) : true;
   const availableCount = data && data.available_count != null ? data.available_count : 1;
+  const descriptionEn = data ? (data.description_en || '') : '';
+  const descriptionLo = data ? (data.description_lo || '') : '';
+  const descriptionZh = data ? (data.description_zh || '') : '';
+  const unitImages = data && Array.isArray(data.images) ? data.images : [];
   const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  card.dataset.images = JSON.stringify(unitImages);
   card.innerHTML = `
     <div class="ut-head" draggable="true" ondragstart="_utDragStart(event)" ondragover="_utDragOver(event)" ondrop="_utDrop(event)" ondragend="_utDragEnd(event)" onclick="_utToggle(event)">
       <span class="ut-drag" title="Drag to reorder">&#x283F;</span>
@@ -1244,6 +1255,22 @@ function addUnitType(data) {
         </div>
       </div>
       <div class="ut-grid">
+        <div class="ut-field ut-field-full">
+          <label>Description <span style="color:var(--ink-muted);font-weight:400;">— blank inherits the building's description</span></label>
+          <textarea class="form-textarea ut-desc-en" rows="2" placeholder="Describe this unit type specifically...">${esc(descriptionEn)}</textarea>
+          <div class="ut-names-sub" style="margin-top:6px;">
+            <textarea class="form-textarea ut-desc-lo" rows="2" placeholder="ລາຍລະອຽດ (ລາວ) — optional" style="font-size:12.5px;">${esc(descriptionLo)}</textarea>
+            <textarea class="form-textarea ut-desc-zh" rows="2" placeholder="&#20013;&#25991;&#25551;&#36848; — optional" style="font-size:12.5px;">${esc(descriptionZh)}</textarea>
+          </div>
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field ut-field-full">
+          <label>Photos <span style="color:var(--ink-muted);font-weight:400;">— select which of the building's uploaded photos show for this unit; none selected inherits all building photos</span></label>
+          <div class="ut-photo-picker"></div>
+        </div>
+      </div>
+      <div class="ut-grid">
         <div class="ut-field ut-avail-row">
           <label><input type="checkbox" class="ut-is-available" ${isAvailable ? 'checked' : ''}> Available</label>
         </div>
@@ -1255,11 +1282,40 @@ function addUnitType(data) {
     </div>`;
   list.appendChild(card);
   _utUpdateSummary(card.querySelector('.ut-name-en'));
+  _utRenderPhotoPicker(card);
+}
+
+// Renders the "select which building photos belong to this unit" checkbox
+// grid from `uploadedImages` (the building's own current photo list) --
+// called on initial render and again every time the card is expanded, so
+// it always reflects photos uploaded to the building since this card was
+// first created. Selection state itself lives in the checkboxes, read
+// directly by getUnitTypesFromDom() -- no separate hidden field needed.
+function _utRenderPhotoPicker(card) {
+  const picker = card.querySelector('.ut-photo-picker');
+  if (!picker) return;
+  let selected;
+  try { selected = JSON.parse(card.dataset.images || '[]'); } catch (e) { selected = []; }
+  if (!uploadedImages.length) {
+    picker.innerHTML = '<p class="ut-photo-hint">No building photos uploaded yet — add some in the Photos &amp; Video section above.</p>';
+    return;
+  }
+  picker.innerHTML = `<div class="ut-photo-grid">${uploadedImages.map(url => {
+    const isSelected = selected.includes(url);
+    const safeUrl = esc(url);
+    return `<label class="ut-photo-item${isSelected ? ' selected' : ''}" onclick="this.classList.toggle('selected')">
+      <input type="checkbox" value="${safeUrl}" ${isSelected ? 'checked' : ''}>
+      <img src="${safeUrl}" alt="">
+    </label>`;
+  }).join('')}</div>`;
 }
 
 function _utToggle(e) {
   if (e.target.closest('.btn-remove')) return;
-  e.currentTarget.closest('.ut-card').classList.toggle('expanded');
+  const card = e.currentTarget.closest('.ut-card');
+  const willExpand = !card.classList.contains('expanded');
+  card.classList.toggle('expanded');
+  if (willExpand) _utRenderPhotoPicker(card); // refresh against the latest building photos
 }
 
 function removeUnitType(e, btn) {
@@ -1351,6 +1407,13 @@ function getUnitTypesFromDom() {
     bedrooms:      card.querySelector('.ut-bedrooms').value.trim()  === '' ? null : Number(card.querySelector('.ut-bedrooms').value),
     bathrooms:     card.querySelector('.ut-bathrooms').value.trim() === '' ? null : Number(card.querySelector('.ut-bathrooms').value),
     sqm:           card.querySelector('.ut-sqm').value.trim()       === '' ? null : Number(card.querySelector('.ut-sqm').value),
+    description_en: card.querySelector('.ut-desc-en').value.trim() || null,
+    description_lo: card.querySelector('.ut-desc-lo').value.trim() || null,
+    description_zh: card.querySelector('.ut-desc-zh').value.trim() || null,
+    images: (() => {
+      const checked = [...card.querySelectorAll('.ut-photo-item input:checked')].map((i) => i.value);
+      return checked.length ? checked : null;
+    })(),
     is_available:      card.querySelector('.ut-is-available').checked,
     available_count:   card.querySelector('.ut-available-count').value.trim() === '' ? 1 : Number(card.querySelector('.ut-available-count').value)
   }));
@@ -2354,6 +2417,10 @@ function refreshImageGrid() {
     grid.appendChild(div);
   });
   document.getElementById('f-images').value = JSON.stringify(uploadedImages);
+  // Keep any already-expanded Unit Type photo pickers in sync -- otherwise
+  // a photo uploaded here while a unit type card is open wouldn't appear
+  // as a selectable option until the card was collapsed and reopened.
+  document.querySelectorAll('.ut-card.expanded').forEach(_utRenderPhotoPicker);
 }
 function populateExistingImages(images) {
   importImageModel = (images || []).map((url, i) => ({ storageUrl: url, source: 'existing', primary: i === 0 }));
