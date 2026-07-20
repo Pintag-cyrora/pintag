@@ -252,13 +252,26 @@ below.
   Shares the same `extraContext.properties` input `dataQualityDetector`
   reads; needs nothing extra.
 - **Heuristic, deliberately conservative:** two active listings are
-  flagged only when they share the exact same (trimmed, case-insensitive)
-  `title_en`. A fuzzier combined-attributes heuristic (same district +
-  price + bedrooms, etc.) would catch more real duplicates but also more
-  coincidental matches — the simpler, lower-false-positive check ships
-  first, per this session's "ship what's reliable, defer speculative
-  logic" discipline. Untitled listings are never grouped (an empty title
-  is not a meaningful duplicate signal).
+  flagged only when they share both the exact same (trimmed,
+  case-insensitive) `title_en` **and** the same variant signature
+  (`bedrooms`, `bathrooms`, and `sale_price`/`rent_price`/`price_display`
+  — see `variantSignature()`). Title alone isn't enough: the Multi-Unit
+  Buildings feature's design research surfaced a real false-positive risk
+  here — a building with a Studio, a 1 Bedroom, and a 2 Bedroom unit,
+  entered as separate `properties` rows (before `unit_types` existed, or
+  by a caller not yet using it), would very plausibly share the exact same
+  title, and must never be flagged as duplicates of each other. Two
+  listings matching on both title and variant signature are a much
+  stronger duplicate signal than title alone; two listings sharing a title
+  but differing on bedrooms/bathrooms/price are much more likely to be
+  distinct unit variants than an accidental double-entry. This signature
+  is deliberately coarse (three fields, not a fuzzy diff) — per this
+  session's "ship what's reliable, defer speculative logic" discipline.
+  Untitled listings are never grouped (an empty title is not a meaningful
+  duplicate signal). Buildings using the `unit_types` model don't hit this
+  at all (one `properties` row per building, not one per unit) — this
+  check protects legacy/transition-period data still using the old
+  one-row-per-unit pattern.
 - **Insight type produced:** `data_quality` (same type as
   `dataQualityDetector`, distinguished by `metric_key = 'duplicate_listing'`
   — see the `metric_key` note above).
@@ -267,8 +280,10 @@ below.
   minimum bar." The Intelligence page still offers an "Edit listing" link
   (so staff can review/compare), but there's no automated resolution.
 - **`reevaluate`:** resolves when the property is gone from the tracked
-  set, or when it's no longer part of a same-title group of 2+ (e.g.
-  staff retitled one of the duplicates to disambiguate them).
+  set, or when it's no longer part of a same-title-and-variant group of 2+
+  (e.g. staff retitled one of the duplicates to disambiguate them, or
+  edited bedrooms/bathrooms/price so they now read as distinct unit
+  variants).
 
 ## Evidence Schema
 

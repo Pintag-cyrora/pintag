@@ -236,7 +236,8 @@ async function fetchDataQualityProperties(db: Db): Promise<any[]> {
   return db.select(
     'properties',
     'select=id,title_en,images,description_en,property_highlight_en,neighborhood_insight_en,' +
-    'price_display,district_en,village_en,property_type,created_at,view_count&status=in.(active,available)'
+    'price_display,sale_price,rent_price,bedrooms,bathrooms,district_en,village_en,property_type,' +
+    'created_at,view_count&status=in.(active,available)'
   );
 }
 

@@ -135,6 +135,27 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .btn-add-row:hover{background:rgba(45,140,140,0.15);}
 .btn-remove{background:rgba(192,57,43,0.07);color:var(--red);border:1px solid rgba(192,57,43,0.15);padding:8px 10px;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;flex-shrink:0;margin-top:1px;}
 .btn-remove:hover{background:rgba(192,57,43,0.14);}
+/* Unit Types repeater (Multi-Unit Buildings, Phase 1) */
+.unit-types-list{display:flex;flex-direction:column;gap:10px;margin-bottom:10px;}
+.ut-card{border:1px solid var(--border);border-radius:4px;background:var(--white);}
+.ut-card.dragging{opacity:0.4;}
+.ut-card.drag-over{border-color:var(--teal);}
+.ut-head{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;}
+.ut-drag{cursor:grab;color:var(--ink-muted);font-size:14px;user-select:none;flex-shrink:0;}
+.ut-drag:active{cursor:grabbing;}
+.ut-name-display{font-size:13.5px;font-weight:600;color:var(--ink);flex-shrink:0;}
+.ut-summary{font-size:12px;color:var(--ink-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ut-chevron{color:var(--ink-muted);font-size:11px;flex-shrink:0;transition:transform 0.15s;}
+.ut-card.expanded .ut-chevron{transform:rotate(180deg);}
+.ut-body{display:none;padding:0 14px 16px;border-top:1px solid var(--border);}
+.ut-card.expanded .ut-body{display:block;padding-top:14px;}
+.ut-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;}
+.ut-field label{display:block;font-size:10.5px;font-weight:500;color:var(--ink-muted);margin-bottom:4px;}
+.ut-field-full{grid-column:1/-1;}
+.ut-names-sub{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
+.ut-avail-row{display:flex;align-items:center;gap:8px;}
+.ut-avail-row label{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);font-weight:400;white-space:nowrap;}
+.ut-remove-row{text-align:right;}
 /* AI Generation */
 .ai-gen-card{background:linear-gradient(135deg,rgba(45,140,140,0.07),rgba(45,140,140,0.03));border:1px dashed var(--teal-border);border-radius:6px;padding:20px 24px;margin-bottom:24px;}
 .btn-ai-gen{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--teal);color:#fff;border:none;padding:13px 24px;border-radius:5px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.2s;width:100%;}
@@ -170,6 +191,9 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
   .nearby-row .np-dist{grid-column:2;}
   .admin-body{padding:20px 14px;}
   .form-section{padding:18px 14px;}
+  .ut-grid{grid-template-columns:1fr 1fr;}
+  .ut-names-sub{grid-template-columns:1fr;}
+  .ut-summary{white-space:normal;}
   .listings-table th:nth-child(2),.listings-table td:nth-child(2),
   .listings-table th:nth-child(3),.listings-table td:nth-child(3),
   .listings-table th:nth-child(4),.listings-table td:nth-child(4){display:none;}
@@ -669,6 +693,13 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           </div>
         </div>
 
+        <!-- UNIT TYPES (optional — Multi-Unit Buildings, Phase 1) -->
+        <div class="form-section">
+          <p class="form-section-title">&#9323; Unit Types <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; optional; add one per variant (Studio, 1BR, 2BR...) to turn this listing into a multi-unit building. Leave empty for a normal single listing.</span></p>
+          <div id="unit-types-list" class="unit-types-list"></div>
+          <button type="button" class="btn-add-row" onclick="addUnitType()">+ Add Unit Type</button>
+        </div>
+
         <div class="form-submit">
           <button type="submit" class="btn-submit" id="submit-btn">Save Listing</button>
           <button type="button" class="btn-submit" id="publish-btn" onclick="publishDraft()" style="display:none;background:var(--green);">Publish Listing</button>
@@ -1121,6 +1152,231 @@ function getNearbyPlaces() {
   return places;
 }
 
+// ── Unit Types (Multi-Unit Buildings, Phase 1) ─────────────────────
+// A repeatable, collapsible card per unit variant (Studio/1BR/2BR/...),
+// same interaction shape as Nearby Places above, with one deliberate
+// difference: saving is a real upsert (PATCH existing/POST new/DELETE
+// removed), not delete-and-reinsert, because a unit_type.id must survive
+// across saves (Phase 3's Individual Units will FK to it). See
+// saveUnitTypes() below, called from saveListing() after the property
+// itself is saved.
+//
+// Deliberately NOT editable here: description/highlight/features/
+// amenities/images overrides. Every one of those columns is nullable on
+// unit_types and resolveUnitType() (terminology.js) already treats null as
+// "inherit the building's own value" — a completely safe default with no
+// UI. Editing per-unit overrides for those fields is left for a future
+// pass; Phase 1 ships exactly the fields validation requires (Name,
+// Price, Bedrooms, Bathrooms, Availability).
+let _removedUnitTypeIds = [];
+
+function addUnitType(data) {
+  const list = document.getElementById('unit-types-list');
+  const card = document.createElement('div');
+  card.className = 'ut-card';
+  if (data && data.id) card.dataset.id = data.id;
+  const nameEn = data ? (data.name_en || '') : '';
+  const nameLo = data ? (data.name_lo || '') : '';
+  const nameZh = data ? (data.name_zh || '') : '';
+  const priceDisplay = data ? (data.price_display || '') : '';
+  const salePrice    = data ? (data.sale_price || '') : '';
+  const rentPrice    = data ? (data.rent_price || '') : '';
+  const rentPeriod   = data ? (data.rent_period || 'month') : 'month';
+  const bedrooms  = data && data.bedrooms  != null ? data.bedrooms  : '';
+  const bathrooms = data && data.bathrooms != null ? data.bathrooms : '';
+  const sqm       = data && data.sqm       != null ? data.sqm       : '';
+  const isAvailable    = data ? (data.is_available !== false) : true;
+  const availableCount = data && data.available_count != null ? data.available_count : 1;
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  card.innerHTML = `
+    <div class="ut-head" draggable="true" ondragstart="_utDragStart(event)" ondragover="_utDragOver(event)" ondrop="_utDrop(event)" ondragend="_utDragEnd(event)" onclick="_utToggle(event)">
+      <span class="ut-drag" title="Drag to reorder">&#x283F;</span>
+      <span class="ut-name-display">${esc(nameEn) || 'New Unit Type'}</span>
+      <span class="ut-summary"></span>
+      <span class="ut-chevron">&#9660;</span>
+      <button type="button" class="btn-remove" onclick="removeUnitType(event, this)">&times;</button>
+    </div>
+    <div class="ut-body">
+      <div class="ut-grid">
+        <div class="ut-field ut-field-full">
+          <label>Name *</label>
+          <input class="form-input ut-name-en" type="text" placeholder="Studio" value="${esc(nameEn)}" oninput="_utUpdateSummary(this)">
+          <div class="ut-names-sub">
+            <input class="form-input ut-name-lo" type="text" placeholder="ຊື່ (ລາວ) — optional" value="${esc(nameLo)}" style="font-size:12.5px;">
+            <input class="form-input ut-name-zh" type="text" placeholder="名称 (中文) — optional" value="${esc(nameZh)}" style="font-size:12.5px;">
+          </div>
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field ut-price-single" style="display:${isSor ? 'none' : ''}">
+          <label>Price</label>
+          <input class="form-input ut-price-display" type="text" placeholder="$250/month (blank = inherit building price)" value="${esc(priceDisplay)}" oninput="_utUpdateSummary(this)">
+        </div>
+        <div class="ut-field ut-price-sale" style="display:${isSor ? '' : 'none'}">
+          <label>Sale Price</label>
+          <input class="form-input ut-sale-price" type="text" placeholder="$250,000" value="${esc(salePrice)}" oninput="_utUpdateSummary(this)">
+        </div>
+        <div class="ut-field ut-price-rent" style="display:${isSor ? '' : 'none'}">
+          <label>Rent Price</label>
+          <input class="form-input ut-rent-price" type="text" placeholder="$250/month" value="${esc(rentPrice)}" oninput="_utUpdateSummary(this)">
+        </div>
+        <div class="ut-field ut-price-period" style="display:${isSor ? '' : 'none'}">
+          <label>Rent Period</label>
+          <select class="form-select ut-rent-period">
+            <option value="month" ${rentPeriod==='month'?'selected':''}>Per Month</option>
+            <option value="year" ${rentPeriod==='year'?'selected':''}>Per Year</option>
+            <option value="day" ${rentPeriod==='day'?'selected':''}>Per Day</option>
+          </select>
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field">
+          <label>Bedrooms *</label>
+          <input class="form-input ut-bedrooms" type="number" min="0" placeholder="0" value="${bedrooms}" oninput="_utUpdateSummary(this)">
+        </div>
+        <div class="ut-field">
+          <label>Bathrooms *</label>
+          <input class="form-input ut-bathrooms" type="number" min="0" placeholder="1" value="${bathrooms}" oninput="_utUpdateSummary(this)">
+        </div>
+        <div class="ut-field">
+          <label>Size (sqm)</label>
+          <input class="form-input ut-sqm" type="number" min="0" step="any" placeholder="35" value="${sqm}">
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field ut-avail-row">
+          <label><input type="checkbox" class="ut-is-available" ${isAvailable ? 'checked' : ''}> Available</label>
+        </div>
+        <div class="ut-field">
+          <label>Available Count *</label>
+          <input class="form-input ut-available-count" type="number" min="0" value="${availableCount}">
+        </div>
+      </div>
+    </div>`;
+  list.appendChild(card);
+  _utUpdateSummary(card.querySelector('.ut-name-en'));
+}
+
+function _utToggle(e) {
+  if (e.target.closest('.btn-remove')) return;
+  e.currentTarget.closest('.ut-card').classList.toggle('expanded');
+}
+
+function removeUnitType(e, btn) {
+  e.stopPropagation();
+  const card = btn.closest('.ut-card');
+  if (card.dataset.id) _removedUnitTypeIds.push(card.dataset.id);
+  card.remove();
+}
+
+function _utUpdateSummary(inputEl) {
+  const card = inputEl.closest('.ut-card');
+  const nameEn = card.querySelector('.ut-name-en').value.trim();
+  card.querySelector('.ut-name-display').textContent = nameEn || 'New Unit Type';
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  const price = isSor
+    ? [card.querySelector('.ut-sale-price').value.trim(), card.querySelector('.ut-rent-price').value.trim()].filter(Boolean).join(' / ')
+    : card.querySelector('.ut-price-display').value.trim();
+  const bed = card.querySelector('.ut-bedrooms').value.trim();
+  const bath = card.querySelector('.ut-bathrooms').value.trim();
+  const parts = [];
+  if (price) parts.push(price);
+  if (bed !== '') parts.push(bed + 'BR');
+  if (bath !== '') parts.push(bath + 'BA');
+  card.querySelector('.ut-summary').textContent = parts.join(' · ') || 'No details yet';
+}
+
+// Keeps every rendered Unit Type card's price fields in sync with the
+// building's own transaction type — mirrors onTransactionChange() above,
+// which does the same for the building's own price fields.
+function syncUnitTypePriceFields() {
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  document.querySelectorAll('.ut-card').forEach(card => {
+    card.querySelector('.ut-price-single').style.display = isSor ? 'none' : '';
+    card.querySelector('.ut-price-sale').style.display   = isSor ? '' : 'none';
+    card.querySelector('.ut-price-rent').style.display   = isSor ? '' : 'none';
+    card.querySelector('.ut-price-period').style.display = isSor ? '' : 'none';
+    _utUpdateSummary(card.querySelector('.ut-name-en'));
+  });
+}
+
+// Native HTML5 drag-and-drop reordering — no library. sort_order itself is
+// never stored in a hidden field; getUnitTypesFromDom() derives it from
+// DOM position at save time.
+let _utDragEl = null;
+function _utDragStart(e) {
+  _utDragEl = e.currentTarget.closest('.ut-card');
+  _utDragEl.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function _utDragOver(e) {
+  e.preventDefault();
+  const target = e.currentTarget.closest('.ut-card');
+  if (target && target !== _utDragEl) target.classList.add('drag-over');
+}
+function _utDrop(e) {
+  e.preventDefault();
+  const target = e.currentTarget.closest('.ut-card');
+  target.classList.remove('drag-over');
+  if (!_utDragEl || target === _utDragEl) return;
+  const list = document.getElementById('unit-types-list');
+  const cards = [...list.children];
+  const dragIdx = cards.indexOf(_utDragEl);
+  const targetIdx = cards.indexOf(target);
+  if (dragIdx < targetIdx) target.after(_utDragEl); else target.before(_utDragEl);
+}
+function _utDragEnd(e) {
+  document.querySelectorAll('.ut-card').forEach(c => c.classList.remove('dragging', 'drag-over'));
+  _utDragEl = null;
+}
+
+function loadUnitTypes(unitTypes) {
+  document.getElementById('unit-types-list').innerHTML = '';
+  _removedUnitTypeIds = [];
+  const sorted = (unitTypes || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  sorted.forEach(ut => addUnitType(ut));
+}
+
+function getUnitTypesFromDom() {
+  return [...document.querySelectorAll('.ut-card')].map((card, index) => ({
+    id: card.dataset.id || null,
+    sort_order:    index,
+    name_en:       card.querySelector('.ut-name-en').value.trim(),
+    name_lo:       card.querySelector('.ut-name-lo').value.trim() || null,
+    name_zh:       card.querySelector('.ut-name-zh').value.trim() || null,
+    price_display: card.querySelector('.ut-price-display').value.trim() || null,
+    sale_price:    card.querySelector('.ut-sale-price').value.trim() || null,
+    rent_price:    card.querySelector('.ut-rent-price').value.trim() || null,
+    rent_period:   card.querySelector('.ut-rent-period').value || null,
+    bedrooms:      card.querySelector('.ut-bedrooms').value.trim()  === '' ? null : Number(card.querySelector('.ut-bedrooms').value),
+    bathrooms:     card.querySelector('.ut-bathrooms').value.trim() === '' ? null : Number(card.querySelector('.ut-bathrooms').value),
+    sqm:           card.querySelector('.ut-sqm').value.trim()       === '' ? null : Number(card.querySelector('.ut-sqm').value),
+    is_available:      card.querySelector('.ut-is-available').checked,
+    available_count:   card.querySelector('.ut-available-count').value.trim() === '' ? 1 : Number(card.querySelector('.ut-available-count').value)
+  }));
+}
+
+// Real upsert, not delete-and-reinsert: existing rows (have an id) are
+// PATCHed, new rows are POSTed, and any id present on load but no longer
+// in the DOM is DELETEd. This preserves unit_type.id across saves, which
+// Phase 3's Individual Units will need to FK to.
+async function saveUnitTypes(propertyId) {
+  const rows = getUnitTypesFromDom();
+  for (const id of _removedUnitTypeIds) {
+    await sbApi('DELETE', `unit_types?id=eq.${id}`);
+  }
+  for (const row of rows) {
+    const { id, ...fields } = row;
+    fields.property_id = propertyId;
+    if (id) {
+      await sbApi('PATCH', `unit_types?id=eq.${id}`, fields);
+    } else {
+      await sbApi('POST', 'unit_types', fields);
+    }
+  }
+  _removedUnitTypeIds = [];
+}
+
 // ── Village autocomplete ─────────────────────────────────────────
 async function loadVillageSuggestions() {
   const STATIC = ['Thongkang','Nongbone','Donkoi','Phonsinuan','Thongsangnang','Phonethan','Somsamai','Mixay','Hom','Phonxai','Natane','Sisangvone'];
@@ -1561,6 +1817,7 @@ function onTransactionChange() {
   document.getElementById('price-field-sale').style.display   = isSor ? ''     : 'none';
   document.getElementById('price-field-rent').style.display   = isSor ? ''     : 'none';
   document.getElementById('price-field-period').style.display = isSor ? ''     : 'none';
+  syncUnitTypePriceFields();
 }
 
 // ── FORM SHOW/HIDE ────────────────────────────────────────────────
@@ -1593,6 +1850,7 @@ function showForm(id) {
     document.getElementById('listing-form').reset();
     document.getElementById('nearby-list').innerHTML = '';
     addNearby();
+    loadUnitTypes([]);
     // form.reset() does not fire f-type's onchange, so Property Details
     // must be re-rendered explicitly for the blank state (also clears
     // features/amenities, which form.reset() likewise doesn't touch).
@@ -1627,7 +1885,7 @@ function showForm(id) {
 // ── EDIT ──────────────────────────────────────────────────────────
 async function editListing(id) {
   showForm(id);
-  const data = await sbApi('GET', `properties?id=eq.${id}&select=*,contacts(*)&limit=1`);
+  const data = await sbApi('GET', `properties?id=eq.${id}&select=*,contacts(*),unit_types(*)&limit=1`);
   if (!data || !data[0]) return;
   const p = data[0];
 
@@ -1677,6 +1935,8 @@ async function editListing(id) {
   const nearbyArr = p.nearby_places || p.landmarks || [];
   if (nearbyArr.length) nearbyArr.forEach(n => addNearby(n));
   else addNearby();
+
+  loadUnitTypes(Array.isArray(p.unit_types) ? p.unit_types : []);
 
   setHighlights(Array.isArray(p.highlights) ? p.highlights : []);
   ['en','lo','zh'].forEach(lang => {
@@ -1772,6 +2032,17 @@ async function saveListing(e) {
       [contactPhone,                                    'Buyer Contact phone'],
     ];
     const missingLabels = requiredChecks.filter(([v]) => !v).map(([, label]) => label);
+    // Unit Types: Name, Bedrooms, Bathrooms are required per card (Price
+    // is intentionally NOT required — a blank price already means "price
+    // on request" throughout this codebase, so leaving it blank IS how a
+    // unit type's price gets intentionally hidden; no separate toggle
+    // needed). Available Count always has a default, so it's never blank.
+    getUnitTypesFromDom().forEach((ut, i) => {
+      const label = 'Unit Type #' + (i + 1) + (ut.name_en ? ' (' + ut.name_en + ')' : '');
+      if (!ut.name_en) missingLabels.push(label + ': Name');
+      if (ut.bedrooms === null) missingLabels.push(label + ': Bedrooms');
+      if (ut.bathrooms === null) missingLabels.push(label + ': Bathrooms');
+    });
     if (missingLabels.length) {
       btn.disabled = false;
       btn.textContent = 'Save Listing';
@@ -1892,10 +2163,23 @@ async function saveListing(e) {
     return;
   }
 
-  btn.disabled = false;
-  btn.textContent = 'Save Listing';
   const msg = document.getElementById('form-message');
   const saved = Array.isArray(result) ? result.length > 0 : !!result;
+  if (saved) {
+    const propertyId = editId || (Array.isArray(result) ? result[0].id : result.id);
+    try {
+      await saveUnitTypes(propertyId);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Save Listing';
+      msg.className = 'form-message error';
+      msg.textContent = '✗ Listing saved, but Unit Types failed to save: ' + err.message;
+      msg.style.display = 'block';
+      return;
+    }
+  }
+  btn.disabled = false;
+  btn.textContent = 'Save Listing';
   if (saved) {
     msg.className = 'form-message success';
     msg.textContent = editId ? '✓ Listing updated successfully.' : '✓ Listing created successfully.';
