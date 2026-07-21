@@ -162,6 +162,26 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .ut-photo-item.selected{border-color:var(--teal);}
 .ut-photo-item img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;}
 .ut-photo-item input{position:absolute;top:3px;left:3px;margin:0;pointer-events:none;}
+.ut-avail-badge{font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;flex-shrink:0;}
+.ut-avail-available{background:rgba(30,107,69,.1);color:var(--green,#1e6b45);}
+.ut-avail-fully_occupied{background:rgba(184,134,11,.12);color:var(--gold,#b8860b);}
+.ut-avail-coming_soon{background:rgba(45,140,140,.12);color:var(--teal);}
+.ut-avail-temporarily_unavailable{background:rgba(122,144,152,.14);color:var(--ink-muted);}
+.rental-terms-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+.rt-row .form-label{display:block;font-size:10.5px;font-weight:500;color:var(--ink-muted);margin-bottom:4px;}
+.rt-field-money,.rt-field-utility{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.rt-field-checkboxes{display:flex;flex-wrap:wrap;gap:10px;}
+.rt-checkbox-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink);cursor:pointer;}
+.rt-field-fees{display:flex;flex-direction:column;gap:6px;}
+.rt-fee-row{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:6px;align-items:center;}
+.rt-fee-remove{border:1px solid var(--border);background:var(--white);border-radius:4px;cursor:pointer;padding:4px 8px;color:var(--ink-muted);}
+.rt-fee-add{align-self:flex-start;border:1px dashed var(--border);background:none;border-radius:4px;padding:6px 10px;font-size:12px;color:var(--teal);cursor:pointer;}
+.ut-rt-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.ut-rt-status-pill{font-size:11.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ut-rt-status-pill.ut-rt-default{color:var(--ink-muted);}
+.ut-rt-status-pill.ut-rt-override{color:var(--gold,#b8860b);font-weight:600;}
+.ut-rt-override-btn{border:1px solid var(--border);background:var(--white);border-radius:4px;padding:4px 10px;font-size:11px;color:var(--teal);cursor:pointer;flex-shrink:0;}
+.ut-rt-fields{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);}
 /* AI Generation */
 .ai-gen-card{background:linear-gradient(135deg,rgba(45,140,140,0.07),rgba(45,140,140,0.03));border:1px dashed var(--teal-border);border-radius:6px;padding:20px 24px;margin-bottom:24px;}
 .btn-ai-gen{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--teal);color:#fff;border:none;padding:13px 24px;border-radius:5px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.2s;width:100%;}
@@ -436,6 +456,16 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <input class="form-input" id="f-price-previous" type="text" placeholder="Old price — shows Price Reduced badge">
             </div>
           </div>
+
+          <!-- RENTAL TERMS — building-level defaults (deposit, utilities,
+               service frequency, policies, fees). Completely independent
+               of Unit Types' pricing/description overrides -- see
+               rental-terms.js's header comment for the full architecture.
+               Registry-driven: this container is rebuilt entirely from
+               RENTAL_TERMS_FIELDS by renderRentalTermsFields(), so adding a
+               new term is a registry change only, never a change here. -->
+          <p class="form-section-sub">Rental Terms</p>
+          <div id="rental-terms-building" class="rental-terms-grid"></div>
 
           <!-- UNIT TYPES — an extension of Pricing, not an independent
                section (Multi-Unit Buildings, Phase 1). Optional; add one
@@ -796,6 +826,8 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
+<script src="rental-terms.js"></script>
+<script src="unit-availability.js"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
@@ -1209,6 +1241,9 @@ function addUnitType(data) {
   const sqm       = data && data.sqm       != null ? data.sqm       : '';
   const isAvailable    = data ? (data.is_available !== false) : true;
   const availableCount = data && data.available_count != null ? data.available_count : 1;
+  const totalUnits        = data && data.total_units != null ? data.total_units : '';
+  const nextAvailableDate = data && data.next_available_date ? data.next_available_date : '';
+  const availabilityNote  = data ? (data.availability_note || '') : '';
   const descriptionEn = data ? (data.description_en || '') : '';
   const descriptionLo = data ? (data.description_lo || '') : '';
   const descriptionZh = data ? (data.description_zh || '') : '';
@@ -1220,6 +1255,7 @@ function addUnitType(data) {
       <span class="ut-drag" title="Drag to reorder">&#x283F;</span>
       <span class="ut-name-display">${esc(nameEn) || 'New Unit Type'}</span>
       <span class="ut-summary"></span>
+      <span class="ut-avail-badge"></span>
       <span class="ut-chevron">&#9660;</span>
       <button type="button" class="btn-remove" onclick="removeUnitType(event, this)">&times;</button>
     </div>
@@ -1257,6 +1293,16 @@ function addUnitType(data) {
         </div>
       </div>
       <div class="ut-grid">
+        <div class="ut-field ut-field-full">
+          <label>Rental Terms</label>
+          <div class="ut-rt-toggle-row">
+            <span class="ut-rt-status-pill"></span>
+            <button type="button" class="ut-rt-override-btn" onclick="_utToggleRentalTermsOverride(event, this)">Override</button>
+          </div>
+          <div class="ut-rt-fields" style="display:none;"></div>
+        </div>
+      </div>
+      <div class="ut-grid">
         <div class="ut-field">
           <label>Bedrooms *</label>
           <input class="form-input ut-bedrooms" type="number" min="0" placeholder="0" value="${bedrooms}" oninput="_utUpdateSummary(this)">
@@ -1281,24 +1327,39 @@ function addUnitType(data) {
         </div>
       </div>
       <div class="ut-grid">
-        <div class="ut-field ut-field-full">
-          <label>Photos <span style="color:var(--ink-muted);font-weight:400;">— select which of the building's uploaded photos show for this unit; none selected inherits all building photos</span></label>
-          <div class="ut-photo-picker"></div>
-        </div>
-      </div>
-      <div class="ut-grid">
         <div class="ut-field ut-avail-row">
           <label><input type="checkbox" class="ut-is-available" ${isAvailable ? 'checked' : ''} onchange="_utOnAvailableChange(this)"> Available</label>
         </div>
         <div class="ut-field">
           <label>Available Count *</label>
-          <input class="form-input ut-available-count" type="number" min="0" value="${availableCount}">
+          <input class="form-input ut-available-count" type="number" min="0" value="${availableCount}" oninput="_utOnAvailabilityFieldChange(this)">
+        </div>
+        <div class="ut-field">
+          <label>Total Units <span style="color:var(--ink-muted);font-weight:400;">— optional</span></label>
+          <input class="form-input ut-total-units" type="number" min="0" value="${totalUnits}" placeholder="e.g. 12" oninput="_utOnAvailabilityFieldChange(this)">
+        </div>
+        <div class="ut-field">
+          <label>Next Available Date <span style="color:var(--ink-muted);font-weight:400;">— shown when Available Count is 0</span></label>
+          <input class="form-input ut-next-available-date" type="date" value="${nextAvailableDate}" oninput="_utOnAvailabilityFieldChange(this)">
+        </div>
+        <div class="ut-field ut-field-full">
+          <label>Availability Note <span style="color:var(--ink-muted);font-weight:400;">— optional, shown alongside (never instead of) the status</span></label>
+          <input class="form-input ut-availability-note" type="text" placeholder="e.g. 3 more units expected Q3 2026" value="${esc(availabilityNote)}" oninput="_utOnAvailabilityFieldChange(this)">
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field ut-field-full">
+          <label>Photos <span style="color:var(--ink-muted);font-weight:400;">— select which of the building's uploaded photos show for this unit; none selected inherits all building photos</span></label>
+          <div class="ut-photo-picker"></div>
         </div>
       </div>
     </div>`;
   list.appendChild(card);
+  card.dataset.rentalTermsOverrides = JSON.stringify((data && data.rental_terms_overrides) || {});
   _utUpdateSummary(card.querySelector('.ut-name-en'));
   _utRenderPhotoPicker(card);
+  _utRenderRentalTermsBlock(card);
+  _utUpdateAvailabilityBadge(card);
 }
 
 // Renders the "select which building photos belong to this unit" checkbox
@@ -1324,6 +1385,85 @@ function _utRenderPhotoPicker(card) {
       <img src="${safeUrl}" alt="">
     </label>`;
   }).join('')}</div>`;
+}
+
+// ── Rental Terms (v2): building-level defaults + per-unit-type overrides ──
+// Completely independent of Availability below -- see rental-terms.js's
+// header comment for the architecture. _buildingRentalTermsValues mirrors
+// the same "local working object, mutated via onChange, read at save time"
+// pattern already used for Unit Types' own DOM-backed state.
+let _buildingRentalTermsValues = {};
+
+function _onBuildingRentalTermChange(key, value) {
+  if (value == null) delete _buildingRentalTermsValues[key];
+  else _buildingRentalTermsValues[key] = value;
+  // Every card's inherited display and "N fields differ" summary depends
+  // on the building defaults -- refresh them all when a default changes.
+  document.querySelectorAll('.ut-card').forEach(_utRenderRentalTermsBlock);
+}
+
+function renderBuildingRentalTerms() {
+  renderRentalTermsFields(document.getElementById('rental-terms-building'), _buildingRentalTermsValues, _onBuildingRentalTermChange);
+}
+
+// Renders a Unit Type card's Rental Terms toggle pill (collapsed summary
+// shows resolved VALUES, not just field names -- "Deposit: 1 Month", not
+// "Deposit") and, when the override panel is open, the override form
+// itself, pre-filled with the current building defaults per field.
+function _utRenderRentalTermsBlock(card) {
+  let overrides;
+  try { overrides = JSON.parse(card.dataset.rentalTermsOverrides || '{}'); } catch (e) { overrides = {}; }
+  const overriddenKeys = Object.keys(overrides);
+  const pill = card.querySelector('.ut-rt-status-pill');
+  const btn = card.querySelector('.ut-rt-override-btn');
+  const fieldsContainer = card.querySelector('.ut-rt-fields');
+  const isOpen = fieldsContainer.style.display !== 'none';
+
+  if (!overriddenKeys.length) {
+    pill.textContent = '✓ Use Building Default';
+    pill.className = 'ut-rt-status-pill ut-rt-default';
+  } else {
+    const lines = summarizeRentalTermOverrides(overriddenKeys, Object.assign({}, _buildingRentalTermsValues, overrides), 'en', 3);
+    pill.textContent = 'Override — ' + lines.join(', ');
+    pill.className = 'ut-rt-status-pill ut-rt-override';
+  }
+  btn.textContent = isOpen ? 'Hide' : (overriddenKeys.length ? 'Edit Overrides' : 'Override');
+
+  const displayValues = Object.assign({}, _buildingRentalTermsValues, overrides);
+  renderRentalTermsFields(fieldsContainer, displayValues, function(key, value) {
+    const current = (function() { try { return JSON.parse(card.dataset.rentalTermsOverrides || '{}'); } catch (e) { return {}; } })();
+    if (value == null) delete current[key]; else current[key] = value;
+    card.dataset.rentalTermsOverrides = JSON.stringify(current);
+    _utRenderRentalTermsBlock(card);
+  });
+}
+
+function _utToggleRentalTermsOverride(e, btn) {
+  e.stopPropagation();
+  const card = btn.closest('.ut-card');
+  const fieldsContainer = card.querySelector('.ut-rt-fields');
+  fieldsContainer.style.display = (fieldsContainer.style.display !== 'none') ? 'none' : '';
+  _utRenderRentalTermsBlock(card);
+}
+
+// ── Availability (Next Available Date enhancement) ──────────────────────
+// Completely independent of Rental Terms above -- see unit-availability.js.
+function _utUpdateAvailabilityBadge(card) {
+  const unitTypeLike = {
+    is_available: card.querySelector('.ut-is-available').checked,
+    available_count: Number(card.querySelector('.ut-available-count').value) || 0,
+    total_units: card.querySelector('.ut-total-units').value.trim() === '' ? null : Number(card.querySelector('.ut-total-units').value),
+    next_available_date: card.querySelector('.ut-next-available-date').value || null,
+    availability_note: card.querySelector('.ut-availability-note').value.trim() || null
+  };
+  const resolved = resolveUnitAvailability(unitTypeLike);
+  const badge = card.querySelector('.ut-avail-badge');
+  badge.textContent = formatAvailabilityAdminSummary(resolved);
+  badge.className = 'ut-avail-badge ut-avail-' + resolved.status;
+}
+
+function _utOnAvailabilityFieldChange(inputEl) {
+  _utUpdateAvailabilityBadge(inputEl.closest('.ut-card'));
 }
 
 function _utToggle(e) {
@@ -1433,6 +1573,7 @@ function _utOnAvailableChange(checkbox) {
     label.textContent = label.textContent.replace(/\s?\*?$/, star);
   });
   syncPricingMode();
+  _utUpdateAvailabilityBadge(card);
 }
 
 function syncPricingMode() {
@@ -1542,7 +1683,13 @@ function getUnitTypesFromDom() {
       return checked.length ? checked : null;
     })(),
     is_available:      card.querySelector('.ut-is-available').checked,
-    available_count:   card.querySelector('.ut-available-count').value.trim() === '' ? 1 : Number(card.querySelector('.ut-available-count').value)
+    available_count:   card.querySelector('.ut-available-count').value.trim() === '' ? 1 : Number(card.querySelector('.ut-available-count').value),
+    total_units:          card.querySelector('.ut-total-units').value.trim() === '' ? null : Number(card.querySelector('.ut-total-units').value),
+    next_available_date:  card.querySelector('.ut-next-available-date').value || null,
+    availability_note:    card.querySelector('.ut-availability-note').value.trim() || null,
+    rental_terms_overrides: buildRentalTermsPayload((() => {
+      try { return JSON.parse(card.dataset.rentalTermsOverrides || '{}'); } catch (e) { return {}; }
+    })())
   }));
 }
 
@@ -2041,6 +2188,8 @@ function showForm(id) {
     document.getElementById('listing-form').reset();
     document.getElementById('nearby-list').innerHTML = '';
     addNearby();
+    _buildingRentalTermsValues = {};
+    renderBuildingRentalTerms();
     loadUnitTypes([]);
     // form.reset() does not fire f-type's onchange, so Property Details
     // must be re-rendered explicitly for the blank state (also clears
@@ -2127,6 +2276,11 @@ async function editListing(id) {
   if (nearbyArr.length) nearbyArr.forEach(n => addNearby(n));
   else addNearby();
 
+  // Building-level Rental Terms defaults must be set BEFORE loadUnitTypes()
+  // -- each unit type card's collapsed override summary is computed against
+  // the current building defaults at the moment it's created.
+  _buildingRentalTermsValues = resolveRentalTerms(p, null).values;
+  renderBuildingRentalTerms();
   loadUnitTypes(Array.isArray(p.unit_types) ? p.unit_types : []);
 
   setHighlights(Array.isArray(p.highlights) ? p.highlights : []);
@@ -2313,6 +2467,7 @@ async function saveListing(e) {
                           ? document.getElementById('f-rent-period').value || 'month'
                           : null),
     price_previous:    document.getElementById('f-price-previous').value.trim() || null,
+    rental_terms:      buildRentalTermsPayload(_buildingRentalTermsValues),
     land_title_type:   document.getElementById('f-land-title').value || null,
     is_featured:       document.getElementById('f-featured').value === 'true',
     title_en:                titleEn,
