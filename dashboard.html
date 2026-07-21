@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared-components.css">
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -213,48 +214,13 @@ body{
   gap:18px;
 }
 
-.card{
-  border:1px solid var(--line);
-  border-radius:16px;
-  overflow:hidden;
-  background:#fff;
-}
-
-.card-img{
-  aspect-ratio:16/10;
-  background:#ddd;
-}
-
-.card-img img{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  display:block;
-}
-
-.card-body{
-  padding:16px;
-}
-
-.card-location{
-  color:var(--teal);
-  font-size:12px;
-  font-weight:500;
-  margin-bottom:8px;
-}
-
-.card-title{
-  font-size:18px;
-  font-weight:600;
-  line-height:1.3;
-  margin-bottom:12px;
-}
-
-.card-price{
-  font-size:22px;
-  font-weight:700;
-  margin-bottom:14px;
-}
+/* Card appearance (background/border/radius/image/body/title/price) is now
+   owned by shared-components.css's .pt-card family -- see components.js's
+   renderPropertyCard(). This is a disclosed visual change on this page
+   (16px radius/16:10 image -> the shared 3px radius/4:3 image, larger type
+   -> the shared scale), the same kind of consolidation index.html's
+   migration already made, for the same reason: one card system, not one
+   per page. Stats + Edit/Delete actions stay page-specific (footerHtml). */
 .listing-stats{
   display:flex;
   gap:16px;
@@ -350,7 +316,7 @@ body{
     grid-template-columns:1fr;
   }
 
-  .card-title{
+  .pt-card-title{
     font-size:16px;
   }
 
@@ -581,6 +547,7 @@ body{
 </div>
 
 <script src="config.js"></script>
+<script src="components.js"></script>
 <script src="dev-banner.js"></script>
 <script>
 
@@ -683,37 +650,39 @@ function renderListings(properties){
     return;
   }
 
-  container.innerHTML = properties.map(property => {
-    const image    = esc(property.images && property.images.length ? property.images[0] : 'https://placehold.co/1200x800');
-    const district = esc(property.district_en || '');
-    const title    = esc(property.title_en || property.title_lo || 'Untitled');
-    const price    = esc(property.price_display || '');
+  container.innerHTML = '';
+  properties.forEach(property => {
     const views    = Number(property.views)     || 0;
     const inquiries= Number(property.inquiries) || 0;
     const saves    = Number(property.saves)     || 0;
     const id       = esc(property.id);
 
-    return `
-      <div class="card">
-        <div class="card-img"><img src="${image}"></div>
-        <div class="card-body">
-          <div class="card-location">${district}</div>
-          <div class="card-title">${title}</div>
-          <div class="card-price">${price}</div>
-          <div class="listing-stats">
-            <span>👁 ${views}</span>
-            <span>💬 ${inquiries}</span>
-            <span>❤ ${saves}</span>
-          </div>
-          <div class="card-actions">
-            <button class="card-btn edit-btn"   data-id="${id}" onclick="editListing(this.dataset.id)">Edit</button>
-            <button class="card-btn delete-btn" data-id="${id}" onclick="deleteListing(this.dataset.id)">Delete</button>
-          </div>
+    // tag:'div' -- this card hosts its own Edit/Delete buttons and must
+    // not also be a link to the public listing page (nested-interactive-
+    // element problem, not just a style one). No transaction badge/specs/
+    // agent-row/heart -- none of that fits an agent managing their own
+    // listings. Stats + actions are genuinely page-specific, via footerHtml.
+    const card = renderPropertyCard(property, {
+      tag: 'div',
+      showTransactionBadge: false,
+      showCardTag: false,
+      showSpecs: false,
+      showAgentRow: false,
+      showHeart: false,
+      footerHtml: `
+        <div class="listing-stats">
+          <span>👁 ${views}</span>
+          <span>💬 ${inquiries}</span>
+          <span>❤ ${saves}</span>
         </div>
-      </div>
-    `;
-  }).join('');
-
+        <div class="card-actions">
+          <button class="card-btn edit-btn"   data-id="${id}" onclick="editListing(this.dataset.id)">Edit</button>
+          <button class="card-btn delete-btn" data-id="${id}" onclick="deleteListing(this.dataset.id)">Delete</button>
+        </div>
+      `
+    });
+    container.appendChild(card);
+  });
 }
 
 function editListing(id){

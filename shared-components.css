@@ -70,7 +70,8 @@
   transition:border-color 0.3s,box-shadow 0.3s;
   overflow:hidden;
 }
-.pt-card:hover{border-color:rgba(26,32,36,0.14);box-shadow:var(--pt-shadow-card-hover);}
+.pt-card:hover,.pt-card:focus-visible{border-color:rgba(26,32,36,0.14);box-shadow:var(--pt-shadow-card-hover);}
+.pt-card:focus-visible{outline:2px solid var(--pt-teal);outline-offset:2px;}
 .pt-card.pt-featured{
   display:grid;grid-template-columns:1.85fr 1fr;
 }
@@ -121,7 +122,8 @@
 
 /* ─── PROPERTY PREVIEW (compact card -- Similar Properties etc.) ──────── */
 .pt-preview{background:var(--pt-white);border:1px solid var(--pt-border-mid);border-radius:var(--pt-r-card);overflow:hidden;text-decoration:none;transition:border-color .3s,box-shadow .3s;display:block;}
-.pt-preview:hover{border-color:rgba(26,36,40,0.14);box-shadow:var(--pt-shadow-card-hover);}
+.pt-preview:hover,.pt-preview:focus-visible{border-color:rgba(26,36,40,0.14);box-shadow:var(--pt-shadow-card-hover);}
+.pt-preview:focus-visible{outline:2px solid var(--pt-teal);outline-offset:2px;}
 .pt-preview-img{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--pt-warm);}
 .pt-preview-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform var(--pt-transition-img);}
 .pt-preview:hover .pt-preview-img img{transform:scale(1.025);}
@@ -185,7 +187,8 @@
 .pt-agent-preview{display:flex;align-items:center;gap:8px;}
 
 .pt-agent-card{display:block;text-decoration:none;color:inherit;background:var(--pt-white);border:1px solid var(--pt-border);border-radius:var(--pt-r-card);padding:16px;transition:border-color .3s,box-shadow .3s;}
-.pt-agent-card:hover{border-color:rgba(26,32,36,0.14);box-shadow:var(--pt-shadow-card-hover);}
+.pt-agent-card:hover,.pt-agent-card:focus-visible{border-color:rgba(26,32,36,0.14);box-shadow:var(--pt-shadow-card-hover);}
+.pt-agent-card:focus-visible{outline:2px solid var(--pt-teal);outline-offset:2px;}
 .pt-agent-card-portrait{width:52px;height:52px;border-radius:var(--pt-r-round);overflow:hidden;background:var(--pt-off);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:var(--pt-ink-muted);}
 .pt-agent-card-portrait img{width:100%;height:100%;object-fit:cover;display:block;}
 .pt-agent-card-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
@@ -195,6 +198,26 @@
 .pt-agent-card-bio{font-size:11.5px;color:var(--pt-ink-soft);line-height:1.5;margin-bottom:10px;}
 .pt-agent-card-count{font-size:10.5px;color:var(--pt-ink-muted);}
 .pt-agent-card-ctas{display:flex;gap:8px;margin-top:10px;}
+
+/* AgentCard row layout (opts.layout:'row') -- a full-width horizontal
+   list row, for a directory presented as a list rather than a grid (e.g.
+   for-agents.html, the reference implementation this was moved from).
+   Same field set/graceful-placeholder rules as the default stacked
+   layout, different arrangement -- both are genuine, real layouts this
+   codebase needs, not a default-vs-forced-redesign situation. */
+.pt-agent-row{display:flex;align-items:center;gap:20px;padding:24px 0;background:var(--pt-white);text-decoration:none;transition:background var(--pt-transition-fast);}
+.pt-agent-row:hover,.pt-agent-row:focus-visible{background:var(--pt-warm);}
+.pt-agent-row:focus-visible{outline:2px solid var(--pt-teal);outline-offset:-2px;}
+.pt-agent-row-portrait{width:72px;height:72px;border-radius:var(--pt-r-round);overflow:hidden;flex-shrink:0;background:var(--pt-off);border:1.5px solid var(--pt-border);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:var(--pt-teal);}
+.pt-agent-row-portrait img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
+.pt-agent-row-info{flex:1;min-width:0;}
+.pt-agent-row-verified{font-size:9px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:var(--pt-teal);margin-bottom:4px;display:block;}
+.pt-agent-row-name{font-size:20px;font-weight:700;color:var(--pt-ink);letter-spacing:-0.025em;line-height:1.1;margin-bottom:4px;}
+.pt-agent-row-bio{font-size:13px;font-weight:300;color:var(--pt-ink-muted);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.pt-agent-row-meta{text-align:right;flex-shrink:0;}
+.pt-agent-row-count{font-size:11px;color:var(--pt-ink-muted);display:block;margin-bottom:4px;}
+.pt-agent-row-arrow{font-size:16px;color:var(--pt-ink-muted);}
+@media(max-width:600px){.pt-agent-row{gap:16px;}.pt-agent-row-portrait{width:60px;height:60px;}.pt-agent-row-name{font-size:18px;}}
 
 .pt-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:500;padding:8px 14px;border-radius:var(--pt-r-card);text-decoration:none;border:1px solid transparent;cursor:pointer;transition:opacity var(--pt-transition-fast);}
 .pt-btn:hover{opacity:0.88;}

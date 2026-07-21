@@ -24,8 +24,8 @@
 //   renderAgentPreview(party, opts)       -> DOM node (<div>)
 //   renderTransactionBadge(transactionType, lang) -> DOM node (<span>)
 // Plus the shared data-shaping / formatting helpers:
-//   resolvePartyDisplay(party, listingCount) -> plain object
-//   formatPropertyPrice(property, lang)      -> plain object
+//   resolvePartyDisplay(party, listingCount, lang) -> plain object
+//   formatPropertyPrice(property, lang)            -> plain object
 //
 // Visual note: the canonical property card structure is listings.html's
 // pre-existing body-below-image layout (richer, already on real design
@@ -117,17 +117,21 @@ function formatPropertyPrice(property, lang) {
   return { isSor: false, singleText: raw, unitText: showUnit ? PT_PER_MONTH[lang] : null, isPriceOnRequest: false };
 }
 
-// resolvePartyDisplay(party, listingCount) -- the shared data-shaping
+// resolvePartyDisplay(party, listingCount, lang) -- the shared data-shaping
 // function both renderAgentCard() and renderAgentPreview() call, so
 // "should I show the verified badge / agency / listing count" is decided
 // once, not re-derived per renderer. `listingCount` is optional -- pages
 // that don't have it available (no aggregation query on that page) pass
 // null/undefined, and the count line is gracefully omitted, per the
 // documented graceful-placeholder rule (an omitted stat reads as neutral,
-// a "0 listings" stat reads as discouraging).
-function resolvePartyDisplay(party, listingCount) {
+// a "0 listings" stat reads as discouraging). `lang` controls display-name
+// precedence (Lao-primary pages want name_lo first, matching for-agents.html's
+// pre-existing behavior; English-primary contexts want name_en first).
+function resolvePartyDisplay(party, listingCount, lang) {
   if (!party) return null;
-  var name = party.name_en || party.name_lo || 'Agent';
+  var name = (lang === 'lo')
+    ? (party.name_lo || party.name_en || 'Agent')
+    : (party.name_en || party.name_lo || 'Agent');
   return {
     photo: party.photo_url || null,
     initial: (name.trim().charAt(0) || 'P').toUpperCase(),
@@ -201,14 +205,21 @@ function renderTransactionBadge(transactionType, lang) {
 //   dataTrack          {type, propertyId, label, meta, ...} -> data-track-*
 //                       attributes, page decides its own tracking scheme.
 //   onClick(event)      click handler on the card itself.
+//   tag                'a' (default) -- a real link to the public listing
+//                       page. 'div' -- a non-navigating container instead,
+//                       for a context like dashboard.html's own listing
+//                       grid where the card hosts its own Edit/Delete
+//                       buttons and must not also double as a link to the
+//                       public site (nested-interactive-element UX/
+//                       accessibility problem, not just a style one).
 // ---------------------------------------------------------------------------
 function renderPropertyCard(property, opts) {
   opts = opts || {};
   var lang = opts.lang || 'en';
   var p = property;
 
-  var card = document.createElement('a');
-  card.href = 'listing.html?slug=' + encodeURIComponent(p.slug || '');
+  var card = document.createElement(opts.tag === 'div' ? 'div' : 'a');
+  if (opts.tag !== 'div') card.href = 'listing.html?slug=' + encodeURIComponent(p.slug || '');
   card.className = 'pt-card' + (opts.isFeatured ? ' pt-featured' : '');
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
   if (opts.onClick) card.addEventListener('click', opts.onClick);
@@ -407,25 +418,49 @@ function renderPropertyPreview(property, opts) {
 //   zero listings     -> count line omitted
 //   no bio            -> falls back to a generic role-appropriate line
 //
-// opts: listingCount, lang, dataTrack.
+// opts: listingCount, lang, dataTrack, layout ('card' default -- stacked,
+// for a grid directory; 'row' -- full-width horizontal list row, the
+// layout for-agents.html's roster already used and is now the reference
+// implementation for. Both are real, currently-needed layouts, not a
+// default-vs-forced-redesign situation -- see shared-components.css's
+// note above .pt-agent-row.
 // ---------------------------------------------------------------------------
 var PT_BIO_FALLBACK = { lo:'ຕົວແທນອະສັງຫາລິມະຊັບ · ວຽງຈັນ', en:'Real Estate Agent · Vientiane', zh:'房地产经纪人 · 万象' };
 function renderAgentCard(party, opts) {
   opts = opts || {};
   var lang = opts.lang || 'en';
-  var d = resolvePartyDisplay(party, opts.listingCount);
+  var d = resolvePartyDisplay(party, opts.listingCount, lang);
   if (!d) return document.createElement('div');
 
   var card = document.createElement('a');
   card.href = 'agent.html?slug=' + encodeURIComponent(d.slug || '');
-  card.className = 'pt-agent-card';
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
+  var bioText = d.bio || (PT_BIO_FALLBACK[lang] || PT_BIO_FALLBACK.en);
 
+  if (opts.layout === 'row') {
+    card.className = 'pt-agent-row';
+    var rowPortraitInner = d.photo
+      ? '<img src="' + _ptEsc(d.photo) + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'' + _ptEsc(d.initial) + '\'">'
+      : _ptEsc(d.initial);
+    var listingsLabel = { lo: 'ລາຍການ', en: 'listings', zh: '房源' };
+    card.innerHTML =
+      '<div class="pt-agent-row-portrait">' + rowPortraitInner + '</div>' +
+      '<div class="pt-agent-row-info">' +
+        (d.verified ? '<span class="pt-agent-row-verified">VERIFIED AGENT</span>' : '') +
+        '<p class="pt-agent-row-name">' + _ptEsc(d.name) + '</p>' +
+        '<p class="pt-agent-row-bio">' + _ptEsc(bioText) + '</p>' +
+      '</div>' +
+      '<div class="pt-agent-row-meta">' +
+        (d.listingCount ? '<span class="pt-agent-row-count">' + d.listingCount + ' ' + (listingsLabel[lang] || listingsLabel.en) + '</span>' : '') +
+        '<span class="pt-agent-row-arrow">&#8594;</span>' +
+      '</div>';
+    return card;
+  }
+
+  card.className = 'pt-agent-card';
   var portraitInner = d.photo
     ? '<img src="' + _ptEsc(d.photo) + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'' + _ptEsc(d.initial) + '\'">'
     : _ptEsc(d.initial);
-
-  var bioText = d.bio || (PT_BIO_FALLBACK[lang] || PT_BIO_FALLBACK.en);
 
   card.innerHTML =
     '<div class="pt-agent-card-head">' +
@@ -455,7 +490,7 @@ function renderAgentCard(party, opts) {
 function renderAgentPreview(party, opts) {
   opts = opts || {};
   var lang = opts.lang || 'en';
-  var d = resolvePartyDisplay(party, opts.listingCount);
+  var d = resolvePartyDisplay(party, opts.listingCount, lang);
   if (!d) return document.createElement('div');
 
   var wrap = document.createElement('div');
