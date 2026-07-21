@@ -514,20 +514,11 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function getSavedSet() {
-  try { return new Set(JSON.parse(localStorage.getItem('pintag_saved') || '[]')); }
-  catch(e) { return new Set(); }
-}
-
-function toggleSave(slug, e) {
-  e.preventDefault();
-  e.stopPropagation();
-  const saved = getSavedSet();
-  if (saved.has(slug)) { saved.delete(slug); } else { saved.add(slug); }
-  try { localStorage.setItem('pintag_saved', JSON.stringify([...saved])); } catch(e) {}
-  const btn = document.querySelector('[data-save="' + slug + '"]');
-  if (btn) btn.classList.toggle('saved', saved.has(slug));
-}
+// Saved-listing storage lives in components.js now (ptGetSavedSet/
+// ptToggleSave) -- shared with index.html and, later, a Favorites page
+// reading the same localStorage key. Map Preview below still needs its
+// own saved-lookup for its "already saved" heart-icon state, done via
+// ptGetSavedSet() directly at render time.
 
 function getBadgeHtml(p, lang, isFeaturedCard) {
   const L = {
@@ -974,7 +965,7 @@ function renderListings() {
   scheduleBehavioralEvents(sorted);
 
   var lang = getCurrentLang();
-  var saved = getSavedSet();
+  var saved = ptGetSavedSet();
   var n = filtered.length;
 
   var countEl = document.getElementById('count-text');
@@ -1036,7 +1027,7 @@ function renderListings() {
       activityBadgesHtml: getActivityBadgesHtml(p, lang),
       showAmenities: true,
       isSaved: saved.has(p.slug),
-      onHeartToggle: function(slug, e) { toggleSave(slug, e); },
+      onHeartToggle: function(slug, e) { return ptToggleSave(slug, e); },
       footerHtml: actLineTxt ? '<p class="card-activity-line">' + esc(actLineTxt) + '</p>' : '',
       dataTrack: p.id ? {
         track: 'listing-card', type: 'card', propertyId: p.id, label: p['title_'+lang] || p.title_en || '',

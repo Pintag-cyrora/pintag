@@ -18,6 +18,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://pintag.io/og-preview.jpg">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared-components.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
@@ -250,84 +251,12 @@ nav{
   grid-template-columns:repeat(4,1fr);
   gap:16px;
 }
-.prop-card{
-  display:block;text-decoration:none;color:inherit;
-  background:transparent;
-  border-radius:3px;
-  overflow:hidden;
-  position:relative;
-  transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
-}
-.prop-card:hover{transform:translateY(-3px);}
-
-.card-img{
-  position:relative;aspect-ratio:3/4;overflow:hidden;
-  background:#EDE8E0;border-radius:3px;
-}
-.card-img img{
-  width:100%;height:100%;object-fit:cover;display:block;
-  transition:transform 0.7s cubic-bezier(0.16,1,0.3,1);
-}
-.prop-card:hover .card-img img{transform:scale(1.04);}
-.card-img-placeholder{
-  width:100%;height:100%;
-  background:linear-gradient(145deg,#E0DBD3,#CEC9C1);
-}
-
-/* bottom gradient overlay — where metadata lives */
-.card-img::after{
-  content:'';position:absolute;inset:0;
-  background:linear-gradient(
-    to bottom,
-    transparent 30%,
-    rgba(8,12,16,0.55) 70%,
-    rgba(8,12,16,0.82) 100%
-  );
-  pointer-events:none;border-radius:3px;
-}
-
-.card-badge{
-  position:absolute;top:11px;left:11px;z-index:3;
-  font-size:8px;font-weight:400;letter-spacing:0.09em;text-transform:uppercase;
-  padding:3px 8px;border-radius:2px;color:rgba(255,255,255,0.9);
-  background:rgba(255,255,255,0.14);
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  border:1px solid rgba(255,255,255,0.18);
-}
-.card-heart{
-  position:absolute;top:10px;right:10px;z-index:3;
-  width:28px;height:28px;border-radius:50%;
-  background:rgba(255,255,255,0.82);
-  backdrop-filter:blur(4px);border:none;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-}
-
-/* metadata — overlaid on image */
-.card-body{
-  position:absolute;bottom:0;left:0;right:0;z-index:2;
-  padding:14px 14px 16px;
-}
-.card-price-row{
-  display:flex;align-items:baseline;gap:4px;
-  margin-bottom:4px;
-}
-.card-price{
-  font-size:15px;font-weight:500;color:#fff;
-  letter-spacing:-0.01em;line-height:1;
-}
-.card-price-unit{font-size:11px;font-weight:300;color:rgba(255,255,255,0.65);}
-.card-loc{
-  display:flex;align-items:center;gap:4px;
-  font-size:10.5px;color:rgba(255,255,255,0.6);margin-bottom:7px;
-}
-.card-loc svg{opacity:0.7;}
-.card-specs{
-  display:flex;gap:10px;
-}
-.card-spec{
-  display:flex;align-items:center;gap:3px;
-  font-size:10.5px;color:rgba(255,255,255,0.55);
-}
+/* Card appearance (background/border/radius/hover/image/body/badges/
+   heart/agent-row/price) is now entirely owned by shared-components.css's
+   .pt-card family -- see components.js's renderPropertyCard() and the
+   note above renderCards(). Nothing page-specific to keep here: unlike
+   listings.html, .card-grid uses a uniform repeat(N,1fr) with no per-card
+   grid-column override. */
 
 /* loading shimmer */
 .card-shimmer{
@@ -368,22 +297,6 @@ nav{
   .panel{padding-bottom:32px;}
   .card-grid{grid-template-columns:1fr 1fr;gap:10px;}
 }
-
-/* ─── CARD AGENT ROW ─────────────────────────────────────── */
-.card-agent-row{
-  display:flex;align-items:center;gap:5px;
-  padding-top:7px;margin-top:7px;
-  border-top:1px solid rgba(255,255,255,0.10);
-  font-size:9.5px;color:rgba(255,255,255,0.42);
-  letter-spacing:0.02em;overflow:hidden;
-}
-.card-agent-pfp{
-  width:15px;height:15px;border-radius:50%;
-  overflow:hidden;background:rgba(255,255,255,0.15);
-  flex-shrink:0;
-}
-.card-agent-pfp img{width:100%;height:100%;object-fit:cover;object-position:top;}
-.card-agent-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
 /* ─── FOOTER ─────────────────────────────────────────────── */
 .site-footer{
@@ -559,6 +472,7 @@ nav{
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
 <script src="terminology.js"></script>
+<script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
 <script>
@@ -589,7 +503,7 @@ function postHomepageImpressions(props) {
   var grid = document.getElementById('card-grid');
   if (!grid) return;
   grid.addEventListener('click', function(e) {
-    var a = e.target.closest('.prop-card');
+    var a = e.target.closest('.pt-card');
     if (!a) return;
     var pid = a.getAttribute('data-pid');
     if (!pid) return;
@@ -636,68 +550,38 @@ async function loadFeatured() {
   }
 }
 
+// Migrated to the shared component system (components.js) -- was a
+// structurally different "prop-card" (dark gradient overlay on the image)
+// from listings.html's body-below-image layout despite sharing a class
+// name. Consolidating onto listings.html's structure (the canonical one,
+// per shared-components.css) is a real, disclosed visual change on this
+// page: metadata now sits below the image instead of overlaid on it. This
+// also fixes a real pre-existing bug -- .badge-sale/.badge-rent/.badge-sor
+// were referenced here but never defined in any CSS, so the transaction
+// badge always rendered colorless; renderTransactionBadge() fixes that.
 function renderCards(props, lang) {
   const grid = document.getElementById('card-grid');
-  if (!props || !props.length) { grid.innerHTML = ''; return; }
+  grid.innerHTML = '';
+  if (!props || !props.length) return;
+  const saved = ptGetSavedSet();
 
-  const PIN_SVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
-  const HEART_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1A2024" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
-
-  const txL = {
-    sale:    { lo: 'ຂາຍ',      en: 'Sale',        zh: '出售' },
-    rent:    { lo: 'ເຊົ່າ',    en: 'Rent',        zh: '租房' },
-    sor:     { lo: 'ຊື້/ເຊົ່າ', en: 'Sale or Rent', zh: '售/租' }
-  };
-  const perMo = { lo: '/ ເດືອນ', en: '/ mo', zh: '/ 月' };
-  const cityL = { lo: 'ວຽງຈັນ', en: 'Vientiane', zh: '万象' };
-
-  grid.innerHTML = props.map((p, idx) => {
-    const district = esc(p['district_' + lang] || p.district_en || '');
-    const isSale = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
-    const isSor  = p.transaction_type === 'sale_or_rent';
-    const tx = isSor ? txL.sor[lang] : isSale ? txL.sale[lang] : txL.rent[lang];
-    const badgeClass = isSor ? 'badge-sor' : isSale ? 'badge-sale' : 'badge-rent';
-    const imgHtml = (p.images && p.images.length)
-      ? '<img src="' + esc(p.images[0]) + '" alt="" loading="lazy">'
-      : '<div class="card-img-placeholder"></div>';
-    // Card facts driven by PROPERTY_TYPE_DISPLAY (terminology.js) — same
-    // per-type schema listings.html/listing.html use, kept icon+value only
-    // here to match this page's more compact card.
-    const cardFacts = (typeof getCardFacts === 'function') ? getCardFacts(p.property_type, p, lang) : [];
-    const specs = cardFacts.map(f => '<span class="card-spec">' + f.icon + ' ' + esc(String(f.value)) + '</span>');
-    const priceUnit = (!isSale && !isSor && p.price_display) ? '<span class="card-price-unit">' + perMo[lang] + '</span>' : '';
-    const sorPriceHtml = isSor && (p.sale_price || p.rent_price)
-      ? (p.sale_price ? esc(p.sale_price) : '') + (p.sale_price && p.rent_price ? ' / ' : '') + (p.rent_price ? esc(p.rent_price) : '')
-      : null;
-    // Only show a photo when this listing is linked to a real Pintag Agent
-    // Profile — otherwise just the contact's name, with no avatar implying
-    // it's a Pintag agent when it might be the owner or a reception desk.
-    const isLinkedAgent = !!(p.parties && p.parties.type === 'agent');
-    const agentName = esc((isLinkedAgent ? p.parties.name_en : (p.contacts && p.contacts.name)) || '');
-    const agentPhoto = esc((isLinkedAgent && p.parties.photo_url) || '');
-    const agentHtml = agentName
-      ? '<div class="card-agent-row">' +
-          (agentPhoto ? '<div class="card-agent-pfp"><img src="' + agentPhoto + '" alt="" loading="lazy"></div>' : '') +
-          '<span class="card-agent-name">' + agentName + '</span>' +
-        '</div>'
-      : '';
-    return '<a href="listing.html?slug=' + encodeURIComponent(p.slug) + '" class="prop-card" data-pid="' + esc(p.id||'') + '" data-position="' + (idx+1) + '"' +
-      ' data-track="home-featured-card" data-track-type="card" data-track-property-id="' + esc(p.id||'') + '" data-track-label="' + esc(p['title_' + lang] || p.title_en || '') + '" data-track-meta=\'' + esc(JSON.stringify({position: idx + 1})) + '\'>' +
-      '<div class="card-img">' +
-        imgHtml +
-        '<span class="card-badge ' + badgeClass + '">' + tx + '</span>' +
-        '<button class="card-heart" onclick="event.preventDefault()">' + HEART_SVG + '</button>' +
-      '</div>' +
-      '<div class="card-body">' +
-        '<div class="card-price-row">' +
-          '<span class="card-price">' + (sorPriceHtml || esc(p.price_display || '—')) + '</span>' + priceUnit +
-        '</div>' +
-        '<div class="card-loc">' + PIN_SVG + (district ? district + ', ' : '') + cityL[lang] + '</div>' +
-        (specs.length ? '<div class="card-specs">' + specs.join('') + '</div>' : '') +
-        agentHtml +
-      '</div>' +
-    '</a>';
-  }).join('');
+  props.forEach((p, idx) => {
+    const card = renderPropertyCard(p, {
+      lang: lang,
+      showTransactionBadge: true,
+      showSpecs: true,
+      showAgentRow: true,
+      isSaved: saved.has(p.slug),
+      onHeartToggle: function(slug, e) { return ptToggleSave(slug, e); },
+      dataTrack: {
+        track: 'home-featured-card', type: 'card', propertyId: p.id || '',
+        label: p['title_' + lang] || p.title_en || '', meta: JSON.stringify({ position: idx + 1 })
+      }
+    });
+    card.setAttribute('data-pid', p.id || '');
+    card.setAttribute('data-position', idx + 1);
+    grid.appendChild(card);
+  });
 }
 
 loadFeatured();

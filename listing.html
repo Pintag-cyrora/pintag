@@ -20,6 +20,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin>
+<link rel="stylesheet" href="shared-components.css">
 <script>
 window.addEventListener('error',function(e){
   if(e.message==='Script error.'||e.message==='Script error'){e.preventDefault();e.stopImmediatePropagation();return true;}
@@ -129,7 +130,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .agent-presented{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--ink-muted);margin-bottom:12px;}
 .agent-identity{display:flex;align-items:center;gap:14px;}
 .agent-name-en{font-size:15px;font-weight:600;color:var(--ink);line-height:1.2;margin-bottom:2px;}
-.agent-name-lo{font-size:12.5px;color:var(--ink-muted);line-height:1.2;margin-bottom:5px;}
 .agent-stats-row{display:flex;align-items:center;gap:28px;justify-content:center;}
 .agent-stat{display:flex;align-items:flex-start;gap:9px;}
 .agent-stat-icon{color:var(--ink-muted);flex-shrink:0;margin-top:1px;}
@@ -142,7 +142,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .btn-wa:hover{background:var(--wa-hover);transform:translateY(-1px);box-shadow:0 4px 16px rgba(35,107,107,0.22);}
 .btn-call{background:transparent;color:var(--ink-soft);border:1px solid var(--border-strong);}
 .btn-call:hover{background:var(--warm);color:var(--ink);transform:translateY(-1px);}
-.agent-pfp{width:60px;height:60px;border-radius:50%;object-fit:cover;object-position:center top;background:var(--warm-deep);border:1px solid var(--border-mid);flex-shrink:0;display:block;}
 /* Detail 3-col */
 .detail-wrap{max-width:1200px;margin:0 auto;padding:60px 48px 0;background:var(--white);}
 .detail-grid{display:grid;grid-template-columns:1.8fr 1fr 0.9fr;gap:56px;padding-bottom:48px;border-bottom:1px solid var(--border);}
@@ -199,20 +198,19 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
    image aspect-ratio, spacing, and typography scale) so this section
    matches the Listings page rather than a separate one-off design. */
 .similar-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;}
-.sim-card{background:var(--white);border:1px solid var(--border-mid);border-radius:3px;overflow:hidden;text-decoration:none;transition:border-color .3s,box-shadow .3s;display:block;}
-.sim-card:hover{border-color:rgba(26,36,40,0.14);box-shadow:0 6px 28px rgba(26,36,40,0.05);}
-.sim-card-img{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--warm-deep);}
-.sim-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .7s cubic-bezier(.16,1,.3,1);}
-.sim-card:hover .sim-card-img img{transform:scale(1.025);}
+/* .sim-no-img is NOT part of the Similar Properties card (that's now
+   .pt-preview-no-img, owned by shared-components.css) -- it's the main
+   photo gallery's own no-photo placeholder (desktop-gallery/mobile-gallery
+   below), which coincidentally reused the same class name before. Its
+   dark gradient is intentional for that context and must not become the
+   light .pt-card-no-img gradient, so it stays defined here as its own
+   page-specific rule. */
 .sim-no-img{width:100%;height:100%;background:linear-gradient(135deg,#2A3A35,#1A2828);}
-.sim-body{padding:18px 20px 20px;}
-.sim-title{font-size:14px;font-weight:400;color:var(--ink);margin-bottom:6px;line-height:1.4;letter-spacing:-0.005em;}
-.sim-loc{font-size:11px;color:var(--ink-muted);margin-bottom:14px;display:flex;align-items:center;gap:5px;}
-.sim-specs{display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
-.sim-spec{font-size:11px;font-weight:400;color:var(--ink-muted);display:inline-flex;align-items:center;gap:4px;}
-.sim-spec span{font-weight:500;color:var(--ink-soft);}
-.sim-price{font-size:16px;font-weight:500;color:var(--ink);letter-spacing:-0.01em;}
-.sim-price-req{font-size:12px;font-weight:400;color:var(--ink-muted);font-style:italic;}
+/* Everything else about the Similar Properties card is now owned by
+   shared-components.css's .pt-preview family (see components.js's
+   renderPropertyPreview()). Only this page's own horizontal scroll-snap
+   carousel layout, in the mobile media query
+   below, is genuinely page-specific and stays here. */
 /* ── Editorial presentation layer (desktop) ── */
 .emotional-intro{max-width:640px;margin:0 auto;padding:100px 48px 0;text-align:center;background:var(--white);}
 .emotional-statement{font-size:24px;font-weight:300;line-height:1.7;color:var(--ink-soft);letter-spacing:0.01em;}
@@ -363,15 +361,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
     scrollbar-width:none;
   }
   .similar-grid::-webkit-scrollbar{display:none;}
-  .sim-card{
+  .pt-preview{
     flex:0 0 78%;
     scroll-snap-align:start;
   }
-  .sim-body{padding:12px 13px 14px;}
-  .sim-title{font-size:14px;margin-bottom:4px;}
-  .sim-loc{margin-bottom:10px;}
-  .sim-specs{margin-bottom:10px;}
-  .sim-price{font-size:15px;}
   /* Media section */
   .media-section{padding:20px 16px;}
   /* Mobile CTA bar — refined for editorial balance */
@@ -475,6 +468,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
+<script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
 <script>
@@ -905,7 +899,7 @@ async function fetchProperty(slug){
   _fetchInFlight=true;
   PT.time('fetchProperty');
   try{
-    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(role,name,phone,whatsapp),parties(id,name_en,name_lo,photo_url,agency_name,slug,type)&limit=1');
+    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(role,name,phone,whatsapp),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified)&limit=1');
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
@@ -1049,45 +1043,14 @@ function renderSimilarGrid(similar){
   var idxCounter=1;
   similar.forEach(function(p){
     if(!p||!p.slug)return;
-    var title=esc(p['title_'+lang]||p.title_en||'');
-    var district=esc(p['district_'+lang]||p.district_en||'');
-    var imgs=Array.isArray(p.images)?p.images.filter(Boolean):[];
-    var imgHtml=imgs[0]?'<img src="'+esc(imgs[0])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)">':'<div class="sim-no-img"></div>';
-    // Facts driven by PROPERTY_TYPE_DISPLAY (terminology.js) — same schema
-    // that drives the main spec grid and the search-result cards, so
-    // bedrooms/bathrooms only appear "when applicable" automatically.
-    var cardFacts=(typeof getCardFacts==='function')?getCardFacts(p.property_type,p,lang):[];
-    var specsHtml=cardFacts.length?'<div class="sim-specs">'+cardFacts.map(function(f){
-      return '<span class="sim-spec">'+f.icon+' <span>'+esc(String(f.value))+'</span></span>';
-    }).join('')+'</div>':'';
-    var priceHtml=p.price_display
-      ? '<p class="sim-price">'+esc(p.price_display)+'</p>'
-      : '<p class="sim-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
-
-    var card=document.createElement('a');
-    card.href='listing.html?slug='+encodeURIComponent(p.slug);
-    card.className='sim-card';
-    if(p.id){
-      card.setAttribute('data-track','similar-property-card');
-      card.setAttribute('data-track-type','card');
-      card.setAttribute('data-track-property-id',p.id);
-      card.setAttribute('data-track-label',title);
-    }
-    card.innerHTML=(
-      '<div class="sim-card-img">'+imgHtml+'</div>'+
-      '<div class="sim-body">'+
-      '<p class="sim-title">'+title+'</p>'+
-      '<p class="sim-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>'+district+'</p>'+
-      specsHtml+
-      priceHtml+
-      '</div>'
-    );
-    if(p.id){
-      var simIdx=idxCounter++;
-      card.addEventListener('click',function(){
+    var simIdx = p.id ? idxCounter++ : null;
+    var card = renderPropertyPreview(p, {
+      lang: lang,
+      dataTrack: p.id ? { track:'similar-property-card', type:'card', propertyId:p.id, label: p['title_'+lang]||p.title_en||'' } : null,
+      onClick: p.id ? function(){
         postEvent('listing_events',{property_id:p.id,event_type:'click',session_id:getOrCreateSessionId(),source:'similar',search_position:simIdx});
-      });
-    }
+      } : null
+    });
     frag.appendChild(card);
   });
   gridEl.innerHTML='';
@@ -1299,17 +1262,15 @@ function buildMockupLayout(){
   var agentProfileHtml='';
   var party=data.parties||null;
   if(party&&party.type==='agent'){
-    var agentPhotoSrc=esc(party.photo_url||agentFallback);
-    agentProfileHtml=(
-      '<div class="agent-band agent-profile-card">'+
-      '<div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p>'+
-      '<div class="agent-identity">'+
-      '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" onerror="handleImageError(this)" alt="Agent">'+
-      '<div><div class="agent-name-en">'+esc(party.name_en||'')+'</div>'+(party.name_lo?'<div class="agent-name-lo">'+esc(party.name_lo)+'</div>':'')+(party.agency_name?'<div class="agent-name-lo">'+esc(party.agency_name)+'</div>':'')+'</div>'+
-      '</div></div>'+
-      (party.slug?'<a href="agent.html?slug='+encodeURIComponent(party.slug)+'" class="btn-primary btn-wa">View Profile</a>':'')+
-      '</div>'
-    );
+    // Standardized via renderAgentPreview() -- now also surfaces the
+    // verified badge and bio (both newly selected below), which the old
+    // hand-rolled markup here never showed at all. No WhatsApp button:
+    // contactHtml above already provides the buyer's one WhatsApp CTA for
+    // whoever the listed contact is; a second one here would be redundant.
+    // listingCount is intentionally omitted (no listing-count query exists
+    // on this page) -- the graceful-placeholder rule means it's simply not
+    // shown, not faked.
+    agentProfileHtml = renderAgentPreview(party, { lang: lang, showButtons: true }).outerHTML;
   }
   var agentHtml=contactHtml+agentProfileHtml+'<div id="sp-fomo" class="sp-fomo-agent" style="display:none;"></div>';
 
@@ -1866,7 +1827,6 @@ function wireGalleryLightbox(){
 
 function handleImageError(img){
   img.onerror=null;
-  if(img.classList.contains('agent-pfp')){img.src=agentFallback;return;}
   img.style.opacity='0';
   if(img.parentElement)img.parentElement.style.background='var(--warm-deep)';
 }

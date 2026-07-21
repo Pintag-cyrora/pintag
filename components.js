@@ -35,6 +35,25 @@
 // disclosed visual change on index.html specifically, not a silent one.
 // ============================================================================
 
+// ---------------------------------------------------------------------------
+// Shared saved-listing (heart/favorite) storage -- was duplicated (and, on
+// index.html, entirely dead: onclick="event.preventDefault()") per page.
+// One localStorage-backed implementation now, reused by every card; this
+// is also the exact substrate a future Favorites page reads from "from
+// day one" per this migration's own goal, with zero new infrastructure.
+// ---------------------------------------------------------------------------
+function ptGetSavedSet() {
+  try { return new Set(JSON.parse(localStorage.getItem('pintag_saved') || '[]')); }
+  catch (e) { return new Set(); }
+}
+function ptToggleSave(slug, e) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  var saved = ptGetSavedSet();
+  if (saved.has(slug)) saved.delete(slug); else saved.add(slug);
+  try { localStorage.setItem('pintag_saved', JSON.stringify([...saved])); } catch (e2) {}
+  return saved.has(slug); // caller uses this to update the clicked button's visible state
+}
+
 function _ptEsc(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -287,7 +306,19 @@ function renderPropertyCard(property, opts) {
     '</div>';
 
   if (opts.showHeart !== false && opts.onHeartToggle) {
-    card.querySelector('.pt-heart-btn').addEventListener('click', function(e) { opts.onHeartToggle(p.slug, e); });
+    var heartBtn = card.querySelector('.pt-heart-btn');
+    heartBtn.addEventListener('click', function(e) {
+      var isNowSaved = opts.onHeartToggle(p.slug, e);
+      // Self-toggle the visible state immediately -- no full grid re-render
+      // needed for a single heart click, matching the instant feedback the
+      // old per-page implementations had (via a [data-save] DOM lookup this
+      // shared component doesn't need, since it already has the element).
+      if (isNowSaved != null) {
+        heartBtn.classList.toggle('pt-saved', isNowSaved);
+        heartBtn.setAttribute('aria-pressed', String(isNowSaved));
+        heartBtn.setAttribute('aria-label', isNowSaved ? 'Remove from saved' : 'Save listing');
+      }
+    });
   }
   return card;
 }
