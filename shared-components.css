@@ -1,0 +1,206 @@
+/* shared-components.css — owns ALL shared styling for components.js.
+   No page defines its own copy of any rule here; page-specific layout
+   (grid columns, section spacing) stays in that page's own <style>.
+
+   Design tokens below are a consolidation of values already in use across
+   index.html/listings.html/listing.html/for-agents.html/dashboard.html
+   (listings.html's :root as the base — the richest/most-consistent of the
+   five) — not a redesign. See rental-terms.js's own header for the
+   precedent on why this file exists at all: drift like the pre-migration
+   6 different badge systems happens specifically because there was no
+   shared place to define a rule once. */
+
+:root{
+  /* Color */
+  --pt-teal:#2D8C8C;--pt-teal-light:#38A8A8;--pt-teal-mark:rgba(45,140,140,0.18);
+  --pt-ink:#1A2024;--pt-ink-soft:#4A5558;--pt-ink-muted:#8C9598;
+  --pt-warm:#F7F3EC;--pt-off:#F2EDE4;--pt-white:#fff;
+  --pt-border:rgba(26,32,36,0.07);--pt-border-mid:rgba(26,32,36,0.10);
+  --pt-green:#166534;--pt-red:#B91C1C;--pt-amber:#C25500;--pt-blue:#1E40AF;--pt-brown:#502D0E;
+
+  /* Transaction badge colors — ONLY color varies between transaction
+     types (rule: everything else -- radius, padding, type, shadow,
+     position -- is identical). */
+  --pt-badge-rent:#166534;
+  --pt-badge-sale:#1E40AF;
+  --pt-badge-sor:#6D28D9;
+
+  /* Radius */
+  --pt-r-card:3px;--pt-r-pill:3px;--pt-r-round:50%;
+
+  /* Shadow */
+  --pt-shadow-card-hover:0 6px 28px rgba(26,32,36,0.05);
+  --pt-shadow-badge:0 1px 5px rgba(0,0,0,0.22);
+
+  /* Spacing (card internals) */
+  --pt-space-xs:4px;--pt-space-sm:8px;--pt-space-md:14px;--pt-space-lg:20px;
+
+  /* Type */
+  --pt-font:'DM Sans',sans-serif;
+  --pt-fs-label:9px;--pt-fs-body:11px;--pt-fs-title:14px;--pt-fs-price:16px;
+
+  /* Motion */
+  --pt-transition-fast:0.2s;--pt-transition-img:0.7s cubic-bezier(0.16,1,0.3,1);
+
+  /* Overlay opacity (image-overlaid badges/buttons) */
+  --pt-overlay-bg:rgba(255,255,255,0.78);--pt-overlay-bg-hover:rgba(255,255,255,0.95);
+}
+@media (prefers-color-scheme: dark){
+  /* Explicit non-goal, matching intelligence.html's documented precedent:
+     no admin/public surface in this codebase supports dark mode today --
+     adding it only here would be inconsistent. Tokens intentionally do not
+     redefine under a dark media query; revisit only if/when the whole
+     product adopts dark mode, not per-component. */
+}
+
+/* ─── PROPERTY CARD (grid tile) ──────────────────────────────────────────
+   Canonical structure: image (badges + heart overlaid) + body-below-image
+   metadata. This consolidates the two incompatible "prop-card" structures
+   that existed before (listings.html's body-below-image vs. index.html's
+   dark-gradient-overlay-on-image) -- listings.html's version is canonical:
+   richer, already uses real tokens, and is the primary/highest-traffic
+   page. index.html's homepage cards adopt this same structure when
+   migrated -- a real, disclosed visual change on that one page, not a
+   silent one. */
+.pt-card{
+  background:var(--pt-white);
+  border-radius:var(--pt-r-card);
+  border:1px solid var(--pt-border);
+  text-decoration:none;display:block;
+  transition:border-color 0.3s,box-shadow 0.3s;
+  overflow:hidden;
+}
+.pt-card:hover{border-color:rgba(26,32,36,0.14);box-shadow:var(--pt-shadow-card-hover);}
+.pt-card.pt-featured{
+  display:grid;grid-template-columns:1.85fr 1fr;
+}
+.pt-card-img{position:relative;overflow:hidden;background:var(--pt-off);aspect-ratio:4/3;}
+.pt-card.pt-featured .pt-card-img{aspect-ratio:unset;height:auto;min-height:360px;}
+.pt-card.pt-featured .pt-card-img img{position:absolute;inset:0;width:100%;height:100%;}
+.pt-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform var(--pt-transition-img);}
+.pt-card:hover .pt-card-img img{transform:scale(1.025);}
+.pt-card-no-img{width:100%;height:100%;background:linear-gradient(145deg,#E8E3DB,#D8D3CB);}
+
+/* Loading skeleton -- the one already-consistent state, kept as-is */
+.pt-card-img.pt-loading{background:linear-gradient(90deg,var(--pt-off) 25%,#E4E0D8 50%,var(--pt-off) 75%);background-size:200% 100%;animation:pt-shimmer 1.4s infinite;}
+@keyframes pt-shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+@media (prefers-reduced-motion: reduce){.pt-card-img.pt-loading{animation:none;}}
+
+.pt-ov-tl{position:absolute;top:12px;left:12px;z-index:2;}
+.pt-ov-tr{position:absolute;top:12px;right:12px;z-index:2;}
+.pt-ov-br{position:absolute;bottom:12px;right:12px;z-index:2;}
+.pt-ov-bl{position:absolute;bottom:12px;left:12px;z-index:2;}
+
+.pt-heart-btn{
+  width:28px;height:28px;background:var(--pt-overlay-bg);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border-radius:var(--pt-r-round);border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background var(--pt-transition-fast);
+}
+.pt-heart-btn:hover,.pt-heart-btn:focus-visible{background:var(--pt-overlay-bg-hover);}
+.pt-heart-btn:focus-visible{outline:2px solid var(--pt-teal);outline-offset:2px;}
+.pt-heart-btn.pt-saved svg{stroke:#D94040;fill:#D94040;}
+.pt-heart-btn svg{transition:stroke 0.15s,fill 0.15s;}
+
+.pt-card-body{padding:18px 20px 20px;}
+.pt-card.pt-featured .pt-card-body{padding:36px 40px;display:flex;flex-direction:column;justify-content:center;}
+.pt-card-tag{font-size:var(--pt-fs-label);font-weight:400;letter-spacing:0.1em;text-transform:uppercase;color:var(--pt-teal);margin-bottom:8px;opacity:0.85;}
+.pt-card-title{font-size:var(--pt-fs-title);font-weight:400;color:var(--pt-ink);margin-bottom:6px;line-height:1.4;letter-spacing:-0.005em;}
+.pt-card.pt-featured .pt-card-title{font-size:22px;font-weight:300;margin-bottom:10px;letter-spacing:-0.015em;line-height:1.25;}
+.pt-card-loc{font-size:var(--pt-fs-body);font-weight:400;color:var(--pt-ink-muted);margin-bottom:14px;display:flex;align-items:center;gap:5px;}
+.pt-card-specs{display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
+.pt-card-spec{font-size:var(--pt-fs-body);font-weight:400;color:var(--pt-ink-muted);display:inline-flex;align-items:center;gap:4px;}
+.pt-card-spec span{font-weight:500;color:var(--pt-ink-soft);}
+.pt-card-price{font-size:var(--pt-fs-price);font-weight:500;color:var(--pt-ink);letter-spacing:-0.01em;margin-bottom:14px;}
+.pt-card.pt-featured .pt-card-price{font-size:24px;font-weight:400;letter-spacing:-0.02em;margin-bottom:20px;}
+.pt-card-price-unit{font-size:var(--pt-fs-body);font-weight:400;color:var(--pt-ink-muted);}
+.pt-card-price-req{font-size:12px;font-weight:400;color:var(--pt-ink-muted);font-style:italic;margin-bottom:14px;}
+.pt-card-divider{height:1px;background:var(--pt-border);margin:14px 0;}
+.pt-card-footer{margin-top:10px;}
+
+/* ─── PROPERTY PREVIEW (compact card -- Similar Properties etc.) ──────── */
+.pt-preview{background:var(--pt-white);border:1px solid var(--pt-border-mid);border-radius:var(--pt-r-card);overflow:hidden;text-decoration:none;transition:border-color .3s,box-shadow .3s;display:block;}
+.pt-preview:hover{border-color:rgba(26,36,40,0.14);box-shadow:var(--pt-shadow-card-hover);}
+.pt-preview-img{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--pt-warm);}
+.pt-preview-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform var(--pt-transition-img);}
+.pt-preview:hover .pt-preview-img img{transform:scale(1.025);}
+.pt-preview-no-img{width:100%;height:100%;background:linear-gradient(145deg,#E8E3DB,#D8D3CB);}
+.pt-preview-body{padding:12px 14px;}
+.pt-preview-title{font-size:12.5px;font-weight:500;color:var(--pt-ink);margin-bottom:5px;line-height:1.35;}
+.pt-preview-loc{font-size:10px;color:var(--pt-ink-muted);display:flex;align-items:center;gap:4px;margin-bottom:6px;}
+.pt-preview-specs{display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+.pt-preview-spec{font-size:10px;color:var(--pt-ink-muted);display:inline-flex;align-items:center;gap:3px;}
+.pt-preview-price{font-size:13px;font-weight:600;color:var(--pt-teal);}
+.pt-preview-price-req{font-size:11px;color:var(--pt-ink-muted);font-style:italic;}
+
+/* ─── TRANSACTION BADGE — one component, one CSS, color is the only
+   difference (Rent/Sale/Sale-or-Rent). Fixes the pre-existing bug where
+   index.html referenced .badge-sale/.badge-rent/.badge-sor without any
+   CSS ever defining them (badges silently rendered colorless). ────────── */
+.pt-badge-transaction{
+  display:inline-block;position:absolute;top:11px;left:11px;z-index:3;
+  font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
+  padding:4px 9px;border-radius:var(--pt-r-pill);color:#fff;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  box-shadow:var(--pt-shadow-badge);
+}
+.pt-badge-transaction.pt-tx-rent{background:var(--pt-badge-rent);}
+.pt-badge-transaction.pt-tx-sale{background:var(--pt-badge-sale);}
+.pt-badge-transaction.pt-tx-sor{background:var(--pt-badge-sor);}
+@media(max-width:800px){.pt-badge-transaction{font-size:10px;padding:5px 10px;border-radius:4px;}}
+
+/* ─── PROPERTY STATUS PILL — a SEPARATE system from the transaction badge
+   above (status = is it still on the market; transaction = what kind of
+   deal). Deliberately not merged -- see the audit finding this codebase
+   already flagged: conflating the two axes would be a real semantic
+   mistake, not a simplification. ─────────────────────────────────────── */
+.pt-badge-status{
+  display:inline-block;font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
+  padding:4px 9px;border-radius:var(--pt-r-pill);color:#fff;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  box-shadow:var(--pt-shadow-badge);
+}
+.pt-badge-status.pt-status-available{background:rgba(22,101,52,0.92);}
+.pt-badge-status.pt-status-curated{background:rgba(45,140,140,0.82);}
+.pt-badge-status.pt-status-sold{background:rgba(185,28,28,0.94);}
+.pt-badge-status.pt-status-rented{background:rgba(194,65,0,0.92);}
+.pt-badge-status.pt-status-offer{background:rgba(30,64,175,0.88);}
+.pt-badge-status.pt-status-land{background:rgba(80,52,14,0.86);}
+@media(max-width:800px){.pt-badge-status{font-size:10px;padding:5px 10px;border-radius:4px;}}
+
+/* ─── AGENT / PARTY (Card = full directory card, Preview = compact inline
+   reference alongside a property) ───────────────────────────────────── */
+.pt-agent-avatar{
+  width:22px;height:22px;border-radius:var(--pt-r-round);
+  background:var(--pt-off);border:1px solid var(--pt-border);
+  flex-shrink:0;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  font-size:8px;font-weight:500;color:var(--pt-ink-muted);
+}
+.pt-agent-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+.pt-agent-name{font-size:11px;font-weight:400;color:var(--pt-ink-muted);line-height:1.3;}
+.pt-agent-role{font-size:9.5px;font-weight:400;color:var(--pt-teal);opacity:0.8;}
+
+.pt-agent-preview{display:flex;align-items:center;gap:8px;}
+
+.pt-agent-card{display:block;text-decoration:none;color:inherit;background:var(--pt-white);border:1px solid var(--pt-border);border-radius:var(--pt-r-card);padding:16px;transition:border-color .3s,box-shadow .3s;}
+.pt-agent-card:hover{border-color:rgba(26,32,36,0.14);box-shadow:var(--pt-shadow-card-hover);}
+.pt-agent-card-portrait{width:52px;height:52px;border-radius:var(--pt-r-round);overflow:hidden;background:var(--pt-off);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:var(--pt-ink-muted);}
+.pt-agent-card-portrait img{width:100%;height:100%;object-fit:cover;display:block;}
+.pt-agent-card-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+.pt-agent-card-verified{display:inline-block;font-size:8.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--pt-teal);border:1px solid var(--pt-teal);border-radius:10px;padding:2px 8px;margin-bottom:4px;}
+.pt-agent-card-name{font-size:14px;font-weight:600;color:var(--pt-ink);}
+.pt-agent-card-agency{font-size:11px;color:var(--pt-ink-muted);}
+.pt-agent-card-bio{font-size:11.5px;color:var(--pt-ink-soft);line-height:1.5;margin-bottom:10px;}
+.pt-agent-card-count{font-size:10.5px;color:var(--pt-ink-muted);}
+.pt-agent-card-ctas{display:flex;gap:8px;margin-top:10px;}
+
+.pt-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:500;padding:8px 14px;border-radius:var(--pt-r-card);text-decoration:none;border:1px solid transparent;cursor:pointer;transition:opacity var(--pt-transition-fast);}
+.pt-btn:hover{opacity:0.88;}
+.pt-btn:focus-visible{outline:2px solid var(--pt-teal);outline-offset:2px;}
+.pt-btn-primary{background:var(--pt-teal);color:#fff;}
+.pt-btn-outline{background:transparent;color:var(--pt-teal);border-color:var(--pt-teal);}
+
+/* ─── Empty/placeholder state (shared) ──────────────────────────────── */
+.pt-empty{padding:40px 20px;text-align:center;color:var(--pt-ink-muted);font-size:13px;}
