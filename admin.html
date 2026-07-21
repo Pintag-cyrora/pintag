@@ -399,17 +399,29 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
                 <option value="draft">Draft</option>
               </select>
             </div>
+          </div>
+
+          <!-- PRICING — single-unit editable fields by default. When 1+ Unit
+               Types exist below, the relevant field(s) become a read-only,
+               live-calculated range instead (see the syncPricingMode
+               function further down this page). Previous Price only makes
+               sense for a single price, so it's hidden in multi-unit mode. -->
+          <p class="form-section-sub">Pricing</p>
+          <div class="form-grid">
             <div class="form-group" id="price-field-single">
               <label class="form-label">Price Display</label>
               <input class="form-input" id="f-price" type="text" placeholder="$550,000 or leave blank">
+              <p class="form-hint" id="price-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
             </div>
             <div class="form-group" id="price-field-sale" style="display:none">
               <label class="form-label">Sale Price</label>
               <input class="form-input" id="f-sale-price" type="text" placeholder="$550,000">
+              <p class="form-hint" id="sale-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
             </div>
             <div class="form-group" id="price-field-rent" style="display:none">
               <label class="form-label">Rent Price</label>
               <input class="form-input" id="f-rent-price" type="text" placeholder="$1,200">
+              <p class="form-hint" id="rent-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
             </div>
             <div class="form-group" id="price-field-period" style="display:none">
               <label class="form-label">Rent Period</label>
@@ -419,10 +431,21 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
                 <option value="day">Per Day</option>
               </select>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="price-field-previous">
               <label class="form-label">Previous Price</label>
               <input class="form-input" id="f-price-previous" type="text" placeholder="Old price — shows Price Reduced badge">
             </div>
+          </div>
+
+          <!-- UNIT TYPES — an extension of Pricing, not an independent
+               section (Multi-Unit Buildings, Phase 1). Optional; add one
+               per variant (Studio, 1BR, 2BR...) to turn this listing into a
+               multi-unit building. Leave empty for a normal single listing. -->
+          <p class="form-section-sub">Unit Types <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; add one per variant to switch Pricing above into a calculated range</span></p>
+          <div id="unit-types-list" class="unit-types-list"></div>
+          <button type="button" class="btn-add-row" onclick="addUnitType()">+ Add Unit Type</button>
+
+          <div class="form-grid" style="margin-top:18px;">
             <div class="form-group">
               <label class="form-label">Land Title</label>
               <select class="form-select" id="f-land-title">
@@ -697,13 +720,6 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <input class="form-input" id="f-agent-title" type="text" placeholder="Leave blank to use agent's default title">
             </div>
           </div>
-        </div>
-
-        <!-- UNIT TYPES (optional — Multi-Unit Buildings, Phase 1) -->
-        <div class="form-section">
-          <p class="form-section-title">&#9323; Unit Types <span style="color:var(--teal);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; optional; add one per variant (Studio, 1BR, 2BR...) to turn this listing into a multi-unit building. Leave empty for a normal single listing.</span></p>
-          <div id="unit-types-list" class="unit-types-list"></div>
-          <button type="button" class="btn-add-row" onclick="addUnitType()">+ Add Unit Type</button>
         </div>
 
         <div class="form-submit">
@@ -1220,15 +1236,15 @@ function addUnitType(data) {
       </div>
       <div class="ut-grid">
         <div class="ut-field ut-price-single" style="display:${isSor ? 'none' : ''}">
-          <label>Price</label>
-          <input class="form-input ut-price-display" type="text" placeholder="$250/month (blank = inherit building price)" value="${esc(priceDisplay)}" oninput="_utUpdateSummary(this)">
+          <label>Price ${isAvailable ? '*' : ''}</label>
+          <input class="form-input ut-price-display" type="text" placeholder="$250/month" value="${esc(priceDisplay)}" oninput="_utUpdateSummary(this)">
         </div>
         <div class="ut-field ut-price-sale" style="display:${isSor ? '' : 'none'}">
-          <label>Sale Price</label>
+          <label>Sale Price ${isAvailable ? '*' : ''}</label>
           <input class="form-input ut-sale-price" type="text" placeholder="$250,000" value="${esc(salePrice)}" oninput="_utUpdateSummary(this)">
         </div>
         <div class="ut-field ut-price-rent" style="display:${isSor ? '' : 'none'}">
-          <label>Rent Price</label>
+          <label>Rent Price ${isAvailable ? '*' : ''}</label>
           <input class="form-input ut-rent-price" type="text" placeholder="$250/month" value="${esc(rentPrice)}" oninput="_utUpdateSummary(this)">
         </div>
         <div class="ut-field ut-price-period" style="display:${isSor ? '' : 'none'}">
@@ -1272,7 +1288,7 @@ function addUnitType(data) {
       </div>
       <div class="ut-grid">
         <div class="ut-field ut-avail-row">
-          <label><input type="checkbox" class="ut-is-available" ${isAvailable ? 'checked' : ''}> Available</label>
+          <label><input type="checkbox" class="ut-is-available" ${isAvailable ? 'checked' : ''} onchange="_utOnAvailableChange(this)"> Available</label>
         </div>
         <div class="ut-field">
           <label>Available Count *</label>
@@ -1323,6 +1339,7 @@ function removeUnitType(e, btn) {
   const card = btn.closest('.ut-card');
   if (card.dataset.id) _removedUnitTypeIds.push(card.dataset.id);
   card.remove();
+  syncPricingMode(); // may drop back to Single Price mode if this was the last card
 }
 
 function _utUpdateSummary(inputEl) {
@@ -1340,6 +1357,7 @@ function _utUpdateSummary(inputEl) {
   if (bed !== '') parts.push(bed + 'BR');
   if (bath !== '') parts.push(bath + 'BA');
   card.querySelector('.ut-summary').textContent = parts.join(' · ') || 'No details yet';
+  syncPricingMode();
 }
 
 // Keeps every rendered Unit Type card's price fields in sync with the
@@ -1354,6 +1372,114 @@ function syncUnitTypePriceFields() {
     card.querySelector('.ut-price-period').style.display = isSor ? '' : 'none';
     _utUpdateSummary(card.querySelector('.ut-name-en'));
   });
+}
+
+// ── Pricing ↔ Unit Types (single source of truth, admin UX redesign) ────
+// Prices are free text everywhere in this schema (price_display/sale_price/
+// rent_price are all `text`, matching properties' own columns) -- staff
+// type "$250/month", "1,200", etc. _utParsePrice pulls the first number out
+// (stripping thousands separators) plus whatever text trails it, so a
+// range can be computed and, when every active unit agrees on that
+// trailing text ("/month"), reused as the range's own suffix.
+function _utParsePrice(str) {
+  if (!str) return null;
+  const m = String(str).match(/[\d,]+(\.\d+)?/);
+  if (!m) return null;
+  const value = parseFloat(m[0].replace(/,/g, ''));
+  if (isNaN(value)) return null;
+  const suffix = str.slice(str.indexOf(m[0]) + m[0].length).trim();
+  return { value, suffix };
+}
+function _utFormatMoney(n) {
+  return Math.round(n).toLocaleString('en-US');
+}
+// rawPrices: array of free-text price strings from active (is_available)
+// unit type cards only -- the building-level, always-safe-to-display view
+// of "what active units cost right now." Returns null text when nothing
+// parses (caller falls back to "Price on request", matching the same
+// fallback string already used publicly for an empty price_display).
+function _utComputeRange(rawPrices) {
+  const parsed = rawPrices.map(_utParsePrice).filter(Boolean);
+  if (!parsed.length) return { text: null, parsedCount: 0, totalCount: rawPrices.length };
+  const values = parsed.map(p => p.value);
+  const min = Math.min(...values), max = Math.max(...values);
+  const suffixes = [...new Set(parsed.map(p => p.suffix))];
+  const suffix = (suffixes.length === 1 && suffixes[0]) ? (suffixes[0].startsWith('/') ? suffixes[0] : ' ' + suffixes[0]) : '';
+  const range = (min === max) ? '$' + _utFormatMoney(min) : '$' + _utFormatMoney(min) + '–' + _utFormatMoney(max);
+  return { text: range + suffix, parsedCount: parsed.length, totalCount: rawPrices.length };
+}
+function _utActiveRawPrices(selector) {
+  return [...document.querySelectorAll('.ut-card')]
+    .filter(card => card.querySelector('.ut-is-available').checked)
+    .map(card => card.querySelector(selector).value.trim())
+    .filter(Boolean);
+}
+// The one function that switches Pricing between Single Price (default,
+// unchanged) and Price Range (as soon as 1+ Unit Type cards exist) --
+// called whenever that could change: adding/removing a card, editing a
+// unit's price or Available checkbox, changing Transaction, and on
+// initial load. Sets the visible price input(s)' own .value to the
+// computed range and disables them, so saveListing()'s existing
+// `document.getElementById('f-price').value` reads need no changes at all
+// to pick up the computed value.
+// Keeps a card's Price/Sale Price/Rent Price labels' required-asterisk in
+// sync with its own Available checkbox (price is only required while
+// Available — see the validation comment in saveListing()), then
+// recalculates the building-level range same as any other price change.
+function _utOnAvailableChange(checkbox) {
+  const card = checkbox.closest('.ut-card');
+  const star = checkbox.checked ? ' *' : '';
+  card.querySelectorAll('.ut-price-single label, .ut-price-sale label, .ut-price-rent label').forEach(label => {
+    label.textContent = label.textContent.replace(/\s?\*?$/, star);
+  });
+  syncPricingMode();
+}
+
+function syncPricingMode() {
+  const hasUnitTypes = document.querySelectorAll('.ut-card').length > 0;
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  document.getElementById('price-field-previous').style.display = hasUnitTypes ? 'none' : '';
+  if (hasUnitTypes && document.getElementById('f-price-previous').value) {
+    document.getElementById('f-price-previous').value = ''; // stale "before" price has no meaning for a range
+  }
+  if (!hasUnitTypes) {
+    ['f-price', 'f-sale-price', 'f-rent-price'].forEach(id => document.getElementById(id).disabled = false);
+    document.getElementById('price-range-hint').style.display = 'none';
+    document.getElementById('sale-range-hint').style.display = 'none';
+    document.getElementById('rent-range-hint').style.display = 'none';
+    return;
+  }
+  if (isSor) {
+    const saleRange = _utComputeRange(_utActiveRawPrices('.ut-sale-price'));
+    const rentRange = _utComputeRange(_utActiveRawPrices('.ut-rent-price'));
+    document.getElementById('f-sale-price').value = saleRange.text || 'Price on request';
+    document.getElementById('f-rent-price').value = rentRange.text || 'Price on request';
+    document.getElementById('f-sale-price').disabled = true;
+    document.getElementById('f-rent-price').disabled = true;
+    document.getElementById('sale-range-hint').style.display = '';
+    document.getElementById('rent-range-hint').style.display = '';
+    // f-price is hidden while sale_or_rent, but saveListing() only reads it
+    // when NOT sale_or_rent -- still clear+re-enable it so it never carries
+    // a stale computed range into a later single-price mode switch.
+    document.getElementById('f-price').value = '';
+    document.getElementById('f-price').disabled = false;
+    document.getElementById('price-range-hint').style.display = 'none';
+  } else {
+    const range = _utComputeRange(_utActiveRawPrices('.ut-price-display'));
+    document.getElementById('f-price').value = range.text || 'Price on request';
+    document.getElementById('f-price').disabled = true;
+    document.getElementById('price-range-hint').style.display = '';
+    // saveListing() reads sale_price/rent_price unconditionally regardless
+    // of transaction type -- clear+re-enable them so a computed range never
+    // bleeds into the wrong column if transaction later switches away from
+    // Sale or Rent while Unit Types still exist.
+    document.getElementById('f-sale-price').value = '';
+    document.getElementById('f-rent-price').value = '';
+    document.getElementById('f-sale-price').disabled = false;
+    document.getElementById('f-rent-price').disabled = false;
+    document.getElementById('sale-range-hint').style.display = 'none';
+    document.getElementById('rent-range-hint').style.display = 'none';
+  }
 }
 
 // Native HTML5 drag-and-drop reordering — no library. sort_order itself is
@@ -1391,6 +1517,7 @@ function loadUnitTypes(unitTypes) {
   _removedUnitTypeIds = [];
   const sorted = (unitTypes || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
   sorted.forEach(ut => addUnitType(ut));
+  syncPricingMode(); // unconditional: also resets Pricing back to Single Price when unitTypes is empty
 }
 
 function getUnitTypesFromDom() {
@@ -1881,6 +2008,7 @@ function onTransactionChange() {
   document.getElementById('price-field-rent').style.display   = isSor ? ''     : 'none';
   document.getElementById('price-field-period').style.display = isSor ? ''     : 'none';
   syncUnitTypePriceFields();
+  syncPricingMode();
 }
 
 // ── FORM SHOW/HIDE ────────────────────────────────────────────────
@@ -2095,16 +2223,30 @@ async function saveListing(e) {
       [contactPhone,                                    'Buyer Contact phone'],
     ];
     const missingLabels = requiredChecks.filter(([v]) => !v).map(([, label]) => label);
-    // Unit Types: Name, Bedrooms, Bathrooms are required per card (Price
-    // is intentionally NOT required — a blank price already means "price
-    // on request" throughout this codebase, so leaving it blank IS how a
-    // unit type's price gets intentionally hidden; no separate toggle
-    // needed). Available Count always has a default, so it's never blank.
+    // Unit Types: Name, Bedrooms, Bathrooms are required per card.
+    // Price is required too, but only for Available units — an
+    // unavailable/sold-out unit isn't part of the calculated Price Range
+    // above, so its price genuinely doesn't matter yet. This is deliberate
+    // validation, not the earlier "blank means price on request" rule:
+    // once a listing has Unit Types, the top-level Price becomes a
+    // calculated range, and a range with a missing input is misleading
+    // rather than acceptable — so it's caught here instead of silently
+    // computed around. Available Count always has a default, so it's
+    // never blank.
+    const isSorForValidation = document.getElementById('f-transaction').value === 'sale_or_rent';
     getUnitTypesFromDom().forEach((ut, i) => {
       const label = 'Unit Type #' + (i + 1) + (ut.name_en ? ' (' + ut.name_en + ')' : '');
       if (!ut.name_en) missingLabels.push(label + ': Name');
       if (ut.bedrooms === null) missingLabels.push(label + ': Bedrooms');
       if (ut.bathrooms === null) missingLabels.push(label + ': Bathrooms');
+      if (ut.is_available) {
+        if (isSorForValidation) {
+          if (!_utParsePrice(ut.sale_price)) missingLabels.push(label + ': Sale Price');
+          if (!_utParsePrice(ut.rent_price)) missingLabels.push(label + ': Rent Price');
+        } else if (!_utParsePrice(ut.price_display)) {
+          missingLabels.push(label + ': Price');
+        }
+      }
     });
     if (missingLabels.length) {
       btn.disabled = false;
