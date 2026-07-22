@@ -1,5 +1,17 @@
 # Pintag Architecture
 
+> **Status: Baseline established.** Rental Terms v2, Unit Availability, the
+> Shared UI Component System, Lead/Inquiry Analytics, Similar Properties,
+> shared design tokens, shared formatters, and the canonical resolvers
+> below are all considered stable. Pintag is now in an **architecture
+> freeze**: new work should extend these systems (see §2 Canonical APIs
+> and §5 Extension Guide) rather than introduce a new pattern for a
+> problem one of them already solves, unless there is a compelling
+> technical reason to do otherwise. The next phase prioritizes
+> user-facing features built on this foundation over further core
+> refactoring. §6 Known Debt remains the authoritative cleanup backlog —
+> avoid growing it unless new debt is genuinely introduced.
+
 This is the canonical architectural reference for Pintag. It exists because
 this codebase has, on more than one occasion, let concepts that were
 deliberately kept separate get silently recoupled under time pressure —
