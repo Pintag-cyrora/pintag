@@ -487,6 +487,24 @@ function render(a,listings){
   document.getElementById('wa-btn').href='https://wa.me/'+waN+'?text='+waM;
   document.getElementById('wa-label').textContent='WhatsApp · '+(a.name_lo||a.name_en||'');
 
+  // Lead tracking — this button contacts the agent directly (no single
+  // listing involved), so listing_id stays null; it still counts as a
+  // real inquiry for Total Leads/agent-level analytics, it just never
+  // produces a leads CRM row (create_lead_from_event() requires a
+  // property_id). Was previously missing entirely — every other contact
+  // CTA site-wide calls trackLead()/postEvent('lead_events',...), this
+  // one silently didn't.
+  document.getElementById('wa-btn').addEventListener('click',function(){
+    postEvent('lead_events',{
+      listing_id: null,
+      agent_id: a.id||null,
+      event_type: 'whatsapp_click',
+      user_agent: navigator.userAgent,
+      referrer: document.referrer||null,
+      session_id: getOrCreateSessionId()
+    });
+  });
+
   // Social cards
   renderSocialCards(a);
 

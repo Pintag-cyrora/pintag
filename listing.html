@@ -480,7 +480,12 @@ var BASE_DB = window.PINTAG.supabaseUrl;
 var SEC_KEY = window.PINTAG.anonKey;
 
 // ── Lead tracking ─────────────────────────────────────────────────
-function trackLead(listingId, agentId, eventType) {
+// contactId is the Buyer Contact actually being reached (contacts.id) —
+// distinct from agentId (the Platform Identity / managed_by_party_id).
+// Both are optional metadata on the same inquiry; recipient_type/
+// recipient_verified get snapshotted from whichever is present by the
+// create_lead_from_event() trigger (see 20260722000000_leads_recipient_model.sql).
+function trackLead(listingId, agentId, eventType, contactId) {
   if (!listingId) return;
   fetch(BASE_DB + '/rest/v1/lead_events', {
     method: 'POST',
@@ -493,6 +498,7 @@ function trackLead(listingId, agentId, eventType) {
     body: JSON.stringify({
       listing_id: listingId || null,
       agent_id:   agentId   || null,
+      contact_id: contactId || null,
       event_type: eventType,
       user_agent: navigator.userAgent,
       referrer:   document.referrer || null,
@@ -899,7 +905,7 @@ async function fetchProperty(slug){
   _fetchInFlight=true;
   PT.time('fetchProperty');
   try{
-    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(role,name,phone,whatsapp),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified)&limit=1');
+    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(id,role,name,phone,whatsapp,is_verified),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified)&limit=1');
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
@@ -1243,7 +1249,7 @@ function buildMockupLayout(){
     other:{lo:'ຜູ້ຕິດຕໍ່',en:'Contact',zh:'联系人'}
   };
   var roleLabel=CONTACT_ROLE_LABELS[contact&&contact.role]||CONTACT_ROLE_LABELS.other;
-  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" data-track="contact-phone" data-track-type="cta" data-track-label="Call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.managed_by_party_id||'')+'\',\'call_click\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" data-track="contact-phone" data-track-type="cta" data-track-label="Call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.managed_by_party_id||'')+'\',\'call_click\',\''+esc(contact.id||'')+'\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
   var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
     '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
@@ -1251,7 +1257,7 @@ function buildMockupLayout(){
     '<div><div class="agent-name-en">'+esc((contact&&contact.name)||roleLabel.en)+'</div></div>'+
     '</div></div>'+
     '<div class="agent-ctas">'+
-    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" data-track="contact-whatsapp" data-track-type="cta" data-track-label="WhatsApp" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',\'whatsapp_click\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" data-track="contact-whatsapp" data-track-type="cta" data-track-label="WhatsApp" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',\'whatsapp_click\',\''+esc(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
     '</div></div>'
   );

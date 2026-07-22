@@ -349,6 +349,11 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             <table class="analytics-table"><thead><tr><th>Agent</th><th>Closed / Clicks</th></tr></thead>
             <tbody id="adm-conversion-rates"></tbody></table>
           </div>
+          <div class="analytics-section">
+            <div class="analytics-section-title">Leads by Recipient Type</div>
+            <table class="analytics-table"><thead><tr><th>Recipient</th><th>Leads</th></tr></thead>
+            <tbody id="adm-leads-by-recipient"></tbody></table>
+          </div>
         </div>
       </div>
 
@@ -1901,6 +1906,31 @@ async function sbApi(method, path, body) {
   }
 }
 
+// True row count via PostgREST's `Prefer: count=exact` on a HEAD request —
+// no body transferred, no row-fetch limit to truncate against. Used for
+// headline KPIs (e.g. Total Leads) that must never silently undercount
+// past a client-side fetch cap.
+async function sbCount(path) {
+  try {
+    const token = _adminToken || SUPABASE_ANON;
+    const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+      method: 'HEAD',
+      headers: {
+        'apikey': SUPABASE_ANON,
+        'Authorization': 'Bearer ' + token,
+        'Prefer': 'count=exact'
+      }
+    });
+    const range = res.headers.get('content-range'); // e.g. "0-0/1234" or "*/1234"
+    if (!range) return null;
+    const total = range.split('/')[1];
+    return total === '*' ? null : parseInt(total, 10);
+  } catch (err) {
+    console.error('sbCount error:', err.message);
+    return null;
+  }
+}
+
 // ── AGENTS ────────────────────────────────────────────────────────
 async function loadAgentsForDropdown() {
   const sel = document.getElementById('f-agent-id');
@@ -1987,6 +2017,12 @@ function toggleAnalytics() {
   if (_analyticsVisible) loadAnalytics();
 }
 
+const RECIPIENT_TYPE_LABELS = {
+  owner: 'Owner', agent: 'Agent', property_manager: 'Property Manager',
+  reception: 'Reception', sales_office: 'Sales Office', developer: 'Developer',
+  family_representative: 'Family Representative', other: 'Other', unknown: 'Unknown'
+};
+
 async function loadAnalytics() {
   try {
     const now = new Date();
@@ -1994,20 +2030,39 @@ async function loadAnalytics() {
     const weekStart  = new Date(now - 7  * 86400000).toISOString();
     const monthStart = new Date(now - 30 * 86400000).toISOString();
 
-    const [leads, crmLeads] = await Promise.all([
-      sbApi('GET', 'lead_events?select=id,listing_id,agent_id,event_type,created_at&order=created_at.desc&limit=2000'),
-      sbApi('GET', 'leads?select=id,property_id,party_id,status')
+    // Total Leads is the platform's headline KPI — "how many property
+    // inquiries did Pintag generate," independent of who received them.
+    // leads is the canonical Lead (Property Inquiry) entity: one row per
+    // user-initiated contact click that named a listing, across every
+    // event_type and every recipient type (see
+    // 20260722000000_leads_recipient_model.sql — the trigger now fires on
+    // whatsapp/call/messenger/telegram/line/contact clicks alike, not just
+    // WhatsApp). Counted exactly via `Prefer: count=exact`, not capped by
+    // a row-fetch limit — a listing with thousands of inquiries must still
+    // report its real total, not silently cap at some arbitrary number.
+    const [totalCount, todayCount, weekCount, monthCount] = await Promise.all([
+      sbCount('leads?select=id'),
+      sbCount('leads?select=id&created_at=gte.' + encodeURIComponent(todayStart)),
+      sbCount('leads?select=id&created_at=gte.' + encodeURIComponent(weekStart)),
+      sbCount('leads?select=id&created_at=gte.' + encodeURIComponent(monthStart))
     ]);
-    if (!leads) return;
+    document.getElementById('adm-leads-total').textContent = totalCount == null ? '—' : totalCount;
+    document.getElementById('adm-leads-today').textContent = todayCount == null ? '—' : todayCount;
+    document.getElementById('adm-leads-week').textContent  = weekCount  == null ? '—' : weekCount;
+    document.getElementById('adm-leads-month').textContent = monthCount == null ? '—' : monthCount;
 
-    document.getElementById('adm-leads-total').textContent = leads.length;
-    document.getElementById('adm-leads-today').textContent  = leads.filter(l => l.created_at >= todayStart).length;
-    document.getElementById('adm-leads-week').textContent   = leads.filter(l => l.created_at >= weekStart).length;
-    document.getElementById('adm-leads-month').textContent  = leads.filter(l => l.created_at >= monthStart).length;
+    // Everything below is a secondary, most-recent-first working set — the
+    // exact headline above never depends on this fetch's limit. leads now
+    // carries everything Top Listings/Agents/Districts/Types, the recipient
+    // breakdown, and conversion rates need in one row (property_id,
+    // party_id, recipient_type, recipient_verified, status), so this
+    // replaces what used to be two separate fetches (lead_events + leads).
+    const leads = await sbApi('GET', 'leads?select=id,property_id,party_id,recipient_type,recipient_verified,status,created_at&order=created_at.desc&limit=5000');
+    if (!leads) return;
 
     // Top listings
     const byListing = {};
-    leads.forEach(l => { if (l.listing_id) byListing[l.listing_id] = (byListing[l.listing_id] || 0) + 1; });
+    leads.forEach(l => { if (l.property_id) byListing[l.property_id] = (byListing[l.property_id] || 0) + 1; });
     const topListingIds = Object.keys(byListing).sort((a,b) => byListing[b]-byListing[a]).slice(0,10);
     if (topListingIds.length) {
       const props = await sbApi('GET', 'properties?id=in.('+topListingIds.join(',')+')&select=id,title_en');
@@ -2019,9 +2074,12 @@ async function loadAnalytics() {
       document.getElementById('adm-top-listings').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
     }
 
-    // Top agents
+    // Top agents (by party_id — every recipient type that resolves to a
+    // Platform Identity party, not just agents strictly speaking, but
+    // that's what this table has always shown and party_id is almost
+    // always an agent in practice today).
     const byAgent = {};
-    leads.forEach(l => { if (l.agent_id) byAgent[l.agent_id] = (byAgent[l.agent_id] || 0) + 1; });
+    leads.forEach(l => { if (l.party_id) byAgent[l.party_id] = (byAgent[l.party_id] || 0) + 1; });
     const topAgentIds = Object.keys(byAgent).sort((a,b) => byAgent[b]-byAgent[a]).slice(0,10);
     if (topAgentIds.length) {
       const agents = await sbApi('GET', 'parties?id=in.('+topAgentIds.join(',')+')&select=id,name_en');
@@ -2033,24 +2091,46 @@ async function loadAnalytics() {
       document.getElementById('adm-top-agents').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
     }
 
+    // Leads by recipient type — secondary breakdown. Total Leads above
+    // stays the headline; this just shows the mix (Verified Agent gets its
+    // own row via recipient_verified, since "who actually receives the
+    // inquiry" is the whole point of this analytics model).
+    const byRecipient = {};
+    leads.forEach(l => {
+      let key = l.recipient_type || 'unknown';
+      if (key === 'agent') key = l.recipient_verified ? 'agent_verified' : 'agent_unverified';
+      byRecipient[key] = (byRecipient[key] || 0) + 1;
+    });
+    const recipientOrder = Object.keys(byRecipient).sort((a,b) => byRecipient[b]-byRecipient[a]);
+    if (recipientOrder.length) {
+      document.getElementById('adm-leads-by-recipient').innerHTML = recipientOrder.map(key => {
+        const label = key === 'agent_verified' ? 'Agent (Verified)'
+          : key === 'agent_unverified' ? 'Agent (Unverified)'
+          : (RECIPIENT_TYPE_LABELS[key] || 'Unknown');
+        return `<tr><td style="font-weight:500;">${esc(label)}</td><td><span class="lead-pill">${Number(byRecipient[key])}</span></td></tr>`;
+      }).join('');
+    } else {
+      document.getElementById('adm-leads-by-recipient').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
+    }
+
     // Top districts + Top property types — one shared properties fetch
-    // (same listing_ids already collected above), just carrying an extra
+    // (same property_ids already collected above), just carrying an extra
     // column, rather than a second round trip for property_type alone.
-    const allListingIds = [...new Set(leads.map(l => l.listing_id).filter(Boolean))];
+    const allListingIds = [...new Set(leads.map(l => l.property_id).filter(Boolean))];
     let distMap = {}, typeMap = {};
     if (allListingIds.length) {
       const distProps = await sbApi('GET', 'properties?id=in.('+allListingIds.join(',')+')&select=id,district_en,property_type');
       (distProps||[]).forEach(p => { distMap[p.id] = p.district_en||'Unknown'; typeMap[p.id] = p.property_type||'Unknown'; });
 
       const byDistrict = {};
-      leads.forEach(l => { if (l.listing_id) byDistrict[distMap[l.listing_id]||'Unknown'] = (byDistrict[distMap[l.listing_id]||'Unknown']||0) + 1; });
+      leads.forEach(l => { if (l.property_id) byDistrict[distMap[l.property_id]||'Unknown'] = (byDistrict[distMap[l.property_id]||'Unknown']||0) + 1; });
       const topDists = Object.keys(byDistrict).sort((a,b) => byDistrict[b]-byDistrict[a]).slice(0,10);
       document.getElementById('adm-top-districts').innerHTML = topDists.map(d =>
         `<tr><td style="font-weight:500;">${esc(d)}</td><td><span class="lead-pill">${Number(byDistrict[d])}</span></td></tr>`
       ).join('');
 
       const byType = {};
-      leads.forEach(l => { if (l.listing_id) byType[typeMap[l.listing_id]||'Unknown'] = (byType[typeMap[l.listing_id]||'Unknown']||0) + 1; });
+      leads.forEach(l => { if (l.property_id) byType[typeMap[l.property_id]||'Unknown'] = (byType[typeMap[l.property_id]||'Unknown']||0) + 1; });
       const topTypes = Object.keys(byType).sort((a,b) => byType[b]-byType[a]).slice(0,10);
       document.getElementById('adm-top-types').innerHTML = topTypes.map(t =>
         `<tr><td style="font-weight:500;text-transform:capitalize;">${esc(t)}</td><td><span class="lead-pill">${Number(byType[t])}</span></td></tr>`
@@ -2060,42 +2140,43 @@ async function loadAnalytics() {
       document.getElementById('adm-top-types').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
     }
 
-    // Best conversion rates — per agent, closed deals ÷ message clicks.
-    // Two separate gates, not one: >=3 clicks avoids a misleading 100%
-    // from a single lucky click (same safeguard as Best Value pricing in
-    // listings.html, _grpAvg, min 3 peers) — but click volume alone isn't
+    // Best conversion rates — per agent, closed deals ÷ total leads
+    // received. Two separate gates, not one: >=3 leads avoids a misleading
+    // 100% from a single lucky lead (same safeguard as Best Value pricing
+    // in listings.html, _grpAvg, min 3 peers) — but volume alone isn't
     // enough. An agent who has never updated a single lead's status would
     // otherwise show a confident "0%" here, which reads as "this agent
-    // doesn't close deals" when the truth might just be "this agent
-    // hasn't logged an outcome yet." Also require a minimum number of
-    // leads with a non-'new' status before ranking an agent at all —
-    // evidence they actually use the status field, not just that leads
-    // exist for them.
-    if (crmLeads) {
-      const MIN_PIPELINE_SAMPLE = 3;
-      const clicksByAgent = {};
-      leads.forEach(l => { if (l.agent_id && l.event_type === 'whatsapp_click') clicksByAgent[l.agent_id] = (clicksByAgent[l.agent_id]||0) + 1; });
-      const closedByAgent = {};
-      const updatedByAgent = {};
-      crmLeads.forEach(l => {
-        if (!l.party_id) return;
-        if (l.status === 'closed') closedByAgent[l.party_id] = (closedByAgent[l.party_id]||0) + 1;
-        if (l.status !== 'new') updatedByAgent[l.party_id] = (updatedByAgent[l.party_id]||0) + 1;
-      });
-      const rateByAgent = Object.keys(clicksByAgent)
-        .filter(id => clicksByAgent[id] >= 3 && (updatedByAgent[id]||0) >= MIN_PIPELINE_SAMPLE)
-        .map(id => ({ id, rate: (closedByAgent[id]||0) / clicksByAgent[id] }))
-        .sort((a,b) => b.rate - a.rate)
-        .slice(0,10);
-      if (rateByAgent.length) {
-        const agents = await sbApi('GET', 'parties?id=in.('+rateByAgent.map(r=>r.id).join(',')+')&select=id,name_en');
-        const nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.name_en||'—']));
-        document.getElementById('adm-conversion-rates').innerHTML = rateByAgent.map(r =>
-          `<tr><td style="font-weight:500;">${esc(nameMap[r.id]||'—')}</td><td><span class="lead-pill">${(r.rate*100).toFixed(0)}%</span></td></tr>`
-        ).join('');
-      } else {
-        document.getElementById('adm-conversion-rates').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">Not enough agents updating lead status yet</td></tr>';
-      }
+    // doesn't close deals" when the truth might just be "this agent hasn't
+    // logged an outcome yet." Also require a minimum number of leads with
+    // a non-'new' status before ranking an agent at all — evidence they
+    // actually use the status field. Previously this only counted
+    // whatsapp_click events (leads.contact_method didn't exist to filter
+    // on); now that every leads row already represents a real inquiry
+    // regardless of channel, no event_type/contact_method filter is needed
+    // here at all — the click-volume undercount from before is gone.
+    const MIN_PIPELINE_SAMPLE = 3;
+    const totalByAgent = {};
+    leads.forEach(l => { if (l.party_id) totalByAgent[l.party_id] = (totalByAgent[l.party_id]||0) + 1; });
+    const closedByAgent = {};
+    const updatedByAgent = {};
+    leads.forEach(l => {
+      if (!l.party_id) return;
+      if (l.status === 'closed') closedByAgent[l.party_id] = (closedByAgent[l.party_id]||0) + 1;
+      if (l.status !== 'new') updatedByAgent[l.party_id] = (updatedByAgent[l.party_id]||0) + 1;
+    });
+    const rateByAgent = Object.keys(totalByAgent)
+      .filter(id => totalByAgent[id] >= 3 && (updatedByAgent[id]||0) >= MIN_PIPELINE_SAMPLE)
+      .map(id => ({ id, rate: (closedByAgent[id]||0) / totalByAgent[id] }))
+      .sort((a,b) => b.rate - a.rate)
+      .slice(0,10);
+    if (rateByAgent.length) {
+      const agents = await sbApi('GET', 'parties?id=in.('+rateByAgent.map(r=>r.id).join(',')+')&select=id,name_en');
+      const nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.name_en||'—']));
+      document.getElementById('adm-conversion-rates').innerHTML = rateByAgent.map(r =>
+        `<tr><td style="font-weight:500;">${esc(nameMap[r.id]||'—')}</td><td><span class="lead-pill">${(r.rate*100).toFixed(0)}%</span></td></tr>`
+      ).join('');
+    } else {
+      document.getElementById('adm-conversion-rates').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">Not enough agents updating lead status yet</td></tr>';
     }
 
   } catch(e) { console.error('loadAnalytics', e); }
@@ -2107,11 +2188,15 @@ async function loadListings() {
   container.innerHTML = '<div class="loading">Loading...</div>';
   const [data, leads] = await Promise.all([
     sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,managed_by_party_id,district_en,view_count,contacts(role,name,phone)'),
-    sbApi('GET','lead_events?select=listing_id').catch(() => [])
+    // leads, not lead_events — the canonical Lead (Property Inquiry) entity,
+    // one row per inquiry across every contact channel (see
+    // 20260722000000_leads_recipient_model.sql), same source the Analytics
+    // tab now uses, so this column and Total Leads always agree.
+    sbApi('GET','leads?select=property_id').catch(() => [])
   ]);
   // Build lead count map
   const leadCounts = {};
-  (leads || []).forEach(l => { if (l.listing_id) leadCounts[l.listing_id] = (leadCounts[l.listing_id] || 0) + 1; });
+  (leads || []).forEach(l => { if (l.property_id) leadCounts[l.property_id] = (leadCounts[l.property_id] || 0) + 1; });
   if (!data || data.length === 0) {
     container.innerHTML = '<div class="empty"><p class="empty-title">No listings yet</p><p>Click "+New Listing" to add your first property.</p></div>';
     return;
