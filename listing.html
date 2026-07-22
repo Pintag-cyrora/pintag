@@ -929,33 +929,117 @@ async function fetchProperty(slug){
 }
 
 // ══════════════════════════════════════════════════════════════════
-// fetchSimilarProperties — progressive relaxation through 4 priority
-// tiers, stopping as soon as MAX cards are collected:
-//   Tier 1: same property_type + same transaction_type + same district
-//           (results then sorted by closeness to this listing's price —
-//           the 4th-priority signal, applied as a tiebreaker within the
-//           fully-matched tier rather than its own hard filter, since
-//           price_display is free text and not every listing has one)
-//   Tier 2: same property_type + same transaction_type (any district)
-//   Tier 3: same property_type (any transaction_type/district)
-//   Tier 4: no filters — latest active listings. This is both the last
-//           relaxation step AND the explicit "not enough matches" empty
-//           state fallback (show latest active rather than hide the
-//           section) — the same query serves both purposes.
-// Each tier fetches only the remaining gap (never a flat oversized
-// pool), and already-collected ids are excluded at every tier so
-// nothing appears twice across tiers. A tier is skipped outright when
-// the current listing itself lacks that field (e.g. no district) —
-// falls straight through to the next tier down instead of wasting a
-// query that could never match anything.
+// fetchSimilarProperties — Similar Properties matching.
+//
+// PRINCIPLE (see ARCHITECTURE.md "Property Category is the primary
+// Similar Properties constraint"): property_type is a hard filter baked
+// into every single query this function issues. It is never one of the
+// relaxable tiers and never one of the scored signals — there is no code
+// path in this function that can return a candidate of a different
+// property_type, including the final "not enough matches" case, which
+// simply returns fewer cards rather than crossing categories. (This is
+// the one bug fixed here vs. the previous version, which had a 4th
+// all-listings fallback tier with no property_type filter at all.)
+//
+// SIMILAR_TIERS — categorical relaxation (mirrors the user-facing
+// distinction between "Same X" and "Similar X"): transaction_type and
+// district are exact-match filters, tried in priority order, each
+// progressively dropped only if the previous tier didn't fill MAX slots.
+// Each tier fetches only the remaining gap and excludes ids already
+// collected, so nothing appears twice across tiers.
+//
+// SIMILAR_RANK_SIGNALS — continuous closeness scoring (price, bedrooms,
+// bathrooms, building size, land size, in that priority order). Applied
+// within every tier so the closest matches surface first even inside a
+// single tier; a signal contributes 0 when either side lacks the field
+// (e.g. bedrooms on a Land listing) rather than penalizing the
+// candidate — this is what "(where applicable)" and small-inventory
+// usefulness both come from, with no separate empty-state logic needed.
+// Weights are chosen so each signal dominates the sum of every lower one
+// (price 100 > bedrooms+bathrooms+sqm+sqm_land ≤ 45, etc.), so the
+// ranking always respects the stated priority order rather than letting
+// several minor signals outvote one major one.
+//
+// Multi-unit buildings: this only ever reads properties-level columns
+// (bedrooms/bathrooms/sqm here are the parent listing's own values) —
+// never unit_types — so matching always reflects a building's overall
+// category, never one specific unit configuration inside it.
+//
+// Extending this: add one more entry to SIMILAR_RANK_SIGNALS (a weight
+// + a score(target, candidate) function) for e.g. amenities overlap,
+// furnished status, pet policy, availability, verified listings, or a
+// future behavioral/AI signal — nothing else in this function changes.
+// A new categorical dimension (e.g. a future "neighborhood zone") is
+// one more entry in SIMILAR_TIERS the same way. See ARCHITECTURE.md's
+// Extension Guide (Recommendation Engine).
 // ══════════════════════════════════════════════════════════════════
+var SIMILAR_RANK_SIGNALS = [
+  { key:'price', weight:100, score:function(t,c){
+      var tp=parseSimPrice(t.price_display), cp=parseSimPrice(c.price_display);
+      if(!tp||!cp) return 0;
+      var diff=Math.abs(tp-cp)/tp;
+      if(diff<=0.10) return 100;
+      if(diff<=0.25) return 60;
+      if(diff<=0.50) return 25;
+      return 0;
+  }},
+  { key:'bedrooms', weight:30, score:function(t,c){
+      if(t.bedrooms==null||c.bedrooms==null) return 0;
+      var diff=Math.abs(t.bedrooms-c.bedrooms);
+      return diff===0?30:diff===1?15:0;
+  }},
+  { key:'bathrooms', weight:10, score:function(t,c){
+      if(t.bathrooms==null||c.bathrooms==null) return 0;
+      var diff=Math.abs(t.bathrooms-c.bathrooms);
+      return diff===0?10:diff===1?4:0;
+  }},
+  { key:'sqm', weight:4, score:function(t,c){
+      if(!t.sqm||!c.sqm) return 0;
+      var diff=Math.abs(t.sqm-c.sqm)/t.sqm;
+      return diff<=0.15?4:diff<=0.35?2:0;
+  }},
+  { key:'sqm_land', weight:1, score:function(t,c){
+      if(!t.sqm_land||!c.sqm_land) return 0;
+      var diff=Math.abs(t.sqm_land-c.sqm_land)/t.sqm_land;
+      return diff<=0.15?1:0;
+  }}
+];
+
+function scoreSimilarCandidate(target, candidate){
+  return SIMILAR_RANK_SIGNALS.reduce(function(sum,sig){ return sum + sig.score(target,candidate); }, 0);
+}
+
+function sortSimilarByCloseness(target, rows){
+  return rows.slice().sort(function(a,b){
+    return scoreSimilarCandidate(target,b) - scoreSimilarCandidate(target,a);
+  });
+}
+
+// Ordered categorical relaxation tiers. Each entry's `filter(prop)`
+// returns the extra querystring for that tier (or null to skip the tier
+// entirely when the current listing lacks the field needed to match on
+// it), and `applies(prop)` gates whether the tier is attempted at all.
+// property_type + status=active + excluding already-seen ids are applied
+// to every tier by fetchTier() itself, not repeated here.
+var SIMILAR_TIERS = [
+  { key:'transaction_district', applies:function(p){ return !!(p.transaction_type && p.district_en); },
+    filter:function(p){ return '&transaction_type=eq.'+encodeURIComponent(p.transaction_type)
+      +'&district_en=eq.'+encodeURIComponent(p.district_en); } },
+  { key:'transaction_only', applies:function(p){ return !!p.transaction_type; },
+    filter:function(p){ return '&transaction_type=eq.'+encodeURIComponent(p.transaction_type); } },
+  { key:'category_only', applies:function(){ return true; },
+    filter:function(){ return ''; } }
+];
+
 async function fetchSimilarProperties(prop){
   PT.time('fetchSimilar');
   var MAX = 8;   // upper bound of the requested 4–8 cards
   var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,' +
-             'images,bedrooms,bathrooms,sqm,price_display,transaction_type,' +
+             'images,bedrooms,bathrooms,sqm,sqm_land,price_display,transaction_type,' +
              'status,property_type,created_at';
   var results = [];
+
+  if(!prop.property_type){ PT.timeEnd('fetchSimilar'); hideSimilarSection(); return; }
 
   function excludeParam(ids){
     return 'id=not.in.('+ids.map(function(x){return encodeURIComponent(x);}).join(',')+')';
@@ -963,46 +1047,19 @@ async function fetchSimilarProperties(prop){
   async function fetchTier(extraFilters, limit){
     if(limit <= 0) return [];
     var usedIds = [prop.id].concat(results.map(function(p){return p.id;}));
-    var q = '/rest/v1/properties?'+excludeParam(usedIds)+extraFilters
+    var q = '/rest/v1/properties?property_type=eq.'+encodeURIComponent(prop.property_type)
+      +'&'+excludeParam(usedIds)+extraFilters
       +'&status=eq.active&order=created_at.desc&limit='+limit+'&select='+cols;
     var rows = await sbFetch(q);
     return Array.isArray(rows) ? rows.filter(Boolean) : [];
   }
 
   try{
-    if(prop.property_type && prop.transaction_type && prop.district_en){
-      var t1 = await fetchTier(
-        '&property_type=eq.'+encodeURIComponent(prop.property_type)
-        +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type)
-        +'&district_en=eq.'+encodeURIComponent(prop.district_en),
-        MAX
-      );
-      var propPrice = parseSimPrice(prop.price_display);
-      t1.sort(function(a,b){
-        var pa=parseSimPrice(a.price_display), pb=parseSimPrice(b.price_display);
-        if(!propPrice||!pa||!pb) return 0; // no price data — keep latest-first order
-        return Math.abs(pa-propPrice) - Math.abs(pb-propPrice);
-      });
-      results = results.concat(t1);
-    }
-    if(results.length < MAX && prop.property_type && prop.transaction_type){
-      var t2 = await fetchTier(
-        '&property_type=eq.'+encodeURIComponent(prop.property_type)
-        +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type),
-        MAX - results.length
-      );
-      results = results.concat(t2);
-    }
-    if(results.length < MAX && prop.property_type){
-      var t3 = await fetchTier(
-        '&property_type=eq.'+encodeURIComponent(prop.property_type),
-        MAX - results.length
-      );
-      results = results.concat(t3);
-    }
-    if(results.length < MAX){
-      var t4 = await fetchTier('', MAX - results.length);
-      results = results.concat(t4);
+    for(var i=0; i<SIMILAR_TIERS.length && results.length<MAX; i++){
+      var tier = SIMILAR_TIERS[i];
+      if(!tier.applies(prop)) continue;
+      var rows = await fetchTier(tier.filter(prop), MAX - results.length);
+      results = results.concat(sortSimilarByCloseness(prop, rows));
     }
 
     PT.timeEnd('fetchSimilar');
