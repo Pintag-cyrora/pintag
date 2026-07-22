@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { duplicateListingDetector, normalizeTitle, groupByTitle } from './duplicate-listing-detector.js';
+import { duplicateListingDetector, normalizeTitle, groupByTitle, variantSignature, groupByTitleAndVariant } from './duplicate-listing-detector.js';
 import { runInsightEngine } from './insight-engine.js';
 
 const NOW = new Date('2026-07-18T00:00:00Z');
@@ -63,6 +63,52 @@ test('detect ignores properties with no title at all', () => {
 test('detect returns nothing when properties list is empty or absent', () => {
   assert.deepEqual(duplicateListingDetector.detect({ properties: [] }), []);
   assert.deepEqual(duplicateListingDetector.detect({}), []);
+});
+
+// ── Multi-Unit Buildings false-positive fix ────────────────────────────────
+test('variantSignature: missing fields normalize to empty string', () => {
+  assert.equal(variantSignature(property({})), '||');
+});
+test('variantSignature: differs on bedrooms/bathrooms/price', () => {
+  const studio = property({ bedrooms: 0, bathrooms: 1, sale_price: '$250/mo' });
+  const oneBr = property({ bedrooms: 1, bathrooms: 1, sale_price: '$400/mo' });
+  assert.notEqual(variantSignature(studio), variantSignature(oneBr));
+});
+test('variantSignature: falls back rent_price then price_display when sale_price absent', () => {
+  const a = property({ rent_price: '$400/mo' });
+  const b = property({ price_display: '$400/mo' });
+  assert.equal(variantSignature(a), variantSignature(b));
+});
+test('detect does NOT flag distinct unit-type variants sharing a building title as duplicates', () => {
+  const studio = property({ id: 'a', title_en: 'Riverside Apartments', bedrooms: 0, bathrooms: 1, sale_price: '$250/mo' });
+  const oneBr  = property({ id: 'b', title_en: 'Riverside Apartments', bedrooms: 1, bathrooms: 1, sale_price: '$400/mo' });
+  const twoBr  = property({ id: 'c', title_en: 'Riverside Apartments', bedrooms: 2, bathrooms: 2, sale_price: '$600/mo' });
+  assert.deepEqual(duplicateListingDetector.detect({ properties: [studio, oneBr, twoBr] }), []);
+});
+test('detect still flags true duplicates: same title AND same bedrooms/bathrooms/price', () => {
+  const a = property({ id: 'a', title_en: 'Riverside Villa', bedrooms: 3, bathrooms: 2, sale_price: '$550,000' });
+  const b = property({ id: 'b', title_en: 'Riverside Villa', bedrooms: 3, bathrooms: 2, sale_price: '$550,000' });
+  const c = property({ id: 'c', title_en: 'Riverside Villa', bedrooms: 4, bathrooms: 3, sale_price: '$700,000' }); // distinct variant, same title
+  const findings = duplicateListingDetector.detect({ properties: [a, b, c] });
+  assert.equal(findings.length, 2);
+  const ids = findings.map((f) => f.dimensionPropertyId).sort();
+  assert.deepEqual(ids, ['a', 'b']);
+});
+test('groupByTitleAndVariant: same title, differing variant signature, do not group together', () => {
+  const a = property({ id: 'a', title_en: 'Riverside Apartments', bedrooms: 0 });
+  const b = property({ id: 'b', title_en: 'Riverside Apartments', bedrooms: 1 });
+  const groups = groupByTitleAndVariant([a, b]);
+  assert.equal(groups.size, 2);
+  groups.forEach((group) => assert.equal(group.length, 1));
+});
+test('reevaluate resolves once bedrooms/bathrooms/price are edited to no longer match the group (unit variants disambiguated)', () => {
+  const a = property({ id: 'a', title_en: 'Riverside Apartments', bedrooms: 1, bathrooms: 1 });
+  const b = property({ id: 'b', title_en: 'Riverside Apartments', bedrooms: 2, bathrooms: 2 }); // no longer matches a
+  const result = duplicateListingDetector.reevaluate(
+    { type: 'data_quality', metric_key: 'duplicate_listing', dimension_property_id: 'a' },
+    { properties: [a, b] }
+  );
+  assert.deepEqual(result, { stillSignificant: false });
 });
 
 // ── duplicateListingDetector.reevaluate ───────────────────────────────────

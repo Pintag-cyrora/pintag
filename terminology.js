@@ -4,6 +4,10 @@
 // amenities.js: plain global vars, no build step, loaded via
 // <script src="terminology.js"> before each page's own inline <script>.
 //
+// isMultiUnitBuilding()/resolveUnitType() near the bottom of this file are
+// the Multi-Unit Buildings (Phase 1) resolver — see
+// supabase/migrations/20260720000000_unit_types.sql.
+//
 // PROPERTY_TYPES is the single source of truth for property-type labels
 // (English/Lao/Chinese) — do not hardcode these strings elsewhere.
 //
@@ -387,4 +391,56 @@ function getDetailFacts(typeKey, row, lang) {
     (entries[i].priority ? priority : secondary).push(item);
   }
   return {priority: priority, secondary: secondary};
+}
+
+// ── Multi-Unit Buildings (Phase 1) ───────────────────────────────────────
+// A `properties` row is a multi-unit building purely by having 1+
+// `unit_types` rows -- no is_multi_unit flag anywhere in this schema. See
+// supabase/migrations/20260720000000_unit_types.sql.
+function isMultiUnitBuilding(unitTypes) {
+  return Array.isArray(unitTypes) && unitTypes.length > 0;
+}
+
+// resolveUnitType(property, unitType) is the ONE resolver every consumer of
+// unit-type data must call -- admin preview, the Phase 2 listing-page
+// variant switcher, Phase 2 search, future APIs, a future mobile app. Never
+// re-derive this fallback logic anywhere else; if inheritance rules ever
+// change, this is the one place to update.
+//
+// Every unit_types column is nullable, and null means "use the building's
+// own value" -- that's what `pick()` implements uniformly below. The one
+// field with genuinely different logic is `images`, which follows the
+// specific fallback hierarchy asked for: unit photos if the unit type has
+// any, otherwise the building's own photos -- a visitor should never
+// encounter an empty gallery just because a unit type doesn't yet have
+// dedicated photos of its own.
+//
+// `is_available`/`available_count`/`sort_order` are NOT NULL on unit_types
+// (every unit type always has its own value for these), so they're read
+// directly rather than through `pick()`.
+function resolveUnitType(property, unitType) {
+  function pick(col) {
+    var v = unitType[col];
+    return (v !== null && v !== undefined) ? v : property[col];
+  }
+  return {
+    id: unitType.id,
+    name: {en: unitType.name_en, lo: unitType.name_lo, zh: unitType.name_zh},
+    priceDisplay: pick('price_display'),
+    salePrice:    pick('sale_price'),
+    rentPrice:    pick('rent_price'),
+    rentPeriod:   pick('rent_period'),
+    bedrooms:  pick('bedrooms'),
+    bathrooms: pick('bathrooms'),
+    sqm:       pick('sqm'),
+    floors:    pick('floors'),
+    descriptionEn: pick('description_en'), descriptionLo: pick('description_lo'), descriptionZh: pick('description_zh'),
+    highlightEn:   pick('property_highlight_en'), highlightLo: pick('property_highlight_lo'), highlightZh: pick('property_highlight_zh'),
+    features:  pick('features'),
+    amenities: pick('amenities'),
+    images: (Array.isArray(unitType.images) && unitType.images.length) ? unitType.images : (property.images || []),
+    isAvailable:    unitType.is_available,
+    availableCount: unitType.available_count,
+    sortOrder:      unitType.sort_order
+  };
 }

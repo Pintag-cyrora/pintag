@@ -7,6 +7,7 @@
 <title>Pintag · ຊັບສິນໃນວຽງຈັນ</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="shared-components.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -140,99 +141,18 @@ nav{
 }
 
 /* ─── STANDARD CARD — spans 4 columns ───────────────────────────────── */
-.prop-card{
-  grid-column:span 4;
-  background:var(--white);
-  border-radius:var(--r-card);
-  border:1px solid var(--border);
-  text-decoration:none;display:block;
-  transition:border-color 0.3s,box-shadow 0.3s;
-  overflow:hidden;
-}
-.prop-card:hover{
-  border-color:rgba(26,32,36,0.14);
-  box-shadow:0 6px 28px rgba(26,32,36,0.05);
-}
+/* Card appearance (background/border/radius/hover/image/body/badges/
+   heart/agent-row/price) is now entirely owned by shared-components.css's
+   .pt-card family -- see components.js's renderPropertyCard(). Only this
+   page's own GRID LAYOUT (how many columns a card spans on this page)
+   stays here, since that's genuinely page-specific, not part of a card's
+   own visual identity. */
+.pt-card{grid-column:span 4;}
+.pt-card.pt-featured{grid-column:1/-1;}
 
-/* ─── FEATURED CARD — editorial split, 8+4 col or full width ───────── */
-.prop-card.is-featured{
-  grid-column:1/-1;
-  display:grid;
-  grid-template-columns:1.85fr 1fr;
-  background:var(--white);
-  border:1px solid var(--border);
-  border-radius:var(--r-card);
-  overflow:hidden;
-}
-.prop-card.is-featured:hover{
-  border-color:rgba(26,32,36,0.14);
-  box-shadow:0 8px 32px rgba(26,32,36,0.06);
-}
-
-/* ─── IMAGE AREAS ────────────────────────────────────────────────────── */
-.prop-card-img{
-  position:relative;overflow:hidden;
-  background:var(--off);
-  aspect-ratio:4/3;
-}
-.prop-card.is-featured .prop-card-img{
-  aspect-ratio:unset;
-  height:auto;min-height:360px;
-}
-.prop-card.is-featured .prop-card-img img{
-  position:absolute;inset:0;width:100%;height:100%;
-}
-.prop-card-img img{
-  width:100%;height:100%;object-fit:cover;display:block;
-  transition:transform 0.7s cubic-bezier(0.16,1,0.3,1);
-}
-.prop-card:hover .prop-card-img img{transform:scale(1.025);}
-.prop-card-no-img{
-  width:100%;height:100%;
-  background:linear-gradient(145deg,#E8E3DB,#D8D3CB);
-}
-
-/* ─── OVERLAYS — quiet, image-first ─────────────────────────────────── */
-.ov-tl{position:absolute;top:12px;left:12px;z-index:2;}
-.ov-tr{position:absolute;top:12px;right:12px;z-index:2;}
-.ov-br{position:absolute;bottom:12px;right:12px;z-index:2;}
-.ov-bl{position:absolute;bottom:12px;left:12px;z-index:2;}
-
-/* STATUS BADGES — high-contrast, mobile-first */
-.status-badge{
-  display:inline-block;
-  font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
-  padding:4px 9px;border-radius:3px;color:#fff;
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  box-shadow:0 1px 5px rgba(0,0,0,0.22);
-}
-.badge-available{background:rgba(22,101,52,0.92);}
-.badge-curated{background:rgba(45,140,140,0.82);}
-.badge-new{background:rgba(26,32,36,0.82);}
-.badge-sale{background:rgba(148,116,4,0.86);}
-.badge-rent{background:rgba(55,72,78,0.86);}
-.badge-land{background:rgba(80,52,14,0.86);}
-.badge-sold{background:rgba(185,28,28,0.94);}
-.badge-rented{background:rgba(194,65,0,0.92);}
-.badge-offer{background:rgba(30,64,175,0.88);}
-@media(max-width:800px){
-  .status-badge{font-size:10px;padding:5px 10px;border-radius:4px;}
-}
-
-/* HEART BUTTON */
-.heart-btn{
-  width:28px;height:28px;
-  background:rgba(255,255,255,0.78);
-  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-  border-radius:50%;border:none;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  transition:background 0.2s;
-}
-.heart-btn:hover{background:rgba(255,255,255,0.95);}
-.heart-btn.saved svg{stroke:#D94040;fill:#D94040;}
-.heart-btn svg{transition:stroke 0.15s,fill 0.15s;}
-
-/* PHOTO COUNT */
+/* PHOTO COUNT and AI BADGE remain page-specific -- only listings.html (via
+   renderPropertyCard's photoCountHtml/aiHtml opts) and its Map Preview
+   popup use these. */
 .photo-count{
   display:inline-flex;align-items:center;gap:4px;
   background:rgba(0,0,0,0.36);color:#fff;
@@ -240,8 +160,6 @@ nav{
   padding:2px 7px;border-radius:10px;
   letter-spacing:0.02em;
 }
-
-/* AI BADGE */
 .ai-badge{
   display:inline-block;
   background:rgba(45,140,140,0.60);color:#fff;
@@ -249,70 +167,6 @@ nav{
   padding:3px 8px;border-radius:2px;letter-spacing:0.05em;
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
 }
-
-/* ─── CARD BODY — editorial metadata ────────────────────────────────── */
-.prop-card-body{padding:18px 20px 20px;}
-.prop-card.is-featured .prop-card-body{
-  padding:36px 40px;
-  display:flex;flex-direction:column;justify-content:center;
-}
-
-.card-tag{
-  font-size:9px;font-weight:400;letter-spacing:0.1em;text-transform:uppercase;
-  color:var(--teal);margin-bottom:8px;opacity:0.85;
-}
-.card-title{
-  font-size:14px;font-weight:400;color:var(--ink);
-  margin-bottom:6px;line-height:1.4;
-  letter-spacing:-0.005em;
-}
-.prop-card.is-featured .card-title{
-  font-size:22px;font-weight:300;margin-bottom:10px;
-  letter-spacing:-0.015em;line-height:1.25;
-}
-.card-loc{
-  font-size:11px;font-weight:400;color:var(--ink-muted);
-  margin-bottom:14px;display:flex;align-items:center;gap:5px;
-}
-.card-specs{
-  display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;
-}
-.card-spec{font-size:11px;font-weight:400;color:var(--ink-muted);display:inline-flex;align-items:center;gap:4px;}
-.card-spec span{font-weight:500;color:var(--ink-soft);}
-
-/* 3-4 top-priority amenity icons (see amenities.js AMENITY_PRIORITY) —
-   icon-only for compactness, label available via title/aria-label. */
-.card-amenities{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
-.card-amenity{
-  font-size:13px;line-height:1;opacity:0.82;
-  width:24px;height:24px;border-radius:50%;
-  background:var(--off);border:1px solid var(--border);
-  display:flex;align-items:center;justify-content:center;flex-shrink:0;
-}
-.card-price{
-  font-size:16px;font-weight:500;color:var(--ink);
-  letter-spacing:-0.01em;margin-bottom:14px;
-}
-.prop-card.is-featured .card-price{
-  font-size:24px;font-weight:400;letter-spacing:-0.02em;margin-bottom:20px;
-}
-.card-price-unit{font-size:11px;font-weight:400;color:var(--ink-muted);}
-.card-price-req{
-  font-size:12px;font-weight:400;color:var(--ink-muted);
-  font-style:italic;margin-bottom:14px;
-}
-.card-divider{height:1px;background:var(--border);margin:14px 0;}
-.card-agent{display:flex;align-items:center;gap:8px;}
-.agent-avatar{
-  width:22px;height:22px;border-radius:50%;
-  background:var(--off);border:1px solid var(--border);
-  flex-shrink:0;overflow:hidden;
-  display:flex;align-items:center;justify-content:center;
-  font-size:8px;font-weight:500;color:var(--ink-muted);
-}
-.agent-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
-.agent-name{font-size:11px;font-weight:400;color:var(--ink-muted);line-height:1.3;}
-.agent-platform{font-size:9.5px;font-weight:400;color:var(--teal);opacity:0.8;}
 
 /* ─── EMPTY / LOADING ────────────────────────────────────────────────── */
 .state-center{grid-column:1/-1;text-align:center;padding:100px 24px;color:var(--ink-muted);}
@@ -336,15 +190,15 @@ nav{
     grid-template-columns:repeat(2,1fr);
     gap:18px;row-gap:24px;
   }
-  .prop-card{grid-column:span 1;}
-  .prop-card.is-featured{
+  .pt-card{grid-column:span 1;}
+  .pt-card.pt-featured{
     grid-column:1/-1;
     grid-template-columns:1fr;
   }
-  .prop-card.is-featured .prop-card-img{height:260px;min-height:0;}
-  .prop-card.is-featured .prop-card-body{padding:24px 24px;}
-  .prop-card.is-featured .card-title{font-size:18px;}
-  .prop-card.is-featured .card-price{font-size:18px;}
+  .pt-card.pt-featured .pt-card-img{height:260px;min-height:0;}
+  .pt-card.pt-featured .pt-card-body{padding:24px 24px;}
+  .pt-card.pt-featured .pt-card-title{font-size:18px;}
+  .pt-card.pt-featured .pt-card-price{font-size:18px;}
   nav{padding:0 20px;height:56px;}
   .page-header{padding:24px 20px 0;}
   .filter-bar{padding:10px 20px;}
@@ -365,7 +219,7 @@ nav{
     grid-template-columns:1fr;
     gap:16px;row-gap:20px;
   }
-  .prop-card{grid-column:span 1;}
+  .pt-card{grid-column:span 1;}
 }
 
 /* ── VIEW TOGGLE ──────────────────────────────────── */
@@ -402,7 +256,7 @@ nav{
 .mp-close{position:absolute;top:10px;right:10px;z-index:10;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,0.38);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;line-height:1;transition:background 0.15s;}
 .mp-close:hover{background:rgba(0,0,0,0.58);}
 .mp-img-wrap{position:relative;aspect-ratio:16/9;overflow:hidden;background:var(--off);}
-.mp-img-wrap img,.mp-img-wrap .prop-card-no-img{width:100%;height:100%;object-fit:cover;display:block;}
+.mp-img-wrap img,.mp-img-wrap .pt-card-no-img{width:100%;height:100%;object-fit:cover;display:block;}
 .mp-img-badges{position:absolute;top:10px;left:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-start;}
 .mp-body{padding:13px 15px 15px;}
 .mp-price{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;margin-bottom:3px;}
@@ -572,7 +426,7 @@ nav{
 <div id="map-preview">
   <button class="mp-close" onclick="closeMapPreview()">&#215;</button>
   <div class="mp-img-wrap">
-    <div id="mp-img-inner"><div class="prop-card-no-img"></div></div>
+    <div id="mp-img-inner"><div class="pt-card-no-img"></div></div>
     <div class="mp-img-badges" id="mp-img-badges"></div>
   </div>
   <div class="mp-body">
@@ -610,6 +464,7 @@ nav{
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
+<script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
 <script>
@@ -659,20 +514,11 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function getSavedSet() {
-  try { return new Set(JSON.parse(localStorage.getItem('pintag_saved') || '[]')); }
-  catch(e) { return new Set(); }
-}
-
-function toggleSave(slug, e) {
-  e.preventDefault();
-  e.stopPropagation();
-  const saved = getSavedSet();
-  if (saved.has(slug)) { saved.delete(slug); } else { saved.add(slug); }
-  try { localStorage.setItem('pintag_saved', JSON.stringify([...saved])); } catch(e) {}
-  const btn = document.querySelector('[data-save="' + slug + '"]');
-  if (btn) btn.classList.toggle('saved', saved.has(slug));
-}
+// Saved-listing storage lives in components.js now (ptGetSavedSet/
+// ptToggleSave) -- shared with index.html and, later, a Favorites page
+// reading the same localStorage key. Map Preview below still needs its
+// own saved-lookup for its "already saved" heart-icon state, done via
+// ptGetSavedSet() directly at render time.
 
 function getBadgeHtml(p, lang, isFeaturedCard) {
   const L = {
@@ -683,12 +529,12 @@ function getBadgeHtml(p, lang, isFeaturedCard) {
     offer:     { lo: 'ກຳລັງດຳເນີນ',   en: 'Under Offer',  zh: '洽谈中' },
     land:      { lo: 'ທີ່ດິນ',          en: 'Land',         zh: '土地'   }
   };
-  if (isFeaturedCard)             return '<span class="status-badge badge-curated">'   + L.curated[lang]   + '</span>';
-  if (p.status === 'sold')        return '<span class="status-badge badge-sold">'      + L.sold[lang]      + '</span>';
-  if (p.status === 'rented')      return '<span class="status-badge badge-rented">'    + L.rented[lang]    + '</span>';
-  if (p.status === 'under_offer') return '<span class="status-badge badge-offer">'     + L.offer[lang]     + '</span>';
-  if (p.property_type === 'land') return '<span class="status-badge badge-land">'      + L.land[lang]      + '</span>';
-  return                                 '<span class="status-badge badge-available">' + L.available[lang] + '</span>';
+  if (isFeaturedCard)             return '<span class="pt-badge-status pt-status-curated">'   + L.curated[lang]   + '</span>';
+  if (p.status === 'sold')        return '<span class="pt-badge-status pt-status-sold">'      + L.sold[lang]      + '</span>';
+  if (p.status === 'rented')      return '<span class="pt-badge-status pt-status-rented">'    + L.rented[lang]    + '</span>';
+  if (p.status === 'under_offer') return '<span class="pt-badge-status pt-status-offer">'     + L.offer[lang]     + '</span>';
+  if (p.property_type === 'land') return '<span class="pt-badge-status pt-status-land">'      + L.land[lang]      + '</span>';
+  return                                 '<span class="pt-badge-status pt-status-available">' + L.available[lang] + '</span>';
 }
 
 // Role-appropriate label — only listings with a real linked Pintag Agent
@@ -712,23 +558,6 @@ function getContactDisplay(p) {
     photo: isAgent ? party.photo_url : null,
     platformLabel: isAgent ? 'ຕົວແທນ Pintag' : (CONTACT_ROLE_LABELS_LO[contact && contact.role] || CONTACT_ROLE_LABELS_LO.other)
   };
-}
-
-function getAgentHtml(p) {
-  var d = getContactDisplay(p);
-  if (!d) return '';
-  var initial = esc(d.name.trim().charAt(0) || 'P');
-  var avatarInner = d.photo
-    ? '<img src="' + esc(d.photo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
-    : initial;
-  return '<div class="card-divider"></div>' +
-    '<div class="card-agent">' +
-      '<div class="agent-avatar">' + avatarInner + '</div>' +
-      '<div>' +
-        '<div class="agent-name">' + esc(d.name) + '</div>' +
-        '<div class="agent-platform">' + esc(d.platformLabel) + '</div>' +
-      '</div>' +
-    '</div>';
 }
 
 function sortProperties(arr) {
@@ -946,7 +775,7 @@ function showMapPreview(p) {
   var lang = getCurrentLang();
   var imgInner = (p.images && p.images.length)
     ? '<img src="' + esc(p.images[0]) + '" alt="" loading="lazy">'
-    : '<div class="prop-card-no-img"></div>';
+    : '<div class="pt-card-no-img"></div>';
   document.getElementById('mp-img-inner').innerHTML = imgInner;
 
   // Image-overlay badges (NEW only)
@@ -955,7 +784,7 @@ function showMapPreview(p) {
     var newTxt = daysOld(p) < 1
       ? {lo:'ໃໝ່ວັນນີ້',en:'New Today',zh:'今天上架'}[lang]
       : {lo:'ໃໝ່ອາທິດນີ້',en:'New This Week',zh:'本周新上'}[lang];
-    imgBadges = '<span class="status-badge badge-available">' + newTxt + '</span>';
+    imgBadges = '<span class="pt-badge-status pt-status-available">' + newTxt + '</span>';
   }
   document.getElementById('mp-img-badges').innerHTML = imgBadges;
 
@@ -993,9 +822,9 @@ function showMapPreview(p) {
       ? '<img src="' + esc(mpContact.photo) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" loading="lazy" onerror="this.style.display=\'none\'">'
       : agentInitial;
     agentRow.innerHTML =
-      '<div class="agent-avatar">' + avatarInner + '</div>' +
-      '<div><div class="agent-name">' + esc(mpContact.name) + '</div>' +
-      '<div class="agent-platform">' + esc(mpContact.platformLabel) + '</div></div>';
+      '<div class="pt-agent-avatar">' + avatarInner + '</div>' +
+      '<div><div class="pt-agent-name">' + esc(mpContact.name) + '</div>' +
+      '<div class="pt-agent-role">' + esc(mpContact.platformLabel) + '</div></div>';
     agentRow.style.display = 'flex';
   } else {
     agentRow.style.display = 'none';
@@ -1136,7 +965,7 @@ function renderListings() {
   scheduleBehavioralEvents(sorted);
 
   var lang = getCurrentLang();
-  var saved = getSavedSet();
+  var saved = ptGetSavedSet();
   var n = filtered.length;
 
   var countEl = document.getElementById('count-text');
@@ -1164,90 +993,20 @@ function renderListings() {
   container.innerHTML = '';
 
   sorted.forEach(function(p, idx) {
-    var card = document.createElement('a');
-    card.href = 'listing.html?slug=' + encodeURIComponent(p.slug);
-
     var isFeaturedCard = p.is_featured && !featuredUsed;
-    if (isFeaturedCard) { featuredUsed = true; card.className = 'prop-card is-featured'; }
-    else { card.className = 'prop-card'; }
-
-    var title    = esc(p['title_'    + lang] || p.title_en    || '');
-    var district = esc(p['district_' + lang] || p.district_en || '');
-    var isSale   = p.transaction_type === 'for_sale' || p.transaction_type === 'sale';
-    var isSor    = p.transaction_type === 'sale_or_rent';
-
-    if (p.id) {
-      card.setAttribute('data-track', 'listing-card');
-      card.setAttribute('data-track-type', 'card');
-      card.setAttribute('data-track-property-id', p.id);
-      card.setAttribute('data-track-label', title);
-      card.setAttribute('data-track-meta', JSON.stringify({ position: idx + 1, featured: !!isFeaturedCard }));
-    }
-
-    var txLabel = {
-      lo: isSor ? 'ຊື້ / ເຊົ່າ' : isSale ? 'ຂາຍ' : 'ໃຫ້ເຊົ່າ',
-      en: isSor ? 'Sale or Rent' : isSale ? 'For Sale' : 'For Rent',
-      zh: isSor ? '售/租'        : isSale ? '出售'     : '租房'
-    };
-
-    var typeDisplay = p.property_type
-      ? esc(p.property_type.charAt(0).toUpperCase() + p.property_type.slice(1))
-      : '';
-
-    var imgHtml = (p.images && p.images.length)
-      ? '<img src="' + esc(p.images[0]) + '" alt="" loading="' + (idx < 4 ? 'eager' : 'lazy') + '">'
-      : '<div class="prop-card-no-img"></div>';
+    if (isFeaturedCard) featuredUsed = true;
 
     var imgCount = (p.images && p.images.length > 1) ? p.images.length : 0;
-    var photoHtml = imgCount
-      ? '<div class="ov-br"><span class="photo-count">' +
+    var photoCountHtml = imgCount
+      ? '<span class="photo-count">' +
           '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>' +
           imgCount +
           '<span class="lo-i"> ຮູບ</span><span class="en-i"> photos</span><span class="zh-i"> 张</span>' +
-        '</span></div>'
+        '</span>'
       : '';
-
     var aiHtml = p.video_url
-      ? '<div class="ov-bl"><span class="ai-badge">▶ AI <span class="lo-i">ພາຊົມຮອບ</span><span class="en-i">Walkthrough</span><span class="zh-i">带看</span></span></div>'
+      ? '<span class="ai-badge">▶ AI <span class="lo-i">ພາຊົມຮອບ</span><span class="en-i">Walkthrough</span><span class="zh-i">带看</span></span>'
       : '';
-
-    var slugSafe = p.slug.replace(/'/g, '%27');
-    var isSaved = saved.has(p.slug);
-
-    // Card facts driven by PROPERTY_TYPE_DISPLAY (terminology.js) — which
-    // facts appear, in what order, and with what icon, is per property type.
-    var cardFacts = (typeof getCardFacts === 'function') ? getCardFacts(p.property_type, p, lang) : [];
-    var specsHtml = cardFacts.map(function(f){
-      return '<span class="card-spec">' + f.icon + ' <span>' + esc(String(f.value)) + '</span> <span class="card-spec-lbl">' + esc(f.label) + '</span></span>';
-    }).join('');
-
-    // Priority 3-4 amenity icons only (compact card), per the fixed
-    // AMENITY_PRIORITY order in amenities.js — full list shows on listing.html.
-    var topAms = (typeof topAmenities === 'function') ? topAmenities(p.amenities, 4) : [];
-    var amenitiesHtml = topAms.length
-      ? '<div class="card-amenities">' + topAms.map(function(am){
-          var resAm = resolveAmenityData(am, lang);
-          return '<span class="card-amenity" title="' + esc(resAm.label) + '" aria-label="' + esc(resAm.label) + '">' + resAm.icon + '</span>';
-        }).join('') + '</div>'
-      : '';
-
-    var perMo = { lo: '/ ເດືອນ', en: '/ month', zh: '/ 月' };
-    var rawPrice = esc((p.price_display || '').replace(/\s*\/\s*(ເດືອນ|mo|月|month)\s*/i, '').trim());
-    var priceHtml;
-    if (isSor && (p.sale_price || p.rent_price)) {
-      priceHtml = '';
-      if (p.sale_price) priceHtml += '<p class="card-price">' + esc(p.sale_price) + ' <span class="card-price-unit lo-i">ຂາຍ</span><span class="card-price-unit en-i">Sale</span><span class="card-price-unit zh-i">售</span></p>';
-      if (p.rent_price) priceHtml += '<p class="card-price">' + esc(p.rent_price) + ' <span class="card-price-unit">' + perMo[lang] + '</span> <span class="card-price-unit lo-i">ເຊົ່າ</span><span class="card-price-unit en-i">Rent</span><span class="card-price-unit zh-i">租</span></p>';
-    } else {
-      priceHtml = rawPrice
-        ? '<p class="card-price">' + rawPrice + (!isSale && !isSor ? ' <span class="card-price-unit">' + perMo[lang] + '</span>' : '') + '</p>'
-        : '<p class="card-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
-    }
-
-    var actBadgesHtml = getActivityBadgesHtml(p, lang);
-    var actLineTxt    = getActivityLine(p, lang);
-    var actLineHtml   = actLineTxt ? '<p class="card-activity-line">' + esc(actLineTxt) + '</p>' : '';
-
     var newBadgeHtml = isNewListing(p)
       ? '<div style="margin-top:4px;"><span class="badge-new-listing">' +
           (daysOld(p) < 1
@@ -1255,51 +1014,29 @@ function renderListings() {
             : ({lo:'ໃໝ່ອາທິດນີ້',en:'New This Week',zh:'本周新上'})[lang])
           + '</span></div>'
       : '';
+    var actLineTxt = getActivityLine(p, lang);
 
-    card.innerHTML =
-      '<div class="prop-card-img">' +
-        imgHtml +
-        '<div class="ov-tl">' + getBadgeHtml(p, lang, isFeaturedCard) + newBadgeHtml + '</div>' +
-        '<div class="ov-tr">' +
-          '<button class="heart-btn' + (isSaved ? ' saved' : '') + '" data-save="' + slugSafe + '" onclick="toggleSave(\'' + slugSafe + '\',event)" aria-label="Save listing">' +
-            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
-          '</button>' +
-        '</div>' +
-        photoHtml +
-        aiHtml +
-      '</div>' +
-      '<div class="prop-card-body">' +
-        '<p class="card-tag">' +
-          '<span class="lo-i">' + txLabel.lo + '</span>' +
-          '<span class="en-i">' + txLabel.en + '</span>' +
-          '<span class="zh-i">' + txLabel.zh + '</span>' +
-          (typeDisplay ? ' · ' + typeDisplay : '') +
-        '</p>' +
-        (actBadgesHtml ? '<div class="act-badges">' + actBadgesHtml + '</div>' : '') +
-        '<p class="card-title">' + esc(title) + '</p>' +
-        '<p class="card-loc">' +
-          '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>' +
-          (district ? esc(district) + ', ' : '') +
-          '<span class="lo-i">ວຽງຈັນ</span><span class="en-i">Vientiane</span><span class="zh-i">万象</span>' +
-        '</p>' +
-        (specsHtml ? '<div class="card-specs">' + specsHtml + '</div>' : '') +
-        amenitiesHtml +
-        priceHtml +
-        getAgentHtml(p) +
-        actLineHtml +
-      '</div>';
-
-    if (p.id) {
-      card.addEventListener('click', function() {
-        postEvent('listing_events', {
-          property_id: p.id,
-          event_type: 'click',
-          session_id: getOrCreateSessionId(),
-          source: 'search',
-          search_position: idx + 1
-        });
-      });
-    }
+    var card = renderPropertyCard(p, {
+      lang: lang,
+      isFeatured: isFeaturedCard,
+      statusBadgeHtml: getBadgeHtml(p, lang, isFeaturedCard),
+      extraOverlayHtml: newBadgeHtml,
+      photoCountHtml: photoCountHtml,
+      aiHtml: aiHtml,
+      showCardTag: true,
+      activityBadgesHtml: getActivityBadgesHtml(p, lang),
+      showAmenities: true,
+      isSaved: saved.has(p.slug),
+      onHeartToggle: function(slug, e) { return ptToggleSave(slug, e); },
+      footerHtml: actLineTxt ? '<p class="card-activity-line">' + esc(actLineTxt) + '</p>' : '',
+      dataTrack: p.id ? {
+        track: 'listing-card', type: 'card', propertyId: p.id, label: p['title_'+lang] || p.title_en || '',
+        meta: JSON.stringify({ position: idx + 1, featured: !!isFeaturedCard })
+      } : null,
+      onClick: p.id ? function() {
+        postEvent('listing_events', { property_id: p.id, event_type: 'click', session_id: getOrCreateSessionId(), source: 'search', search_position: idx + 1 });
+      } : null
+    });
 
     container.appendChild(card);
   });

@@ -20,6 +20,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin>
+<link rel="stylesheet" href="shared-components.css">
 <script>
 window.addEventListener('error',function(e){
   if(e.message==='Script error.'||e.message==='Script error'){e.preventDefault();e.stopImmediatePropagation();return true;}
@@ -129,7 +130,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .agent-presented{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--ink-muted);margin-bottom:12px;}
 .agent-identity{display:flex;align-items:center;gap:14px;}
 .agent-name-en{font-size:15px;font-weight:600;color:var(--ink);line-height:1.2;margin-bottom:2px;}
-.agent-name-lo{font-size:12.5px;color:var(--ink-muted);line-height:1.2;margin-bottom:5px;}
 .agent-stats-row{display:flex;align-items:center;gap:28px;justify-content:center;}
 .agent-stat{display:flex;align-items:flex-start;gap:9px;}
 .agent-stat-icon{color:var(--ink-muted);flex-shrink:0;margin-top:1px;}
@@ -142,7 +142,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .btn-wa:hover{background:var(--wa-hover);transform:translateY(-1px);box-shadow:0 4px 16px rgba(35,107,107,0.22);}
 .btn-call{background:transparent;color:var(--ink-soft);border:1px solid var(--border-strong);}
 .btn-call:hover{background:var(--warm);color:var(--ink);transform:translateY(-1px);}
-.agent-pfp{width:60px;height:60px;border-radius:50%;object-fit:cover;object-position:center top;background:var(--warm-deep);border:1px solid var(--border-mid);flex-shrink:0;display:block;}
 /* Detail 3-col */
 .detail-wrap{max-width:1200px;margin:0 auto;padding:60px 48px 0;background:var(--white);}
 .detail-grid{display:grid;grid-template-columns:1.8fr 1fr 0.9fr;gap:56px;padding-bottom:48px;border-bottom:1px solid var(--border);}
@@ -199,20 +198,19 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
    image aspect-ratio, spacing, and typography scale) so this section
    matches the Listings page rather than a separate one-off design. */
 .similar-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;}
-.sim-card{background:var(--white);border:1px solid var(--border-mid);border-radius:3px;overflow:hidden;text-decoration:none;transition:border-color .3s,box-shadow .3s;display:block;}
-.sim-card:hover{border-color:rgba(26,36,40,0.14);box-shadow:0 6px 28px rgba(26,36,40,0.05);}
-.sim-card-img{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--warm-deep);}
-.sim-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .7s cubic-bezier(.16,1,.3,1);}
-.sim-card:hover .sim-card-img img{transform:scale(1.025);}
+/* .sim-no-img is NOT part of the Similar Properties card (that's now
+   .pt-preview-no-img, owned by shared-components.css) -- it's the main
+   photo gallery's own no-photo placeholder (desktop-gallery/mobile-gallery
+   below), which coincidentally reused the same class name before. Its
+   dark gradient is intentional for that context and must not become the
+   light .pt-card-no-img gradient, so it stays defined here as its own
+   page-specific rule. */
 .sim-no-img{width:100%;height:100%;background:linear-gradient(135deg,#2A3A35,#1A2828);}
-.sim-body{padding:18px 20px 20px;}
-.sim-title{font-size:14px;font-weight:400;color:var(--ink);margin-bottom:6px;line-height:1.4;letter-spacing:-0.005em;}
-.sim-loc{font-size:11px;color:var(--ink-muted);margin-bottom:14px;display:flex;align-items:center;gap:5px;}
-.sim-specs{display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
-.sim-spec{font-size:11px;font-weight:400;color:var(--ink-muted);display:inline-flex;align-items:center;gap:4px;}
-.sim-spec span{font-weight:500;color:var(--ink-soft);}
-.sim-price{font-size:16px;font-weight:500;color:var(--ink);letter-spacing:-0.01em;}
-.sim-price-req{font-size:12px;font-weight:400;color:var(--ink-muted);font-style:italic;}
+/* Everything else about the Similar Properties card is now owned by
+   shared-components.css's .pt-preview family (see components.js's
+   renderPropertyPreview()). Only this page's own horizontal scroll-snap
+   carousel layout, in the mobile media query
+   below, is genuinely page-specific and stays here. */
 /* ── Editorial presentation layer (desktop) ── */
 .emotional-intro{max-width:640px;margin:0 auto;padding:100px 48px 0;text-align:center;background:var(--white);}
 .emotional-statement{font-size:24px;font-weight:300;line-height:1.7;color:var(--ink-soft);letter-spacing:0.01em;}
@@ -363,15 +361,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
     scrollbar-width:none;
   }
   .similar-grid::-webkit-scrollbar{display:none;}
-  .sim-card{
+  .pt-preview{
     flex:0 0 78%;
     scroll-snap-align:start;
   }
-  .sim-body{padding:12px 13px 14px;}
-  .sim-title{font-size:14px;margin-bottom:4px;}
-  .sim-loc{margin-bottom:10px;}
-  .sim-specs{margin-bottom:10px;}
-  .sim-price{font-size:15px;}
   /* Media section */
   .media-section{padding:20px 16px;}
   /* Mobile CTA bar — refined for editorial balance */
@@ -475,6 +468,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
+<script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
 <script>
@@ -486,7 +480,12 @@ var BASE_DB = window.PINTAG.supabaseUrl;
 var SEC_KEY = window.PINTAG.anonKey;
 
 // ── Lead tracking ─────────────────────────────────────────────────
-function trackLead(listingId, agentId, eventType) {
+// contactId is the Buyer Contact actually being reached (contacts.id) —
+// distinct from agentId (the Platform Identity / managed_by_party_id).
+// Both are optional metadata on the same inquiry; recipient_type/
+// recipient_verified get snapshotted from whichever is present by the
+// create_lead_from_event() trigger (see 20260722000000_leads_recipient_model.sql).
+function trackLead(listingId, agentId, eventType, contactId) {
   if (!listingId) return;
   fetch(BASE_DB + '/rest/v1/lead_events', {
     method: 'POST',
@@ -499,6 +498,7 @@ function trackLead(listingId, agentId, eventType) {
     body: JSON.stringify({
       listing_id: listingId || null,
       agent_id:   agentId   || null,
+      contact_id: contactId || null,
       event_type: eventType,
       user_agent: navigator.userAgent,
       referrer:   document.referrer || null,
@@ -905,7 +905,7 @@ async function fetchProperty(slug){
   _fetchInFlight=true;
   PT.time('fetchProperty');
   try{
-    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(role,name,phone,whatsapp),parties(id,name_en,name_lo,photo_url,agency_name,slug,type)&limit=1');
+    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(id,role,name,phone,whatsapp,is_verified),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified)&limit=1');
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
@@ -929,33 +929,117 @@ async function fetchProperty(slug){
 }
 
 // ══════════════════════════════════════════════════════════════════
-// fetchSimilarProperties — progressive relaxation through 4 priority
-// tiers, stopping as soon as MAX cards are collected:
-//   Tier 1: same property_type + same transaction_type + same district
-//           (results then sorted by closeness to this listing's price —
-//           the 4th-priority signal, applied as a tiebreaker within the
-//           fully-matched tier rather than its own hard filter, since
-//           price_display is free text and not every listing has one)
-//   Tier 2: same property_type + same transaction_type (any district)
-//   Tier 3: same property_type (any transaction_type/district)
-//   Tier 4: no filters — latest active listings. This is both the last
-//           relaxation step AND the explicit "not enough matches" empty
-//           state fallback (show latest active rather than hide the
-//           section) — the same query serves both purposes.
-// Each tier fetches only the remaining gap (never a flat oversized
-// pool), and already-collected ids are excluded at every tier so
-// nothing appears twice across tiers. A tier is skipped outright when
-// the current listing itself lacks that field (e.g. no district) —
-// falls straight through to the next tier down instead of wasting a
-// query that could never match anything.
+// fetchSimilarProperties — Similar Properties matching.
+//
+// PRINCIPLE (see ARCHITECTURE.md "Property Category is the primary
+// Similar Properties constraint"): property_type is a hard filter baked
+// into every single query this function issues. It is never one of the
+// relaxable tiers and never one of the scored signals — there is no code
+// path in this function that can return a candidate of a different
+// property_type, including the final "not enough matches" case, which
+// simply returns fewer cards rather than crossing categories. (This is
+// the one bug fixed here vs. the previous version, which had a 4th
+// all-listings fallback tier with no property_type filter at all.)
+//
+// SIMILAR_TIERS — categorical relaxation (mirrors the user-facing
+// distinction between "Same X" and "Similar X"): transaction_type and
+// district are exact-match filters, tried in priority order, each
+// progressively dropped only if the previous tier didn't fill MAX slots.
+// Each tier fetches only the remaining gap and excludes ids already
+// collected, so nothing appears twice across tiers.
+//
+// SIMILAR_RANK_SIGNALS — continuous closeness scoring (price, bedrooms,
+// bathrooms, building size, land size, in that priority order). Applied
+// within every tier so the closest matches surface first even inside a
+// single tier; a signal contributes 0 when either side lacks the field
+// (e.g. bedrooms on a Land listing) rather than penalizing the
+// candidate — this is what "(where applicable)" and small-inventory
+// usefulness both come from, with no separate empty-state logic needed.
+// Weights are chosen so each signal dominates the sum of every lower one
+// (price 100 > bedrooms+bathrooms+sqm+sqm_land ≤ 45, etc.), so the
+// ranking always respects the stated priority order rather than letting
+// several minor signals outvote one major one.
+//
+// Multi-unit buildings: this only ever reads properties-level columns
+// (bedrooms/bathrooms/sqm here are the parent listing's own values) —
+// never unit_types — so matching always reflects a building's overall
+// category, never one specific unit configuration inside it.
+//
+// Extending this: add one more entry to SIMILAR_RANK_SIGNALS (a weight
+// + a score(target, candidate) function) for e.g. amenities overlap,
+// furnished status, pet policy, availability, verified listings, or a
+// future behavioral/AI signal — nothing else in this function changes.
+// A new categorical dimension (e.g. a future "neighborhood zone") is
+// one more entry in SIMILAR_TIERS the same way. See ARCHITECTURE.md's
+// Extension Guide (Recommendation Engine).
 // ══════════════════════════════════════════════════════════════════
+var SIMILAR_RANK_SIGNALS = [
+  { key:'price', weight:100, score:function(t,c){
+      var tp=parseSimPrice(t.price_display), cp=parseSimPrice(c.price_display);
+      if(!tp||!cp) return 0;
+      var diff=Math.abs(tp-cp)/tp;
+      if(diff<=0.10) return 100;
+      if(diff<=0.25) return 60;
+      if(diff<=0.50) return 25;
+      return 0;
+  }},
+  { key:'bedrooms', weight:30, score:function(t,c){
+      if(t.bedrooms==null||c.bedrooms==null) return 0;
+      var diff=Math.abs(t.bedrooms-c.bedrooms);
+      return diff===0?30:diff===1?15:0;
+  }},
+  { key:'bathrooms', weight:10, score:function(t,c){
+      if(t.bathrooms==null||c.bathrooms==null) return 0;
+      var diff=Math.abs(t.bathrooms-c.bathrooms);
+      return diff===0?10:diff===1?4:0;
+  }},
+  { key:'sqm', weight:4, score:function(t,c){
+      if(!t.sqm||!c.sqm) return 0;
+      var diff=Math.abs(t.sqm-c.sqm)/t.sqm;
+      return diff<=0.15?4:diff<=0.35?2:0;
+  }},
+  { key:'sqm_land', weight:1, score:function(t,c){
+      if(!t.sqm_land||!c.sqm_land) return 0;
+      var diff=Math.abs(t.sqm_land-c.sqm_land)/t.sqm_land;
+      return diff<=0.15?1:0;
+  }}
+];
+
+function scoreSimilarCandidate(target, candidate){
+  return SIMILAR_RANK_SIGNALS.reduce(function(sum,sig){ return sum + sig.score(target,candidate); }, 0);
+}
+
+function sortSimilarByCloseness(target, rows){
+  return rows.slice().sort(function(a,b){
+    return scoreSimilarCandidate(target,b) - scoreSimilarCandidate(target,a);
+  });
+}
+
+// Ordered categorical relaxation tiers. Each entry's `filter(prop)`
+// returns the extra querystring for that tier (or null to skip the tier
+// entirely when the current listing lacks the field needed to match on
+// it), and `applies(prop)` gates whether the tier is attempted at all.
+// property_type + status=active + excluding already-seen ids are applied
+// to every tier by fetchTier() itself, not repeated here.
+var SIMILAR_TIERS = [
+  { key:'transaction_district', applies:function(p){ return !!(p.transaction_type && p.district_en); },
+    filter:function(p){ return '&transaction_type=eq.'+encodeURIComponent(p.transaction_type)
+      +'&district_en=eq.'+encodeURIComponent(p.district_en); } },
+  { key:'transaction_only', applies:function(p){ return !!p.transaction_type; },
+    filter:function(p){ return '&transaction_type=eq.'+encodeURIComponent(p.transaction_type); } },
+  { key:'category_only', applies:function(){ return true; },
+    filter:function(){ return ''; } }
+];
+
 async function fetchSimilarProperties(prop){
   PT.time('fetchSimilar');
   var MAX = 8;   // upper bound of the requested 4–8 cards
   var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,' +
-             'images,bedrooms,bathrooms,sqm,price_display,transaction_type,' +
+             'images,bedrooms,bathrooms,sqm,sqm_land,price_display,transaction_type,' +
              'status,property_type,created_at';
   var results = [];
+
+  if(!prop.property_type){ PT.timeEnd('fetchSimilar'); hideSimilarSection(); return; }
 
   function excludeParam(ids){
     return 'id=not.in.('+ids.map(function(x){return encodeURIComponent(x);}).join(',')+')';
@@ -963,46 +1047,19 @@ async function fetchSimilarProperties(prop){
   async function fetchTier(extraFilters, limit){
     if(limit <= 0) return [];
     var usedIds = [prop.id].concat(results.map(function(p){return p.id;}));
-    var q = '/rest/v1/properties?'+excludeParam(usedIds)+extraFilters
+    var q = '/rest/v1/properties?property_type=eq.'+encodeURIComponent(prop.property_type)
+      +'&'+excludeParam(usedIds)+extraFilters
       +'&status=eq.active&order=created_at.desc&limit='+limit+'&select='+cols;
     var rows = await sbFetch(q);
     return Array.isArray(rows) ? rows.filter(Boolean) : [];
   }
 
   try{
-    if(prop.property_type && prop.transaction_type && prop.district_en){
-      var t1 = await fetchTier(
-        '&property_type=eq.'+encodeURIComponent(prop.property_type)
-        +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type)
-        +'&district_en=eq.'+encodeURIComponent(prop.district_en),
-        MAX
-      );
-      var propPrice = parseSimPrice(prop.price_display);
-      t1.sort(function(a,b){
-        var pa=parseSimPrice(a.price_display), pb=parseSimPrice(b.price_display);
-        if(!propPrice||!pa||!pb) return 0; // no price data — keep latest-first order
-        return Math.abs(pa-propPrice) - Math.abs(pb-propPrice);
-      });
-      results = results.concat(t1);
-    }
-    if(results.length < MAX && prop.property_type && prop.transaction_type){
-      var t2 = await fetchTier(
-        '&property_type=eq.'+encodeURIComponent(prop.property_type)
-        +'&transaction_type=eq.'+encodeURIComponent(prop.transaction_type),
-        MAX - results.length
-      );
-      results = results.concat(t2);
-    }
-    if(results.length < MAX && prop.property_type){
-      var t3 = await fetchTier(
-        '&property_type=eq.'+encodeURIComponent(prop.property_type),
-        MAX - results.length
-      );
-      results = results.concat(t3);
-    }
-    if(results.length < MAX){
-      var t4 = await fetchTier('', MAX - results.length);
-      results = results.concat(t4);
+    for(var i=0; i<SIMILAR_TIERS.length && results.length<MAX; i++){
+      var tier = SIMILAR_TIERS[i];
+      if(!tier.applies(prop)) continue;
+      var rows = await fetchTier(tier.filter(prop), MAX - results.length);
+      results = results.concat(sortSimilarByCloseness(prop, rows));
     }
 
     PT.timeEnd('fetchSimilar');
@@ -1049,45 +1106,14 @@ function renderSimilarGrid(similar){
   var idxCounter=1;
   similar.forEach(function(p){
     if(!p||!p.slug)return;
-    var title=esc(p['title_'+lang]||p.title_en||'');
-    var district=esc(p['district_'+lang]||p.district_en||'');
-    var imgs=Array.isArray(p.images)?p.images.filter(Boolean):[];
-    var imgHtml=imgs[0]?'<img src="'+esc(imgs[0])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)">':'<div class="sim-no-img"></div>';
-    // Facts driven by PROPERTY_TYPE_DISPLAY (terminology.js) — same schema
-    // that drives the main spec grid and the search-result cards, so
-    // bedrooms/bathrooms only appear "when applicable" automatically.
-    var cardFacts=(typeof getCardFacts==='function')?getCardFacts(p.property_type,p,lang):[];
-    var specsHtml=cardFacts.length?'<div class="sim-specs">'+cardFacts.map(function(f){
-      return '<span class="sim-spec">'+f.icon+' <span>'+esc(String(f.value))+'</span></span>';
-    }).join('')+'</div>':'';
-    var priceHtml=p.price_display
-      ? '<p class="sim-price">'+esc(p.price_display)+'</p>'
-      : '<p class="sim-price-req"><span class="lo-i">ສອບຖາມລາຄາ</span><span class="en-i">Price on request</span><span class="zh-i">价格面议</span></p>';
-
-    var card=document.createElement('a');
-    card.href='listing.html?slug='+encodeURIComponent(p.slug);
-    card.className='sim-card';
-    if(p.id){
-      card.setAttribute('data-track','similar-property-card');
-      card.setAttribute('data-track-type','card');
-      card.setAttribute('data-track-property-id',p.id);
-      card.setAttribute('data-track-label',title);
-    }
-    card.innerHTML=(
-      '<div class="sim-card-img">'+imgHtml+'</div>'+
-      '<div class="sim-body">'+
-      '<p class="sim-title">'+title+'</p>'+
-      '<p class="sim-loc"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>'+district+'</p>'+
-      specsHtml+
-      priceHtml+
-      '</div>'
-    );
-    if(p.id){
-      var simIdx=idxCounter++;
-      card.addEventListener('click',function(){
+    var simIdx = p.id ? idxCounter++ : null;
+    var card = renderPropertyPreview(p, {
+      lang: lang,
+      dataTrack: p.id ? { track:'similar-property-card', type:'card', propertyId:p.id, label: p['title_'+lang]||p.title_en||'' } : null,
+      onClick: p.id ? function(){
         postEvent('listing_events',{property_id:p.id,event_type:'click',session_id:getOrCreateSessionId(),source:'similar',search_position:simIdx});
-      });
-    }
+      } : null
+    });
     frag.appendChild(card);
   });
   gridEl.innerHTML='';
@@ -1280,7 +1306,7 @@ function buildMockupLayout(){
     other:{lo:'ຜູ້ຕິດຕໍ່',en:'Contact',zh:'联系人'}
   };
   var roleLabel=CONTACT_ROLE_LABELS[contact&&contact.role]||CONTACT_ROLE_LABELS.other;
-  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" data-track="contact-phone" data-track-type="cta" data-track-label="Call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.managed_by_party_id||'')+'\',\'call_click\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" data-track="contact-phone" data-track-type="cta" data-track-label="Call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.managed_by_party_id||'')+'\',\'call_click\',\''+esc(contact.id||'')+'\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
   var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
     '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
@@ -1288,7 +1314,7 @@ function buildMockupLayout(){
     '<div><div class="agent-name-en">'+esc((contact&&contact.name)||roleLabel.en)+'</div></div>'+
     '</div></div>'+
     '<div class="agent-ctas">'+
-    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" data-track="contact-whatsapp" data-track-type="cta" data-track-label="WhatsApp" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',\'whatsapp_click\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" data-track="contact-whatsapp" data-track-type="cta" data-track-label="WhatsApp" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',\'whatsapp_click\',\''+esc(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
     '</div></div>'
   );
@@ -1299,17 +1325,15 @@ function buildMockupLayout(){
   var agentProfileHtml='';
   var party=data.parties||null;
   if(party&&party.type==='agent'){
-    var agentPhotoSrc=esc(party.photo_url||agentFallback);
-    agentProfileHtml=(
-      '<div class="agent-band agent-profile-card">'+
-      '<div><p class="agent-presented"><span class="lo-i">'+L.agent.lo+'</span><span class="en-i">'+L.agent.en+'</span><span class="zh-i">'+L.agent.zh+'</span></p>'+
-      '<div class="agent-identity">'+
-      '<img class="agent-pfp" src="'+agentPhotoSrc+'" decoding="async" onerror="handleImageError(this)" alt="Agent">'+
-      '<div><div class="agent-name-en">'+esc(party.name_en||'')+'</div>'+(party.name_lo?'<div class="agent-name-lo">'+esc(party.name_lo)+'</div>':'')+(party.agency_name?'<div class="agent-name-lo">'+esc(party.agency_name)+'</div>':'')+'</div>'+
-      '</div></div>'+
-      (party.slug?'<a href="agent.html?slug='+encodeURIComponent(party.slug)+'" class="btn-primary btn-wa">View Profile</a>':'')+
-      '</div>'
-    );
+    // Standardized via renderAgentPreview() -- now also surfaces the
+    // verified badge and bio (both newly selected below), which the old
+    // hand-rolled markup here never showed at all. No WhatsApp button:
+    // contactHtml above already provides the buyer's one WhatsApp CTA for
+    // whoever the listed contact is; a second one here would be redundant.
+    // listingCount is intentionally omitted (no listing-count query exists
+    // on this page) -- the graceful-placeholder rule means it's simply not
+    // shown, not faked.
+    agentProfileHtml = renderAgentPreview(party, { lang: lang, showButtons: true }).outerHTML;
   }
   var agentHtml=contactHtml+agentProfileHtml+'<div id="sp-fomo" class="sp-fomo-agent" style="display:none;"></div>';
 
@@ -1866,7 +1890,6 @@ function wireGalleryLightbox(){
 
 function handleImageError(img){
   img.onerror=null;
-  if(img.classList.contains('agent-pfp')){img.src=agentFallback;return;}
   img.style.opacity='0';
   if(img.parentElement)img.parentElement.style.background='var(--warm-deep)';
 }

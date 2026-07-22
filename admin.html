@@ -135,6 +135,53 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .btn-add-row:hover{background:rgba(45,140,140,0.15);}
 .btn-remove{background:rgba(192,57,43,0.07);color:var(--red);border:1px solid rgba(192,57,43,0.15);padding:8px 10px;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;flex-shrink:0;margin-top:1px;}
 .btn-remove:hover{background:rgba(192,57,43,0.14);}
+/* Unit Types repeater (Multi-Unit Buildings, Phase 1) */
+.unit-types-list{display:flex;flex-direction:column;gap:10px;margin-bottom:10px;}
+.ut-card{border:1px solid var(--border);border-radius:4px;background:var(--white);}
+.ut-card.dragging{opacity:0.4;}
+.ut-card.drag-over{border-color:var(--teal);}
+.ut-head{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;}
+.ut-drag{cursor:grab;color:var(--ink-muted);font-size:14px;user-select:none;flex-shrink:0;}
+.ut-drag:active{cursor:grabbing;}
+.ut-name-display{font-size:13.5px;font-weight:600;color:var(--ink);flex-shrink:0;}
+.ut-summary{font-size:12px;color:var(--ink-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ut-chevron{color:var(--ink-muted);font-size:11px;flex-shrink:0;transition:transform 0.15s;}
+.ut-card.expanded .ut-chevron{transform:rotate(180deg);}
+.ut-body{display:none;padding:0 14px 16px;border-top:1px solid var(--border);}
+.ut-card.expanded .ut-body{display:block;padding-top:14px;}
+.ut-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;}
+.ut-field label{display:block;font-size:10.5px;font-weight:500;color:var(--ink-muted);margin-bottom:4px;}
+.ut-field-full{grid-column:1/-1;}
+.ut-names-sub{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
+.ut-avail-row{display:flex;align-items:center;gap:8px;}
+.ut-avail-row label{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);font-weight:400;white-space:nowrap;}
+.ut-remove-row{text-align:right;}
+.ut-photo-hint{font-size:11px;color:var(--ink-muted);margin-bottom:8px;line-height:1.5;}
+.ut-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;}
+.ut-photo-item{position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:2px solid var(--border);cursor:pointer;background:var(--warm);}
+.ut-photo-item.selected{border-color:var(--teal);}
+.ut-photo-item img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;}
+.ut-photo-item input{position:absolute;top:3px;left:3px;margin:0;pointer-events:none;}
+.ut-avail-badge{font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;flex-shrink:0;}
+.ut-avail-available{background:rgba(30,107,69,.1);color:var(--green,#1e6b45);}
+.ut-avail-fully_occupied{background:rgba(184,134,11,.12);color:var(--gold,#b8860b);}
+.ut-avail-coming_soon{background:rgba(45,140,140,.12);color:var(--teal);}
+.ut-avail-temporarily_unavailable{background:rgba(122,144,152,.14);color:var(--ink-muted);}
+.rental-terms-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+.rt-row .form-label{display:block;font-size:10.5px;font-weight:500;color:var(--ink-muted);margin-bottom:4px;}
+.rt-field-money,.rt-field-utility{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.rt-field-checkboxes{display:flex;flex-wrap:wrap;gap:10px;}
+.rt-checkbox-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink);cursor:pointer;}
+.rt-field-fees{display:flex;flex-direction:column;gap:6px;}
+.rt-fee-row{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:6px;align-items:center;}
+.rt-fee-remove{border:1px solid var(--border);background:var(--white);border-radius:4px;cursor:pointer;padding:4px 8px;color:var(--ink-muted);}
+.rt-fee-add{align-self:flex-start;border:1px dashed var(--border);background:none;border-radius:4px;padding:6px 10px;font-size:12px;color:var(--teal);cursor:pointer;}
+.ut-rt-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.ut-rt-status-pill{font-size:11.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ut-rt-status-pill.ut-rt-default{color:var(--ink-muted);}
+.ut-rt-status-pill.ut-rt-override{color:var(--gold,#b8860b);font-weight:600;}
+.ut-rt-override-btn{border:1px solid var(--border);background:var(--white);border-radius:4px;padding:4px 10px;font-size:11px;color:var(--teal);cursor:pointer;flex-shrink:0;}
+.ut-rt-fields{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);}
 /* AI Generation */
 .ai-gen-card{background:linear-gradient(135deg,rgba(45,140,140,0.07),rgba(45,140,140,0.03));border:1px dashed var(--teal-border);border-radius:6px;padding:20px 24px;margin-bottom:24px;}
 .btn-ai-gen{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--teal);color:#fff;border:none;padding:13px 24px;border-radius:5px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.2s;width:100%;}
@@ -170,6 +217,9 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
   .nearby-row .np-dist{grid-column:2;}
   .admin-body{padding:20px 14px;}
   .form-section{padding:18px 14px;}
+  .ut-grid{grid-template-columns:1fr 1fr;}
+  .ut-names-sub{grid-template-columns:1fr;}
+  .ut-summary{white-space:normal;}
   .listings-table th:nth-child(2),.listings-table td:nth-child(2),
   .listings-table th:nth-child(3),.listings-table td:nth-child(3),
   .listings-table th:nth-child(4),.listings-table td:nth-child(4){display:none;}
@@ -299,6 +349,11 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             <table class="analytics-table"><thead><tr><th>Agent</th><th>Closed / Clicks</th></tr></thead>
             <tbody id="adm-conversion-rates"></tbody></table>
           </div>
+          <div class="analytics-section">
+            <div class="analytics-section-title">Leads by Recipient Type</div>
+            <table class="analytics-table"><thead><tr><th>Recipient</th><th>Leads</th></tr></thead>
+            <tbody id="adm-leads-by-recipient"></tbody></table>
+          </div>
         </div>
       </div>
 
@@ -369,17 +424,29 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
                 <option value="draft">Draft</option>
               </select>
             </div>
+          </div>
+
+          <!-- PRICING — single-unit editable fields by default. When 1+ Unit
+               Types exist below, the relevant field(s) become a read-only,
+               live-calculated range instead (see the syncPricingMode
+               function further down this page). Previous Price only makes
+               sense for a single price, so it's hidden in multi-unit mode. -->
+          <p class="form-section-sub">Pricing</p>
+          <div class="form-grid">
             <div class="form-group" id="price-field-single">
               <label class="form-label">Price Display</label>
               <input class="form-input" id="f-price" type="text" placeholder="$550,000 or leave blank">
+              <p class="form-hint" id="price-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
             </div>
             <div class="form-group" id="price-field-sale" style="display:none">
               <label class="form-label">Sale Price</label>
               <input class="form-input" id="f-sale-price" type="text" placeholder="$550,000">
+              <p class="form-hint" id="sale-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
             </div>
             <div class="form-group" id="price-field-rent" style="display:none">
               <label class="form-label">Rent Price</label>
               <input class="form-input" id="f-rent-price" type="text" placeholder="$1,200">
+              <p class="form-hint" id="rent-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
             </div>
             <div class="form-group" id="price-field-period" style="display:none">
               <label class="form-label">Rent Period</label>
@@ -389,10 +456,31 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
                 <option value="day">Per Day</option>
               </select>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="price-field-previous">
               <label class="form-label">Previous Price</label>
               <input class="form-input" id="f-price-previous" type="text" placeholder="Old price — shows Price Reduced badge">
             </div>
+          </div>
+
+          <!-- RENTAL TERMS — building-level defaults (deposit, utilities,
+               service frequency, policies, fees). Completely independent
+               of Unit Types' pricing/description overrides -- see
+               rental-terms.js's header comment for the full architecture.
+               Registry-driven: this container is rebuilt entirely from
+               RENTAL_TERMS_FIELDS by renderRentalTermsFields(), so adding a
+               new term is a registry change only, never a change here. -->
+          <p class="form-section-sub">Rental Terms</p>
+          <div id="rental-terms-building" class="rental-terms-grid"></div>
+
+          <!-- UNIT TYPES — an extension of Pricing, not an independent
+               section (Multi-Unit Buildings, Phase 1). Optional; add one
+               per variant (Studio, 1BR, 2BR...) to turn this listing into a
+               multi-unit building. Leave empty for a normal single listing. -->
+          <p class="form-section-sub">Unit Types <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; add one per variant to switch Pricing above into a calculated range</span></p>
+          <div id="unit-types-list" class="unit-types-list"></div>
+          <button type="button" class="btn-add-row" onclick="addUnitType()">+ Add Unit Type</button>
+
+          <div class="form-grid" style="margin-top:18px;">
             <div class="form-group">
               <label class="form-label">Land Title</label>
               <select class="form-select" id="f-land-title">
@@ -743,6 +831,8 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
+<script src="rental-terms.js"></script>
+<script src="unit-availability.js"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
@@ -1121,6 +1211,514 @@ function getNearbyPlaces() {
   return places;
 }
 
+// ── Unit Types (Multi-Unit Buildings, Phase 1) ─────────────────────
+// A repeatable, collapsible card per unit variant (Studio/1BR/2BR/...),
+// same interaction shape as Nearby Places above, with one deliberate
+// difference: saving is a real upsert (PATCH existing/POST new/DELETE
+// removed), not delete-and-reinsert, because a unit_type.id must survive
+// across saves (Phase 3's Individual Units will FK to it). See
+// saveUnitTypes() below, called from saveListing() after the property
+// itself is saved.
+//
+// Deliberately NOT editable here: description/highlight/features/
+// amenities/images overrides. Every one of those columns is nullable on
+// unit_types and resolveUnitType() (terminology.js) already treats null as
+// "inherit the building's own value" — a completely safe default with no
+// UI. Editing per-unit overrides for those fields is left for a future
+// pass; Phase 1 ships exactly the fields validation requires (Name,
+// Price, Bedrooms, Bathrooms, Availability).
+let _removedUnitTypeIds = [];
+
+function addUnitType(data) {
+  const list = document.getElementById('unit-types-list');
+  const card = document.createElement('div');
+  card.className = 'ut-card';
+  if (data && data.id) card.dataset.id = data.id;
+  const nameEn = data ? (data.name_en || '') : '';
+  const nameLo = data ? (data.name_lo || '') : '';
+  const nameZh = data ? (data.name_zh || '') : '';
+  const priceDisplay = data ? (data.price_display || '') : '';
+  const salePrice    = data ? (data.sale_price || '') : '';
+  const rentPrice    = data ? (data.rent_price || '') : '';
+  const rentPeriod   = data ? (data.rent_period || 'month') : 'month';
+  const bedrooms  = data && data.bedrooms  != null ? data.bedrooms  : '';
+  const bathrooms = data && data.bathrooms != null ? data.bathrooms : '';
+  const sqm       = data && data.sqm       != null ? data.sqm       : '';
+  const isAvailable    = data ? (data.is_available !== false) : true;
+  const availableCount = data && data.available_count != null ? data.available_count : 1;
+  const totalUnits        = data && data.total_units != null ? data.total_units : '';
+  const nextAvailableDate = data && data.next_available_date ? data.next_available_date : '';
+  const availabilityNote  = data ? (data.availability_note || '') : '';
+  const descriptionEn = data ? (data.description_en || '') : '';
+  const descriptionLo = data ? (data.description_lo || '') : '';
+  const descriptionZh = data ? (data.description_zh || '') : '';
+  const unitImages = data && Array.isArray(data.images) ? data.images : [];
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  card.dataset.images = JSON.stringify(unitImages);
+  card.innerHTML = `
+    <div class="ut-head" draggable="true" ondragstart="_utDragStart(event)" ondragover="_utDragOver(event)" ondrop="_utDrop(event)" ondragend="_utDragEnd(event)" onclick="_utToggle(event)">
+      <span class="ut-drag" title="Drag to reorder">&#x283F;</span>
+      <span class="ut-name-display">${esc(nameEn) || 'New Unit Type'}</span>
+      <span class="ut-summary"></span>
+      <span class="ut-avail-badge"></span>
+      <span class="ut-chevron">&#9660;</span>
+      <button type="button" class="btn-remove" onclick="removeUnitType(event, this)">&times;</button>
+    </div>
+    <div class="ut-body">
+      <div class="ut-grid">
+        <div class="ut-field ut-field-full">
+          <label>Name *</label>
+          <input class="form-input ut-name-en" type="text" placeholder="Studio" value="${esc(nameEn)}" oninput="_utUpdateSummary(this)">
+          <div class="ut-names-sub">
+            <input class="form-input ut-name-lo" type="text" placeholder="ຊື່ (ລາວ) — optional" value="${esc(nameLo)}" style="font-size:12.5px;">
+            <input class="form-input ut-name-zh" type="text" placeholder="名称 (中文) — optional" value="${esc(nameZh)}" style="font-size:12.5px;">
+          </div>
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field ut-price-single" style="display:${isSor ? 'none' : ''}">
+          <label>Price ${isAvailable ? '*' : ''}</label>
+          <input class="form-input ut-price-display" type="text" placeholder="$250/month" value="${esc(priceDisplay)}" oninput="_utUpdateSummary(this)">
+        </div>
+        <div class="ut-field ut-price-sale" style="display:${isSor ? '' : 'none'}">
+          <label>Sale Price ${isAvailable ? '*' : ''}</label>
+          <input class="form-input ut-sale-price" type="text" placeholder="$250,000" value="${esc(salePrice)}" oninput="_utUpdateSummary(this)">
+        </div>
+        <div class="ut-field ut-price-rent" style="display:${isSor ? '' : 'none'}">
+          <label>Rent Price ${isAvailable ? '*' : ''}</label>
+          <input class="form-input ut-rent-price" type="text" placeholder="$250/month" value="${esc(rentPrice)}" oninput="_utUpdateSummary(this)">
+        </div>
+        <div class="ut-field ut-price-period" style="display:${isSor ? '' : 'none'}">
+          <label>Rent Period</label>
+          <select class="form-select ut-rent-period">
+            <option value="month" ${rentPeriod==='month'?'selected':''}>Per Month</option>
+            <option value="year" ${rentPeriod==='year'?'selected':''}>Per Year</option>
+            <option value="day" ${rentPeriod==='day'?'selected':''}>Per Day</option>
+          </select>
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field ut-field-full">
+          <label>Rental Terms</label>
+          <div class="ut-rt-toggle-row">
+            <span class="ut-rt-status-pill"></span>
+            <button type="button" class="ut-rt-override-btn" onclick="_utToggleRentalTermsOverride(event, this)">Override</button>
+          </div>
+          <div class="ut-rt-fields" style="display:none;"></div>
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field">
+          <label>Bedrooms *</label>
+          <input class="form-input ut-bedrooms" type="number" min="0" placeholder="0" value="${bedrooms}" oninput="_utUpdateSummary(this)">
+        </div>
+        <div class="ut-field">
+          <label>Bathrooms *</label>
+          <input class="form-input ut-bathrooms" type="number" min="0" placeholder="1" value="${bathrooms}" oninput="_utUpdateSummary(this)">
+        </div>
+        <div class="ut-field">
+          <label>Size (sqm)</label>
+          <input class="form-input ut-sqm" type="number" min="0" step="any" placeholder="35" value="${sqm}">
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field ut-field-full">
+          <label>Description <span style="color:var(--ink-muted);font-weight:400;">— blank inherits the building's description</span></label>
+          <textarea class="form-textarea ut-desc-en" rows="2" placeholder="Describe this unit type specifically...">${esc(descriptionEn)}</textarea>
+          <div class="ut-names-sub" style="margin-top:6px;">
+            <textarea class="form-textarea ut-desc-lo" rows="2" placeholder="ລາຍລະອຽດ (ລາວ) — optional" style="font-size:12.5px;">${esc(descriptionLo)}</textarea>
+            <textarea class="form-textarea ut-desc-zh" rows="2" placeholder="&#20013;&#25991;&#25551;&#36848; — optional" style="font-size:12.5px;">${esc(descriptionZh)}</textarea>
+          </div>
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field ut-avail-row">
+          <label><input type="checkbox" class="ut-is-available" ${isAvailable ? 'checked' : ''} onchange="_utOnAvailableChange(this)"> Available</label>
+        </div>
+        <div class="ut-field">
+          <label>Available Count *</label>
+          <input class="form-input ut-available-count" type="number" min="0" value="${availableCount}" oninput="_utOnAvailabilityFieldChange(this)">
+        </div>
+        <div class="ut-field">
+          <label>Total Units <span style="color:var(--ink-muted);font-weight:400;">— optional</span></label>
+          <input class="form-input ut-total-units" type="number" min="0" value="${totalUnits}" placeholder="e.g. 12" oninput="_utOnAvailabilityFieldChange(this)">
+        </div>
+        <div class="ut-field">
+          <label>Next Available Date <span style="color:var(--ink-muted);font-weight:400;">— shown when Available Count is 0</span></label>
+          <input class="form-input ut-next-available-date" type="date" value="${nextAvailableDate}" oninput="_utOnAvailabilityFieldChange(this)">
+        </div>
+        <div class="ut-field ut-field-full">
+          <label>Availability Note <span style="color:var(--ink-muted);font-weight:400;">— optional, shown alongside (never instead of) the status</span></label>
+          <input class="form-input ut-availability-note" type="text" placeholder="e.g. 3 more units expected Q3 2026" value="${esc(availabilityNote)}" oninput="_utOnAvailabilityFieldChange(this)">
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field ut-field-full">
+          <label>Photos <span style="color:var(--ink-muted);font-weight:400;">— select which of the building's uploaded photos show for this unit; none selected inherits all building photos</span></label>
+          <div class="ut-photo-picker"></div>
+        </div>
+      </div>
+    </div>`;
+  list.appendChild(card);
+  card.dataset.rentalTermsOverrides = JSON.stringify((data && data.rental_terms_overrides) || {});
+  _utUpdateSummary(card.querySelector('.ut-name-en'));
+  _utRenderPhotoPicker(card);
+  _utRenderRentalTermsBlock(card);
+  _utUpdateAvailabilityBadge(card);
+}
+
+// Renders the "select which building photos belong to this unit" checkbox
+// grid from `uploadedImages` (the building's own current photo list) --
+// called on initial render and again every time the card is expanded, so
+// it always reflects photos uploaded to the building since this card was
+// first created. Selection state itself lives in the checkboxes, read
+// directly by getUnitTypesFromDom() -- no separate hidden field needed.
+function _utRenderPhotoPicker(card) {
+  const picker = card.querySelector('.ut-photo-picker');
+  if (!picker) return;
+  let selected;
+  try { selected = JSON.parse(card.dataset.images || '[]'); } catch (e) { selected = []; }
+  if (!uploadedImages.length) {
+    picker.innerHTML = '<p class="ut-photo-hint">No building photos uploaded yet — add some in the Photos &amp; Video section above.</p>';
+    return;
+  }
+  picker.innerHTML = `<div class="ut-photo-grid">${uploadedImages.map(url => {
+    const isSelected = selected.includes(url);
+    const safeUrl = esc(url);
+    return `<label class="ut-photo-item${isSelected ? ' selected' : ''}" onclick="this.classList.toggle('selected')">
+      <input type="checkbox" value="${safeUrl}" ${isSelected ? 'checked' : ''}>
+      <img src="${safeUrl}" alt="">
+    </label>`;
+  }).join('')}</div>`;
+}
+
+// ── Rental Terms (v2): building-level defaults + per-unit-type overrides ──
+// Completely independent of Availability below -- see rental-terms.js's
+// header comment for the architecture. _buildingRentalTermsValues mirrors
+// the same "local working object, mutated via onChange, read at save time"
+// pattern already used for Unit Types' own DOM-backed state.
+let _buildingRentalTermsValues = {};
+
+function _onBuildingRentalTermChange(key, value) {
+  if (value == null) delete _buildingRentalTermsValues[key];
+  else _buildingRentalTermsValues[key] = value;
+  // Every card's inherited display and "N fields differ" summary depends
+  // on the building defaults -- refresh them all when a default changes.
+  document.querySelectorAll('.ut-card').forEach(_utRenderRentalTermsBlock);
+}
+
+function renderBuildingRentalTerms() {
+  renderRentalTermsFields(document.getElementById('rental-terms-building'), _buildingRentalTermsValues, _onBuildingRentalTermChange);
+}
+
+// Renders a Unit Type card's Rental Terms toggle pill (collapsed summary
+// shows resolved VALUES, not just field names -- "Deposit: 1 Month", not
+// "Deposit") and, when the override panel is open, the override form
+// itself, pre-filled with the current building defaults per field.
+function _utRenderRentalTermsBlock(card) {
+  let overrides;
+  try { overrides = JSON.parse(card.dataset.rentalTermsOverrides || '{}'); } catch (e) { overrides = {}; }
+  const overriddenKeys = Object.keys(overrides);
+  const pill = card.querySelector('.ut-rt-status-pill');
+  const btn = card.querySelector('.ut-rt-override-btn');
+  const fieldsContainer = card.querySelector('.ut-rt-fields');
+  const isOpen = fieldsContainer.style.display !== 'none';
+
+  if (!overriddenKeys.length) {
+    pill.textContent = '✓ Use Building Default';
+    pill.className = 'ut-rt-status-pill ut-rt-default';
+  } else {
+    const lines = summarizeRentalTermOverrides(overriddenKeys, Object.assign({}, _buildingRentalTermsValues, overrides), 'en', 3);
+    pill.textContent = 'Override — ' + lines.join(', ');
+    pill.className = 'ut-rt-status-pill ut-rt-override';
+  }
+  btn.textContent = isOpen ? 'Hide' : (overriddenKeys.length ? 'Edit Overrides' : 'Override');
+
+  const displayValues = Object.assign({}, _buildingRentalTermsValues, overrides);
+  renderRentalTermsFields(fieldsContainer, displayValues, function(key, value) {
+    const current = (function() { try { return JSON.parse(card.dataset.rentalTermsOverrides || '{}'); } catch (e) { return {}; } })();
+    if (value == null) delete current[key]; else current[key] = value;
+    card.dataset.rentalTermsOverrides = JSON.stringify(current);
+    _utRenderRentalTermsBlock(card);
+  });
+}
+
+function _utToggleRentalTermsOverride(e, btn) {
+  e.stopPropagation();
+  const card = btn.closest('.ut-card');
+  const fieldsContainer = card.querySelector('.ut-rt-fields');
+  fieldsContainer.style.display = (fieldsContainer.style.display !== 'none') ? 'none' : '';
+  _utRenderRentalTermsBlock(card);
+}
+
+// ── Availability (Next Available Date enhancement) ──────────────────────
+// Completely independent of Rental Terms above -- see unit-availability.js.
+function _utUpdateAvailabilityBadge(card) {
+  const unitTypeLike = {
+    is_available: card.querySelector('.ut-is-available').checked,
+    available_count: Number(card.querySelector('.ut-available-count').value) || 0,
+    total_units: card.querySelector('.ut-total-units').value.trim() === '' ? null : Number(card.querySelector('.ut-total-units').value),
+    next_available_date: card.querySelector('.ut-next-available-date').value || null,
+    availability_note: card.querySelector('.ut-availability-note').value.trim() || null
+  };
+  const resolved = resolveUnitAvailability(unitTypeLike);
+  const badge = card.querySelector('.ut-avail-badge');
+  badge.textContent = formatAvailabilityAdminSummary(resolved);
+  badge.className = 'ut-avail-badge ut-avail-' + resolved.status;
+}
+
+function _utOnAvailabilityFieldChange(inputEl) {
+  _utUpdateAvailabilityBadge(inputEl.closest('.ut-card'));
+}
+
+function _utToggle(e) {
+  if (e.target.closest('.btn-remove')) return;
+  const card = e.currentTarget.closest('.ut-card');
+  const willExpand = !card.classList.contains('expanded');
+  card.classList.toggle('expanded');
+  if (willExpand) _utRenderPhotoPicker(card); // refresh against the latest building photos
+}
+
+function removeUnitType(e, btn) {
+  e.stopPropagation();
+  const card = btn.closest('.ut-card');
+  if (card.dataset.id) _removedUnitTypeIds.push(card.dataset.id);
+  card.remove();
+  syncPricingMode(); // may drop back to Single Price mode if this was the last card
+}
+
+function _utUpdateSummary(inputEl) {
+  const card = inputEl.closest('.ut-card');
+  const nameEn = card.querySelector('.ut-name-en').value.trim();
+  card.querySelector('.ut-name-display').textContent = nameEn || 'New Unit Type';
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  const price = isSor
+    ? [card.querySelector('.ut-sale-price').value.trim(), card.querySelector('.ut-rent-price').value.trim()].filter(Boolean).join(' / ')
+    : card.querySelector('.ut-price-display').value.trim();
+  const bed = card.querySelector('.ut-bedrooms').value.trim();
+  const bath = card.querySelector('.ut-bathrooms').value.trim();
+  const parts = [];
+  if (price) parts.push(price);
+  if (bed !== '') parts.push(bed + 'BR');
+  if (bath !== '') parts.push(bath + 'BA');
+  card.querySelector('.ut-summary').textContent = parts.join(' · ') || 'No details yet';
+  syncPricingMode();
+}
+
+// Keeps every rendered Unit Type card's price fields in sync with the
+// building's own transaction type — mirrors onTransactionChange() above,
+// which does the same for the building's own price fields.
+function syncUnitTypePriceFields() {
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  document.querySelectorAll('.ut-card').forEach(card => {
+    card.querySelector('.ut-price-single').style.display = isSor ? 'none' : '';
+    card.querySelector('.ut-price-sale').style.display   = isSor ? '' : 'none';
+    card.querySelector('.ut-price-rent').style.display   = isSor ? '' : 'none';
+    card.querySelector('.ut-price-period').style.display = isSor ? '' : 'none';
+    _utUpdateSummary(card.querySelector('.ut-name-en'));
+  });
+}
+
+// ── Pricing ↔ Unit Types (single source of truth, admin UX redesign) ────
+// Prices are free text everywhere in this schema (price_display/sale_price/
+// rent_price are all `text`, matching properties' own columns) -- staff
+// type "$250/month", "1,200", etc. _utParsePrice pulls the first number out
+// (stripping thousands separators) plus whatever text trails it, so a
+// range can be computed and, when every active unit agrees on that
+// trailing text ("/month"), reused as the range's own suffix.
+function _utParsePrice(str) {
+  if (!str) return null;
+  const m = String(str).match(/[\d,]+(\.\d+)?/);
+  if (!m) return null;
+  const value = parseFloat(m[0].replace(/,/g, ''));
+  if (isNaN(value)) return null;
+  const suffix = str.slice(str.indexOf(m[0]) + m[0].length).trim();
+  return { value, suffix };
+}
+function _utFormatMoney(n) {
+  return Math.round(n).toLocaleString('en-US');
+}
+// rawPrices: array of free-text price strings from active (is_available)
+// unit type cards only -- the building-level, always-safe-to-display view
+// of "what active units cost right now." Returns null text when nothing
+// parses (caller falls back to "Price on request", matching the same
+// fallback string already used publicly for an empty price_display).
+function _utComputeRange(rawPrices) {
+  const parsed = rawPrices.map(_utParsePrice).filter(Boolean);
+  if (!parsed.length) return { text: null, parsedCount: 0, totalCount: rawPrices.length };
+  const values = parsed.map(p => p.value);
+  const min = Math.min(...values), max = Math.max(...values);
+  const suffixes = [...new Set(parsed.map(p => p.suffix))];
+  const suffix = (suffixes.length === 1 && suffixes[0]) ? (suffixes[0].startsWith('/') ? suffixes[0] : ' ' + suffixes[0]) : '';
+  const range = (min === max) ? '$' + _utFormatMoney(min) : '$' + _utFormatMoney(min) + '–' + _utFormatMoney(max);
+  return { text: range + suffix, parsedCount: parsed.length, totalCount: rawPrices.length };
+}
+function _utActiveRawPrices(selector) {
+  return [...document.querySelectorAll('.ut-card')]
+    .filter(card => card.querySelector('.ut-is-available').checked)
+    .map(card => card.querySelector(selector).value.trim())
+    .filter(Boolean);
+}
+// The one function that switches Pricing between Single Price (default,
+// unchanged) and Price Range (as soon as 1+ Unit Type cards exist) --
+// called whenever that could change: adding/removing a card, editing a
+// unit's price or Available checkbox, changing Transaction, and on
+// initial load. Sets the visible price input(s)' own .value to the
+// computed range and disables them, so saveListing()'s existing
+// `document.getElementById('f-price').value` reads need no changes at all
+// to pick up the computed value.
+// Keeps a card's Price/Sale Price/Rent Price labels' required-asterisk in
+// sync with its own Available checkbox (price is only required while
+// Available — see the validation comment in saveListing()), then
+// recalculates the building-level range same as any other price change.
+function _utOnAvailableChange(checkbox) {
+  const card = checkbox.closest('.ut-card');
+  const star = checkbox.checked ? ' *' : '';
+  card.querySelectorAll('.ut-price-single label, .ut-price-sale label, .ut-price-rent label').forEach(label => {
+    label.textContent = label.textContent.replace(/\s?\*?$/, star);
+  });
+  syncPricingMode();
+  _utUpdateAvailabilityBadge(card);
+}
+
+function syncPricingMode() {
+  const hasUnitTypes = document.querySelectorAll('.ut-card').length > 0;
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  document.getElementById('price-field-previous').style.display = hasUnitTypes ? 'none' : '';
+  if (hasUnitTypes && document.getElementById('f-price-previous').value) {
+    document.getElementById('f-price-previous').value = ''; // stale "before" price has no meaning for a range
+  }
+  if (!hasUnitTypes) {
+    ['f-price', 'f-sale-price', 'f-rent-price'].forEach(id => document.getElementById(id).disabled = false);
+    document.getElementById('price-range-hint').style.display = 'none';
+    document.getElementById('sale-range-hint').style.display = 'none';
+    document.getElementById('rent-range-hint').style.display = 'none';
+    return;
+  }
+  if (isSor) {
+    const saleRange = _utComputeRange(_utActiveRawPrices('.ut-sale-price'));
+    const rentRange = _utComputeRange(_utActiveRawPrices('.ut-rent-price'));
+    document.getElementById('f-sale-price').value = saleRange.text || 'Price on request';
+    document.getElementById('f-rent-price').value = rentRange.text || 'Price on request';
+    document.getElementById('f-sale-price').disabled = true;
+    document.getElementById('f-rent-price').disabled = true;
+    document.getElementById('sale-range-hint').style.display = '';
+    document.getElementById('rent-range-hint').style.display = '';
+    // f-price is hidden while sale_or_rent, but saveListing() only reads it
+    // when NOT sale_or_rent -- still clear+re-enable it so it never carries
+    // a stale computed range into a later single-price mode switch.
+    document.getElementById('f-price').value = '';
+    document.getElementById('f-price').disabled = false;
+    document.getElementById('price-range-hint').style.display = 'none';
+  } else {
+    const range = _utComputeRange(_utActiveRawPrices('.ut-price-display'));
+    document.getElementById('f-price').value = range.text || 'Price on request';
+    document.getElementById('f-price').disabled = true;
+    document.getElementById('price-range-hint').style.display = '';
+    // saveListing() reads sale_price/rent_price unconditionally regardless
+    // of transaction type -- clear+re-enable them so a computed range never
+    // bleeds into the wrong column if transaction later switches away from
+    // Sale or Rent while Unit Types still exist.
+    document.getElementById('f-sale-price').value = '';
+    document.getElementById('f-rent-price').value = '';
+    document.getElementById('f-sale-price').disabled = false;
+    document.getElementById('f-rent-price').disabled = false;
+    document.getElementById('sale-range-hint').style.display = 'none';
+    document.getElementById('rent-range-hint').style.display = 'none';
+  }
+}
+
+// Native HTML5 drag-and-drop reordering — no library. sort_order itself is
+// never stored in a hidden field; getUnitTypesFromDom() derives it from
+// DOM position at save time.
+let _utDragEl = null;
+function _utDragStart(e) {
+  _utDragEl = e.currentTarget.closest('.ut-card');
+  _utDragEl.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function _utDragOver(e) {
+  e.preventDefault();
+  const target = e.currentTarget.closest('.ut-card');
+  if (target && target !== _utDragEl) target.classList.add('drag-over');
+}
+function _utDrop(e) {
+  e.preventDefault();
+  const target = e.currentTarget.closest('.ut-card');
+  target.classList.remove('drag-over');
+  if (!_utDragEl || target === _utDragEl) return;
+  const list = document.getElementById('unit-types-list');
+  const cards = [...list.children];
+  const dragIdx = cards.indexOf(_utDragEl);
+  const targetIdx = cards.indexOf(target);
+  if (dragIdx < targetIdx) target.after(_utDragEl); else target.before(_utDragEl);
+}
+function _utDragEnd(e) {
+  document.querySelectorAll('.ut-card').forEach(c => c.classList.remove('dragging', 'drag-over'));
+  _utDragEl = null;
+}
+
+function loadUnitTypes(unitTypes) {
+  document.getElementById('unit-types-list').innerHTML = '';
+  _removedUnitTypeIds = [];
+  const sorted = (unitTypes || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  sorted.forEach(ut => addUnitType(ut));
+  syncPricingMode(); // unconditional: also resets Pricing back to Single Price when unitTypes is empty
+}
+
+function getUnitTypesFromDom() {
+  return [...document.querySelectorAll('.ut-card')].map((card, index) => ({
+    id: card.dataset.id || null,
+    sort_order:    index,
+    name_en:       card.querySelector('.ut-name-en').value.trim(),
+    name_lo:       card.querySelector('.ut-name-lo').value.trim() || null,
+    name_zh:       card.querySelector('.ut-name-zh').value.trim() || null,
+    price_display: card.querySelector('.ut-price-display').value.trim() || null,
+    sale_price:    card.querySelector('.ut-sale-price').value.trim() || null,
+    rent_price:    card.querySelector('.ut-rent-price').value.trim() || null,
+    rent_period:   card.querySelector('.ut-rent-period').value || null,
+    bedrooms:      card.querySelector('.ut-bedrooms').value.trim()  === '' ? null : Number(card.querySelector('.ut-bedrooms').value),
+    bathrooms:     card.querySelector('.ut-bathrooms').value.trim() === '' ? null : Number(card.querySelector('.ut-bathrooms').value),
+    sqm:           card.querySelector('.ut-sqm').value.trim()       === '' ? null : Number(card.querySelector('.ut-sqm').value),
+    description_en: card.querySelector('.ut-desc-en').value.trim() || null,
+    description_lo: card.querySelector('.ut-desc-lo').value.trim() || null,
+    description_zh: card.querySelector('.ut-desc-zh').value.trim() || null,
+    images: (() => {
+      const checked = [...card.querySelectorAll('.ut-photo-item input:checked')].map((i) => i.value);
+      return checked.length ? checked : null;
+    })(),
+    is_available:      card.querySelector('.ut-is-available').checked,
+    available_count:   card.querySelector('.ut-available-count').value.trim() === '' ? 1 : Number(card.querySelector('.ut-available-count').value),
+    total_units:          card.querySelector('.ut-total-units').value.trim() === '' ? null : Number(card.querySelector('.ut-total-units').value),
+    next_available_date:  card.querySelector('.ut-next-available-date').value || null,
+    availability_note:    card.querySelector('.ut-availability-note').value.trim() || null,
+    rental_terms_overrides: buildRentalTermsPayload((() => {
+      try { return JSON.parse(card.dataset.rentalTermsOverrides || '{}'); } catch (e) { return {}; }
+    })())
+  }));
+}
+
+// Real upsert, not delete-and-reinsert: existing rows (have an id) are
+// PATCHed, new rows are POSTed, and any id present on load but no longer
+// in the DOM is DELETEd. This preserves unit_type.id across saves, which
+// Phase 3's Individual Units will need to FK to.
+async function saveUnitTypes(propertyId) {
+  const rows = getUnitTypesFromDom();
+  for (const id of _removedUnitTypeIds) {
+    await sbApi('DELETE', `unit_types?id=eq.${id}`);
+  }
+  for (const row of rows) {
+    const { id, ...fields } = row;
+    fields.property_id = propertyId;
+    if (id) {
+      await sbApi('PATCH', `unit_types?id=eq.${id}`, fields);
+    } else {
+      await sbApi('POST', 'unit_types', fields);
+    }
+  }
+  _removedUnitTypeIds = [];
+}
+
 // ── Village autocomplete ─────────────────────────────────────────
 async function loadVillageSuggestions() {
   const STATIC = ['Thongkang','Nongbone','Donkoi','Phonsinuan','Thongsangnang','Phonethan','Somsamai','Mixay','Hom','Phonxai','Natane','Sisangvone'];
@@ -1308,6 +1906,31 @@ async function sbApi(method, path, body) {
   }
 }
 
+// True row count via PostgREST's `Prefer: count=exact` on a HEAD request —
+// no body transferred, no row-fetch limit to truncate against. Used for
+// headline KPIs (e.g. Total Leads) that must never silently undercount
+// past a client-side fetch cap.
+async function sbCount(path) {
+  try {
+    const token = _adminToken || SUPABASE_ANON;
+    const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+      method: 'HEAD',
+      headers: {
+        'apikey': SUPABASE_ANON,
+        'Authorization': 'Bearer ' + token,
+        'Prefer': 'count=exact'
+      }
+    });
+    const range = res.headers.get('content-range'); // e.g. "0-0/1234" or "*/1234"
+    if (!range) return null;
+    const total = range.split('/')[1];
+    return total === '*' ? null : parseInt(total, 10);
+  } catch (err) {
+    console.error('sbCount error:', err.message);
+    return null;
+  }
+}
+
 // ── AGENTS ────────────────────────────────────────────────────────
 async function loadAgentsForDropdown() {
   const sel = document.getElementById('f-agent-id');
@@ -1394,6 +2017,12 @@ function toggleAnalytics() {
   if (_analyticsVisible) loadAnalytics();
 }
 
+const RECIPIENT_TYPE_LABELS = {
+  owner: 'Owner', agent: 'Agent', property_manager: 'Property Manager',
+  reception: 'Reception', sales_office: 'Sales Office', developer: 'Developer',
+  family_representative: 'Family Representative', other: 'Other', unknown: 'Unknown'
+};
+
 async function loadAnalytics() {
   try {
     const now = new Date();
@@ -1401,20 +2030,39 @@ async function loadAnalytics() {
     const weekStart  = new Date(now - 7  * 86400000).toISOString();
     const monthStart = new Date(now - 30 * 86400000).toISOString();
 
-    const [leads, crmLeads] = await Promise.all([
-      sbApi('GET', 'lead_events?select=id,listing_id,agent_id,event_type,created_at&order=created_at.desc&limit=2000'),
-      sbApi('GET', 'leads?select=id,property_id,party_id,status')
+    // Total Leads is the platform's headline KPI — "how many property
+    // inquiries did Pintag generate," independent of who received them.
+    // leads is the canonical Lead (Property Inquiry) entity: one row per
+    // user-initiated contact click that named a listing, across every
+    // event_type and every recipient type (see
+    // 20260722000000_leads_recipient_model.sql — the trigger now fires on
+    // whatsapp/call/messenger/telegram/line/contact clicks alike, not just
+    // WhatsApp). Counted exactly via `Prefer: count=exact`, not capped by
+    // a row-fetch limit — a listing with thousands of inquiries must still
+    // report its real total, not silently cap at some arbitrary number.
+    const [totalCount, todayCount, weekCount, monthCount] = await Promise.all([
+      sbCount('leads?select=id'),
+      sbCount('leads?select=id&created_at=gte.' + encodeURIComponent(todayStart)),
+      sbCount('leads?select=id&created_at=gte.' + encodeURIComponent(weekStart)),
+      sbCount('leads?select=id&created_at=gte.' + encodeURIComponent(monthStart))
     ]);
-    if (!leads) return;
+    document.getElementById('adm-leads-total').textContent = totalCount == null ? '—' : totalCount;
+    document.getElementById('adm-leads-today').textContent = todayCount == null ? '—' : todayCount;
+    document.getElementById('adm-leads-week').textContent  = weekCount  == null ? '—' : weekCount;
+    document.getElementById('adm-leads-month').textContent = monthCount == null ? '—' : monthCount;
 
-    document.getElementById('adm-leads-total').textContent = leads.length;
-    document.getElementById('adm-leads-today').textContent  = leads.filter(l => l.created_at >= todayStart).length;
-    document.getElementById('adm-leads-week').textContent   = leads.filter(l => l.created_at >= weekStart).length;
-    document.getElementById('adm-leads-month').textContent  = leads.filter(l => l.created_at >= monthStart).length;
+    // Everything below is a secondary, most-recent-first working set — the
+    // exact headline above never depends on this fetch's limit. leads now
+    // carries everything Top Listings/Agents/Districts/Types, the recipient
+    // breakdown, and conversion rates need in one row (property_id,
+    // party_id, recipient_type, recipient_verified, status), so this
+    // replaces what used to be two separate fetches (lead_events + leads).
+    const leads = await sbApi('GET', 'leads?select=id,property_id,party_id,recipient_type,recipient_verified,status,created_at&order=created_at.desc&limit=5000');
+    if (!leads) return;
 
     // Top listings
     const byListing = {};
-    leads.forEach(l => { if (l.listing_id) byListing[l.listing_id] = (byListing[l.listing_id] || 0) + 1; });
+    leads.forEach(l => { if (l.property_id) byListing[l.property_id] = (byListing[l.property_id] || 0) + 1; });
     const topListingIds = Object.keys(byListing).sort((a,b) => byListing[b]-byListing[a]).slice(0,10);
     if (topListingIds.length) {
       const props = await sbApi('GET', 'properties?id=in.('+topListingIds.join(',')+')&select=id,title_en');
@@ -1426,9 +2074,12 @@ async function loadAnalytics() {
       document.getElementById('adm-top-listings').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
     }
 
-    // Top agents
+    // Top agents (by party_id — every recipient type that resolves to a
+    // Platform Identity party, not just agents strictly speaking, but
+    // that's what this table has always shown and party_id is almost
+    // always an agent in practice today).
     const byAgent = {};
-    leads.forEach(l => { if (l.agent_id) byAgent[l.agent_id] = (byAgent[l.agent_id] || 0) + 1; });
+    leads.forEach(l => { if (l.party_id) byAgent[l.party_id] = (byAgent[l.party_id] || 0) + 1; });
     const topAgentIds = Object.keys(byAgent).sort((a,b) => byAgent[b]-byAgent[a]).slice(0,10);
     if (topAgentIds.length) {
       const agents = await sbApi('GET', 'parties?id=in.('+topAgentIds.join(',')+')&select=id,name_en');
@@ -1440,24 +2091,46 @@ async function loadAnalytics() {
       document.getElementById('adm-top-agents').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
     }
 
+    // Leads by recipient type — secondary breakdown. Total Leads above
+    // stays the headline; this just shows the mix (Verified Agent gets its
+    // own row via recipient_verified, since "who actually receives the
+    // inquiry" is the whole point of this analytics model).
+    const byRecipient = {};
+    leads.forEach(l => {
+      let key = l.recipient_type || 'unknown';
+      if (key === 'agent') key = l.recipient_verified ? 'agent_verified' : 'agent_unverified';
+      byRecipient[key] = (byRecipient[key] || 0) + 1;
+    });
+    const recipientOrder = Object.keys(byRecipient).sort((a,b) => byRecipient[b]-byRecipient[a]);
+    if (recipientOrder.length) {
+      document.getElementById('adm-leads-by-recipient').innerHTML = recipientOrder.map(key => {
+        const label = key === 'agent_verified' ? 'Agent (Verified)'
+          : key === 'agent_unverified' ? 'Agent (Unverified)'
+          : (RECIPIENT_TYPE_LABELS[key] || 'Unknown');
+        return `<tr><td style="font-weight:500;">${esc(label)}</td><td><span class="lead-pill">${Number(byRecipient[key])}</span></td></tr>`;
+      }).join('');
+    } else {
+      document.getElementById('adm-leads-by-recipient').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
+    }
+
     // Top districts + Top property types — one shared properties fetch
-    // (same listing_ids already collected above), just carrying an extra
+    // (same property_ids already collected above), just carrying an extra
     // column, rather than a second round trip for property_type alone.
-    const allListingIds = [...new Set(leads.map(l => l.listing_id).filter(Boolean))];
+    const allListingIds = [...new Set(leads.map(l => l.property_id).filter(Boolean))];
     let distMap = {}, typeMap = {};
     if (allListingIds.length) {
       const distProps = await sbApi('GET', 'properties?id=in.('+allListingIds.join(',')+')&select=id,district_en,property_type');
       (distProps||[]).forEach(p => { distMap[p.id] = p.district_en||'Unknown'; typeMap[p.id] = p.property_type||'Unknown'; });
 
       const byDistrict = {};
-      leads.forEach(l => { if (l.listing_id) byDistrict[distMap[l.listing_id]||'Unknown'] = (byDistrict[distMap[l.listing_id]||'Unknown']||0) + 1; });
+      leads.forEach(l => { if (l.property_id) byDistrict[distMap[l.property_id]||'Unknown'] = (byDistrict[distMap[l.property_id]||'Unknown']||0) + 1; });
       const topDists = Object.keys(byDistrict).sort((a,b) => byDistrict[b]-byDistrict[a]).slice(0,10);
       document.getElementById('adm-top-districts').innerHTML = topDists.map(d =>
         `<tr><td style="font-weight:500;">${esc(d)}</td><td><span class="lead-pill">${Number(byDistrict[d])}</span></td></tr>`
       ).join('');
 
       const byType = {};
-      leads.forEach(l => { if (l.listing_id) byType[typeMap[l.listing_id]||'Unknown'] = (byType[typeMap[l.listing_id]||'Unknown']||0) + 1; });
+      leads.forEach(l => { if (l.property_id) byType[typeMap[l.property_id]||'Unknown'] = (byType[typeMap[l.property_id]||'Unknown']||0) + 1; });
       const topTypes = Object.keys(byType).sort((a,b) => byType[b]-byType[a]).slice(0,10);
       document.getElementById('adm-top-types').innerHTML = topTypes.map(t =>
         `<tr><td style="font-weight:500;text-transform:capitalize;">${esc(t)}</td><td><span class="lead-pill">${Number(byType[t])}</span></td></tr>`
@@ -1467,42 +2140,43 @@ async function loadAnalytics() {
       document.getElementById('adm-top-types').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
     }
 
-    // Best conversion rates — per agent, closed deals ÷ message clicks.
-    // Two separate gates, not one: >=3 clicks avoids a misleading 100%
-    // from a single lucky click (same safeguard as Best Value pricing in
-    // listings.html, _grpAvg, min 3 peers) — but click volume alone isn't
+    // Best conversion rates — per agent, closed deals ÷ total leads
+    // received. Two separate gates, not one: >=3 leads avoids a misleading
+    // 100% from a single lucky lead (same safeguard as Best Value pricing
+    // in listings.html, _grpAvg, min 3 peers) — but volume alone isn't
     // enough. An agent who has never updated a single lead's status would
     // otherwise show a confident "0%" here, which reads as "this agent
-    // doesn't close deals" when the truth might just be "this agent
-    // hasn't logged an outcome yet." Also require a minimum number of
-    // leads with a non-'new' status before ranking an agent at all —
-    // evidence they actually use the status field, not just that leads
-    // exist for them.
-    if (crmLeads) {
-      const MIN_PIPELINE_SAMPLE = 3;
-      const clicksByAgent = {};
-      leads.forEach(l => { if (l.agent_id && l.event_type === 'whatsapp_click') clicksByAgent[l.agent_id] = (clicksByAgent[l.agent_id]||0) + 1; });
-      const closedByAgent = {};
-      const updatedByAgent = {};
-      crmLeads.forEach(l => {
-        if (!l.party_id) return;
-        if (l.status === 'closed') closedByAgent[l.party_id] = (closedByAgent[l.party_id]||0) + 1;
-        if (l.status !== 'new') updatedByAgent[l.party_id] = (updatedByAgent[l.party_id]||0) + 1;
-      });
-      const rateByAgent = Object.keys(clicksByAgent)
-        .filter(id => clicksByAgent[id] >= 3 && (updatedByAgent[id]||0) >= MIN_PIPELINE_SAMPLE)
-        .map(id => ({ id, rate: (closedByAgent[id]||0) / clicksByAgent[id] }))
-        .sort((a,b) => b.rate - a.rate)
-        .slice(0,10);
-      if (rateByAgent.length) {
-        const agents = await sbApi('GET', 'parties?id=in.('+rateByAgent.map(r=>r.id).join(',')+')&select=id,name_en');
-        const nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.name_en||'—']));
-        document.getElementById('adm-conversion-rates').innerHTML = rateByAgent.map(r =>
-          `<tr><td style="font-weight:500;">${esc(nameMap[r.id]||'—')}</td><td><span class="lead-pill">${(r.rate*100).toFixed(0)}%</span></td></tr>`
-        ).join('');
-      } else {
-        document.getElementById('adm-conversion-rates').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">Not enough agents updating lead status yet</td></tr>';
-      }
+    // doesn't close deals" when the truth might just be "this agent hasn't
+    // logged an outcome yet." Also require a minimum number of leads with
+    // a non-'new' status before ranking an agent at all — evidence they
+    // actually use the status field. Previously this only counted
+    // whatsapp_click events (leads.contact_method didn't exist to filter
+    // on); now that every leads row already represents a real inquiry
+    // regardless of channel, no event_type/contact_method filter is needed
+    // here at all — the click-volume undercount from before is gone.
+    const MIN_PIPELINE_SAMPLE = 3;
+    const totalByAgent = {};
+    leads.forEach(l => { if (l.party_id) totalByAgent[l.party_id] = (totalByAgent[l.party_id]||0) + 1; });
+    const closedByAgent = {};
+    const updatedByAgent = {};
+    leads.forEach(l => {
+      if (!l.party_id) return;
+      if (l.status === 'closed') closedByAgent[l.party_id] = (closedByAgent[l.party_id]||0) + 1;
+      if (l.status !== 'new') updatedByAgent[l.party_id] = (updatedByAgent[l.party_id]||0) + 1;
+    });
+    const rateByAgent = Object.keys(totalByAgent)
+      .filter(id => totalByAgent[id] >= 3 && (updatedByAgent[id]||0) >= MIN_PIPELINE_SAMPLE)
+      .map(id => ({ id, rate: (closedByAgent[id]||0) / totalByAgent[id] }))
+      .sort((a,b) => b.rate - a.rate)
+      .slice(0,10);
+    if (rateByAgent.length) {
+      const agents = await sbApi('GET', 'parties?id=in.('+rateByAgent.map(r=>r.id).join(',')+')&select=id,name_en');
+      const nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.name_en||'—']));
+      document.getElementById('adm-conversion-rates').innerHTML = rateByAgent.map(r =>
+        `<tr><td style="font-weight:500;">${esc(nameMap[r.id]||'—')}</td><td><span class="lead-pill">${(r.rate*100).toFixed(0)}%</span></td></tr>`
+      ).join('');
+    } else {
+      document.getElementById('adm-conversion-rates').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">Not enough agents updating lead status yet</td></tr>';
     }
 
   } catch(e) { console.error('loadAnalytics', e); }
@@ -1514,11 +2188,15 @@ async function loadListings() {
   container.innerHTML = '<div class="loading">Loading...</div>';
   const [data, leads] = await Promise.all([
     sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,managed_by_party_id,district_en,view_count,contacts(role,name,phone)'),
-    sbApi('GET','lead_events?select=listing_id').catch(() => [])
+    // leads, not lead_events — the canonical Lead (Property Inquiry) entity,
+    // one row per inquiry across every contact channel (see
+    // 20260722000000_leads_recipient_model.sql), same source the Analytics
+    // tab now uses, so this column and Total Leads always agree.
+    sbApi('GET','leads?select=property_id').catch(() => [])
   ]);
   // Build lead count map
   const leadCounts = {};
-  (leads || []).forEach(l => { if (l.listing_id) leadCounts[l.listing_id] = (leadCounts[l.listing_id] || 0) + 1; });
+  (leads || []).forEach(l => { if (l.property_id) leadCounts[l.property_id] = (leadCounts[l.property_id] || 0) + 1; });
   if (!data || data.length === 0) {
     container.innerHTML = '<div class="empty"><p class="empty-title">No listings yet</p><p>Click "+New Listing" to add your first property.</p></div>';
     return;
@@ -1561,6 +2239,8 @@ function onTransactionChange() {
   document.getElementById('price-field-sale').style.display   = isSor ? ''     : 'none';
   document.getElementById('price-field-rent').style.display   = isSor ? ''     : 'none';
   document.getElementById('price-field-period').style.display = isSor ? ''     : 'none';
+  syncUnitTypePriceFields();
+  syncPricingMode();
 }
 
 // ── FORM SHOW/HIDE ────────────────────────────────────────────────
@@ -1593,6 +2273,9 @@ function showForm(id) {
     document.getElementById('listing-form').reset();
     document.getElementById('nearby-list').innerHTML = '';
     addNearby();
+    _buildingRentalTermsValues = {};
+    renderBuildingRentalTerms();
+    loadUnitTypes([]);
     // form.reset() does not fire f-type's onchange, so Property Details
     // must be re-rendered explicitly for the blank state (also clears
     // features/amenities, which form.reset() likewise doesn't touch).
@@ -1627,7 +2310,7 @@ function showForm(id) {
 // ── EDIT ──────────────────────────────────────────────────────────
 async function editListing(id) {
   showForm(id);
-  const data = await sbApi('GET', `properties?id=eq.${id}&select=*,contacts(*)&limit=1`);
+  const data = await sbApi('GET', `properties?id=eq.${id}&select=*,contacts(*),unit_types(*)&limit=1`);
   if (!data || !data[0]) return;
   const p = data[0];
 
@@ -1677,6 +2360,13 @@ async function editListing(id) {
   const nearbyArr = p.nearby_places || p.landmarks || [];
   if (nearbyArr.length) nearbyArr.forEach(n => addNearby(n));
   else addNearby();
+
+  // Building-level Rental Terms defaults must be set BEFORE loadUnitTypes()
+  // -- each unit type card's collapsed override summary is computed against
+  // the current building defaults at the moment it's created.
+  _buildingRentalTermsValues = resolveRentalTerms(p, null).values;
+  renderBuildingRentalTerms();
+  loadUnitTypes(Array.isArray(p.unit_types) ? p.unit_types : []);
 
   setHighlights(Array.isArray(p.highlights) ? p.highlights : []);
   ['en','lo','zh'].forEach(lang => {
@@ -1772,6 +2462,31 @@ async function saveListing(e) {
       [contactPhone,                                    'Buyer Contact phone'],
     ];
     const missingLabels = requiredChecks.filter(([v]) => !v).map(([, label]) => label);
+    // Unit Types: Name, Bedrooms, Bathrooms are required per card.
+    // Price is required too, but only for Available units — an
+    // unavailable/sold-out unit isn't part of the calculated Price Range
+    // above, so its price genuinely doesn't matter yet. This is deliberate
+    // validation, not the earlier "blank means price on request" rule:
+    // once a listing has Unit Types, the top-level Price becomes a
+    // calculated range, and a range with a missing input is misleading
+    // rather than acceptable — so it's caught here instead of silently
+    // computed around. Available Count always has a default, so it's
+    // never blank.
+    const isSorForValidation = document.getElementById('f-transaction').value === 'sale_or_rent';
+    getUnitTypesFromDom().forEach((ut, i) => {
+      const label = 'Unit Type #' + (i + 1) + (ut.name_en ? ' (' + ut.name_en + ')' : '');
+      if (!ut.name_en) missingLabels.push(label + ': Name');
+      if (ut.bedrooms === null) missingLabels.push(label + ': Bedrooms');
+      if (ut.bathrooms === null) missingLabels.push(label + ': Bathrooms');
+      if (ut.is_available) {
+        if (isSorForValidation) {
+          if (!_utParsePrice(ut.sale_price)) missingLabels.push(label + ': Sale Price');
+          if (!_utParsePrice(ut.rent_price)) missingLabels.push(label + ': Rent Price');
+        } else if (!_utParsePrice(ut.price_display)) {
+          missingLabels.push(label + ': Price');
+        }
+      }
+    });
     if (missingLabels.length) {
       btn.disabled = false;
       btn.textContent = 'Save Listing';
@@ -1837,6 +2552,7 @@ async function saveListing(e) {
                           ? document.getElementById('f-rent-period').value || 'month'
                           : null),
     price_previous:    document.getElementById('f-price-previous').value.trim() || null,
+    rental_terms:      buildRentalTermsPayload(_buildingRentalTermsValues),
     land_title_type:   document.getElementById('f-land-title').value || null,
     is_featured:       document.getElementById('f-featured').value === 'true',
     title_en:                titleEn,
@@ -1892,10 +2608,23 @@ async function saveListing(e) {
     return;
   }
 
-  btn.disabled = false;
-  btn.textContent = 'Save Listing';
   const msg = document.getElementById('form-message');
   const saved = Array.isArray(result) ? result.length > 0 : !!result;
+  if (saved) {
+    const propertyId = editId || (Array.isArray(result) ? result[0].id : result.id);
+    try {
+      await saveUnitTypes(propertyId);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Save Listing';
+      msg.className = 'form-message error';
+      msg.textContent = '✗ Listing saved, but Unit Types failed to save: ' + err.message;
+      msg.style.display = 'block';
+      return;
+    }
+  }
+  btn.disabled = false;
+  btn.textContent = 'Save Listing';
   if (saved) {
     msg.className = 'form-message success';
     msg.textContent = editId ? '✓ Listing updated successfully.' : '✓ Listing created successfully.';
@@ -2070,6 +2799,10 @@ function refreshImageGrid() {
     grid.appendChild(div);
   });
   document.getElementById('f-images').value = JSON.stringify(uploadedImages);
+  // Keep any already-expanded Unit Type photo pickers in sync -- otherwise
+  // a photo uploaded here while a unit type card is open wouldn't appear
+  // as a selectable option until the card was collapsed and reopened.
+  document.querySelectorAll('.ut-card.expanded').forEach(_utRenderPhotoPicker);
 }
 function populateExistingImages(images) {
   importImageModel = (images || []).map((url, i) => ({ storageUrl: url, source: 'existing', primary: i === 0 }));
