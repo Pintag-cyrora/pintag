@@ -57,11 +57,6 @@ const SOURCE_NAME = 'tiktok';
 // How many of the account's most recent videos to fetch per run. Small and
 // fixed — this is a daily narrative input, not an analytics export.
 const RECENT_VIDEO_COUNT = 10;
-// Of those, how many "most notable" (biggest deviation from the recent
-// average, either direction) become their own Observation — same "cap and
-// protect the reader's time" discipline as the CEO Workspace's Needs Your
-// Attention section.
-const NOTABLE_VIDEO_LIMIT = 3;
 
 interface StoredToken {
   accessToken: string;
@@ -226,6 +221,15 @@ async function fetchRecentVideos(accessToken: string): Promise<TikTokVideo[]> {
  * context rather than inventing a trend. Video performance can honestly
  * compare each video against the average of the others fetched in the same
  * call, which needs no persistence at all.
+ *
+ * Emits an Observation for every fetched video, not just the most notable
+ * ones (M2.8 follow-up — this used to cap at the 3 biggest deviations,
+ * which meant a genuinely new video could fail to become an Observation at
+ * all before anything downstream ever saw it). An Observation Source's job
+ * is "what happened," full stop — deciding what's *significant* belongs to
+ * Observation Intelligence (observation-intelligence.ts), and deciding
+ * what's *recent* belongs to the Executive Brief (daily-briefing.ts). This
+ * function no longer makes either of those calls; it just reports.
  */
 export function buildObservations(user: TikTokUserInfo, videos: TikTokVideo[], observedAt: string): Observation[] {
   const observations: Observation[] = [];
@@ -248,14 +252,12 @@ export function buildObservations(user: TikTokUserInfo, videos: TikTokVideo[], o
       return { video: v, avgViews, ratio: avgViews > 0 ? v.view_count / avgViews : 1 };
     });
 
-    const mostNotable = [...withAverage].sort((a, b) => Math.abs(b.ratio - 1) - Math.abs(a.ratio - 1)).slice(0, NOTABLE_VIDEO_LIMIT);
-
     // Read once here, not per-video — and from the same function
     // observation-intelligence.ts reads, so this prose and that routing
     // decision can never disagree about what counts as "significant."
     const { outperformRatio, underperformRatio } = readObservationIntelligenceThresholds();
 
-    for (const { video, avgViews, ratio } of mostNotable) {
+    for (const { video, avgViews, ratio } of withAverage) {
       const whyItMatters =
         ratio >= outperformRatio
           ? 'This significantly outperformed your recent average — worth understanding what worked.'

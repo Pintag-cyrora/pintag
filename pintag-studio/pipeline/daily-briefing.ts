@@ -15,7 +15,7 @@
 
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT } from './lib/config.js';
+import { REPO_ROOT, readObservationIntelligenceThresholds } from './lib/config.js';
 import { loadAllKnowledgeEntries } from './lib/knowledge.js';
 import { listPendingSuggestions, loadAllSuggestions, type SuggestionKind } from './lib/suggestions.js';
 import { gatherAllObservations, formatObservation, type Observation } from './lib/observations.js';
@@ -89,10 +89,41 @@ export interface GatherObservationsResult {
   promptText: string;
   /** The same Executive-routed Observations, real and unmodified — so the CEO Workspace can render their already-real evidence[] directly instead of asking the LLM to reproduce numbers it might paraphrase or drop. */
   executiveObservations: Observation[];
+  /** Every observation with a discrete occurredAt inside the recent window (M2.8), most recent first. A SEPARATE view over the same full observation list gatherAllObservations() returned — not a subset of executiveObservations, and not filtered by whatever routeObservations() decided. The same observation can legitimately appear here AND in executiveObservations: "recent" and "significant" are different questions, answered independently. */
+  recentActivity: Observation[];
+}
+
+/**
+ * Recent Activity is a presentation-layer view, not a routing decision — it
+ * never touches routeObservations() or Observation Intelligence in any way
+ * (M2.8: "Observation Intelligence should always reason about every
+ * observation immediately; Recent Activity is a presentation layer, not a
+ * routing layer"). Only observations with a genuine discrete occurredAt are
+ * eligible — a snapshot-shaped observation (e.g. account_snapshot, which
+ * only ever has observedAt) isn't "a recent event," it's ongoing state, so
+ * it's correctly never a Recent Activity candidate, with no source-specific
+ * knowledge required to know that.
+ */
+function deriveRecentActivity(observations: Observation[], windowHours: number): Observation[] {
+  const now = Date.now();
+  return observations
+    .filter((o) => {
+      if (!o.occurredAt) return false;
+      const ageHours = (now - new Date(o.occurredAt).getTime()) / 3_600_000;
+      return ageHours >= 0 && ageHours <= windowHours;
+    })
+    .sort((a, b) => new Date(b.occurredAt!).getTime() - new Date(a.occurredAt!).getTime());
 }
 
 export async function gatherObservations(): Promise<GatherObservationsResult> {
   const { observations, unavailable } = await gatherAllObservations();
+
+  // Observation Intelligence reasons about every observation immediately,
+  // unconditionally — recency never delays or gates this (M2.8). Now also
+  // sees every fetched video, not just the previous "3 most notable" cap
+  // (removed from tiktok.ts's buildObservations() this same follow-up) —
+  // filtering happens here, deterministically, as late in the pipeline as
+  // it can, never at the source.
   const routed = routeObservations(observations);
   dispatchDepartmentObservations(routed.department);
 
@@ -105,6 +136,15 @@ export async function gatherObservations(): Promise<GatherObservationsResult> {
   // return value depends on.
   await matchExecutiveObservationsToPatterns(routed.executive, routed.department.map((d) => d.observation));
 
+  // Recent Activity (M2.8) — an independent second view over the SAME full
+  // observation list, computed from data Observation Intelligence already
+  // finished reasoning about above, not a subset carved out beforehand. A
+  // video that's both brand-new and already significant appears in both
+  // this list and executiveObservations below — that's two different
+  // questions answered about the same fact, not a duplicate.
+  const { recentActivityWindowHours } = readObservationIntelligenceThresholds();
+  const recentActivity = deriveRecentActivity(observations, recentActivityWindowHours);
+
   const parts: string[] = [];
   if (routed.executive.length > 0) {
     parts.push(routed.executive.map(formatObservation).join('\n\n'));
@@ -113,7 +153,7 @@ export async function gatherObservations(): Promise<GatherObservationsResult> {
     parts.push(`### ${u.source}\n${u.source} isn't reporting right now (${u.reason}).`);
   }
   const promptText = parts.length > 0 ? parts.join('\n\n') : 'No Observation Sources have anything meaningful to report right now.';
-  return { promptText, executiveObservations: routed.executive };
+  return { promptText, executiveObservations: routed.executive, recentActivity };
 }
 
 interface SupabaseGatherResult {
@@ -353,6 +393,38 @@ const EVIDENCE_LINK_LABELS: Record<string, string> = {
   tiktok: 'Open TikTok Video',
 };
 
+/** Hours between now and observation.occurredAt — Recent Activity's own concern, computed at render time; never touches Observation Intelligence. */
+function ageHoursOf(o: Observation): number {
+  return (Date.now() - new Date(o.occurredAt!).getTime()) / 3_600_000;
+}
+
+/**
+ * Deterministic, no LLM (M2.8 — same discipline as computeConfidence()):
+ * hedged, descriptive framing for a single recent observation, never a
+ * confident claim the way Pattern Detection's routing is. Reads the same
+ * ratio Observation Intelligence itself reads (o.data.ratio, when present)
+ * so the two views can't contradict each other's numbers, only differ in
+ * what they're answering. Deliberately source-agnostic: an observation with
+ * no numeric ratio at all (a future source that hasn't computed one) still
+ * gets an honest, generic line instead of an error or a fabricated claim.
+ */
+function classifyRecentActivity(o: Observation, minAgeHours: number, outperformRatio: number, underperformRatio: number): string {
+  const ageHours = ageHoursOf(o);
+  if (ageHours < minAgeHours) return 'Too early to judge — Marketing OS will continue monitoring.';
+  const ratio = typeof o.data.ratio === 'number' ? o.data.ratio : undefined;
+  if (ratio === undefined) return 'Still gathering data on this.';
+  if (ratio >= outperformRatio) return 'Early performance is well above your recent baseline — showing early promise.';
+  if (ratio <= underperformRatio) return "Early performance is below your recent baseline so far — too early to draw a conclusion.";
+  return 'Early performance is in line with your recent baseline so far.';
+}
+
+/** "N views in N hours/days" when the source gives us a view count (TikTok does); a generic age-only fallback otherwise, so a future non-video source degrades honestly instead of assuming "views" is universal vocabulary. */
+function formatRecentActivityStat(o: Observation, ageHours: number): string {
+  const ageLabel = ageHours < 24 ? `${Math.round(ageHours)} hour${Math.round(ageHours) === 1 ? '' : 's'}` : `${(ageHours / 24).toFixed(1)} days`;
+  const viewCount = typeof o.data.view_count === 'number' ? o.data.view_count : undefined;
+  return viewCount !== undefined ? `${viewCount.toLocaleString()} views in ${ageLabel}` : `Observed ${ageLabel} ago`;
+}
+
 export const SUGGESTION_KIND_LABELS: Record<SuggestionKind, string> = {
   'knowledge-gap': 'Knowledge Gap',
   'recurring-question': 'Recurring Question',
@@ -454,6 +526,8 @@ export function renderMorningScreen(input: {
   executiveObservations: Observation[];
   /** listCandidatePatterns() (pipeline/lib/patterns.ts) — rendered as the Emerging Playbooks section below Recommended Action. */
   candidatePatterns: CandidatePattern[];
+  /** gatherObservations()'s recentActivity — every observation inside the recency window, independent of whatever Observation Intelligence decided (M2.8). May overlap with executiveObservations; that's expected, not a bug. */
+  recentActivity: Observation[];
 }): string {
   // The recommendation line (whichever pattern matched) is a machine-
   // parseable marker, not customer prose — it gets its own prominent card
@@ -480,6 +554,23 @@ export function renderMorningScreen(input: {
         .join('') +
       (overflowCount > 0 ? `<li class="empty"><a href="index.html">+${overflowCount} more — open the queue →</a></li>` : '')
     : '<li class="empty">Nothing needs your attention right now.</li>';
+
+  // Recent Activity (M2.8) — a second, independent view over the same
+  // observations Evidence/Pattern Detection below also draws from. Fully
+  // deterministic, no LLM: the same "keep the LLM's job as small as
+  // possible" discipline as Confidence and the Playbook cards. Answers
+  // "what changed since I last checked," not "is this significant" — an
+  // item can legitimately also appear in Evidence below; that's two
+  // different questions about the same fact, not a duplicate.
+  const { recentActivityMinAgeHoursForComparison, outperformRatio, underperformRatio } = readObservationIntelligenceThresholds();
+  const recentActivityListItems = input.recentActivity
+    .map((o) => {
+      const ageHours = ageHoursOf(o);
+      const stat = formatRecentActivityStat(o, ageHours);
+      const framing = classifyRecentActivity(o, recentActivityMinAgeHoursForComparison, outperformRatio, underperformRatio);
+      return `<li><div class="ev-title">${escapeHtml(o.whatHappened)}</div><div class="ra-stat">${escapeHtml(stat)}</div><div class="ra-framing">${escapeHtml(framing)}</div></li>`;
+    })
+    .join('');
 
   // Real data, not LLM prose — each Observation already carries its own
   // evidence[] (see observations.ts), computed straight from the source
@@ -576,6 +667,8 @@ a:hover{color:var(--teal-light);}
 .ev-facts{list-style:none;padding-left:14px;margin-top:2px;}
 .ev-facts li{font-size:13px;color:var(--ink-muted);padding:1px 0;border:none;}
 .ev-action{padding-left:14px;margin-top:4px;font-size:13px;}
+.ra-stat{padding-left:14px;font-size:13px;color:var(--ink-muted);margin-top:2px;}
+.ra-framing{padding-left:14px;font-size:13px;color:var(--ink-soft);margin-top:2px;}
 .action-card{background:var(--white);border:1.5px solid var(--teal-border);border-radius:8px;padding:18px 20px;}
 .action-label{font-size:12px;color:var(--ink-muted);margin-bottom:10px;}
 .action-button{display:inline-block;background:var(--teal);color:#fff;font-size:15px;font-weight:600;border:none;border-radius:6px;padding:12px 22px;cursor:pointer;font-family:inherit;}
@@ -615,6 +708,15 @@ a:hover{color:var(--teal-light);}
   <div class="intro">I've already reviewed everything that happened while you were away. Before we begin, here's what I think deserves your attention today.</div>
 
   ${win ? `<div class="win"><span class="label">Yesterday's Win</span>${escapeHtml(win)}</div>` : ''}
+
+  ${recentActivityListItems ? `
+  <div class="section">
+    <div class="section-title">📬 Recent Activity</div>
+    <ul class="evidence-list">${recentActivityListItems}</ul>
+  </div>
+
+  <hr class="divider">
+  ` : ''}
 
   <div class="section">
     <div class="section-title">🧠 Executive Briefing</div>
@@ -730,6 +832,7 @@ export async function generateDailyBriefing(): Promise<string> {
     generatedAt,
     executiveObservations: observationsResult.executiveObservations,
     candidatePatterns: listCandidatePatterns(),
+    recentActivity: observationsResult.recentActivity,
   });
   const dashboardDir = join(REPO_ROOT, 'dashboard');
   mkdirSync(dashboardDir, { recursive: true });

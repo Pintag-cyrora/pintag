@@ -68,6 +68,10 @@ export interface ObservationIntelligenceThresholds {
   confidenceHighMinOccurrences: number;
   /** Minimum days between the first and last occurrence for "high" confidence — a burst of same-day posts isn't the same evidence as a pattern proven over time. */
   confidenceHighMinSpanDays: number;
+  /** How long an observation counts as "recent" for the Executive Brief's Recent Activity section (M2.8 — Recent Activity vs. Pattern Detection). Presentation-layer only — never read by Observation Intelligence or any Observation Source. */
+  recentActivityWindowHours: number;
+  /** Below this age, Recent Activity reports "too early to judge" rather than attempting a baseline comparison off a near-zero sample. */
+  recentActivityMinAgeHoursForComparison: number;
 }
 
 const DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS: ObservationIntelligenceThresholds = {
@@ -76,6 +80,8 @@ const DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS: ObservationIntelligenceThresh
   confidenceMediumMinOccurrences: 2,
   confidenceHighMinOccurrences: 5,
   confidenceHighMinSpanDays: 14,
+  recentActivityWindowHours: 48,
+  recentActivityMinAgeHoursForComparison: 3,
 };
 
 /**
@@ -104,6 +110,12 @@ export function readObservationIntelligenceThresholds(): ObservationIntelligence
         typeof oi?.confidence_high_min_occurrences === 'number' ? oi.confidence_high_min_occurrences : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.confidenceHighMinOccurrences,
       confidenceHighMinSpanDays:
         typeof oi?.confidence_high_min_span_days === 'number' ? oi.confidence_high_min_span_days : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.confidenceHighMinSpanDays,
+      recentActivityWindowHours:
+        typeof oi?.recent_activity_window_hours === 'number' ? oi.recent_activity_window_hours : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.recentActivityWindowHours,
+      recentActivityMinAgeHoursForComparison:
+        typeof oi?.recent_activity_min_age_hours_for_comparison === 'number'
+          ? oi.recent_activity_min_age_hours_for_comparison
+          : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.recentActivityMinAgeHoursForComparison,
     };
   } catch {
     return DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS;
