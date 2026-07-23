@@ -96,6 +96,23 @@ var RENTAL_LAUNDRY_OPTIONS = [
   {value:'paid_service', label:{en:'Paid Service',  lo:'ບໍລິການເສຍຄ່າ',  zh:'付费服务'}},
   {value:'not_available',label:{en:'Not Available', lo:'ບໍ່ມີບໍລິການ',   zh:'不提供'}}
 ];
+var RENTAL_LEASE_LENGTH_OPTIONS = [
+  {value:'month_to_month', label:{en:'Month-to-Month', lo:'ເປັນລາຍເດືອນ',   zh:'按月租赁'}},
+  {value:'6_months',       label:{en:'6 Months',       lo:'6 ເດືອນ',        zh:'6个月'}},
+  {value:'12_months',      label:{en:'12 Months',      lo:'12 ເດືອນ',       zh:'12个月'}},
+  {value:'24_months',      label:{en:'24 Months',      lo:'24 ເດືອນ',       zh:'24个月'}},
+  {value:'negotiable',     label:{en:'Negotiable',     lo:'ສາມາດເຈລະຈາໄດ້', zh:'可协商'}}
+];
+var RENTAL_PET_POLICY_OPTIONS = [
+  {value:'allowed',      label:{en:'Pets Allowed',       lo:'ລ້ຽງສັດໄດ້',        zh:'允许宠物'}},
+  {value:'not_allowed',  label:{en:'No Pets',            lo:'ບໍ່ອະນຸຍາດລ້ຽງສັດ', zh:'不允许宠物'}},
+  {value:'case_by_case', label:{en:'Case-by-Case',       lo:'ພິຈາລະນາເປັນກໍລະນີ', zh:'具体情况具体讨论'}}
+];
+var RENTAL_PARKING_OPTIONS = [
+  {value:'included',    label:{en:'Included',           lo:'ລວມຢູ່ແລ້ວ',       zh:'包含'}},
+  {value:'extra_fee',   label:{en:'Available (Extra Fee)', lo:'ມີໃຫ້ (ເສຍຄ່າເພີ່ມ)', zh:'可提供(需额外付费)'}},
+  {value:'not_available', label:{en:'Not Available',    lo:'ບໍ່ມີ',            zh:'不提供'}}
+];
 
 // Included Services — a filtered, rental-specific registry, same shape as
 // AMENITIES ({key: {en,lo,zh,icon}}) but deliberately its own set: this is
@@ -146,7 +163,13 @@ var RENTAL_TERMS_FIELDS = [
   { key:'included_services', kind:'checkbox_ref', group:'services',
     label:{en:'Included Services', lo:'ບໍລິການທີ່ລວມຢູ່', zh:'包含的服务'}, registry:'RENTAL_SERVICES' },
   { key:'additional_fees', kind:'fee_list', group:'financial',
-    label:{en:'Additional Fees', lo:'ຄ່າທຳນຽມເພີ່ມເຕີມ', zh:'其他费用'} }
+    label:{en:'Additional Fees', lo:'ຄ່າທຳນຽມເພີ່ມເຕີມ', zh:'其他费用'} },
+  { key:'lease_length', kind:'select', group:'financial',
+    label:{en:'Lease Length', lo:'ໄລຍະເວລາເຊົ່າ', zh:'租期'}, options:RENTAL_LEASE_LENGTH_OPTIONS },
+  { key:'pet_policy', kind:'select', group:'services',
+    label:{en:'Pet Policy', lo:'ນະໂຍບາຍລ້ຽງສັດ', zh:'宠物政策'}, options:RENTAL_PET_POLICY_OPTIONS },
+  { key:'parking', kind:'select', group:'services',
+    label:{en:'Parking', lo:'ບ່ອນຈອດລົດ', zh:'停车位'}, options:RENTAL_PARKING_OPTIONS }
 ];
 
 // ---------------------------------------------------------------------------

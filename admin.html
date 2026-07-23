@@ -973,6 +973,33 @@ function filterRegistry(registry, keys) {
   return out;
 }
 
+// ── Per-unit Features/Amenities checkbox grids ───────────────────────────
+// Same .check-item/.check-dot/.check-label markup and CSS as the
+// building-level grids above (initCheckGrid/toggleCheck/getCheckedKeys),
+// but element-scoped rather than id-scoped -- a page can have many
+// .ut-card elements at once, each needing its own independent grid, so
+// these take the container element directly instead of looking it up by a
+// single global id.
+function _utInitCheckGrid(containerEl, registry) {
+  if (!containerEl) return;
+  containerEl.innerHTML = Object.entries(registry).map(([key, def]) =>
+    `<div class="check-item" data-key="${key}" onclick="toggleCheck(this)">
+      <div class="check-dot"></div>
+      <span class="check-label">${def.icon ? def.icon + ' ' : ''}${def.en}</span>
+    </div>`
+  ).join('');
+}
+function _utGetCheckedKeys(containerEl) {
+  if (!containerEl) return [];
+  return Array.from(containerEl.querySelectorAll('.check-item.checked')).map(el => el.dataset.key);
+}
+function _utSetChecked(containerEl, values) {
+  if (!containerEl || !Array.isArray(values)) return;
+  containerEl.querySelectorAll('.check-item').forEach(el => {
+    el.classList.toggle('checked', values.includes(el.dataset.key));
+  });
+}
+
 // Converts a field's {value, label:{en,...}} options into the
 // {key:{en,...}} registry shape initCheckGrid/getCheckedKeys/setChecked
 // already expect, so multi_checkbox fields (e.g. Best Use) reuse that
@@ -1254,6 +1281,14 @@ function addUnitType(data) {
   const descriptionEn = data ? (data.description_en || '') : '';
   const descriptionLo = data ? (data.description_lo || '') : '';
   const descriptionZh = data ? (data.description_zh || '') : '';
+  const furnished       = data ? (data.furnished || '') : '';
+  const floorNumber     = data && data.floor_number != null ? data.floor_number : '';
+  const orientation     = data ? (data.orientation || '') : '';
+  const floorPlanUrl    = data ? (data.floor_plan_url || '') : '';
+  const virtualTourUrl  = data ? (data.virtual_tour_url || '') : '';
+  const videoUrl        = data ? (data.video_url || '') : '';
+  const unitFeatures  = data && Array.isArray(data.features)  ? data.features  : [];
+  const unitAmenities = data && Array.isArray(data.amenities) ? data.amenities : [];
   const unitImages = data && Array.isArray(data.images) ? data.images : [];
   const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
   card.dataset.images = JSON.stringify(unitImages);
@@ -1334,6 +1369,45 @@ function addUnitType(data) {
         </div>
       </div>
       <div class="ut-grid">
+        <div class="ut-field">
+          <label>Furnishing <span style="color:var(--ink-muted);font-weight:400;">— blank inherits the building's value</span></label>
+          <select class="form-select ut-furnished">
+            ${FURNISHED_OPTIONS.map(o => `<option value="${o.value}" ${furnished===o.value?'selected':''}>${o.label.en}</option>`).join('')}
+          </select>
+        </div>
+        <div class="ut-field">
+          <label>Floor Number <span style="color:var(--ink-muted);font-weight:400;">— optional</span></label>
+          <input class="form-input ut-floor-number" type="number" placeholder="e.g. 3" value="${floorNumber}">
+        </div>
+        <div class="ut-field">
+          <label>Orientation <span style="color:var(--ink-muted);font-weight:400;">— optional</span></label>
+          <select class="form-select ut-orientation">
+            ${ORIENTATION_OPTIONS.map(o => `<option value="${o.value}" ${orientation===o.value?'selected':''}>${o.label.en}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field ut-field-full">
+          <label>Features &amp; Amenities <span style="color:var(--ink-muted);font-weight:400;">— this unit's own; leave blank to show only the building's</span></label>
+          <div class="check-grid ut-features-grid"></div>
+          <div class="check-grid ut-amenities-grid" style="margin-top:8px;"></div>
+        </div>
+      </div>
+      <div class="ut-grid">
+        <div class="ut-field">
+          <label>Floor Plan URL <span style="color:var(--ink-muted);font-weight:400;">— optional</span></label>
+          <input class="form-input ut-floor-plan-url" type="url" placeholder="https://..." value="${esc(floorPlanUrl)}">
+        </div>
+        <div class="ut-field">
+          <label>Virtual Tour URL <span style="color:var(--ink-muted);font-weight:400;">— optional</span></label>
+          <input class="form-input ut-virtual-tour-url" type="url" placeholder="https://..." value="${esc(virtualTourUrl)}">
+        </div>
+        <div class="ut-field">
+          <label>Video URL <span style="color:var(--ink-muted);font-weight:400;">— optional</span></label>
+          <input class="form-input ut-video-url" type="url" placeholder="https://..." value="${esc(videoUrl)}">
+        </div>
+      </div>
+      <div class="ut-grid">
         <div class="ut-field ut-avail-row">
           <label><input type="checkbox" class="ut-is-available" ${isAvailable ? 'checked' : ''} onchange="_utOnAvailableChange(this)"> Available</label>
         </div>
@@ -1370,6 +1444,10 @@ function addUnitType(data) {
   _utRenderUnitPhotoGrid(card);
   _utRenderRentalTermsBlock(card);
   _utUpdateAvailabilityBadge(card);
+  _utInitCheckGrid(card.querySelector('.ut-features-grid'), FEATURES);
+  _utInitCheckGrid(card.querySelector('.ut-amenities-grid'), AMENITIES);
+  _utSetChecked(card.querySelector('.ut-features-grid'), unitFeatures);
+  _utSetChecked(card.querySelector('.ut-amenities-grid'), unitAmenities);
 }
 
 // Independent per-unit gallery — a Studio and a 2-Bedroom Deluxe in the
@@ -1732,6 +1810,14 @@ function getUnitTypesFromDom() {
     description_en: card.querySelector('.ut-desc-en').value.trim() || null,
     description_lo: card.querySelector('.ut-desc-lo').value.trim() || null,
     description_zh: card.querySelector('.ut-desc-zh').value.trim() || null,
+    furnished:      card.querySelector('.ut-furnished').value || null,
+    floor_number:   card.querySelector('.ut-floor-number').value.trim() === '' ? null : Number(card.querySelector('.ut-floor-number').value),
+    orientation:    card.querySelector('.ut-orientation').value || null,
+    floor_plan_url:   card.querySelector('.ut-floor-plan-url').value.trim() || null,
+    virtual_tour_url: card.querySelector('.ut-virtual-tour-url').value.trim() || null,
+    video_url:        card.querySelector('.ut-video-url').value.trim() || null,
+    features:  (() => { const k = _utGetCheckedKeys(card.querySelector('.ut-features-grid'));  return k.length ? k : null; })(),
+    amenities: (() => { const k = _utGetCheckedKeys(card.querySelector('.ut-amenities-grid')); return k.length ? k : null; })(),
     images: (() => {
       const imgs = _utGetUnitImages(card);
       return imgs.length ? imgs : null;

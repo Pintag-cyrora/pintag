@@ -72,6 +72,19 @@ var FURNISHED_OPTIONS = [
   {value:'unfurnished', label:{en:'Unfurnished',          lo:'ບໍ່ມີເຄື່ອງເຟີນີເຈີ',    zh:'无家具'}}
 ];
 
+// Unit-type-only option list (no building-level equivalent field) — used by
+// resolveUnitType()'s `orientation` output and the admin Unit Type card.
+var ORIENTATION_OPTIONS = [
+  {value:'',          label:{en:'Not specified', lo:'ບໍ່ໄດ້ລະບຸ',     zh:'未指定'}},
+  {value:'north',     label:{en:'North-Facing',  lo:'ຫັນໜ້າໄປທິດເໜືອ', zh:'朝北'}},
+  {value:'south',     label:{en:'South-Facing',  lo:'ຫັນໜ້າໄປທິດໃຕ້',  zh:'朝南'}},
+  {value:'east',      label:{en:'East-Facing',   lo:'ຫັນໜ້າໄປທິດຕາເວັນອອກ', zh:'朝东'}},
+  {value:'west',      label:{en:'West-Facing',   lo:'ຫັນໜ້າໄປທິດຕາເວັນຕົກ', zh:'朝西'}},
+  {value:'river',     label:{en:'River-Facing',  lo:'ຫັນໜ້າໄປແມ່ນ້ຳ',  zh:'临江'}},
+  {value:'city',      label:{en:'City-Facing',   lo:'ຫັນໜ້າໄປໃນເມືອງ', zh:'朝市区'}},
+  {value:'courtyard', label:{en:'Courtyard-Facing', lo:'ຫັນໜ້າໄປສະໜາມພາຍໃນ', zh:'朝内院'}}
+];
+
 function _bedrooms(placeholder)  { return {id:'f-bedrooms',       column:'bedrooms',       kind:'number', label:{en:'Bedrooms',lo:'ຫ້ອງນອນ',zh:'卧室'},       min:0, placeholder:placeholder||'4'}; }
 function _bathrooms(placeholder) { return {id:'f-bathrooms',      column:'bathrooms',      kind:'number', label:{en:'Bathrooms',lo:'ຫ້ອງນ້ຳ',zh:'浴室'},      min:0, placeholder:placeholder||'4'}; }
 function _sqm(label, placeholder){ return {id:'f-sqm',            column:'sqm',            kind:'number', label:label,                                       min:0, placeholder:placeholder||'420'}; }
@@ -397,6 +410,16 @@ function getDetailFacts(typeKey, row, lang) {
 // A `properties` row is a multi-unit building purely by having 1+
 // `unit_types` rows -- no is_multi_unit flag anywhere in this schema. See
 // supabase/migrations/20260720000000_unit_types.sql.
+//
+// IMPORTANT: a unit_types row is a unit TYPE (a floor plan / product, e.g.
+// "Studio"), never one specific physical apartment. `total_units` already
+// models "this type has N physical units" without assuming N=1 (see
+// supabase/migrations/20260721010000_unit_availability.sql). Do not add a
+// field here that only makes sense for one physical unit (a room number, a
+// single lease, a single tenant) -- that belongs to the future Phase 3
+// `units` child table (Property -> Unit Type -> Individual Unit), which
+// FKs to unit_types.id without requiring any change to this resolver or
+// any of unit_types' existing columns.
 function isMultiUnitBuilding(unitTypes) {
   return Array.isArray(unitTypes) && unitTypes.length > 0;
 }
@@ -418,6 +441,13 @@ function isMultiUnitBuilding(unitTypes) {
 // `is_available`/`available_count`/`sort_order` are NOT NULL on unit_types
 // (every unit type always has its own value for these), so they're read
 // directly rather than through `pick()`.
+//
+// floor_plan_url/virtual_tour_url/video_url/floor_number/orientation are
+// unit-type-only concepts with no building-level column to inherit from
+// (properties has none of these) -- read directly from unitType, not via
+// pick(). `furnished` DOES have a building-level equivalent
+// (properties.furnished, same FURNISHED_OPTIONS vocabulary), so it goes
+// through pick() like every other genuinely-inheritable field.
 function resolveUnitType(property, unitType) {
   function pick(col) {
     var v = unitType[col];
@@ -439,6 +469,12 @@ function resolveUnitType(property, unitType) {
     features:  pick('features'),
     amenities: pick('amenities'),
     images: (Array.isArray(unitType.images) && unitType.images.length) ? unitType.images : (property.images || []),
+    furnished:      pick('furnished'),
+    floorPlanUrl:   unitType.floor_plan_url   || null,
+    virtualTourUrl: unitType.virtual_tour_url || null,
+    videoUrl:       unitType.video_url        || null,
+    floorNumber:    (unitType.floor_number !== null && unitType.floor_number !== undefined) ? unitType.floor_number : null,
+    orientation:    unitType.orientation || null,
     isAvailable:    unitType.is_available,
     availableCount: unitType.available_count,
     sortOrder:      unitType.sort_order
