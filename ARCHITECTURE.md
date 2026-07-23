@@ -63,6 +63,24 @@ multiple configurations) — see `resolveUnitType()`/`isMultiUnitBuilding()`
 in `terminology.js`, which is the sole inheritance resolver between a
 building's own fields and a specific unit type's overrides.
 
+**Property photos and unit photos are separate concepts, each with its
+own independent gallery.** `properties.images` is the Property Gallery —
+building exterior, lobby, shared amenities, never unit-specific.
+`unit_types.images` is that one unit's own gallery, uploaded and managed
+completely independently (its own uploader, its own storage-upload calls
+— see `uploadImageFileToStorage()` in `admin.html`, reused by both
+galleries so there is one upload implementation, not two). A unit with no
+photos of its own falls back to the Property Gallery for display
+(`resolveUnitType()`'s `images` field) rather than showing an empty
+gallery — this is the *only* place the two collections blend, and only at
+render time, never in storage. On the public listing page
+(`listing.html`), selecting a unit in the Available Units section
+(`selectUnitType()`) swaps the hero gallery/price/specs/availability/
+WhatsApp CTA to that unit's own resolved values, Booking.com-style room
+selection — implemented as a full re-render of the existing
+`buildMockupLayout()` (the same function used for every other render),
+not a second render path.
+
 ### Contact Domain
 **Platform Identity, Buyer Contact, and Authentication are three separate
 concepts.** This is the single most load-bearing rule in the schema and is

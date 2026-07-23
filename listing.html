@@ -132,8 +132,19 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .units-title{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;}
 .units-sub{font-size:12px;color:var(--ink-muted);}
 .units-grid{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
-.unit-card{border:1px solid var(--border-mid);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px;background:var(--white);transition:box-shadow 0.18s,border-color 0.18s;}
+.unit-card{border:1px solid var(--border-mid);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px;background:var(--white);transition:box-shadow 0.18s,border-color 0.18s;cursor:pointer;}
 .unit-card:hover{border-color:var(--border-strong);box-shadow:0 4px 16px rgba(26,36,40,0.06);}
+.unit-card:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+.unit-card-selected{border-color:var(--teal);box-shadow:0 4px 16px rgba(45,140,140,0.14);background:rgba(45,140,140,0.03);}
+/* "Viewing: {unit}" banner — replaces the generic building overview
+   in the hero once a unit is selected (see selectedUnit in
+   buildMockupLayout()). */
+.viewing-unit-banner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 -4px;padding:9px 12px;border-radius:8px;background:rgba(45,140,140,0.06);border:1px solid rgba(45,140,140,0.16);}
+.viewing-unit-label{font-size:12px;color:var(--ink-soft);}
+.viewing-unit-label strong{color:var(--ink);}
+.viewing-unit-status{font-size:10px;font-weight:600;letter-spacing:0.03em;padding:3px 8px;border-radius:999px;white-space:nowrap;line-height:1.5;}
+.viewing-unit-reset{margin-left:auto;background:none;border:none;padding:0;font-size:11.5px;font-weight:500;color:var(--teal);cursor:pointer;text-decoration:underline;font-family:"DM Sans",sans-serif;}
+.viewing-unit-reset:hover{color:var(--wa-hover);}
 .unit-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
 .unit-name{font-size:14.5px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;line-height:1.3;}
 .unit-status{font-size:10px;font-weight:600;letter-spacing:0.03em;padding:3px 8px;border-radius:999px;white-space:nowrap;line-height:1.5;}
@@ -1192,6 +1203,21 @@ function showErrorState(msg){
 // bypass resolvers." Units are ordered with compareUnitTypesForDisplay()
 // (Available Now → soonest-available → Currently Unavailable), the same
 // public ordering rule already established for this data.
+//
+// selectedUnitTypeId is the one piece of client-side "which unit is the
+// visitor currently viewing" state (Booking.com-style room selection).
+// selectUnitType() toggles it and re-runs the exact same buildMockupLayout()
+// used for every other render (language switch, initial load) — no second
+// render path, no fine-grained DOM patching. buildMockupLayout() reads
+// this to decide whether to show the building overview or a selected
+// unit's own gallery/price/specs/availability/WhatsApp CTA.
+var selectedUnitTypeId = null;
+function selectUnitType(id){
+  if(!id) return;
+  selectedUnitTypeId = (selectedUnitTypeId===id) ? null : id;
+  try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on unit select',e);}
+}
+
 function buildUnitPriceText(property, resolved, lang){
   var isSorUnit = property.transaction_type==='sale_or_rent';
   if(isSorUnit && (resolved.salePrice || resolved.rentPrice)){
@@ -1237,13 +1263,25 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
     if(cleanPhone){
       var waUnitMsg=encodeURIComponent(unitName ? (waMessageText+' — '+unitName) : waMessageText);
       var waUnitUrl='https://wa.me/'+cleanPhone+'?text='+waUnitMsg;
+      // stopPropagation: the card itself is also a click target (selects
+      // this unit, see below) — without this, clicking the CTA while the
+      // card is already selected would immediately deselect it again via
+      // the card's own onclick, right as the user tries to inquire.
       ctaHtml='<a href="'+esc(waUnitUrl)+'" target="_blank" rel="noopener noreferrer" class="unit-cta" '+
         'data-track="unit-inquire-whatsapp" data-track-type="cta" data-track-label="Inquire unit" data-track-meta=\'{"unit":'+JSON.stringify(unitName)+'}\' '+
-        'onclick="trackLead(\''+esc(property.id||'')+'\',\''+esc(property.managed_by_party_id||'')+'\',\'whatsapp_click\',\''+esc((property.contacts&&property.contacts.id)||'')+'\')">'+
+        'onclick="event.stopPropagation();trackLead(\''+esc(property.id||'')+'\',\''+esc(property.managed_by_party_id||'')+'\',\'whatsapp_click\',\''+esc((property.contacts&&property.contacts.id)||'')+'\')">'+
         esc(L.unitInquire[lang])+'</a>';
     }
 
-    return '<div class="unit-card">'+
+    var isSelected = u.id && u.id===selectedUnitTypeId;
+    var selectJs="selectUnitType('"+esc(u.id||'')+"')";
+    // The whole card is clickable (Booking.com-style room selection) —
+    // selecting swaps the hero gallery/price/specs/availability/WhatsApp
+    // CTA above to this unit's own values; see selectUnitType() and the
+    // `selectedUnit` block in buildMockupLayout(). role="button"+tabindex+
+    // onkeydown make this keyboard-operable, matching the accessibility
+    // bar already set for the shared component system.
+    return '<div class="unit-card'+(isSelected?' unit-card-selected':'')+'" onclick="'+selectJs+'" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+selectJs+';}" role="button" tabindex="0" aria-pressed="'+(isSelected?'true':'false')+'">'+
       '<div class="unit-card-head">'+
         '<span class="unit-name">'+esc(unitName)+'</span>'+
         '<span class="unit-status unit-status-'+esc(p.resolved.status)+'">'+esc(availText)+(unitCount?' · '+esc(String(unitCount)):'')+'</span>'+
@@ -1289,7 +1327,29 @@ function buildMockupLayout(){
 
   var isSale = data.transaction_type==='for_sale'||data.transaction_type==='sale';
   var isSor  = data.transaction_type==='sale_or_rent';
-  var imagesArray=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';});
+
+  // ── Selected Unit (Multi-Unit Buildings — Booking.com-style room
+  // selection) ────────────────────────────────────────────────────────
+  // The Property Gallery/price/specs above are the building-level
+  // overview by default. Picking a unit in the Available Units section
+  // (selectUnitType(), below) swaps the gallery/price/specs/availability/
+  // WhatsApp CTA in place to that unit's own resolved values — never a
+  // second page, never a second render path; this same buildMockupLayout()
+  // just reads from `selectedUnit` instead of `data` for the fields that
+  // differ per unit. A stale selectedUnitTypeId (e.g. the unit was removed
+  // since selection) silently falls back to the building overview rather
+  // than erroring.
+  var selectedUnit=null;
+  if(selectedUnitTypeId && Array.isArray(data.unit_types)){
+    var _rawSel=data.unit_types.find(function(u){return u.id===selectedUnitTypeId;});
+    if(_rawSel){
+      selectedUnit={raw:_rawSel,resolved:resolveUnitType(data,_rawSel),availability:resolveUnitAvailability(_rawSel)};
+    }else{
+      selectedUnitTypeId=null;
+    }
+  }
+
+  var imagesArray=(selectedUnit?selectedUnit.resolved.images:(Array.isArray(data.images)?data.images:[])).filter(function(u){return u&&typeof u==='string';});
 
   var statusBadgeHtml=getStatusBadgeHtml(data.status||'active',lang);
   var desktopGalleryMarkup=buildDesktopGallery(imagesArray);
@@ -1315,7 +1375,9 @@ function buildMockupLayout(){
     unitSize:{lo:'ຂະໜາດ',en:'Size',zh:'面积'},
     unitAvailability:{lo:'ສະຖານະ',en:'Availability',zh:'状态'},
     unitMoveIn:{lo:'ວັນທີເຂົ້າຢູ່',en:'Move-in',zh:'入住日期'},
-    unitInquire:{lo:'ສອບຖາມຫ້ອງນີ້',en:'Inquire about this unit',zh:'咨询此房型'}
+    unitInquire:{lo:'ສອບຖາມຫ້ອງນີ້',en:'Inquire about this unit',zh:'咨询此房型'},
+    viewingUnit:{lo:'ກຳລັງເບິ່ງ',en:'Viewing',zh:'正在查看'},
+    showOverview:{lo:'ເບິ່ງພາບລວມອາຄານ',en:'Show building overview',zh:'查看整栋概览'}
   };
 
   var I={
@@ -1359,6 +1421,36 @@ function buildMockupLayout(){
         return '<div class="pdetail-row"><span class="pdetail-icon">'+esc(f.icon)+'</span><span class="pdetail-lbl">'+esc(f.label)+'</span><span class="pdetail-val">'+esc(String(f.value))+'</span></div>';
       }).join('')+'</div>'
     : '';
+
+  // A selected unit overrides price/specs (and, further below, the
+  // gallery already swapped above and the WhatsApp CTA) with its own
+  // resolved values — "update the displayed price"/"update bedrooms,
+  // bathrooms, size... and availability" per the Booking.com-style room
+  // selection this section implements. pdetailHtml (secondary Property
+  // Details) intentionally stays building-level even with a unit
+  // selected — those are building facts (year built, parking, etc.), not
+  // unit-specific ones.
+  var viewingUnitBannerHtml='';
+  if(selectedUnit){
+    var selUnitName=selectedUnit.resolved.name[lang]||selectedUnit.resolved.name.en||'';
+    var selPriceText=buildUnitPriceText(data,selectedUnit.resolved,lang);
+    resolvedPriceHtml=selPriceText?'<p class="price-value">'+esc(selPriceText)+'</p>':'<p class="price-inquire">'+L.inquire[lang]+'</p>';
+    var selSpecs=[];
+    if(selectedUnit.resolved.bedrooms!=null) selSpecs.push({icon:'🛏️',val:selectedUnit.resolved.bedrooms,lbl:L.unitBeds[lang]});
+    if(selectedUnit.resolved.bathrooms!=null) selSpecs.push({icon:'🛁',val:selectedUnit.resolved.bathrooms,lbl:L.unitBaths[lang]});
+    if(selectedUnit.resolved.sqm!=null) selSpecs.push({icon:'📐',val:selectedUnit.resolved.sqm+' m²',lbl:L.unitSize[lang]});
+    specsHtml=selSpecs.map(function(f){
+      return '<div class="spec-item"><span class="spec-icon">'+esc(f.icon)+'</span><span class="spec-val">'+esc(String(f.val))+'</span><span class="spec-lbl">'+esc(String(f.lbl).toUpperCase())+'</span></div>';
+    }).join('');
+    var selAvailText=formatAvailabilityDisplay(selectedUnit.availability,lang);
+    viewingUnitBannerHtml=(
+      '<div class="viewing-unit-banner">'+
+      '<span class="viewing-unit-label">'+esc(L.viewingUnit[lang])+': <strong>'+esc(selUnitName)+'</strong></span>'+
+      '<span class="viewing-unit-status unit-status-'+esc(selectedUnit.availability.status)+'">'+esc(selAvailText)+'</span>'+
+      '<button type="button" class="viewing-unit-reset" onclick="selectUnitType(\''+esc(selectedUnitTypeId)+'\')">'+esc(L.showOverview[lang])+'</button>'+
+      '</div>'
+    );
+  }
 
   var typeBadgeText=isSor?(lang==='lo'?'ຊື້ / ເຊົ່າ':lang==='zh'?'售/租':' Sale or Rent'):isSale?(lang==='lo'?'ຂາຍ':lang==='zh'?'出售':'For Sale'):(lang==='lo'?'ໃຫ້ເຊົ່າ':lang==='zh'?'出租':'For Rent');
 
@@ -1417,6 +1509,15 @@ function buildMockupLayout(){
         LOCATION: waLocation,
         REFERENCE: data.id || ''
       });
+  // Selected unit flows into the MAIN contact CTAs too (not just each
+  // unit card's own inline CTA) — "update the WhatsApp CTA so the inquiry
+  // references the selected unit" applies to the primary contact band and
+  // the mobile sticky CTA bar as well, since both are visible regardless
+  // of which unit (if any) is currently selected.
+  if(selectedUnit){
+    var _selUnitNameForWa=selectedUnit.resolved.name[lang]||selectedUnit.resolved.name.en||'';
+    if(_selUnitNameForWa) waMessageText+=' — '+_selUnitNameForWa;
+  }
   var waMessage=encodeURIComponent(waMessageText);
   var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
   var CONTACT_ROLE_LABELS={
@@ -1757,6 +1858,7 @@ function buildMockupLayout(){
     statusBadgeHtml+
     '</div>'+
     '<div id="sp-badges" class="sp-badges-row"></div>'+
+    viewingUnitBannerHtml+
     '<div class="price-block">'+resolvedPriceHtml+'</div>'+
     '<div class="sp-metrics-row"><span class="sp-metric" id="sp-views" style="display:none;"></span><span class="sp-metric" id="sp-inquiries" style="display:none;"></span></div>'+
     (specsHtml?'<div class="spec-grid">'+specsHtml+'</div>':'')+
@@ -1789,7 +1891,7 @@ function buildMockupLayout(){
   // Mobile CTA bar
   var mCtaBar=document.getElementById('mobile-cta-bar');
   if(mCtaBar){
-    var mPriceDisplay=isSor?(data.sale_price||data.rent_price||data.price_display):data.price_display;
+    var mPriceDisplay=selectedUnit?buildUnitPriceText(data,selectedUnit.resolved,lang):(isSor?(data.sale_price||data.rent_price||data.price_display):data.price_display);
     var mPriceHtml=mPriceDisplay?'<span class="mcta-price-value">'+esc(mPriceDisplay)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
