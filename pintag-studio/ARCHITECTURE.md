@@ -37,15 +37,17 @@ This isn't a new constraint on top of the frozen v2.1 architecture — §12 ("Fu
 - Departments (`departments/`, `DEPARTMENT.md`)
 - AI Employees (`.claude/agents/*.md`, `pipeline/lib/agent.ts`)
 - Pipeline (`pipeline/stages/`, `pipeline/services/`, `pipeline/lib/` — including `llm.ts`'s `LlmProvider` abstraction, defaulting to the Claude Code CLI)
-- Morning Brief (`pipeline/services/morning/`, `pipeline/renderers/`, `pipeline/daily-briefing.ts`)
+- Morning Brief (`pipeline/services/morning/`, `pipeline/renderers/`, `pipeline/daily-briefing.ts`) — **generation** specifically: always local, always the Claude Code CLI. See the generation/publication distinction below.
 - Founder UI (`founder-server.ts`, `dashboard/index.html`) — a founder's own local, browser-based interface is still core; "has a browser UI" isn't the same test as "needs the cloud." What makes something an adapter is being for unattended, remote, or multi-user access — not having a UI at all.
 
+**Generation vs. publication (the Morning Brief's own version of this line):** `generateMorningBrief()` — Core, local, Claude Code CLI, the only runtime — never changes based on where the result will be read. *Publication* is a separate, later step that only synchronizes an already-generated brief; it never generates anything itself. `daily-briefing.ts` does both, in that order: generate once, locally, then publish to every target (local files, and optionally Supabase) — see it and `pipeline/services/morning/publish.ts` for the exact split. This is what keeps "read it on my phone" from ever becoming "run it in the cloud."
+
 **Optional deployment adapters** — separately triggered, not required for the core to work, adopted only when an actual need shows up:
-- GitHub Actions (`.github/workflows/*.yml` — both the repo-root Morning Brief workflow and the five pre-existing, currently-dormant `pintag-studio/.github/workflows/*.yml` files, none of which are required for daily local use)
-- Supabase publishing for external reachability (`supabase/migrations/0005_morning_brief_publish.sql`, `pipeline/services/morning/publish.ts`, `pipeline/publish-morning-brief.ts` — distinct from the control-plane Supabase usage under Core, which the founder's own local tools already depend on)
-- Browser publishing independent of the founder's machine (`marketing-os.html`)
+- GitHub Actions (`.github/workflows/*.yml` — the five pre-existing, currently-dormant `pintag-studio/.github/workflows/*.yml` files; the Morning Brief has none of its own — generation never runs there, see above)
+- Supabase publishing for phone/browser reachability (`supabase/migrations/0005_morning_brief_publish.sql`, `pipeline/services/morning/publish.ts` — a plain write called from `daily-briefing.ts` after each local generation, not a separate CI job; distinct from the control-plane Supabase usage under Core, which the founder's own local tools already depend on)
+- Browser publishing independent of the founder's machine (`marketing-os.html` — a read-only client for the already-published brief, not a second place Marketing OS runs)
 - Authentication for that kind of remote access (the separate Supabase Auth login `marketing-os.html` uses — distinct from `dashboard/index.html`'s founder login, which is core)
-- Cloud scheduling / unattended execution (the `anthropic-api` `LlmProvider`, GitHub Actions cron triggers) — the Claude Code CLI path remains primary; API-based providers are a fallback for when unattended execution is actually needed, not the default
+- API-based `LlmProvider`s (`anthropic-api` in `pipeline/lib/llm.ts`) — kept available for whenever unattended/cloud execution is actually needed later; the Claude Code CLI path remains primary and is what generation actually uses today
 
 ---
 

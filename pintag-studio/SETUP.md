@@ -68,16 +68,19 @@ Read-only — no posting. Lets the Daily Briefing report what actually happened 
 
 Not needed until you want real TikTok data in the Daily Briefing — everything else in this repo works without it (`collectObservations()` degrades gracefully and says so honestly if TikTok isn't connected).
 
-## 9. Marketing OS Morning Brief (embedded in pintag.io, founder auth)
+## 9. Marketing OS Morning Brief on your phone (read-only, no cloud generation)
 
-Lets the Morning Brief show up as a real page on the live site (`marketing-os.html`, repo root) instead of only being reachable via `founder-server.ts` on your own machine. Deliberately uses a **separate Supabase Auth login from `admin.html`'s** — same project as everything else in this file (pintag-studio's), not the main site's — so this stays fully self-contained and movable to a future `marketingos.ai` deployment without a data migration, just a hosting change.
+Lets you read the latest Morning Brief from your phone (`marketing-os.html`, repo root, on the live site) without your machine needing to be on. Generation stays exactly as it already is — local, on the Claude Code CLI, via `npm run daily-briefing` (or the "Generate Today's Briefing" button in `founder-server.ts`) — nothing runs in the cloud. `marketing-os.html` is a **read-only client**: it doesn't run Marketing OS, it just displays whatever `daily-briefing.ts` last published. See `ARCHITECTURE.md` §0 for the generation-vs-publication distinction this rests on.
+
+Deliberately uses a **separate Supabase Auth login from `admin.html`'s** — same project as everything else in this file (pintag-studio's), not the main site's — so this stays fully self-contained and movable to a future `marketingos.ai` deployment without a data migration, just a hosting change.
 
 1. Run migration `0005_morning_brief_publish.sql` if you haven't already (step 1 above, same project).
 2. Create one real Supabase Auth user in the pintag-studio project for this page (Supabase Dashboard → Authentication → Users → Add user). Any email/password works; `marketing-os.html`'s `FOUNDER_EMAIL` constant defaults to `admin@pintag.io` to match `admin.html`'s convention — change it there if you use a different address.
 3. Open `marketing-os.html` and replace `SUPABASE_URL`/`SUPABASE_ANON` (currently placeholders, same convention as `dashboard/index.html`) with pintag-studio's real project URL and anon key (Supabase Dashboard → Project Settings → API).
-4. Set these as GitHub Actions secrets (repo settings → Secrets and variables → Actions), if not already set from step 1/2 above: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`.
-5. Run `.github/workflows/marketing-os-morning-brief.yml` once manually (Actions tab → this workflow → Run workflow) to publish the first Morning Brief. Once you're happy with it, uncomment the `schedule:` block in that file for a daily automatic run.
-6. Visit `marketing-os.html` on the live site and sign in with the account from step 2.
+4. Run `npm run daily-briefing` once (same command as always — this now also syncs to Supabase as its last step, logging a warning rather than failing if that sync doesn't succeed).
+5. Visit `marketing-os.html` on the live site and sign in with the account from step 2.
+
+No GitHub Actions secrets, no workflow to run, no `ANTHROPIC_API_KEY` — there's nothing running in CI for this feature.
 
 Optional, unrelated nicety while you're in there: step 2's new user also works to finally wire up `dashboard/index.html`'s Auth client (its `SUPABASE_URL`/`SUPABASE_ANON` are the same still-unfilled placeholders as `marketing-os.html`'s were) — not required for this feature, just a loose end you're already touching.
 

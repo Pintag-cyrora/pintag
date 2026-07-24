@@ -1,8 +1,9 @@
--- Morning Brief publish target (M2.10 — embedding the Morning Brief inside
--- the existing pintag.io deployment). One row per org, upserted by the
--- morning:publish CLI (pipeline/publish-morning-brief.ts, run from
--- .github/workflows/marketing-os-morning-brief.yml) via the service-role
--- connection.
+-- Morning Brief publish target (M2.10 — reading the Morning Brief on a
+-- phone, read-only, without a second cloud runtime; see ARCHITECTURE.md
+-- §0's generation-vs-publication distinction). One row per org, upserted
+-- by pipeline/daily-briefing.ts (via publishMorningBriefToSupabase(),
+-- pipeline/services/morning/publish.ts) immediately after each local,
+-- Claude-Code-CLI generation — never from CI, there is none for this.
 --
 -- `brief` (jsonb) is the permanent, canonical artifact — the same
 -- MorningBrief shape generateMorningBrief() has always produced

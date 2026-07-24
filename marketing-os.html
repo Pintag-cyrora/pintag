@@ -67,7 +67,7 @@ async function fetchAndShowBrief() {
 
   if (error || !data) {
     document.getElementById('loading-screen').textContent =
-      'No Morning Brief has been published yet — the daily GitHub Actions run (or a manual workflow_dispatch) publishes the first one.';
+      'No Morning Brief has been published yet — run `npm run daily-briefing` locally to generate and publish the first one.';
     return;
   }
 
