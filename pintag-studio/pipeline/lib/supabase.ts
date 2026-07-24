@@ -29,7 +29,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error(
-    'Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY. See pintag-studio/SETUP.md for how to provision the project and set these as GitHub Actions secrets.'
+    'Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY. For local use: copy pintag-studio/.env.example to pintag-studio/.env.local and fill in real values (this file is auto-loaded, see loadEnvFile() above) — see SETUP.md §1. There is no CI for this pipeline; these only need to exist in your local environment.'
   );
 }
 
