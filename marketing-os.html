@@ -58,6 +58,22 @@ const FOUNDER_EMAIL = 'admin@pintag.io';
 
 const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
+function showStatus(text) {
+  const el = document.getElementById('loading-screen');
+  el.textContent = text;
+  el.style.display = 'flex';
+}
+
+/** Shows the login screen, clearing any stale local session first so the next sign-in attempt starts clean rather than silently reusing a token that just failed. */
+async function showLogin(message) {
+  await sbClient.auth.signOut().catch(() => {});
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  const err = document.getElementById('login-error');
+  err.textContent = message || 'Sign-in failed — check your password.';
+  err.style.display = message ? 'block' : 'none';
+}
+
 async function fetchAndShowBrief() {
   const { data, error } = await sbClient
     .from('morning_briefs')
@@ -65,9 +81,19 @@ async function fetchAndShowBrief() {
     .eq('org_id', 'pintag')
     .single();
 
-  if (error || !data) {
-    document.getElementById('loading-screen').textContent =
-      'No Morning Brief has been published yet — run `npm run daily-briefing` locally to generate and publish the first one.';
+  if (error) {
+    // A failed query could mean the session expired/was revoked, or that
+    // there's genuinely nothing published yet — those need different
+    // messages. getUser() asks the server to verify the token rather than
+    // trusting whatever's cached locally, so it's the reliable way to tell
+    // them apart (a merely-stale-looking local session can still be valid;
+    // getSession() alone can't be trusted to say so).
+    const { data: userData } = await sbClient.auth.getUser();
+    if (!userData?.user) {
+      await showLogin('Your session expired — please sign in again.');
+      return;
+    }
+    showStatus('No Morning Brief has been published yet — run `npm run daily-briefing` locally to generate and publish the first one.');
     return;
   }
 
@@ -91,17 +117,24 @@ async function login() {
   btn.disabled = false;
   btn.textContent = 'Sign In';
   if (error) {
+    document.getElementById('login-error').textContent = 'Sign-in failed — check your password.';
     document.getElementById('login-error').style.display = 'block';
     return;
   }
+  document.getElementById('login-screen').style.display = 'none';
+  showStatus('Loading…');
   await fetchAndShowBrief();
 }
 
-sbClient.auth.getSession().then(({ data: { session } }) => {
-  document.getElementById('loading-screen').style.display = 'none';
-  if (session) {
+// getUser() (not getSession()) on initial load for the same reason as
+// above — it verifies with the server instead of trusting a possibly
+// stale local copy, so an expired session reliably lands on the login
+// screen rather than a confusing half-loaded state.
+sbClient.auth.getUser().then(({ data: { user } }) => {
+  if (user) {
     fetchAndShowBrief();
   } else {
+    document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('login-screen').style.display = 'flex';
   }
 });
