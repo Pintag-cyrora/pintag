@@ -19,6 +19,21 @@ export type AgentName =
 
 export type HealthStatus = 'healthy' | 'degraded' | 'down' | 'idle';
 
+/** Founder-facing label per agent role — the server-side copy of the same constant dashboard/index.html already hardcodes client-side (no bundler/shared-module path between browser and Node exists in this repo, so the values are kept identical by convention, same as this file's other duplicated-by-necessity constants elsewhere in the codebase). Used by services/morning/kpis.ts's Department Updates section. */
+export const AGENT_LABELS: Record<AgentName, string> = {
+  cmo: 'CMO',
+  content_strategist: 'Content Strategist',
+  researcher: 'Researcher',
+  writer: 'Writer',
+  graphic_designer: 'Designer',
+  video_producer: 'Video Producer',
+  brand_guardian: 'Brand Guardian',
+  trend_hunter: 'Trend Hunter',
+  competitor_watch: 'Competitor Watch',
+  publisher: 'Publisher',
+  marketing_analyst: 'Analyst',
+};
+
 export async function reportHealth(agentName: AgentName, status: HealthStatus, message?: string): Promise<void> {
   const now = new Date().toISOString();
   const payload: Record<string, unknown> = {

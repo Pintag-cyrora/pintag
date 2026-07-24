@@ -16,14 +16,19 @@
 // boundary as running a CLI command locally, not a hosted multi-user
 // surface (unlike dashboard/index.html, which needs Supabase Auth because
 // it's meant to be bookmarked/hosted). Plain HTML forms + redirects, no
-// client-side JavaScript at all.
+// client-side JavaScript at all — except GET /morning, which is a
+// deliberate, scoped exception: its page includes a small inline poll
+// script (see renderers/web/render.ts) so a founder reading a cached brief
+// can be told a newer one finished generating in the background, without
+// auto-reloading out from under them. Every other route stays JS-free.
 //
-// Run: npm run founder-ui  (defaults to http://127.0.0.1:4321)
+// Run: npm run founder-ui  (defaults to http://127.0.0.1:4321; set PORT to
+// change it, e.g. PORT=3000 npm run founder-ui)
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT } from './lib/config.js';
+import { REPO_ROOT, readMorningBriefConfig } from './lib/config.js';
 import { generateDailyBriefing, readFounderName, SUGGESTION_KIND_LABELS } from './daily-briefing.js';
 import { readTodaysRecommendation, buildFounderTeachingSuggestionInput } from './teach.js';
 import { listPendingSuggestions, approveSuggestion, rejectSuggestion, proposeSuggestion, type KnowledgeSuggestion } from './lib/suggestions.js';
@@ -31,8 +36,24 @@ import { loadAllKnowledgeEntries, reviewKnowledgeEntry, isWritableEntry, type Kn
 import { gatherAllObservations } from './lib/observations.js';
 import { classifyObservation, computeConfidence, type RoutingOutcome } from './lib/observation-intelligence.js';
 import { listCandidatePatterns, approvePattern, ignorePattern, keepObservingPattern, type CandidatePattern } from './lib/patterns.js';
+import { generateMorningBrief } from './services/morning/generate.js';
+import { readLatestMorningBrief, writeMorningBrief, isMorningBriefStale } from './services/morning/persist.js';
+import { renderMorningPage } from './renderers/web/render.js';
+import { createCachedPage } from './lib/cached-page.js';
+import type { MorningBrief } from './services/morning/types.js';
 
 const PORT = Number(process.env.PORT ?? 4321);
+
+// GET /morning's hybrid cache — fast reads from daily-briefing/latest.json,
+// background regeneration when stale. See lib/cached-page.ts; this is the
+// reusable primitive future pages (/research, /content, ...) should wire
+// through the same way rather than re-deriving staleness/in-flight logic.
+const morningCache = createCachedPage<MorningBrief>({
+  read: readLatestMorningBrief,
+  write: writeMorningBrief,
+  generate: generateMorningBrief,
+  isStale: (brief) => isMorningBriefStale(brief, readMorningBriefConfig().stalenessThresholdMinutes),
+});
 
 // ---------------------------------------------------------------------------
 // Shared page shell — same color tokens as dashboard/morning.html /
@@ -106,6 +127,11 @@ function sendHtml(res: ServerResponse, status: number, html: string): void {
   res.end(html);
 }
 
+function sendJson(res: ServerResponse, status: number, data: unknown): void {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(data));
+}
+
 function redirect(res: ServerResponse, location: string): void {
   res.writeHead(303, { Location: location });
   res.end();
@@ -144,8 +170,8 @@ function renderHome(): string {
       </div>
     </form>
 
-    <a class="nav-link" href="/dashboard/morning.html">
-      <div class="card"><h2>🧭 Open CEO Workspace</h2><p>The morning screen — Executive Briefing, Needs Your Attention, Recommended Action.</p></div>
+    <a class="nav-link" href="/morning">
+      <div class="card"><h2>🧭 Open the Morning Brief</h2><p>The primary daily screen — Executive Summary, Market Intelligence, Company Health, Recommended Action, and more.</p></div>
     </a>
 
     <a class="nav-link" href="/teach">
@@ -382,6 +408,29 @@ function serveDashboardFile(res: ServerResponse, filename: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Morning Brief (M2.9) — the primary founder-facing interface, replacing
+// dashboard/morning.html as the default destination. Instant reads from
+// the cached MorningBrief (daily-briefing/latest.json), with a background
+// regeneration when stale — see morningCache (lib/cached-page.ts) above.
+// ---------------------------------------------------------------------------
+
+async function handleMorning(res: ServerResponse): Promise<void> {
+  const cached = readLatestMorningBrief();
+  if (!cached) {
+    // Cold start: nothing generated yet — block once, this request only.
+    const brief = await morningCache.ensureFresh();
+    sendHtml(res, 200, renderMorningPage(brief));
+    return;
+  }
+  morningCache.refreshInBackgroundIfStale(cached);
+  sendHtml(res, 200, renderMorningPage(cached, { regenerating: morningCache.status().regenerating }));
+}
+
+function handleMorningStatus(res: ServerResponse): void {
+  sendJson(res, 200, morningCache.status());
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -393,6 +442,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   try {
     if (req.method === 'GET' && pathname === '/') {
       sendHtml(res, 200, renderHome());
+    } else if (req.method === 'GET' && pathname === '/morning') {
+      await handleMorning(res);
+    } else if (req.method === 'GET' && pathname === '/api/morning/status') {
+      handleMorningStatus(res);
     } else if (req.method === 'GET' && pathname.startsWith('/dashboard/')) {
       serveDashboardFile(res, pathname.slice('/dashboard/'.length));
     } else if (req.method === 'GET' && pathname === '/teach') {
@@ -450,7 +503,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       sendHtml(res, 200, await renderObservations());
     } else if (req.method === 'POST' && pathname === '/api/generate-briefing') {
       await generateDailyBriefing();
-      redirect(res, '/dashboard/morning.html');
+      redirect(res, '/morning');
     } else {
       sendHtml(res, 404, pageShell('Not found', '<p>Not found.</p><a class="back" href="/">← Home</a>'));
     }

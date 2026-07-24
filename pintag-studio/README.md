@@ -23,6 +23,6 @@ This is **not** a Pintag customer-facing feature. It's an internal tool used onl
 | `knowledge/` | The Knowledge Layer — lifecycle-managed (draft/verified/deprecated), retrievable, agent-writable knowledge (language, culture, psychology, marketing, industries, brands). See `knowledge/README.md`. |
 | `content-vault/` | Every piece of content ever produced — permanent, nothing deleted |
 | `.claude/agents/` | The 11 AI "employees," each a subagent definition doubling as its own job description |
-| `pipeline/` | The orchestration engine wiring the employees together |
-| `dashboard/` | The founder's daily homepage — the only interface meant for human use |
+| `pipeline/` | The orchestration engine wiring the employees together. `pipeline/services/<page>/` (e.g. `morning/`) holds a page's shared data-gathering + business logic; `pipeline/renderers/{web,terminal}/` holds pure, presentation-only functions over that page's structured output — see `pipeline/services/morning/` for the reference implementation (M2.9). |
+| `dashboard/` | Legacy static founder pages (`index.html`, `intelligence.html`) and the still-generated `morning.html`. The primary daily interface is now `GET /morning` (`npm run founder-ui`), not a file in this folder — see `SETUP.md`. |
 | `supabase/` | The control-plane database schema |

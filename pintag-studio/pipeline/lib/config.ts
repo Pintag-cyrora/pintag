@@ -122,6 +122,48 @@ export function readObservationIntelligenceThresholds(): ObservationIntelligence
   }
 }
 
+/** Reads brain/org-config.json's founder name — used by every founder-facing greeting (Founder Workspace routes, the Morning Brief). Falls back to a generic greeting on any read error rather than crashing a page over a config typo. */
+export function readFounderName(): string {
+  try {
+    const config = JSON.parse(readFileSync(ORG_CONFIG_PATH, 'utf-8'));
+    return config.org?.founder ?? 'there';
+  } catch {
+    return 'there';
+  }
+}
+
+/** Reads today's single active company (org.name) from org-config.json. Not a switcher — no second company exists yet; structured so a second org.name later is a data change, not a redesign. */
+export function readActiveCompanyName(): string {
+  try {
+    const config = JSON.parse(readFileSync(ORG_CONFIG_PATH, 'utf-8'));
+    return config.org?.name ?? 'Unknown';
+  } catch {
+    return 'Unknown';
+  }
+}
+
+export interface MorningBriefConfig {
+  /** How long a generated Morning Brief stays "fresh" before GET /morning triggers a background regeneration. */
+  stalenessThresholdMinutes: number;
+}
+
+const DEFAULT_MORNING_BRIEF_CONFIG: MorningBriefConfig = {
+  stalenessThresholdMinutes: 60,
+};
+
+/** Same read-once/fall-back-to-defaults discipline as readObservationIntelligenceThresholds() above. */
+export function readMorningBriefConfig(): MorningBriefConfig {
+  try {
+    const config = JSON.parse(readFileSync(ORG_CONFIG_PATH, 'utf-8'));
+    const mb = config.morning_brief;
+    return {
+      stalenessThresholdMinutes: typeof mb?.staleness_threshold_minutes === 'number' ? mb.staleness_threshold_minutes : DEFAULT_MORNING_BRIEF_CONFIG.stalenessThresholdMinutes,
+    };
+  } catch {
+    return DEFAULT_MORNING_BRIEF_CONFIG;
+  }
+}
+
 /**
  * Given the runtime config and a content item, decides whether Publisher
  * should auto-publish or hold for founder approval. Kept as one small pure

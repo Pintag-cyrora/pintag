@@ -77,7 +77,13 @@ Once step 1 (Supabase) is done, this is the everyday way to open Marketing OS �
 
 If macOS says it can't verify the developer the first time you double-click it, right-click the file and choose "Open" once instead — after that it opens normally.
 
-`PORT` defaults to 4321 if you ever need a different one (`PORT=5000` before the command, same as any other env var here).
+`PORT` defaults to 4321 if you ever need a different one (`PORT=5000` before the command, same as any other env var here; e.g. `PORT=3000 npm run founder-ui` if you're running the server directly rather than via the `.command` launcher).
+
+**The Morning Brief (M2.9)** — `GET /morning` is the primary daily screen (Executive Summary, Market Intelligence, Company Health, Department Updates, Recommended Action, Today's Priorities, Risks, Opportunities), replacing `dashboard/morning.html` as the default destination from the Founder Workspace home page. It renders instantly from the last-generated briefing and regenerates in the background when stale (see `morning_brief` in `brain/org-config.json`) — never a blank page waiting on an LLM call. `npm run daily-briefing` (the terminal path) still works unchanged for development, and still writes `dashboard/morning.html` for backward compatibility.
+
+**Restarting after a `git pull`:** this is a plain long-running Node process with no hot-reload — if `Start Marketing OS.command` finds a server already responding, it just reopens your browser to it rather than restarting it. After pulling code changes, fully quit the running server (close its window / `Ctrl+C`) before relaunching, or it'll keep serving the old code.
+
+**Production deploy** (`https://marketingos.ai` or similar) is intentionally not set up yet — this stays a stateful Node process (not a static site), so it will eventually need a persistent-process host (e.g. Fly.io, Render, or a VPS you manage) plus DNS/TLS for a real domain. Nothing here blocks that later; it just isn't built in this pass.
 
 ## Running M1 locally (no cloud project needed yet)
 
