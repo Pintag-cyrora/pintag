@@ -970,6 +970,10 @@ async function fetchProperty(slug){
     PT.log('Loaded',{id:propertyContext.id,title:propertyContext.title_en});
     var _deepLinkUnitId=resolveDeepLinkUnitId(propertyContext);
     if(_deepLinkUnitId) selectedUnitTypeId=_deepLinkUnitId;
+    // Normalizes a raw-id ?unit= param (or a not-yet-canonical slug) to
+    // the canonical slugified form, and drops an invalid/stale ?unit=
+    // rather than leaving a broken param sitting in the address bar.
+    _syncUnitUrlParam();
     try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout',e);showErrorState('Display error. Please refresh.');return;}
     updateOGTags(propertyContext);
     if(propertyContext.id){
@@ -1233,7 +1237,28 @@ var selectedUnitTypeId = null;
 function selectUnitType(id){
   if(!id) return;
   selectedUnitTypeId = (selectedUnitTypeId===id) ? null : id;
+  _syncUnitUrlParam();
   try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on unit select',e);}
+}
+
+// Keeps the address bar's ?unit= param in sync with the current selection
+// (replaceState, not pushState -- toggling a unit shouldn't pollute the
+// back-button history with every click) so the URL on screen always
+// matches what's rendered, and copying/sharing it (handleShare() just
+// reads window.location.href) reproduces the exact same selection when
+// reopened -- resolveDeepLinkUnitId() is what reads this same param back
+// on load. Uses the same slugified-name convention as that function.
+function _syncUnitUrlParam(){
+  try{
+    var url=new URL(window.location.href);
+    var slug=null;
+    if(selectedUnitTypeId && propertyContext && Array.isArray(propertyContext.unit_types)){
+      var sel=propertyContext.unit_types.find(function(u){return u.id===selectedUnitTypeId;});
+      slug=sel?_slugifyUnitName(sel.name_en):null;
+    }
+    if(slug) url.searchParams.set('unit',slug); else url.searchParams.delete('unit');
+    window.history.replaceState(null,'',url.toString());
+  }catch(e){PT.warn('URL sync failed',e);}
 }
 
 // _currentGalleryImages tracks whichever image array is currently shown in
