@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 // Server-side client for headless pipeline runs (GitHub Actions / `claude -p`
 // invocations). Uses the service role key and therefore bypasses RLS by
@@ -17,8 +19,20 @@ import { createClient } from '@supabase/supabase-js';
 // everywhere a real environment already provides these — GitHub Actions,
 // or a shell that already exported them — same credentials, same behavior,
 // just also readable from a local file when nothing else set them.
+//
+// Anchored to this file's own location (same pattern as config.ts's
+// REPO_ROOT), not process.cwd() — a bare relative path here resolves
+// against whatever directory the command happened to be run from, which
+// silently fails (caught below) the moment that isn't pintag-studio/
+// itself, e.g. `tsx pipeline/daily-briefing.ts` invoked from the repo
+// root. Computed independently here rather than importing REPO_ROOT from
+// config.ts, which already imports this file for loadRuntimeConfig() —
+// that would be a real circular import, not just a type-only one.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ENV_LOCAL_PATH = join(__dirname, '..', '..', '.env.local');
+
 try {
-  process.loadEnvFile('.env.local');
+  process.loadEnvFile(ENV_LOCAL_PATH);
 } catch {
   // No .env.local file — expected in CI and anywhere else the environment
   // is already configured directly.
