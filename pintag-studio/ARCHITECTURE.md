@@ -1,4 +1,4 @@
-# Pintag Marketing AI — Architecture & Roadmap (v2.4, approved)
+# Pintag Marketing AI — Architecture & Roadmap (v2.5, approved)
 
 *This is the canonical, version-controlled copy of the approved architecture. Read this before touching anything else in this directory — it explains why the folders below are shaped the way they are.*
 
@@ -19,6 +19,33 @@ The founder (Keomany) wants an internal, Claude-Code-driven "AI marketing depart
 **v2.3** adds a second explicitly-justified extension: a three-layer model (§5B) — naming and mapping today's system onto Intelligence Layer / Business Memory / Integrations, so no future department couples them.
 
 **v2.4** refines v2.3 after further founder clarification, without changing its underlying finding: "Business Memory" is renamed **Organizational Memory** (same concept, clearer name), and a third, previously-implicit memory layer is named explicitly — **Operational Memory** (temporary, per-workflow execution state). `MEMORY_MODEL.md` is now the canonical definition; §5B maps the current system onto it. Everything else in this document is unchanged and still frozen on the same terms as v2.1.
+
+**v2.5** adds a guiding principle rather than a new component: **Business-First Architecture** (§0). It doesn't change anything below it — §12's "Future Expansion" framing already pointed this direction — it names the principle explicitly and gives it a Core-vs-Deployment-Adapter classification, after a real instance (cloud-publishing the Morning Brief to the main site, independent of the founder's own machine) got built ahead of when it was actually needed. §0 is why that got pulled back to an optional adapter rather than core, and is the test every future feature should be run through before adding cloud infrastructure, automation, or multi-user capability.
+
+---
+
+## 0. Guiding Principle: Business-First Architecture *(v2.5)*
+
+**Marketing OS is not being built as a SaaS product first. It exists to operate our own businesses first.** Its first responsibility is to become the marketing department for Pintag and our other companies. If it eventually becomes a product, that will happen because it already proved itself internally — not the other way around.
+
+**The test for every feature going forward:** does this improve how Marketing OS runs Pintag's (or another of our companies') actual operations *today*? If yes, it's core. If the honest answer is "it would matter once we have external users / need it to run unattended / need to scale beyond one founder," it's a **deployment adapter** — real, possibly valuable, but optional and deferred until that need is actually here. Don't build infrastructure because it might be needed one day; build it when it's the thing actually in the way.
+
+This isn't a new constraint on top of the frozen v2.1 architecture — §12 ("Future Expansion") already deferred multi-tenancy, a second consuming app, and an API surface over the Knowledge Layer to explicit future triggers. §0 generalizes that same instinct into a standing classification, and applies it retroactively to one place it had slipped (below).
+
+**Core Marketing OS** — the operating system itself, works fully with just a founder and a laptop:
+- Knowledge Layer (`knowledge/`, `brain/lao/`, §5A)
+- Departments (`departments/`, `DEPARTMENT.md`)
+- AI Employees (`.claude/agents/*.md`, `pipeline/lib/agent.ts`)
+- Pipeline (`pipeline/stages/`, `pipeline/services/`, `pipeline/lib/` — including `llm.ts`'s `LlmProvider` abstraction, defaulting to the Claude Code CLI)
+- Morning Brief (`pipeline/services/morning/`, `pipeline/renderers/`, `pipeline/daily-briefing.ts`)
+- Founder UI (`founder-server.ts`, `dashboard/index.html`) — a founder's own local, browser-based interface is still core; "has a browser UI" isn't the same test as "needs the cloud." What makes something an adapter is being for unattended, remote, or multi-user access — not having a UI at all.
+
+**Optional deployment adapters** — separately triggered, not required for the core to work, adopted only when an actual need shows up:
+- GitHub Actions (`.github/workflows/*.yml` — both the repo-root Morning Brief workflow and the five pre-existing, currently-dormant `pintag-studio/.github/workflows/*.yml` files, none of which are required for daily local use)
+- Supabase publishing for external reachability (`supabase/migrations/0005_morning_brief_publish.sql`, `pipeline/services/morning/publish.ts`, `pipeline/publish-morning-brief.ts` — distinct from the control-plane Supabase usage under Core, which the founder's own local tools already depend on)
+- Browser publishing independent of the founder's machine (`marketing-os.html`)
+- Authentication for that kind of remote access (the separate Supabase Auth login `marketing-os.html` uses — distinct from `dashboard/index.html`'s founder login, which is core)
+- Cloud scheduling / unattended execution (the `anthropic-api` `LlmProvider`, GitHub Actions cron triggers) — the Claude Code CLI path remains primary; API-based providers are a fallback for when unattended execution is actually needed, not the default
 
 ---
 
@@ -219,7 +246,7 @@ Every entry is a markdown file with a frontmatter lifecycle: `status` (`draft �
 | Memory / dedupe index | Supabase pgvector | First-class Postgres extension, no new service. |
 | Dashboard | Static HTML + Supabase JS client (see Section 1 note + `dashboard/index.html`) | Matches the main repo's existing pattern; zero new deploy tooling; $0. |
 | Database | New, separate Supabase project | Isolation from the production project's security surface. |
-| Scheduling/cron | GitHub Actions scheduled workflows | Free at this volume. |
+| Scheduling/cron | GitHub Actions scheduled workflows | Free at this volume. **Deployment adapter (§0), not core** — the founder manually running the pipeline locally satisfies every milestone below during this phase; unattended scheduling is adopted only once that manual trigger is the actual bottleneck. |
 | Publishing | Meta Graph API directly (Facebook Pages API + Instagram Graph API) | Free; avoids paid scheduler subscriptions. |
 | Trend/Competitor sourcing | RSS + scheduled web search + curated public-page fetches | Free; commercial social-listening tooling is honestly out of budget for now. |
 
@@ -287,6 +314,8 @@ Each milestone ships something usable.
 - **M5 — Analyst + full feedback loop + Dashboard v2:** Marketing Analyst live; weekly reports feed the Strategist and Memory; Dashboard adds AI Confidence + Today's Recommendation as real (not placeholder) data.
 - **M6 — Approval Phase 2:** Once Guardian's scoring has a track record, routine educational posts and templated property videos auto-publish above threshold. TikTok added as a platform.
 - **M7 — Approval Phase 3 + Year-1 close-out:** Founder review narrows to market updates, major announcements, new formats, and low-confidence items. Hit Year-1 numeric targets. Prepare for "Pintag Studio" extraction (Section 12).
+
+**Execution model note (v2.5, §0):** milestones described above as "continuous," "daily cadence," or implying a schedule refer to the underlying *capability*, not any particular automation mechanism. During this phase, a founder manually running the pipeline locally (Claude Code CLI) satisfies them fully — GitHub Actions/unattended cloud scheduling is the deployment-adapter version of the same capability, adopted only when manual triggering has actually become the bottleneck, not built ahead of that need.
 
 **Knowledge Layer track (K0+, parallel to M0–M7 — see §5A):** the Knowledge Layer evolves on its own schedule, independent of the execution-pipeline milestones above, since it's cross-cutting infrastructure rather than a content-type capability.
 - **K0 (current):** file-based `knowledge/`, category-scoped retrieval, Researcher-only integration (proof-of-concept).

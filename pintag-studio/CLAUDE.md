@@ -11,6 +11,7 @@ Every agent run (yours included, in this session or a future one) should read, i
 
 ## Ground rules
 
+- **Business-first architecture.** Marketing OS exists to run our own businesses first, not as a SaaS product — see `ARCHITECTURE.md` §0 and `brain/ceo.md`'s Non-Negotiable Principles. Before adding cloud infrastructure, unattended automation, authentication for external users, or multi-tenant capability, confirm it's solving a problem this business actually has today — not one a future customer might have. Local, founder-triggered execution via the Claude Code CLI is the default and the core product; cloud/unattended execution is an optional, separately-triggered **deployment adapter** (§0), not baseline. When in doubt about which bucket something falls in, ask rather than build it into the core.
 - **Educational value outranks promotional language, always.** This is a hard rule, not a style preference — see `brain/ceo.md`.
 - **Never state a fact not traceable to `knowledge-base/` or the read-only Pintag listings feed.** No invented statistics, prices, or legal claims.
 - **Foreign land-ownership content requires explicit founder/counsel sign-off** before publishing any new claim — see `knowledge-base/guides/foreign-ownership-rules.md`.
