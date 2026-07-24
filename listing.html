@@ -125,6 +125,54 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .mg-dots{display:flex;justify-content:center;gap:5px;padding:10px 0 8px;background:var(--white);}
 .mg-dot{width:5px;height:5px;border-radius:50%;background:var(--ink-muted);opacity:0.28;transition:opacity 0.2s,background 0.2s;cursor:pointer;}
 .mg-dot.active{opacity:1;background:var(--teal);}
+/* Available Units — multi-unit buildings only (2+ unit types); see
+   buildAvailableUnitsSection() in the script below. */
+.units-section{padding:32px 48px;border-bottom:1px solid var(--border-mid);background:var(--white);}
+.units-header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;max-width:1200px;margin:0 auto 18px;flex-wrap:wrap;}
+.units-title{font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;}
+.units-sub{font-size:12px;color:var(--ink-muted);}
+.units-grid{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
+.unit-card{border:1px solid var(--border-mid);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px;background:var(--white);transition:box-shadow 0.18s,border-color 0.18s;cursor:pointer;}
+.unit-card-cover{margin:-18px -18px 0;height:130px;border-radius:10px 10px 0 0;overflow:hidden;}
+.unit-card-cover img{width:100%;height:100%;object-fit:cover;display:block;}
+.unit-card:hover{border-color:var(--border-strong);box-shadow:0 4px 16px rgba(26,36,40,0.06);}
+.unit-card:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+.unit-card-selected{border-color:var(--teal);box-shadow:0 4px 16px rgba(45,140,140,0.14);background:rgba(45,140,140,0.03);}
+/* "Viewing: {unit}" banner — replaces the generic building overview
+   in the hero once a unit is selected (see selectedUnit in
+   buildMockupLayout()). */
+.viewing-unit-banner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 -4px;padding:9px 12px;border-radius:8px;background:rgba(45,140,140,0.06);border:1px solid rgba(45,140,140,0.16);}
+.viewing-unit-label{font-size:12px;color:var(--ink-soft);}
+.viewing-unit-label strong{color:var(--ink);}
+.viewing-unit-status{font-size:10px;font-weight:600;letter-spacing:0.03em;padding:3px 8px;border-radius:999px;white-space:nowrap;line-height:1.5;}
+.viewing-unit-reset{margin-left:auto;background:none;border:none;padding:0;font-size:11.5px;font-weight:500;color:var(--teal);cursor:pointer;text-decoration:underline;font-family:"DM Sans",sans-serif;}
+.viewing-unit-reset:hover{color:var(--wa-hover);}
+.unit-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+.unit-name{font-size:14.5px;font-weight:600;color:var(--ink);letter-spacing:-0.01em;line-height:1.3;}
+.unit-status{font-size:10px;font-weight:600;letter-spacing:0.03em;padding:3px 8px;border-radius:999px;white-space:nowrap;line-height:1.5;}
+.unit-status-available{background:rgba(35,107,107,0.1);color:var(--wa-hover);}
+.unit-status-fully_occupied{background:rgba(196,130,14,0.12);color:#8A5A0A;}
+.unit-status-coming_soon,.unit-status-temporarily_unavailable{background:rgba(122,144,152,0.14);color:var(--ink-muted);}
+.unit-facts{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:12px;color:var(--ink-soft);}
+.unit-fact{white-space:nowrap;}
+.unit-price{font-size:15px;font-weight:600;color:var(--ink);}
+.unit-movein{font-size:11.5px;color:var(--ink-muted);}
+.unit-note{font-size:11.5px;color:var(--ink-muted);font-style:italic;}
+.unit-cta-row{margin-top:2px;}
+.unit-cta{display:inline-flex;align-items:center;justify-content:center;width:100%;padding:9px 14px;border-radius:var(--r-btn);font-size:12.5px;font-weight:500;text-decoration:none;background:var(--wa);color:var(--white);transition:background 0.18s;}
+.unit-cta:hover{background:var(--wa-hover);}
+/* Building Photos / Shared Amenities strip — persistent, building-only,
+   shown directly below the hero only once a unit is selected (see
+   buildingStripHtml in buildMockupLayout()). Deliberately compact/quiet
+   relative to the hero and the Available Units grid above/below it — a
+   supporting reference, not a second hero. */
+.building-strip{padding:16px 48px;border-bottom:1px solid var(--border-mid);background:var(--warm-tint,rgba(0,0,0,0.015));}
+.building-strip-title{display:block;font-size:11px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:10px;max-width:1200px;margin-left:auto;margin-right:auto;}
+.building-strip-photos{max-width:1200px;margin:0 auto 10px;display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;}
+.building-strip-photo{flex:0 0 92px;height:68px;border-radius:6px;overflow:hidden;cursor:pointer;}
+.building-strip-photo img{width:100%;height:100%;object-fit:cover;display:block;}
+.building-strip-amenities{max-width:1200px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px;}
+.building-strip-amenity{font-size:11.5px;color:var(--ink-soft);background:var(--white);border:1px solid var(--border-mid);border-radius:999px;padding:4px 10px;white-space:nowrap;}
 /* Agent */
 .agent-band{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:36px;padding:28px 48px;border-bottom:1px solid var(--border-mid);background:var(--white);}
 .agent-presented{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--ink-muted);margin-bottom:12px;}
@@ -304,6 +352,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   .mobile-amenities-slot{display:block;padding:16px;border-bottom:1px solid var(--border-mid);}
   .detail-grid .amenity-row{display:none;}
   .mobile-cta-bar{display:block;}
+  /* Available Units — single column, tighter padding on mobile */
+  .units-section{padding:22px 16px;}
+  .units-grid{grid-template-columns:1fr;gap:12px;}
+  .building-strip{padding:14px 16px;}
+  .building-strip-title,.building-strip-photos,.building-strip-amenities{max-width:none;}
   /* Agent band — contained card presence on mobile */
   .agent-band{grid-template-columns:1fr;gap:14px;padding:18px 16px;margin:12px 16px 0;border-radius:14px;border:1px solid var(--border-mid);}
   .agent-stats-row{justify-content:flex-start;gap:20px;flex-wrap:wrap;}
@@ -468,6 +521,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
+<script src="unit-availability.js"></script>
 <script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
@@ -905,7 +959,7 @@ async function fetchProperty(slug){
   _fetchInFlight=true;
   PT.time('fetchProperty');
   try{
-    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(id,role,name,phone,whatsapp,is_verified),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified)&limit=1');
+    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(id,role,name,phone,whatsapp,is_verified),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified),unit_types(*)&limit=1');
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
@@ -914,6 +968,12 @@ async function fetchProperty(slug){
     // element has no explicit data-track-property-id of its own.
     window.PINTAG_CURRENT_PROPERTY_ID=propertyContext.id||null;
     PT.log('Loaded',{id:propertyContext.id,title:propertyContext.title_en});
+    var _deepLinkUnitId=resolveDeepLinkUnitId(propertyContext);
+    if(_deepLinkUnitId) selectedUnitTypeId=_deepLinkUnitId;
+    // Normalizes a raw-id ?unit= param (or a not-yet-canonical slug) to
+    // the canonical slugified form, and drops an invalid/stale ?unit=
+    // rather than leaving a broken param sitting in the address bar.
+    _syncUnitUrlParam();
     try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout',e);showErrorState('Display error. Please refresh.');return;}
     updateOGTags(propertyContext);
     if(propertyContext.id){
@@ -1154,6 +1214,188 @@ function showErrorState(msg){
 //   map_embed_url     TEXT     — optional custom embed URL
 //   district_lo/en/zh TEXT
 // ══════════════════════════════════════════════════════════════════
+
+// ── Available Units (Multi-Unit Buildings) ──────────────────────────
+// Renders only when there are 2+ unit types on this property — a single
+// unit type is presented as an ordinary single-listing page, since there
+// is no real choice for a buyer to make between units. Every value below
+// comes from the two canonical resolvers — resolveUnitType() (terminology.js)
+// for identity/specs/price, resolveUnitAvailability() (unit-availability.js)
+// for status — never raw unit_types columns, per ARCHITECTURE.md's "never
+// bypass resolvers." Units are ordered with compareUnitTypesForDisplay()
+// (Available Now → soonest-available → Currently Unavailable), the same
+// public ordering rule already established for this data.
+//
+// selectedUnitTypeId is the one piece of client-side "which unit is the
+// visitor currently viewing" state (Booking.com-style room selection).
+// selectUnitType() toggles it and re-runs the exact same buildMockupLayout()
+// used for every other render (language switch, initial load) — no second
+// render path, no fine-grained DOM patching. buildMockupLayout() reads
+// this to decide whether to show the building overview or a selected
+// unit's own gallery/price/specs/availability/WhatsApp CTA.
+var selectedUnitTypeId = null;
+function selectUnitType(id){
+  if(!id) return;
+  selectedUnitTypeId = (selectedUnitTypeId===id) ? null : id;
+  _syncUnitUrlParam();
+  try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on unit select',e);}
+}
+
+// Keeps the address bar's ?unit= param in sync with the current selection
+// (replaceState, not pushState -- toggling a unit shouldn't pollute the
+// back-button history with every click) so the URL on screen always
+// matches what's rendered, and copying/sharing it (handleShare() just
+// reads window.location.href) reproduces the exact same selection when
+// reopened -- resolveDeepLinkUnitId() is what reads this same param back
+// on load. Uses the same slugified-name convention as that function.
+function _syncUnitUrlParam(){
+  try{
+    var url=new URL(window.location.href);
+    var slug=null;
+    if(selectedUnitTypeId && propertyContext && Array.isArray(propertyContext.unit_types)){
+      var sel=propertyContext.unit_types.find(function(u){return u.id===selectedUnitTypeId;});
+      slug=sel?_slugifyUnitName(sel.name_en):null;
+    }
+    if(slug) url.searchParams.set('unit',slug); else url.searchParams.delete('unit');
+    window.history.replaceState(null,'',url.toString());
+  }catch(e){PT.warn('URL sync failed',e);}
+}
+
+// _currentGalleryImages tracks whichever image array is currently shown in
+// the hero (the building's own images, or a selected unit's, per
+// buildMockupLayout()'s `imagesArray`) -- syncDesktopHero/wireGalleryLightbox/
+// the mobile scroll handler all read this instead of propertyContext.images
+// directly, so thumbnail clicks and the lightbox stay in sync with
+// whichever gallery is actually on screen rather than always reopening the
+// building's photos underneath a unit's swapped-in hero.
+var _currentGalleryImages = [];
+
+// Deep linking (?unit=slugified-name or ?unit=<uuid>) -- resolves to a
+// unit_types id so the caller can pre-select it before the first render.
+// Uses the same hyphenated slugify convention as admin.html's property
+// slug generator. Static-hosting limitation, disclosed rather than
+// silently worked around: this project has no server-side routing, so a
+// clean path like /listing/river-apartment?unit=1-bedroom isn't
+// achievable -- the query-param form on the existing listing.html?slug=
+// URL is what's actually deployable here.
+function _slugifyUnitName(name){
+  return String(name||'').toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
+}
+function resolveDeepLinkUnitId(property){
+  if(!property||!Array.isArray(property.unit_types)||!property.unit_types.length) return null;
+  var params=new URLSearchParams(window.location.search);
+  var unitParam=params.get('unit');
+  if(!unitParam) return null;
+  var bySlug=property.unit_types.find(function(u){return _slugifyUnitName(u.name_en)===unitParam;});
+  if(bySlug) return bySlug.id;
+  var byId=property.unit_types.find(function(u){return u.id===unitParam;});
+  return byId?byId.id:null;
+}
+
+function _resolveOptionLabel(options, value, lang){
+  for(var i=0;i<options.length;i++){
+    if(options[i].value===value) return options[i].label[lang]||options[i].label.en;
+  }
+  return null;
+}
+
+function buildUnitPriceText(property, resolved, lang){
+  var isSorUnit = property.transaction_type==='sale_or_rent';
+  if(isSorUnit && (resolved.salePrice || resolved.rentPrice)){
+    var periodLabel={month:{lo:'/ ເດືອນ',en:'/ month',zh:'/ 月'},year:{lo:'/ ປີ',en:'/ year',zh:'/ 年'},day:{lo:'/ ວັນ',en:'/ day',zh:'/ 天'}};
+    var period=resolved.rentPeriod||'month';
+    var parts=[];
+    if(resolved.salePrice) parts.push(resolved.salePrice);
+    if(resolved.rentPrice) parts.push(resolved.rentPrice+(periodLabel[period]||periodLabel.month)[lang]);
+    return parts.join(' · ');
+  }
+  return resolved.priceDisplay || null;
+}
+
+function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone){
+  var rawUnits=Array.isArray(property.unit_types)?property.unit_types:[];
+  if(rawUnits.length<2) return ''; // single (or zero) unit types keep the existing single-listing layout
+
+  var pairs=rawUnits.map(function(u){
+    return { raw:u, resolved: resolveUnitAvailability(u), sort_order: u.sort_order||0 };
+  });
+  pairs.sort(compareUnitTypesForDisplay);
+
+  var cardsHtml=pairs.map(function(p){
+    var u=p.raw;
+    var resolvedUnit=resolveUnitType(property,u);
+    var unitName=resolvedUnit.name[lang]||resolvedUnit.name.en||'';
+    var priceText=buildUnitPriceText(property,resolvedUnit,lang);
+    var availText=formatAvailabilityDisplay(p.resolved,lang);
+    var unitCount=formatAvailableUnitCount(p.resolved);
+    var noteText=getAvailabilityNoteLine(p.resolved);
+    var moveInText=formatMoveInDate(p.resolved,lang);
+    // The move-in date is already embedded in the fully_occupied message
+    // itself ("Fully Occupied — Available from {date}") — showing it again
+    // as a separate line would just repeat the same date twice.
+    var showMoveIn = moveInText && p.resolved.status!=='fully_occupied';
+
+    var factsHtml='';
+    if(resolvedUnit.bedrooms!=null) factsHtml+='<span class="unit-fact">🛏️ '+esc(String(resolvedUnit.bedrooms))+' '+esc(L.unitBeds[lang])+'</span>';
+    if(resolvedUnit.bathrooms!=null) factsHtml+='<span class="unit-fact">🛁 '+esc(String(resolvedUnit.bathrooms))+' '+esc(L.unitBaths[lang])+'</span>';
+    if(resolvedUnit.sqm!=null) factsHtml+='<span class="unit-fact">📐 '+esc(String(resolvedUnit.sqm))+' m²</span>';
+    if(resolvedUnit.furnished && typeof FURNISHED_OPTIONS!=='undefined'){
+      var _cardFurnLbl=_resolveOptionLabel(FURNISHED_OPTIONS,resolvedUnit.furnished,lang);
+      if(_cardFurnLbl) factsHtml+='<span class="unit-fact">🛋️ '+esc(_cardFurnLbl)+'</span>';
+    }
+
+    // Cover image — resolvedUnit.images[0] (unit's own photo, or the
+    // building's when the unit has none of its own — resolveUnitType()
+    // already resolved that fallback), same "treat cards like selectable
+    // products" ask as Booking.com room cards.
+    var coverImg=Array.isArray(resolvedUnit.images)&&resolvedUnit.images.length?resolvedUnit.images[0]:null;
+    var coverHtml=coverImg?'<div class="unit-card-cover"><img src="'+esc(coverImg)+'" alt="" loading="lazy"></div>':'';
+
+    var ctaHtml='';
+    if(cleanPhone){
+      var waUnitMsg=encodeURIComponent(buildUnitWhatsAppMessage(property,unitName,priceText,p.resolved,lang));
+      var waUnitUrl='https://wa.me/'+cleanPhone+'?text='+waUnitMsg;
+      // stopPropagation: the card itself is also a click target (selects
+      // this unit, see below) — without this, clicking the CTA while the
+      // card is already selected would immediately deselect it again via
+      // the card's own onclick, right as the user tries to inquire.
+      ctaHtml='<a href="'+esc(waUnitUrl)+'" target="_blank" rel="noopener noreferrer" class="unit-cta" '+
+        'data-track="unit-inquire-whatsapp" data-track-type="cta" data-track-label="Inquire unit" data-track-meta=\'{"unit":'+JSON.stringify(unitName)+'}\' '+
+        'onclick="event.stopPropagation();trackLead(\''+esc(property.id||'')+'\',\''+esc(property.managed_by_party_id||'')+'\',\'whatsapp_click\',\''+esc((property.contacts&&property.contacts.id)||'')+'\')">'+
+        esc(L.unitInquire[lang])+'</a>';
+    }
+
+    var isSelected = u.id && u.id===selectedUnitTypeId;
+    var selectJs="selectUnitType('"+esc(u.id||'')+"')";
+    // The whole card is clickable (Booking.com-style room selection) —
+    // selecting swaps the hero gallery/price/specs/availability/WhatsApp
+    // CTA above to this unit's own values; see selectUnitType() and the
+    // `selectedUnit` block in buildMockupLayout(). role="button"+tabindex+
+    // onkeydown make this keyboard-operable, matching the accessibility
+    // bar already set for the shared component system.
+    return '<div class="unit-card'+(isSelected?' unit-card-selected':'')+'" onclick="'+selectJs+'" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+selectJs+';}" role="button" tabindex="0" aria-pressed="'+(isSelected?'true':'false')+'">'+
+      coverHtml+
+      '<div class="unit-card-head">'+
+        '<span class="unit-name">'+esc(unitName)+'</span>'+
+        '<span class="unit-status unit-status-'+esc(p.resolved.status)+'">'+esc(availText)+(unitCount?' · '+esc(String(unitCount)):'')+'</span>'+
+      '</div>'+
+      (factsHtml?'<div class="unit-facts">'+factsHtml+'</div>':'')+
+      (priceText?'<div class="unit-price">'+esc(priceText)+'</div>':'')+
+      (showMoveIn?'<div class="unit-movein">'+esc(L.unitMoveIn[lang])+': '+esc(moveInText)+'</div>':'')+
+      (noteText?'<div class="unit-note">'+esc(noteText)+'</div>':'')+
+      (ctaHtml?'<div class="unit-cta-row">'+ctaHtml+'</div>':'')+
+      '</div>';
+  }).join('');
+
+  return (
+    '<div class="units-section" id="units-section" data-track="available-units-section" data-track-type="section" data-track-label="Available Units">'+
+    '<div class="units-header"><span class="units-title">'+esc(L.availableUnits[lang])+'</span>'+
+    '<span class="units-sub">'+esc(L.availableUnitsSub[lang])+'</span></div>'+
+    '<div class="units-grid">'+cardsHtml+'</div>'+
+    '</div>'
+  );
+}
+
 function buildMockupLayout(){
   var container=document.getElementById('view-target');
   if(!container){PT.err('view-target missing');return;}
@@ -1178,7 +1420,43 @@ function buildMockupLayout(){
 
   var isSale = data.transaction_type==='for_sale'||data.transaction_type==='sale';
   var isSor  = data.transaction_type==='sale_or_rent';
-  var imagesArray=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';});
+
+  // ── Selected Unit (Multi-Unit Buildings — Booking.com-style room
+  // selection) ────────────────────────────────────────────────────────
+  // The Property Gallery/price/specs above are the building-level
+  // overview by default. Picking a unit in the Available Units section
+  // (selectUnitType(), below) swaps the gallery/price/specs/availability/
+  // WhatsApp CTA in place to that unit's own resolved values — never a
+  // second page, never a second render path; this same buildMockupLayout()
+  // just reads from `selectedUnit` instead of `data` for the fields that
+  // differ per unit. A stale selectedUnitTypeId (e.g. the unit was removed
+  // since selection) silently falls back to the building overview rather
+  // than erroring.
+  var selectedUnit=null;
+  if(selectedUnitTypeId && Array.isArray(data.unit_types)){
+    var _rawSel=data.unit_types.find(function(u){return u.id===selectedUnitTypeId;});
+    if(_rawSel){
+      selectedUnit={raw:_rawSel,resolved:resolveUnitType(data,_rawSel),availability:resolveUnitAvailability(_rawSel)};
+    }else{
+      selectedUnitTypeId=null;
+    }
+  }
+
+  var imagesArray=(selectedUnit?selectedUnit.resolved.images:(Array.isArray(data.images)?data.images:[])).filter(function(u){return u&&typeof u==='string';});
+  _currentGalleryImages=imagesArray;
+
+  // Description/Features/Amenities also become the SELECTED UNIT's own
+  // (already-inherited-from-the-building-when-null) values, same
+  // "selected unit is the source of truth" rule as price/specs below.
+  // resolveUnitType()'s pick() already resolved the unit-vs-building
+  // fallback — nothing more to inherit here.
+  if(selectedUnit){
+    var _descByLang={en:selectedUnit.resolved.descriptionEn,lo:selectedUnit.resolved.descriptionLo,zh:selectedUnit.resolved.descriptionZh};
+    var _selDesc=_descByLang[lang]||selectedUnit.resolved.descriptionEn||selectedUnit.resolved.descriptionLo||'';
+    if(_selDesc) resolvedDesc=esc(_selDesc);
+  }
+  var effectiveAmenities=selectedUnit?(Array.isArray(selectedUnit.resolved.amenities)?selectedUnit.resolved.amenities:[]):(Array.isArray(data.amenities)?data.amenities:[]);
+  var effectiveFeatures =selectedUnit?(Array.isArray(selectedUnit.resolved.features) ?selectedUnit.resolved.features :[]):(Array.isArray(data.features) ?data.features :[]);
 
   var statusBadgeHtml=getStatusBadgeHtml(data.status||'active',lang);
   var desktopGalleryMarkup=buildDesktopGallery(imagesArray);
@@ -1196,7 +1474,19 @@ function buildMockupLayout(){
     mapOpen:{lo:'ເປີດໃນ Google Maps',en:'Open in Google Maps',zh:'在谷歌地图中打开'},
     video  :{lo:'ວິດີໂອນຳຊົມ',en:'Property walk-through',zh:'实景视频'},
     verified:{lo:'ກວດສອບແລ້ວ',en:'Verified',zh:'平台已核验'},
-    inquire:{lo:'ສອບຖາມລາຄາ',en:'Inquire for price',zh:'意向询价'}
+    inquire:{lo:'ສອບຖາມລາຄາ',en:'Inquire for price',zh:'意向询价'},
+    availableUnits:{lo:'ຫ້ອງທີ່ວ່າງ',en:'Available Units',zh:'可选房型'},
+    availableUnitsSub:{lo:'ເລືອກຫ້ອງທີ່ເໝາະສົມກັບທ່ານ',en:'Choose the unit that fits your needs',zh:'选择适合您的房型'},
+    unitBeds:{lo:'ຫ້ອງນອນ',en:'Beds',zh:'卧室'},
+    unitBaths:{lo:'ຫ້ອງນ້ຳ',en:'Baths',zh:'浴室'},
+    unitSize:{lo:'ຂະໜາດ',en:'Size',zh:'面积'},
+    unitAvailability:{lo:'ສະຖານະ',en:'Availability',zh:'状态'},
+    unitMoveIn:{lo:'ວັນທີເຂົ້າຢູ່',en:'Move-in',zh:'入住日期'},
+    unitInquire:{lo:'ສອບຖາມຫ້ອງນີ້',en:'Inquire about this unit',zh:'咨询此房型'},
+    viewingUnit:{lo:'ກຳລັງເບິ່ງ',en:'Viewing',zh:'正在查看'},
+    showOverview:{lo:'ເບິ່ງພາບລວມອາຄານ',en:'Show building overview',zh:'查看整栋概览'},
+    buildingPhotosAmenities:{lo:'ຮູບພາບ ແລະ ສິ່ງອຳນວຍຄວາມສະດວກຂອງອາຄານ',en:'Building Photos & Shared Amenities',zh:'楼栋照片与公共设施'},
+    unitFurnished:{lo:'ເຄື່ອງເຟີນີເຈີ',en:'Furnished',zh:'装修情况'}
   };
 
   var I={
@@ -1240,6 +1530,75 @@ function buildMockupLayout(){
         return '<div class="pdetail-row"><span class="pdetail-icon">'+esc(f.icon)+'</span><span class="pdetail-lbl">'+esc(f.label)+'</span><span class="pdetail-val">'+esc(String(f.value))+'</span></div>';
       }).join('')+'</div>'
     : '';
+
+  // A selected unit overrides price/specs (and, further below, the
+  // gallery already swapped above and the WhatsApp CTA) with its own
+  // resolved values — "update the displayed price"/"update bedrooms,
+  // bathrooms, size... and availability" per the Booking.com-style room
+  // selection this section implements. pdetailHtml (secondary Property
+  // Details) intentionally stays building-level even with a unit
+  // selected — those are building facts (year built, parking, etc.), not
+  // unit-specific ones.
+  var viewingUnitBannerHtml='';
+  if(selectedUnit){
+    var selUnitName=selectedUnit.resolved.name[lang]||selectedUnit.resolved.name.en||'';
+    var selPriceText=buildUnitPriceText(data,selectedUnit.resolved,lang);
+    resolvedPriceHtml=selPriceText?'<p class="price-value">'+esc(selPriceText)+'</p>':'<p class="price-inquire">'+L.inquire[lang]+'</p>';
+    var selSpecs=[];
+    if(selectedUnit.resolved.bedrooms!=null) selSpecs.push({icon:'🛏️',val:selectedUnit.resolved.bedrooms,lbl:L.unitBeds[lang]});
+    if(selectedUnit.resolved.bathrooms!=null) selSpecs.push({icon:'🛁',val:selectedUnit.resolved.bathrooms,lbl:L.unitBaths[lang]});
+    if(selectedUnit.resolved.sqm!=null) selSpecs.push({icon:'📐',val:selectedUnit.resolved.sqm+' m²',lbl:L.unitSize[lang]});
+    if(selectedUnit.resolved.furnished && typeof FURNISHED_OPTIONS!=='undefined'){
+      var _furnLbl=_resolveOptionLabel(FURNISHED_OPTIONS,selectedUnit.resolved.furnished,lang);
+      if(_furnLbl) selSpecs.push({icon:'🛋️',val:_furnLbl,lbl:L.unitFurnished[lang]});
+    }
+    specsHtml=selSpecs.map(function(f){
+      return '<div class="spec-item"><span class="spec-icon">'+esc(f.icon)+'</span><span class="spec-val">'+esc(String(f.val))+'</span><span class="spec-lbl">'+esc(String(f.lbl).toUpperCase())+'</span></div>';
+    }).join('');
+    var selAvailText=formatAvailabilityDisplay(selectedUnit.availability,lang);
+    viewingUnitBannerHtml=(
+      '<div class="viewing-unit-banner">'+
+      '<span class="viewing-unit-label">'+esc(L.viewingUnit[lang])+': <strong>'+esc(selUnitName)+'</strong></span>'+
+      '<span class="viewing-unit-status unit-status-'+esc(selectedUnit.availability.status)+'">'+esc(selAvailText)+'</span>'+
+      '<button type="button" class="viewing-unit-reset" onclick="selectUnitType(\''+esc(selectedUnitTypeId)+'\')">'+esc(L.showOverview[lang])+'</button>'+
+      '</div>'
+    );
+  }
+
+  // ── Persistent Building Photos / Shared Amenities strip ──────────────
+  // Only shown once a unit is selected (the hero already IS the building
+  // gallery otherwise, so this would just repeat it) -- lets a visitor
+  // browse the chosen unit's own photos in the hero while the building's
+  // own photos/shared amenities stay one glance away below it, per the
+  // "Property Gallery ↓ Studio selected → hero = Studio photos, below:
+  // Building Photos / Shared Amenities" requirement. Always the BUILDING's
+  // own data (data.images/data.amenities), never the selected unit's --
+  // this is deliberately the one place on the page that does NOT follow
+  // the selected unit.
+  var buildingStripHtml='';
+  if(selectedUnit){
+    var _stripImgs=(Array.isArray(data.images)?data.images:[]).filter(function(u){return u&&typeof u==='string';}).slice(0,8);
+    var _stripAmenities=(Array.isArray(data.amenities)?data.amenities:[]).filter(Boolean).slice(0,10);
+    if(_stripImgs.length||_stripAmenities.length){
+      var _stripPhotosHtml=_stripImgs.length?(
+        '<div class="building-strip-photos">'+_stripImgs.map(function(url){
+          return '<div class="building-strip-photo" data-url="'+esc(url)+'"><img src="'+esc(url)+'" alt="" loading="lazy"></div>';
+        }).join('')+'</div>'
+      ):'';
+      var _stripAmenitiesHtml=_stripAmenities.length?(
+        '<div class="building-strip-amenities">'+_stripAmenities.map(function(am){
+          var _resAm=resolveAmenityData(am,lang);
+          return '<span class="building-strip-amenity">'+_resAm.icon+' '+esc(_resAm.label)+'</span>';
+        }).join('')+'</div>'
+      ):'';
+      buildingStripHtml=(
+        '<div class="building-strip" data-track="building-strip-section" data-track-type="section" data-track-label="Building photos and amenities">'+
+        '<span class="building-strip-title">'+esc(L.buildingPhotosAmenities[lang])+'</span>'+
+        _stripPhotosHtml+_stripAmenitiesHtml+
+        '</div>'
+      );
+    }
+  }
 
   var typeBadgeText=isSor?(lang==='lo'?'ຊື້ / ເຊົ່າ':lang==='zh'?'售/租':' Sale or Rent'):isSale?(lang==='lo'?'ຂາຍ':lang==='zh'?'出售':'For Sale'):(lang==='lo'?'ໃຫ້ເຊົ່າ':lang==='zh'?'出租':'For Rent');
 
@@ -1285,7 +1644,11 @@ function buildMockupLayout(){
   var waDistrictRaw=data['district_'+lang] || data.district_en || '';
   var waLocation=resolvedVillage ? (resolvedVillage+', '+waDistrictRaw) : waDistrictRaw;
   var waCanonicalUrl=getCanonicalListingUrl(data);
-  var waMessage=encodeURIComponent(waCanonicalUrl
+  // waMessageText is the un-encoded template output — kept as its own
+  // variable (rather than encoding inline) so the per-unit CTAs in the
+  // Available Units section below can append a unit name to the same
+  // base message before encoding, without duplicating the template logic.
+  var waMessageText=waCanonicalUrl
     ? fillTemplate(WA_MESSAGE_TEMPLATES[lang]||WA_MESSAGE_TEMPLATES.en, {
         CANONICAL_LISTING_URL: waCanonicalUrl
       })
@@ -1293,7 +1656,21 @@ function buildMockupLayout(){
         PROPERTY_TYPE: waPropertyType,
         LOCATION: waLocation,
         REFERENCE: data.id || ''
-      }));
+      });
+  // Selected unit flows into the MAIN contact CTAs too (not just each
+  // unit card's own inline CTA) — "update the WhatsApp CTA so the inquiry
+  // references the selected unit" applies to the primary contact band and
+  // the mobile sticky CTA bar as well, since both are visible regardless
+  // of which unit (if any) is currently selected. Replaces the base
+  // template entirely with the fuller unit-specific sentence (Property
+  // name + Selected unit + Price + Availability), rather than appending
+  // to it.
+  if(selectedUnit){
+    var _selUnitNameForWa=selectedUnit.resolved.name[lang]||selectedUnit.resolved.name.en||'';
+    var _selPriceForWa=buildUnitPriceText(data,selectedUnit.resolved,lang);
+    waMessageText=buildUnitWhatsAppMessage(data,_selUnitNameForWa,_selPriceForWa,selectedUnit.availability,lang);
+  }
+  var waMessage=encodeURIComponent(waMessageText);
   var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
   var CONTACT_ROLE_LABELS={
     owner:{lo:'ເຈົ້າຂອງ',en:'Owner',zh:'业主'},
@@ -1342,11 +1719,11 @@ function buildMockupLayout(){
   // Amenities come from data.amenities TEXT[] e.g. ["pool","security"]
   // ════════════════════════════════════════════════════════════════
   var amenityRowHtml='';
-  if(Array.isArray(data.amenities)&&data.amenities.filter(Boolean).length){
+  if(effectiveAmenities.filter(Boolean).length){
     // Not collapsible in this build (static list, no expand/collapse
     // control) — tracked at the section level rather than per-toggle.
     amenityRowHtml='<div class="amenity-row" data-track="amenities-section" data-track-type="section" data-track-label="Amenities section">';
-    data.amenities.filter(Boolean).forEach(function(am){
+    effectiveAmenities.filter(Boolean).forEach(function(am){
       var resAm=resolveAmenityData(am,lang);
       amenityRowHtml+='<div class="amenity-item"><div class="amenity-icon">'+resAm.icon+'</div>'+esc(resAm.label)+'</div>';
     });
@@ -1368,9 +1745,9 @@ function buildMockupLayout(){
   // Also supports flat string arrays e.g. ["Spacious Living Room","European Kitchen"]
   // ════════════════════════════════════════════════════════════════
   var featuresColHtml='';
-  if(Array.isArray(data.features)&&data.features.filter(Boolean).length){
+  if(effectiveFeatures.filter(Boolean).length){
     featuresColHtml='<div><span class="section-label">'+L.features[lang]+'</span><div class="features-list">';
-    data.features.filter(Boolean).forEach(function(ft){
+    effectiveFeatures.filter(Boolean).forEach(function(ft){
       if(!ft)return;
       var label='';
       if(typeof ft==='string'){
@@ -1609,6 +1986,13 @@ function buildMockupLayout(){
     ? '<div class="mobile-amenities-slot">'+amenityRowHtml+'</div>'
     : '';
 
+  // Directly below the hero/details, above Agent/Description — a buyer
+  // deciding between units should see them before scrolling through
+  // generic description/amenities/location content. Empty string (and
+  // therefore nothing rendered) whenever there's 0 or 1 unit type — see
+  // buildAvailableUnitsSection()'s own doc comment.
+  var availableUnitsHtml = buildAvailableUnitsSection(data, lang, L, waMessageText, cleanPhone);
+
   var layout=(
     // Gallery first in source order — on mobile this is the only visible
     // gallery (.hero-right/.desktop-gallery are display:none there); on
@@ -1626,6 +2010,7 @@ function buildMockupLayout(){
     statusBadgeHtml+
     '</div>'+
     '<div id="sp-badges" class="sp-badges-row"></div>'+
+    viewingUnitBannerHtml+
     '<div class="price-block">'+resolvedPriceHtml+'</div>'+
     '<div class="sp-metrics-row"><span class="sp-metric" id="sp-views" style="display:none;"></span><span class="sp-metric" id="sp-inquiries" style="display:none;"></span></div>'+
     (specsHtml?'<div class="spec-grid">'+specsHtml+'</div>':'')+
@@ -1638,6 +2023,8 @@ function buildMockupLayout(){
     '</div></div>'+
     '<div class="hero-right">'+desktopGalleryMarkup+'</div>'+
     '</div>'+
+    buildingStripHtml+
+    availableUnitsHtml+
     mobileAmenitiesSlotHtml+
     agentHtml+
     emotionalIntroHtml+
@@ -1657,7 +2044,7 @@ function buildMockupLayout(){
   // Mobile CTA bar
   var mCtaBar=document.getElementById('mobile-cta-bar');
   if(mCtaBar){
-    var mPriceDisplay=isSor?(data.sale_price||data.rent_price||data.price_display):data.price_display;
+    var mPriceDisplay=selectedUnit?buildUnitPriceText(data,selectedUnit.resolved,lang):(isSor?(data.sale_price||data.rent_price||data.price_display):data.price_display);
     var mPriceHtml=mPriceDisplay?'<span class="mcta-price-value">'+esc(mPriceDisplay)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
@@ -1669,7 +2056,23 @@ function buildMockupLayout(){
 
   wireGalleryLightbox();
   wireMobileGalleryTrack();
+  wireBuildingStrip();
   PT.log('Layout rendered');
+}
+
+// Building Photos strip always opens the lightbox on the BUILDING's own
+// images (data.images / propertyContext.images), never the currently
+// swapped-in unit gallery -- deliberately independent of
+// _currentGalleryImages, matching the strip's own "always building-level"
+// rule above.
+function wireBuildingStrip(){
+  var strip=document.querySelector('.building-strip-photos');
+  if(!strip||!propertyContext) return;
+  var buildingImages=(Array.isArray(propertyContext.images)?propertyContext.images:[]).filter(function(u){return u&&typeof u==='string';});
+  if(!buildingImages.length) return;
+  strip.querySelectorAll('.building-strip-photo').forEach(function(el,i){
+    el.onclick=function(){LB.open(buildingImages,i);};
+  });
 }
 
 // ── buildDesktopGallery ──────────────────────────────────────────
@@ -1707,8 +2110,7 @@ function buildDesktopGallery(images){
 }
 
 function syncDesktopHero(idx,thumbEl){
-  if(!propertyContext||!Array.isArray(propertyContext.images))return;
-  var clean=propertyContext.images.filter(function(u){return u&&typeof u==='string';});
+  var clean=_currentGalleryImages.filter(function(u){return u&&typeof u==='string';});
   if(!clean[idx])return;
   var heroImg=document.getElementById('dg-hero-img');
   var coordLbl=document.getElementById('dg-coord-lbl');
@@ -1759,11 +2161,9 @@ function wireMobileGalleryTrack(){
       var idx=Math.round(track.scrollLeft/w);
       var dots=track.parentElement?track.parentElement.querySelectorAll('.mg-dot'):[];
       dots.forEach(function(d,i){d.classList.toggle('active',i===idx);});
-      if(propertyContext&&Array.isArray(propertyContext.images)){
-        var c=propertyContext.images.filter(Boolean);
-        var slides=track.querySelectorAll('.mg-slide');
-        if(slides[idx]&&c[idx])checkSmartFitLayout(c[idx],slides[idx]);
-      }
+      var c=_currentGalleryImages.filter(Boolean);
+      var slides=track.querySelectorAll('.mg-slide');
+      if(slides[idx]&&c[idx])checkSmartFitLayout(c[idx],slides[idx]);
     },60);
   },{passive:true});
 }
@@ -1798,6 +2198,37 @@ var WA_MESSAGE_TEMPLATES_FALLBACK={
   en:'Hello,\n\nI\'m interested in this property.\n\n{{PROPERTY_TYPE}}\n📍 {{LOCATION}}\n\nCould you provide more details?\n\nRef: {{REFERENCE}}',
   zh:'您好，\n\n我对这处房产很感兴趣。\n\n{{PROPERTY_TYPE}}\n📍 {{LOCATION}}\n\n请提供更多详细信息，谢谢！\n\nRef: {{REFERENCE}}'
 };
+
+// Unit-specific WhatsApp message — a fuller, more natural sentence than
+// "{base template} — {unit name}", matching the requested example
+// verbatim: "I'm interested in the Studio unit at River Apartment
+// ($400/month). Is it still available?" Automatically includes Property
+// name, Selected unit, Price, and Availability (per the ask) — the
+// availability line is the literal rhetorical question when the unit is
+// actually available, or the real resolved status text otherwise (asking
+// "is it still available?" about a unit already shown as Fully Occupied
+// would read oddly, so it states the real status instead).
+var WA_UNIT_MESSAGE_TEMPLATES={
+  lo:'ສະບາຍດີ! ຂ້ອຍສົນໃຈໜ່ວຍ {{UNIT_NAME}} ທີ່ {{PROPERTY_NAME}} ({{PRICE}}). {{AVAILABILITY_LINE}}',
+  en:'Hi! I\'m interested in the {{UNIT_NAME}} unit at {{PROPERTY_NAME}} ({{PRICE}}). {{AVAILABILITY_LINE}}',
+  zh:'您好！我对{{PROPERTY_NAME}}的{{UNIT_NAME}}户型感兴趣（{{PRICE}}）。{{AVAILABILITY_LINE}}'
+};
+var WA_UNIT_AVAILABLE_QUESTION={lo:'ຍັງມີຢູ່ບໍ?',en:'Is it still available?',zh:'请问还有吗？'};
+var WA_UNIT_PRICE_ON_REQUEST={lo:'ລາຄາຕິດຕໍ່ສອບຖາມ',en:'price on request',zh:'价格面议'};
+
+function buildUnitWhatsAppMessage(property, unitName, priceText, availabilityResolved, lang){
+  var propertyName=property['title_'+lang]||property.title_en||property.title_lo||'';
+  var priceStr=priceText||(WA_UNIT_PRICE_ON_REQUEST[lang]||WA_UNIT_PRICE_ON_REQUEST.en);
+  var availLine=(availabilityResolved&&availabilityResolved.status==='available')
+    ? (WA_UNIT_AVAILABLE_QUESTION[lang]||WA_UNIT_AVAILABLE_QUESTION.en)
+    : (availabilityResolved ? formatAvailabilityDisplay(availabilityResolved,lang) : '');
+  return fillTemplate(WA_UNIT_MESSAGE_TEMPLATES[lang]||WA_UNIT_MESSAGE_TEMPLATES.en, {
+    UNIT_NAME: unitName||'',
+    PROPERTY_NAME: propertyName,
+    PRICE: priceStr,
+    AVAILABILITY_LINE: availLine
+  });
+}
 
 // ── Lightbox ─────────────────────────────────────────────────────
 var LB={
@@ -1866,7 +2297,7 @@ var LB={
 function wireGalleryLightbox(){
   var frame=document.getElementById('dg-hero-frame');
   var viewAll=document.getElementById('dg-view-all-btn');
-  var images=(propertyContext&&Array.isArray(propertyContext.images))?propertyContext.images.filter(function(u){return u&&typeof u==='string';}):[];
+  var images=_currentGalleryImages.filter(function(u){return u&&typeof u==='string';});
   if(!images.length)return;
   if(viewAll){viewAll.onclick=function(e){e.stopPropagation();LB.open(images,0);};}
   document.querySelectorAll('.dg-thumb').forEach(function(thumb,i){

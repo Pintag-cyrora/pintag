@@ -63,6 +63,58 @@ multiple configurations) — see `resolveUnitType()`/`isMultiUnitBuilding()`
 in `terminology.js`, which is the sole inheritance resolver between a
 building's own fields and a specific unit type's overrides.
 
+**Property photos and unit photos are separate concepts, each with its
+own independent gallery.** `properties.images` is the Property Gallery —
+building exterior, lobby, shared amenities, never unit-specific.
+`unit_types.images` is that one unit's own gallery, uploaded and managed
+completely independently (its own uploader, its own storage-upload calls
+— see `uploadImageFileToStorage()` in `admin.html`, reused by both
+galleries so there is one upload implementation, not two). A unit with no
+photos of its own falls back to the Property Gallery for display
+(`resolveUnitType()`'s `images` field) rather than showing an empty
+gallery — this is the *only* place the two collections blend, and only at
+render time, never in storage. On the public listing page
+(`listing.html`), selecting a unit in the Available Units section
+(`selectUnitType()`) swaps the hero gallery/price/specs/availability/
+description/features/amenities/WhatsApp CTA to that unit's own resolved
+values, Booking.com-style room selection — implemented as a full
+re-render of the existing `buildMockupLayout()` (the same function used
+for every other render), not a second render path. A persistent Building
+Photos / Shared Amenities strip renders directly below the hero
+*whenever* a unit is selected (never the building's default view, where
+it would just repeat the hero) — deliberately always the building's own
+`images`/`amenities`, independent of whichever unit is selected, so a
+visitor can browse the chosen unit while still one glance from the
+building itself. Deep linking (`listing.html?slug=...&unit=<slugified-name-or-id>`)
+auto-selects a unit on load; a clean path (`/listing/x?unit=y`) is not
+achievable on this project's static GitHub Pages hosting, so the existing
+query-param convention is used instead. The selected unit's own WhatsApp
+message is a full sentence (`buildUnitWhatsAppMessage()`) — property
+name, unit name, price, and a real availability line — not the base
+inquiry template with a unit name appended.
+
+**A `unit_types` row is a unit TYPE (a floor plan / product), never one
+specific physical apartment — this must never change as new fields are
+added.** `total_units`/`available_count` already model "this type has N
+physical units" without assuming N=1. Every new unit-level field added so
+far (images, price, bedrooms/bathrooms/sqm, availability, description,
+features/amenities, furnishing, floor plan/virtual tour/video links,
+floor number, orientation — see `resolveUnitType()`) describes the *type*,
+never a single occupant/lease/room-number. A future Phase 3 `units` child
+table (Property → Unit Type → Individual Unit, e.g. Studio → Room 203/305/501)
+is what will track individual physical units and occupancy — it FKs to
+`unit_types.id` without requiring changes to any field listed above. Never
+add a field to `unit_types` that only makes sense for one physical unit
+(a room number, a single lease, a single tenant); that belongs on the
+future Individual Unit table.
+
+Deposit, Advance Rent, Utilities (electricity/water/internet), Lease
+Length, Pet Policy, and Parking are all Rental Terms fields
+(`rental-terms.js`'s `RENTAL_TERMS_FIELDS`), not `unit_types` columns —
+already unit-overridable via the existing `rental_terms_overrides`
+mechanism (§3, "Never read Rental Terms JSON directly"), so a unit-level
+override for any of these needs no schema change, only a registry entry.
+
 ### Contact Domain
 **Platform Identity, Buyer Contact, and Authentication are three separate
 concepts.** This is the single most load-bearing rule in the schema and is
@@ -403,6 +455,13 @@ Documenting these here rather than letting them go undiscovered:
   works around this with a schema-only dump from production. A tracked
   baseline migration would remove this workaround entirely; tracked as a
   follow-up, not yet done.
+- Per-unit AI-generated description ("AI description" from the "Unit
+  Types as first-class objects" phase) is deliberately deferred, not
+  built. `generate-listing-content` (the existing Gemini-backed
+  description generator) is the likely reuse target, but it currently
+  takes property-shaped input — scoping it per-unit needs a parameter-shape
+  change and admin UI wiring, sized as its own pass rather than folded
+  into this one.
 
 ---
 

@@ -11,7 +11,8 @@ vm.runInThisContext(src, { filename: 'unit-availability.js' });
 
 const {
   resolveUnitAvailability, formatAvailabilityDisplay, formatAvailableUnitCount,
-  getAvailabilityNoteLine, compareUnitTypesForDisplay, formatAvailabilityAdminSummary
+  getAvailabilityNoteLine, compareUnitTypesForDisplay, formatAvailabilityAdminSummary,
+  formatMoveInDate
 } = globalThis;
 
 function unitType(overrides) {
@@ -104,6 +105,17 @@ test('note never appears inside formatAvailabilityDisplay output, only via getAv
 
 test('getAvailabilityNoteLine: null when no note set', () => {
   assert.equal(getAvailabilityNoteLine(resolveUnitAvailability(unitType({ available_count: 1 }))), null);
+});
+
+// ── formatMoveInDate: the standalone date, separate from the composed message ──
+test('formatMoveInDate: returns the formatted date when one is resolved', () => {
+  const resolved = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }));
+  assert.equal(formatMoveInDate(resolved, 'en'), '15 Aug 2026');
+});
+
+test('formatMoveInDate: null when no date is resolved', () => {
+  const resolved = resolveUnitAvailability(unitType({ available_count: 1 }));
+  assert.equal(formatMoveInDate(resolved, 'en'), null);
 });
 
 // ── Admin summary includes total_units fraction; public formatter never does ──

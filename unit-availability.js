@@ -125,6 +125,19 @@ function getAvailabilityNoteLine(resolved) {
   return resolved.note || null;
 }
 
+// A move-in date is already embedded inside formatAvailabilityDisplay()'s
+// 'fully_occupied' message ("Fully Occupied — Available from {date}"), but
+// a caller sometimes needs the date on its own -- e.g. a per-unit card that
+// shows Availability and Move-in date as two separate fields. This is that
+// seam: a public wrapper around the private _formatAvailabilityDate(), so
+// callers never need to know that helper exists or call it directly. Still
+// composes with, never replaces, formatAvailabilityDisplay()'s frozen
+// 3-message contract -- same rule as formatAvailableUnitCount() above.
+// Returns null when there's no date to show (nothing to render).
+function formatMoveInDate(resolved, lang) {
+  return resolved.nextAvailableDate ? _formatAvailabilityDate(resolved.nextAvailableDate, lang) : null;
+}
+
 // compareUnitTypesForDisplay(a, b) -- public listing ordering: Available
 // Now, then Available Soon (soonest date first), then Currently
 // Unavailable, staff's own sort_order as the tiebreak within a bucket.
