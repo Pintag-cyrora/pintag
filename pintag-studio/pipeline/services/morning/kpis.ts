@@ -1,6 +1,6 @@
 // Company Health + Department Updates — the sole reader of agent_health
 // for the whole Morning Brief pipeline (M2.9 web migration). Previously,
-// gatherOrganizationalMemory() queried this table filtered to
+// collectOrganizationalMemory() queried this table filtered to
 // down/degraded only, for one CMO-prompt paragraph; calculateKPIs() is now
 // the one query, fetching every row, and formatDepartmentHealthIssues()
 // derives that same prompt paragraph from these results — one query, one

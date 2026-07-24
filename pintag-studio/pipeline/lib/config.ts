@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { supabase } from './supabase.js';
@@ -11,6 +11,30 @@ export const REPO_ROOT = join(__dirname, '..', '..');
 
 const ORG_CONFIG_PATH = join(REPO_ROOT, 'brain', 'org-config.json');
 
+let orgConfigCache: { mtimeMs: number; data: any } | null = null;
+
+/**
+ * The one place org-config.json is actually read off disk. Every reader
+ * below (readObservationIntelligenceThresholds, readFounderName,
+ * readActiveCompanyName, readMorningBriefConfig) used to each do their own
+ * readFileSync + JSON.parse — real duplication, and real repeated I/O on
+ * GET /morning's request path (which reads config on every single request
+ * to check staleness). Cached here, keyed on the file's mtime rather than
+ * a TTL, so a founder editing org-config.json by hand still takes effect
+ * on the very next read — the "live-editable, no restart needed" property
+ * every caller below already documented is preserved exactly, just
+ * without re-parsing a file that hasn't changed. Callers still each wrap
+ * their own try/catch around this, so a missing/corrupt file degrades to
+ * that specific caller's own documented defaults, not a shared one.
+ */
+function loadOrgConfig(): any {
+  const stat = statSync(ORG_CONFIG_PATH);
+  if (orgConfigCache && orgConfigCache.mtimeMs === stat.mtimeMs) return orgConfigCache.data;
+  const data = JSON.parse(readFileSync(ORG_CONFIG_PATH, 'utf-8'));
+  orgConfigCache = { mtimeMs: stat.mtimeMs, data };
+  return data;
+}
+
 /**
  * Loads the merged runtime config: static structure from brain/org-config.json
  * (org identity, quality-score weights/thresholds, auto-publish eligibility
@@ -22,7 +46,7 @@ const ORG_CONFIG_PATH = join(REPO_ROOT, 'brain', 'org-config.json');
  * Founder Mode behavior stays data-driven rather than branching per-agent.
  */
 export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
-  const staticConfig = JSON.parse(readFileSync(ORG_CONFIG_PATH, 'utf-8'));
+  const staticConfig = loadOrgConfig();
 
   const { data: settings, error } = await supabase
     .from('org_settings')
@@ -99,7 +123,7 @@ const DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS: ObservationIntelligenceThresh
  */
 export function readObservationIntelligenceThresholds(): ObservationIntelligenceThresholds {
   try {
-    const config = JSON.parse(readFileSync(ORG_CONFIG_PATH, 'utf-8'));
+    const config = loadOrgConfig();
     const oi = config.observation_intelligence;
     return {
       outperformRatio: typeof oi?.video_performance_outperform_ratio === 'number' ? oi.video_performance_outperform_ratio : DEFAULT_OBSERVATION_INTELLIGENCE_THRESHOLDS.outperformRatio,
@@ -125,8 +149,7 @@ export function readObservationIntelligenceThresholds(): ObservationIntelligence
 /** Reads brain/org-config.json's founder name — used by every founder-facing greeting (Founder Workspace routes, the Morning Brief). Falls back to a generic greeting on any read error rather than crashing a page over a config typo. */
 export function readFounderName(): string {
   try {
-    const config = JSON.parse(readFileSync(ORG_CONFIG_PATH, 'utf-8'));
-    return config.org?.founder ?? 'there';
+    return loadOrgConfig().org?.founder ?? 'there';
   } catch {
     return 'there';
   }
@@ -135,8 +158,7 @@ export function readFounderName(): string {
 /** Reads today's single active company (org.name) from org-config.json. Not a switcher — no second company exists yet; structured so a second org.name later is a data change, not a redesign. */
 export function readActiveCompanyName(): string {
   try {
-    const config = JSON.parse(readFileSync(ORG_CONFIG_PATH, 'utf-8'));
-    return config.org?.name ?? 'Unknown';
+    return loadOrgConfig().org?.name ?? 'Unknown';
   } catch {
     return 'Unknown';
   }
@@ -154,7 +176,7 @@ const DEFAULT_MORNING_BRIEF_CONFIG: MorningBriefConfig = {
 /** Same read-once/fall-back-to-defaults discipline as readObservationIntelligenceThresholds() above. */
 export function readMorningBriefConfig(): MorningBriefConfig {
   try {
-    const config = JSON.parse(readFileSync(ORG_CONFIG_PATH, 'utf-8'));
+    const config = loadOrgConfig();
     const mb = config.morning_brief;
     return {
       stalenessThresholdMinutes: typeof mb?.staleness_threshold_minutes === 'number' ? mb.staleness_threshold_minutes : DEFAULT_MORNING_BRIEF_CONFIG.stalenessThresholdMinutes,

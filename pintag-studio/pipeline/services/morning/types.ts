@@ -20,7 +20,7 @@ export interface AttentionItem {
   link: string;
 }
 
-export interface SupabaseGatherResult {
+export interface SupabaseCollectResult {
   available: boolean;
   summary: string;
   pendingApprovalsCount?: number;

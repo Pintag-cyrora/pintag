@@ -5,7 +5,7 @@
 // pattern so JSON gets the same historical record for future
 // analytics/timeline views.
 
-import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT } from '../../lib/config.js';
 import type { MorningBrief } from './types.js';
@@ -21,7 +21,10 @@ export function writeMorningBrief(brief: MorningBrief): void {
 }
 
 export function readLatestMorningBrief(): MorningBrief | null {
-  if (!existsSync(LATEST_JSON_PATH)) return null;
+  // A single try/catch around the read — covers both "file doesn't exist
+  // yet" (ENOENT) and "file exists but is corrupt/mid-write" the same way,
+  // without a separate existsSync() stat call before it (redundant: the
+  // read itself already tells us whether the file is there).
   try {
     return JSON.parse(readFileSync(LATEST_JSON_PATH, 'utf-8')) as MorningBrief;
   } catch {

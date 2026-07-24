@@ -1,6 +1,9 @@
 // Shared service — data collection. Moved from pipeline/daily-briefing.ts
-// (M2.9 web migration), bodies unchanged except where noted. This is the
-// "collectIntelligence()" + observation/operational/organizational gathering
+// (M2.9 web migration), bodies unchanged except where noted. Every public
+// function here is named collect* (collectIntelligence, collectObservations,
+// collectOperationalMemory, collectOrganizationalMemory) — the naming
+// convention for a services/<page>/collect.ts file: "collect" is this
+// module's verb, the same way generate.ts's is "derive". This is the data
 // half of generateMorningBrief()'s orchestration — see generate.ts.
 
 import { loadAllKnowledgeEntries, type KnowledgeEntry } from '../../lib/knowledge.js';
@@ -9,7 +12,7 @@ import { gatherAllObservations, formatObservation, type Observation } from '../.
 import { routeObservations, dispatchDepartmentObservations } from '../../lib/observation-intelligence.js';
 import { supabase } from '../../lib/supabase.js';
 import { readObservationIntelligenceThresholds } from '../../lib/config.js';
-import type { SupabaseGatherResult } from './types.js';
+import type { SupabaseCollectResult } from './types.js';
 
 export { loadAllSuggestions };
 
@@ -68,7 +71,7 @@ export function collectIntelligence(): CollectIntelligenceResult {
 // Observation Sources (M2.2) + Observation Intelligence (M2.5/M2.8) — what
 // happened in the real world.
 // ---------------------------------------------------------------------------
-export interface GatherObservationsResult {
+export interface CollectObservationsResult {
   /** Fed into the CMO prompt as reference material — prose, not rendered directly anywhere. */
   promptText: string;
   /** Executive-routed Observations, real and unmodified. */
@@ -90,7 +93,7 @@ function deriveRecentActivity(observations: Observation[], windowHours: number):
     .sort((a, b) => new Date(b.occurredAt!).getTime() - new Date(a.occurredAt!).getTime());
 }
 
-export async function gatherObservations(): Promise<GatherObservationsResult> {
+export async function collectObservations(): Promise<CollectObservationsResult> {
   const { observations, unavailable } = await gatherAllObservations();
 
   const routed = routeObservations(observations);
@@ -120,7 +123,7 @@ export async function gatherObservations(): Promise<GatherObservationsResult> {
 // ---------------------------------------------------------------------------
 // Operational Memory — what's actively in flight right now.
 // ---------------------------------------------------------------------------
-export async function gatherOperationalMemory(): Promise<SupabaseGatherResult> {
+export async function collectOperationalMemory(): Promise<SupabaseCollectResult> {
   try {
     const { data: inFlight, error: inFlightErr } = await supabase
       .from('content_items')
@@ -167,7 +170,7 @@ export async function gatherOperationalMemory(): Promise<SupabaseGatherResult> {
 // source of truth for department health — see that file), so this no
 // longer queries it.
 // ---------------------------------------------------------------------------
-export async function gatherOrganizationalMemory(): Promise<SupabaseGatherResult> {
+export async function collectOrganizationalMemory(): Promise<SupabaseCollectResult> {
   try {
     const cutoff = yesterday();
     const { data: published, error: publishedErr } = await supabase
@@ -197,8 +200,8 @@ export function buildPrompt(sections: {
   intelligence: string;
   suggestions: string;
   observations: string;
-  operational: SupabaseGatherResult;
-  organizational: SupabaseGatherResult;
+  operational: SupabaseCollectResult;
+  organizational: SupabaseCollectResult;
   departmentHealth: string;
 }): string {
   return [

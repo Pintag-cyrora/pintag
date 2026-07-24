@@ -19,7 +19,8 @@ export interface CachedPageOptions<T extends { generatedAt: string }> {
 export interface CachedPage<T extends { generatedAt: string }> {
   ensureFresh(): Promise<T>;
   refreshInBackgroundIfStale(cached: T): void;
-  status(): { generatedAt: string | null; regenerating: boolean };
+  /** Pass the value already in hand (e.g. from ensureFresh()/refreshInBackgroundIfStale()'s caller) to avoid a redundant read — status() only re-reads when called with no argument, for callers (like a standalone polling endpoint) that don't already have a value. */
+  status(known?: T | null): { generatedAt: string | null; regenerating: boolean };
 }
 
 /**
@@ -67,8 +68,8 @@ export function createCachedPage<T extends { generatedAt: string }>(opts: Cached
       });
   }
 
-  function status(): { generatedAt: string | null; regenerating: boolean } {
-    const cached = opts.read();
+  function status(known?: T | null): { generatedAt: string | null; regenerating: boolean } {
+    const cached = known !== undefined ? known : opts.read();
     return { generatedAt: cached?.generatedAt ?? null, regenerating: regenerationInFlight };
   }
 

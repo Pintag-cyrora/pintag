@@ -3,7 +3,7 @@
 // into to tell Marketing OS what happened in the real world. Mirrors a
 // pattern already used twice in this codebase: retrieveKnowledge()'s source
 // adapters (knowledge/ files + brain/lao/dictionary.md, merged
-// transparently — see knowledge.ts) and gatherOperationalMemory()'s
+// transparently — see knowledge.ts) and collectOperationalMemory()'s
 // {available, ...} graceful-degradation shape. This is the third
 // application of the same idea, not a new one.
 //
@@ -66,7 +66,7 @@ export interface GatherAllObservationsResult {
  * The one entry point pipeline/daily-briefing.ts calls. Observations
  * themselves are Operational Memory (see MEMORY_MODEL.md): computed fresh
  * every run from a live API call, never persisted here or in Supabase — the
- * same choice gatherOperationalMemory() already makes for content_items/
+ * same choice collectOperationalMemory() already makes for content_items/
  * approvals_queue rather than caching them. A real trend/diff view over time
  * is a deliberate future step (same "change-aware, not snapshot" direction
  * already flagged in daily-briefing.ts from M2), not built here.

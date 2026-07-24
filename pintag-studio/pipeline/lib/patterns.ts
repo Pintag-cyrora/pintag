@@ -387,7 +387,7 @@ function appendOccurrence(pattern: CandidatePattern, observation: Observation, c
 }
 
 /**
- * The entry point, called from gatherObservations() (daily-briefing.ts)
+ * The entry point, called from collectObservations() (pipeline/services/morning/collect.ts)
  * right after routeObservations(). `executive` supplies the outperforming
  * video_performance observations that can become/reinforce a pattern;
  * `department` supplies this same run's underperforming ones, counted as

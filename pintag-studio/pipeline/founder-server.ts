@@ -29,7 +29,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT, readMorningBriefConfig } from './lib/config.js';
-import { generateDailyBriefing, readFounderName, SUGGESTION_KIND_LABELS } from './daily-briefing.js';
+import { generateDailyBriefing, SUGGESTION_KIND_LABELS } from './daily-briefing.js';
+import { getFounderSession } from './lib/auth.js';
 import { readTodaysRecommendation, buildFounderTeachingSuggestionInput } from './teach.js';
 import { listPendingSuggestions, approveSuggestion, rejectSuggestion, proposeSuggestion, type KnowledgeSuggestion } from './lib/suggestions.js';
 import { loadAllKnowledgeEntries, reviewKnowledgeEntry, isWritableEntry, type KnowledgeEntry } from './lib/knowledge.js';
@@ -150,7 +151,7 @@ function readRequestBody(req: IncomingMessage): Promise<URLSearchParams> {
 // Home
 // ---------------------------------------------------------------------------
 
-function renderHome(): string {
+function renderHome(founderName: string): string {
   const pendingSuggestions = listPendingSuggestions().length;
   const pendingDrafts = loadAllKnowledgeEntries().filter((e) => e.status === 'draft' && isWritableEntry(e)).length;
   const pendingPatterns = listCandidatePatterns().length;
@@ -159,7 +160,7 @@ function renderHome(): string {
   return pageShell(
     'Founder Workspace',
     `
-    <h1>Good morning, ${escapeHtml(readFounderName())}</h1>
+    <h1>Good morning, ${escapeHtml(founderName)}</h1>
     <div class="subtitle">Everything Marketing OS can do today, in one place — no terminal needed.</div>
 
     <form method="POST" action="/api/generate-briefing">
@@ -353,7 +354,7 @@ async function renderObservations(): Promise<string> {
   // Every observation shown with what it actually became — not just the
   // raw fact, but whether Observation Intelligence sent it to the CEO
   // Workspace, routed it elsewhere, or decided it wasn't meaningful. This
-  // is the same classification gatherObservations() applies for real; shown
+  // is the same classification collectObservations() applies for real; shown
   // here for transparency, not recomputed differently.
   const observationsHtml = observations.length
     ? observations
@@ -419,11 +420,14 @@ async function handleMorning(res: ServerResponse): Promise<void> {
   if (!cached) {
     // Cold start: nothing generated yet — block once, this request only.
     const brief = await morningCache.ensureFresh();
-    sendHtml(res, 200, renderMorningPage(brief));
+    sendHtml(res, 200, renderMorningPage(brief, { regenerating: morningCache.status(brief).regenerating }));
     return;
   }
   morningCache.refreshInBackgroundIfStale(cached);
-  sendHtml(res, 200, renderMorningPage(cached, { regenerating: morningCache.status().regenerating }));
+  // Pass `cached` straight through — status() would otherwise re-read
+  // daily-briefing/latest.json a second time in this same request purely
+  // to report a `regenerating` flag it already has in memory.
+  sendHtml(res, 200, renderMorningPage(cached, { regenerating: morningCache.status(cached).regenerating }));
 }
 
 function handleMorningStatus(res: ServerResponse): void {
@@ -437,11 +441,15 @@ function handleMorningStatus(res: ServerResponse): void {
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   const { pathname } = url;
-  const founderName = readFounderName();
+  // Every route reads founder identity through this one seam — today it's
+  // just a wrapper over readFounderName() (this tool is local-only, single
+  // founder, no real auth yet), but it's the one place a future real
+  // session/authorization check slots in without touching any route body.
+  const founderName = getFounderSession(req).founderName;
 
   try {
     if (req.method === 'GET' && pathname === '/') {
-      sendHtml(res, 200, renderHome());
+      sendHtml(res, 200, renderHome(founderName));
     } else if (req.method === 'GET' && pathname === '/morning') {
       await handleMorning(res);
     } else if (req.method === 'GET' && pathname === '/api/morning/status') {

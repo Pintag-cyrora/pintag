@@ -9,12 +9,12 @@ import { runAgent } from '../../lib/agent.js';
 import { readFounderName, readActiveCompanyName, readObservationIntelligenceThresholds } from '../../lib/config.js';
 import { computeConfidence } from '../../lib/observation-intelligence.js';
 import { matchExecutiveObservationsToPatterns, listCandidatePatterns } from '../../lib/patterns.js';
-import { collectIntelligence, gatherObservations, gatherOperationalMemory, gatherOrganizationalMemory, buildPrompt, loadAllSuggestions, SUGGESTION_KIND_LABELS } from './collect.js';
+import { collectIntelligence, collectObservations, collectOperationalMemory, collectOrganizationalMemory, buildPrompt, loadAllSuggestions, SUGGESTION_KIND_LABELS } from './collect.js';
 import { calculateKPIs, formatDepartmentHealthIssues } from './kpis.js';
 import { extractRecommendedAction } from './recommended-action.js';
 import { formatRelativeSpan, formatRecentActivityStat, classifyRecentActivity } from './format.js';
-import type { MorningBrief, AttentionItem, RecentActivityItem, RiskItem, OpportunityItem, SupabaseGatherResult } from './types.js';
-import type { CollectIntelligenceResult, GatherObservationsResult } from './collect.js';
+import type { MorningBrief, AttentionItem, RecentActivityItem, RiskItem, OpportunityItem, SupabaseCollectResult } from './types.js';
+import type { CollectIntelligenceResult, CollectObservationsResult } from './collect.js';
 import type { KpiResult } from './kpis.js';
 
 function yesterday(): string {
@@ -26,7 +26,7 @@ function yesterday(): string {
 /** Capped, not exhaustive — protects a "quick to scan" goal as pending volume grows; overflow links to the real queue instead. */
 const ATTENTION_LIMIT = 5;
 
-function deriveAttentionItems(operational: SupabaseGatherResult, pendingSuggestions: CollectIntelligenceResult['pendingSuggestions']): AttentionItem[] {
+function deriveAttentionItems(operational: SupabaseCollectResult, pendingSuggestions: CollectIntelligenceResult['pendingSuggestions']): AttentionItem[] {
   const items: AttentionItem[] = [];
   for (const row of operational.pendingApprovals ?? []) {
     items.push({ source: 'approval', title: row.title, badge: row.contentType, detail: 'Awaiting your approval', link: 'index.html' });
@@ -40,7 +40,7 @@ function deriveAttentionItems(operational: SupabaseGatherResult, pendingSuggesti
 }
 
 /** Only surfaces a win when a genuine positive signal exists in already-gathered data — never fabricated, omitted entirely on a quiet day. Priority order: human+AI collaboration (approved suggestions) > new intelligence > published content. */
-function deriveWin(organizational: SupabaseGatherResult, recentlyVerifiedKnowledge: CollectIntelligenceResult['recentlyVerifiedKnowledge']): string | undefined {
+function deriveWin(organizational: SupabaseCollectResult, recentlyVerifiedKnowledge: CollectIntelligenceResult['recentlyVerifiedKnowledge']): string | undefined {
   const cutoff = yesterday();
 
   const recentlyApprovedSuggestions = loadAllSuggestions().filter((s) => s.status === 'approved' && (s.reviewedAt ?? '') >= cutoff);
@@ -60,7 +60,7 @@ function deriveWin(organizational: SupabaseGatherResult, recentlyVerifiedKnowled
 }
 
 /** Down/degraded departments + underperforming/erroring observations — real data only, nothing fabricated. */
-function deriveRisks(kpis: KpiResult, departmentObservations: GatherObservationsResult['departmentObservations']): RiskItem[] {
+function deriveRisks(kpis: KpiResult, departmentObservations: CollectObservationsResult['departmentObservations']): RiskItem[] {
   const risks: RiskItem[] = [];
   for (const d of kpis.departmentUpdates) {
     if (d.status === 'down' || d.status === 'degraded') {
@@ -78,7 +78,7 @@ function deriveRisks(kpis: KpiResult, departmentObservations: GatherObservations
 }
 
 /** Outperforming content + Emerging Playbooks — real data only. */
-function deriveOpportunities(executiveObservations: GatherObservationsResult['executiveObservations']): OpportunityItem[] {
+function deriveOpportunities(executiveObservations: CollectObservationsResult['executiveObservations']): OpportunityItem[] {
   const opportunities: OpportunityItem[] = executiveObservations.map((o) => ({
     kind: 'outperforming-content',
     title: o.whatHappened,
@@ -98,7 +98,7 @@ function deriveOpportunities(executiveObservations: GatherObservationsResult['ex
   return opportunities;
 }
 
-function buildRecentActivity(recentActivity: GatherObservationsResult['recentActivity'], now: number): RecentActivityItem[] {
+function buildRecentActivity(recentActivity: CollectObservationsResult['recentActivity'], now: number): RecentActivityItem[] {
   const { recentActivityMinAgeHoursForComparison, outperformRatio, underperformRatio } = readObservationIntelligenceThresholds();
   return recentActivity.map((observation) => {
     const ageHours = (now - new Date(observation.occurredAt!).getTime()) / 3_600_000;
@@ -113,9 +113,9 @@ function buildRecentActivity(recentActivity: GatherObservationsResult['recentAct
 
 export async function generateMorningBrief(): Promise<MorningBrief> {
   const [operational, organizational, observationsResult, kpis] = await Promise.all([
-    gatherOperationalMemory(),
-    gatherOrganizationalMemory(),
-    gatherObservations(),
+    collectOperationalMemory(),
+    collectOrganizationalMemory(),
+    collectObservations(),
     calculateKPIs(),
   ]);
   const intelligence = collectIntelligence();
