@@ -1,0 +1,42 @@
+name: Marketing OS Morning Brief
+
+# Generates and publishes the Morning Brief (pintag-studio/pipeline/publish-morning-brief.ts)
+# to Supabase, for marketing-os.html (this repo's root) to display.
+#
+# Trigger is manual (workflow_dispatch) until pintag-studio's SETUP.md steps
+# for this feature are done (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
+# ANTHROPIC_API_KEY secrets exist, migration 0005 has been run, a real
+# founder Supabase Auth user has been provisioned) — flip on the `schedule`
+# block below once that's true. Same convention as
+# pintag-studio/.github/workflows/daily-content-pipeline.yml.
+on:
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: '0 1 * * *'  # 08:00 Asia/Vientiane
+
+jobs:
+  publish-morning-brief:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pintag-studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm run morning:publish
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # anthropic-api (not claude-cli) is the sane CI default — it needs
+          # only this one secret, vs. installing and authenticating the
+          # Claude Code CLI on a fresh runner. See SETUP.md.
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'anthropic-api' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Optional — the TikTok Observation Source degrades gracefully
+          # (no throw) when these are absent, so the run still succeeds
+          # without them. Set as repo secrets once TikTok is connected.
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
