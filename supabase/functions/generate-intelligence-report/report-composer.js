@@ -116,7 +116,7 @@ function insightSummaryLine(i) {
   return `- [${i.type}] ${i.title}${dims ? ` (${dims})` : ''} — severity: ${i.severity}, confidence: ${Math.round((i.confidence || 0) * 100)}%, trend: ${i.trend}${i.recommendation ? `, suggested action: ${i.recommendation}` : ''}`;
 }
 
-export function buildPrompt(reportType, composed, rawMetricsSummary, supply) {
+export function buildPrompt(reportType, composed, rawMetricsSummary, supply, trendAnalysis) {
   const newBlock = composed.new_insights.length
     ? composed.new_insights.map(insightSummaryLine).join('\n')
     : '(none)';
@@ -131,23 +131,35 @@ export function buildPrompt(reportType, composed, rawMetricsSummary, supply) {
     ? `\nCURRENT ACTIVE SUPPLY (live snapshot, not historical):\nBy district: ${JSON.stringify(supply.byDistrict)}\nBy property type: ${JSON.stringify(supply.byType)}\n`
     : '';
 
-  const commonRules = `You are writing for Pintag, a real estate marketplace in Vientiane, Laos. You are given a set of insights that deterministic code has ALREADY detected, ranked, and classified as new/continuing/resolved — these are the only findings that exist. Your job is strictly to explain, connect, and narrate them clearly.
+  // Trend Calculator output (product spec §3/§7) — the ONLY comparisons
+  // ("today vs yesterday," "vs the 7/30-day average," Week/Month-over-
+  // Week) this report may state. A null field means the comparison
+  // couldn't be computed (no history yet, or a baseline too small to
+  // divide by meaningfully) — that must be narrated as "not enough data
+  // to compare," never guessed at or silently rounded to a number.
+  const trendBlock = trendAnalysis
+    ? `\nTREND ANALYSIS (pre-computed, exact — the ONLY comparisons/percentages you may state; a null value means that comparison genuinely cannot be made yet, say so in words rather than inventing a number):\n${JSON.stringify(trendAnalysis)}\n`
+    : '';
+
+  const commonRules = `You are writing for Pintag, a real estate marketplace in Vientiane, Laos. You are given a set of insights that deterministic code has ALREADY detected, ranked, and classified as new/continuing/resolved, plus a pre-computed trend analysis — these are the only findings and the only numbers that exist. Your job is strictly to explain, connect, and narrate them clearly.
 
 Do NOT:
 - Discover anomalies yourself
 - Decide what's significant
-- Invent any statistic, percentage, or number not present in the data below
-- State a number without it appearing in the evidence provided
+- Invent, estimate, or recompute any statistic, percentage, or number not present in the data below
+- State a number without it appearing in the evidence, trend analysis, or raw metrics provided
+- Describe the data as "stable," "back to baseline," or "normal" when the trend analysis or a linked insight shows a statistically significant change in the same section — direction language must match the data
 
 You MAY:
 - Explain WHY something might be happening, in plain business terms
 - Connect related insights into one narrative (e.g. a demand spike + a supply shortage in the same district becomes one recruiting recommendation)
 - Reference the raw metrics summary below for period totals
+- Say plainly "not enough data to compare yet" wherever the trend analysis shows null — this is the correct, honest thing to say, not a gap to fill in
 
 NEW INSIGHTS (🟢):\n${newBlock}\n
 CONTINUING INSIGHTS (🔴):\n${continuingBlock}\n
 RESOLVED INSIGHTS (✅):\n${resolvedBlock}
-${supplyBlock}
+${supplyBlock}${trendBlock}
 RAW METRICS SUMMARY (period totals, safe to cite verbatim):
 ${JSON.stringify(rawMetricsSummary)}
 

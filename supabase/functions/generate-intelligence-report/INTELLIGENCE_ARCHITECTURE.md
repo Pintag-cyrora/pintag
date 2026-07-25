@@ -30,39 +30,89 @@ Database (5 event tables)
    |
 Metrics Engine (SQL)         intelligence_daily_metrics()
    |
+Daily Metrics Snapshot (SQL) daily_metrics_snapshot (immutable, one row/day)
+   |
 Insight Engine (TypeScript)  insight-engine.js
+   |
+Trend Calculator (TS)        trend-calculator.js
    |
 Report Composer (TypeScript) report-composer.js
    |
 Gemini                       gemini-client.js
    |
+Validation Layer (TS)        report-validator.js
+   |
 Daily / Weekly / Monthly Intelligence Report
 ```
 
-`index.ts` is a thin orchestrator. It imports all four layers and wires
-them together; it does not itself compute metrics, detect significance,
-decide what a report discusses, or talk to Gemini.
+`index.ts` is a thin orchestrator. It imports every layer and wires them
+together; it does not itself compute metrics, detect significance, compute
+trends, decide what a report discusses, talk to Gemini, or validate
+Gemini's output.
 
 ## Layer responsibilities
 
 - **Metrics Engine computes facts only.** `intelligence_daily_metrics()`
   in the migration is plain counts and ratios — zero thresholds, zero
   judgment calls. It never decides whether a number is interesting.
+- **The Daily Metrics Snapshot is written exactly once per day and never
+  recalculated.** `daily_metrics_snapshot` is populated by
+  `ensure_daily_metrics_snapshot()` (`INSERT ... ON CONFLICT DO NOTHING`,
+  and it refuses to finalize today-or-later) and is immutable by database
+  trigger — any `UPDATE` attempt raises an exception. Every report reads
+  history from this table, never by recomputing
+  `intelligence_daily_metrics()` over the live event tables for a past
+  day. This is what makes "the same report generated twice from the same
+  period produces the same numbers" a database guarantee, not a hopeful
+  side effect of event tables happening to be append-only.
 - **Insight Engine detects and manages insights only.** `insight-engine.js`
   decides significance (via detectors — see below), matches findings
   against existing open insights, and manages their lifecycle
   (insert/update/resolve, with hysteresis). It never writes prose and
   never talks to Gemini.
+- **Trend Calculator computes comparisons only, never narrates them.**
+  `trend-calculator.js` is the ONLY place today-vs-yesterday,
+  vs-7-day-average, vs-30-day-average, and Week/Month-over-Week
+  percentages are computed. Every comparison is a direct arithmetic
+  function of the snapshot values it's given — nothing is estimated. A
+  baseline below `MIN_BASELINE_FOR_PCT` (3) produces `null`, not a huge or
+  misleading percentage — this is the fix for the literal "Searches up
+  1504%" failure mode the product spec named: a near-zero baseline must
+  never be allowed to produce a large, technically-correct-but-meaningless
+  percentage. Gemini receives this module's output as the ONLY
+  comparisons it may state (see `buildPrompt()`'s TREND ANALYSIS block) —
+  it never recomputes a percentage itself.
 - **Report Composer assembles report structure only.** `report-composer.js`
   decides which insights a given report discusses, in what role, and
   builds the structured prompt Gemini receives. It never invents a fact
   or a number — everything it hands to Gemini already came from the
-  Insight Engine or the Metrics Engine.
+  Insight Engine, the Trend Calculator, or the Metrics Engine.
 - **Gemini writes prose only.** `gemini-client.js` is the only file that
   calls the Gemini API. The prompt it sends explicitly forbids
-  discovering anomalies, deciding significance, or inventing a number not
-  present in the structured input — see `buildPrompt()` in
+  discovering anomalies, deciding significance, inventing a number not
+  present in the structured input, or describing the data as
+  "stable"/"back to baseline" when the trend analysis or a linked insight
+  shows a statistically significant change — see `buildPrompt()` in
   `report-composer.js` for the exact instruction.
+- **Validation Layer checks the narrative mechanically, after the fact,
+  and never trusts the prompt alone.** `report-validator.js` runs after
+  every Gemini call (never on the deterministic quiet-day/fallback paths,
+  which are correct by construction) and checks two things purely
+  mechanically, with no AI involved: (1) direction contradiction — does
+  headline/Biggest-Story language use "stable"/"baseline" wording while a
+  strongly significant (`|z| >= 2.5`) insight points the opposite
+  direction with no offsetting direction language in the same section;
+  (2) number grounding — does every percentage stated in those sections
+  correspond (±1, for rounding) to a number that actually appears in the
+  insight evidence, the trend analysis, or the raw metrics summary. On
+  failure, `index.ts` retries once with the specific issue(s) named in a
+  corrective follow-up prompt; if that still fails, it falls back to
+  `buildValidationFallbackReport()` — a plain, labeled, data-only report
+  — rather than ever persisting a narrative the pipeline itself knows is
+  contradictory or unsupported. This is a deliberately cheap, reliable,
+  keyword/regex-based check, not a second AI call judging the first —
+  see report-validator.js's own header comment for why that tradeoff was
+  chosen.
 - **Reports never create knowledge.** A report is a narrated view of
   `intelligence_insights` at a point in time. It does not exist as an
   independent source of truth — see Database Invariants below.
@@ -165,6 +215,42 @@ hold even if a caller misbehaves, retries badly, or races itself.
   the partial unique indexes and the join table's primary key are what
   make these guarantees true regardless of which caller, retry, or future
   code path attempts to write.
+
+## Data Accuracy Invariants
+
+Rules specific to the accuracy/reproducibility guarantees added on top of
+the baseline pipeline — see the migration
+`20260724000000_daily_metrics_snapshot.sql` and `trend-calculator.js`/
+`report-validator.js`.
+
+- **A day's numbers, once finalized, never change.** Enforced by
+  `daily_metrics_snapshot`'s `BEFORE UPDATE` trigger
+  (`reject_daily_metrics_snapshot_update()`), not just by convention. A
+  genuinely wrong historical snapshot requires an explicit `DELETE` +
+  re-finalize by staff — never a silent overwrite by any code path,
+  including a future one nobody has written yet.
+- **"Today" (or later) is never finalized.**
+  `ensure_daily_metrics_snapshot()` clamps its own upper bound to
+  `CURRENT_DATE - 1` regardless of what range it's asked for — an
+  in-progress day's numbers are still moving and must never be frozen as
+  if the day were complete.
+- **Confidence is banded from sample size, not asserted by the AI.**
+  `data_confidence_from_sample_size()` (SQL) and `dataConfidenceLabel()`
+  (`trend-calculator.js`) implement the exact same thresholds
+  (`<10`/`<30`/`<100`/`100+` -> low/moderate/high/very_high) — duplicated
+  deliberately (one for set-based SQL finalization, one for TS period
+  aggregation), not called cross-runtime. If these thresholds ever change,
+  both must change together.
+- **A report's `validation` log is written by `report-validator.js` and
+  `index.ts` only, never asserted by Gemini.** Gemini has no way to mark
+  its own output as validated — `contradictions_detected`,
+  `narrative_fallback_used`, and `confidence` are all computed and set by
+  code, after Gemini's response is already in hand.
+- **A percentage the narrative states must trace back to real evidence.**
+  This is enforced by `checkNumberGrounding()`, not merely requested by
+  the prompt — the prompt's instructions are the first line of defense,
+  the validator is the one that's actually checked before a report is
+  ever persisted.
 
 ## Versioning
 

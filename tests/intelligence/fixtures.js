@@ -26,6 +26,12 @@ function makeReports() {
       body_markdown: '# Executive Summary\nA significant demand spike was detected in Sisattanak district.\n\n## Biggest Story\nSearches for Sisattanak villas jumped **240%** versus the 30-day baseline.',
       metrics_snapshot: { listing_impressions: 500, listing_clicks: 60, listing_views: 45, listing_ctr: 0.12, whatsapp_clicks: 9, call_clicks: 3, leads_created: 9, leads_closed: 2, sessions_total: 260 },
       mentioned_districts: ['Sisattanak'], mentioned_property_types: ['villa'],
+      data_confidence: 'high',
+      validation: {
+        snapshot_finalized: true, all_metrics_calculated: true, historical_comparison_available: true,
+        contradictions_detected: [], narrative_fallback_used: false, confidence: 'high', sample_size: 45,
+        validated_at: isoDateTimeHoursAgo(26),
+      },
     },
     {
       id: 'r-1', report_type: 'weekly', title: 'Weekly report failed',
@@ -34,6 +40,28 @@ function makeReports() {
       executive_summary: null, body_markdown: null, metrics_snapshot: null, mentioned_districts: null, mentioned_property_types: null,
     },
   ];
+}
+
+// A daily report whose AI narrative failed the Report Validator twice and
+// fell back to the plain, data-only report -- see report-validator.js's
+// buildValidationFallbackReport(). Used to test the fallback banner.
+function makeValidationFallbackReport() {
+  return {
+    id: 'r-fallback', report_type: 'daily', title: 'Daily report: verified data only (2026-07-17)',
+    period_start: isoDaysAgo(1), period_end: isoDaysAgo(1), generated_at: isoDateTimeHoursAgo(26),
+    status: 'generated', error_message: null,
+    executive_summary: 'AI narrative validation failed for 2026-07-17 — showing verified data only, without AI-written prose.',
+    body_markdown: '# Executive Summary\nAI narrative validation failed for 2026-07-17 — showing verified data only, without AI-written prose.\n\n## New\n- Total searches up 1500% vs. 30-day average',
+    metrics_snapshot: { listing_impressions: 500, listing_clicks: 60, listing_views: 45, listing_ctr: 0.12, whatsapp_clicks: 9, call_clicks: 3, leads_created: 9, leads_closed: 2, sessions_total: 260 },
+    mentioned_districts: [], mentioned_property_types: [],
+    data_confidence: 'low',
+    validation: {
+      snapshot_finalized: true, all_metrics_calculated: true, historical_comparison_available: true,
+      contradictions_detected: ['Headline/Biggest-Story language says "baseline" but the deterministic data shows a significant increase.'],
+      narrative_fallback_used: true, confidence: 'low', sample_size: 8,
+      validated_at: isoDateTimeHoursAgo(26),
+    },
+  };
 }
 
 function makeInsights() {
@@ -121,6 +149,6 @@ function makeListingsNeedingAttentionInsights() {
 
 module.exports = {
   makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight,
-  makeListingsNeedingAttentionInsights,
+  makeListingsNeedingAttentionInsights, makeValidationFallbackReport,
   isoDaysAgo, isoDateTimeHoursAgo, NOW,
 };

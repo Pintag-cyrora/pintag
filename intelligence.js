@@ -580,11 +580,36 @@ async function viewReportById(id) {
     '<div class="metric-card"><div class="metric-label">' + esc(k.replace(/_/g, ' ')) + '</div><div class="metric-value">' + esc(metrics[k]) + '</div></div>'
   ).join('');
 
+  const CONFIDENCE_LABELS = { low: 'Low confidence', moderate: 'Moderate confidence', high: 'High confidence', very_high: 'Very high confidence' };
+  const confidencePillHtml = report.data_confidence
+    ? '<span class="confidence-pill ' + esc(report.data_confidence) + '" title="Based on this period\'s sample size — small samples get less weight.">' +
+        esc(CONFIDENCE_LABELS[report.data_confidence] || report.data_confidence) + '</span>'
+    : '';
+
+  const v = report.validation || null;
+  const fallbackBannerHtml = (v && v.narrative_fallback_used)
+    ? '<div class="dq-fallback-banner">⚠ AI narrative failed validation — showing verified data only, without AI-written prose.' +
+        (v.contradictions_detected && v.contradictions_detected.length ? ' (' + esc(v.contradictions_detected.join('; ')) + ')' : '') + '</div>'
+    : '';
+  const dqRow = (label, ok) => '<div class="dq-row"><span class="' + (ok ? 'ok">✓' : 'warn">✗') + '</span>' + esc(label) + '</div>';
+  const dataQualityHtml = v
+    ? '<div class="supporting-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">▸ Data quality</div>' +
+      '<div class="supporting-panel"><div class="dq-panel">' +
+        dqRow('Snapshot finalized', !!v.snapshot_finalized) +
+        dqRow('All metrics calculated', !!v.all_metrics_calculated) +
+        dqRow('Historical comparison available', !!v.historical_comparison_available) +
+        dqRow('No conflicting insights detected', !(v.contradictions_detected && v.contradictions_detected.length)) +
+        '<div class="dq-row">Confidence: ' + esc(CONFIDENCE_LABELS[v.confidence] || v.confidence || 'n/a') +
+          (typeof v.sample_size === 'number' ? ' (sample size: ' + esc(v.sample_size) + ')' : '') + '</div>' +
+      '</div></div>'
+    : '';
+
   container.innerHTML =
     '<div class="report-card">' +
       '<div class="report-meta">' + esc(report.report_type.toUpperCase()) + ' · ' + esc(fmtDate(report.period_start)) +
         (report.period_start !== report.period_end ? ' – ' + esc(fmtDate(report.period_end)) : '') +
-        ' · generated ' + esc(fmtDateTime(report.generated_at)) + '</div>' +
+        ' · generated ' + esc(fmtDateTime(report.generated_at)) + confidencePillHtml + '</div>' +
+      fallbackBannerHtml +
       '<div class="report-title">' + esc(report.title || 'Untitled report') + '</div>' +
       (report.executive_summary ? '<div class="report-summary">' + esc(report.executive_summary) + '</div>' : '') +
       (insights.length ? '<div class="chip-row">' +
@@ -595,6 +620,7 @@ async function viewReportById(id) {
       '<div class="report-body">' + renderMarkdown(report.body_markdown) + '</div>' +
       (metricCards ? '<div class="supporting-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">▸ Supporting data</div>' +
         '<div class="supporting-panel"><div class="metric-grid">' + metricCards + '</div></div>' : '') +
+      dataQualityHtml +
     '</div>';
 }
 

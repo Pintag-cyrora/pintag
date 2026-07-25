@@ -143,6 +143,22 @@ test('buildPrompt includes the supply block only when supply is provided', () =>
   assert.ok(withSupply.includes('CURRENT ACTIVE SUPPLY'));
   assert.ok(!withoutSupply.includes('CURRENT ACTIVE SUPPLY'));
 });
+test('buildPrompt embeds the trend analysis block only when provided, and instructs "only these comparisons"', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const trends = { 'search.total': { today: 5, yesterday: 54, avg_7d: 11, avg_30d: 3.4, change_vs_yesterday: -90.7, change_vs_30d: 47.1 } };
+  const withTrend = buildPrompt('daily', composed, {}, null, trends);
+  const withoutTrend = buildPrompt('daily', composed, {}, null);
+  assert.ok(withTrend.includes('TREND ANALYSIS'));
+  assert.ok(withTrend.includes('-90.7'));
+  assert.ok(withTrend.includes('ONLY comparisons'));
+  assert.ok(!withoutTrend.includes('TREND ANALYSIS'));
+});
+test('buildPrompt tells Gemini never to invent numbers or contradict a significant trend with "stable" language', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /never invent|Invent, estimate, or recompute/i);
+  assert.match(prompt, /stable.*baseline.*normal|direction language must match/i);
+});
 
 // ── buildReportInsightLinks — the dedup fix ─────────────────────────────
 test('buildReportInsightLinks assigns biggest_story to the highest-priority new/continuing insight', () => {

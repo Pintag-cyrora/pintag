@@ -27,6 +27,8 @@ import {
   buildReportInsightLinks, CANONICAL_DISTRICTS, CANONICAL_PROPERTY_TYPES,
 } from './report-composer.js';
 import { callGemini } from './gemini-client.js';
+import { computeAllTrends, dataConfidenceLabel, pctChange } from './trend-calculator.js';
+import { validateReportContent, buildValidationFallbackReport } from './report-validator.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -208,10 +210,21 @@ async function releaseSweepLock(db: Db): Promise<void> {
 }
 
 // ── Metrics Engine access ───────────────────────────────────────────────
+// "Never regenerate historical data from current events": every read of a
+// past day's numbers goes through the immutable daily_metrics_snapshot
+// table, not a live recomputation of intelligence_daily_metrics() over the
+// raw event tables. ensure_daily_metrics_snapshot() is the ONLY thing that
+// ever writes a row (INSERT ... ON CONFLICT DO NOTHING, and it silently
+// skips today-or-later), so calling it before every read is always safe —
+// it's a no-op for any day already finalized.
 interface DailySnapshot { day: string; metrics: any; }
 
 async function fetchDailyMetrics(db: Db, start: string, end: string): Promise<DailySnapshot[]> {
-  const rows = await db.rpc('intelligence_daily_metrics', { p_start: start, p_end: end });
+  await db.rpc('ensure_daily_metrics_snapshot', { p_start: start, p_end: end });
+  const rows = await db.select(
+    'daily_metrics_snapshot',
+    `select=day,metrics&day=gte.${start}&day=lte.${end}&order=day.asc`
+  );
   return rows.map((r: any) => ({ day: r.day, metrics: r.metrics }));
 }
 
@@ -333,6 +346,8 @@ Deno.serve(async (req) => {
     let dailySweep: { inserted: any[]; updatedIds: string[]; resolvedIds: string[] } | undefined;
     let rawMetricsSummary: any;
     let supply: { byDistrict: Record<string, number>; byType: Record<string, number> } | null = null;
+    let trendAnalysis: Record<string, any>;
+    let historicalComparisonAvailable: boolean;
 
     if (reportType === 'daily') {
       const today = periodDays[periodDays.length - 1] || { day: period.end, metrics: {} };
@@ -351,9 +366,45 @@ Deno.serve(async (req) => {
 
       rawMetricsSummary = today.metrics;
       supply = await fetchCurrentSupply(db);
+      // Trend Calculator (product spec §3): exact today/yesterday/7d-avg/
+      // 30d-avg and their percentage deltas, computed once here — never by
+      // Gemini. See trend-calculator.js.
+      trendAnalysis = computeAllTrends(today, trailingDays);
+      historicalComparisonAvailable = trailingDays.length > 0;
     } else {
       rawMetricsSummary = sumMetrics(periodDays);
       if (reportType === 'monthly') supply = await fetchCurrentSupply(db);
+      // Week-over-Week / Month-over-Month: current period totals vs. the
+      // immediately-preceding equal-length window's totals (an
+      // approximation disclosed here, not calendar-week/month-aligned —
+      // "previous N days," where N = this period's own length). Reuses
+      // the same near-zero-baseline guard (pctChange) as the daily
+      // calculator so a tiny previous-period total can't produce a
+      // meaningless huge percentage either.
+      const previousPeriodDays = trailingDays.slice(-periodDays.length);
+      // sumMetrics([]) safely returns an all-zero shape (reduce over an
+      // empty array never invokes the reducer) -- passing a non-empty
+      // array containing an empty {} metrics object instead would throw
+      // (sumMetrics reads m.search.total unguarded), so this must stay a
+      // real empty array, not a placeholder entry.
+      const previousMetrics = sumMetrics(previousPeriodDays);
+      const coreKeys: [string, (m: any) => number | undefined][] = [
+        ['search.total', (m) => m?.search?.total],
+        ['listing_views', (m) => m?.listing_views],
+        ['whatsapp_clicks', (m) => m?.whatsapp_clicks],
+        ['leads_created', (m) => m?.leads_created],
+      ];
+      trendAnalysis = {};
+      coreKeys.forEach(([key, extract]) => {
+        const current = extract(rawMetricsSummary) ?? null;
+        const previous = extract(previousMetrics) ?? null;
+        trendAnalysis[key] = {
+          current_period_total: current,
+          previous_period_total: previous,
+          change_vs_previous_period: pctChange(current as number, previous as number),
+        };
+      });
+      historicalComparisonAvailable = previousPeriodDays.length > 0;
     }
 
     const composed = await composeReportInput(db, reportType, period, dailySweep);
@@ -366,15 +417,47 @@ Deno.serve(async (req) => {
     // legitimate, useful thing to say in an executive-style report.
     let gemini: any;
     let modelUsed: string;
+    let narrativeFallbackUsed = false;
+    let contradictionsDetected: string[] = [];
     if (reportType === 'daily' && isQuietPeriod(composed)) {
       gemini = buildQuietDayReport(reportType, period);
       modelUsed = 'deterministic';
     } else {
       const apiKey = Deno.env.get('GEMINI_API_KEY');
       if (!apiKey) throw new Error('GEMINI_API_KEY is not configured. Add it in Supabase Dashboard → Edge Functions → Manage secrets.');
-      const prompt = buildPrompt(reportType, composed, rawMetricsSummary, supply);
+      const prompt = buildPrompt(reportType, composed, rawMetricsSummary, supply, trendAnalysis);
       gemini = await callGemini(apiKey, prompt);
       modelUsed = 'gemini-2.5-flash';
+
+      // Validation Layer (product spec §4/§9): mechanically checks the
+      // narrative Gemini just wrote against the deterministic data it was
+      // given — direction contradictions ("returned to baseline" next to
+      // a real spike) and invented/ungrounded percentages. On failure,
+      // one corrective retry with the specific issue(s) named; if it
+      // still fails, fall back to a plain, labeled, data-only report
+      // rather than ever persisting a narrative the pipeline itself knows
+      // is contradictory or unsupported (§9: "do not generate misleading
+      // insights").
+      let validation = validateReportContent(gemini, composed, trendAnalysis, rawMetricsSummary);
+      if (!validation.ok) {
+        const correctedPrompt = `${prompt}\n\nIMPORTANT — YOUR PREVIOUS RESPONSE FAILED VALIDATION for the following reason(s): ${validation.issues.join('; ')}. Rewrite the report so it is directionally consistent with the evidence/trend data above, and cite ONLY numbers that appear in that data. Return the same JSON format.`;
+        try {
+          const retried = await callGemini(apiKey, correctedPrompt);
+          const retriedValidation = validateReportContent(retried, composed, trendAnalysis, rawMetricsSummary);
+          if (retriedValidation.ok) {
+            gemini = retried;
+            validation = retriedValidation;
+          } else {
+            contradictionsDetected = retriedValidation.issues;
+            gemini = buildValidationFallbackReport(reportType, period, composed);
+            narrativeFallbackUsed = true;
+          }
+        } catch (retryErr) {
+          contradictionsDetected = validation.issues;
+          gemini = buildValidationFallbackReport(reportType, period, composed);
+          narrativeFallbackUsed = true;
+        }
+      }
     }
 
     const mentionedDistricts = Array.isArray(gemini.mentioned_districts)
@@ -384,6 +467,26 @@ Deno.serve(async (req) => {
       ? gemini.mentioned_property_types.filter((t: string) => CANONICAL_PROPERTY_TYPES.includes(t))
       : [];
 
+    // Data confidence (product spec §5): banded from this period's own
+    // sample size (total searches) — daily's rawMetricsSummary IS today's
+    // metrics, weekly/monthly's IS the summed period, so search.total
+    // reads correctly either way with no branching needed.
+    const sampleSize = rawMetricsSummary?.search?.total ?? 0;
+    const confidence = dataConfidenceLabel(sampleSize);
+
+    // Data-quality/validation log (product spec §9) — persisted alongside
+    // the report, not just implied by its absence.
+    const validationLog = {
+      snapshot_finalized: true,
+      all_metrics_calculated: rawMetricsSummary != null,
+      historical_comparison_available: historicalComparisonAvailable,
+      contradictions_detected: contradictionsDetected,
+      narrative_fallback_used: narrativeFallbackUsed,
+      confidence,
+      sample_size: sampleSize,
+      validated_at: new Date().toISOString(),
+    };
+
     const [report] = await db.insert('intelligence_reports', [{
       report_type: reportType,
       period_start: period.start,
@@ -392,10 +495,12 @@ Deno.serve(async (req) => {
       title: gemini.title || null,
       executive_summary: gemini.executive_summary || null,
       body_markdown: gemini.body_markdown || null,
-      metrics_snapshot: rawMetricsSummary,
+      metrics_snapshot: { ...rawMetricsSummary, trend_analysis: trendAnalysis },
       mentioned_districts: mentionedDistricts,
       mentioned_property_types: mentionedPropertyTypes,
       model_used: modelUsed,
+      data_confidence: confidence,
+      validation: validationLog,
     }]);
 
     // report_insights links: deduplicated and role-assigned by the Report

@@ -4,7 +4,7 @@
 // this suite never needs real credentials or network access.
 const { test, expect } = require('@playwright/test');
 const { installSupabaseMocks } = require('./mock-supabase');
-const { makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight, makeListingsNeedingAttentionInsights } = require('./fixtures');
+const { makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight, makeListingsNeedingAttentionInsights, makeValidationFallbackReport } = require('./fixtures');
 
 async function login(page) {
   await page.goto('/intelligence.html');
@@ -101,6 +101,49 @@ test.describe('Overview tab', () => {
     await page.click('#back-to-latest-link');
     await page.waitForTimeout(150);
     await expect(page.locator('#latest-report-heading')).toHaveText('Latest Intelligence Report');
+  });
+
+  test('Data Accuracy: confidence badge and data-quality panel render for a report that has them', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports(), insights: makeInsights(), reportInsights: makeReportInsights() });
+    await login(page);
+    // r-2 ("Demand spike in Sisattanak") is the second history row and
+    // carries data_confidence/validation in the fixture.
+    await page.click('.history-table tbody tr:nth-child(2)');
+    await page.waitForTimeout(150);
+    await expect(page.locator('.confidence-pill')).toHaveText('High confidence');
+    await expect(page.locator('.confidence-pill')).toHaveClass(/high/);
+    await expect(page.locator('.dq-fallback-banner')).toHaveCount(0);
+
+    const dqToggles = page.locator('.supporting-toggle', { hasText: 'Data quality' });
+    await dqToggles.click();
+    const dqPanel = dqToggles.locator('xpath=following-sibling::*[1]');
+    await expect(dqPanel).toHaveClass(/open/);
+    await expect(dqPanel).toContainText('Snapshot finalized');
+    await expect(dqPanel).toContainText('No conflicting insights detected');
+    await expect(dqPanel).toContainText('sample size: 45');
+  });
+
+  test('Data Accuracy: a report with no data_confidence/validation (e.g. generated before this feature) renders with no badge or panel, no crash', async ({ page }) => {
+    await installSupabaseMocks(page, { reports: makeReports(), insights: makeInsights(), reportInsights: makeReportInsights() });
+    await login(page);
+    // r-3 (the true latest, shown by default) has neither field set.
+    await expect(page.locator('.report-title')).toHaveText('Quiet day, nothing notable');
+    await expect(page.locator('.confidence-pill')).toHaveCount(0);
+    await expect(page.locator('.dq-fallback-banner')).toHaveCount(0);
+    await expect(page.locator('.supporting-toggle', { hasText: 'Data quality' })).toHaveCount(0);
+  });
+
+  test('Data Accuracy: narrative_fallback_used shows the validation-failure banner with the contradiction reason', async ({ page }) => {
+    const reports = [...makeReports(), makeValidationFallbackReport()];
+    await installSupabaseMocks(page, { reports, insights: makeInsights(), reportInsights: makeReportInsights() });
+    await login(page);
+    const row = page.locator('.history-table tbody tr', { hasText: 'verified data only' });
+    await row.click();
+    await page.waitForTimeout(150);
+    await expect(page.locator('.dq-fallback-banner')).toBeVisible();
+    await expect(page.locator('.dq-fallback-banner')).toContainText('AI narrative failed validation');
+    await expect(page.locator('.dq-fallback-banner')).toContainText('baseline');
+    await expect(page.locator('.confidence-pill')).toHaveText('Low confidence');
   });
 
   test('Section 4: Generate Daily shows loading then success and refreshes the page', async ({ page }) => {
