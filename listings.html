@@ -995,14 +995,19 @@ function updateListingsMetaForFilters() {
   }
 
   document.title = title;
+  _setListingsMeta('meta[name="description"]', description);
   _setListingsMeta('meta[property="og:title"]', title);
   _setListingsMeta('meta[property="og:description"]', description);
   _setListingsMeta('meta[name="twitter:title"]', title);
   _setListingsMeta('meta[name="twitter:description"]', description);
-  // og:url / canonical deliberately untouched here — see the function
-  // comment above: they must keep pointing at the shareable
-  // listings.html URL a crawler would actually fetch, not a client-side-
-  // only filter state no crawler ever requests.
+  // og:url / canonical deliberately untouched here, and this isn't a gap
+  // to close: filtering never changes the address bar (no ?type=/?tx= is
+  // written to the URL today), so the canonical/og:url value that's
+  // already correct — https://pintag.io/listings.html — stays correct
+  // for every filter state. Repointing canonical at a URL the address bar
+  // doesn't actually show would be the bug, not the fix. If filters ever
+  // start writing to the URL (the same way listing.html's ?unit= deep-link
+  // param does), update canonical/og:url here too, to that real URL.
 }
 
 function renderListings() {
