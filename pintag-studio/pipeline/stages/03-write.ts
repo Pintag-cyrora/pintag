@@ -20,7 +20,8 @@ interface WriterOutput {
   bodyMarkdown: string;
 }
 
-function loadWritingContext() {
+/** Exported so campaign execution (services/campaign/) writes with exactly the same brand voice/style/template context as this stage. */
+export function loadWritingContext() {
   return {
     brandVoice: readFileSync(join(REPO_ROOT, 'brain', 'brand-voice.md'), 'utf-8'),
     styleGuide: readFileSync(join(REPO_ROOT, 'brain', 'style-guide.md'), 'utf-8'),

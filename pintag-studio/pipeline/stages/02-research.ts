@@ -15,36 +15,62 @@ import { REPO_ROOT } from '../lib/config.js';
 import { retrieveKnowledge, relativeKnowledgePath } from '../lib/knowledge.js';
 import { proposeSuggestion } from '../lib/suggestions.js';
 
+/**
+ * The grounding material every research pass shares: the knowledge-base
+ * guides (the ONLY citable fact sources) plus verified Knowledge Layer
+ * entries. Exported so campaign execution (services/campaign/) grounds its
+ * Researcher step in exactly the same material as this stage — one list of
+ * source files, never two drifting copies.
+ */
+export function loadResearchReferenceMaterial(): { referenceSection: string; knowledgeSection: string } {
+  // Educational posts aren't listing-specific, so the read-only Pintag
+  // listings feed doesn't apply here — it's the right call for
+  // property_video / neighborhood_guide briefs, which aren't in M1's scope.
+  const buyingGuide = readFileSync(join(REPO_ROOT, 'knowledge-base', 'guides', 'buying-guide.md'), 'utf-8');
+  const rentingGuide = readFileSync(join(REPO_ROOT, 'knowledge-base', 'guides', 'renting-guide.md'), 'utf-8');
+  const sellingGuide = readFileSync(join(REPO_ROOT, 'knowledge-base', 'guides', 'selling-guide.md'), 'utf-8');
+  const foreignOwnership = readFileSync(
+    join(REPO_ROOT, 'knowledge-base', 'guides', 'foreign-ownership-rules.md'),
+    'utf-8'
+  );
+  const marketOverview = readFileSync(
+    join(REPO_ROOT, 'knowledge-base', 'market', 'laos-real-estate-overview.md'),
+    'utf-8'
+  );
+
+  // Knowledge Layer retrieval (proof-of-concept — see knowledge/README.md
+  // "Where this plugs in today"). Scoped to verified+ entries only: a
+  // 'draft' knowledge/ entry is by definition unreviewed, so it isn't
+  // citable as fact here any more than an unreviewed knowledge-base note
+  // would be — same "never state a fact not traceable to a verified
+  // source" rule (CLAUDE.md) applies to this layer too.
+  const knowledgeEntries = retrieveKnowledge({
+    categories: ['industries/real-estate', 'brands/pintag', 'psychology', 'marketing', 'language'],
+    minStatus: 'verified',
+  });
+  const knowledgeSection = knowledgeEntries
+    .map((e) => `### knowledge/${relativeKnowledgePath(e)}\n${e.body}`)
+    .join('\n\n');
+
+  const referenceSection = [
+    '### knowledge-base/guides/buying-guide.md',
+    buyingGuide,
+    '### knowledge-base/guides/renting-guide.md',
+    rentingGuide,
+    '### knowledge-base/guides/selling-guide.md',
+    sellingGuide,
+    '### knowledge-base/guides/foreign-ownership-rules.md',
+    foreignOwnership,
+    '### knowledge-base/market/laos-real-estate-overview.md',
+    marketOverview,
+  ].join('\n');
+
+  return { referenceSection, knowledgeSection };
+}
+
 export async function research(brief: ContentBrief): Promise<ResearchPacket> {
   return withHealthReport('researcher', async () => {
-    // Educational posts aren't listing-specific, so the read-only Pintag
-    // listings feed doesn't apply here — it's the right call for
-    // property_video / neighborhood_guide briefs, which aren't in M1's scope.
-    const buyingGuide = readFileSync(join(REPO_ROOT, 'knowledge-base', 'guides', 'buying-guide.md'), 'utf-8');
-    const rentingGuide = readFileSync(join(REPO_ROOT, 'knowledge-base', 'guides', 'renting-guide.md'), 'utf-8');
-    const sellingGuide = readFileSync(join(REPO_ROOT, 'knowledge-base', 'guides', 'selling-guide.md'), 'utf-8');
-    const foreignOwnership = readFileSync(
-      join(REPO_ROOT, 'knowledge-base', 'guides', 'foreign-ownership-rules.md'),
-      'utf-8'
-    );
-    const marketOverview = readFileSync(
-      join(REPO_ROOT, 'knowledge-base', 'market', 'laos-real-estate-overview.md'),
-      'utf-8'
-    );
-
-    // Knowledge Layer retrieval (proof-of-concept — see knowledge/README.md
-    // "Where this plugs in today"). Scoped to verified+ entries only: a
-    // 'draft' knowledge/ entry is by definition unreviewed, so it isn't
-    // citable as fact here any more than an unreviewed knowledge-base note
-    // would be — same "never state a fact not traceable to a verified
-    // source" rule (CLAUDE.md) applies to this layer too.
-    const knowledgeEntries = retrieveKnowledge({
-      categories: ['industries/real-estate', 'brands/pintag', 'psychology', 'marketing', 'language'],
-      minStatus: 'verified',
-    });
-    const knowledgeSection = knowledgeEntries
-      .map((e) => `### knowledge/${relativeKnowledgePath(e)}\n${e.body}`)
-      .join('\n\n');
+    const { referenceSection, knowledgeSection } = loadResearchReferenceMaterial();
 
     const userPrompt = [
       `Ground the following educational post brief in verifiable facts from the reference material below.`,
@@ -52,16 +78,7 @@ export async function research(brief: ContentBrief): Promise<ResearchPacket> {
       `Angle: ${brief.angle}`,
       '',
       '## Reference material (the ONLY sources you may cite)',
-      '### knowledge-base/guides/buying-guide.md',
-      buyingGuide,
-      '### knowledge-base/guides/renting-guide.md',
-      rentingGuide,
-      '### knowledge-base/guides/selling-guide.md',
-      sellingGuide,
-      '### knowledge-base/guides/foreign-ownership-rules.md',
-      foreignOwnership,
-      '### knowledge-base/market/laos-real-estate-overview.md',
-      marketOverview,
+      referenceSection,
       ...(knowledgeSection ? ['', '## Additional verified knowledge (Knowledge Layer)', knowledgeSection] : []),
       '',
       'Extract 3-6 concrete facts relevant to the topic and angle, each citing the exact source file it came from.',

@@ -10,6 +10,7 @@
     "knowledge:review": "tsx pipeline/knowledge-review.ts",
     "knowledge:dashboard": "tsx pipeline/knowledge-dashboard.ts",
     "daily-briefing": "tsx pipeline/daily-briefing.ts",
+    "campaign": "tsx pipeline/campaign.ts",
     "teach:os": "tsx pipeline/teach.ts",
     "tiktok:connect": "tsx pipeline/tiktok-connect.ts",
     "founder-ui": "tsx pipeline/founder-server.ts"

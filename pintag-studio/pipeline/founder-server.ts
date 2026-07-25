@@ -42,6 +42,10 @@ import { readLatestMorningBrief, writeMorningBrief, isMorningBriefStale } from '
 import { renderMorningPage } from './renderers/web/render.js';
 import { createCachedPage } from './lib/cached-page.js';
 import type { MorningBrief } from './services/morning/types.js';
+import { createCampaign, executeCampaign } from './services/campaign/generate.js';
+import { readCampaign, readLatestCampaign, writeCampaign } from './services/campaign/persist.js';
+import { renderCampaignProgressPage, renderResearchPage, renderContentPage, renderVideoPage, renderPublishPage } from './renderers/web/campaign.js';
+import type { Campaign } from './services/campaign/types.js';
 
 const PORT = Number(process.env.PORT ?? 4321);
 
@@ -420,18 +424,92 @@ async function handleMorning(res: ServerResponse): Promise<void> {
   if (!cached) {
     // Cold start: nothing generated yet — block once, this request only.
     const brief = await morningCache.ensureFresh();
-    sendHtml(res, 200, renderMorningPage(brief, { regenerating: morningCache.status(brief).regenerating }));
+    sendHtml(res, 200, renderMorningPage(brief, { regenerating: morningCache.status(brief).regenerating, executeEnabled: true }));
     return;
   }
   morningCache.refreshInBackgroundIfStale(cached);
   // Pass `cached` straight through — status() would otherwise re-read
   // daily-briefing/latest.json a second time in this same request purely
   // to report a `regenerating` flag it already has in memory.
-  sendHtml(res, 200, renderMorningPage(cached, { regenerating: morningCache.status(cached).regenerating }));
+  // executeEnabled: this server is the one surface where POST
+  // /campaign/execute actually exists — the static copies (dashboard/
+  // morning.html, the Supabase-published phone page) stay read-only.
+  sendHtml(res, 200, renderMorningPage(cached, { regenerating: morningCache.status(cached).regenerating, executeEnabled: true }));
 }
 
 function handleMorningStatus(res: ServerResponse): void {
   sendJson(res, 200, morningCache.status());
+}
+
+// ---------------------------------------------------------------------------
+// Campaign execution — the real orchestration behind the Execute Campaign
+// button (see services/campaign/generate.ts). POST /campaign/execute
+// creates the Campaign and kicks the run off in the background (same
+// pattern as the morning cache's background regeneration), then redirects
+// to the live progress page, which polls /api/campaign/:id/status.
+// ---------------------------------------------------------------------------
+
+// Campaigns whose run is alive in THIS process. A campaign found on disk
+// as 'running' but absent here was orphaned by a restart — reported (and
+// persisted) as 'interrupted' rather than left spinning forever.
+const activeCampaigns = new Map<string, Campaign>();
+
+function resolveCampaign(id: string): Campaign | null {
+  const live = activeCampaigns.get(id);
+  if (live) return live;
+  const stored = readCampaign(id);
+  if (stored && stored.status === 'running') {
+    stored.status = 'interrupted';
+    writeCampaign(stored);
+  }
+  return stored;
+}
+
+/** Latest campaign for the tab pages, with the same orphan-detection as resolveCampaign(). */
+function resolveLatestCampaign(): Campaign | null {
+  const latest = readLatestCampaign();
+  if (!latest) return null;
+  return resolveCampaign(latest.id);
+}
+
+async function handleCampaignExecute(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readRequestBody(req);
+  const title = (body.get('title') ?? '').trim();
+  if (!title) {
+    redirect(res, '/morning');
+    return;
+  }
+  const campaign = createCampaign({
+    title,
+    detail: (body.get('detail') ?? '').trim(),
+    source: (body.get('source') ?? 'manual').trim() || 'manual',
+  });
+
+  activeCampaigns.set(campaign.id, campaign);
+  // Background, not awaited — the founder watches progress on the page
+  // this redirects to. executeCampaign persists every step and never
+  // throws (failures are recorded on the campaign itself); the catch is a
+  // last line of defense so an unexpected error still lands on disk.
+  executeCampaign(campaign)
+    .catch((err) => {
+      console.error(`[Campaign ${campaign.id}] Unexpected orchestration error:`, err);
+      campaign.status = 'failed';
+      writeCampaign(campaign);
+    })
+    .finally(() => {
+      activeCampaigns.delete(campaign.id);
+    });
+
+  redirect(res, `/campaign/${encodeURIComponent(campaign.id)}`);
+}
+
+function handleCampaignStatus(res: ServerResponse, id: string): void {
+  const campaign = resolveCampaign(id);
+  if (!campaign) {
+    sendJson(res, 404, { error: 'not found' });
+    return;
+  }
+  sendJson(res, 200, { status: campaign.status, steps: campaign.steps.map(({ id: stepId, status, detail }) => ({ id: stepId, status, detail })) });
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +532,30 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       await handleMorning(res);
     } else if (req.method === 'GET' && pathname === '/api/morning/status') {
       handleMorningStatus(res);
+    } else if (req.method === 'POST' && pathname === '/campaign/execute') {
+      await handleCampaignExecute(req, res);
+    } else if (req.method === 'GET' && pathname.startsWith('/campaign/')) {
+      const rest = pathname.slice('/campaign/'.length);
+      if (rest.startsWith('api/')) {
+        sendHtml(res, 404, pageShell('Not found', '<p>Not found.</p><a class="back" href="/">← Home</a>'));
+      } else {
+        const campaign = resolveCampaign(decodeURIComponent(rest));
+        if (!campaign) {
+          sendHtml(res, 404, pageShell('Not found', '<p>No such campaign.</p><a class="back" href="/morning">← Morning Brief</a>'));
+        } else {
+          sendHtml(res, 200, renderCampaignProgressPage(campaign));
+        }
+      }
+    } else if (req.method === 'GET' && pathname.startsWith('/api/campaign/') && pathname.endsWith('/status')) {
+      handleCampaignStatus(res, decodeURIComponent(pathname.slice('/api/campaign/'.length, -'/status'.length)));
+    } else if (req.method === 'GET' && pathname === '/research') {
+      sendHtml(res, 200, renderResearchPage(resolveLatestCampaign()));
+    } else if (req.method === 'GET' && pathname === '/content') {
+      sendHtml(res, 200, renderContentPage(resolveLatestCampaign()));
+    } else if (req.method === 'GET' && pathname === '/video') {
+      sendHtml(res, 200, renderVideoPage(resolveLatestCampaign()));
+    } else if (req.method === 'GET' && pathname === '/publish') {
+      sendHtml(res, 200, renderPublishPage(resolveLatestCampaign()));
     } else if (req.method === 'GET' && pathname.startsWith('/dashboard/')) {
       serveDashboardFile(res, pathname.slice('/dashboard/'.length));
     } else if (req.method === 'GET' && pathname === '/teach') {

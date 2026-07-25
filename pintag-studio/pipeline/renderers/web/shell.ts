@@ -16,11 +16,11 @@ export interface NavLink {
 
 export const PRIMARY_NAV: NavLink[] = [
   { href: '/morning', label: 'Morning', enabled: true },
-  { href: '/research', label: 'Research', enabled: false },
-  { href: '/content', label: 'Content', enabled: false },
-  { href: '/video', label: 'Video', enabled: false },
+  { href: '/research', label: 'Research', enabled: true },
+  { href: '/content', label: 'Content', enabled: true },
+  { href: '/video', label: 'Video', enabled: true },
   { href: '/analytics', label: 'Analytics', enabled: false },
-  { href: '/publish', label: 'Publish', enabled: false },
+  { href: '/publish', label: 'Publish', enabled: true },
   { href: '/teach', label: 'Teach', enabled: true },
   { href: '/settings', label: 'Settings', enabled: false },
 ];

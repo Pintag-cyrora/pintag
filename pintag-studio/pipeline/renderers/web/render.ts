@@ -67,7 +67,7 @@ function renderRisks(brief: MorningBrief): string {
   return `<ul>${items}</ul>`;
 }
 
-function renderOpportunities(brief: MorningBrief): string {
+function renderOpportunities(brief: MorningBrief, executeEnabled: boolean): string {
   if (brief.opportunities.length === 0) return '<p class="empty">Nothing stands out as an opportunity right now.</p>';
   const items = brief.opportunities
     .map((o) => {
@@ -80,7 +80,15 @@ function renderOpportunities(brief: MorningBrief): string {
               <form method="POST" action="/review/patterns/${encodeURIComponent(o.patternId)}/keep-observing"><button class="btn-sm btn-sm-secondary" type="submit">Keep Observing →</button></form>
             </div>`
           : '';
-      return `<li class="list-row"><div class="list-title">${OPPORTUNITY_ICON[o.kind]} ${escapeHtml(o.title)}</div><div class="list-detail">${escapeHtml(o.detail)}</div>${evidenceHtml}${linkHtml}${playbookActionsHtml}</li>`;
+      // Every accepted opportunity can become work: outperforming content
+      // gets its own Execute Campaign button (playbooks keep their existing
+      // approve/keep-observing decision flow instead — approving a playbook
+      // is a knowledge decision, not a campaign trigger).
+      const executeHtml =
+        executeEnabled && o.kind === 'outperforming-content'
+          ? `<div class="playbook-actions">${executeCampaignForm(o.title, o.detail, 'opportunity', `<button class="btn-sm" type="submit">Execute Campaign →</button>`)}</div>`
+          : '';
+      return `<li class="list-row"><div class="list-title">${OPPORTUNITY_ICON[o.kind]} ${escapeHtml(o.title)}</div><div class="list-detail">${escapeHtml(o.detail)}</div>${evidenceHtml}${linkHtml}${playbookActionsHtml}${executeHtml}</li>`;
     })
     .join('');
   return `<ul>${items}</ul>`;
@@ -88,6 +96,24 @@ function renderOpportunities(brief: MorningBrief): string {
 
 export interface RenderMorningPageOptions {
   regenerating?: boolean;
+  /**
+   * Whether the Execute Campaign forms are live. Only founder-server.ts
+   * passes true — it's the one surface where POST /campaign/execute exists.
+   * Defaults to false so the static copies of this page (dashboard/
+   * morning.html, the Supabase-published phone page marketing-os.html
+   * reads) stay read-only rather than rendering forms that would 404.
+   */
+  executeEnabled?: boolean;
+}
+
+/** The Execute Campaign form — one button that turns an opportunity into real department work (POST /campaign/execute → services/campaign/generate.ts). */
+function executeCampaignForm(title: string, detail: string, source: string, buttonHtml: string): string {
+  return `<form method="POST" action="/campaign/execute">
+    <input type="hidden" name="title" value="${escapeHtml(title)}">
+    <input type="hidden" name="detail" value="${escapeHtml(detail)}">
+    <input type="hidden" name="source" value="${escapeHtml(source)}">
+    ${buttonHtml}
+  </form>`;
 }
 
 export function renderMorningPage(brief: MorningBrief, opts: RenderMorningPageOptions = {}): string {
@@ -98,7 +124,18 @@ export function renderMorningPage(brief: MorningBrief, opts: RenderMorningPageOp
         'Recommended Action',
         '🎯',
         `<div class="rec-action-label">If you only do one thing today</div>
-         <button class="btn-primary" onclick="alert('One-click execution isn\\'t built yet — this is the recommended action Marketing OS would run for you.'); return false;">${escapeHtml(brief.recommendedAction)}</button>
+         ${
+           opts.executeEnabled
+             ? executeCampaignForm(
+                 brief.recommendedAction,
+                 brief.recommendedActionReasoning ?? '',
+                 'recommended-action',
+                 `<button class="btn-primary" type="submit">${escapeHtml(brief.recommendedAction)}</button>
+                  <div class="rec-action-hint">Tap to execute — the departments will generate the full campaign for your review. Nothing publishes without you.</div>`
+               )
+             : `<div class="btn-primary rec-action-static">${escapeHtml(brief.recommendedAction)}</div>
+                <div class="rec-action-hint">Open the Founder Workspace on your computer to execute this as a campaign.</div>`
+         }
          ${brief.recommendedActionReasoning ? `<div class="rec-action-reasoning">${escapeHtml(brief.recommendedActionReasoning)}</div>` : ''}`
       )
     : '';
@@ -131,7 +168,7 @@ export function renderMorningPage(brief: MorningBrief, opts: RenderMorningPageOp
 
   ${section('Risks', '⚠️', renderRisks(brief))}
 
-  ${section('Opportunities', '💡', renderOpportunities(brief))}
+  ${section('Opportunities', '💡', renderOpportunities(brief, opts.executeEnabled ?? false))}
 
   <div class="footnote">Generated ${escapeHtml(brief.generatedLabel)}${opts.regenerating ? ' — a newer version is generating in the background.' : ''}</div>
   `;
@@ -185,6 +222,8 @@ export function renderMorningPage(brief: MorningBrief, opts: RenderMorningPageOp
 .health-headline{font-size:16px;font-weight:600;}
 .rec-action-label{font-size:13px;color:var(--ink-muted);margin-bottom:12px;}
 .btn-primary{display:inline-block;background:var(--teal);color:#fff;font-size:16px;font-weight:600;border:none;border-radius:8px;padding:14px 24px;cursor:pointer;font-family:inherit;width:100%;}
+.rec-action-static{cursor:default;text-align:center;}
+.rec-action-hint{font-size:12px;color:var(--ink-muted);margin-top:8px;text-align:center;}
 .rec-action-reasoning{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:14px;color:var(--ink-soft);}
 .playbook-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
 .btn-sm{background:var(--teal);color:#fff;font-size:13px;font-weight:600;border:none;border-radius:6px;padding:9px 14px;cursor:pointer;font-family:inherit;}
