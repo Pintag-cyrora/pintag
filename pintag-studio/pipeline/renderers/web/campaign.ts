@@ -12,7 +12,8 @@
 // lands on the review screen with zero extra clicks (M3 §10).
 
 import { escapeHtml, pageShell } from './shell.js';
-import type { Campaign, CampaignStepState, OpportunityScore } from '../../services/campaign/types.js';
+import { FEEDBACK_REASONS, RATEABLE_DEPARTMENTS, type Campaign, type CampaignStepState, type OpportunityScore, type RateableDepartment, type CampaignOutcome } from '../../services/campaign/types.js';
+import type { FounderLearning } from '../../services/learning/learn.js';
 
 const STEP_ICON: Record<CampaignStepState['status'], string> = {
   pending: '○',
@@ -71,6 +72,27 @@ const CAMPAIGN_STYLE = `<style>
 .camp-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
 .chip{display:inline-block;font-size:12px;font-weight:700;background:var(--warm-deep);border-radius:10px;padding:3px 10px;color:var(--ink-soft);}
 .camp-steps{font-size:13px;color:var(--ink-muted);margin-top:8px;letter-spacing:0.05em;}
+.rate-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
+.rate-row:last-of-type{border-bottom:none;}
+.rate-name{font-size:15px;font-weight:600;}
+.stars{display:flex;flex-direction:row-reverse;gap:2px;}
+.stars input{position:absolute;opacity:0;width:0;height:0;}
+.stars label{font-size:24px;line-height:1;color:var(--warm-deep);cursor:pointer;-webkit-text-stroke:1px var(--ink-muted);}
+.stars input:checked ~ label{color:var(--gold);-webkit-text-stroke:1px var(--gold);}
+.stars label:hover,.stars label:hover ~ label{color:var(--gold);-webkit-text-stroke:1px var(--gold);}
+.chip-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;}
+.chip-check input{position:absolute;opacity:0;width:0;height:0;}
+.chip-check span{display:inline-block;font-size:13px;font-weight:600;background:var(--white);border:1.5px solid var(--border);color:var(--ink-soft);border-radius:16px;padding:7px 14px;cursor:pointer;}
+.chip-check input:checked + span{background:var(--teal-dim);border-color:var(--teal);color:var(--teal);}
+.outcome-grid{display:flex;flex-direction:column;gap:8px;margin-bottom:6px;}
+.outcome-check input{position:absolute;opacity:0;width:0;height:0;}
+.outcome-check span{display:block;font-size:15px;font-weight:600;background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;}
+.outcome-check input:checked + span{background:var(--teal-dim);border-color:var(--teal);color:var(--teal);}
+.stars-static{color:var(--gold);font-size:17px;letter-spacing:1px;}
+.learning-note{font-size:14px;color:var(--ink-soft);padding:6px 0;border-bottom:1px solid var(--border);}
+.learning-note:last-child{border-bottom:none;}
+.edit-link{font-size:12px;font-weight:600;color:var(--teal);text-decoration:none;margin-left:8px;}
+.edit-area{width:100%;font-family:inherit;font-size:15px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--white);color:var(--ink);min-height:220px;resize:vertical;margin-bottom:12px;}
 </style>`;
 
 function statusBanner(campaign: Campaign): string {
@@ -156,20 +178,46 @@ function researchCard(campaign: Campaign): string {
   </div>`;
 }
 
-function contentCard(campaign: Campaign): string {
+/** An editable written asset — the label carries an Edit link to /campaign/:id/edit/:field, where the founder's version is saved alongside the AI original (M4 §3). */
+function editableBlock(campaign: Campaign, label: string, field: keyof NonNullable<Campaign['content']>, body: string | undefined, editable: boolean): string {
+  if (!body) return '';
+  const link = editable ? `<a class="edit-link" href="/campaign/${encodeURIComponent(campaign.id)}/edit/${field}">Edit →</a>` : '';
+  return `<div class="asset-block"><div class="asset-label">${escapeHtml(label)}${link}</div><div class="asset-body">${escapeHtml(body)}</div></div>`;
+}
+
+function contentCard(campaign: Campaign, editable = false): string {
   const c = campaign.content;
   const d = campaign.design;
   if (!c && !d) return '';
   return `<div class="card"><div class="card-title">✍️ Content</div>
-    ${optBlock('Facebook', c?.facebookPost)}
-    ${optBlock('Instagram', c?.instagramCaption)}
-    ${optBlock('LinkedIn', c?.linkedinPost)}
-    ${optBlock('Blog Article', c?.blogArticleMarkdown)}
+    ${editableBlock(campaign, 'Facebook', 'facebookPost', c?.facebookPost, editable)}
+    ${editableBlock(campaign, 'Instagram', 'instagramCaption', c?.instagramCaption, editable)}
+    ${editableBlock(campaign, 'LinkedIn', 'linkedinPost', c?.linkedinPost, editable)}
+    ${editableBlock(campaign, 'Blog Article', 'blogArticleMarkdown', c?.blogArticleMarkdown, editable)}
     ${listBlock('Carousel Copy', d?.carouselSlides)}
     ${listBlock('Graphic Concepts', d?.graphicConcepts)}
     ${listBlock('Image Prompts', d?.imagePrompts)}
     ${optBlock('Thumbnail Concept', d?.thumbnailPrompt)}
   </div>`;
+}
+
+/** The edit screen for one written asset — prefilled with the current text; saving keeps the original as the AI version and asks for one-click reasons. */
+export function renderCampaignEditPage(campaign: Campaign, field: keyof NonNullable<Campaign['content']>, current: string): string {
+  const bodyHtml = `
+  <a class="back" href="/campaign/${encodeURIComponent(campaign.id)}" style="display:inline-block;font-size:13px;color:var(--teal);text-decoration:none;font-weight:600;margin-bottom:16px;">← Back to campaign</a>
+  <h1 style="font-size:22px;font-weight:600;margin-bottom:4px;">✏️ Edit ${escapeHtml(field)}</h1>
+  <div class="campaign-meta" style="margin-bottom:20px;">${escapeHtml(campaign.title)} — Marketing OS keeps its original version alongside yours, so the difference becomes something it can learn from.</div>
+  <div class="card">
+    <form method="POST" action="/campaign/${encodeURIComponent(campaign.id)}/edit/${field}">
+      <textarea class="edit-area" name="edited" required>${escapeHtml(current)}</textarea>
+      <div class="asset-label">Why did you change it? (optional, tap any)</div>
+      <div class="chip-grid">
+        ${FEEDBACK_REASONS.map((r) => `<label class="chip-check"><input type="checkbox" name="reason" value="${escapeHtml(r)}"><span>${escapeHtml(r)}</span></label>`).join('')}
+      </div>
+      <button class="btn-sm" type="submit" style="font-size:15px;padding:12px 20px;margin-top:12px;">Save My Version</button>
+    </form>
+  </div>`;
+  return pageShell({ title: 'Edit', bodyHtml, extraHeadHtml: CAMPAIGN_STYLE });
 }
 
 function videoCard(campaign: Campaign): string {
@@ -219,6 +267,133 @@ function qaCard(campaign: Campaign, withRegenerate: boolean): string {
   </div>`;
 }
 
+const DEPARTMENT_LABEL: Record<RateableDepartment, string> = {
+  research: 'Research',
+  strategy: 'Strategy',
+  writing: 'Writing',
+  design: 'Design',
+  video: 'Video',
+  brandVoice: 'Brand Voice',
+};
+
+const OUTCOME_LABEL: Record<CampaignOutcome, string> = {
+  approved: 'Approved',
+  'approved-with-edits': 'Approved With Edits',
+  'needs-regeneration': 'Needs Regeneration',
+  rejected: 'Rejected',
+};
+
+function starsStatic(rating: number): string {
+  return `<span class="stars-static">${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}</span>`;
+}
+
+/** A 1-5 star radio group. Reverse-ordered in the DOM (5 first) so pure-CSS `:checked ~ label` highlights every star below the chosen one — no JavaScript. */
+function starInput(name: string, required: boolean): string {
+  return `<div class="stars">${[5, 4, 3, 2, 1]
+    .map(
+      (n) =>
+        `<input type="radio" id="${name}-${n}" name="${name}" value="${n}"${required && n === 5 ? ' required' : ''}><label for="${name}-${n}" title="${n} of 5">★</label>`
+    )
+    .join('')}</div>`;
+}
+
+/**
+ * The structured Founder Review form (M4 §1/§2/§4/§6) — outcome, overall
+ * and per-department stars, and one-click reason chips. Only departments
+ * that actually produced something are rateable, so a skipped video is
+ * never scored as a failure. Plain HTML form + POST, no client-side JS,
+ * same discipline as every other founder-server form.
+ */
+function reviewFormCard(campaign: Campaign): string {
+  const produced: RateableDepartment[] = RATEABLE_DEPARTMENTS.filter((d) => {
+    if (d === 'brandVoice') return Boolean(campaign.qaReport);
+    if (d === 'strategy') return Boolean(campaign.brief);
+    if (d === 'research') return Boolean(campaign.research);
+    return campaign.steps.some((s) => s.id === d && s.status === 'complete');
+  });
+
+  return `<div class="card"><div class="card-title">📝 Founder Review</div>
+    <p style="font-size:14px;color:var(--ink-soft);margin-bottom:16px;">Your review is what Marketing OS actually learns from — it shapes future campaigns, and every adjustment it makes will cite the feedback behind it.</p>
+    <form method="POST" action="/campaign/${encodeURIComponent(campaign.id)}/review">
+      <div class="asset-label">Outcome</div>
+      <div class="outcome-grid">
+        ${(Object.keys(OUTCOME_LABEL) as CampaignOutcome[])
+          .map(
+            (o, i) =>
+              `<label class="outcome-check"><input type="radio" name="outcome" value="${o}"${i === 0 ? ' required' : ''}><span>${escapeHtml(OUTCOME_LABEL[o])}</span></label>`
+          )
+          .join('')}
+      </div>
+
+      <div class="asset-label" style="margin-top:18px;">Ratings</div>
+      <div class="rate-row"><div class="rate-name">Overall</div>${starInput('overall', true)}</div>
+      ${produced.map((d) => `<div class="rate-row"><div class="rate-name">${escapeHtml(DEPARTMENT_LABEL[d])}</div>${starInput(`rating-${d}`, false)}</div>`).join('')}
+
+      <div class="asset-label" style="margin-top:18px;">Anything off? (tap any that apply — no explanation needed)</div>
+      <div class="chip-grid">
+        ${FEEDBACK_REASONS.map((r) => `<label class="chip-check"><input type="checkbox" name="reason" value="${escapeHtml(r)}"><span>${escapeHtml(r)}</span></label>`).join('')}
+      </div>
+
+      <div class="asset-label" style="margin-top:18px;">Note (optional)</div>
+      <textarea name="note" rows="3" style="width:100%;font-family:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--white);color:var(--ink);margin-bottom:12px;" placeholder="Only if you want to add something the chips don't cover."></textarea>
+
+      <button class="btn-sm" type="submit" style="font-size:15px;padding:12px 20px;">Save Review</button>
+    </form>
+  </div>`;
+}
+
+/** The saved review, read back — permanent record (M4 §1). */
+function savedReviewCard(campaign: Campaign): string {
+  const r = campaign.review!;
+  const deptRows = (Object.entries(r.departmentRatings) as Array<[RateableDepartment, number]>)
+    .map(([d, rating]) => `<div class="rate-row"><div class="rate-name">${escapeHtml(DEPARTMENT_LABEL[d])}</div>${starsStatic(rating)}</div>`)
+    .join('');
+  return `<div class="card"><div class="card-title">📝 Founder Review</div>
+    <div class="rate-row"><div class="rate-name">Outcome</div><div style="font-weight:600;">${escapeHtml(OUTCOME_LABEL[r.outcome])}</div></div>
+    <div class="rate-row"><div class="rate-name">Overall</div>${starsStatic(r.overallRating)}</div>
+    ${deptRows}
+    ${r.reasons.length ? `<div class="asset-label" style="margin-top:14px;">Flagged</div><div class="chip-grid">${r.reasons.map((x) => `<span class="chip">${escapeHtml(x)}</span>`).join('')}</div>` : ''}
+    ${r.note ? block('Note', r.note) : ''}
+    <p class="campaign-meta" style="margin-top:12px;">Reviewed ${escapeHtml(new Date(r.reviewedAt).toLocaleString())}</p>
+  </div>`;
+}
+
+/** Lessons Learned (M4 §7) — deterministic records of what the founder's review and edits actually did. */
+function lessonsCard(campaign: Campaign): string {
+  if (!campaign.lessons?.length) return '';
+  return `<div class="card"><div class="card-title">🎓 Lessons Learned</div>
+    <ul class="asset-list">${campaign.lessons.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>
+    <p class="campaign-meta" style="margin-top:10px;">Recorded from your review and edits — these feed future campaigns.</p>
+  </div>`;
+}
+
+/** Learning applied to THIS campaign (M4 §11) — never a hidden adjustment. */
+function learningAppliedCard(campaign: Campaign): string {
+  if (!campaign.learningNotes?.length) return '';
+  return `<div class="card"><div class="card-title">🧠 What Marketing OS Applied From Your Feedback</div>
+    ${campaign.learningNotes.map((n) => `<div class="learning-note">${escapeHtml(n)}</div>`).join('')}
+    <p class="campaign-meta" style="margin-top:10px;">These adjustments came from your own past reviews and edits — shown so behavior never changes silently.</p>
+  </div>`;
+}
+
+/** Founder edits (M4 §3) — the AI original is kept alongside the founder's version, never discarded. */
+function editsCard(campaign: Campaign): string {
+  if (!campaign.edits?.length) return '';
+  return `<div class="card"><div class="card-title">✏️ Your Edits</div>
+    ${campaign.edits
+      .map((e) => {
+        const pct = e.original.length > 0 ? Math.round((e.deltaChars / e.original.length) * 100) : 0;
+        return `<div class="asset-block">
+          <div class="asset-label">${escapeHtml(e.field)} · ${pct >= 0 ? '+' : ''}${pct}% (${e.original.length} → ${e.edited.length} chars) · ${escapeHtml(new Date(e.editedAt).toLocaleString())}</div>
+          ${e.reasons.length ? `<div class="chip-grid">${e.reasons.map((r) => `<span class="chip">${escapeHtml(r)}</span>`).join('')}</div>` : ''}
+          <div class="asset-label" style="margin-top:8px;">Your version</div><div class="asset-body">${escapeHtml(e.edited)}</div>
+          <div class="asset-label" style="margin-top:8px;">Marketing OS original (kept)</div><div class="asset-body" style="opacity:0.7;">${escapeHtml(e.original)}</div>
+        </div>`;
+      })
+      .join('')}
+  </div>`;
+}
+
 /** The unified /campaign/:id page — live progress while running, full Campaign Detail once terminal. */
 export function renderCampaignPage(campaign: Campaign): string {
   const running = campaign.status === 'running';
@@ -258,11 +433,15 @@ export function renderCampaignPage(campaign: Campaign): string {
     ? ''
     : `
   ${scoreCard(campaign)}
+  ${learningAppliedCard(campaign)}
   ${briefCard(campaign)}
   ${researchCard(campaign)}
-  ${contentCard(campaign)}
+  ${contentCard(campaign, campaign.status === 'complete')}
   ${videoCard(campaign)}
   ${qaCard(campaign, campaign.status === 'complete')}
+  ${editsCard(campaign)}
+  ${campaign.review ? savedReviewCard(campaign) : campaign.status === 'complete' ? reviewFormCard(campaign) : ''}
+  ${lessonsCard(campaign)}
   ${
     campaign.status === 'complete'
       ? `<div class="card"><div class="card-title">🗂 Also available on the tabs</div><div class="tab-links"><a href="/research">Research</a><a href="/content">Content</a><a href="/video">Video</a><a href="/publish">Publish</a></div></div>`
@@ -322,6 +501,57 @@ export function renderCampaignsPage(campaigns: Campaign[]): string {
   `;
 
   return pageShell({ title: 'Campaigns', bodyHtml, activeHref: '/campaigns', extraHeadHtml: CAMPAIGN_STYLE });
+}
+
+/**
+ * The Learning Layer, fully visible (M4 §5/§10/§11). Everything Marketing
+ * OS currently believes about the founder, each line with the observations
+ * behind it — derived from real reviews and edits, never configured by hand
+ * and never inferred from work that was never reviewed.
+ */
+export function renderLearningPage(learning: FounderLearning): string {
+  const prefRows = (items: typeof learning.preferences) =>
+    items.map((p) => `<div class="learning-note"><strong>${escapeHtml(p.statement)}</strong><br><span style="color:var(--ink-muted);font-size:13px;">${escapeHtml(p.evidence)}</span></div>`).join('');
+
+  const deptRows = learning.departmentFeedback
+    .map((d) => `<div class="rate-row"><div class="rate-name">${escapeHtml(DEPARTMENT_LABEL[d.department])}</div><div>${starsStatic(Math.round(d.averageRating))} <span class="campaign-meta">${d.averageRating}/5 over ${d.ratingCount} review${d.ratingCount === 1 ? '' : 's'}</span></div></div>`)
+    .join('');
+
+  const trackRows = learning.trackRecordByKind
+    .map(
+      (t) =>
+        `<div class="rate-row"><div class="rate-name">${escapeHtml(t.kind)}</div><div class="campaign-meta">${t.approvedCount} of ${t.reviewedCount} approved (${Math.round(t.approvalRate * 100)}%)</div></div>`
+    )
+    .join('');
+
+  const lessonRows = learning.allLessons
+    .slice(0, 40)
+    .map((l) => `<li>${escapeHtml(l.lesson)} <a href="/campaign/${encodeURIComponent(l.campaignId)}" style="font-size:12px;">${escapeHtml(l.campaignTitle)}</a></li>`)
+    .join('');
+
+  const nothingYet = learning.reviewedCampaignCount === 0 && learning.allLessons.length === 0;
+
+  const bodyHtml = `
+  <h1 style="font-size:22px;font-weight:600;margin-bottom:4px;">🧠 What Marketing OS Has Learned</h1>
+  <div class="campaign-meta" style="margin-bottom:20px;">Derived from your own reviews and edits — ${learning.reviewedCampaignCount} reviewed campaign${learning.reviewedCampaignCount === 1 ? '' : 's'}. Nothing here is configured by hand, and nothing is guessed: every line shows the observations behind it.</div>
+
+  ${
+    nothingYet
+      ? `<p class="empty">Nothing learned yet. Review a completed campaign and Marketing OS will start building this picture — it needs at least two consistent observations before it treats anything as a preference.</p>`
+      : ''
+  }
+
+  ${learning.preferences.length ? `<div class="card"><div class="card-title">🎯 Preferences</div>${prefRows(learning.preferences)}</div>` : ''}
+  ${learning.avoid.length ? `<div class="card"><div class="card-title">🚫 Avoid</div>${prefRows(learning.avoid)}</div>` : ''}
+  ${deptRows ? `<div class="card"><div class="card-title">🏢 Department Feedback</div>${deptRows}</div>` : ''}
+  ${trackRows ? `<div class="card"><div class="card-title">📈 Approval Track Record By Opportunity Kind</div>${trackRows}<p class="campaign-meta" style="margin-top:10px;">Feeds the Founder Track Record dimension in opportunity scoring — only once a kind has at least 3 reviewed campaigns.</p></div>` : ''}
+  ${lessonRows ? `<div class="card"><div class="card-title">🎓 Campaign Lessons</div><ul class="asset-list">${lessonRows}</ul></div>` : ''}
+
+  <div class="card"><div class="card-title">ℹ️ What isn't here yet</div>
+    <p style="font-size:14px;color:var(--ink-soft);">Published-campaign performance (reach, shares, saves, watch time, leads) will appear here once publishing exists and real metrics can be recorded. Marketing OS deliberately learns nothing from unmeasured work — no estimated engagement, no invented performance.</p>
+  </div>
+  `;
+  return pageShell({ title: 'Learning', bodyHtml, activeHref: '/learning', extraHeadHtml: CAMPAIGN_STYLE });
 }
 
 // ---------------------------------------------------------------------------

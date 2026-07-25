@@ -170,6 +170,72 @@ export interface CampaignQaReport {
   summary: string;
 }
 
+// ---------------------------------------------------------------------------
+// Founder feedback & learning (M4). These are the structured records the
+// Learning Layer derives from — explicit, queryable, permanent. The
+// Knowledge Layer (knowledge/) teaches Marketing OS about the world; these
+// records teach it about Pintag and its founder. Kept separate by design.
+// ---------------------------------------------------------------------------
+
+export type CampaignOutcome = 'approved' | 'approved-with-edits' | 'needs-regeneration' | 'rejected';
+
+/** The one-click "why" chips — never a forced long explanation. */
+export const FEEDBACK_REASONS = [
+  'Too Salesy',
+  'Too Long',
+  'Too Short',
+  'Wrong Tone',
+  'Wrong Audience',
+  'Weak Hook',
+  'Weak CTA',
+  'Grammar',
+  'Fact Issue',
+  'Brand Voice',
+  'Other',
+] as const;
+export type FeedbackReason = (typeof FEEDBACK_REASONS)[number];
+
+/** 1-5 stars. */
+export type Rating = 1 | 2 | 3 | 4 | 5;
+
+/** The departments a founder can rate individually — so a weak video never counts as a failure of the whole campaign. */
+export const RATEABLE_DEPARTMENTS = ['research', 'strategy', 'writing', 'design', 'video', 'brandVoice'] as const;
+export type RateableDepartment = (typeof RATEABLE_DEPARTMENTS)[number];
+
+export interface CampaignReview {
+  outcome: CampaignOutcome;
+  overallRating: Rating;
+  /** Only the departments that actually produced something get rated. */
+  departmentRatings: Partial<Record<RateableDepartment, Rating>>;
+  reasons: FeedbackReason[];
+  note?: string;
+  reviewedAt: string;
+}
+
+/** One founder edit to a generated asset. The AI original is never discarded — original + founder version + delta are the learning data. */
+export interface CampaignEdit {
+  /** Which CampaignContent field was edited. */
+  field: keyof CampaignContent;
+  original: string;
+  edited: string;
+  /** edited.length - original.length — the cheap, deterministic "difference" signal preference derivation reads. */
+  deltaChars: number;
+  reasons: FeedbackReason[];
+  editedAt: string;
+}
+
+/**
+ * Post-publish performance metrics (M4 §8) — the storage slot exists now so
+ * the schema is settled; NOTHING writes it yet because publishing isn't
+ * built. Only real published-campaign metrics may ever land here — never
+ * estimated or invented numbers.
+ */
+export interface CampaignPerformance {
+  source: string;
+  recordedAt: string;
+  metrics: Record<string, number>;
+}
+
 export type CampaignStatus = 'running' | 'complete' | 'failed' | 'interrupted';
 
 export interface Campaign {
@@ -196,4 +262,17 @@ export interface Campaign {
   design?: CampaignDesign;
   video?: CampaignVideo;
   qaReport?: CampaignQaReport;
+
+  // Feedback & learning records (M4) — the campaign no longer ends at
+  // "complete"; these accumulate after generation.
+  /** Structured founder review — outcome, ratings, one-click reasons. Permanent. */
+  review?: CampaignReview;
+  /** Every founder edit, AI original preserved. */
+  edits?: CampaignEdit[];
+  /** Deterministic Lessons Learned, generated from the review + edits at review time — never LLM-invented. */
+  lessons?: string[];
+  /** Set at generation time: every behavior change prior learning caused, with its provenance ("shorter intro — founder edits shortened content in 3 of 4 reviewed campaigns"). Empty/absent when no learning applied — behavior never changes silently. */
+  learningNotes?: string[];
+  /** Real post-publish metrics only — see CampaignPerformance. */
+  performance?: CampaignPerformance[];
 }

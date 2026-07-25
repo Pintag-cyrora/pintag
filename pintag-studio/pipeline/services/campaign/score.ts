@@ -14,20 +14,28 @@
 
 import { readCampaignConfig } from '../../lib/config.js';
 import { findSimilarByTitle } from '../../stages/01-plan.js';
+import { listCampaigns } from './persist.js';
+import { deriveFounderLearning, type FounderLearning } from '../learning/learn.js';
 import type { ScorableOpportunity, OpportunityScore, ScoreDimension } from './types.js';
 
 const CONFIDENCE_PERCENT: Record<'high' | 'medium' | 'low', number> = { high: 95, medium: 70, low: 45 };
 /** An opportunity with no confidence signal at all (e.g. a manually typed topic) is neither trusted nor punished. */
 const NEUTRAL_CONFIDENCE_PERCENT = 60;
+/** Below this many reviewed campaigns of a kind, its approval rate isn't evidence yet — same "one incident isn't a pattern" discipline as the Learning Layer's own threshold. */
+const MIN_TRACK_RECORD_REVIEWS = 3;
 
 /**
  * Scores one opportunity. Async only because the duplicate-risk dimension
  * reuses Stage 01's content_items near-duplicate check — when Supabase is
  * unreachable that dimension degrades to a neutral score with an honest
  * reason, never a fabricated verdict.
+ *
+ * `learning` is optional purely so batch callers derive it once instead of
+ * per opportunity; omitted, it's derived from the campaigns on disk.
  */
-export async function scoreOpportunity(opp: ScorableOpportunity): Promise<OpportunityScore> {
+export async function scoreOpportunity(opp: ScorableOpportunity, learning?: FounderLearning): Promise<OpportunityScore> {
   const dimensions: ScoreDimension[] = [];
+  const founderLearning = learning ?? deriveFounderLearning(listCampaigns());
 
   // Business impact — the strongest single signal is where the opportunity
   // came from: observed outperformance is proven audience demand; an
@@ -82,6 +90,38 @@ export async function scoreOpportunity(opp: ScorableOpportunity): Promise<Opport
   }
   dimensions.push(duplicate);
 
+  // Founder Track Record (M4 — strategy learning). Real founder decisions
+  // only: how often campaigns from this same kind of opportunity were
+  // actually approved. Neutral, with an honest reason, until enough
+  // reviewed campaigns exist — an unproven kind is never penalized for
+  // lack of history, and nothing here is inferred from unpublished or
+  // unmeasured work. Once publishing exists, real performance metrics
+  // (CampaignPerformance) join this dimension the same way: as data.
+  const record = founderLearning.trackRecordByKind.find((r) => r.kind === opp.kind);
+  if (record && record.reviewedCount >= MIN_TRACK_RECORD_REVIEWS) {
+    dimensions.push({
+      name: 'Founder Track Record',
+      score: Math.round(record.approvalRate * 100),
+      weight: 1.5,
+      reason: `You approved ${record.approvedCount} of ${record.reviewedCount} reviewed "${opp.kind}" campaigns.`,
+    });
+  } else {
+    // weight: 0 — shown for transparency, deliberately EXCLUDED from the
+    // composite. Same "not applicable ≠ average" discipline as Stage 06's
+    // computeCompositeScore skipping a null visualQuality: folding in a
+    // neutral 60 would quietly drag every genuinely strong opportunity
+    // toward the middle and, on a fresh install with no reviews at all,
+    // stop anything from ever reaching high priority.
+    dimensions.push({
+      name: 'Founder Track Record',
+      score: 60,
+      weight: 0,
+      reason: record
+        ? `Only ${record.reviewedCount} reviewed "${opp.kind}" campaign${record.reviewedCount === 1 ? '' : 's'} so far — not enough history to score yet, so this isn't counted.`
+        : `No reviewed "${opp.kind}" campaigns yet — no track record to learn from, so this isn't counted.`,
+    });
+  }
+
   const weightedSum = dimensions.reduce((sum, d) => sum + d.score * d.weight, 0);
   const totalWeight = dimensions.reduce((sum, d) => sum + d.weight, 0);
   const total = Math.round(weightedSum / totalWeight);
@@ -103,11 +143,12 @@ export interface ScoredOpportunity<T extends ScorableOpportunity = ScorableOppor
   score: OpportunityScore;
 }
 
-/** Scores every opportunity (sequentially — each may hit the duplicate-check query). */
+/** Scores every opportunity (sequentially — each may hit the duplicate-check query). Derives founder learning once for the whole batch rather than per opportunity. */
 export async function scoreOpportunities<T extends ScorableOpportunity>(opportunities: T[]): Promise<Array<ScoredOpportunity<T>>> {
+  const learning = deriveFounderLearning(listCampaigns());
   const scored: Array<ScoredOpportunity<T>> = [];
   for (const opportunity of opportunities) {
-    scored.push({ opportunity, score: await scoreOpportunity(opportunity) });
+    scored.push({ opportunity, score: await scoreOpportunity(opportunity, learning) });
   }
   return scored;
 }

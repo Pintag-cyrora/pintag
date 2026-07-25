@@ -45,8 +45,21 @@ import type { MorningBrief } from './services/morning/types.js';
 import { createCampaign, executeCampaign, regenerateCampaignStep, REGENERABLE_STEPS } from './services/campaign/generate.js';
 import { readCampaign, readLatestCampaign, listCampaigns, writeCampaign } from './services/campaign/persist.js';
 import { scoreOpportunity, scoreOpportunities, selectTopOpportunities } from './services/campaign/score.js';
-import { renderCampaignPage, renderCampaignsPage, renderResearchPage, renderContentPage, renderVideoPage, renderPublishPage } from './renderers/web/campaign.js';
-import type { Campaign, CampaignStepId, ScorableOpportunity } from './services/campaign/types.js';
+import { renderCampaignPage, renderCampaignsPage, renderCampaignEditPage, renderLearningPage, renderResearchPage, renderContentPage, renderVideoPage, renderPublishPage } from './renderers/web/campaign.js';
+import { deriveFounderLearning, generateLessons, writeLearningSnapshot } from './services/learning/learn.js';
+import {
+  FEEDBACK_REASONS,
+  RATEABLE_DEPARTMENTS,
+  type Campaign,
+  type CampaignStepId,
+  type ScorableOpportunity,
+  type CampaignContent,
+  type CampaignOutcome,
+  type CampaignReview,
+  type FeedbackReason,
+  type Rating,
+  type RateableDepartment,
+} from './services/campaign/types.js';
 
 const PORT = Number(process.env.PORT ?? 4321);
 
@@ -190,6 +203,10 @@ function renderHome(founderName: string): string {
 
     <a class="nav-link" href="/campaigns">
       <div class="card"><h2>📦 Campaigns</h2><p>Every generated campaign — status, score, priority, and the full review bundle.</p></div>
+    </a>
+
+    <a class="nav-link" href="/learning">
+      <div class="card"><h2>🧠 What Marketing OS Has Learned</h2><p>Everything it believes about your preferences, derived from your own reviews and edits — with the evidence behind each line.</p></div>
     </a>
 
     <a class="nav-link" href="/teach">
@@ -584,6 +601,120 @@ async function handleGenerateTopCampaigns(res: ServerResponse): Promise<void> {
   redirect(res, '/campaigns');
 }
 
+// ---------------------------------------------------------------------------
+// Founder feedback (M4) — the campaign no longer ends at "complete". A
+// structured review, founder edits (AI original always kept), and the
+// deterministic lessons those produce are what the Learning Layer derives
+// future behavior from. All parsing/validation here; the Learning Layer
+// stays a pure function over the stored records.
+// ---------------------------------------------------------------------------
+
+const VALID_OUTCOMES: CampaignOutcome[] = ['approved', 'approved-with-edits', 'needs-regeneration', 'rejected'];
+
+/** Only 1-5 counts — anything else is dropped rather than coerced into a rating the founder never gave. */
+function parseRating(raw: string | null): Rating | undefined {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? (n as Rating) : undefined;
+}
+
+/** Checkbox values validated against the known chip list — never trusted verbatim from the form. */
+function parseReasons(body: URLSearchParams): FeedbackReason[] {
+  const allowed = new Set<string>(FEEDBACK_REASONS);
+  return body.getAll('reason').filter((r): r is FeedbackReason => allowed.has(r));
+}
+
+async function handleCampaignReview(req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
+  const campaign = resolveCampaign(id);
+  if (!campaign) {
+    sendHtml(res, 404, pageShell('Not found', '<p>No such campaign.</p><a class="back" href="/campaigns">← Campaigns</a>'));
+    return;
+  }
+  const body = await readRequestBody(req);
+  const outcome = body.get('outcome') as CampaignOutcome | null;
+  const overallRating = parseRating(body.get('overall'));
+  if (!outcome || !VALID_OUTCOMES.includes(outcome) || !overallRating) {
+    // The form marks both required; a submission without them is malformed,
+    // not a review to record half of.
+    redirect(res, `/campaign/${encodeURIComponent(campaign.id)}`);
+    return;
+  }
+
+  const departmentRatings: Partial<Record<RateableDepartment, Rating>> = {};
+  for (const d of RATEABLE_DEPARTMENTS) {
+    const rating = parseRating(body.get(`rating-${d}`));
+    if (rating) departmentRatings[d] = rating;
+  }
+
+  const review: CampaignReview = {
+    outcome,
+    overallRating,
+    departmentRatings,
+    reasons: parseReasons(body),
+    note: (body.get('note') ?? '').trim() || undefined,
+    reviewedAt: new Date().toISOString(),
+  };
+  campaign.review = review;
+  // Lessons are regenerated from the full record (review + every edit), so
+  // they stay consistent no matter what order feedback arrived in.
+  campaign.lessons = generateLessons(campaign);
+  writeCampaign(campaign);
+  // Refresh the human-readable Learning Layer snapshot. The campaigns
+  // remain the source of truth — this is a window, not a cache.
+  writeLearningSnapshot();
+
+  redirect(res, `/campaign/${encodeURIComponent(campaign.id)}`);
+}
+
+const EDITABLE_FIELDS: Array<keyof CampaignContent> = ['facebookPost', 'instagramCaption', 'linkedinPost', 'blogArticleMarkdown'];
+
+function handleCampaignEditForm(res: ServerResponse, id: string, field: string): void {
+  const campaign = resolveCampaign(id);
+  const typedField = field as keyof CampaignContent;
+  const current = campaign?.content?.[typedField];
+  if (!campaign || !EDITABLE_FIELDS.includes(typedField) || !current) {
+    sendHtml(res, 404, pageShell('Not found', '<p>Nothing to edit there.</p><a class="back" href="/campaigns">← Campaigns</a>'));
+    return;
+  }
+  sendHtml(res, 200, renderCampaignEditPage(campaign, typedField, current));
+}
+
+async function handleCampaignEditSave(req: IncomingMessage, res: ServerResponse, id: string, field: string): Promise<void> {
+  const campaign = resolveCampaign(id);
+  const typedField = field as keyof CampaignContent;
+  const original = campaign?.content?.[typedField];
+  if (!campaign || !EDITABLE_FIELDS.includes(typedField) || !original) {
+    sendHtml(res, 404, pageShell('Not found', '<p>Nothing to edit there.</p><a class="back" href="/campaigns">← Campaigns</a>'));
+    return;
+  }
+  const body = await readRequestBody(req);
+  const edited = body.get('edited') ?? '';
+  if (!edited.trim() || edited === original) {
+    redirect(res, `/campaign/${encodeURIComponent(campaign.id)}`);
+    return;
+  }
+
+  // The AI original is preserved on the edit record itself (M4 §3) — the
+  // campaign's live content becomes the founder's version, but what
+  // Marketing OS wrote is never discarded.
+  campaign.edits = [
+    ...(campaign.edits ?? []),
+    {
+      field: typedField,
+      original,
+      edited,
+      deltaChars: edited.length - original.length,
+      reasons: parseReasons(body),
+      editedAt: new Date().toISOString(),
+    },
+  ];
+  campaign.content = { ...campaign.content, [typedField]: edited };
+  campaign.lessons = generateLessons(campaign);
+  writeCampaign(campaign);
+  writeLearningSnapshot();
+
+  redirect(res, `/campaign/${encodeURIComponent(campaign.id)}`);
+}
+
 async function handleCampaignRegenerate(res: ServerResponse, id: string, stepId: string): Promise<void> {
   const campaign = resolveCampaign(id);
   if (!campaign || !REGENERABLE_STEPS.includes(stepId as CampaignStepId)) {
@@ -639,6 +770,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     } else if (req.method === 'POST' && /^\/campaign\/[^/]+\/regenerate\/[^/]+$/.test(pathname)) {
       const [, , id, , stepId] = pathname.split('/');
       await handleCampaignRegenerate(res, decodeURIComponent(id), stepId);
+    } else if (req.method === 'POST' && /^\/campaign\/[^/]+\/review$/.test(pathname)) {
+      await handleCampaignReview(req, res, decodeURIComponent(pathname.split('/')[2]));
+    } else if (req.method === 'GET' && /^\/campaign\/[^/]+\/edit\/[^/]+$/.test(pathname)) {
+      const [, , id, , field] = pathname.split('/');
+      handleCampaignEditForm(res, decodeURIComponent(id), field);
+    } else if (req.method === 'POST' && /^\/campaign\/[^/]+\/edit\/[^/]+$/.test(pathname)) {
+      const [, , id, , field] = pathname.split('/');
+      await handleCampaignEditSave(req, res, decodeURIComponent(id), field);
+    } else if (req.method === 'GET' && pathname === '/learning') {
+      sendHtml(res, 200, renderLearningPage(deriveFounderLearning(listCampaigns())));
     } else if (req.method === 'GET' && pathname === '/campaigns') {
       // Through resolveCampaign so a live in-process run shows its current
       // state and a run orphaned by a restart reads honestly as

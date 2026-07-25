@@ -38,9 +38,10 @@ import { retrieveKnowledge, relativeKnowledgePath } from '../../lib/knowledge.js
 import { loadResearchReferenceMaterial } from '../../stages/02-research.js';
 import { loadWritingContext } from '../../stages/03-write.js';
 import { findSimilarByTitle } from '../../stages/01-plan.js';
-import { writeCampaign } from './persist.js';
+import { writeCampaign, listCampaigns } from './persist.js';
 import { scoreOpportunity } from './score.js';
 import { readCachedResearch, writeCachedResearch } from './research-cache.js';
+import { deriveFounderLearning, learningPromptLines } from '../learning/learn.js';
 import {
   briefFormats,
   CAMPAIGN_FORMATS,
@@ -125,6 +126,12 @@ interface SharedContext {
   postingRules: string;
   /** Writing-craft Knowledge Layer entries (language/marketing/psychology) — Stage 03's exact categories. */
   craftKnowledgeSection: string;
+  /**
+   * Founder-learning lines (M4), each already carrying its own evidence —
+   * derived deterministically from past reviews/edits (services/learning/).
+   * Empty until real feedback exists: no observations, no behavior change.
+   */
+  learningLines: string[];
 }
 
 function loadSharedContext(): SharedContext {
@@ -132,7 +139,22 @@ function loadSharedContext(): SharedContext {
   const postingRules = readFileSync(join(REPO_ROOT, 'brain', 'posting-rules.md'), 'utf-8');
   const craftEntries = retrieveKnowledge({ categories: ['language', 'marketing', 'psychology'], minStatus: 'verified' });
   const craftKnowledgeSection = craftEntries.map((e) => `### knowledge/${relativeKnowledgePath(e)}\n${e.body}`).join('\n\n');
-  return { brandVoice, styleGuide, postingRules, craftKnowledgeSection };
+  const learningLines = learningPromptLines(deriveFounderLearning(listCampaigns()));
+  return { brandVoice, styleGuide, postingRules, craftKnowledgeSection, learningLines };
+}
+
+/**
+ * The learning block injected into a generation prompt. Each line states
+ * the adjustment AND the observation behind it, so the model is never
+ * following an unexplained rule and the founder can audit the same text on
+ * campaign.learningNotes (M4 §11 — never make hidden adjustments).
+ */
+function learningBlock(learningLines: string[]): string {
+  if (learningLines.length === 0) return '';
+  return [
+    '## What the founder has taught Marketing OS (from their own past reviews and edits — follow these, and note that each carries the evidence behind it)',
+    ...learningLines.map((l) => `- ${l}`),
+  ].join('\n');
 }
 
 /** The Campaign Brief as a prompt block — the one framing every generation step receives. */
@@ -169,7 +191,7 @@ async function runCmoStep(campaign: Campaign): Promise<void> {
   });
 }
 
-async function runStrategyStep(campaign: Campaign): Promise<CampaignBrief> {
+async function runStrategyStep(campaign: Campaign, shared: SharedContext): Promise<CampaignBrief> {
   return withHealthReport('content_strategist', async () => {
     const raw = await runAgent('content_strategist', {
       userPrompt: [
@@ -179,6 +201,8 @@ async function runStrategyStep(campaign: Campaign): Promise<CampaignBrief> {
         `Title: ${campaign.opportunity.title}`,
         campaign.opportunity.detail ? `Context: ${campaign.opportunity.detail}` : '',
         campaign.score ? `Priority: ${campaign.score.priority} (scored ${campaign.score.total}/100)\nWhy it scored that way:\n${campaign.score.reasons.map((r) => `- ${r}`).join('\n')}` : '',
+        '',
+        learningBlock(shared.learningLines),
         '',
         'Produce: objective (what this campaign makes the audience understand or do — educational-first per the founder brief); businessGoal (the business outcome it serves, one line); audience (the specific segment, and why them); messaging (the single core message, stated plainly); cta (ONE call to action); primaryFormat (the one format this campaign leads with); secondaryFormats (ONLY formats this campaign genuinely needs — every format you list costs real generation work, so request the smallest set that serves the objective, and an empty list is a legitimate answer); successMetrics (2-4 observable signals of success, e.g. shares, saves, profile visits).',
         '',
@@ -278,6 +302,7 @@ async function runWritingStep(campaign: Campaign, shared: SharedContext, revisio
         '## Style guide',
         shared.styleGuide,
         shared.craftKnowledgeSection ? `## Writing craft — verified knowledge (terminology, tone, hook patterns)\n${shared.craftKnowledgeSection}` : '',
+        learningBlock(shared.learningLines),
         '',
         '## Research brief',
         campaign.research!.researchBrief,
@@ -545,10 +570,19 @@ function qaDoneDetail(campaign: Campaign): string | undefined {
  * own work, and everything generated is already persisted and visible.
  */
 export async function executeCampaign(campaign: Campaign): Promise<Campaign> {
+  // Loaded once, up front — the Strategist already needs the founder-learning
+  // lines, and every later step reuses the same brand/craft context.
+  const shared = loadSharedContext();
+
+  // Transparency (M4 §11): whatever learning shapes this campaign is
+  // recorded ON the campaign, with evidence, before generation starts —
+  // so the founder can always see why it looks the way it does.
+  campaign.learningNotes = shared.learningLines;
+
   // Sequential prefix.
   const prefix: Array<{ id: CampaignStepId; run: () => Promise<void>; doneDetail?: () => string | undefined }> = [
     { id: 'cmo', run: async () => runCmoStep(campaign), doneDetail: () => stepState(campaign, 'cmo').detail || undefined },
-    { id: 'strategy', run: async () => void (campaign.brief = await runStrategyStep(campaign)) },
+    { id: 'strategy', run: async () => void (campaign.brief = await runStrategyStep(campaign, shared)) },
     {
       id: 'research',
       run: async () => void (campaign.research = await runResearchStep(campaign)),
@@ -572,8 +606,6 @@ export async function executeCampaign(campaign: Campaign): Promise<Campaign> {
   const wantsWriting = formats.some((f) => WRITTEN_FORMATS.includes(f));
   const wantsDesign = formats.includes('carousel') || formats.some((f) => VIDEO_FORMATS.includes(f));
   const wantsVideo = formats.some((f) => VIDEO_FORMATS.includes(f));
-
-  const shared = loadSharedContext();
 
   // Parallel generation phase. Each branch manages its own step state so
   // the progress page shows all running departments at once; allSettled so

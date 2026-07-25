@@ -4,3 +4,11 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Derived Learning Layer snapshot — regenerated from the campaigns after
+# every review (see pipeline/services/learning/learn.ts). The campaigns in
+# content-vault/campaigns/ are the source of truth; committing this file
+# would just create churn and conflicts over data that recomputes itself.
+# Leading slash is load-bearing: an unanchored "learning/" would also match
+# pipeline/services/learning/ and silently exclude that source directory.
+/learning/
