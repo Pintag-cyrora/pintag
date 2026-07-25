@@ -112,6 +112,16 @@
     "note": "M3 (production-ready campaign generation): top_n is how many scored opportunities `npm run campaign -- --top` (and the workspace's Generate Top Campaigns button) actually generates — everything else is scored but not executed, keeping daily API spend predictable. priority_*_threshold map a deterministic 0-100 opportunity score onto high/medium/low priority (see pipeline/services/campaign/score.ts — rule-based, no LLM call, every dimension carries its reason). Low-priority opportunities are never auto-selected. research_cache_max_age_days: a campaign whose normalized topic matches research/<slug>.json newer than this reuses that research and skips the Researcher's LLM call entirely — provenance is recorded on the campaign, never hidden."
   },
 
+  "language_strategy": {
+    "brand_defaults": {
+      "pintag": { "primary": "lo", "secondary": "en" },
+      "houluebor": { "primary": "en", "secondary": "lo" },
+      "mamieii": { "primary": "lo", "secondary": "en" }
+    },
+    "fallback": { "primary": "lo", "secondary": "en" },
+    "note": "M5 (intelligent language strategy): starting points ONLY, not fixed settings. Every campaign's language is decided by the Content Strategist as part of the Campaign Brief — it reads the brand default for the active company (org.name, lowercased) and may override it, but only with a stated reason, and the override is always shown to the founder alongside the reason (see pipeline/services/campaign/types.ts LanguageStrategy). Codes must be members of org.languages. A brand absent from brand_defaults uses fallback. Language selection is not yet performance-driven: once published-campaign metrics exist (CampaignPerformance), real engagement by language joins this decision as evidence — until then the Strategist reasons from audience, objective, and channel only, and never claims a performance basis it doesn't have."
+  },
+
   "competitor_watchlist": [],
 
   "budget": {

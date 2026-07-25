@@ -12,7 +12,19 @@
 // lands on the review screen with zero extra clicks (M3 §10).
 
 import { escapeHtml, pageShell } from './shell.js';
-import { FEEDBACK_REASONS, RATEABLE_DEPARTMENTS, type Campaign, type CampaignStepState, type OpportunityScore, type RateableDepartment, type CampaignOutcome } from '../../services/campaign/types.js';
+import {
+  FEEDBACK_REASONS,
+  RATEABLE_DEPARTMENTS,
+  LANGUAGE_LABEL,
+  strategyLanguages,
+  type Campaign,
+  type CampaignStepState,
+  type OpportunityScore,
+  type RateableDepartment,
+  type CampaignOutcome,
+  type Language,
+  type WrittenAssets,
+} from '../../services/campaign/types.js';
 import type { FounderLearning } from '../../services/learning/learn.js';
 
 const STEP_ICON: Record<CampaignStepState['status'], string> = {
@@ -93,6 +105,9 @@ const CAMPAIGN_STYLE = `<style>
 .learning-note:last-child{border-bottom:none;}
 .edit-link{font-size:12px;font-weight:600;color:var(--teal);text-decoration:none;margin-left:8px;}
 .edit-area{width:100%;font-family:inherit;font-size:15px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--white);color:var(--ink);min-height:220px;resize:vertical;margin-bottom:12px;}
+.lang-heading{font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--teal);border-bottom:1.5px solid var(--teal-border);padding-bottom:5px;margin:18px 0 12px;}
+.lang-heading-neutral{color:var(--ink-muted);border-bottom-color:var(--border);}
+.lang-chip{display:inline-block;font-size:11px;font-weight:700;background:var(--teal-dim);color:var(--teal);border-radius:10px;padding:3px 9px;margin-left:6px;}
 </style>`;
 
 function statusBanner(campaign: Campaign): string {
@@ -151,6 +166,30 @@ function optBlock(label: string, body: string | undefined): string {
   return body ? block(label, body) : '';
 }
 
+/**
+ * The Language Strategy, always visible (M5 §Transparency) — the founder
+ * should never have to wonder why a campaign came out in a given language.
+ * Confidence is labeled as the Strategist's own stated confidence, not a
+ * measured value, so it can't be mistaken for the deterministic
+ * observation-derived confidence shown on the score card.
+ */
+function languageStrategyCard(campaign: Campaign): string {
+  const ls = campaign.brief?.languageStrategy;
+  if (!ls) return '';
+  const secondary = ls.secondaryLanguage ? LANGUAGE_LABEL[ls.secondaryLanguage] : 'None — deliberately single-language';
+  const provenance = ls.overrodeBrandDefault
+    ? `<p class="campaign-meta" style="margin-top:10px;">⚑ Overrode the brand default (${LANGUAGE_LABEL[ls.brandDefault.primaryLanguage]}${ls.brandDefault.secondaryLanguage ? ` + ${LANGUAGE_LABEL[ls.brandDefault.secondaryLanguage]}` : ''}) — the reason above is why.</p>`
+    : `<p class="campaign-meta" style="margin-top:10px;">Matches the brand default for this company.</p>`;
+  return `<div class="card"><div class="card-title">🗣 Language Strategy</div>
+    <div class="rate-row"><div class="rate-name">Primary Language</div><div style="font-weight:600;">${escapeHtml(LANGUAGE_LABEL[ls.primaryLanguage])}</div></div>
+    <div class="rate-row"><div class="rate-name">Secondary Language</div><div style="font-weight:600;">${escapeHtml(secondary)}</div></div>
+    <div class="rate-row"><div class="rate-name">Strategist's Confidence</div><div style="font-weight:600;">${ls.confidencePercent}%</div></div>
+    ${block('Reason', ls.reason)}
+    <p class="campaign-meta">Confidence is the Content Strategist's own stated confidence in this language call — its judgment, not a measured result.</p>
+    ${provenance}
+  </div>`;
+}
+
 function briefCard(campaign: Campaign): string {
   const b = campaign.brief;
   if (!b) return '';
@@ -178,37 +217,63 @@ function researchCard(campaign: Campaign): string {
   </div>`;
 }
 
-/** An editable written asset — the label carries an Edit link to /campaign/:id/edit/:field, where the founder's version is saved alongside the AI original (M4 §3). */
-function editableBlock(campaign: Campaign, label: string, field: keyof NonNullable<Campaign['content']>, body: string | undefined, editable: boolean): string {
+/** An editable written asset — the label carries an Edit link to /campaign/:id/edit/:language/:field, where the founder's version is saved alongside the AI original (M4 §3). */
+function editableBlock(campaign: Campaign, label: string, language: Language, field: keyof WrittenAssets, body: string | undefined, editable: boolean): string {
   if (!body) return '';
-  const link = editable ? `<a class="edit-link" href="/campaign/${encodeURIComponent(campaign.id)}/edit/${field}">Edit →</a>` : '';
+  const link = editable ? `<a class="edit-link" href="/campaign/${encodeURIComponent(campaign.id)}/edit/${language}/${field}">Edit →</a>` : '';
   return `<div class="asset-block"><div class="asset-label">${escapeHtml(label)}${link}</div><div class="asset-body">${escapeHtml(body)}</div></div>`;
+}
+
+/** Which languages actually have generated assets — read off the campaign rather than assumed, so a partially-generated campaign renders honestly. */
+function campaignLanguages(campaign: Campaign): Language[] {
+  const ls = campaign.brief?.languageStrategy;
+  if (ls) return strategyLanguages(ls);
+  // Pre-M5 campaigns have no strategy; fall back to whatever keys exist.
+  const keys = new Set<string>([...Object.keys(campaign.content ?? {}), ...Object.keys(campaign.video?.byLanguage ?? {})]);
+  return [...keys] as Language[];
+}
+
+function languageHeading(language: Language, count: number): string {
+  return count > 1 ? `<div class="lang-heading">${escapeHtml(LANGUAGE_LABEL[language])}</div>` : '';
 }
 
 function contentCard(campaign: Campaign, editable = false): string {
   const c = campaign.content;
   const d = campaign.design;
   if (!c && !d) return '';
+  const languages = campaignLanguages(campaign);
+  const perLanguage = languages
+    .map((language) => {
+      const assets = c?.[language];
+      const slides = d?.carouselSlides?.[language];
+      if (!assets && !slides?.length) return '';
+      return `${languageHeading(language, languages.length)}
+      ${editableBlock(campaign, 'Facebook', language, 'facebookPost', assets?.facebookPost, editable)}
+      ${editableBlock(campaign, 'Instagram', language, 'instagramCaption', assets?.instagramCaption, editable)}
+      ${editableBlock(campaign, 'LinkedIn', language, 'linkedinPost', assets?.linkedinPost, editable)}
+      ${editableBlock(campaign, 'Blog Article', language, 'blogArticleMarkdown', assets?.blogArticleMarkdown, editable)}
+      ${listBlock('Carousel Copy', slides)}`;
+    })
+    .join('');
+
   return `<div class="card"><div class="card-title">✍️ Content</div>
-    ${editableBlock(campaign, 'Facebook', 'facebookPost', c?.facebookPost, editable)}
-    ${editableBlock(campaign, 'Instagram', 'instagramCaption', c?.instagramCaption, editable)}
-    ${editableBlock(campaign, 'LinkedIn', 'linkedinPost', c?.linkedinPost, editable)}
-    ${editableBlock(campaign, 'Blog Article', 'blogArticleMarkdown', c?.blogArticleMarkdown, editable)}
-    ${listBlock('Carousel Copy', d?.carouselSlides)}
+    ${perLanguage}
+    ${d?.graphicConcepts?.length || d?.imagePrompts?.length || d?.thumbnailPrompt || d?.bilingualLayoutNotes ? `<div class="lang-heading lang-heading-neutral">Visuals (all languages)</div>` : ''}
     ${listBlock('Graphic Concepts', d?.graphicConcepts)}
     ${listBlock('Image Prompts', d?.imagePrompts)}
     ${optBlock('Thumbnail Concept', d?.thumbnailPrompt)}
+    ${optBlock('Bilingual Layout Notes', d?.bilingualLayoutNotes)}
   </div>`;
 }
 
 /** The edit screen for one written asset — prefilled with the current text; saving keeps the original as the AI version and asks for one-click reasons. */
-export function renderCampaignEditPage(campaign: Campaign, field: keyof NonNullable<Campaign['content']>, current: string): string {
+export function renderCampaignEditPage(campaign: Campaign, language: Language, field: keyof WrittenAssets, current: string): string {
   const bodyHtml = `
   <a class="back" href="/campaign/${encodeURIComponent(campaign.id)}" style="display:inline-block;font-size:13px;color:var(--teal);text-decoration:none;font-weight:600;margin-bottom:16px;">← Back to campaign</a>
-  <h1 style="font-size:22px;font-weight:600;margin-bottom:4px;">✏️ Edit ${escapeHtml(field)}</h1>
+  <h1 style="font-size:22px;font-weight:600;margin-bottom:4px;">✏️ Edit ${escapeHtml(field)} (${escapeHtml(LANGUAGE_LABEL[language])})</h1>
   <div class="campaign-meta" style="margin-bottom:20px;">${escapeHtml(campaign.title)} — Marketing OS keeps its original version alongside yours, so the difference becomes something it can learn from.</div>
   <div class="card">
-    <form method="POST" action="/campaign/${encodeURIComponent(campaign.id)}/edit/${field}">
+    <form method="POST" action="/campaign/${encodeURIComponent(campaign.id)}/edit/${language}/${field}">
       <textarea class="edit-area" name="edited" required>${escapeHtml(current)}</textarea>
       <div class="asset-label">Why did you change it? (optional, tap any)</div>
       <div class="chip-grid">
@@ -223,13 +288,21 @@ export function renderCampaignEditPage(campaign: Campaign, field: keyof NonNulla
 function videoCard(campaign: Campaign): string {
   const v = campaign.video;
   if (!v) return '';
+  const languages = campaignLanguages(campaign).filter((l) => v.byLanguage?.[l]);
+  const perLanguage = languages
+    .map((language) => {
+      const a = v.byLanguage[language]!;
+      return `${languageHeading(language, languages.length)}
+      ${optBlock('TikTok Script', a.tiktokScript)}
+      ${optBlock('Reel Script', a.reelScript)}
+      ${listBlock('Hooks', a.hooks)}
+      ${block('Voice-over', a.voiceover)}
+      ${listBlock('Captions', a.captions)}`;
+    })
+    .join('');
   return `<div class="card"><div class="card-title">🎬 Video</div>
-    ${optBlock('TikTok Script', v.tiktokScript)}
-    ${optBlock('Reel Script', v.reelScript)}
-    ${listBlock('Hooks', v.hooks)}
-    ${block('Voice-over', v.voiceover)}
-    ${listBlock('B-roll Ideas', v.brollIdeas)}
-    ${listBlock('Captions', v.captions)}
+    ${perLanguage}
+    ${v.brollIdeas.length ? `<div class="lang-heading lang-heading-neutral">B-roll (all languages)</div>${listBlock('B-roll Ideas', v.brollIdeas)}` : ''}
   </div>`;
 }
 
@@ -384,7 +457,7 @@ function editsCard(campaign: Campaign): string {
       .map((e) => {
         const pct = e.original.length > 0 ? Math.round((e.deltaChars / e.original.length) * 100) : 0;
         return `<div class="asset-block">
-          <div class="asset-label">${escapeHtml(e.field)} · ${pct >= 0 ? '+' : ''}${pct}% (${e.original.length} → ${e.edited.length} chars) · ${escapeHtml(new Date(e.editedAt).toLocaleString())}</div>
+          <div class="asset-label">${escapeHtml(e.field)}${e.language ? ` <span class="lang-chip">${escapeHtml(LANGUAGE_LABEL[e.language])}</span>` : ''} · ${pct >= 0 ? '+' : ''}${pct}% (${e.original.length} → ${e.edited.length} chars) · ${escapeHtml(new Date(e.editedAt).toLocaleString())}</div>
           ${e.reasons.length ? `<div class="chip-grid">${e.reasons.map((r) => `<span class="chip">${escapeHtml(r)}</span>`).join('')}</div>` : ''}
           <div class="asset-label" style="margin-top:8px;">Your version</div><div class="asset-body">${escapeHtml(e.edited)}</div>
           <div class="asset-label" style="margin-top:8px;">Marketing OS original (kept)</div><div class="asset-body" style="opacity:0.7;">${escapeHtml(e.original)}</div>
@@ -434,6 +507,7 @@ export function renderCampaignPage(campaign: Campaign): string {
     : `
   ${scoreCard(campaign)}
   ${learningAppliedCard(campaign)}
+  ${languageStrategyCard(campaign)}
   ${briefCard(campaign)}
   ${researchCard(campaign)}
   ${contentCard(campaign, campaign.status === 'complete')}
@@ -474,11 +548,13 @@ export function renderCampaignsPage(campaigns: Campaign[]): string {
   const cards = campaigns
     .map((c) => {
       const stepsLine = c.steps.map((s) => `${STEP_ICON[s.status]} ${escapeHtml(s.label.split(' ')[0])}`).join(' · ');
+      const ls = c.brief?.languageStrategy;
       const chips = [
         `<span class="chip">${escapeHtml(STATUS_LABEL[c.status])}</span>`,
         c.score ? `<span class="chip">Score ${c.score.total}/100</span>` : '',
         c.score ? `<span class="chip">Confidence ${c.score.confidencePercent}%</span>` : '',
         c.score ? `<span class="chip ${PRIORITY_CLASS[c.score.priority]}">${escapeHtml(c.score.priority)} priority</span>` : '',
+        ls ? `<span class="chip">${escapeHtml(strategyLanguages(ls).map((l) => LANGUAGE_LABEL[l]).join(' + '))}</span>` : '',
       ]
         .filter(Boolean)
         .join('');
@@ -580,6 +656,7 @@ export function renderResearchPage(campaign: Campaign | null): string {
   const bodyHtml = `
   ${campaignContextHeader(campaign, '🔍', 'Research')}
   ${campaign.brief ? block('Objective', campaign.brief.objective) + block('Target Audience', campaign.brief.audience) : '<p class="empty">The Campaign Brief has not been created yet.</p>'}
+  ${languageStrategyCard(campaign)}
   ${campaign.research ? '' : '<p class="empty">Research has not completed yet.</p>'}
   ${researchCard(campaign)}
   `;

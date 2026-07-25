@@ -14,6 +14,8 @@
 // with the existing Stage 07/08 machinery and are deliberately NOT
 // reachable from here.
 
+import type { Language } from '../../lib/types.js';
+
 /** Where the accepted opportunity came from, for the campaign's own record. */
 export interface CampaignOpportunity {
   title: string;
@@ -78,6 +80,46 @@ export type CampaignFormat = (typeof CAMPAIGN_FORMATS)[number];
 export const WRITTEN_FORMATS: CampaignFormat[] = ['facebook', 'instagram', 'linkedin', 'blog'];
 export const VIDEO_FORMATS: CampaignFormat[] = ['tiktok', 'reel'];
 
+// ---------------------------------------------------------------------------
+// Language Strategy (M5) — language is a strategic decision the Content
+// Strategist makes and explains, never a hardcoded setting and never
+// something the Writer guesses. Brand defaults (brain/org-config.json →
+// language_strategy.brand_defaults) are the starting point; the Strategist
+// may override them, but only with a stated reason.
+// ---------------------------------------------------------------------------
+
+/** Re-exported so campaign consumers have a single import site for the language vocabulary. */
+export type { Language };
+
+export interface LanguageStrategy {
+  primaryLanguage: Language;
+  /** null for a deliberately single-language campaign — absence is a decision here, not a missing value. */
+  secondaryLanguage: Language | null;
+  /** Why these languages, in the Strategist's own words. Always present: never silently choose a language. */
+  reason: string;
+  /**
+   * The Strategist's own stated confidence (0-100) in this language call.
+   * Deliberately NOT the same thing as OpportunityScore.confidencePercent,
+   * which is derived deterministically from observation counts — this is a
+   * self-reported judgment, and the UI labels it as such rather than
+   * presenting it as a measured value.
+   */
+  confidencePercent: number;
+  /** The brand default this decision started from, for provenance. */
+  brandDefault: { primaryLanguage: Language; secondaryLanguage: Language | null };
+  /** True when the Strategist departed from the brand default — surfaced in the UI alongside the reason, so an override is never invisible. */
+  overrodeBrandDefault: boolean;
+}
+
+/** Every language this campaign generates (primary + secondary, deduplicated). The ONE place "which languages" is derived — no department re-decides it. */
+export function strategyLanguages(strategy: LanguageStrategy): Language[] {
+  return strategy.secondaryLanguage && strategy.secondaryLanguage !== strategy.primaryLanguage
+    ? [strategy.primaryLanguage, strategy.secondaryLanguage]
+    : [strategy.primaryLanguage];
+}
+
+export const LANGUAGE_LABEL: Record<Language, string> = { lo: 'Lao', en: 'English', zh: 'Chinese' };
+
 export interface CampaignBrief {
   objective: string;
   businessGoal: string;
@@ -89,11 +131,18 @@ export interface CampaignBrief {
   /** Additional formats Strategy explicitly requested — generation is demand-driven, nothing outside primary+secondary is produced. */
   secondaryFormats: CampaignFormat[];
   successMetrics: string[];
+  /** Which language(s) this campaign is written in, and why (M5). Absent only on campaigns generated before M5. */
+  languageStrategy?: LanguageStrategy;
 }
 
 /** All formats the brief requests (primary + secondary, deduplicated) — the one place "what should be generated" is derived. */
 export function briefFormats(brief: CampaignBrief): CampaignFormat[] {
   return [...new Set([brief.primaryFormat, ...brief.secondaryFormats])];
+}
+
+/** The brief's languages, defaulting to the org's own primary for pre-M5 campaigns that have no strategy recorded. */
+export function briefLanguages(brief: CampaignBrief, fallback: Language): Language[] {
+  return brief.languageStrategy ? strategyLanguages(brief.languageStrategy) : [fallback];
 }
 
 // ---------------------------------------------------------------------------
@@ -131,30 +180,62 @@ export interface CampaignResearch {
   reusedFromCache?: string;
 }
 
-/** Writer step output — only the formats the brief requested exist; nothing else is generated. */
-export interface CampaignContent {
+/** The written assets for ONE language — only the formats the brief requested exist; nothing else is generated. */
+export interface WrittenAssets {
   facebookPost?: string;
   instagramCaption?: string;
   linkedinPost?: string;
   blogArticleMarkdown?: string;
 }
 
-/** Graphic Designer step output — concepts and prompts, not rendered images (real asset rendering stays with Stage 04's Canva integration, TODO(M2)). Carousel fields exist only when the brief requests a carousel; the thumbnail only when it requests video. */
+export const WRITTEN_ASSET_FIELDS: Array<keyof WrittenAssets> = ['facebookPost', 'instagramCaption', 'linkedinPost', 'blogArticleMarkdown'];
+
+/**
+ * Writer step output, keyed by language (M5) — one entry per language the
+ * Language Strategy requested, each written natively in that language
+ * rather than translated from another (see brain/brand-voice.md's
+ * Multilingual Note and knowledge/language/'s trilingual requirement).
+ */
+export type CampaignContent = Partial<Record<Language, WrittenAssets>>;
+
+/**
+ * Graphic Designer step output — concepts and prompts, not rendered images
+ * (real asset rendering stays with Stage 04's Canva integration, TODO(M2)).
+ *
+ * Split deliberately by whether an asset carries language: image prompts,
+ * graphic concepts, and the thumbnail prompt are VISUAL (the Designer is
+ * instructed not to bake text into images at all), so they're generated
+ * once regardless of how many languages the campaign runs in. Carousel copy
+ * is on-slide TEXT, so it's per-language.
+ */
 export interface CampaignDesign {
-  carouselSlides?: string[];
+  /** On-slide carousel text, per language. */
+  carouselSlides?: Partial<Record<Language, string[]>>;
   graphicConcepts?: string[];
   imagePrompts?: string[];
   thumbnailPrompt?: string;
+  /** Layout guidance when the campaign runs bilingually — how both languages sit together cleanly. Absent for single-language campaigns. */
+  bilingualLayoutNotes?: string;
 }
 
-/** Video Producer step output — scripts and plans, not rendered video (real rendering stays with Stage 05's FFmpeg assembly, TODO(M4)). Per-platform scripts exist only when requested. */
-export interface CampaignVideo {
+/** The video assets for ONE language — scripts, voice-over, on-screen text. */
+export interface VideoAssets {
   tiktokScript?: string;
   reelScript?: string;
   hooks: string[];
   voiceover: string;
-  brollIdeas: string[];
   captions: string[];
+}
+
+/**
+ * Video Producer step output — scripts and plans, not rendered video (real
+ * rendering stays with Stage 05's FFmpeg assembly, TODO(M4)). Scripts,
+ * voice-over, and captions are per-language; b-roll ideas are camera shots,
+ * so they're language-neutral and generated once.
+ */
+export interface CampaignVideo {
+  byLanguage: Partial<Record<Language, VideoAssets>>;
+  brollIdeas: string[];
 }
 
 /** Brand Guardian step output — validation over the whole bundle. `approved: false` never blocks saving; the founder sees the issues and decides. */
@@ -214,8 +295,10 @@ export interface CampaignReview {
 
 /** One founder edit to a generated asset. The AI original is never discarded — original + founder version + delta are the learning data. */
 export interface CampaignEdit {
-  /** Which CampaignContent field was edited. */
-  field: keyof CampaignContent;
+  /** Which written-asset field was edited. */
+  field: keyof WrittenAssets;
+  /** Which language's copy of that field (M5). Absent on edits recorded before M5. */
+  language?: Language;
   original: string;
   edited: string;
   /** edited.length - original.length — the cheap, deterministic "difference" signal preference derivation reads. */

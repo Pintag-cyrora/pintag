@@ -23,7 +23,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT } from '../../lib/config.js';
 import { listCampaigns } from '../campaign/persist.js';
-import { RATEABLE_DEPARTMENTS, type Campaign, type FeedbackReason, type RateableDepartment } from '../campaign/types.js';
+import { RATEABLE_DEPARTMENTS, LANGUAGE_LABEL, type Campaign, type FeedbackReason, type RateableDepartment, type Language } from '../campaign/types.js';
 
 const MIN_OBSERVATIONS = 2;
 /** Average shortening beyond this fraction (with enough observations) counts as a real "prefers shorter" signal. */
@@ -91,22 +91,38 @@ export function deriveFounderLearning(campaigns: Campaign[]): FounderLearning {
   const campaignDeltas = editedCampaigns.map((c) => {
     const totalOriginal = c.edits!.reduce((sum, e) => sum + e.original.length, 0);
     const totalDelta = c.edits!.reduce((sum, e) => sum + e.deltaChars, 0);
-    return totalOriginal > 0 ? totalDelta / totalOriginal : 0;
+    return {
+      fraction: totalOriginal > 0 ? totalDelta / totalOriginal : 0,
+      languages: c.edits!.map((e) => e.language).filter((l): l is Language => Boolean(l)),
+    };
   });
-  const shortened = campaignDeltas.filter((d) => d < -SHORTENING_THRESHOLD);
-  const lengthened = campaignDeltas.filter((d) => d > SHORTENING_THRESHOLD);
+
+  /**
+   * Names the language a signal was observed in when it was observed in
+   * only one (M5) — a preference derived entirely from Lao edits must not
+   * read as a claim about English too. Silent when edits span several
+   * languages or predate M5 (no language recorded): nothing to qualify.
+   */
+  const languageQualifier = (group: typeof campaignDeltas): string => {
+    const langs = new Set(group.flatMap((d) => d.languages));
+    if (langs.size !== 1) return '';
+    return `, observed only in ${LANGUAGE_LABEL[[...langs][0]]} content`;
+  };
+
+  const shortened = campaignDeltas.filter((d) => d.fraction < -SHORTENING_THRESHOLD);
+  const lengthened = campaignDeltas.filter((d) => d.fraction > SHORTENING_THRESHOLD);
   if (shortened.length >= MIN_OBSERVATIONS && shortened.length > lengthened.length) {
-    const avgPct = Math.round((shortened.reduce((a, b) => a + b, 0) / shortened.length) * 100);
+    const avgPct = Math.round((shortened.reduce((a, b) => a + b.fraction, 0) / shortened.length) * 100);
     preferences.push({
       statement: 'Prefers shorter content than generated',
-      evidence: `founder edits shortened content in ${shortened.length} of ${editedCampaigns.length} edited campaigns (avg ${avgPct}%)`,
+      evidence: `founder edits shortened content in ${shortened.length} of ${editedCampaigns.length} edited campaigns (avg ${avgPct}%)${languageQualifier(shortened)}`,
       observations: shortened.length,
     });
   } else if (lengthened.length >= MIN_OBSERVATIONS && lengthened.length > shortened.length) {
-    const avgPct = Math.round((lengthened.reduce((a, b) => a + b, 0) / lengthened.length) * 100);
+    const avgPct = Math.round((lengthened.reduce((a, b) => a + b.fraction, 0) / lengthened.length) * 100);
     preferences.push({
       statement: 'Prefers more thorough content than generated',
-      evidence: `founder edits lengthened content in ${lengthened.length} of ${editedCampaigns.length} edited campaigns (avg +${avgPct}%)`,
+      evidence: `founder edits lengthened content in ${lengthened.length} of ${editedCampaigns.length} edited campaigns (avg +${avgPct}%)${languageQualifier(lengthened)}`,
       observations: lengthened.length,
     });
   }
@@ -170,9 +186,13 @@ export function generateLessons(campaign: Campaign): string[] {
   }
   for (const edit of campaign.edits ?? []) {
     const pct = edit.original.length > 0 ? Math.round((edit.deltaChars / edit.original.length) * 100) : 0;
-    if (pct <= -10) lessons.push(`Founder shortened ${edit.field} by ${Math.abs(pct)}% (${edit.original.length} → ${edit.edited.length} chars).`);
-    else if (pct >= 10) lessons.push(`Founder lengthened ${edit.field} by ${pct}% (${edit.original.length} → ${edit.edited.length} chars).`);
-    else lessons.push(`Founder revised ${edit.field} (length roughly unchanged).`);
+    // Language is named (M5) because editing Lao copy and editing English
+    // copy are genuinely different signals — a lesson that omits it would be
+    // ambiguous the moment a campaign runs bilingually.
+    const what = edit.language ? `${LANGUAGE_LABEL[edit.language]} ${edit.field}` : edit.field;
+    if (pct <= -10) lessons.push(`Founder shortened ${what} by ${Math.abs(pct)}% (${edit.original.length} → ${edit.edited.length} chars).`);
+    else if (pct >= 10) lessons.push(`Founder lengthened ${what} by ${pct}% (${edit.original.length} → ${edit.edited.length} chars).`);
+    else lessons.push(`Founder revised ${what} (length roughly unchanged).`);
   }
   return lessons;
 }

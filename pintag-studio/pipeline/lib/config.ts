@@ -2,7 +2,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { supabase } from './supabase.js';
-import type { RuntimeConfig, FounderMode, ApprovalPhase } from './types.js';
+import type { RuntimeConfig, FounderMode, ApprovalPhase, Language } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -161,6 +161,55 @@ export function readActiveCompanyName(): string {
     return loadOrgConfig().org?.name ?? 'Unknown';
   } catch {
     return 'Unknown';
+  }
+}
+
+export interface LanguageDefaults {
+  primary: Language;
+  secondary: Language | null;
+}
+
+const HARDCODED_LANGUAGE_FALLBACK: LanguageDefaults = { primary: 'lo', secondary: 'en' };
+
+/**
+ * The active brand's default language configuration (M5) — the starting
+ * point the Content Strategist reasons from, never the final answer (it may
+ * override with a stated reason; see LanguageStrategy). Resolution order:
+ * language_strategy.brand_defaults[brand] → language_strategy.fallback →
+ * the constant above, which exists only so a corrupt/missing config can't
+ * crash campaign generation.
+ *
+ * Any code not present in org.languages is rejected rather than silently
+ * used: a brand default naming a language the org doesn't actually operate
+ * in is a config error, and quietly generating in it would be worse than
+ * falling back.
+ */
+export function readLanguageDefaults(brand: string = readActiveCompanyName()): LanguageDefaults {
+  try {
+    const config = loadOrgConfig();
+    const allowed: string[] = Array.isArray(config.org?.languages) ? config.org.languages : [];
+    const isAllowed = (code: unknown): code is Language => typeof code === 'string' && allowed.includes(code);
+
+    const section = config.language_strategy ?? {};
+    const raw = section.brand_defaults?.[brand.toLowerCase()] ?? section.fallback;
+    if (!isAllowed(raw?.primary)) return HARDCODED_LANGUAGE_FALLBACK;
+    return {
+      primary: raw.primary,
+      // A secondary equal to the primary is the same thing as no secondary.
+      secondary: isAllowed(raw.secondary) && raw.secondary !== raw.primary ? raw.secondary : null,
+    };
+  } catch {
+    return HARDCODED_LANGUAGE_FALLBACK;
+  }
+}
+
+/** The org's configured languages — the only codes any language decision may use. */
+export function readConfiguredLanguages(): Language[] {
+  try {
+    const langs = loadOrgConfig().org?.languages;
+    return Array.isArray(langs) && langs.length ? (langs as Language[]) : ['lo', 'en'];
+  } catch {
+    return ['lo', 'en'];
   }
 }
 

@@ -33,7 +33,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runAgent, parseJsonResponse } from '../../lib/agent.js';
 import { withHealthReport } from '../../lib/health.js';
-import { REPO_ROOT } from '../../lib/config.js';
+import { REPO_ROOT, readLanguageDefaults, readConfiguredLanguages, readActiveCompanyName } from '../../lib/config.js';
 import { retrieveKnowledge, relativeKnowledgePath } from '../../lib/knowledge.js';
 import { loadResearchReferenceMaterial } from '../../stages/02-research.js';
 import { loadWritingContext } from '../../stages/03-write.js';
@@ -44,9 +44,14 @@ import { readCachedResearch, writeCachedResearch } from './research-cache.js';
 import { deriveFounderLearning, learningPromptLines } from '../learning/learn.js';
 import {
   briefFormats,
+  strategyLanguages,
   CAMPAIGN_FORMATS,
   WRITTEN_FORMATS,
   VIDEO_FORMATS,
+  LANGUAGE_LABEL,
+  type Language,
+  type WrittenAssets,
+  type VideoAssets,
   type Campaign,
   type CampaignOpportunity,
   type CampaignStepId,
@@ -134,13 +139,51 @@ interface SharedContext {
   learningLines: string[];
 }
 
-function loadSharedContext(): SharedContext {
+/**
+ * Loaded once per run, after the Language Strategy exists (M5) — the
+ * `languages` argument gates the writing-craft Knowledge Layer read: the
+ * 'language' category is where brain/lao/dictionary.md and knowledge/
+ * language/ live (via the lao-brain source adapter), which is a large,
+ * Lao-specific payload. An English-only campaign has no use for canonical
+ * Lao terminology, so it isn't loaded — a real token saving in the same
+ * spirit as M3's demand-driven generation, not a behavior change.
+ */
+function loadSharedContext(languages: Language[], learningLines: string[]): SharedContext {
   const { brandVoice, styleGuide } = loadWritingContext();
   const postingRules = readFileSync(join(REPO_ROOT, 'brain', 'posting-rules.md'), 'utf-8');
-  const craftEntries = retrieveKnowledge({ categories: ['language', 'marketing', 'psychology'], minStatus: 'verified' });
+  const categories = languages.includes('lo') ? ['language', 'marketing', 'psychology'] : ['marketing', 'psychology'];
+  const craftEntries = retrieveKnowledge({ categories, minStatus: 'verified' });
   const craftKnowledgeSection = craftEntries.map((e) => `### knowledge/${relativeKnowledgePath(e)}\n${e.body}`).join('\n\n');
-  const learningLines = learningPromptLines(deriveFounderLearning(listCampaigns()));
   return { brandVoice, styleGuide, postingRules, craftKnowledgeSection, learningLines };
+}
+
+/** Derived once per run and shared by the Strategist (which runs before any language is known) and every later step. */
+function loadLearningLines(): string[] {
+  return learningPromptLines(deriveFounderLearning(listCampaigns()));
+}
+
+/** The Strategist runs before a Language Strategy exists, so it gets a minimal context: founder learning only, no language-scoped craft knowledge. */
+function strategistContext(learningLines: string[]): SharedContext {
+  return { brandVoice: '', styleGuide: '', postingRules: '', craftKnowledgeSection: '', learningLines };
+}
+
+/** The Language Strategy as a prompt block — every generation department reads this and none re-decides language. */
+function languageBlock(campaign: Campaign): string {
+  const ls = campaign.brief?.languageStrategy;
+  if (!ls) return '';
+  const langs = strategyLanguages(ls);
+  return [
+    '## Language Strategy (decided by the Content Strategist — follow exactly, do not add or drop a language)',
+    `Primary language: ${LANGUAGE_LABEL[ls.primaryLanguage]} (${ls.primaryLanguage})`,
+    ls.secondaryLanguage ? `Secondary language: ${LANGUAGE_LABEL[ls.secondaryLanguage]} (${ls.secondaryLanguage})` : 'Secondary language: none — this is a deliberately single-language campaign.',
+    `Reason: ${ls.reason}`,
+    `Generate for exactly these languages: ${langs.map((l) => LANGUAGE_LABEL[l]).join(', ')}.`,
+    langs.length > 1
+      ? 'Each language must be written natively in that language for its own audience — never a translation of the other. Brand-voice restraint does not loosen in a second language (see the brand voice notes above).'
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**
@@ -193,6 +236,9 @@ async function runCmoStep(campaign: Campaign): Promise<void> {
 
 async function runStrategyStep(campaign: Campaign, shared: SharedContext): Promise<CampaignBrief> {
   return withHealthReport('content_strategist', async () => {
+    const brandDefault = readLanguageDefaults();
+    const configuredLanguages = readConfiguredLanguages();
+
     const raw = await runAgent('content_strategist', {
       userPrompt: [
         'Create the Campaign Brief for the accepted opportunity below. This brief is the single source of campaign intent — every downstream department (Researcher, Writer, Graphic Designer, Video Producer, Brand Guardian) reads it and none of them may infer intent on their own, so it must be complete and specific.',
@@ -204,18 +250,36 @@ async function runStrategyStep(campaign: Campaign, shared: SharedContext): Promi
         '',
         learningBlock(shared.learningLines),
         '',
+        `## Brand language defaults for ${readActiveCompanyName()} (a starting point, not a rule)`,
+        `Default primary: ${LANGUAGE_LABEL[brandDefault.primary]} (${brandDefault.primary})`,
+        brandDefault.secondary ? `Default secondary: ${LANGUAGE_LABEL[brandDefault.secondary]} (${brandDefault.secondary})` : 'Default secondary: none',
+        `Languages this business operates in (you may only choose from these): ${configuredLanguages.map((l) => `${LANGUAGE_LABEL[l]} (${l})`).join(', ')}`,
+        '',
         'Produce: objective (what this campaign makes the audience understand or do — educational-first per the founder brief); businessGoal (the business outcome it serves, one line); audience (the specific segment, and why them); messaging (the single core message, stated plainly); cta (ONE call to action); primaryFormat (the one format this campaign leads with); secondaryFormats (ONLY formats this campaign genuinely needs — every format you list costs real generation work, so request the smallest set that serves the objective, and an empty list is a legitimate answer); successMetrics (2-4 observable signals of success, e.g. shares, saves, profile visits).',
+        '',
+        'ALSO decide this campaign\'s language, as a strategic call — the Writer, Designer, and Video Producer will follow it exactly and must never guess:',
+        '- primaryLanguage: the language this campaign leads in. Base it on who the audience actually is (a Lao-speaking first-time buyer and a foreign investor are not the same reader), the objective, and the distribution channels. Start from the brand default above and depart from it when the audience genuinely calls for it.',
+        '- secondaryLanguage: a second language ONLY if this campaign genuinely needs to reach a second audience. Use null for a single-language campaign — every extra language costs real generation work, so "none" is often the right answer.',
+        '- languageReason: why these languages, in one or two plain sentences tied to the audience and objective. This is shown to the founder verbatim.',
+        '- languageConfidencePercent: 0-100, how confident YOU are in this language call given what you know. Be honest — a genuinely ambiguous audience should not be reported as 95.',
+        'You have no published-performance data about which languages perform better, so do not claim any. Reason from audience, objective, and channel only.',
         '',
         `Valid formats (use these exact strings): ${CAMPAIGN_FORMATS.join(', ')}`,
       ]
         .filter(Boolean)
         .join('\n'),
       jsonShapeHint:
-        '{"objective": string, "businessGoal": string, "audience": string, "messaging": string, "cta": string, "primaryFormat": string, "secondaryFormats": string[], "successMetrics": string[]}',
+        '{"objective": string, "businessGoal": string, "audience": string, "messaging": string, "cta": string, "primaryFormat": string, "secondaryFormats": string[], "successMetrics": string[], "primaryLanguage": string, "secondaryLanguage": string | null, "languageReason": string, "languageConfidencePercent": number}',
       maxBudgetUsd: STEP_BUDGET_USD,
       modelTier: 'fast',
     });
-    const parsed = parseJsonResponse<CampaignBrief>(raw);
+    interface StrategistOutput extends CampaignBrief {
+      primaryLanguage?: unknown;
+      secondaryLanguage?: unknown;
+      languageReason?: unknown;
+      languageConfidencePercent?: unknown;
+    }
+    const parsed = parseJsonResponse<StrategistOutput>(raw);
     const normalizeFormat = (f: unknown): CampaignFormat | null => {
       const lower = String(f ?? '').toLowerCase().trim();
       return (CAMPAIGN_FORMATS as readonly string[]).includes(lower) ? (lower as CampaignFormat) : null;
@@ -227,6 +291,31 @@ async function runStrategyStep(campaign: Campaign, shared: SharedContext): Promi
     const secondaryFormats = requireStringArray(parsed.secondaryFormats ?? [], 'secondaryFormats', parsed)
       .map(normalizeFormat)
       .filter((f): f is CampaignFormat => f !== null && f !== primaryFormat);
+
+    // Language: accepted only if it's a language this business actually
+    // operates in (org.languages). An unrecognized code falls back to the
+    // brand default rather than generating in a language nobody configured
+    // — and the fallback is stated in the reason, never hidden.
+    const normalizeLanguage = (l: unknown): Language | null => {
+      const lower = String(l ?? '').toLowerCase().trim();
+      return (configuredLanguages as string[]).includes(lower) ? (lower as Language) : null;
+    };
+    const chosenPrimary = normalizeLanguage(parsed.primaryLanguage);
+    const primaryLanguage = chosenPrimary ?? brandDefault.primary;
+    const chosenSecondary = normalizeLanguage(parsed.secondaryLanguage);
+    const secondaryLanguage = chosenSecondary && chosenSecondary !== primaryLanguage ? chosenSecondary : null;
+
+    const strategistReason = typeof parsed.languageReason === 'string' && parsed.languageReason.trim() ? parsed.languageReason.trim() : '';
+    const reason = chosenPrimary
+      ? strategistReason || `No reason given by the Strategist — defaulted to the brand's configured languages for ${readActiveCompanyName()}.`
+      : `The Strategist did not return a usable language${parsed.primaryLanguage ? ` (got ${JSON.stringify(parsed.primaryLanguage)}, which is not one of this business's configured languages)` : ''}, so this campaign fell back to the brand default.${strategistReason ? ` Its stated reasoning was: ${strategistReason}` : ''}`;
+
+    const rawConfidence = Number(parsed.languageConfidencePercent);
+    // A missing/garbage confidence becomes 0 with the reason above rather
+    // than a flattering invented number — the UI shows it as the
+    // Strategist's own claim, so it has to be the Strategist's own claim.
+    const confidencePercent = Number.isFinite(rawConfidence) && chosenPrimary ? Math.max(0, Math.min(100, Math.round(rawConfidence))) : 0;
+
     return {
       objective: requireString(parsed.objective, 'objective', parsed),
       businessGoal: requireString(parsed.businessGoal, 'businessGoal', parsed),
@@ -236,6 +325,14 @@ async function runStrategyStep(campaign: Campaign, shared: SharedContext): Promi
       primaryFormat,
       secondaryFormats: [...new Set(secondaryFormats)],
       successMetrics: requireStringArray(parsed.successMetrics ?? [], 'successMetrics', parsed),
+      languageStrategy: {
+        primaryLanguage,
+        secondaryLanguage,
+        reason,
+        confidencePercent,
+        brandDefault: { primaryLanguage: brandDefault.primary, secondaryLanguage: brandDefault.secondary },
+        overrodeBrandDefault: primaryLanguage !== brandDefault.primary || secondaryLanguage !== brandDefault.secondary,
+      },
     };
   });
 }
@@ -279,50 +376,68 @@ async function runResearchStep(campaign: Campaign): Promise<CampaignResearch> {
   });
 }
 
-const WRITTEN_FIELD_BY_FORMAT: Record<string, { field: keyof CampaignContent; instruction: string }> = {
+const WRITTEN_FIELD_BY_FORMAT: Record<string, { field: keyof WrittenAssets; instruction: string }> = {
   facebook: { field: 'facebookPost', instruction: 'facebookPost (complete, ready to post)' },
   instagram: { field: 'instagramCaption', instruction: 'instagramCaption (complete, with line breaks as it should appear)' },
   linkedin: { field: 'linkedinPost', instruction: 'linkedinPost (complete, slightly more professional register, same facts)' },
   blog: { field: 'blogArticleMarkdown', instruction: 'blogArticleMarkdown (a full article in Markdown, headline included)' },
 };
 
+/**
+ * The Writer runs once PER LANGUAGE (M5) rather than once with a nested
+ * multi-language response. Separate calls because each language needs its
+ * own full native-writing attention and its own brand-voice check — asking
+ * one call for "the Lao and English versions" is exactly the path that
+ * produces a good primary and a translated-feeling secondary, which
+ * knowledge/language/'s trilingual requirement explicitly warns against.
+ * Only the languages the Language Strategy requested are generated.
+ */
 async function runWritingStep(campaign: Campaign, shared: SharedContext, revisionNotes?: string): Promise<CampaignContent> {
   return withHealthReport('writer', async () => {
     const requested = briefFormats(campaign.brief!).filter((f) => WRITTEN_FORMATS.includes(f));
     const specs = requested.map((f) => WRITTEN_FIELD_BY_FORMAT[f]);
+    const languages = strategyLanguages(campaign.brief!.languageStrategy!);
 
-    const raw = await runAgent('writer', {
-      userPrompt: [
-        `Write the requested written formats of the campaign below — ONLY these ${requested.length}: ${requested.join(', ')}. No other format is wanted; do not produce extras.`,
-        '',
-        briefContextBlock(campaign),
-        '',
-        '## Brand voice (follow exactly)',
-        shared.brandVoice,
-        '## Style guide',
-        shared.styleGuide,
-        shared.craftKnowledgeSection ? `## Writing craft — verified knowledge (terminology, tone, hook patterns)\n${shared.craftKnowledgeSection}` : '',
-        learningBlock(shared.learningLines),
-        '',
-        '## Research brief',
-        campaign.research!.researchBrief,
-        '## Sourced facts to draw on (do not introduce claims beyond these)',
-        JSON.stringify(campaign.research!.facts, null, 2),
-        campaign.research!.knowledgeGaps.length > 0 ? `## Known gaps — do not state anything about these as fact:\n${campaign.research!.knowledgeGaps.join('\n')}` : '',
-        revisionNotes ? `## Brand Guardian revision notes (address every point)\n${revisionNotes}` : '',
-        '',
-        `Produce: ${specs.map((s) => s.instruction).join('; ')}. Each format carries the same core message and CTA, adapted per platform — never one text pasted twice.`,
-      ]
-        .filter(Boolean)
-        .join('\n'),
-      jsonShapeHint: `{${specs.map((s) => `"${s.field}": string`).join(', ')}}`,
-      maxBudgetUsd: STEP_BUDGET_USD,
-      modelTier: 'reasoning',
-    });
-    const parsed = parseJsonResponse<CampaignContent>(raw);
     const content: CampaignContent = {};
-    for (const { field } of specs) {
-      content[field] = requireString(parsed[field], field, parsed);
+    for (const language of languages) {
+      const raw = await runAgent('writer', {
+        userPrompt: [
+          `Write the requested written formats of the campaign below in ${LANGUAGE_LABEL[language]} — ONLY these ${requested.length} format(s): ${requested.join(', ')}. No other format is wanted; do not produce extras.`,
+          `Write natively in ${LANGUAGE_LABEL[language]} for a ${LANGUAGE_LABEL[language]}-speaking reader. This is not a translation exercise: do not translate from another language, and do not produce text that reads as translated. Brand-voice restraint is identical in every language — no loosening, no added promotional warmth, because a phrase didn't carry over cleanly.`,
+          '',
+          briefContextBlock(campaign),
+          languageBlock(campaign),
+          '',
+          '## Brand voice (follow exactly)',
+          shared.brandVoice,
+          '## Style guide',
+          shared.styleGuide,
+          shared.craftKnowledgeSection
+            ? `## Writing craft — verified knowledge (terminology, tone, hook patterns)${language === 'lo' ? '. This includes canonical Lao terminology — use these exact terms rather than improvising equivalents.' : ''}\n${shared.craftKnowledgeSection}`
+            : '',
+          learningBlock(shared.learningLines),
+          '',
+          '## Research brief',
+          campaign.research!.researchBrief,
+          '## Sourced facts to draw on (do not introduce claims beyond these)',
+          JSON.stringify(campaign.research!.facts, null, 2),
+          campaign.research!.knowledgeGaps.length > 0 ? `## Known gaps — do not state anything about these as fact:\n${campaign.research!.knowledgeGaps.join('\n')}` : '',
+          revisionNotes ? `## Brand Guardian revision notes (address every point)\n${revisionNotes}` : '',
+          '',
+          `Produce, in ${LANGUAGE_LABEL[language]}: ${specs.map((s) => s.instruction).join('; ')}. Each format carries the same core message and CTA, adapted per platform — never one text pasted twice.`,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        jsonShapeHint: `{${specs.map((s) => `"${s.field}": string`).join(', ')}}`,
+        maxBudgetUsd: STEP_BUDGET_USD,
+        modelTier: 'reasoning',
+      });
+      const parsed = parseJsonResponse<WrittenAssets>(raw);
+      const assets: WrittenAssets = {};
+      for (const { field } of specs) {
+        assets[field] = requireString(parsed[field], `${language}.${field}`, parsed);
+      }
+      content[language] = assets;
     }
     return content;
   });
@@ -334,19 +449,37 @@ async function runDesignStep(campaign: Campaign, revisionNotes?: string): Promis
     const wantsCarousel = formats.includes('carousel');
     const wantsThumbnail = formats.some((f) => VIDEO_FORMATS.includes(f));
 
+    const languages = strategyLanguages(campaign.brief!.languageStrategy!);
+    const bilingual = languages.length > 1;
+
+    // Image prompts, graphic concepts, and the thumbnail stay language-
+    // neutral: the Designer is told not to bake text into images at all, so
+    // there's nothing language-specific to duplicate. Only the on-slide
+    // carousel TEXT is per-language.
     const outputs: string[] = [];
     const shapeFields: string[] = [];
     if (wantsCarousel) {
+      for (const language of languages) {
+        outputs.push(
+          `carouselSlides_${language} (the on-slide text for a 5-8 slide educational carousel written natively in ${LANGUAGE_LABEL[language]}, one string per slide, slide 1 is the hook)`
+        );
+        shapeFields.push(`"carouselSlides_${language}": string[]`);
+      }
       outputs.push(
-        'carouselSlides (the on-slide text for a 5-8 slide educational carousel, one string per slide, slide 1 is the hook)',
         'graphicConcepts (2-3 distinct visual concepts, each described in one or two sentences)',
-        'imagePrompts (one generation-ready prompt per concept, concrete about composition, mood, and setting — Vientiane, Laos context, no text baked into the image)'
+        'imagePrompts (one generation-ready prompt per concept, concrete about composition, mood, and setting — Vientiane, Laos context, no text baked into the image, so these serve every language)'
       );
-      shapeFields.push('"carouselSlides": string[]', '"graphicConcepts": string[]', '"imagePrompts": string[]');
+      shapeFields.push('"graphicConcepts": string[]', '"imagePrompts": string[]');
     }
     if (wantsThumbnail) {
-      outputs.push('thumbnailPrompt (one generation-ready prompt for the video thumbnail)');
+      outputs.push('thumbnailPrompt (one generation-ready prompt for the video thumbnail, no text baked in)');
       shapeFields.push('"thumbnailPrompt": string');
+    }
+    if (bilingual && wantsCarousel) {
+      outputs.push(
+        `bilingualLayoutNotes (how ${languages.map((l) => LANGUAGE_LABEL[l]).join(' and ')} text sit together cleanly — script height differences, line-length differences, whether to pair them on one slide or alternate slides, and where each language's text block belongs)`
+      );
+      shapeFields.push('"bilingualLayoutNotes": string');
     }
 
     const raw = await runAgent('graphic_designer', {
@@ -354,6 +487,10 @@ async function runDesignStep(campaign: Campaign, revisionNotes?: string): Promis
         'Design the visual layer of the campaign below. Concepts and prompts only — rendering happens later through brand templates, so stay within a clean, on-brand, real-estate-appropriate visual language. Produce ONLY what is requested below; nothing else is wanted.',
         '',
         briefContextBlock(campaign),
+        languageBlock(campaign),
+        bilingual
+          ? 'This campaign runs in more than one language: on-slide text is needed in each, and the layout has to hold both without either feeling like an afterthought.'
+          : `All on-slide text must be in ${LANGUAGE_LABEL[languages[0]]}. Do not add text in any other language.`,
         '',
         '## The written content these visuals accompany',
         JSON.stringify(campaign.content ?? {}, null, 2),
@@ -367,12 +504,16 @@ async function runDesignStep(campaign: Campaign, revisionNotes?: string): Promis
       maxBudgetUsd: STEP_BUDGET_USD,
       modelTier: 'fast',
     });
-    const parsed = parseJsonResponse<CampaignDesign>(raw);
+    const parsed = parseJsonResponse<Record<string, unknown>>(raw);
     const design: CampaignDesign = {};
     if (wantsCarousel) {
-      design.carouselSlides = requireStringArray(parsed.carouselSlides, 'carouselSlides', parsed);
+      design.carouselSlides = {};
+      for (const language of languages) {
+        design.carouselSlides[language] = requireStringArray(parsed[`carouselSlides_${language}`], `carouselSlides_${language}`, parsed);
+      }
       design.graphicConcepts = requireStringArray(parsed.graphicConcepts, 'graphicConcepts', parsed);
       design.imagePrompts = requireStringArray(parsed.imagePrompts, 'imagePrompts', parsed);
+      if (bilingual) design.bilingualLayoutNotes = requireString(parsed.bilingualLayoutNotes, 'bilingualLayoutNotes', parsed);
     }
     if (wantsThumbnail) {
       design.thumbnailPrompt = requireString(parsed.thumbnailPrompt, 'thumbnailPrompt', parsed);
@@ -387,51 +528,69 @@ async function runVideoStep(campaign: Campaign, revisionNotes?: string): Promise
     const wantsTiktok = formats.includes('tiktok');
     const wantsReel = formats.includes('reel');
 
-    const outputs: string[] = [];
-    const shapeFields: string[] = [];
-    if (wantsTiktok) {
-      outputs.push('tiktokScript (a complete 30-45s script with timing beats)');
-      shapeFields.push('"tiktokScript": string');
-    }
-    if (wantsReel) {
-      outputs.push(`reelScript (a complete Instagram Reel script${wantsTiktok ? ' — same message, distinct pacing, not a copy of the TikTok script' : ''})`);
-      shapeFields.push('"reelScript": string');
-    }
-    outputs.push(
-      'hooks (3-5 alternative opening hooks, one sentence each)',
-      'voiceover (the full voice-over text for the primary script, as it should be read aloud)',
-      'brollIdeas (5-8 concrete b-roll shots)',
-      'captions (the on-screen caption lines for the primary script, in display order)'
-    );
-    shapeFields.push('"hooks": string[]', '"voiceover": string', '"brollIdeas": string[]', '"captions": string[]');
+    const languages = strategyLanguages(campaign.brief!.languageStrategy!);
 
-    const raw = await runAgent('video_producer', {
-      userPrompt: [
-        'Produce the video layer of the campaign below: short-form scripts ready for a person (or template pipeline) to shoot and assemble. Scripts and plans only — no rendering in this step. Produce ONLY the requested platforms below.',
-        '',
-        briefContextBlock(campaign),
-        '',
-        '## Sourced facts (the scripts may not claim anything beyond these)',
-        JSON.stringify(campaign.research!.facts, null, 2),
-        revisionNotes ? `## Brand Guardian revision notes (address every point)\n${revisionNotes}` : '',
-        '',
-        `Produce: ${outputs.join('; ')}.`,
-      ]
-        .filter(Boolean)
-        .join('\n'),
-      jsonShapeHint: `{${shapeFields.join(', ')}}`,
-      maxBudgetUsd: STEP_BUDGET_USD,
-      modelTier: 'fast',
-    });
-    const parsed = parseJsonResponse<CampaignVideo>(raw);
-    const video: CampaignVideo = {
-      hooks: requireStringArray(parsed.hooks, 'hooks', parsed),
-      voiceover: requireString(parsed.voiceover, 'voiceover', parsed),
-      brollIdeas: requireStringArray(parsed.brollIdeas, 'brollIdeas', parsed),
-      captions: requireStringArray(parsed.captions, 'captions', parsed),
-    };
-    if (wantsTiktok) video.tiktokScript = requireString(parsed.tiktokScript, 'tiktokScript', parsed);
-    if (wantsReel) video.reelScript = requireString(parsed.reelScript, 'reelScript', parsed);
+    // Scripts, voice-over, hooks, and captions are spoken/on-screen TEXT —
+    // one set per language, each written natively (a voice-over read aloud
+    // from a translation is exactly what "never machine-translated" rules
+    // out). B-roll ideas are camera shots, so they're requested once, on
+    // the first pass only, and shared across languages.
+    const video: CampaignVideo = { byLanguage: {}, brollIdeas: [] };
+
+    for (const [index, language] of languages.entries()) {
+      const needsBroll = index === 0;
+      const outputs: string[] = [];
+      const shapeFields: string[] = [];
+      if (wantsTiktok) {
+        outputs.push('tiktokScript (a complete 30-45s script with timing beats)');
+        shapeFields.push('"tiktokScript": string');
+      }
+      if (wantsReel) {
+        outputs.push(`reelScript (a complete Instagram Reel script${wantsTiktok ? ' — same message, distinct pacing, not a copy of the TikTok script' : ''})`);
+        shapeFields.push('"reelScript": string');
+      }
+      outputs.push(
+        'hooks (3-5 alternative opening hooks, one sentence each)',
+        'voiceover (the full voice-over text for the primary script, written the way it should actually be read aloud by a native speaker)',
+        'captions (the on-screen caption lines for the primary script, in display order)'
+      );
+      shapeFields.push('"hooks": string[]', '"voiceover": string', '"captions": string[]');
+      if (needsBroll) {
+        outputs.push('brollIdeas (5-8 concrete b-roll shots — these are camera shots, so describe them in English for the person filming regardless of the script language)');
+        shapeFields.push('"brollIdeas": string[]');
+      }
+
+      const raw = await runAgent('video_producer', {
+        userPrompt: [
+          `Produce the ${LANGUAGE_LABEL[language]} video layer of the campaign below: short-form scripts ready for a person (or template pipeline) to shoot and assemble. Scripts and plans only — no rendering in this step. Produce ONLY the requested platforms below.`,
+          `Every spoken and on-screen line must be written natively in ${LANGUAGE_LABEL[language]} for a ${LANGUAGE_LABEL[language]}-speaking viewer — not translated from another language. A voice-over read from a translation sounds wrong out loud, which is the one thing this step must avoid.`,
+          '',
+          briefContextBlock(campaign),
+          languageBlock(campaign),
+          '',
+          '## Sourced facts (the scripts may not claim anything beyond these)',
+          JSON.stringify(campaign.research!.facts, null, 2),
+          revisionNotes ? `## Brand Guardian revision notes (address every point)\n${revisionNotes}` : '',
+          '',
+          `Produce: ${outputs.join('; ')}.`,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        jsonShapeHint: `{${shapeFields.join(', ')}}`,
+        maxBudgetUsd: STEP_BUDGET_USD,
+        modelTier: 'fast',
+      });
+      const parsed = parseJsonResponse<VideoAssets & { brollIdeas?: unknown }>(raw);
+      const assets: VideoAssets = {
+        hooks: requireStringArray(parsed.hooks, `${language}.hooks`, parsed),
+        voiceover: requireString(parsed.voiceover, `${language}.voiceover`, parsed),
+        captions: requireStringArray(parsed.captions, `${language}.captions`, parsed),
+      };
+      if (wantsTiktok) assets.tiktokScript = requireString(parsed.tiktokScript, `${language}.tiktokScript`, parsed);
+      if (wantsReel) assets.reelScript = requireString(parsed.reelScript, `${language}.reelScript`, parsed);
+      video.byLanguage[language] = assets;
+      if (needsBroll) video.brollIdeas = requireStringArray(parsed.brollIdeas, 'brollIdeas', parsed);
+    }
     return video;
   });
 }
@@ -454,39 +613,64 @@ async function runQaStep(campaign: Campaign, shared: SharedContext): Promise<Cam
 
     // Only the sections that actually exist get reviewed — a skipped
     // department contributes nothing to the bundle, so nothing to check.
+    // Grouped BY LANGUAGE (M5) so the Guardian judges each language's copy
+    // as native writing in that language, rather than reviewing a mixed pile.
+    const languages = strategyLanguages(campaign.brief!.languageStrategy!);
     const sections: string[] = [];
-    const c = campaign.content;
-    if (c?.facebookPost) sections.push(`### Facebook post\n${c.facebookPost}`);
-    if (c?.instagramCaption) sections.push(`### Instagram caption\n${c.instagramCaption}`);
-    if (c?.linkedinPost) sections.push(`### LinkedIn post\n${c.linkedinPost}`);
-    if (c?.blogArticleMarkdown) sections.push(`### Blog article\n${c.blogArticleMarkdown}`);
-    if (campaign.design?.carouselSlides?.length) sections.push(`### Carousel slides\n${campaign.design.carouselSlides.join('\n---\n')}`);
-    if (campaign.video?.tiktokScript) sections.push(`### TikTok script\n${campaign.video.tiktokScript}`);
-    if (campaign.video?.reelScript) sections.push(`### Reel script\n${campaign.video.reelScript}`);
-    if (campaign.video?.voiceover) sections.push(`### Voice-over\n${campaign.video.voiceover}`);
+    for (const language of languages) {
+      const langSections: string[] = [];
+      const c = campaign.content?.[language];
+      if (c?.facebookPost) langSections.push(`#### Facebook post\n${c.facebookPost}`);
+      if (c?.instagramCaption) langSections.push(`#### Instagram caption\n${c.instagramCaption}`);
+      if (c?.linkedinPost) langSections.push(`#### LinkedIn post\n${c.linkedinPost}`);
+      if (c?.blogArticleMarkdown) langSections.push(`#### Blog article\n${c.blogArticleMarkdown}`);
+      const slides = campaign.design?.carouselSlides?.[language];
+      if (slides?.length) langSections.push(`#### Carousel slides\n${slides.join('\n---\n')}`);
+      const v = campaign.video?.byLanguage?.[language];
+      if (v?.tiktokScript) langSections.push(`#### TikTok script\n${v.tiktokScript}`);
+      if (v?.reelScript) langSections.push(`#### Reel script\n${v.reelScript}`);
+      if (v?.voiceover) langSections.push(`#### Voice-over\n${v.voiceover}`);
+      if (v?.captions?.length) langSections.push(`#### On-screen captions\n${v.captions.join('\n')}`);
+      if (langSections.length) sections.push(`### ${LANGUAGE_LABEL[language]} (${language})\n\n${langSections.join('\n\n')}`);
+    }
 
+    const hasLao = languages.includes('lo');
     // Lao terminology reference rides in the shared craft knowledge (the
-    // lao-brain adapter tags brain/lao/dictionary.md entries 'language') —
-    // already loaded once for the whole run, not re-fetched here.
+    // lao-brain adapter surfaces brain/lao/dictionary.md through the
+    // 'language' category) — loaded once for the whole run, and only when
+    // this campaign actually involves Lao.
     const raw = await runAgent('brand_guardian', {
       userPrompt: [
         'Review the complete generated campaign below before it reaches the founder.',
         '',
         briefContextBlock(campaign),
+        languageBlock(campaign),
         '',
         '## Sourced facts this campaign must stay within (flag any claim not traceable to these)',
         JSON.stringify(campaign.research!.facts, null, 2),
         '',
-        '## Brand voice (verify consistency)',
+        '## Brand voice (verify consistency — restraint must be identical in every language; a second language that reads looser or more promotional is a brand-voice violation, not acceptable localization)',
         shared.brandVoice,
         '## Posting rules (verify compliance, including banned language)',
         shared.postingRules,
-        shared.craftKnowledgeSection ? `## Verified language/craft knowledge (includes canonical Lao terminology — verify any Lao text against it)\n${shared.craftKnowledgeSection}` : '',
+        shared.craftKnowledgeSection
+          ? `## Verified language/craft knowledge${hasLao ? ' (includes canonical Lao terminology — verify every Lao term against it and flag improvised equivalents)' : ''}\n${shared.craftKnowledgeSection}`
+          : '',
+        '',
+        '## Language-specific checks required for this campaign',
+        ...languages.map((l) =>
+          l === 'lo'
+            ? '- Lao: spelling, grammar, natural wording a Lao speaker would actually use, and terminology consistent with the canonical Lao knowledge above. Flag anything that reads as machine-translated or as English phrasing forced into Lao — this content is expected to be written natively, and translated-sounding text should be reported as an issue.'
+            : l === 'en'
+              ? '- English: grammar, clarity, brand voice, and tone.'
+              : `- ${LANGUAGE_LABEL[l]}: spelling, grammar, natural native wording, and tone. Flag anything that reads as machine-translated.`
+        ),
+        languages.length > 1 ? '- Across languages: both versions must carry the same facts, the same CTA family, and the same restraint. Neither may be a literal translation of the other.' : '',
         '',
         '## The campaign content under review',
         sections.join('\n\n'),
         '',
-        'Produce: factCheck (one short paragraph — are all claims traceable to the sourced facts; name any that are not); brandVoice (one short paragraph on voice consistency); grammar (one short paragraph on grammar/clarity across formats); laoTerminology (one short paragraph — if no Lao text is present, say exactly that rather than inventing an assessment); issues (each concrete problem as its own actionable line, empty if none); summary (2-3 sentences for the founder); approved (true ONLY if there are no factual traceability problems and no posting-rules violations — style nitpicks alone do not block approval).',
+        `Produce: factCheck (one short paragraph — are all claims traceable to the sourced facts; name any that are not); brandVoice (one short paragraph on voice consistency${languages.length > 1 ? ', explicitly covering whether restraint holds equally in both languages' : ''}); grammar (one short paragraph on grammar/clarity across formats and languages); laoTerminology (${hasLao ? 'one short paragraph on Lao spelling, grammar, natural wording, and terminology consistency, naming any specific term that should change' : 'this campaign contains no Lao content — say exactly that rather than inventing an assessment'}); issues (each concrete problem as its own actionable line, prefixed with the language it applies to, empty if none); summary (2-3 sentences for the founder); approved (true ONLY if there are no factual traceability problems, no posting-rules violations, and no language that reads as machine-translated — style nitpicks alone do not block approval).`,
       ]
         .filter(Boolean)
         .join('\n'),
@@ -570,19 +754,29 @@ function qaDoneDetail(campaign: Campaign): string | undefined {
  * own work, and everything generated is already persisted and visible.
  */
 export async function executeCampaign(campaign: Campaign): Promise<Campaign> {
-  // Loaded once, up front — the Strategist already needs the founder-learning
-  // lines, and every later step reuses the same brand/craft context.
-  const shared = loadSharedContext();
+  const learningLines = loadLearningLines();
 
   // Transparency (M4 §11): whatever learning shapes this campaign is
   // recorded ON the campaign, with evidence, before generation starts —
   // so the founder can always see why it looks the way it does.
-  campaign.learningNotes = shared.learningLines;
+  campaign.learningNotes = learningLines;
 
-  // Sequential prefix.
+  // Sequential prefix. The Strategist runs first with a learning-only
+  // context, because it's what DECIDES the campaign's language (M5) — the
+  // full brand/craft context can't be loaded until that decision exists,
+  // since which knowledge to load depends on it.
   const prefix: Array<{ id: CampaignStepId; run: () => Promise<void>; doneDetail?: () => string | undefined }> = [
     { id: 'cmo', run: async () => runCmoStep(campaign), doneDetail: () => stepState(campaign, 'cmo').detail || undefined },
-    { id: 'strategy', run: async () => void (campaign.brief = await runStrategyStep(campaign, shared)) },
+    {
+      id: 'strategy',
+      run: async () => void (campaign.brief = await runStrategyStep(campaign, strategistContext(learningLines))),
+      doneDetail: () => {
+        const ls = campaign.brief?.languageStrategy;
+        if (!ls) return undefined;
+        const langs = strategyLanguages(ls).map((l) => LANGUAGE_LABEL[l]).join(' + ');
+        return `Campaign Planned — ${langs}${ls.overrodeBrandDefault ? ' (overrode brand default)' : ''}`;
+      },
+    },
     {
       id: 'research',
       run: async () => void (campaign.research = await runResearchStep(campaign)),
@@ -600,6 +794,9 @@ export async function executeCampaign(campaign: Campaign): Promise<Campaign> {
     }
     markComplete(campaign, id, doneDetail?.());
   }
+
+  // Now the language is known, so the language-scoped context can load.
+  const shared = loadSharedContext(strategyLanguages(campaign.brief!.languageStrategy!), learningLines);
 
   // Demand-driven gating — decided once, right after the Brief exists.
   const formats = briefFormats(campaign.brief!);
@@ -685,7 +882,9 @@ export async function regenerateCampaignStep(campaign: Campaign, stepId: Campaig
   }
 
   const notes = campaign.qaReport ? [campaign.qaReport.summary, ...campaign.qaReport.issues].join('\n') : undefined;
-  const shared = loadSharedContext();
+  // Same language scoping as the original run — regeneration never silently
+  // changes the campaign's language; the Strategist's decision stands.
+  const shared = loadSharedContext(strategyLanguages(campaign.brief.languageStrategy!), loadLearningLines());
 
   campaign.status = 'running';
   markRunning(campaign, stepId);

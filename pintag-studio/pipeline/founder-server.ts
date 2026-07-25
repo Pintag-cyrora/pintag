@@ -28,7 +28,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT, readMorningBriefConfig, readCampaignConfig } from './lib/config.js';
+import { REPO_ROOT, readMorningBriefConfig, readCampaignConfig, readConfiguredLanguages } from './lib/config.js';
 import { generateDailyBriefing, SUGGESTION_KIND_LABELS } from './daily-briefing.js';
 import { getFounderSession } from './lib/auth.js';
 import { readTodaysRecommendation, buildFounderTeachingSuggestionInput } from './teach.js';
@@ -50,15 +50,17 @@ import { deriveFounderLearning, generateLessons, writeLearningSnapshot } from '.
 import {
   FEEDBACK_REASONS,
   RATEABLE_DEPARTMENTS,
+  WRITTEN_ASSET_FIELDS,
   type Campaign,
   type CampaignStepId,
   type ScorableOpportunity,
-  type CampaignContent,
   type CampaignOutcome,
   type CampaignReview,
   type FeedbackReason,
   type Rating,
   type RateableDepartment,
+  type Language,
+  type WrittenAssets,
 } from './services/campaign/types.js';
 
 const PORT = Number(process.env.PORT ?? 4321);
@@ -665,27 +667,40 @@ async function handleCampaignReview(req: IncomingMessage, res: ServerResponse, i
   redirect(res, `/campaign/${encodeURIComponent(campaign.id)}`);
 }
 
-const EDITABLE_FIELDS: Array<keyof CampaignContent> = ['facebookPost', 'instagramCaption', 'linkedinPost', 'blogArticleMarkdown'];
-
-function handleCampaignEditForm(res: ServerResponse, id: string, field: string): void {
+/**
+ * Resolves an /edit/:language/:field request against the campaign (M5 —
+ * assets are language-keyed). Returns null unless the language is one this
+ * business operates in, the field is genuinely editable, and generated text
+ * actually exists at that address.
+ */
+function resolveEditTarget(id: string, language: string, field: string): { campaign: Campaign; language: Language; field: keyof WrittenAssets; original: string } | null {
   const campaign = resolveCampaign(id);
-  const typedField = field as keyof CampaignContent;
-  const current = campaign?.content?.[typedField];
-  if (!campaign || !EDITABLE_FIELDS.includes(typedField) || !current) {
-    sendHtml(res, 404, pageShell('Not found', '<p>Nothing to edit there.</p><a class="back" href="/campaigns">← Campaigns</a>'));
-    return;
-  }
-  sendHtml(res, 200, renderCampaignEditPage(campaign, typedField, current));
+  if (!campaign) return null;
+  const typedField = field as keyof WrittenAssets;
+  if (!WRITTEN_ASSET_FIELDS.includes(typedField)) return null;
+  if (!readConfiguredLanguages().includes(language as Language)) return null;
+  const typedLanguage = language as Language;
+  const original = campaign.content?.[typedLanguage]?.[typedField];
+  if (!original) return null;
+  return { campaign, language: typedLanguage, field: typedField, original };
 }
 
-async function handleCampaignEditSave(req: IncomingMessage, res: ServerResponse, id: string, field: string): Promise<void> {
-  const campaign = resolveCampaign(id);
-  const typedField = field as keyof CampaignContent;
-  const original = campaign?.content?.[typedField];
-  if (!campaign || !EDITABLE_FIELDS.includes(typedField) || !original) {
+function handleCampaignEditForm(res: ServerResponse, id: string, language: string, field: string): void {
+  const target = resolveEditTarget(id, language, field);
+  if (!target) {
     sendHtml(res, 404, pageShell('Not found', '<p>Nothing to edit there.</p><a class="back" href="/campaigns">← Campaigns</a>'));
     return;
   }
+  sendHtml(res, 200, renderCampaignEditPage(target.campaign, target.language, target.field, target.original));
+}
+
+async function handleCampaignEditSave(req: IncomingMessage, res: ServerResponse, id: string, language: string, field: string): Promise<void> {
+  const target = resolveEditTarget(id, language, field);
+  if (!target) {
+    sendHtml(res, 404, pageShell('Not found', '<p>Nothing to edit there.</p><a class="back" href="/campaigns">← Campaigns</a>'));
+    return;
+  }
+  const { campaign, original } = target;
   const body = await readRequestBody(req);
   const edited = body.get('edited') ?? '';
   if (!edited.trim() || edited === original) {
@@ -699,7 +714,8 @@ async function handleCampaignEditSave(req: IncomingMessage, res: ServerResponse,
   campaign.edits = [
     ...(campaign.edits ?? []),
     {
-      field: typedField,
+      field: target.field,
+      language: target.language,
       original,
       edited,
       deltaChars: edited.length - original.length,
@@ -707,7 +723,10 @@ async function handleCampaignEditSave(req: IncomingMessage, res: ServerResponse,
       editedAt: new Date().toISOString(),
     },
   ];
-  campaign.content = { ...campaign.content, [typedField]: edited };
+  campaign.content = {
+    ...campaign.content,
+    [target.language]: { ...campaign.content?.[target.language], [target.field]: edited },
+  };
   campaign.lessons = generateLessons(campaign);
   writeCampaign(campaign);
   writeLearningSnapshot();
@@ -772,12 +791,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       await handleCampaignRegenerate(res, decodeURIComponent(id), stepId);
     } else if (req.method === 'POST' && /^\/campaign\/[^/]+\/review$/.test(pathname)) {
       await handleCampaignReview(req, res, decodeURIComponent(pathname.split('/')[2]));
-    } else if (req.method === 'GET' && /^\/campaign\/[^/]+\/edit\/[^/]+$/.test(pathname)) {
-      const [, , id, , field] = pathname.split('/');
-      handleCampaignEditForm(res, decodeURIComponent(id), field);
-    } else if (req.method === 'POST' && /^\/campaign\/[^/]+\/edit\/[^/]+$/.test(pathname)) {
-      const [, , id, , field] = pathname.split('/');
-      await handleCampaignEditSave(req, res, decodeURIComponent(id), field);
+    } else if (req.method === 'GET' && /^\/campaign\/[^/]+\/edit\/[^/]+\/[^/]+$/.test(pathname)) {
+      const [, , id, , language, field] = pathname.split('/');
+      handleCampaignEditForm(res, decodeURIComponent(id), language, field);
+    } else if (req.method === 'POST' && /^\/campaign\/[^/]+\/edit\/[^/]+\/[^/]+$/.test(pathname)) {
+      const [, , id, , language, field] = pathname.split('/');
+      await handleCampaignEditSave(req, res, decodeURIComponent(id), language, field);
     } else if (req.method === 'GET' && pathname === '/learning') {
       sendHtml(res, 200, renderLearningPage(deriveFounderLearning(listCampaigns())));
     } else if (req.method === 'GET' && pathname === '/campaigns') {
