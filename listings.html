@@ -4,7 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com https://unpkg.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
-<title>Pintag · ຊັບສິນໃນວຽງຈັນ</title>
+<title>Properties for Rent & Sale in Laos | Pintag</title>
+<meta name="description" content="Browse verified apartments, houses, condos, land and commercial properties across Laos. Updated daily with photos, prices and maps.">
+<link rel="canonical" href="https://pintag.io/listings.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pintag">
+<meta property="og:title" content="Properties for Rent & Sale in Laos | Pintag">
+<meta property="og:description" content="Browse verified apartments, houses, condos, land and commercial properties across Laos. Updated daily with photos, prices and maps.">
+<meta property="og:url" content="https://pintag.io/listings.html">
+<meta property="og:image" content="https://pintag.io/og-preview-listings.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/jpeg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Properties for Rent & Sale in Laos | Pintag">
+<meta name="twitter:description" content="Browse verified apartments, houses, condos, land and commercial properties across Laos. Updated daily with photos, prices and maps.">
+<meta name="twitter:image" content="https://pintag.io/og-preview-listings.jpg">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="shared-components.css">
@@ -923,6 +938,73 @@ function scheduleBehavioralEvents(sorted) {
   }, 500);
 }
 
+// ── Open Graph / <title> / meta description — static today, structured
+// for dynamic filtered previews later (per-filter social-preview cards
+// are a real future goal — see the header comment on
+// updateListingsMetaForFilters() below for exactly what would still need
+// to be built and why this function alone doesn't get you there yet).
+var LISTINGS_DEFAULT_TITLE = 'Properties for Rent & Sale in Laos | Pintag';
+var LISTINGS_DEFAULT_DESCRIPTION = 'Browse verified apartments, houses, condos, land and commercial properties across Laos. Updated daily with photos, prices and maps.';
+
+function _setListingsMeta(sel, val) {
+  var el = document.querySelector(sel);
+  if (el) el.setAttribute('content', val);
+}
+
+// Builds a filter-aware title/description from the current filter state
+// (property type + transaction type — the two live filters this page has
+// today; a future district/price filter slots in here the same way) and
+// writes them to document.title plus every og:/twitter: meta tag, using
+// the exact same PROPERTY_TYPES registry admin.html/listing.html already
+// use for this vocabulary, so a label is never translated in two places.
+//
+// IMPORTANT — this updates the LIVE DOM only. It correctly changes what
+// the visitor's own browser tab shows, and what any crawler that executes
+// JavaScript sees (Google's renderer does). It does NOT change what
+// WhatsApp/Facebook/Messenger/Telegram/Discord/LinkedIn/X show in a link
+// preview: those services fetch the raw HTML once and never execute
+// JavaScript, so they only ever see whatever is already baked into the
+// initial <head> at request time — the static tags set in listings.html's
+// <head>, unconditionally, regardless of any ?type=/?tx= in the shared
+// URL. Making a *shared link* for "Houses for Sale" or "Sisattanak
+// District" show its own distinct social-preview card requires one of:
+//   (a) a small set of pre-rendered static pages per popular filter
+//       combination (e.g. houses-for-sale.html), each with its own
+//       hardcoded OG tags — the same pattern already used for
+//       listing.html's per-property pages, or
+//   (b) a server-side/edge prerendering layer that detects a crawler
+//       user-agent and serves pre-built HTML with the right tags for
+//       that specific filter combination.
+// Neither exists yet. This function is the intended seam for whichever
+// approach is chosen: it already contains the "which filters produce
+// which title/description" logic in one place, so adding real per-filter
+// previews later means feeding this same logic into a static-page
+// generator or an edge function, not rewriting how titles/descriptions
+// are derived.
+function updateListingsMetaForFilters() {
+  var typeLabel = (currentTypeFilter !== 'all' && typeof PROPERTY_TYPES !== 'undefined' && PROPERTY_TYPES[currentTypeFilter])
+    ? PROPERTY_TYPES[currentTypeFilter].en : null;
+  var txLabel = currentTxFilter === 'for_rent' ? 'Rent' : currentTxFilter === 'for_sale' ? 'Sale' : null;
+
+  var title = LISTINGS_DEFAULT_TITLE;
+  var description = LISTINGS_DEFAULT_DESCRIPTION;
+  if (typeLabel || txLabel) {
+    var subject = [typeLabel, txLabel].filter(Boolean).join(' for ');
+    title = subject + ' in Laos | Pintag';
+    description = 'Browse verified ' + subject.toLowerCase() + ' listings across Laos. Updated daily with photos, prices and maps.';
+  }
+
+  document.title = title;
+  _setListingsMeta('meta[property="og:title"]', title);
+  _setListingsMeta('meta[property="og:description"]', description);
+  _setListingsMeta('meta[name="twitter:title"]', title);
+  _setListingsMeta('meta[name="twitter:description"]', description);
+  // og:url / canonical deliberately untouched here — see the function
+  // comment above: they must keep pointing at the shareable
+  // listings.html URL a crawler would actually fetch, not a client-side-
+  // only filter state no crawler ever requests.
+}
+
 function renderListings() {
   var filtered = allProperties.filter(function(p){
     var matchesTx = currentTxFilter === 'all' || p.transaction_type === currentTxFilter;
@@ -931,6 +1013,7 @@ function renderListings() {
     return matchesTx && matchesType && matchesAvail;
   });
   var sorted = sortProperties(filtered);
+  updateListingsMetaForFilters();
 
   // Derive trending_score from views_week (stable average from full dataset)
   var _wTotal = 0, _wCount = 0;

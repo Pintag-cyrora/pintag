@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
+<title>Pintag · Listings OG Preview Generator</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:#111C1C;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:20px;padding:32px 16px;}
+canvas{max-width:100%;border-radius:6px;box-shadow:0 24px 80px rgba(0,0,0,0.6);}
+.actions{display:flex;gap:12px;align-items:center;}
+.btn{padding:11px 28px;background:#2D8C8C;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background 0.15s;}
+.btn:hover{background:#38A8A8;}
+.hint{color:rgba(255,255,255,0.3);font-size:12px;text-align:center;line-height:1.6;}
+</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="630"></canvas>
+<div class="actions">
+  <button class="btn" onclick="downloadJPEG()">Download JPEG</button>
+</div>
+<p class="hint">1200 × 630 px · listings.html's dedicated Open Graph image · Upload to pintag.io as <code style="color:rgba(255,255,255,0.5)">og-preview-listings.jpg</code></p>
+
+<script>
+// Dedicated OG image for listings.html — deliberately NOT a reuse of
+// og-preview.jpg (index.html's homepage image). Same brand system
+// (background texture, logo mark, decorative rings, type) as
+// og-preview-gen.html, but with a photo collage (communicates "real
+// inventory exists") and copy that matches listings.html specifically
+// ("Browse Verified Properties in Laos" / "Rent • Buy • Sell") rather than
+// the homepage's generic tagline.
+const PHOTO_SOURCES = ['pintag-exterior.png', 'pintag-villa.png', 'pintag-interior.png', 'pintag-balcony.png'];
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// Draws `img` cropped (cover-fit, like CSS object-fit:cover) into the
+// (x,y,w,h) rect, clipped to a rounded-rect so collage tiles have soft corners.
+function drawCover(ctx, img, x, y, w, h, radius) {
+  ctx.save();
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, radius);
+  else ctx.rect(x, y, w, h);
+  ctx.clip();
+  const srcRatio = img.width / img.height;
+  const dstRatio = w / h;
+  let sw, sh, sx, sy;
+  if (srcRatio > dstRatio) {
+    sh = img.height;
+    sw = sh * dstRatio;
+    sx = (img.width - sw) / 2;
+    sy = 0;
+  } else {
+    sw = img.width;
+    sh = sw / dstRatio;
+    sx = 0;
+    sy = (img.height - sh) / 2;
+  }
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  ctx.restore();
+}
+
+Promise.all([document.fonts.ready, Promise.all(PHOTO_SOURCES.map(loadImage))])
+  .then(([, images]) => draw(images))
+  .catch((err) => { console.error('Failed to load assets for OG image:', err); });
+
+function draw(images) {
+  const canvas = document.getElementById('c');
+  const ctx    = canvas.getContext('2d');
+  const W = 1200, H = 630;
+
+  // ── Background ─────────────────────────────────────────────────
+  ctx.fillStyle = '#F3EFE8';
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Wavy lines (site signature texture) — left text-panel area only,
+  // so they don't fight visually with the photo collage on the right ──
+  const lineYs = [28,54,80,108,133,160,186,214,238,265,290,318,343];
+  const tileH  = 360;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, 620, H);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(26,36,40,0.055)';
+  ctx.lineWidth   = 0.5;
+  for (let row = 0; row * tileH < H + tileH; row++) {
+    lineYs.forEach(baseY => {
+      const y = baseY + row * tileH;
+      if (y > H + 10) return;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let tx = 0; tx < W; tx += 600) {
+        ctx.bezierCurveTo(tx+150, y-6, tx+450, y+6, tx+600, y);
+      }
+      ctx.stroke();
+    });
+  }
+  ctx.restore();
+
+  // ── Decorative ring — bottom-left, echoes og-preview-gen.html ──────
+  ctx.beginPath();
+  ctx.arc(-40, H + 40, 180, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(45,140,140,0.09)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // ── Photo collage — right ~48% of the canvas, a 2x2 grid of real
+  // property photos with a thin warm-background gutter, so the preview
+  // immediately reads as "a marketplace with real inventory," not just a
+  // logo card ──────────────────────────────────────────────────────
+  const collageX = 640, collageW = W - collageX - 40, collageY = 40, collageH = H - 80;
+  const gap = 10;
+  const tileW = (collageW - gap) / 2;
+  const tileH2 = (collageH - gap) / 2;
+  const positions = [
+    [collageX, collageY],
+    [collageX + tileW + gap, collageY],
+    [collageX, collageY + tileH2 + gap],
+    [collageX + tileW + gap, collageY + tileH2 + gap],
+  ];
+  images.forEach((img, i) => {
+    const [x, y] = positions[i];
+    drawCover(ctx, img, x, y, tileW, tileH2, 10);
+  });
+
+  // ── Pintag logo mark ───────────────────────────────────────────
+  const lx = 96, ly = 118;
+  ctx.beginPath();
+  ctx.arc(lx, ly, 30, 0, Math.PI * 2);
+  ctx.fillStyle = '#38A8A8';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(lx + 54, ly + 19, 12, 0, Math.PI * 2);
+  ctx.fillStyle = '#1C2B32';
+  ctx.fill();
+
+  // ── "Pintag" wordmark ──────────────────────────────────────────
+  ctx.save();
+  ctx.font         = '700 62px "DM Sans", -apple-system, sans-serif';
+  ctx.fillStyle    = '#1A2428';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign    = 'left';
+  ctx.fillText('Pintag', 154, ly - 1);
+  ctx.restore();
+
+  // ── Headline (per spec: "Browse Verified Properties in Laos") ──────
+  ctx.save();
+  ctx.font         = '700 44px "DM Sans", -apple-system, sans-serif';
+  ctx.fillStyle    = '#1A2428';
+  ctx.textBaseline = 'top';
+  ctx.textAlign    = 'left';
+  wrapText(ctx, 'Browse Verified Properties in Laos', 96, 210, 500, 50);
+  ctx.restore();
+
+  // ── Subheading (per spec: "Rent • Buy • Sell") ─────────────────────
+  ctx.save();
+  ctx.font         = '500 26px "DM Sans", -apple-system, sans-serif';
+  ctx.fillStyle    = '#2D8C8C';
+  ctx.textBaseline = 'top';
+  ctx.textAlign    = 'left';
+  ctx.fillText('Rent  •  Buy  •  Sell', 96, 330);
+  ctx.restore();
+
+  // ── Verification pill ──────────────────────────────────────────
+  ctx.save();
+  ctx.font = '500 12.5px "DM Sans", -apple-system, sans-serif';
+  const pillText = 'Verified Listings · Updated Daily';
+  const pillW    = ctx.measureText(pillText).width + 24;
+  const pillX    = 96, pillY = 390;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, 24, 4);
+  else ctx.rect(pillX, pillY, pillW, 24);
+  ctx.fillStyle   = 'rgba(45,140,140,0.10)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(45,140,140,0.22)';
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+  ctx.fillStyle    = '#2D8C8C';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(pillText, pillX + 12, pillY + 12);
+  ctx.restore();
+
+  // ── pintag.io URL — bottom ────────────────────────────────────
+  ctx.save();
+  ctx.font         = '500 13px "DM Sans", -apple-system, sans-serif';
+  ctx.fillStyle    = 'rgba(26,36,40,0.30)';
+  ctx.textBaseline = 'bottom';
+  ctx.textAlign    = 'left';
+  const url = 'PINTAG.IO/LISTINGS';
+  let ux = 96;
+  for (const ch of url) {
+    ctx.fillText(ch, ux, H - 34);
+    ux += ctx.measureText(ch).width + 2.5;
+  }
+  ctx.restore();
+}
+
+// Minimal word-wrap for the headline — breaks on spaces, one font already set on ctx.
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  let line = '', cy = y;
+  words.forEach((word, i) => {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, cy);
+      line = word;
+      cy += lineHeight;
+    } else {
+      line = test;
+    }
+  });
+  if (line) ctx.fillText(line, x, cy);
+}
+
+function downloadJPEG() {
+  const a   = document.createElement('a');
+  a.download = 'og-preview-listings.jpg';
+  a.href     = document.getElementById('c').toDataURL('image/jpeg', 0.92);
+  a.click();
+}
+</script>
+</body>
+</html>
