@@ -49,12 +49,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
 // site's) — this is the one thing that keeps Marketing OS's data/auth
 // fully self-contained, so moving it to marketingos.ai later is a hosting
 // change here, not a data migration.
-const SUPABASE_URL = 'REPLACE_WITH_PINTAG_STUDIO_SUPABASE_URL';
-const SUPABASE_ANON = 'REPLACE_WITH_PINTAG_STUDIO_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://yuboptuclvocadfrqszo.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1Ym9wdHVjbHZvY2FkZnJxc3pvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwODk4NDksImV4cCI6MjA5ODY2NTg0OX0.nHRDpPAeRluRz2MAa5_EBpABCtrzek-jtx6JUQIPfpg';
 // The one founder account provisioned in that project for this page — see
 // SETUP.md for how to create it. Password is never stored here; only the
 // email is fixed, same convention as admin.html's ADMIN_EMAIL.
-const FOUNDER_EMAIL = 'admin@pintag.io';
+const FOUNDER_EMAIL = 'ninee@pintag.io';
 
 const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
