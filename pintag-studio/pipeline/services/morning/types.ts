@@ -75,6 +75,8 @@ export interface OpportunityItem {
   link?: string;
   /** Set only for kind: 'emerging-playbook' — lets the web renderer emit the existing, unchanged /review/patterns/:id/approve|ignore|keep-observing action forms without any decision logic of its own (it only knows the id, not what it means). */
   patternId?: string;
+  /** Set only for kind: 'emerging-playbook' — the pattern's computeConfidence() level, carried as data (not parsed back out of the display string) so campaign opportunity scoring reads the same signal this brief displays. */
+  confidenceLevel?: 'low' | 'medium' | 'high';
 }
 
 export interface MorningBrief {

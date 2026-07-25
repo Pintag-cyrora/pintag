@@ -28,7 +28,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REPO_ROOT, readMorningBriefConfig } from './lib/config.js';
+import { REPO_ROOT, readMorningBriefConfig, readCampaignConfig } from './lib/config.js';
 import { generateDailyBriefing, SUGGESTION_KIND_LABELS } from './daily-briefing.js';
 import { getFounderSession } from './lib/auth.js';
 import { readTodaysRecommendation, buildFounderTeachingSuggestionInput } from './teach.js';
@@ -42,10 +42,11 @@ import { readLatestMorningBrief, writeMorningBrief, isMorningBriefStale } from '
 import { renderMorningPage } from './renderers/web/render.js';
 import { createCachedPage } from './lib/cached-page.js';
 import type { MorningBrief } from './services/morning/types.js';
-import { createCampaign, executeCampaign } from './services/campaign/generate.js';
-import { readCampaign, readLatestCampaign, writeCampaign } from './services/campaign/persist.js';
-import { renderCampaignProgressPage, renderResearchPage, renderContentPage, renderVideoPage, renderPublishPage } from './renderers/web/campaign.js';
-import type { Campaign } from './services/campaign/types.js';
+import { createCampaign, executeCampaign, regenerateCampaignStep, REGENERABLE_STEPS } from './services/campaign/generate.js';
+import { readCampaign, readLatestCampaign, listCampaigns, writeCampaign } from './services/campaign/persist.js';
+import { scoreOpportunity, scoreOpportunities, selectTopOpportunities } from './services/campaign/score.js';
+import { renderCampaignPage, renderCampaignsPage, renderResearchPage, renderContentPage, renderVideoPage, renderPublishPage } from './renderers/web/campaign.js';
+import type { Campaign, CampaignStepId, ScorableOpportunity } from './services/campaign/types.js';
 
 const PORT = Number(process.env.PORT ?? 4321);
 
@@ -177,6 +178,18 @@ function renderHome(founderName: string): string {
 
     <a class="nav-link" href="/morning">
       <div class="card"><h2>🧭 Open the Morning Brief</h2><p>The primary daily screen — Executive Summary, Market Intelligence, Company Health, Recommended Action, and more.</p></div>
+    </a>
+
+    <form method="POST" action="/campaign/execute-top">
+      <div class="card">
+        <h2>🚀 Generate Top Campaigns</h2>
+        <p>Scores every opportunity on the latest Morning Brief and generates campaigns for only the top ${readCampaignConfig().topN} — everything else is scored but not executed, keeping spend predictable.</p>
+        <button class="btn" type="submit">Score &amp; Generate Top ${readCampaignConfig().topN}</button>
+      </div>
+    </form>
+
+    <a class="nav-link" href="/campaigns">
+      <div class="card"><h2>📦 Campaigns</h2><p>Every generated campaign — status, score, priority, and the full review bundle.</p></div>
     </a>
 
     <a class="nav-link" href="/teach">
@@ -472,24 +485,25 @@ function resolveLatestCampaign(): Campaign | null {
   return resolveCampaign(latest.id);
 }
 
-async function handleCampaignExecute(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = await readRequestBody(req);
-  const title = (body.get('title') ?? '').trim();
-  if (!title) {
-    redirect(res, '/morning');
-    return;
+/**
+ * Rebuilds the full scoring signal for a submitted opportunity. The
+ * execute form only carries title/detail/source; the evidence list and
+ * pattern confidence live on the latest MorningBrief, so a title match
+ * there recovers them — deterministic lookup, nothing smuggled through
+ * hidden fields.
+ */
+function toScorable(title: string, detail: string, source: string): ScorableOpportunity {
+  const brief = readLatestMorningBrief();
+  const match = brief?.opportunities.find((o) => o.title === title);
+  if (match) {
+    return { title, detail, evidence: match.evidence, kind: match.kind, confidenceLevel: match.confidenceLevel };
   }
-  const campaign = createCampaign({
-    title,
-    detail: (body.get('detail') ?? '').trim(),
-    source: (body.get('source') ?? 'manual').trim() || 'manual',
-  });
+  return { title, detail, evidence: [], kind: source === 'opportunity' ? 'outperforming-content' : source };
+}
 
+/** Kicks a created campaign off in the background — the founder watches progress on its page. executeCampaign persists every step and records failures on the campaign itself; the catch is a last line of defense so an unexpected error still lands on disk. */
+function startCampaignRun(campaign: Campaign): void {
   activeCampaigns.set(campaign.id, campaign);
-  // Background, not awaited — the founder watches progress on the page
-  // this redirects to. executeCampaign persists every step and never
-  // throws (failures are recorded on the campaign itself); the catch is a
-  // last line of defense so an unexpected error still lands on disk.
   executeCampaign(campaign)
     .catch((err) => {
       console.error(`[Campaign ${campaign.id}] Unexpected orchestration error:`, err);
@@ -499,7 +513,93 @@ async function handleCampaignExecute(req: IncomingMessage, res: ServerResponse):
     .finally(() => {
       activeCampaigns.delete(campaign.id);
     });
+}
 
+async function handleCampaignExecute(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readRequestBody(req);
+  const title = (body.get('title') ?? '').trim();
+  if (!title) {
+    redirect(res, '/morning');
+    return;
+  }
+  const detail = (body.get('detail') ?? '').trim();
+  const source = (body.get('source') ?? 'manual').trim() || 'manual';
+
+  // Score BEFORE any LLM spend (M3 §1) — deterministic, and stored on the
+  // campaign so the founder sees why. A founder-triggered single execute
+  // always proceeds regardless of priority: the score informs, the founder
+  // already decided.
+  const score = await scoreOpportunity(toScorable(title, detail, source));
+  const campaign = createCampaign({ title, detail, source }, score);
+  startCampaignRun(campaign);
+  redirect(res, `/campaign/${encodeURIComponent(campaign.id)}`);
+}
+
+/**
+ * The daily funnel (M3 §2): score EVERY opportunity on the latest Morning
+ * Brief, keep the configured top N (low priority never selected), generate
+ * those campaigns sequentially in the background. Founder-triggered — one
+ * button, predictable spend.
+ */
+async function handleGenerateTopCampaigns(res: ServerResponse): Promise<void> {
+  const brief = readLatestMorningBrief();
+  const candidates: ScorableOpportunity[] = (brief?.opportunities ?? []).map((o) => ({
+    title: o.title,
+    detail: o.detail,
+    evidence: o.evidence,
+    kind: o.kind,
+    confidenceLevel: o.confidenceLevel,
+  }));
+  if (brief?.recommendedAction) {
+    candidates.push({ title: brief.recommendedAction, detail: brief.recommendedActionReasoning ?? '', evidence: [], kind: 'recommended-action' });
+  }
+  if (candidates.length === 0) {
+    redirect(res, '/campaigns');
+    return;
+  }
+
+  const selected = selectTopOpportunities(await scoreOpportunities(candidates));
+  const campaigns = selected.map(({ opportunity, score }) =>
+    createCampaign({ title: opportunity.title, detail: opportunity.detail, source: opportunity.kind }, score)
+  );
+
+  // Sequential in the background — campaigns don't compete for the local
+  // LLM budget/process all at once; within each campaign the generation
+  // departments still run in parallel.
+  void (async () => {
+    for (const campaign of campaigns) {
+      activeCampaigns.set(campaign.id, campaign);
+      try {
+        await executeCampaign(campaign);
+      } catch (err) {
+        console.error(`[Campaign ${campaign.id}] Unexpected orchestration error:`, err);
+        campaign.status = 'failed';
+        writeCampaign(campaign);
+      } finally {
+        activeCampaigns.delete(campaign.id);
+      }
+    }
+  })();
+
+  redirect(res, '/campaigns');
+}
+
+async function handleCampaignRegenerate(res: ServerResponse, id: string, stepId: string): Promise<void> {
+  const campaign = resolveCampaign(id);
+  if (!campaign || !REGENERABLE_STEPS.includes(stepId as CampaignStepId)) {
+    sendHtml(res, 404, pageShell('Not found', '<p>No such campaign or step.</p><a class="back" href="/campaigns">← Campaigns</a>'));
+    return;
+  }
+  activeCampaigns.set(campaign.id, campaign);
+  regenerateCampaignStep(campaign, stepId as CampaignStepId)
+    .catch((err) => {
+      console.error(`[Campaign ${campaign.id}] Unexpected regeneration error:`, err);
+      campaign.status = 'failed';
+      writeCampaign(campaign);
+    })
+    .finally(() => {
+      activeCampaigns.delete(campaign.id);
+    });
   redirect(res, `/campaign/${encodeURIComponent(campaign.id)}`);
 }
 
@@ -534,16 +634,26 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       handleMorningStatus(res);
     } else if (req.method === 'POST' && pathname === '/campaign/execute') {
       await handleCampaignExecute(req, res);
+    } else if (req.method === 'POST' && pathname === '/campaign/execute-top') {
+      await handleGenerateTopCampaigns(res);
+    } else if (req.method === 'POST' && /^\/campaign\/[^/]+\/regenerate\/[^/]+$/.test(pathname)) {
+      const [, , id, , stepId] = pathname.split('/');
+      await handleCampaignRegenerate(res, decodeURIComponent(id), stepId);
+    } else if (req.method === 'GET' && pathname === '/campaigns') {
+      // Through resolveCampaign so a live in-process run shows its current
+      // state and a run orphaned by a restart reads honestly as
+      // 'interrupted' instead of "Generating…" forever.
+      sendHtml(res, 200, renderCampaignsPage(listCampaigns().map((c) => resolveCampaign(c.id) ?? c)));
     } else if (req.method === 'GET' && pathname.startsWith('/campaign/')) {
       const rest = pathname.slice('/campaign/'.length);
-      if (rest.startsWith('api/')) {
+      if (rest.includes('/')) {
         sendHtml(res, 404, pageShell('Not found', '<p>Not found.</p><a class="back" href="/">← Home</a>'));
       } else {
         const campaign = resolveCampaign(decodeURIComponent(rest));
         if (!campaign) {
-          sendHtml(res, 404, pageShell('Not found', '<p>No such campaign.</p><a class="back" href="/morning">← Morning Brief</a>'));
+          sendHtml(res, 404, pageShell('Not found', '<p>No such campaign.</p><a class="back" href="/campaigns">← Campaigns</a>'));
         } else {
-          sendHtml(res, 200, renderCampaignProgressPage(campaign));
+          sendHtml(res, 200, renderCampaignPage(campaign));
         }
       }
     } else if (req.method === 'GET' && pathname.startsWith('/api/campaign/') && pathname.endsWith('/status')) {

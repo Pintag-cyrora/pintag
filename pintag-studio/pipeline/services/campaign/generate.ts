@@ -1,24 +1,33 @@
 // Campaign orchestration — the layer that turns one accepted opportunity
 // into a complete generated campaign by coordinating the existing AI
-// departments, in order: CMO → Researcher → Content Strategist → Writer →
-// Graphic Designer → Video Producer → Brand Guardian. Replaces the
-// "one-click execution isn't built yet" placeholder behind the Morning
-// Brief's Recommended Action button.
+// departments. M3 shape (production-ready): score first, plan second,
+// generate selectively, reuse research, and parallelize what's independent:
 //
-// Deliberately NOT one giant prompt: each step is its own runAgent() call
-// against that department's own .claude/agents/*.md job description (the
-// same mechanism Stages 02/03/06 already use), grounded in the same
-// knowledge-base/brand-voice context those stages load. Departments never
-// pass raw text to each other — each step reads the Campaign sections
-// upstream steps wrote and writes exactly one section of its own, and the
-// Campaign is persisted after every step so progress is durable and a
-// crash loses at most the step in flight.
+//   CMO (deterministic accept + score, zero LLM)
+//     → Content Strategist (Campaign Brief — the structured intent every
+//       downstream department reads; nobody infers intent independently)
+//     → Researcher (once, cached in research/<slug>.json — a valid cache
+//       hit skips the LLM call entirely, with provenance recorded)
+//     → Writer ∥ Graphic Designer ∥ Video Producer (parallel, and only the
+//       formats the Brief actually requests — generation is demand-driven)
+//     → Brand Guardian (reviews only what exists).
 //
-// Generation only (this milestone): no publishing, no scheduling. The
-// completed Campaign is a reviewable bundle; Stage 07/08 remain the only
-// publishing machinery. Runs locally, founder-triggered (the Execute
-// button on the local Founder Workspace, or `npm run campaign`) — Core
-// Marketing OS per ARCHITECTURE.md §0, no new cloud infrastructure.
+// Model allocation (see LlmModelTier in pipeline/lib/llm.ts): Researcher
+// and Writer run on the reasoning tier — their output quality gates
+// everything downstream. Strategy, Design, Video, and Guardian run on the
+// fast tier. Scoring, routing, persistence, duplicate detection, and
+// campaign management are deterministic code — AI thinks only where
+// reasoning adds value.
+//
+// Departments never pass raw text to each other — each step reads the
+// Campaign sections upstream steps wrote and writes exactly one section of
+// its own; the Campaign is persisted after every step. Incremental
+// regeneration (regenerateCampaignStep) reruns ONE department plus a fresh
+// Guardian review — never the whole pipeline.
+//
+// Generation only: no publishing, no scheduling (Stage 07/08 remain the
+// only publishing machinery). Runs locally, founder-triggered — Core
+// Marketing OS per ARCHITECTURE.md §0.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,27 +39,34 @@ import { loadResearchReferenceMaterial } from '../../stages/02-research.js';
 import { loadWritingContext } from '../../stages/03-write.js';
 import { findSimilarByTitle } from '../../stages/01-plan.js';
 import { writeCampaign } from './persist.js';
-import type {
-  Campaign,
-  CampaignOpportunity,
-  CampaignStepId,
-  CampaignStepState,
-  CampaignObjective,
-  CampaignResearch,
-  CampaignStrategy,
-  CampaignContent,
-  CampaignDesign,
-  CampaignVideo,
-  CampaignQaReport,
+import { scoreOpportunity } from './score.js';
+import { readCachedResearch, writeCachedResearch } from './research-cache.js';
+import {
+  briefFormats,
+  CAMPAIGN_FORMATS,
+  WRITTEN_FORMATS,
+  VIDEO_FORMATS,
+  type Campaign,
+  type CampaignOpportunity,
+  type CampaignStepId,
+  type CampaignStepState,
+  type CampaignBrief,
+  type CampaignFormat,
+  type CampaignResearch,
+  type CampaignContent,
+  type CampaignDesign,
+  type CampaignVideo,
+  type CampaignQaReport,
+  type OpportunityScore,
 } from './types.js';
 
-/** Same per-call ceiling as the Daily Briefing's runAgent call — seven calls per campaign stays well inside the monthly budget ceiling (brain/org-config.json). */
+/** Same per-call ceiling as the Daily Briefing's runAgent call. */
 const STEP_BUDGET_USD = 0.3;
 
 const STEP_ORDER: Array<{ id: CampaignStepId; label: string; doneDetail: string }> = [
   { id: 'cmo', label: 'CMO', doneDetail: 'Accepted Opportunity' },
-  { id: 'research', label: 'Researcher', doneDetail: 'Research Complete' },
   { id: 'strategy', label: 'Content Strategist', doneDetail: 'Campaign Planned' },
+  { id: 'research', label: 'Researcher', doneDetail: 'Research Complete' },
   { id: 'writing', label: 'Writer', doneDetail: 'Content Generated' },
   { id: 'design', label: 'Graphic Designer', doneDetail: 'Graphics Generated' },
   { id: 'video', label: 'Video Producer', doneDetail: 'Video Generated' },
@@ -66,8 +82,8 @@ function slugify(title: string): string {
   return slug || 'campaign';
 }
 
-/** Creates (and persists) a new Campaign with every step pending. Deterministic — no LLM call. */
-export function createCampaign(opportunity: CampaignOpportunity): Campaign {
+/** Creates (and persists) a new Campaign with every step pending. Deterministic — no LLM call. The score, when already computed (batch selection, execute handler), rides in so it's never recomputed. */
+export function createCampaign(opportunity: CampaignOpportunity, score?: OpportunityScore): Campaign {
   const createdAt = new Date();
   const campaign: Campaign = {
     id: `${createdAt.toISOString().slice(0, 10)}-${createdAt.getTime().toString(36)}-${slugify(opportunity.title)}`.slice(0, 100),
@@ -75,6 +91,7 @@ export function createCampaign(opportunity: CampaignOpportunity): Campaign {
     createdAt: createdAt.toISOString(),
     status: 'running',
     opportunity,
+    score,
     steps: STEP_ORDER.map(({ id, label }) => ({ id, label, status: 'pending', detail: '' })),
   };
   writeCampaign(campaign);
@@ -101,46 +118,118 @@ function requireString(value: unknown, field: string, raw: unknown): string {
   return value;
 }
 
+/** The shared craft/brand context — loaded ONCE per campaign run and passed to every step that needs it, instead of each step re-reading the same files and re-scanning the Knowledge Layer. */
+interface SharedContext {
+  brandVoice: string;
+  styleGuide: string;
+  postingRules: string;
+  /** Writing-craft Knowledge Layer entries (language/marketing/psychology) — Stage 03's exact categories. */
+  craftKnowledgeSection: string;
+}
+
+function loadSharedContext(): SharedContext {
+  const { brandVoice, styleGuide } = loadWritingContext();
+  const postingRules = readFileSync(join(REPO_ROOT, 'brain', 'posting-rules.md'), 'utf-8');
+  const craftEntries = retrieveKnowledge({ categories: ['language', 'marketing', 'psychology'], minStatus: 'verified' });
+  const craftKnowledgeSection = craftEntries.map((e) => `### knowledge/${relativeKnowledgePath(e)}\n${e.body}`).join('\n\n');
+  return { brandVoice, styleGuide, postingRules, craftKnowledgeSection };
+}
+
+/** The Campaign Brief as a prompt block — the one framing every generation step receives. */
+function briefContextBlock(campaign: Campaign): string {
+  const b = campaign.brief!;
+  return [
+    `Campaign: ${campaign.title}`,
+    `Objective: ${b.objective}`,
+    `Business goal: ${b.businessGoal}`,
+    `Audience: ${b.audience}`,
+    `Core message: ${b.messaging}`,
+    `Call to action: ${b.cta}`,
+    `Requested formats: ${briefFormats(b).join(', ')}`,
+  ].join('\n');
+}
+
 // ---------------------------------------------------------------------------
-// Department steps. Each: one runAgent() call, validated output, one
-// Campaign section written. Health reporting mirrors the stages — the same
-// agent doing the same kind of work reports through the same channel.
+// Department steps.
 // ---------------------------------------------------------------------------
 
-async function runCmoStep(campaign: Campaign): Promise<CampaignObjective> {
-  return withHealthReport('cmo', async () => {
-    const raw = await runAgent('cmo', {
+/** CMO — deterministic accept + score (rule-based, zero LLM — see score.ts). The score normally arrives precomputed from the selection funnel; computed here only for a direct single execute that skipped it. */
+async function runCmoStep(campaign: Campaign): Promise<void> {
+  await withHealthReport('cmo', async () => {
+    if (!campaign.score) {
+      campaign.score = await scoreOpportunity({
+        title: campaign.opportunity.title,
+        detail: campaign.opportunity.detail,
+        evidence: [],
+        kind: campaign.opportunity.source === 'opportunity' ? 'outperforming-content' : campaign.opportunity.source,
+      });
+    }
+    const step = stepState(campaign, 'cmo');
+    step.detail = `Accepted — scored ${campaign.score.total}/100, ${campaign.score.priority} priority`;
+  });
+}
+
+async function runStrategyStep(campaign: Campaign): Promise<CampaignBrief> {
+  return withHealthReport('content_strategist', async () => {
+    const raw = await runAgent('content_strategist', {
       userPrompt: [
-        'The founder has accepted the following opportunity and asked Marketing OS to execute a campaign on it. As CMO, accept the opportunity and define the campaign objective.',
+        'Create the Campaign Brief for the accepted opportunity below. This brief is the single source of campaign intent — every downstream department (Researcher, Writer, Graphic Designer, Video Producer, Brand Guardian) reads it and none of them may infer intent on their own, so it must be complete and specific.',
         '',
         `## Opportunity`,
         `Title: ${campaign.opportunity.title}`,
         campaign.opportunity.detail ? `Context: ${campaign.opportunity.detail}` : '',
+        campaign.score ? `Priority: ${campaign.score.priority} (scored ${campaign.score.total}/100)\nWhy it scored that way:\n${campaign.score.reasons.map((r) => `- ${r}`).join('\n')}` : '',
         '',
-        'Define ONE clear campaign objective (what this campaign should make the audience understand or do), plus a short rationale for why this opportunity deserves a campaign now. Stay educational-first per the founder brief — the objective must lead with what the audience learns, not what Pintag sells.',
+        'Produce: objective (what this campaign makes the audience understand or do — educational-first per the founder brief); businessGoal (the business outcome it serves, one line); audience (the specific segment, and why them); messaging (the single core message, stated plainly); cta (ONE call to action); primaryFormat (the one format this campaign leads with); secondaryFormats (ONLY formats this campaign genuinely needs — every format you list costs real generation work, so request the smallest set that serves the objective, and an empty list is a legitimate answer); successMetrics (2-4 observable signals of success, e.g. shares, saves, profile visits).',
+        '',
+        `Valid formats (use these exact strings): ${CAMPAIGN_FORMATS.join(', ')}`,
       ]
         .filter(Boolean)
         .join('\n'),
-      jsonShapeHint: '{"objective": string, "acceptanceRationale": string}',
+      jsonShapeHint:
+        '{"objective": string, "businessGoal": string, "audience": string, "messaging": string, "cta": string, "primaryFormat": string, "secondaryFormats": string[], "successMetrics": string[]}',
       maxBudgetUsd: STEP_BUDGET_USD,
+      modelTier: 'fast',
     });
-    const parsed = parseJsonResponse<CampaignObjective>(raw);
+    const parsed = parseJsonResponse<CampaignBrief>(raw);
+    const normalizeFormat = (f: unknown): CampaignFormat | null => {
+      const lower = String(f ?? '').toLowerCase().trim();
+      return (CAMPAIGN_FORMATS as readonly string[]).includes(lower) ? (lower as CampaignFormat) : null;
+    };
+    const primaryFormat = normalizeFormat(parsed.primaryFormat);
+    if (!primaryFormat) {
+      throw new Error(`content_strategist returned an unknown primaryFormat: ${JSON.stringify(parsed.primaryFormat)}`);
+    }
+    const secondaryFormats = requireStringArray(parsed.secondaryFormats ?? [], 'secondaryFormats', parsed)
+      .map(normalizeFormat)
+      .filter((f): f is CampaignFormat => f !== null && f !== primaryFormat);
     return {
       objective: requireString(parsed.objective, 'objective', parsed),
-      acceptanceRationale: requireString(parsed.acceptanceRationale, 'acceptanceRationale', parsed),
+      businessGoal: requireString(parsed.businessGoal, 'businessGoal', parsed),
+      audience: requireString(parsed.audience, 'audience', parsed),
+      messaging: requireString(parsed.messaging, 'messaging', parsed),
+      cta: requireString(parsed.cta, 'cta', parsed),
+      primaryFormat,
+      secondaryFormats: [...new Set(secondaryFormats)],
+      successMetrics: requireStringArray(parsed.successMetrics ?? [], 'successMetrics', parsed),
     };
   });
 }
 
+/** Research once: a valid cache hit skips the Researcher's LLM call entirely (provenance recorded); a miss runs the reasoning-tier call and stores the result for the next near-identical topic. */
 async function runResearchStep(campaign: Campaign): Promise<CampaignResearch> {
   return withHealthReport('researcher', async () => {
+    const cached = readCachedResearch(campaign.title);
+    if (cached) {
+      return { ...cached.research, reusedFromCache: cached.cacheFile };
+    }
+
     const { referenceSection, knowledgeSection } = loadResearchReferenceMaterial();
     const raw = await runAgent('researcher', {
       userPrompt: [
-        'Research the topic below to ground an upcoming multi-format campaign in verifiable facts.',
+        'Research the campaign below to ground every downstream format in verifiable facts. This is the ONLY research pass — every department reads your output, so cover the full objective.',
         '',
-        `Campaign: ${campaign.title}`,
-        `Objective: ${campaign.objective!.objective}`,
+        briefContextBlock(campaign),
         '',
         '## Reference material (the ONLY sources you may cite)',
         referenceSection,
@@ -150,168 +239,180 @@ async function runResearchStep(campaign: Campaign): Promise<CampaignResearch> {
       ].join('\n'),
       jsonShapeHint: '{"researchBrief": string, "facts": [{"claim": string, "source": string}], "knowledgeGaps": string[]}',
       maxBudgetUsd: STEP_BUDGET_USD,
+      modelTier: 'reasoning',
     });
     const parsed = parseJsonResponse<CampaignResearch>(raw);
     if (!Array.isArray(parsed.facts) || parsed.facts.some((f) => typeof f?.claim !== 'string' || typeof f?.source !== 'string')) {
       throw new Error(`researcher step returned a malformed facts array: ${JSON.stringify(parsed).slice(0, 500)}`);
     }
-    return {
+    const research: CampaignResearch = {
       researchBrief: requireString(parsed.researchBrief, 'researchBrief', parsed),
       facts: parsed.facts,
       knowledgeGaps: Array.isArray(parsed.knowledgeGaps) ? parsed.knowledgeGaps.filter((g): g is string => typeof g === 'string') : [],
     };
+    writeCachedResearch(campaign.title, research);
+    return research;
   });
 }
 
-async function runStrategyStep(campaign: Campaign): Promise<CampaignStrategy> {
-  return withHealthReport('content_strategist', async () => {
-    const raw = await runAgent('content_strategist', {
-      userPrompt: [
-        'Plan the campaign below: who it is for, the core message, and the one call to action.',
-        '',
-        `Campaign: ${campaign.title}`,
-        `Objective: ${campaign.objective!.objective}`,
-        '',
-        '## Research brief',
-        campaign.research!.researchBrief,
-        '## Sourced facts the campaign will be grounded in',
-        JSON.stringify(campaign.research!.facts, null, 2),
-        '',
-        'Produce: audience (the specific segment this campaign serves, and why them); messaging (the single core message, stated plainly); cta (ONE call to action, educational-first per posting rules); formats (which of Facebook post / Instagram caption / LinkedIn post / blog article / carousel / TikTok / Reel this campaign uses and why — list format names).',
-      ].join('\n'),
-      jsonShapeHint: '{"audience": string, "messaging": string, "cta": string, "formats": string[]}',
-      maxBudgetUsd: STEP_BUDGET_USD,
-    });
-    const parsed = parseJsonResponse<CampaignStrategy>(raw);
-    return {
-      audience: requireString(parsed.audience, 'audience', parsed),
-      messaging: requireString(parsed.messaging, 'messaging', parsed),
-      cta: requireString(parsed.cta, 'cta', parsed),
-      formats: requireStringArray(parsed.formats, 'formats', parsed),
-    };
-  });
-}
+const WRITTEN_FIELD_BY_FORMAT: Record<string, { field: keyof CampaignContent; instruction: string }> = {
+  facebook: { field: 'facebookPost', instruction: 'facebookPost (complete, ready to post)' },
+  instagram: { field: 'instagramCaption', instruction: 'instagramCaption (complete, with line breaks as it should appear)' },
+  linkedin: { field: 'linkedinPost', instruction: 'linkedinPost (complete, slightly more professional register, same facts)' },
+  blog: { field: 'blogArticleMarkdown', instruction: 'blogArticleMarkdown (a full article in Markdown, headline included)' },
+};
 
-async function runWritingStep(campaign: Campaign): Promise<CampaignContent> {
+async function runWritingStep(campaign: Campaign, shared: SharedContext, revisionNotes?: string): Promise<CampaignContent> {
   return withHealthReport('writer', async () => {
-    const { brandVoice, styleGuide } = loadWritingContext();
-    // Same writing-craft Knowledge Layer categories as Stage 03 — how to
-    // write, not what to claim (facts come only from the research section).
-    const knowledgeEntries = retrieveKnowledge({ categories: ['language', 'marketing', 'psychology'], minStatus: 'verified' });
-    const knowledgeSection = knowledgeEntries.map((e) => `### knowledge/${relativeKnowledgePath(e)}\n${e.body}`).join('\n\n');
+    const requested = briefFormats(campaign.brief!).filter((f) => WRITTEN_FORMATS.includes(f));
+    const specs = requested.map((f) => WRITTEN_FIELD_BY_FORMAT[f]);
 
     const raw = await runAgent('writer', {
       userPrompt: [
-        'Write every written format of the campaign below.',
+        `Write the requested written formats of the campaign below — ONLY these ${requested.length}: ${requested.join(', ')}. No other format is wanted; do not produce extras.`,
         '',
-        `Campaign: ${campaign.title}`,
-        `Objective: ${campaign.objective!.objective}`,
-        `Audience: ${campaign.strategy!.audience}`,
-        `Core message: ${campaign.strategy!.messaging}`,
-        `Call to action: ${campaign.strategy!.cta}`,
+        briefContextBlock(campaign),
         '',
         '## Brand voice (follow exactly)',
-        brandVoice,
+        shared.brandVoice,
         '## Style guide',
-        styleGuide,
-        knowledgeSection ? `## Writing craft — verified knowledge (terminology, tone, hook patterns)\n${knowledgeSection}` : '',
+        shared.styleGuide,
+        shared.craftKnowledgeSection ? `## Writing craft — verified knowledge (terminology, tone, hook patterns)\n${shared.craftKnowledgeSection}` : '',
         '',
+        '## Research brief',
+        campaign.research!.researchBrief,
         '## Sourced facts to draw on (do not introduce claims beyond these)',
         JSON.stringify(campaign.research!.facts, null, 2),
-        campaign.research!.knowledgeGaps.length > 0
-          ? `## Known gaps — do not state anything about these as fact:\n${campaign.research!.knowledgeGaps.join('\n')}`
-          : '',
+        campaign.research!.knowledgeGaps.length > 0 ? `## Known gaps — do not state anything about these as fact:\n${campaign.research!.knowledgeGaps.join('\n')}` : '',
+        revisionNotes ? `## Brand Guardian revision notes (address every point)\n${revisionNotes}` : '',
         '',
-        'Produce all four: facebookPost (complete, ready to post); instagramCaption (complete, with line breaks as it should appear); linkedinPost (complete, slightly more professional register, same facts); blogArticleMarkdown (a full article in Markdown, headline included). All four carry the same core message and CTA, adapted per platform — never one text pasted four times.',
+        `Produce: ${specs.map((s) => s.instruction).join('; ')}. Each format carries the same core message and CTA, adapted per platform — never one text pasted twice.`,
       ]
         .filter(Boolean)
         .join('\n'),
-      jsonShapeHint: '{"facebookPost": string, "instagramCaption": string, "linkedinPost": string, "blogArticleMarkdown": string}',
+      jsonShapeHint: `{${specs.map((s) => `"${s.field}": string`).join(', ')}}`,
       maxBudgetUsd: STEP_BUDGET_USD,
+      modelTier: 'reasoning',
     });
     const parsed = parseJsonResponse<CampaignContent>(raw);
-    return {
-      facebookPost: requireString(parsed.facebookPost, 'facebookPost', parsed),
-      instagramCaption: requireString(parsed.instagramCaption, 'instagramCaption', parsed),
-      linkedinPost: requireString(parsed.linkedinPost, 'linkedinPost', parsed),
-      blogArticleMarkdown: requireString(parsed.blogArticleMarkdown, 'blogArticleMarkdown', parsed),
-    };
+    const content: CampaignContent = {};
+    for (const { field } of specs) {
+      content[field] = requireString(parsed[field], field, parsed);
+    }
+    return content;
   });
 }
 
-async function runDesignStep(campaign: Campaign): Promise<CampaignDesign> {
+async function runDesignStep(campaign: Campaign, revisionNotes?: string): Promise<CampaignDesign> {
   return withHealthReport('graphic_designer', async () => {
+    const formats = briefFormats(campaign.brief!);
+    const wantsCarousel = formats.includes('carousel');
+    const wantsThumbnail = formats.some((f) => VIDEO_FORMATS.includes(f));
+
+    const outputs: string[] = [];
+    const shapeFields: string[] = [];
+    if (wantsCarousel) {
+      outputs.push(
+        'carouselSlides (the on-slide text for a 5-8 slide educational carousel, one string per slide, slide 1 is the hook)',
+        'graphicConcepts (2-3 distinct visual concepts, each described in one or two sentences)',
+        'imagePrompts (one generation-ready prompt per concept, concrete about composition, mood, and setting — Vientiane, Laos context, no text baked into the image)'
+      );
+      shapeFields.push('"carouselSlides": string[]', '"graphicConcepts": string[]', '"imagePrompts": string[]');
+    }
+    if (wantsThumbnail) {
+      outputs.push('thumbnailPrompt (one generation-ready prompt for the video thumbnail)');
+      shapeFields.push('"thumbnailPrompt": string');
+    }
+
     const raw = await runAgent('graphic_designer', {
       userPrompt: [
-        'Design the visual layer of the campaign below: carousel copy, graphic concepts, and generation-ready image prompts. Concepts and prompts only — rendering happens later through brand templates, so stay within a clean, on-brand, real-estate-appropriate visual language.',
+        'Design the visual layer of the campaign below. Concepts and prompts only — rendering happens later through brand templates, so stay within a clean, on-brand, real-estate-appropriate visual language. Produce ONLY what is requested below; nothing else is wanted.',
         '',
-        `Campaign: ${campaign.title}`,
-        `Objective: ${campaign.objective!.objective}`,
-        `Audience: ${campaign.strategy!.audience}`,
-        `Core message: ${campaign.strategy!.messaging}`,
+        briefContextBlock(campaign),
         '',
         '## The written content these visuals accompany',
-        `Facebook post:\n${campaign.content!.facebookPost}`,
-        `Instagram caption:\n${campaign.content!.instagramCaption}`,
+        JSON.stringify(campaign.content ?? {}, null, 2),
+        revisionNotes ? `## Brand Guardian revision notes (address every point)\n${revisionNotes}` : '',
         '',
-        'Produce: carouselSlides (the on-slide text for a 5-8 slide educational carousel, one string per slide, slide 1 is the hook); graphicConcepts (2-3 distinct visual concepts, each described in one or two sentences); imagePrompts (one generation-ready prompt per concept, concrete about composition, mood, and setting — Vientiane, Laos context, no text baked into the image); thumbnailPrompt (one prompt for the video thumbnail).',
-      ].join('\n'),
-      jsonShapeHint: '{"carouselSlides": string[], "graphicConcepts": string[], "imagePrompts": string[], "thumbnailPrompt": string}',
+        `Produce: ${outputs.join('; ')}.`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      jsonShapeHint: `{${shapeFields.join(', ')}}`,
       maxBudgetUsd: STEP_BUDGET_USD,
+      modelTier: 'fast',
     });
     const parsed = parseJsonResponse<CampaignDesign>(raw);
-    return {
-      carouselSlides: requireStringArray(parsed.carouselSlides, 'carouselSlides', parsed),
-      graphicConcepts: requireStringArray(parsed.graphicConcepts, 'graphicConcepts', parsed),
-      imagePrompts: requireStringArray(parsed.imagePrompts, 'imagePrompts', parsed),
-      thumbnailPrompt: requireString(parsed.thumbnailPrompt, 'thumbnailPrompt', parsed),
-    };
+    const design: CampaignDesign = {};
+    if (wantsCarousel) {
+      design.carouselSlides = requireStringArray(parsed.carouselSlides, 'carouselSlides', parsed);
+      design.graphicConcepts = requireStringArray(parsed.graphicConcepts, 'graphicConcepts', parsed);
+      design.imagePrompts = requireStringArray(parsed.imagePrompts, 'imagePrompts', parsed);
+    }
+    if (wantsThumbnail) {
+      design.thumbnailPrompt = requireString(parsed.thumbnailPrompt, 'thumbnailPrompt', parsed);
+    }
+    return design;
   });
 }
 
-async function runVideoStep(campaign: Campaign): Promise<CampaignVideo> {
+async function runVideoStep(campaign: Campaign, revisionNotes?: string): Promise<CampaignVideo> {
   return withHealthReport('video_producer', async () => {
+    const formats = briefFormats(campaign.brief!);
+    const wantsTiktok = formats.includes('tiktok');
+    const wantsReel = formats.includes('reel');
+
+    const outputs: string[] = [];
+    const shapeFields: string[] = [];
+    if (wantsTiktok) {
+      outputs.push('tiktokScript (a complete 30-45s script with timing beats)');
+      shapeFields.push('"tiktokScript": string');
+    }
+    if (wantsReel) {
+      outputs.push(`reelScript (a complete Instagram Reel script${wantsTiktok ? ' — same message, distinct pacing, not a copy of the TikTok script' : ''})`);
+      shapeFields.push('"reelScript": string');
+    }
+    outputs.push(
+      'hooks (3-5 alternative opening hooks, one sentence each)',
+      'voiceover (the full voice-over text for the primary script, as it should be read aloud)',
+      'brollIdeas (5-8 concrete b-roll shots)',
+      'captions (the on-screen caption lines for the primary script, in display order)'
+    );
+    shapeFields.push('"hooks": string[]', '"voiceover": string', '"brollIdeas": string[]', '"captions": string[]');
+
     const raw = await runAgent('video_producer', {
       userPrompt: [
-        'Produce the video layer of the campaign below: short-form scripts ready for a person (or template pipeline) to shoot and assemble. Scripts and plans only — no rendering in this step.',
+        'Produce the video layer of the campaign below: short-form scripts ready for a person (or template pipeline) to shoot and assemble. Scripts and plans only — no rendering in this step. Produce ONLY the requested platforms below.',
         '',
-        `Campaign: ${campaign.title}`,
-        `Objective: ${campaign.objective!.objective}`,
-        `Audience: ${campaign.strategy!.audience}`,
-        `Core message: ${campaign.strategy!.messaging}`,
-        `Call to action: ${campaign.strategy!.cta}`,
+        briefContextBlock(campaign),
         '',
         '## Sourced facts (the scripts may not claim anything beyond these)',
         JSON.stringify(campaign.research!.facts, null, 2),
+        revisionNotes ? `## Brand Guardian revision notes (address every point)\n${revisionNotes}` : '',
         '',
-        'Produce: tiktokScript (a complete 30-45s script with timing beats); reelScript (a complete Instagram Reel script — same message, distinct pacing, not a copy of the TikTok script); hooks (3-5 alternative opening hooks, one sentence each); voiceover (the full voice-over text for the primary script, as it should be read aloud); brollIdeas (5-8 concrete b-roll shots); captions (the on-screen caption lines for the primary script, in display order).',
-      ].join('\n'),
-      jsonShapeHint:
-        '{"tiktokScript": string, "reelScript": string, "hooks": string[], "voiceover": string, "brollIdeas": string[], "captions": string[]}',
+        `Produce: ${outputs.join('; ')}.`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      jsonShapeHint: `{${shapeFields.join(', ')}}`,
       maxBudgetUsd: STEP_BUDGET_USD,
+      modelTier: 'fast',
     });
     const parsed = parseJsonResponse<CampaignVideo>(raw);
-    return {
-      tiktokScript: requireString(parsed.tiktokScript, 'tiktokScript', parsed),
-      reelScript: requireString(parsed.reelScript, 'reelScript', parsed),
+    const video: CampaignVideo = {
       hooks: requireStringArray(parsed.hooks, 'hooks', parsed),
       voiceover: requireString(parsed.voiceover, 'voiceover', parsed),
       brollIdeas: requireStringArray(parsed.brollIdeas, 'brollIdeas', parsed),
       captions: requireStringArray(parsed.captions, 'captions', parsed),
     };
+    if (wantsTiktok) video.tiktokScript = requireString(parsed.tiktokScript, 'tiktokScript', parsed);
+    if (wantsReel) video.reelScript = requireString(parsed.reelScript, 'reelScript', parsed);
+    return video;
   });
 }
 
-async function runQaStep(campaign: Campaign): Promise<CampaignQaReport> {
+async function runQaStep(campaign: Campaign, shared: SharedContext): Promise<CampaignQaReport> {
   return withHealthReport('brand_guardian', async () => {
-    const brandVoice = readFileSync(join(REPO_ROOT, 'brain', 'brand-voice.md'), 'utf-8');
-    const postingRules = readFileSync(join(REPO_ROOT, 'brain', 'posting-rules.md'), 'utf-8');
-    // Canonical Lao terminology, via the same Knowledge Layer path the
-    // Writer uses (the lao-brain source adapter tags brain/lao/dictionary.md
-    // entries category: 'language').
-    const laoEntries = retrieveKnowledge({ categories: ['language'], minStatus: 'verified' });
-    const laoSection = laoEntries.map((e) => `### knowledge/${relativeKnowledgePath(e)}\n${e.body}`).join('\n\n');
-
     // Duplicate detection — the same content_items near-duplicate title
     // check Stage 01 runs (reused, not reimplemented). Degrades to an
     // honest "check unavailable" note rather than failing QA when Supabase
@@ -326,31 +427,39 @@ async function runQaStep(campaign: Campaign): Promise<CampaignQaReport> {
       duplication = `Duplicate check unavailable (${err instanceof Error ? err.message : 'unknown error'}).`;
     }
 
+    // Only the sections that actually exist get reviewed — a skipped
+    // department contributes nothing to the bundle, so nothing to check.
+    const sections: string[] = [];
+    const c = campaign.content;
+    if (c?.facebookPost) sections.push(`### Facebook post\n${c.facebookPost}`);
+    if (c?.instagramCaption) sections.push(`### Instagram caption\n${c.instagramCaption}`);
+    if (c?.linkedinPost) sections.push(`### LinkedIn post\n${c.linkedinPost}`);
+    if (c?.blogArticleMarkdown) sections.push(`### Blog article\n${c.blogArticleMarkdown}`);
+    if (campaign.design?.carouselSlides?.length) sections.push(`### Carousel slides\n${campaign.design.carouselSlides.join('\n---\n')}`);
+    if (campaign.video?.tiktokScript) sections.push(`### TikTok script\n${campaign.video.tiktokScript}`);
+    if (campaign.video?.reelScript) sections.push(`### Reel script\n${campaign.video.reelScript}`);
+    if (campaign.video?.voiceover) sections.push(`### Voice-over\n${campaign.video.voiceover}`);
+
+    // Lao terminology reference rides in the shared craft knowledge (the
+    // lao-brain adapter tags brain/lao/dictionary.md entries 'language') —
+    // already loaded once for the whole run, not re-fetched here.
     const raw = await runAgent('brand_guardian', {
       userPrompt: [
         'Review the complete generated campaign below before it reaches the founder.',
         '',
-        `Campaign: ${campaign.title}`,
-        `Objective: ${campaign.objective!.objective}`,
+        briefContextBlock(campaign),
         '',
         '## Sourced facts this campaign must stay within (flag any claim not traceable to these)',
         JSON.stringify(campaign.research!.facts, null, 2),
         '',
         '## Brand voice (verify consistency)',
-        brandVoice,
+        shared.brandVoice,
         '## Posting rules (verify compliance, including banned language)',
-        postingRules,
-        laoSection ? `## Canonical Lao terminology (verify any Lao text against this)\n${laoSection}` : '',
+        shared.postingRules,
+        shared.craftKnowledgeSection ? `## Verified language/craft knowledge (includes canonical Lao terminology — verify any Lao text against it)\n${shared.craftKnowledgeSection}` : '',
         '',
         '## The campaign content under review',
-        `### Facebook post\n${campaign.content!.facebookPost}`,
-        `### Instagram caption\n${campaign.content!.instagramCaption}`,
-        `### LinkedIn post\n${campaign.content!.linkedinPost}`,
-        `### Blog article\n${campaign.content!.blogArticleMarkdown}`,
-        `### Carousel slides\n${campaign.design!.carouselSlides.join('\n---\n')}`,
-        `### TikTok script\n${campaign.video!.tiktokScript}`,
-        `### Reel script\n${campaign.video!.reelScript}`,
-        `### Voice-over\n${campaign.video!.voiceover}`,
+        sections.join('\n\n'),
         '',
         'Produce: factCheck (one short paragraph — are all claims traceable to the sourced facts; name any that are not); brandVoice (one short paragraph on voice consistency); grammar (one short paragraph on grammar/clarity across formats); laoTerminology (one short paragraph — if no Lao text is present, say exactly that rather than inventing an assessment); issues (each concrete problem as its own actionable line, empty if none); summary (2-3 sentences for the founder); approved (true ONLY if there are no factual traceability problems and no posting-rules violations — style nitpicks alone do not block approval).',
       ]
@@ -359,6 +468,7 @@ async function runQaStep(campaign: Campaign): Promise<CampaignQaReport> {
       jsonShapeHint:
         '{"approved": boolean, "factCheck": string, "brandVoice": string, "grammar": string, "laoTerminology": string, "issues": string[], "summary": string}',
       maxBudgetUsd: STEP_BUDGET_USD,
+      modelTier: 'fast',
     });
     const parsed = parseJsonResponse<CampaignQaReport>(raw);
     return {
@@ -377,61 +487,197 @@ async function runQaStep(campaign: Campaign): Promise<CampaignQaReport> {
 }
 
 // ---------------------------------------------------------------------------
+// Step lifecycle helpers.
+// ---------------------------------------------------------------------------
+
+function markRunning(campaign: Campaign, id: CampaignStepId): CampaignStepState {
+  const step = stepState(campaign, id);
+  step.status = 'running';
+  step.startedAt = new Date().toISOString();
+  writeCampaign(campaign);
+  return step;
+}
+
+function markComplete(campaign: Campaign, id: CampaignStepId, detailOverride?: string): void {
+  const step = stepState(campaign, id);
+  step.status = 'complete';
+  step.completedAt = new Date().toISOString();
+  step.detail = detailOverride ?? (step.detail || STEP_ORDER.find((s) => s.id === id)!.doneDetail);
+  writeCampaign(campaign);
+  console.log(`[Campaign ${campaign.id}] ${step.label}: ${step.detail}`);
+}
+
+function markFailed(campaign: Campaign, id: CampaignStepId, err: unknown): void {
+  const step = stepState(campaign, id);
+  step.status = 'failed';
+  step.detail = err instanceof Error ? err.message : 'Unknown error';
+  step.completedAt = new Date().toISOString();
+  campaign.status = 'failed';
+  writeCampaign(campaign);
+  console.error(`[Campaign ${campaign.id}] ${step.label} failed: ${step.detail}`);
+}
+
+function markSkipped(campaign: Campaign, id: CampaignStepId, reason: string): void {
+  const step = stepState(campaign, id);
+  step.status = 'skipped';
+  step.detail = reason;
+  writeCampaign(campaign);
+}
+
+/** The Guardian's checkmark tells the truth: "Approved" only if it actually approved. */
+function qaDoneDetail(campaign: Campaign): string | undefined {
+  if (campaign.qaReport && !campaign.qaReport.approved) {
+    return `Reviewed — ${campaign.qaReport.issues.length} issue${campaign.qaReport.issues.length === 1 ? '' : 's'} for your attention`;
+  }
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
 // The orchestrator.
 // ---------------------------------------------------------------------------
 
 /**
- * Runs every department step against the campaign, in order, mutating and
- * persisting it as each completes. Returns the same (now complete or
- * failed) Campaign object. A step failure stops the run — downstream steps
- * depend on the failed section, so continuing would generate ungrounded
- * work — but everything generated before the failure is already persisted
- * and visible.
+ * Runs the full pipeline against the campaign, mutating and persisting it
+ * as each step completes. Sequential through CMO → Strategy → Research
+ * (each depends on the last), then Writer/Designer/Video in PARALLEL (all
+ * three read the same Campaign, write disjoint sections), then Guardian.
+ * A failure stops what depends on it — but parallel siblings finish their
+ * own work, and everything generated is already persisted and visible.
  */
 export async function executeCampaign(campaign: Campaign): Promise<Campaign> {
-  const runners: Array<{ id: CampaignStepId; run: () => Promise<void> }> = [
-    { id: 'cmo', run: async () => void (campaign.objective = await runCmoStep(campaign)) },
-    { id: 'research', run: async () => void (campaign.research = await runResearchStep(campaign)) },
-    { id: 'strategy', run: async () => void (campaign.strategy = await runStrategyStep(campaign)) },
-    { id: 'writing', run: async () => void (campaign.content = await runWritingStep(campaign)) },
-    { id: 'design', run: async () => void (campaign.design = await runDesignStep(campaign)) },
-    { id: 'video', run: async () => void (campaign.video = await runVideoStep(campaign)) },
-    { id: 'qa', run: async () => void (campaign.qaReport = await runQaStep(campaign)) },
+  // Sequential prefix.
+  const prefix: Array<{ id: CampaignStepId; run: () => Promise<void>; doneDetail?: () => string | undefined }> = [
+    { id: 'cmo', run: async () => runCmoStep(campaign), doneDetail: () => stepState(campaign, 'cmo').detail || undefined },
+    { id: 'strategy', run: async () => void (campaign.brief = await runStrategyStep(campaign)) },
+    {
+      id: 'research',
+      run: async () => void (campaign.research = await runResearchStep(campaign)),
+      doneDetail: () => (campaign.research?.reusedFromCache ? `Reused recent research (${campaign.research.reusedFromCache}) — no new tokens spent` : undefined),
+    },
   ];
 
-  for (const { id, run } of runners) {
-    const step = stepState(campaign, id);
-    step.status = 'running';
-    step.startedAt = new Date().toISOString();
-    writeCampaign(campaign);
-
+  for (const { id, run, doneDetail } of prefix) {
+    markRunning(campaign, id);
     try {
       await run();
     } catch (err) {
-      step.status = 'failed';
-      step.detail = err instanceof Error ? err.message : 'Unknown error';
-      step.completedAt = new Date().toISOString();
-      campaign.status = 'failed';
-      writeCampaign(campaign);
-      console.error(`[Campaign ${campaign.id}] ${step.label} failed: ${step.detail}`);
+      markFailed(campaign, id, err);
       return campaign;
     }
-
-    step.status = 'complete';
-    step.completedAt = new Date().toISOString();
-    step.detail = STEP_ORDER.find((s) => s.id === id)!.doneDetail;
-    // The Brand Guardian's checkmark tells the truth: "Approved" only if it
-    // actually approved — otherwise the founder sees there's something to read.
-    if (id === 'qa' && campaign.qaReport && !campaign.qaReport.approved) {
-      step.detail = `Reviewed — ${campaign.qaReport.issues.length} issue${campaign.qaReport.issues.length === 1 ? '' : 's'} for your attention`;
-    }
-    writeCampaign(campaign);
-    console.log(`[Campaign ${campaign.id}] ${step.label}: ${step.detail}`);
+    markComplete(campaign, id, doneDetail?.());
   }
+
+  // Demand-driven gating — decided once, right after the Brief exists.
+  const formats = briefFormats(campaign.brief!);
+  const wantsWriting = formats.some((f) => WRITTEN_FORMATS.includes(f));
+  const wantsDesign = formats.includes('carousel') || formats.some((f) => VIDEO_FORMATS.includes(f));
+  const wantsVideo = formats.some((f) => VIDEO_FORMATS.includes(f));
+
+  const shared = loadSharedContext();
+
+  // Parallel generation phase. Each branch manages its own step state so
+  // the progress page shows all running departments at once; allSettled so
+  // one failure never cancels a sibling's already-paid-for work.
+  const branches: Array<{ id: CampaignStepId; wanted: boolean; run: () => Promise<void> }> = [
+    { id: 'writing', wanted: wantsWriting, run: async () => void (campaign.content = await runWritingStep(campaign, shared)) },
+    { id: 'design', wanted: wantsDesign, run: async () => void (campaign.design = await runDesignStep(campaign)) },
+    { id: 'video', wanted: wantsVideo, run: async () => void (campaign.video = await runVideoStep(campaign)) },
+  ];
+
+  const active = branches.filter((b) => {
+    if (!b.wanted) {
+      markSkipped(campaign, b.id, 'Not requested by Strategy');
+      return false;
+    }
+    return true;
+  });
+
+  const results = await Promise.allSettled(
+    active.map(async ({ id, run }) => {
+      markRunning(campaign, id);
+      try {
+        await run();
+      } catch (err) {
+        markFailed(campaign, id, err);
+        throw err;
+      }
+      markComplete(campaign, id);
+    })
+  );
+
+  if (results.some((r) => r.status === 'rejected')) {
+    // markFailed already set campaign.status = 'failed' and skipped work is
+    // persisted; the Guardian can't meaningfully review a bundle a
+    // requested department failed to produce.
+    markSkipped(campaign, 'qa', 'Skipped — a generation step failed');
+    campaign.status = 'failed';
+    writeCampaign(campaign);
+    return campaign;
+  }
+
+  markRunning(campaign, 'qa');
+  try {
+    campaign.qaReport = await runQaStep(campaign, shared);
+  } catch (err) {
+    markFailed(campaign, 'qa', err);
+    return campaign;
+  }
+  markComplete(campaign, 'qa', qaDoneDetail(campaign));
 
   campaign.status = 'complete';
   campaign.completedAt = new Date().toISOString();
   writeCampaign(campaign);
   console.log(`[Campaign ${campaign.id}] Campaign complete.`);
+  return campaign;
+}
+
+/** The department steps incremental regeneration can target. */
+export const REGENERABLE_STEPS: CampaignStepId[] = ['writing', 'design', 'video'];
+
+/**
+ * Incremental regeneration (M3): reruns ONE department — with the
+ * Guardian's previous notes as revision input — then a fresh Guardian
+ * review. Everything else stays exactly as generated. Never reruns the
+ * whole pipeline.
+ */
+export async function regenerateCampaignStep(campaign: Campaign, stepId: CampaignStepId): Promise<Campaign> {
+  if (!REGENERABLE_STEPS.includes(stepId)) {
+    throw new Error(`Step "${stepId}" cannot be regenerated — only ${REGENERABLE_STEPS.join(', ')}.`);
+  }
+  const step = stepState(campaign, stepId);
+  if (step.status === 'skipped') {
+    throw new Error(`Step "${stepId}" was not requested by Strategy for this campaign — nothing to regenerate.`);
+  }
+  if (!campaign.brief || !campaign.research) {
+    throw new Error(`Campaign ${campaign.id} has no brief/research yet — run the full pipeline first.`);
+  }
+
+  const notes = campaign.qaReport ? [campaign.qaReport.summary, ...campaign.qaReport.issues].join('\n') : undefined;
+  const shared = loadSharedContext();
+
+  campaign.status = 'running';
+  markRunning(campaign, stepId);
+  try {
+    if (stepId === 'writing') campaign.content = await runWritingStep(campaign, shared, notes);
+    else if (stepId === 'design') campaign.design = await runDesignStep(campaign, notes);
+    else campaign.video = await runVideoStep(campaign, notes);
+  } catch (err) {
+    markFailed(campaign, stepId, err);
+    return campaign;
+  }
+  markComplete(campaign, stepId, `Regenerated${notes ? ' with Brand Guardian notes' : ''}`);
+
+  markRunning(campaign, 'qa');
+  try {
+    campaign.qaReport = await runQaStep(campaign, shared);
+  } catch (err) {
+    markFailed(campaign, 'qa', err);
+    return campaign;
+  }
+  markComplete(campaign, 'qa', qaDoneDetail(campaign));
+
+  campaign.status = 'complete';
+  campaign.completedAt = new Date().toISOString();
+  writeCampaign(campaign);
   return campaign;
 }

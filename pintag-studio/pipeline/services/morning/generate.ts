@@ -93,6 +93,7 @@ function deriveOpportunities(executiveObservations: CollectObservationsResult['e
       detail: `Confidence: ${p.confidence.level} — ${p.confidence.reason}`,
       evidence: p.observedPattern,
       patternId: p.id,
+      confidenceLevel: p.confidence.level,
     });
   }
   return opportunities;

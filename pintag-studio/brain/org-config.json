@@ -104,6 +104,14 @@
     "note": "M2.9 (Morning Brief web migration): GET /morning renders instantly from the last-generated daily-briefing/latest.json, then regenerates in the background only once the cached brief is at least this many minutes old (and only if a regeneration isn't already in flight) — see pipeline/lib/cached-page.ts and pipeline/services/morning/persist.ts's isMorningBriefStale(). Founders are notified of a newer briefing via an in-page banner, never an auto-reload."
   },
 
+  "campaigns": {
+    "top_n": 3,
+    "priority_high_threshold": 75,
+    "priority_medium_threshold": 55,
+    "research_cache_max_age_days": 14,
+    "note": "M3 (production-ready campaign generation): top_n is how many scored opportunities `npm run campaign -- --top` (and the workspace's Generate Top Campaigns button) actually generates — everything else is scored but not executed, keeping daily API spend predictable. priority_*_threshold map a deterministic 0-100 opportunity score onto high/medium/low priority (see pipeline/services/campaign/score.ts — rule-based, no LLM call, every dimension carries its reason). Low-priority opportunities are never auto-selected. research_cache_max_age_days: a campaign whose normalized topic matches research/<slug>.json newer than this reuses that research and skips the Researcher's LLM call entirely — provenance is recorded on the campaign, never hidden."
+  },
+
   "competitor_watchlist": [],
 
   "budget": {

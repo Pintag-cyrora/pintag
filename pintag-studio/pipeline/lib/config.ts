@@ -173,6 +173,39 @@ const DEFAULT_MORNING_BRIEF_CONFIG: MorningBriefConfig = {
   stalenessThresholdMinutes: 60,
 };
 
+export interface CampaignConfig {
+  /** How many scored opportunities the top-N batch actually generates. */
+  topN: number;
+  /** Score >= this → 'high' priority. */
+  priorityHighThreshold: number;
+  /** Score >= this → 'medium'; below → 'low' (never auto-selected). */
+  priorityMediumThreshold: number;
+  /** Cached research younger than this (days) is reused; the Researcher is skipped. */
+  researchCacheMaxAgeDays: number;
+}
+
+const DEFAULT_CAMPAIGN_CONFIG: CampaignConfig = {
+  topN: 3,
+  priorityHighThreshold: 75,
+  priorityMediumThreshold: 55,
+  researchCacheMaxAgeDays: 14,
+};
+
+/** Same read-once/fall-back-to-defaults discipline as readObservationIntelligenceThresholds() above. */
+export function readCampaignConfig(): CampaignConfig {
+  try {
+    const c = loadOrgConfig().campaigns;
+    return {
+      topN: typeof c?.top_n === 'number' ? c.top_n : DEFAULT_CAMPAIGN_CONFIG.topN,
+      priorityHighThreshold: typeof c?.priority_high_threshold === 'number' ? c.priority_high_threshold : DEFAULT_CAMPAIGN_CONFIG.priorityHighThreshold,
+      priorityMediumThreshold: typeof c?.priority_medium_threshold === 'number' ? c.priority_medium_threshold : DEFAULT_CAMPAIGN_CONFIG.priorityMediumThreshold,
+      researchCacheMaxAgeDays: typeof c?.research_cache_max_age_days === 'number' ? c.research_cache_max_age_days : DEFAULT_CAMPAIGN_CONFIG.researchCacheMaxAgeDays,
+    };
+  } catch {
+    return DEFAULT_CAMPAIGN_CONFIG;
+  }
+}
+
 /** Same read-once/fall-back-to-defaults discipline as readObservationIntelligenceThresholds() above. */
 export function readMorningBriefConfig(): MorningBriefConfig {
   try {

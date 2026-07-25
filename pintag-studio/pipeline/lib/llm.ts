@@ -10,12 +10,25 @@ const execFileAsync = promisify(execFile);
 // new provider (OpenAI, Gemini, a local model) means one more class here and
 // an LLM_PROVIDER config value, never a change to any pipeline stage.
 
+/**
+ * Which capability class a call needs — cost allocation (M3): AI thinks
+ * only where reasoning adds value. 'reasoning' (the default) is for steps
+ * whose output quality gates everything downstream (Research grounding,
+ * final written copy); 'fast' is for structured planning/review steps
+ * (Strategy brief, design/video concepts, Guardian review) where a smaller
+ * model is materially cheaper and adequate. Providers map tiers to actual
+ * models; stages never name a model directly.
+ */
+export type LlmModelTier = 'reasoning' | 'fast';
+
 export interface LlmCompletionInput {
   systemPrompt: string;
   userPrompt: string;
   /** Human-readable description of the expected JSON shape, injected into the prompt. Not a schema-validation mechanism — callers validate the parsed result themselves. */
   jsonShapeHint?: string;
   maxBudgetUsd?: number;
+  /** Defaults to 'reasoning' — the pre-M3 behavior, so existing callers are unchanged. */
+  modelTier?: LlmModelTier;
 }
 
 export interface LlmProvider {
@@ -53,6 +66,14 @@ export class ClaudeCliProvider implements LlmProvider {
       '--max-budget-usd',
       String(input.maxBudgetUsd ?? 0.5),
     ];
+
+    // Tier → model. 'reasoning' deliberately passes no --model at all — the
+    // CLI's own configured default (what every call used before M3) stays
+    // authoritative. 'fast' uses the CLI's built-in small-model alias,
+    // overridable via LLM_FAST_MODEL without a code change.
+    if ((input.modelTier ?? 'reasoning') === 'fast') {
+      args.push('--model', process.env.LLM_FAST_MODEL ?? 'haiku');
+    }
 
     const { stdout } = await execFileAsync('claude', args, {
       cwd: tmpdir(),
@@ -95,7 +116,13 @@ export class AnthropicApiProvider implements LlmProvider {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-5',
+        // Same tier mapping as ClaudeCliProvider: 'reasoning' keeps the
+        // pre-M3 default model; 'fast' routes to the small model. Both
+        // overridable by env without a code change.
+        model:
+          (input.modelTier ?? 'reasoning') === 'fast'
+            ? process.env.LLM_FAST_MODEL ?? 'claude-haiku-4-5-20251001'
+            : process.env.LLM_REASONING_MODEL ?? 'claude-sonnet-5',
         max_tokens: 4096,
         system: input.systemPrompt,
         messages: [{ role: 'user', content: prompt }],

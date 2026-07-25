@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getLlmProvider } from './llm.js';
+import { getLlmProvider, type LlmModelTier } from './llm.js';
 import { REPO_ROOT } from './config.js';
 import type { AgentName } from './health.js';
 
@@ -40,6 +40,8 @@ export interface RunAgentOptions {
   /** Human-readable description of the expected JSON shape, if the caller needs structured output. */
   jsonShapeHint?: string;
   maxBudgetUsd?: number;
+  /** 'reasoning' (default) or 'fast' — see LlmModelTier in pipeline/lib/llm.ts. */
+  modelTier?: LlmModelTier;
 }
 
 /**
@@ -55,6 +57,7 @@ export async function runAgent(agentName: AgentName, options: RunAgentOptions): 
     userPrompt: options.userPrompt,
     jsonShapeHint: options.jsonShapeHint,
     maxBudgetUsd: options.maxBudgetUsd,
+    modelTier: options.modelTier,
   });
 }
 
