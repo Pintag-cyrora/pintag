@@ -32,6 +32,8 @@ function makeReports() {
         contradictions_detected: [], narrative_fallback_used: false, confidence: 'high', sample_size: 45,
         validated_at: isoDateTimeHoursAgo(26),
       },
+      snapshot_version: '1.1.0', report_version: '1.1.0', prompt_version: '1.1.0', validator_version: '1.0.0',
+      model_used: 'gemini-2.5-flash',
     },
     {
       id: 'r-1', report_type: 'weekly', title: 'Weekly report failed',

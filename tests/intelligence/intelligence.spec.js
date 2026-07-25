@@ -81,9 +81,15 @@ test.describe('Overview tab', () => {
   test('Section 2: supporting data panel toggles open', async ({ page }) => {
     await installSupabaseMocks(page, { reports: makeReports(), insights: makeInsights(), reportInsights: makeReportInsights() });
     await login(page);
-    await page.waitForSelector('.supporting-toggle');
-    await page.click('.supporting-toggle');
-    await expect(page.locator('.supporting-panel')).toHaveClass(/open/);
+    // Scoped to the "Supporting data" toggle specifically: the report card
+    // can render more than one .supporting-toggle/.supporting-panel pair
+    // (e.g. Version metadata, below), so an unscoped '.supporting-panel'
+    // locator is no longer unique.
+    const toggle = page.locator('.supporting-toggle', { hasText: 'Supporting data' });
+    await toggle.waitFor();
+    await toggle.click();
+    const panel = toggle.locator('xpath=following-sibling::*[1]');
+    await expect(panel).toHaveClass(/open/);
   });
 
   test('Section 3: history table lists all reports, newest first, and rows are clickable', async ({ page }) => {
@@ -121,6 +127,16 @@ test.describe('Overview tab', () => {
     await expect(dqPanel).toContainText('Snapshot finalized');
     await expect(dqPanel).toContainText('No conflicting insights detected');
     await expect(dqPanel).toContainText('sample size: 45');
+
+    const verToggle = page.locator('.supporting-toggle', { hasText: 'Version metadata' });
+    await verToggle.click();
+    const verPanel = verToggle.locator('xpath=following-sibling::*[1]');
+    await expect(verPanel).toHaveClass(/open/);
+    await expect(verPanel).toContainText('Snapshot version: 1.1.0');
+    await expect(verPanel).toContainText('Report version: 1.1.0');
+    await expect(verPanel).toContainText('Prompt version: 1.1.0');
+    await expect(verPanel).toContainText('Validator version: 1.0.0');
+    await expect(verPanel).toContainText('AI model version: gemini-2.5-flash');
   });
 
   test('Data Accuracy: a report with no data_confidence/validation (e.g. generated before this feature) renders with no badge or panel, no crash', async ({ page }) => {
@@ -131,6 +147,17 @@ test.describe('Overview tab', () => {
     await expect(page.locator('.confidence-pill')).toHaveCount(0);
     await expect(page.locator('.dq-fallback-banner')).toHaveCount(0);
     await expect(page.locator('.supporting-toggle', { hasText: 'Data quality' })).toHaveCount(0);
+
+    // Version metadata panel still renders (generated_at/model_used are
+    // core columns present on every report), but the four version-tracking
+    // columns this report predates correctly show "n/a", not a crash or a
+    // fabricated version.
+    const verToggle = page.locator('.supporting-toggle', { hasText: 'Version metadata' });
+    await expect(verToggle).toHaveCount(1);
+    await verToggle.click();
+    const verPanel = verToggle.locator('xpath=following-sibling::*[1]');
+    await expect(verPanel).toContainText('Snapshot version: n/a');
+    await expect(verPanel).toContainText('Prompt version: n/a');
   });
 
   test('Data Accuracy: narrative_fallback_used shows the validation-failure banner with the contradiction reason', async ({ page }) => {

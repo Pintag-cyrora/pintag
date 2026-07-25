@@ -252,6 +252,80 @@ the baseline pipeline — see the migration
   the validator is the one that's actually checked before a report is
   ever persisted.
 
+## BI Metrics: flow vs. stock
+
+`20260725000000_intelligence_bi_metrics.sql` extends the Daily Metrics
+Snapshot with real business metrics (new/removed listings, active
+inventory, asking price, days on market, top district/listing, conversion
+ratios). The one distinction every new metric had to be sorted into before
+it could be added:
+
+- **Flow metrics** (new listings added, listings removed, days-on-market
+  transitions, search-to-view/view-to-contact conversion, most-searched-
+  district, most-viewed-listing) are genuine per-day historical facts,
+  computed inside `intelligence_daily_metrics()` itself — safely
+  re-derivable for any past date, exactly like `search.total` or
+  `whatsapp_clicks` always have been.
+- **Stock metrics** (`active_inventory`, `asking_price`) are a read of
+  "right now," not a time series — Pintag has no historical point-in-time
+  inventory data before the day this migration's snapshot-writing starts
+  capturing it. These live in a separate function
+  (`point_in_time_supply_snapshot()`) and are merged into
+  `daily_metrics_snapshot` by `ensure_daily_metrics_snapshot()` **only for
+  the single most-recently-finalized day** — every earlier day in a
+  multi-day backfill gets `null` for both, honestly, rather than a
+  fabricated "current inventory as of a past date." This is the same
+  discipline the original `intelligence_daily_metrics()` comment already
+  established for supply data — extended, not violated, by finally adding
+  it.
+- **New metrics that don't fit either bucket are left out, not
+  approximated.** New-vs-returning-user counts are the clearest example:
+  Pintag has no persistent cross-session visitor identifier (only a
+  per-tab `session_id` in `sessionStorage`), so "returning user" cannot be
+  measured honestly today. Building it would mean adding a persistent
+  identifier (e.g. a `localStorage`-backed id alongside the existing
+  session id) first — flagged as a real follow-up, not silently
+  approximated with a weaker signal that would measure something else
+  while claiming to measure this.
+
+Any future flow metric follows the first pattern (add to
+`intelligence_daily_metrics()`, safely re-callable for any range); any
+future stock/current-state metric follows the second (its own function,
+merged only at `v_end`) — this split is now the standing rule for adding
+BI metrics, not a one-off decision.
+
+## Version Metadata
+
+Every generated report carries version metadata for traceability and
+reproducibility (`intelligence_reports.snapshot_version`,
+`report_version`, `prompt_version`, `validator_version`, plus the
+pre-existing `model_used` and `generated_at`, which already cover "AI
+Model Version" and "Generated Timestamp" and are not duplicated):
+
+| Field | Meaning | Source of truth |
+|---|---|---|
+| `snapshot_version` | Shape of the `daily_metrics_snapshot` jsonb this report read | `versions.js` → `SNAPSHOT_SCHEMA_VERSION` |
+| `report_version` | Shape/semantics of the `intelligence_reports` row itself | `versions.js` → `REPORT_FORMAT_VERSION` |
+| `prompt_version` | Which `buildPrompt()` template generated the narrative | `versions.js` → `PROMPT_VERSION` |
+| `validator_version` | Which `report-validator.js` rule set checked the narrative | `versions.js` → `VALIDATOR_VERSION` |
+| `model_used` | AI Model Version (or `'deterministic'` for quiet-day/no-AI reports) | set directly in `index.ts` |
+| `generated_at` | Generated Timestamp | database default, set at insert |
+
+Rules:
+
+- `prompt_version`/`validator_version` are `NULL` on quiet-day and
+  validation-fallback reports — a prompt/validator genuinely didn't run
+  for those, and a version tag would misrepresent that as having happened.
+- Reports generated before this migration have all four new columns
+  `NULL`, deliberately not backfilled — see **Versioning** below. `NULL`
+  means "generated before version tracking existed," never "unknown
+  version of the current system."
+- `versions.js` is the single place all four constants live. Bump the
+  relevant one whenever that layer's *output shape or behavior* changes
+  materially — not for every commit, and not for purely additive changes
+  (a new field appended, a new optional param) that don't change how
+  already-generated reports should be interpreted.
+
 ## Versioning
 
 Every detector, report format, and insight schema evolves **additively**,

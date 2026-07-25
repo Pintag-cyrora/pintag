@@ -174,6 +174,26 @@ const TRACKED_SCALAR_METRICS = [
   { metricKey: 'share_events', label: 'share clicks', type: 'ux_anomaly', extract: (m) => m.share_events },
   { metricKey: 'favorite_events', label: 'favorite attempts', type: 'ux_anomaly', extract: (m) => m.favorite_events },
   { metricKey: 'map_events', label: 'map usage', type: 'ux_anomaly', extract: (m) => m.map_events },
+  // ── BI additions (20260725000000_intelligence_bi_metrics.sql) ─────────
+  // new_listings_added/listings_removed finally give the previously-unwired
+  // 'supply_shortage' type a real detector (same z-score mechanism, no new
+  // machinery) — a supply_shortage insight now genuinely means "listings
+  // added/removed moved significantly off this metric's own 30-day norm."
+  { metricKey: 'new_listings_added', label: 'new listings added', type: 'supply_shortage', extract: (m) => m.new_listings_added },
+  { metricKey: 'listings_removed', label: 'listings removed', type: 'supply_shortage', extract: (m) => m.listings_removed },
+  // active_inventory is point-in-time (see point_in_time_supply_snapshot()
+  // in the migration) and only non-null on the single most-recently-
+  // finalized day of each snapshot write — extract() correctly returns
+  // undefined for every earlier day, which detectSignificance()'s minSample
+  // guard already treats as "not enough history yet," not a false zero.
+  { metricKey: 'active_inventory.total', label: 'active inventory', type: 'supply_shortage', extract: (m) => (m.active_inventory && typeof m.active_inventory.total === 'number') ? m.active_inventory.total : undefined },
+  { metricKey: 'search_to_view_conversion', label: 'search-to-view conversion', type: 'conversion_anomaly', extract: (m) => (typeof m.search_to_view_conversion === 'number' ? m.search_to_view_conversion * 100 : undefined) },
+  { metricKey: 'view_to_contact_conversion', label: 'view-to-contact conversion', type: 'conversion_anomaly', extract: (m) => (typeof m.view_to_contact_conversion === 'number' ? m.view_to_contact_conversion * 100 : undefined) },
+  // Wires up the previously-unused 'price_trend' type. Two separate scalar
+  // metrics (not one nested one) since for_sale and for_rent prices are
+  // different scales and each deserves its own independent 30-day baseline.
+  { metricKey: 'asking_price.for_sale.median', label: 'median asking price (for sale)', type: 'price_trend', extract: (m) => (m.asking_price && m.asking_price.for_sale && typeof m.asking_price.for_sale.median === 'number') ? m.asking_price.for_sale.median : undefined },
+  { metricKey: 'asking_price.for_rent.median', label: 'median asking rent', type: 'price_trend', extract: (m) => (m.asking_price && m.asking_price.for_rent && typeof m.asking_price.for_rent.median === 'number') ? m.asking_price.for_rent.median : undefined },
 ];
 
 const TRACKED_BREAKDOWN_METRICS = [
@@ -181,6 +201,12 @@ const TRACKED_BREAKDOWN_METRICS = [
   { metricKey: 'search.by_property_type', label: 'searches', type: 'demand_spike', extract: (m) => (m.search ? m.search.by_property_type : undefined), dimension: 'propertyType' },
   { metricKey: 'views_by_district', label: 'listing views', type: 'demand_spike', extract: (m) => m.views_by_district, dimension: 'district' },
   { metricKey: 'views_by_property_type', label: 'listing views', type: 'demand_spike', extract: (m) => m.views_by_property_type, dimension: 'propertyType' },
+  // Powers "inventory growth by district/type" as a real detected insight
+  // (a district's active-listing count moving significantly off its own
+  // 30-day baseline) rather than requiring a bespoke growth-rate module —
+  // same point-in-time caveat as active_inventory.total above.
+  { metricKey: 'active_inventory.by_district', label: 'active inventory', type: 'supply_shortage', extract: (m) => (m.active_inventory ? m.active_inventory.by_district : undefined), dimension: 'district' },
+  { metricKey: 'active_inventory.by_property_type', label: 'active inventory', type: 'supply_shortage', extract: (m) => (m.active_inventory ? m.active_inventory.by_property_type : undefined), dimension: 'propertyType' },
 ];
 
 // Re-exported for tests/tooling that want to inspect what's currently

@@ -29,6 +29,7 @@ import {
 import { callGemini } from './gemini-client.js';
 import { computeAllTrends, dataConfidenceLabel, pctChange } from './trend-calculator.js';
 import { validateReportContent, buildValidationFallbackReport } from './report-validator.js';
+import { SNAPSHOT_SCHEMA_VERSION, REPORT_FORMAT_VERSION, PROMPT_VERSION, VALIDATOR_VERSION } from './versions.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -419,6 +420,13 @@ Deno.serve(async (req) => {
     let modelUsed: string;
     let narrativeFallbackUsed = false;
     let contradictionsDetected: string[] = [];
+    // Quiet-day reports and the validation fallback never actually call
+    // Gemini or (in the fallback case) end up validated against the prompt
+    // that failed — prompt_version/validator_version stay null for those,
+    // matching versions.js's documented "null = never ran" convention
+    // rather than claiming a prompt/validator run that didn't happen.
+    let promptVersionUsed: string | null = null;
+    let validatorVersionUsed: string | null = null;
     if (reportType === 'daily' && isQuietPeriod(composed)) {
       gemini = buildQuietDayReport(reportType, period);
       modelUsed = 'deterministic';
@@ -428,6 +436,8 @@ Deno.serve(async (req) => {
       const prompt = buildPrompt(reportType, composed, rawMetricsSummary, supply, trendAnalysis);
       gemini = await callGemini(apiKey, prompt);
       modelUsed = 'gemini-2.5-flash';
+      promptVersionUsed = PROMPT_VERSION;
+      validatorVersionUsed = VALIDATOR_VERSION;
 
       // Validation Layer (product spec §4/§9): mechanically checks the
       // narrative Gemini just wrote against the deterministic data it was
@@ -501,6 +511,10 @@ Deno.serve(async (req) => {
       model_used: modelUsed,
       data_confidence: confidence,
       validation: validationLog,
+      snapshot_version: SNAPSHOT_SCHEMA_VERSION,
+      report_version: REPORT_FORMAT_VERSION,
+      prompt_version: promptVersionUsed,
+      validator_version: validatorVersionUsed,
     }]);
 
     // report_insights links: deduplicated and role-assigned by the Report

@@ -604,6 +604,27 @@ async function viewReportById(id) {
       '</div></div>'
     : '';
 
+  // Version metadata (product spec: "every generated report must include
+  // version metadata for traceability"). generated_at/model_used already
+  // render above (report-meta line) as Generated Timestamp/AI Model
+  // Version — not repeated here. Null-guarded per field, not just per
+  // section: reports generated before 20260725000000_intelligence_bi_
+  // metrics.sql shipped have all four columns NULL (deliberately not
+  // backfilled — see that migration's comments), and quiet-day/fallback
+  // reports never ran a prompt or validator, so those two stay NULL even
+  // on new reports. Both cases render "n/a", never a fabricated version.
+  const verRow = (label, val) => '<div class="dq-row">' + esc(label) + ': ' + esc(val || 'n/a') + '</div>';
+  const versionMetadataHtml =
+    '<div class="supporting-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">▸ Version metadata</div>' +
+    '<div class="supporting-panel"><div class="dq-panel">' +
+      verRow('Snapshot version', report.snapshot_version) +
+      verRow('Report version', report.report_version) +
+      verRow('Prompt version', report.prompt_version) +
+      verRow('Validator version', report.validator_version) +
+      verRow('AI model version', report.model_used) +
+      verRow('Generated timestamp', fmtDateTime(report.generated_at)) +
+    '</div></div>';
+
   container.innerHTML =
     '<div class="report-card">' +
       '<div class="report-meta">' + esc(report.report_type.toUpperCase()) + ' · ' + esc(fmtDate(report.period_start)) +
@@ -621,6 +642,7 @@ async function viewReportById(id) {
       (metricCards ? '<div class="supporting-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">▸ Supporting data</div>' +
         '<div class="supporting-panel"><div class="metric-grid">' + metricCards + '</div></div>' : '') +
       dataQualityHtml +
+      versionMetadataHtml +
     '</div>';
 }
 
