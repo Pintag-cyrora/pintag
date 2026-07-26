@@ -164,6 +164,59 @@ export function readActiveCompanyName(): string {
   }
 }
 
+export interface ModelPrice {
+  /** USD per million input tokens. */
+  input: number;
+  /** USD per million output tokens. */
+  output: number;
+}
+
+export interface BudgetConfig {
+  monthlyCeilingUsd: number;
+  dailyCeilingUsd: number;
+  perRunCeilingUsd: number;
+  perCallCeilingUsd: number;
+  /** Operator-maintained list pricing, keyed by model id. Used ONLY when a provider doesn't report real cost. */
+  modelPrices: Record<string, ModelPrice>;
+}
+
+/**
+ * Conservative fallbacks used only when brain/org-config.json is missing or
+ * corrupt. Deliberately LOW rather than generous: if configuration can't be
+ * read, the safe failure is to spend little, not to spend freely.
+ */
+const DEFAULT_BUDGET_CONFIG: BudgetConfig = {
+  monthlyCeilingUsd: 100,
+  dailyCeilingUsd: 10,
+  perRunCeilingUsd: 3,
+  perCallCeilingUsd: 0.5,
+  modelPrices: {},
+};
+
+/** Same read-once/fall-back-to-defaults discipline as the other readers here. */
+export function readBudgetConfig(): BudgetConfig {
+  try {
+    const b = loadOrgConfig().budget;
+    const prices: Record<string, ModelPrice> = {};
+    for (const [model, price] of Object.entries(b?.model_prices_usd_per_mtok ?? {})) {
+      const p = price as { input?: unknown; output?: unknown };
+      // A half-specified price would silently under-count spend, so require both.
+      if (typeof p?.input === 'number' && typeof p?.output === 'number') {
+        prices[model] = { input: p.input, output: p.output };
+      }
+    }
+    return {
+      monthlyCeilingUsd: typeof b?.monthly_ceiling_usd === 'number' ? b.monthly_ceiling_usd : DEFAULT_BUDGET_CONFIG.monthlyCeilingUsd,
+      dailyCeilingUsd: typeof b?.daily_ceiling_usd === 'number' ? b.daily_ceiling_usd : DEFAULT_BUDGET_CONFIG.dailyCeilingUsd,
+      perRunCeilingUsd: typeof b?.per_run_ceiling_usd === 'number' ? b.per_run_ceiling_usd : DEFAULT_BUDGET_CONFIG.perRunCeilingUsd,
+      perCallCeilingUsd: typeof b?.per_call_ceiling_usd === 'number' ? b.per_call_ceiling_usd : DEFAULT_BUDGET_CONFIG.perCallCeilingUsd,
+      modelPrices: prices,
+    };
+  } catch {
+    return DEFAULT_BUDGET_CONFIG;
+  }
+}
+
 export interface LanguageDefaults {
   primary: Language;
   secondary: Language | null;

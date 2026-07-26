@@ -9,6 +9,7 @@
 
 import { escapeHtml, pageShell } from './shell.js';
 import type { RunRecord, RunStatus, RunDepartment } from '../../services/runs/types.js';
+import type { BudgetStatus } from '../../services/budget/budget.js';
 
 const STATUS_ICON: Record<RunStatus, string> = { running: '◌', complete: '✓', failed: '✕', interrupted: '⚠' };
 
@@ -53,6 +54,13 @@ const RUNS_STYLE = `<style>
 .runs-stat-value{font-size:20px;font-weight:700;}
 .runs-stat-label{font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);margin-top:2px;}
 .ledger-warning{background:rgba(184,134,11,0.1);border:1px solid rgba(184,134,11,0.3);color:var(--gold);border-radius:10px;padding:12px 16px;font-size:14px;margin-bottom:16px;}
+.budget-row{margin-bottom:14px;}
+.budget-label{font-size:14px;font-weight:600;display:flex;justify-content:space-between;gap:12px;margin-bottom:5px;}
+.budget-figures{font-weight:400;color:var(--ink-muted);font-variant-numeric:tabular-nums;}
+.budget-track{height:8px;background:var(--warm-deep);border-radius:5px;overflow:hidden;}
+.budget-fill{height:100%;border-radius:5px;}
+.budget-note{font-size:12px;color:var(--ink-muted);margin-top:8px;line-height:1.5;}
+.budget-warn{color:var(--gold);}
 </style>`;
 
 /** "3m 12s", or "running for 40s" when unfinished. Computed here because it's pure presentation over two timestamps the record already carries. */
@@ -70,7 +78,44 @@ function outputLine(run: RunRecord): string {
   return entries.map(([k, v]) => `${k}: ${String(v)}`).join(' · ');
 }
 
-export function renderRunsPage(runs: RunRecord[], opts: { ledgerAvailable: boolean } = { ledgerAvailable: true }): string {
+/**
+ * Spend against the enforced ceilings (step 2). Shown here rather than on a
+ * separate page because spend and runs are the same story: this is where the
+ * founder finds out what last night cost, which the roadmap calls for from day
+ * one (§11). Bars fill toward the configured limits so approaching one is
+ * visible before a run gets refused.
+ */
+function budgetCard(budget: BudgetStatus): string {
+  const bar = (label: string, spent: number, ceiling: number) => {
+    const pct = ceiling > 0 ? Math.min(100, (spent / ceiling) * 100) : 0;
+    // Colour tracks proximity to refusal, not an arbitrary scale: at 100% the
+    // next call is rejected, so 90%+ genuinely warrants red.
+    const color = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--gold)' : 'var(--teal)';
+    return `<div class="budget-row">
+      <div class="budget-label">${escapeHtml(label)}<span class="budget-figures">$${spent.toFixed(2)} / $${ceiling.toFixed(2)}</span></div>
+      <div class="budget-track"><div class="budget-fill" style="width:${pct.toFixed(1)}%;background:${color};"></div></div>
+    </div>`;
+  };
+
+  const unknownWarning = budget.known
+    ? ''
+    : `<p class="budget-note budget-warn">Spend history couldn't be read, so these totals cover only this session. A founder-triggered run is still allowed in this state (you're watching it); an unattended run would be refused.</p>`;
+  const unpricedWarning =
+    budget.unpricedCalls > 0
+      ? `<p class="budget-note budget-warn">${budget.unpricedCalls} call(s) this session had no configured price, so their real cost isn't counted against any ceiling. Add the model to <code>budget.model_prices_usd_per_mtok</code>.</p>`
+      : '';
+
+  return `<div class="card"><div class="card-title">💵 Budget</div>
+    ${bar('Today', budget.todayUsd, budget.dailyCeilingUsd)}
+    ${bar('This month', budget.monthUsd, budget.monthlyCeilingUsd)}
+    ${budget.perRunUsd > 0 ? bar('Current run', budget.perRunUsd, budget.perRunCeilingUsd) : ''}
+    ${unknownWarning}
+    ${unpricedWarning}
+    <p class="budget-note">Ceilings are enforced before every LLM call — reaching one stops work rather than truncating it. Change them in <code>brain/org-config.json</code>.</p>
+  </div>`;
+}
+
+export function renderRunsPage(runs: RunRecord[], opts: { ledgerAvailable: boolean; budget?: BudgetStatus } = { ledgerAvailable: true }): string {
   const now = Date.now();
   const completed = runs.filter((r) => r.status === 'complete').length;
   const failed = runs.filter((r) => r.status === 'failed' || r.status === 'interrupted').length;
@@ -107,6 +152,7 @@ export function renderRunsPage(runs: RunRecord[], opts: { ledgerAvailable: boole
   <h1 style="font-size:22px;font-weight:600;margin-bottom:4px;">🗂 Run History</h1>
   <div class="run-meta" style="margin-bottom:20px;">Every department execution, newest first — whether you asked for it or it ran on its own.</div>
   ${warning}
+  ${opts.budget ? budgetCard(opts.budget) : ''}
   ${
     runs.length
       ? `<div class="runs-summary">

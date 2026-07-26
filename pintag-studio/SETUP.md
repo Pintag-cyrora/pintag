@@ -150,6 +150,27 @@ Apply migration `0006_pipeline_runs.sql` (same project, same way as the others �
 
 Why it matters beyond convenience: run state used to live in memory and die with the process. Durable records are what let the Morning Brief eventually *report on completed work* instead of generating it on demand — see `EXECUTION_ARCHITECTURE.md` §7 and §8.1.
 
+## 12. Budget ceilings (autonomy roadmap step 2) — now enforced
+
+`brain/org-config.json`'s `budget` section used to be documentation. It is now **checked before every LLM call**. Nothing to install; you may want to adjust the numbers:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `per_call_ceiling_usd` | 0.50 | One call. On the API provider this becomes a `max_tokens` cap — the only way the Messages API can express a dollar limit. |
+| `per_run_ceiling_usd` | 3.00 | One brief or campaign. Enforced purely in-process, so it works even without Supabase. |
+| `daily_ceiling_usd` | 10.00 | Per UTC day, across every run. |
+| `monthly_ceiling_usd` | 100.00 | Per UTC month. |
+| `model_prices_usd_per_mtok` | — | **Operator-maintained.** List prices per million tokens, used only when a provider doesn't report real cost. |
+
+Reaching a ceiling **stops the run** with a message naming which ceiling and how to raise it — deliberately not a silent truncation, which would leave you with half a campaign.
+
+**Two things worth understanding:**
+
+1. **Cost is measured, not estimated — where that's possible.** The Claude CLI reports real spend (and it's higher than you might guess: a trivial call measured $0.21, mostly cache creation). The Anthropic API reports tokens only, so its cost is computed from the price table above. **If a model isn't in that table, its calls are "unpriced"** — real spend that no ceiling can count. Founder-triggered runs warn; unattended runs refuse. Keep the table current: stale prices make the ceiling wrong in a way no code can detect.
+2. **What happens when spend history can't be read** (Supabase down, migration 0006 not applied) depends on who asked for the work. A run *you* triggered proceeds with a warning — you're watching it and can stop it. A **scheduled** run refuses to spend, because nobody is. That asymmetry is the point of the whole step: it's the difference in risk between attended and unattended work.
+
+Spend against all ceilings is shown on the **Runs** page.
+
 ## Daily use — starting Marketing OS (no Terminal needed)
 
 Once step 1 (Supabase) is done, this is the everyday way to open Marketing OS — the Founder Workspace (`npm run founder-ui`) is the browser front end for everything else in this file.

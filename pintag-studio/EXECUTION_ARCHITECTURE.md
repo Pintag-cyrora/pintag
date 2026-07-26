@@ -1,6 +1,6 @@
 # Execution Architecture — where Marketing OS pipelines actually run
 
-**Status:** Phase 1 shipped (deployed Founder Workspace, `SETUP.md` §10). Part II (autonomy roadmap) step 1 in progress; everything else is a proposal.
+**Status:** Phase 1 shipped (deployed Founder Workspace, `SETUP.md` §10). Part II (autonomy roadmap): **steps 1 and 2 done** (run ledger, enforced budget). Step 3 (the Morning Brief becoming a reporter) is next; steps 4-7 remain proposals.
 
 **The question this document answers:** every department (Morning, Research, Content, Video, Analytics, Publisher) should be triggerable from the web UI on any device, without a local `npm` command. What should execute them?
 
@@ -217,11 +217,31 @@ The brief's new sections map directly onto what the CEO asked for: what each dep
 
 Fine for one process on one machine. Fatal for: multiple workers, container-per-run, a second business, or surviving a redeploy — which is also why M4's learning records currently wouldn't survive a container restart. `retrieveKnowledge()` was built as a storage-swap seam (see `knowledge-sources/lao-brain.ts`); this is that seam being used as designed.
 
-### 8.3 Enforced budget — *hard prerequisite, not a nice-to-have*
+### 8.3 Enforced budget — *step 2, DONE*
 
-`brain/org-config.json`'s `monthly_ceiling_usd: 100` is **documentation**. `maxBudgetUsd: 0.3` caps a single call. Nothing caps a day.
+Previously `monthly_ceiling_usd: 100` was **documentation** — nothing read it — and `AnthropicApiProvider` ignored `maxBudgetUsd` entirely, meaning the deployed (phone) path had *no* cap of any kind.
 
-> **Unattended loop + API key + unenforced ceiling is the single most dangerous combination in this plan.** A retry storm at 3am is a real bill and nobody is watching. Per-run and per-day ceilings, checked *before* spending, must land before the first scheduled producer run.
+Now enforced in `services/budget/`, checked before every LLM call at the single choke point (`lib/agent.ts`'s `runAgent()`):
+
+| Ceiling | Source | Notes |
+|---|---|---|
+| per call | `budget.per_call_ceiling_usd` | API provider translates it into a `max_tokens` cap — the only way the Messages API can express a dollar limit |
+| per run | `budget.per_run_ceiling_usd` | Pure in-process; works with no Supabase at all |
+| per day (UTC) | `budget.daily_ceiling_usd` | Ledger spend + this process's in-flight spend |
+| per month (UTC) | `budget.monthly_ceiling_usd` | Same |
+
+**Cost is measured, never estimated when a real figure exists.** The Claude CLI reports real `total_cost_usd` (verified against live output — and worth knowing: a trivial call measured **$0.21**, mostly cache-creation, which token counts alone cannot reconstruct). The Anthropic API returns tokens only, so dollars come from operator-maintained rates. A model with no configured rate produces an **unpriced** call: real spend that cannot be counted, recorded as such rather than as $0.
+
+**The load-bearing decision — fail-open or fail-closed depends on who asked:**
+
+- `trigger: 'founder'` → degrade **open** with a warning. The founder is watching a progress screen and can stop it; refusing their work because a spend query failed trades a real capability for no safety.
+- `trigger: 'schedule' | 'department'` → degrade **closed**. Nobody is watching. If spend can't be proven under the ceiling, don't spend.
+
+That asymmetry is the whole point: it's exactly the risk difference between attended and unattended work. Unpriced calls follow the same rule — a founder run warns, an unattended run refuses rather than flying blind.
+
+Exceeding a ceiling **throws**, so a run stops cleanly rather than producing half a campaign. Spend is visible against ceilings on `/runs`, and recorded onto `pipeline_runs.cost_usd` — including on failure, so a crash-loop isn't free.
+
+**Still open:** stale prices make the ceiling wrong in a way no code can detect (`model_prices_usd_per_mtok` needs updating when Anthropic's list prices change), and per-run attribution assumes one run at a time per process — two overlapping runs would cross-attribute.
 
 ## 9. Graduate trust with the ladder that already exists
 
@@ -285,8 +305,8 @@ The mechanism exists in embryo: `proposeSuggestion()` → `knowledge-suggestions
 
 | Step | What | Why now |
 |---|---|---|
-| **1** | **Run ledger** (`pipeline_runs`) | Replaces in-memory state. Useful immediately, no autonomy yet |
-| **2** | **Budget enforcement** (per-run, per-day) | Hard gate before anything unattended spends money |
+| ~~1~~ | ~~**Run ledger** (`pipeline_runs`)~~ **DONE** | Replaces in-memory state. Useful immediately, no autonomy yet — see §8.1 |
+| ~~2~~ | ~~**Budget enforcement** (per-run, per-day)~~ **DONE** | Hard gate before anything unattended spends money — see §8.3 |
 | **3** | **Morning Brief becomes a reporter** over the ledger | Still founder-triggered — but now reports *history*, so the autonomous product becomes visible |
 | **4** | **Knowledge into Postgres** | Unblocks workers, containers, second business, durable learning |
 | **5** | **Schedule the observers only** | Cheap, idempotent, zero approval risk. First real autonomy, lowest stakes |

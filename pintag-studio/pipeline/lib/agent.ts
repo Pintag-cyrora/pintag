@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getLlmProvider, type LlmModelTier } from './llm.js';
+import { assertWithinBudget, recordUsage } from '../services/budget/budget.js';
 import { REPO_ROOT } from './config.js';
 import type { AgentName } from './health.js';
 
@@ -49,16 +50,30 @@ export interface RunAgentOptions {
  * calls through. Loads the target employee's context, delegates the actual
  * model call to whichever LlmProvider is configured (pipeline/lib/llm.ts),
  * and returns the raw text response — callers own parsing/validation.
+ *
+ * This is also the single budget choke point (autonomy roadmap step 2). The
+ * gate lives here rather than inside the providers on purpose: every agent call
+ * in the system already routes through this function, and llm.ts is
+ * deliberately kept free of service-layer dependencies. Nothing spends money
+ * without passing assertWithinBudget() first, and every completed call's
+ * measured cost is recorded — so the next call's gate sees it.
  */
 export async function runAgent(agentName: AgentName, options: RunAgentOptions): Promise<string> {
+  await assertWithinBudget({ agentName });
+
   const systemPrompt = loadAgentSystemPrompt(agentName);
-  return getLlmProvider().complete({
+  const completion = await getLlmProvider().complete({
     systemPrompt,
     userPrompt: options.userPrompt,
     jsonShapeHint: options.jsonShapeHint,
     maxBudgetUsd: options.maxBudgetUsd,
     modelTier: options.modelTier,
   });
+
+  // Recorded even on a malformed response — the spend happened regardless of
+  // whether the output turned out to be usable.
+  recordUsage(completion.usage);
+  return completion.text;
 }
 
 /**

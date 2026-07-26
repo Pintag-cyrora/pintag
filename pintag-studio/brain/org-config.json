@@ -126,6 +126,14 @@
 
   "budget": {
     "monthly_ceiling_usd": 100,
-    "note": "See architecture doc Section 6 for the tool-by-tool cost reasoning."
+    "daily_ceiling_usd": 10,
+    "per_run_ceiling_usd": 3,
+    "per_call_ceiling_usd": 0.5,
+    "model_prices_usd_per_mtok": {
+      "claude-sonnet-5": { "input": 3, "output": 15 },
+      "claude-opus-5": { "input": 15, "output": 75 },
+      "claude-haiku-4-5-20251001": { "input": 1, "output": 5 }
+    },
+    "note": "ENFORCED as of the autonomy roadmap's step 2 (EXECUTION_ARCHITECTURE.md §8.3) — these were documentation only before. Checked before every LLM call by pipeline/services/budget/, which reads real measured spend from pipeline_runs.cost_usd plus the current process's accumulated spend. Exceeding a ceiling throws rather than truncating work, so a run stops cleanly instead of producing half a campaign. monthly/daily ceilings are what protect against an unattended overnight loop; per_run/per_call catch a single runaway. model_prices_usd_per_mtok is OPERATOR-MAINTAINED list pricing in USD per million tokens, used only to compute cost when a provider doesn't report it (the Claude Code CLI reports real total_cost_usd and is always preferred; the Anthropic API returns token counts only). A model missing from this table produces an UNPRICED call — spend that cannot be counted — which founder-triggered runs allow with a warning and scheduled runs refuse, since nobody is watching those. Update prices when Anthropic's change; stale rates make the ceiling wrong in a way no code can detect. See architecture doc Section 6 for the tool-by-tool cost reasoning."
   }
 }

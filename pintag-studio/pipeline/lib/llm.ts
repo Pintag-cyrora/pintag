@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
+import { readBudgetConfig } from './config.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -31,8 +32,49 @@ export interface LlmCompletionInput {
   modelTier?: LlmModelTier;
 }
 
+/**
+ * What a call actually cost, measured — never estimated when a real number is
+ * available (autonomy roadmap step 2, EXECUTION_ARCHITECTURE.md §8.3).
+ *
+ * `source` matters because the two providers know different things:
+ *   'provider-reported' — the Claude Code CLI returns real `total_cost_usd`.
+ *                         Authoritative; includes cache-creation cost, which
+ *                         is a large share of real spend and is impossible to
+ *                         reconstruct from token counts alone.
+ *   'computed-from-configured-rates' — the Anthropic API returns token counts
+ *                         only, so cost comes from operator-maintained rates
+ *                         in brain/org-config.json. Correct only insofar as
+ *                         those rates are current.
+ *   'unpriced'          — tokens known, but no rate configured for the model.
+ *                         costUsd is undefined: spend HAPPENED and cannot be
+ *                         counted. Treated as a hole in the ceiling, not as $0.
+ */
+export type LlmCostSource = 'provider-reported' | 'computed-from-configured-rates' | 'unpriced';
+
+export interface LlmUsage {
+  /** Undefined ONLY when genuinely unknowable. Never a guess, never 0-as-a-placeholder. */
+  costUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  model?: string;
+  source: LlmCostSource;
+}
+
+export interface LlmCompletion {
+  text: string;
+  usage: LlmUsage;
+}
+
 export interface LlmProvider {
-  complete(input: LlmCompletionInput): Promise<string>;
+  complete(input: LlmCompletionInput): Promise<LlmCompletion>;
+}
+
+/** Cost from token counts and configured rates, or undefined when the model has no configured price. */
+function priceFromTokens(model: string | undefined, inputTokens: number, outputTokens: number): number | undefined {
+  if (!model) return undefined;
+  const price = readBudgetConfig().modelPrices[model];
+  if (!price) return undefined;
+  return (inputTokens / 1_000_000) * price.input + (outputTokens / 1_000_000) * price.output;
 }
 
 /**
@@ -51,7 +93,7 @@ export interface LlmProvider {
  * deterministic checks in pipeline/stages/06-guardian-review.ts.
  */
 export class ClaudeCliProvider implements LlmProvider {
-  async complete(input: LlmCompletionInput): Promise<string> {
+  async complete(input: LlmCompletionInput): Promise<LlmCompletion> {
     const prompt = input.jsonShapeHint
       ? `${input.userPrompt}\n\nRespond with ONLY valid JSON matching this shape, no markdown code fences, no explanation:\n${input.jsonShapeHint}`
       : input.userPrompt;
@@ -88,7 +130,25 @@ export class ClaudeCliProvider implements LlmProvider {
     if (typeof envelope.result !== 'string') {
       throw new Error(`claude -p returned no usable result field: ${stdout.slice(0, 500)}`);
     }
-    return envelope.result;
+
+    // The CLI reports real spend in `total_cost_usd` (verified against live
+    // output). Prefer it over anything computed: it accounts for
+    // cache-creation tokens, which dominate cost on short prompts and can't
+    // be reconstructed from input/output counts.
+    const usage: LlmUsage = { source: 'unpriced' };
+    if (typeof envelope.total_cost_usd === 'number') {
+      usage.costUsd = envelope.total_cost_usd;
+      usage.source = 'provider-reported';
+    }
+    // `modelUsage` is keyed by model id, one entry per model the call touched.
+    const modelUsage = envelope.modelUsage as Record<string, { inputTokens?: number; outputTokens?: number }> | undefined;
+    if (modelUsage) {
+      const [model, counts] = Object.entries(modelUsage)[0] ?? [];
+      if (model) usage.model = model;
+      if (typeof counts?.inputTokens === 'number') usage.inputTokens = counts.inputTokens;
+      if (typeof counts?.outputTokens === 'number') usage.outputTokens = counts.outputTokens;
+    }
+    return { text: envelope.result, usage };
   }
 }
 
@@ -98,7 +158,10 @@ export class ClaudeCliProvider implements LlmProvider {
  * subprocess (e.g. some CI runners) — see SETUP.md.
  */
 export class AnthropicApiProvider implements LlmProvider {
-  async complete(input: LlmCompletionInput): Promise<string> {
+  /** Ceiling on a single response, so `max_tokens` can never be raised above what the call's budget can pay for. */
+  private static readonly DEFAULT_MAX_TOKENS = 4096;
+
+  async complete(input: LlmCompletionInput): Promise<LlmCompletion> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       throw new Error('LLM_PROVIDER=anthropic-api requires ANTHROPIC_API_KEY to be set — see SETUP.md.');
@@ -107,6 +170,21 @@ export class AnthropicApiProvider implements LlmProvider {
     const prompt = input.jsonShapeHint
       ? `${input.userPrompt}\n\nRespond with ONLY valid JSON matching this shape, no markdown code fences, no explanation:\n${input.jsonShapeHint}`
       : input.userPrompt;
+
+    const model =
+      (input.modelTier ?? 'reasoning') === 'fast'
+        ? process.env.LLM_FAST_MODEL ?? 'claude-haiku-4-5-20251001'
+        : process.env.LLM_REASONING_MODEL ?? 'claude-sonnet-5';
+
+    // Translate the call's dollar ceiling into a token ceiling. Only possible
+    // when the model has a configured output rate; without one we fall back to
+    // the default cap and the resulting call is recorded as 'unpriced', which
+    // the budget gate treats as a hole rather than as free.
+    const budget = readBudgetConfig();
+    const ceilingUsd = input.maxBudgetUsd ?? budget.perCallCeilingUsd;
+    const outputRate = budget.modelPrices[model]?.output;
+    const affordableTokens = outputRate ? Math.floor((ceilingUsd / outputRate) * 1_000_000) : undefined;
+    const maxTokens = affordableTokens === undefined ? AnthropicApiProvider.DEFAULT_MAX_TOKENS : Math.max(256, Math.min(AnthropicApiProvider.DEFAULT_MAX_TOKENS, affordableTokens));
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -119,11 +197,14 @@ export class AnthropicApiProvider implements LlmProvider {
         // Same tier mapping as ClaudeCliProvider: 'reasoning' keeps the
         // pre-M3 default model; 'fast' routes to the small model. Both
         // overridable by env without a code change.
-        model:
-          (input.modelTier ?? 'reasoning') === 'fast'
-            ? process.env.LLM_FAST_MODEL ?? 'claude-haiku-4-5-20251001'
-            : process.env.LLM_REASONING_MODEL ?? 'claude-sonnet-5',
-        max_tokens: 4096,
+        model,
+        // Per-call budget enforcement (step 2). This provider previously
+        // ignored maxBudgetUsd ENTIRELY — a real gap, because it's the
+        // provider a deployed instance uses, so the phone path had no cap of
+        // any kind. The API has no budget parameter, so the cap is applied the
+        // only way it can be: by bounding max_tokens to what the remaining
+        // budget can actually pay for at the configured output rate.
+        max_tokens: maxTokens,
         system: input.systemPrompt,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -138,7 +219,25 @@ export class AnthropicApiProvider implements LlmProvider {
     if (typeof text !== 'string') {
       throw new Error(`Anthropic API returned no usable text content: ${JSON.stringify(data).slice(0, 500)}`);
     }
-    return text;
+
+    // Token counts are authoritative here; dollars are not — the API doesn't
+    // report cost, so it's computed from configured rates. When the model has
+    // no configured rate the call is 'unpriced': real spend the ceiling cannot
+    // account for, which the budget gate surfaces rather than treating as $0.
+    const inputTokens = typeof data.usage?.input_tokens === 'number' ? data.usage.input_tokens : undefined;
+    const outputTokens = typeof data.usage?.output_tokens === 'number' ? data.usage.output_tokens : undefined;
+    const costUsd = inputTokens !== undefined && outputTokens !== undefined ? priceFromTokens(model, inputTokens, outputTokens) : undefined;
+
+    return {
+      text,
+      usage: {
+        costUsd,
+        inputTokens,
+        outputTokens,
+        model,
+        source: costUsd === undefined ? 'unpriced' : 'computed-from-configured-rates',
+      },
+    };
   }
 }
 

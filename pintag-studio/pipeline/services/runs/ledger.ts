@@ -150,11 +150,17 @@ export async function completeRun(
   await finishRun(runId, 'complete', { output: opts.output, costUsd: opts.costUsd });
 }
 
-/** Closes a run as failed, recording the message the founder will actually see. */
-export async function failRun(runId: string | null, err: unknown, opts: { output?: Record<string, unknown> } = {}): Promise<void> {
+/**
+ * Closes a run as failed, recording the message the founder will actually see.
+ * Takes `costUsd` because a run that spent money and then broke must still
+ * count against the budget ceiling — otherwise a crash-loop would be free
+ * (see services/budget/).
+ */
+export async function failRun(runId: string | null, err: unknown, opts: { output?: Record<string, unknown>; costUsd?: number } = {}): Promise<void> {
   await finishRun(runId, 'failed', {
     error: err instanceof Error ? err.message : String(err),
     output: opts.output,
+    costUsd: opts.costUsd,
   });
 }
 

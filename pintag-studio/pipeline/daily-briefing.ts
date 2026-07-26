@@ -29,7 +29,9 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT } from './lib/config.js';
 import { generateMorningBrief } from './services/morning/generate.js';
-import { writeMorningBrief } from './services/morning/persist.js';
+import { writeMorningBrief, readLatestMorningBrief } from './services/morning/persist.js';
+import { setExecutionTrigger, resetSpendAccounting, currentSpend } from './services/budget/budget.js';
+import { startRun, completeRun, failRun } from './services/runs/ledger.js';
 import { publishMorningBriefToSupabase } from './services/morning/publish.js';
 import { renderMorningTerminal } from './renderers/terminal/render.js';
 import { renderMorningPage } from './renderers/web/render.js';
@@ -76,8 +78,27 @@ export async function generateDailyBriefing(): Promise<string> {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  generateDailyBriefing().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+  // A terminal run is founder-triggered and spends against the same ceilings
+  // as everything else (services/budget/), and it gets its own run record so
+  // CLI spend isn't invisible to the daily/monthly budget — which it would be
+  // if only the server recorded runs.
+  setExecutionTrigger('founder');
+  resetSpendAccounting();
+  void (async () => {
+    const run = await startRun({ department: 'morning-brief', trigger: 'founder' });
+    try {
+      await generateDailyBriefing();
+      const spend = currentSpend();
+      await completeRun(run?.id ?? null, {
+        output: { generatedAt: readLatestMorningBrief()?.generatedAt },
+        costUsd: spend.calls > 0 && !(spend.totalUsd === 0 && spend.unpricedCalls > 0) ? spend.totalUsd : undefined,
+      });
+      console.log(`[Daily Briefing] Spend: $${spend.totalUsd.toFixed(4)} over ${spend.calls} call(s).`);
+    } catch (err) {
+      const spend = currentSpend();
+      await failRun(run?.id ?? null, err, { costUsd: spend.totalUsd > 0 ? spend.totalUsd : undefined });
+      console.error(err);
+      process.exit(1);
+    }
+  })();
 }

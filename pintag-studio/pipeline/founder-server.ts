@@ -67,6 +67,7 @@ import { renderCampaignPage, renderCampaignsPage, renderCampaignEditPage, render
 import { deriveFounderLearning, generateLessons, writeLearningSnapshot } from './services/learning/learn.js';
 import { startRun, completeRun, failRun, findRunningRun, findLatestRun, listRecentRuns, reconcileOrphanedRuns, isLedgerAvailable } from './services/runs/ledger.js';
 import { renderRunsPage } from './renderers/web/runs.js';
+import { setExecutionTrigger, resetSpendAccounting, currentSpend, budgetStatus } from './services/budget/budget.js';
 import {
   FEEDBACK_REASONS,
   RATEABLE_DEPARTMENTS,
@@ -619,22 +620,50 @@ async function handleMorningGenerate(res: ServerResponse): Promise<void> {
 
   sendJson(res, 202, await morningJobPayload());
 
+  // Budget accounting for this run starts from zero, and this run is
+  // founder-triggered — so a spend ceiling that can't be verified degrades
+  // open with a warning rather than refusing work the founder is watching
+  // (services/budget/budget.ts).
+  setExecutionTrigger('founder');
+  resetSpendAccounting();
+
   void generateDailyBriefing()
     .then(async () => {
       const generatedAt = readLatestMorningBrief()?.generatedAt;
       morningJob = { status: 'complete', startedAt, finishedAt: new Date().toISOString(), generatedAt };
-      await completeRun(morningRunId, { output: generatedAt ? { generatedAt } : {} });
-      console.log('[founder-server] Morning Brief generation finished (triggered via API).');
+      await completeRun(morningRunId, { output: generatedAt ? { generatedAt } : {}, costUsd: recordedSpend() });
+      console.log(`[founder-server] Morning Brief generation finished (triggered via API). ${spendSummary()}`);
     })
     .catch(async (err) => {
       const message = err instanceof Error ? err.message : 'Unknown error';
       morningJob = { status: 'failed', startedAt, finishedAt: new Date().toISOString(), error: message };
-      await failRun(morningRunId, err);
+      // Cost is recorded on failure too: a run that spent money and then broke
+      // must still count against the ceiling, or a crash-loop would be free.
+      await failRun(morningRunId, err, { costUsd: recordedSpend() });
       console.error('[founder-server] Morning Brief generation failed (triggered via API):', err);
     })
     .finally(() => {
       morningRunId = null;
     });
+}
+
+/**
+ * The measured spend to attach to a finishing run, or undefined when nothing
+ * measurable was spent. Undefined rather than 0 when every call was unpriced:
+ * "we don't know" and "it was free" are different facts, and the ledger's
+ * cost column is documented to hold only measured values.
+ */
+function recordedSpend(): number | undefined {
+  const spend = currentSpend();
+  if (spend.calls === 0) return undefined;
+  if (spend.totalUsd === 0 && spend.unpricedCalls > 0) return undefined;
+  return spend.totalUsd;
+}
+
+function spendSummary(): string {
+  const spend = currentSpend();
+  const unpriced = spend.unpricedCalls > 0 ? `, ${spend.unpricedCalls} unpriced` : '';
+  return `Spend: $${spend.totalUsd.toFixed(4)} over ${spend.calls} call(s)${unpriced}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -698,19 +727,22 @@ function startCampaignRun(campaign: Campaign): void {
   activeCampaigns.set(campaign.id, campaign);
   void (async () => {
     const run = await startRun({ department: 'campaign', trigger: 'founder', progress: { campaignId: campaign.id, title: campaign.title } });
+    setExecutionTrigger('founder');
+    resetSpendAccounting();
     try {
       const finished = await executeCampaign(campaign);
       const output = { campaignId: finished.id, title: finished.title, status: finished.status, qaApproved: finished.qaReport?.approved ?? null };
       // A campaign that stops at a failed department is a failed run, even
       // though executeCampaign() returns normally — the ledger records what
       // actually happened, not whether the function threw.
-      if (finished.status === 'complete') await completeRun(run?.id ?? null, { output });
-      else await failRun(run?.id ?? null, finished.steps.find((s) => s.status === 'failed')?.detail ?? `Campaign ended as "${finished.status}"`, { output });
+      if (finished.status === 'complete') await completeRun(run?.id ?? null, { output, costUsd: recordedSpend() });
+      else await failRun(run?.id ?? null, finished.steps.find((s) => s.status === 'failed')?.detail ?? `Campaign ended as "${finished.status}"`, { output, costUsd: recordedSpend() });
+      console.log(`[Campaign ${campaign.id}] ${spendSummary()}`);
     } catch (err) {
       console.error(`[Campaign ${campaign.id}] Unexpected orchestration error:`, err);
       campaign.status = 'failed';
       writeCampaign(campaign);
-      await failRun(run?.id ?? null, err, { output: { campaignId: campaign.id } });
+      await failRun(run?.id ?? null, err, { output: { campaignId: campaign.id }, costUsd: recordedSpend() });
     } finally {
       activeCampaigns.delete(campaign.id);
     }
@@ -1022,7 +1054,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       // listRecentRuns() before isLedgerAvailable() — the availability flag is
       // only meaningful after a read has been attempted in this process.
       const runs = await listRecentRuns();
-      sendHtml(res, 200, renderRunsPage(runs, { ledgerAvailable: isLedgerAvailable() }));
+      sendHtml(res, 200, renderRunsPage(runs, { ledgerAvailable: isLedgerAvailable(), budget: await budgetStatus() }));
     } else if (req.method === 'GET' && pathname === '/learning') {
       sendHtml(res, 200, renderLearningPage(deriveFounderLearning(listCampaigns())));
     } else if (req.method === 'GET' && pathname === '/campaigns') {
