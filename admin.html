@@ -2958,6 +2958,15 @@ async function generateAIContent() {
   const districtEn = document.getElementById('f-district').value;
   const village    = document.getElementById('f-village').value.trim();
 
+  // Deposit — reuses rental-terms.js's own formatter rather than
+  // re-deriving "2 Months"/"500" from the raw {type,value} shape here;
+  // the "Deposit: " label prefix is stripped since the prompt already
+  // labels this line itself. Only ever non-null for a rental listing with
+  // a deposit actually entered — generateAIContent's prompt is what
+  // decides whether "when appropriate" means including it at all.
+  const depositRaw = _buildingRentalTermsValues.deposit;
+  const depositText = depositRaw ? (formatRentalTermValue('deposit', depositRaw, 'en') || '').replace(/^Deposit:\s*/, '') : '';
+
   const propertyData = {
     property_type:  document.getElementById('f-type').value,
     property_style: document.getElementById('f-style').value,
@@ -2971,7 +2980,8 @@ async function generateAIContent() {
     district:       districtEn,
     features:       getCheckedKeys('features-grid'),
     furnished:      getFieldValueSafe('f-furnished'),
-    nearby_places:  getNearbyPlaces()
+    nearby_places:  getNearbyPlaces(),
+    deposit_text:   depositText || null
   };
 
   const originalHtml = btn.innerHTML;

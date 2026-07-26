@@ -50,6 +50,13 @@ Deno.serve(async (req) => {
 
     const featuresList = Array.isArray(data.features) ? data.features.join(', ') : '';
 
+    // Only ever present for a rental listing with a deposit actually
+    // entered (admin.html sends null otherwise) — the prompt below only
+    // instructs mentioning it when this line exists at all, matching
+    // "included when appropriate" rather than forcing it into every
+    // description regardless of transaction type.
+    const depositLine = data.deposit_text ? `\n- Deposit: ${data.deposit_text}` : '';
+
     const prompt = `You are a professional real estate copywriter for Pintag, a premium real estate platform in Vientiane, Laos.
 
 Generate listing content in THREE languages: Lao (lo), English (en), and Chinese (zh).
@@ -66,7 +73,7 @@ PROPERTY DETAILS:
 - Village: ${data.village || 'not specified'}
 - District: ${data.district || 'not specified'}, Vientiane, Laos
 - Features: ${featuresList || 'not specified'}
-- Furnished: ${data.furnished || 'not specified'}
+- Furnished: ${data.furnished || 'not specified'}${depositLine}
 - Nearby Landmarks: ${nearbyNames.join(', ') || 'not specified'}
 
 CONTENT RULES:
@@ -90,6 +97,10 @@ DESCRIPTIONS (2–4 short paragraphs each):
 - Natural flowing language
 - No repetitive phrases
 - Each paragraph separated by a newline
+- If a Deposit is listed in PROPERTY DETAILS above, mention it naturally
+  in the description (e.g. as part of the rental terms), in all three
+  languages. If no Deposit line is present, do not mention a deposit at
+  all — never invent or estimate one.
 
 NEARBY LANDMARKS:
 - Translate each landmark to official/common names in all 3 languages

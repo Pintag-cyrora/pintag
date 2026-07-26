@@ -389,6 +389,29 @@ body{
         >
       </div>
 
+      <!-- Deposit (rental_terms.deposit, shared with admin.html/listing.html
+           via rental-terms.js's resolver — see that file's header). Shown
+           unconditionally, same as admin.html's own Rental Terms section:
+           harmless to leave empty on a sale listing, no separate
+           for-rent-only visibility toggle to maintain. -->
+      <div class="field">
+        <label>ເງິນມັດຈຳ (ຖ້າມີ)</label>
+
+        <div class="grid">
+          <select class="select" id="depositType">
+            <option value="">— ບໍ່ມີ —</option>
+          </select>
+
+          <input
+            type="number"
+            class="input"
+            id="depositAmount"
+            min="0"
+            placeholder="ຈຳນວນ"
+          >
+        </div>
+      </div>
+
     </div>
 
     <!-- LOCATION -->
@@ -544,6 +567,7 @@ body{
 <script src="dev-banner.js"></script>
 <script src="terminology.js"></script>
 <script src="amenities.js"></script>
+<script src="rental-terms.js"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -567,6 +591,31 @@ async function resolveMyPartyId(userId){
     .or(`auth_user_id.eq.${userId},id.eq.${userId}`)
     .limit(1);
   return (data && data[0]) || null;
+}
+
+// Deposit: the one Rental Term field this self-service form exposes (see
+// rental-terms.js). Hand-rolled here rather than calling
+// renderRentalTermsFields() -- that renderer hardcodes English option text
+// (admin.html is English-only), while this page is Lao-only like the rest
+// of its fields; only the option VALUES/registry are shared, not the DOM.
+// Reads/writes go through resolveRentalTerms()/buildRentalTermsPayload()
+// (rental-terms.js) so this is still one source of truth for the deposit
+// shape, not a parallel implementation.
+(function populateDepositTypeOptions(){
+  const sel = document.getElementById('depositType');
+  RENTAL_MONTHS_OPTIONS.forEach(function(opt){
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label.lo;
+    sel.appendChild(o);
+  });
+})();
+
+function getDepositFromForm(){
+  const type = document.getElementById('depositType').value;
+  const amountStr = document.getElementById('depositAmount').value.trim();
+  if(!type || amountStr === '') return null;
+  return { type: type, value: Number(amountStr) };
 }
 
 // Populate the Property Type dropdown from PROPERTY_TYPES (terminology.js)
@@ -972,6 +1021,9 @@ async function saveProperty(){
   const imageUrls =
     await uploadImages();
 
+  const deposit =
+    getDepositFromForm();
+
   const slug =
     slugify(title) +
     '-' +
@@ -1010,6 +1062,8 @@ async function saveProperty(){
 
         managed_by_party_id:myParty.id,
         contact_id:contactId,
+
+        rental_terms:buildRentalTermsPayload(deposit ? {deposit:deposit} : {}),
 
         ...buildTypedFieldsPayload(propertyType)
 

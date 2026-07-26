@@ -418,13 +418,24 @@ var RENTAL_TERM_KIND_RENDERERS = {
   }
 };
 
-// renderRentalTermsFields(container, values, onChange) -- the generic
-// renderer every admin surface (building-level + Unit Type override form)
-// calls. Adding a field that fits an existing `kind` requires zero changes
-// here (rule 4).
-function renderRentalTermsFields(container, values, onChange) {
+// renderRentalTermsFields(container, values, onChange, fieldKeys) -- the
+// generic renderer every admin/self-service surface calls. Adding a field
+// that fits an existing `kind` requires zero changes here (rule 4).
+//
+// fieldKeys (optional): renders only the given keys, in registry order,
+// instead of every field in RENTAL_TERMS_FIELDS -- e.g. a page that only
+// wants to expose Deposit passes ['deposit']. Omitting it (every existing
+// caller) renders every field, unchanged from before this parameter
+// existed -- this is filtering an already-generic renderer, not a new
+// single-field special case (rule 4's actual concern), and every filtered
+// caller still goes through the exact same per-`kind` renderer map as the
+// full panel.
+function renderRentalTermsFields(container, values, onChange, fieldKeys) {
   container.innerHTML = '';
-  RENTAL_TERMS_FIELDS.forEach(function(fieldDef) {
+  var fields = fieldKeys
+    ? RENTAL_TERMS_FIELDS.filter(function(f) { return fieldKeys.indexOf(f.key) !== -1; })
+    : RENTAL_TERMS_FIELDS;
+  fields.forEach(function(fieldDef) {
     var row = document.createElement('div');
     row.className = 'form-field rt-row';
     var label = document.createElement('label');

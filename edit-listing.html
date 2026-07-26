@@ -291,6 +291,20 @@ label{
     <input type="text" class="input" id="price">
   </div>
 
+  <!-- Deposit (rental_terms.deposit, shared with admin.html/listing.html
+       via rental-terms.js — see add-property.html's matching field for
+       the full rationale). Shown unconditionally, mirroring admin.html's
+       own Rental Terms section. -->
+  <div class="field">
+    <label>ເງິນມັດຈຳ (ຖ້າມີ)</label>
+    <div class="grid">
+      <select class="select" id="depositType">
+        <option value="">— ບໍ່ມີ —</option>
+      </select>
+      <input type="number" class="input" id="depositAmount" min="0" placeholder="ຈຳນວນ">
+    </div>
+  </div>
+
   <div class="field">
     <label>ລາຍລະອຽດ</label>
     <textarea class="textarea" id="description"></textarea>
@@ -474,6 +488,7 @@ label{
 <script src="dev-banner.js"></script>
 <script src="terminology.js"></script>
 <script src="amenities.js"></script>
+<script src="rental-terms.js"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -492,6 +507,26 @@ new URLSearchParams(
 ).get('id');
 
 let existingImages = [];
+
+// Deposit — see add-property.html's matching block for the full rationale
+// (hand-rolled Lao-language control over the shared rental-terms.js
+// registry/resolver, not a parallel deposit implementation).
+(function populateDepositTypeOptions(){
+  const sel = document.getElementById('depositType');
+  RENTAL_MONTHS_OPTIONS.forEach(function(opt){
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label.lo;
+    sel.appendChild(o);
+  });
+})();
+
+function getDepositFromForm(){
+  const type = document.getElementById('depositType').value;
+  const amountStr = document.getElementById('depositAmount').value.trim();
+  if(!type || amountStr === '') return null;
+  return { type: type, value: Number(amountStr) };
+}
 
 async function compressImage(file){
 
@@ -738,6 +773,16 @@ async function loadProperty(){
   renderPropertyTypeFields(data.property_type || '', data.amenities || []);
   populateTypedFields(data.property_type || '', data);
 
+  // Deposit — resolveRentalTerms() is the only allowed read path for
+  // rental_terms (rental-terms.js rule 3); unitType is null here since
+  // this self-service form has no per-unit override UI, so this always
+  // resolves to the property's own default (never an inherited override).
+  const depositValue = resolveRentalTerms(data, null).values.deposit;
+  if(depositValue){
+    document.getElementById('depositType').value = depositValue.type || '';
+    document.getElementById('depositAmount').value = (depositValue.value != null) ? depositValue.value : '';
+  }
+
   editingContactId = data.contact_id || null;
   document.getElementById('contactName').value =
   (data.contacts && data.contacts.name) || '';
@@ -882,6 +927,9 @@ async function saveProperty(){
   const propertyType =
     document.getElementById('propertyType').value;
 
+  const deposit =
+    getDepositFromForm();
+
   const contactPhone =
     document.getElementById('contactPhone').value.trim();
 
@@ -980,6 +1028,8 @@ async function saveProperty(){
     images,
 
     contact_id: editingContactId,
+
+    rental_terms: buildRentalTermsPayload(deposit ? {deposit:deposit} : {}),
 
     ...buildTypedFieldsPayload(propertyType)
 

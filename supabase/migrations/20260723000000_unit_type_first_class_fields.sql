@@ -20,12 +20,19 @@
 -- read as "this one specific apartment" -- e.g. floor_number is the floor
 -- this unit type is typically found/listed on, not a single unit's address.
 
-ALTER TABLE unit_types ADD COLUMN floor_plan_url   text;
-ALTER TABLE unit_types ADD COLUMN virtual_tour_url text;
-ALTER TABLE unit_types ADD COLUMN video_url        text;
-ALTER TABLE unit_types ADD COLUMN furnished        text;
-ALTER TABLE unit_types ADD COLUMN floor_number     integer;
-ALTER TABLE unit_types ADD COLUMN orientation      text;
+-- IF NOT EXISTS: this migration previously used a bare ADD COLUMN, which
+-- is not safe to re-run if any of these columns were already created by a
+-- prior partial/out-of-band apply -- exactly the drift that produced a
+-- live PGRST204 ("Could not find the 'floor_number' column ... in the
+-- schema cache") once PostgREST's schema cache and the real table
+-- diverged. Guarding every ADD COLUMN here makes re-applying this file
+-- always safe, matching every other migration's convention.
+ALTER TABLE unit_types ADD COLUMN IF NOT EXISTS floor_plan_url   text;
+ALTER TABLE unit_types ADD COLUMN IF NOT EXISTS virtual_tour_url text;
+ALTER TABLE unit_types ADD COLUMN IF NOT EXISTS video_url        text;
+ALTER TABLE unit_types ADD COLUMN IF NOT EXISTS furnished        text;
+ALTER TABLE unit_types ADD COLUMN IF NOT EXISTS floor_number     integer;
+ALTER TABLE unit_types ADD COLUMN IF NOT EXISTS orientation      text;
 
 COMMENT ON COLUMN unit_types.floor_plan_url IS
   'Optional link to a floor plan image/PDF for this unit type. NULL = none provided. Never read directly outside resolveUnitType() (terminology.js).';

@@ -83,6 +83,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .price-block{margin-bottom:0;}
 .price-value{font-size:28px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1.1;}
 .price-lak{font-size:11px;color:var(--ink-muted);margin-top:4px;font-variant-numeric:tabular-nums;}
+.price-deposit{font-size:13px;color:var(--ink-muted);margin-top:6px;}
 .price-inquire{font-size:14px;font-weight:400;color:var(--ink-muted);}
 .spec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 8px;margin:26px 0 0;}
 .spec-item{display:flex;flex-direction:column;gap:4px;}
@@ -522,6 +523,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
 <script src="unit-availability.js"></script>
+<script src="rental-terms.js"></script>
 <script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
@@ -1564,6 +1566,20 @@ function buildMockupLayout(){
       '</div>'
     );
   }
+
+  // ── Deposit (Rental Terms) ── resolveRentalTerms() is rental-terms.js's
+  // only allowed read API (rule 3 in that file) — passing selectedUnit's
+  // raw row applies its override when present and otherwise inherits the
+  // building default, in one call, the same "selected unit is the source
+  // of truth, else the building" pattern already used for price/specs
+  // above. Renders nothing at all when no deposit is set anywhere (sale
+  // listings, or a rental with no deposit entered) — never a fabricated
+  // "Deposit: —" line.
+  var depositValue=(typeof resolveRentalTerms==='function')
+    ?resolveRentalTerms(data,selectedUnit?selectedUnit.raw:null).values.deposit
+    :null;
+  var depositLine=(depositValue&&typeof formatRentalTermValue==='function')?formatRentalTermValue('deposit',depositValue,lang):null;
+  if(depositLine) resolvedPriceHtml+='<p class="price-deposit">'+esc(depositLine)+'</p>';
 
   // ── Persistent Building Photos / Shared Amenities strip ──────────────
   // Only shown once a unit is selected (the hero already IS the building
