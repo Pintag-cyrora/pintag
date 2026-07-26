@@ -49,12 +49,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
 // site's) — this is the one thing that keeps Marketing OS's data/auth
 // fully self-contained, so moving it to marketingos.ai later is a hosting
 // change here, not a data migration.
-const SUPABASE_URL = 'REPLACE_WITH_PINTAG_STUDIO_SUPABASE_URL';
-const SUPABASE_ANON = 'REPLACE_WITH_PINTAG_STUDIO_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://yuboptuclvocadfrqszo.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1Ym9wdHVjbHZvY2FkZnJxc3pvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwODk4NDksImV4cCI6MjA5ODY2NTg0OX0.nHRDpPAeRluRz2MAa5_EBpABCtrzek-jtx6JUQIPfpg';
 // The one founder account provisioned in that project for this page — see
 // SETUP.md for how to create it. Password is never stored here; only the
 // email is fixed, same convention as admin.html's ADMIN_EMAIL.
-const FOUNDER_EMAIL = 'admin@pintag.io';
+const FOUNDER_EMAIL = 'ninee@pintag.io';
+
+// The deployed Founder Workspace API (pintag-studio/pipeline/founder-server.ts
+// running with MARKETING_OS_REQUIRE_AUTH=true). Origin only, no trailing
+// slash — e.g. 'https://marketing-os.fly.dev'.
+//
+// Leave it EMPTY and this page stays exactly what it was: a read-only
+// viewer. The Generate button only appears when there's a real backend to
+// call, so nothing here can render a button that 404s (same discipline as
+// renderMorningPage()'s executeEnabled flag).
+//
+// NOTE: if you set this, add the same origin to this file's
+// Content-Security-Policy connect-src above. The brief view itself is
+// written via document.write() and inherits no CSP, so generation works
+// either way — but keeping the header accurate avoids a confusing console
+// error if anything is ever fetched before that point.
+const MARKETING_OS_API = '';
 
 const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
@@ -93,7 +109,7 @@ async function fetchAndShowBrief() {
       await showLogin('Your session expired — please sign in again.');
       return;
     }
-    showStatus('No Morning Brief has been published yet — run `npm run daily-briefing` locally to generate and publish the first one.');
+    showEmptyState();
     return;
   }
 
@@ -102,10 +118,171 @@ async function fetchAndShowBrief() {
   // hide it. renderMorningPage()'s own staleness-poll script already
   // fails silently (try/catch) when there's no /api/morning/status behind
   // it, exactly this case, by design (see renderers/web/render.ts).
-  const html = data.rendered_html.replace('<head>', '<head>\n<style>.primary-nav{display:none}</style>');
+  const html = data.rendered_html
+    .replace('<head>', '<head>\n<style>.primary-nav{display:none}</style>')
+    .replace('</body>', generateBarHtml() + '</body>');
   document.open();
   document.write(html);
   document.close();
+}
+
+/**
+ * Nothing published yet. With a backend configured this is a fully usable
+ * cold start — the same Generate bar is written into a minimal page, so the
+ * very first brief can be produced from the phone. Without a backend it
+ * stays an honest message about what to run locally.
+ */
+function showEmptyState() {
+  if (!MARKETING_OS_API) {
+    showStatus('No Morning Brief has been published yet — run `npm run daily-briefing` locally to generate and publish the first one.');
+    return;
+  }
+  const page =
+    '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">' +
+    '<title>Marketing OS</title><style>' +
+    'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#F7F3EC;color:#1A2428;margin:0;padding:40px 22px;}' +
+    'h1{font-size:22px;font-weight:600;margin:0 0 10px;}p{font-size:16px;color:#3D5058;line-height:1.6;margin:0;}' +
+    '</style></head><body><h1>No Morning Brief yet</h1>' +
+    '<p>Nothing has been generated for this workspace so far. Tap the button below and the departments will produce your first brief.</p>' +
+    generateBarHtml() +
+    '</body></html>';
+  document.open();
+  document.write(page);
+  document.close();
+}
+
+/**
+ * The Generate bar, injected into the brief HTML before it's written.
+ *
+ * It has to be injected rather than living in this document because
+ * document.write() replaces the entire page — this script's scope, its
+ * supabase client, and the CDN <script> tag all go away. So the bar ships
+ * with everything it needs: its own supabase-js load, its own client, and
+ * its own polling logic. Config values are interpolated in as JSON literals
+ * (they're already public in this file's source; the session token is NOT
+ * baked in — the injected script fetches a fresh one at click time, so a
+ * token can't go stale sitting in the DOM).
+ *
+ * Returns '' when no API is configured, so a read-only deployment renders
+ * no button at all.
+ */
+function generateBarHtml() {
+  if (!MARKETING_OS_API) return '';
+  const config = JSON.stringify({ api: MARKETING_OS_API, url: SUPABASE_URL, anon: SUPABASE_ANON });
+  return `
+<style>
+.mos-genbar{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#1A2428;padding:12px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;}
+.mos-genbtn{width:100%;padding:15px;background:#2D8C8C;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;}
+.mos-genbtn:disabled{opacity:0.65;cursor:default;}
+.mos-genmsg{font-size:13px;color:rgba(255,255,255,0.75);text-align:center;line-height:1.45;}
+.mos-generr{color:#ff9b8f;}
+body{padding-bottom:130px!important;}
+</style>
+<div class="mos-genbar">
+  <button class="mos-genbtn" id="mos-gen">↻ Generate New Brief</button>
+  <div class="mos-genmsg" id="mos-genmsg"></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function () {
+  var CONFIG = ${config};
+  var btn = document.getElementById('mos-gen');
+  var msg = document.getElementById('mos-genmsg');
+  var client = supabase.createClient(CONFIG.url, CONFIG.anon);
+  var polling = null;
+
+  function say(text, isError) {
+    msg.textContent = text || '';
+    msg.className = 'mos-genmsg' + (isError ? ' mos-generr' : '');
+  }
+
+  function busy(on, label) {
+    btn.disabled = on;
+    btn.textContent = on ? (label || 'Generating…') : '↻ Generate New Brief';
+  }
+
+  // Every call carries a freshly-read access token. getSession() refreshes
+  // it when needed, which matters here: generation can run for minutes on a
+  // phone that then sits locked, and the poll must keep authenticating.
+  function authedFetch(path, options) {
+    return client.auth.getSession().then(function (result) {
+      var token = result && result.data && result.data.session && result.data.session.access_token;
+      if (!token) throw new Error('Your session expired — reload and sign in again.');
+      var opts = options || {};
+      opts.headers = Object.assign({}, opts.headers, { Authorization: 'Bearer ' + token });
+      return fetch(CONFIG.api + path, opts);
+    });
+  }
+
+  function stopPolling() {
+    if (polling) { clearInterval(polling); polling = null; }
+  }
+
+  function poll() {
+    authedFetch('/api/morning/generate/status', { method: 'GET' })
+      .then(function (res) {
+        if (res.status === 401) throw new Error('Your session expired — reload and sign in again.');
+        return res.json();
+      })
+      .then(function (job) {
+        if (job.status === 'running') {
+          say('Departments are working… this usually takes a minute or two. You can close this page — it keeps running.');
+          return;
+        }
+        stopPolling();
+        if (job.status === 'failed') {
+          busy(false);
+          say('Generation failed: ' + (job.error || 'unknown error'), true);
+          return;
+        }
+        say('Done — loading your new brief…');
+        // Full reload: re-runs auth and re-fetches the published brief from
+        // Supabase, so what appears is exactly what any other device sees.
+        setTimeout(function () { location.reload(); }, 600);
+      })
+      .catch(function (err) {
+        stopPolling();
+        busy(false);
+        say(err.message || 'Lost contact with Marketing OS.', true);
+      });
+  }
+
+  btn.addEventListener('click', function () {
+    busy(true, 'Starting…');
+    say('Asking Marketing OS to generate a fresh brief…');
+    authedFetch('/api/morning/generate', { method: 'POST' })
+      .then(function (res) {
+        if (res.status === 401) throw new Error('Your session expired — reload and sign in again.');
+        if (!res.ok) throw new Error('Marketing OS refused the request (HTTP ' + res.status + ').');
+        return res.json();
+      })
+      .then(function () {
+        busy(true);
+        say('Departments are working… this usually takes a minute or two. You can close this page — it keeps running.');
+        stopPolling();
+        polling = setInterval(poll, 3000);
+      })
+      .catch(function (err) {
+        busy(false);
+        say(err.message || 'Could not reach Marketing OS.', true);
+      });
+  });
+
+  // If a run is already in flight (started from another device, or this page
+  // was reloaded mid-run), pick it up instead of showing an idle button.
+  authedFetch('/api/morning/generate/status', { method: 'GET' })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (job) {
+      if (job && job.status === 'running') {
+        busy(true);
+        say('A brief is already generating… waiting for it to finish.');
+        polling = setInterval(poll, 3000);
+      }
+    })
+    .catch(function () { /* silent — an unreachable API just leaves the button idle */ });
+})();
+<\/script>`;
 }
 
 async function login() {

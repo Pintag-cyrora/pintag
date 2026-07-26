@@ -11,26 +11,44 @@
 // browser-shaped front end for it, the same relationship dashboard/index.html
 // already has to the Supabase-backed approvals queue.
 //
-// Local-only by design: binds to 127.0.0.1, no auth. This runs on the
-// founder's own machine for the founder's own daily use — the same trust
-// boundary as running a CLI command locally, not a hosted multi-user
-// surface (unlike dashboard/index.html, which needs Supabase Auth because
-// it's meant to be bookmarked/hosted). Plain HTML forms + redirects, no
-// client-side JavaScript at all — except GET /morning, which is a
-// deliberate, scoped exception: its page includes a small inline poll
-// script (see renderers/web/render.ts) so a founder reading a cached brief
-// can be told a newer one finished generating in the background, without
-// auto-reloading out from under them. Every other route stays JS-free.
+// TWO DEPLOYMENT MODES (M2.11). This started as a local-only tool and that
+// is still the default; it can now also run as a deployed, authenticated
+// instance so the founder can trigger pipelines from their phone.
 //
-// Run: npm run founder-ui  (defaults to http://127.0.0.1:4321; set PORT to
-// change it, e.g. PORT=3000 npm run founder-ui)
+//   LOCAL (default): binds 127.0.0.1, no auth. The founder's own machine is
+//   the same trust boundary as running a CLI command there. `npm run
+//   founder-ui` behaves exactly as it always has.
+//
+//   DEPLOYED: HOST=0.0.0.0 plus MARKETING_OS_REQUIRE_AUTH=true, and EVERY
+//   request must carry the founder's Supabase access token (lib/auth.ts).
+//   assertSafeExposure() below refuses to start if a non-loopback address is
+//   requested without auth configured — because most routes here MUTATE
+//   state (approving knowledge suggestions and playbooks, saving campaign
+//   reviews, regenerating departments, spending LLM budget), so an
+//   unauthenticated public bind would be a serious hole, not a minor one.
+//
+// Plain HTML forms + redirects, no client-side JavaScript — except
+// GET /morning's staleness poll (renderers/web/render.ts), the campaign
+// progress poll (renderers/web/campaign.ts), and the JSON API below that
+// marketing-os.html calls from the phone. Every other route stays JS-free.
+//
+// Run locally: npm run founder-ui  (defaults to http://127.0.0.1:4321; set
+// PORT to change it, e.g. PORT=3000 npm run founder-ui)
+// Run deployed: see SETUP.md §10 and the Dockerfile at the repo root.
+
+// FIRST import, deliberately: this module refuses to start the process if
+// HOST would expose the server without auth configured. ES modules evaluate
+// imports before any code below, and lib/supabase.ts throws at import time
+// when its credentials are missing — so the safety check has to be an import
+// side effect to be guaranteed to run first. See lib/exposure-guard.ts.
+import { assertSafeExposure, isLoopback, SERVER_HOST } from './lib/exposure-guard.js';
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT, readMorningBriefConfig, readCampaignConfig, readConfiguredLanguages } from './lib/config.js';
 import { generateDailyBriefing, SUGGESTION_KIND_LABELS } from './daily-briefing.js';
-import { getFounderSession } from './lib/auth.js';
+import { getFounderSession, authRequired, UnauthorizedError } from './lib/auth.js';
 import { readTodaysRecommendation, buildFounderTeachingSuggestionInput } from './teach.js';
 import { listPendingSuggestions, approveSuggestion, rejectSuggestion, proposeSuggestion, type KnowledgeSuggestion } from './lib/suggestions.js';
 import { loadAllKnowledgeEntries, reviewKnowledgeEntry, isWritableEntry, type KnowledgeEntry } from './lib/knowledge.js';
@@ -64,6 +82,35 @@ import {
 } from './services/campaign/types.js';
 
 const PORT = Number(process.env.PORT ?? 4321);
+const HOST = SERVER_HOST;
+
+/**
+ * Origins allowed to call the JSON API from a browser. The deployed page
+ * lives on a different origin (pintag.io) than this server, so CORS is
+ * required — but as an explicit allowlist, never `*`: a wildcard plus
+ * Authorization headers would let any site the founder visits drive their
+ * Marketing OS. Comma-separated, e.g.
+ * MARKETING_OS_ALLOWED_ORIGINS=https://pintag.io,https://www.pintag.io
+ */
+function allowedOrigins(): string[] {
+  return (process.env.MARKETING_OS_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+
+/** Echoes the request's origin only when it's on the allowlist. Returns false when the origin is present but not allowed, so the caller can reject preflights outright. */
+function applyCors(req: IncomingMessage, res: ServerResponse): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true; // same-origin / non-browser caller
+  if (!allowedOrigins().includes(origin)) return false;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Max-Age', '600');
+  return true;
+}
 
 // GET /morning's hybrid cache — fast reads from daily-briefing/latest.json,
 // background regeneration when stale. See lib/cached-page.ts; this is the
@@ -474,6 +521,73 @@ function handleMorningStatus(res: ServerResponse): void {
 }
 
 // ---------------------------------------------------------------------------
+// Morning Brief generation as a JSON job (M2.11) — what the phone calls.
+//
+// Deliberately asynchronous. Generation takes tens of seconds to minutes
+// (several LLM calls), which is longer than a mobile browser will reliably
+// hold a request open, and the founder may lock their phone mid-run. So the
+// POST starts the work and returns immediately; the client polls for state
+// and refreshes when it lands. The run itself is NOT tied to the request —
+// backgrounding the browser doesn't cancel it.
+//
+// This calls generateDailyBriefing(), the exact same function `npm run
+// daily-briefing` calls — same generation, same local artifacts, same
+// Supabase publish. Nothing about the pipeline's behavior changes; this only
+// adds a second way to trigger it.
+// ---------------------------------------------------------------------------
+
+interface GenerationJob {
+  status: 'running' | 'complete' | 'failed';
+  startedAt: string;
+  finishedAt?: string;
+  /** Populated on failure so the phone can show what actually went wrong instead of a generic error. */
+  error?: string;
+  /** generatedAt of the brief this run produced — lets the client confirm it's looking at new output. */
+  generatedAt?: string;
+}
+
+/** One slot: a single founder, a single pipeline, no reason to run two at once (and a good reason not to — duplicate LLM spend). */
+let morningJob: GenerationJob | null = null;
+
+function morningJobPayload(): GenerationJob & { cachedGeneratedAt: string | null } {
+  return {
+    ...(morningJob ?? { status: 'complete' as const, startedAt: '', finishedAt: '' }),
+    // Always included so a client that missed the job (e.g. reloaded
+    // mid-run, or a different device) can still tell whether what it's
+    // showing is current.
+    cachedGeneratedAt: readLatestMorningBrief()?.generatedAt ?? null,
+  };
+}
+
+function handleMorningGenerate(res: ServerResponse): void {
+  if (morningJob?.status === 'running') {
+    // Idempotent: a double-tap joins the run in progress rather than
+    // starting a second one and paying twice.
+    sendJson(res, 202, morningJobPayload());
+    return;
+  }
+
+  morningJob = { status: 'running', startedAt: new Date().toISOString() };
+  sendJson(res, 202, morningJobPayload());
+
+  void generateDailyBriefing()
+    .then(() => {
+      morningJob = {
+        status: 'complete',
+        startedAt: morningJob!.startedAt,
+        finishedAt: new Date().toISOString(),
+        generatedAt: readLatestMorningBrief()?.generatedAt,
+      };
+      console.log('[founder-server] Morning Brief generation finished (triggered via API).');
+    })
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      morningJob = { status: 'failed', startedAt: morningJob!.startedAt, finishedAt: new Date().toISOString(), error: message };
+      console.error('[founder-server] Morning Brief generation failed (triggered via API):', err);
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Campaign execution — the real orchestration behind the Execute Campaign
 // button (see services/campaign/generate.ts). POST /campaign/execute
 // creates the Campaign and kicks the run off in the background (same
@@ -769,11 +883,45 @@ function handleCampaignStatus(res: ServerResponse, id: string): void {
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   const { pathname } = url;
-  // Every route reads founder identity through this one seam — today it's
-  // just a wrapper over readFounderName() (this tool is local-only, single
-  // founder, no real auth yet), but it's the one place a future real
-  // session/authorization check slots in without touching any route body.
-  const founderName = getFounderSession(req).founderName;
+
+  // CORS first, and reject a disallowed browser origin before anything else
+  // looks at the request.
+  if (!applyCors(req, res)) {
+    sendJson(res, 403, { error: 'Origin not allowed' });
+    return;
+  }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // Liveness probe — the only unauthenticated route, deliberately: hosting
+  // platforms need it to tell whether the process is up, and it reveals
+  // nothing beyond that.
+  if (req.method === 'GET' && pathname === '/healthz') {
+    sendJson(res, 200, { ok: true, authRequired: authRequired() });
+    return;
+  }
+
+  // Identity for EVERY other route, before any handler runs. In local mode
+  // this is the same fixed session it always was; when auth is required it
+  // verifies the request's Supabase token and throws UnauthorizedError.
+  // Enforced here rather than per-route on purpose: most routes below mutate
+  // state, and a route added later must be protected by default, not by
+  // remembering to add a check.
+  let founderName: string;
+  try {
+    founderName = (await getFounderSession(req)).founderName;
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      // Flat 401 — never says which check failed, so this can't be used to
+      // probe whether an account exists.
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+    throw err;
+  }
 
   try {
     if (req.method === 'GET' && pathname === '/') {
@@ -782,6 +930,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       await handleMorning(res);
     } else if (req.method === 'GET' && pathname === '/api/morning/status') {
       handleMorningStatus(res);
+    } else if (req.method === 'POST' && pathname === '/api/morning/generate') {
+      handleMorningGenerate(res);
+    } else if (req.method === 'GET' && pathname === '/api/morning/generate/status') {
+      sendJson(res, 200, morningJobPayload());
     } else if (req.method === 'POST' && pathname === '/campaign/execute') {
       await handleCampaignExecute(req, res);
     } else if (req.method === 'POST' && pathname === '/campaign/execute-top') {
@@ -900,6 +1052,21 @@ const server = createServer((req, res) => {
   });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Founder Workspace running at http://127.0.0.1:${PORT} — local only, no auth (see this file's header comment for why).`);
+// Already enforced at import time by lib/exposure-guard.ts; called again here
+// so the invariant is visible at the point it actually matters, and so a
+// future refactor that drops the import can't silently remove the check.
+assertSafeExposure();
+
+server.listen(PORT, HOST, () => {
+  if (isLoopback(HOST)) {
+    console.log(`Founder Workspace running at http://${HOST}:${PORT} — local only, no auth (see this file's header comment for why).`);
+  } else {
+    const origins = allowedOrigins();
+    console.log(`Founder Workspace running on ${HOST}:${PORT} — authenticated mode, every route requires the founder's Supabase token.`);
+    console.log(
+      origins.length
+        ? `Browser origins allowed to call the API: ${origins.join(', ')}`
+        : 'No MARKETING_OS_ALLOWED_ORIGINS set — browser calls from another origin (e.g. pintag.io) will be refused. Set it to enable the phone UI.'
+    );
+  }
 });

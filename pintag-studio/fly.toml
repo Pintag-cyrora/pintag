@@ -1,0 +1,62 @@
+# Fly.io deployment for the Founder Workspace (M2.11).
+#
+# Why Fly for Phase 1: it runs the existing server unchanged, has one-command
+# deploys, and holds secrets properly. Phase 2 (see EXECUTION_ARCHITECTURE.md)
+# revisits whether a permanently-running process is the right long-term shape.
+#
+# First deploy:
+#   cd pintag-studio
+#   fly launch --no-deploy --name marketing-os     # or your own app name
+#   fly secrets set \
+#     SUPABASE_URL=... \
+#     SUPABASE_ANON_KEY=... \
+#     SUPABASE_SERVICE_ROLE_KEY=... \
+#     MARKETING_OS_FOUNDER_EMAIL=ninee@pintag.io \
+#     MARKETING_OS_ALLOWED_ORIGINS=https://pintag.io \
+#     ANTHROPIC_API_KEY=...
+#   fly deploy
+#
+# Then put the resulting origin (e.g. https://marketing-os.fly.dev) into
+# marketing-os.html's MARKETING_OS_API and redeploy that page.
+
+app = "marketing-os"
+primary_region = "sin"   # Singapore — closest Fly region to Vientiane
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  HOST = "0.0.0.0"
+  MARKETING_OS_REQUIRE_AUTH = "true"
+  LLM_PROVIDER = "anthropic-api"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Deliberately NOT scaled to zero. Generation runs for minutes after the
+  # HTTP request returns (the job is intentionally detached so a locked phone
+  # doesn't cancel it) — a machine that suspends when the connection closes
+  # would kill the run mid-flight. auto_start is on so the app still comes
+  # back if it's ever stopped manually.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.http_options.response]
+    pristine = true
+
+  # Liveness only — /healthz is the one route that needs no auth.
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  # Generation is I/O-bound (waiting on LLM and Supabase calls), not CPU-bound,
+  # so the smallest paid VM is genuinely enough. 512MB gives Node headroom over
+  # the 256MB tier.
+  size = "shared-cpu-1x"
+  memory = "512mb"

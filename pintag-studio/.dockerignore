@@ -1,0 +1,19 @@
+# Keep secrets and local-only state out of the image. The knowledge base,
+# brain/, and .claude/agents/ are deliberately NOT excluded — the pipeline
+# reads them at runtime (see the Dockerfile's comment).
+node_modules
+.env
+.env.*
+!.env.example
+
+# Local generated state. The deployed instance regenerates what it needs, and
+# Supabase holds the durable copy of the published brief.
+daily-briefing
+dashboard/morning.html
+learning
+research
+supabase/.temp
+
+# Not needed at runtime.
+*.log
+.git

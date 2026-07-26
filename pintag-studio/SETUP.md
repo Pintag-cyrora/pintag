@@ -68,7 +68,10 @@ Read-only — no posting. Lets the Daily Briefing report what actually happened 
 
 Not needed until you want real TikTok data in the Daily Briefing — everything else in this repo works without it (`collectObservations()` degrades gracefully and says so honestly if TikTok isn't connected).
 
-## 9. Marketing OS Morning Brief on your phone (read-only, no cloud generation)
+## 9. Marketing OS Morning Brief on your phone — reading it (read-only)
+
+> **Note:** this section covers *reading* the brief on your phone with no backend at all. To also **generate** a brief from your phone, do section 10 as well.
+
 
 Lets you read the latest Morning Brief from your phone (`marketing-os.html`, repo root, on the live site) without your machine needing to be on. Generation stays exactly as it already is — local, on the Claude Code CLI, via `npm run daily-briefing` (or the "Generate Today's Briefing" button in `founder-server.ts`) — nothing runs in the cloud. `marketing-os.html` is a **read-only client**: it doesn't run Marketing OS, it just displays whatever `daily-briefing.ts` last published. See `ARCHITECTURE.md` §0 for the generation-vs-publication distinction this rests on.
 
@@ -83,6 +86,61 @@ Deliberately uses a **separate Supabase Auth login from `admin.html`'s** — sam
 No GitHub Actions secrets, no workflow to run, no `ANTHROPIC_API_KEY` — there's nothing running in CI for this feature.
 
 Optional, unrelated nicety while you're in there: step 2's new user also works to finally wire up `dashboard/index.html`'s Auth client (its `SUPABASE_URL`/`SUPABASE_ANON` are the same still-unfilled placeholders as `marketing-os.html`'s were) — not required for this feature, just a loose end you're already touching.
+
+## 10. Generating the Morning Brief from your phone (deployed Founder Workspace, M2.11)
+
+Section 9 makes the brief *readable* anywhere. This section makes it *generatable* anywhere — a **Generate New Brief** button on `marketing-os.html` that runs the real pipeline, so you never need to be at your machine.
+
+**What this deploys.** `pipeline/founder-server.ts`, unchanged in behavior, running as a small always-on service. The generate endpoint calls `generateDailyBriefing()` — the exact same function `npm run daily-briefing` calls. Same collection, same agents, same validation, same Supabase publish.
+
+**Read this before you start — two honest caveats:**
+
+1. **The LLM provider changes.** The default provider shells out to the `claude` CLI, which needs an interactive login that can't happen in a container. A deployed instance runs `LLM_PROVIDER=anthropic-api` with an `ANTHROPIC_API_KEY` instead (`pipeline/lib/llm.ts`). Identical prompts and parsing, but a different provider path — so wording can differ slightly between a phone-generated brief and a locally-generated one. This is a property of the runtime, not a change to the pipeline. It also means **generation now costs API credits directly** rather than going through your Claude subscription.
+2. **This is a real internet-facing service.** Almost every route on this server mutates state (approving knowledge, saving campaign reviews, regenerating departments) or spends LLM budget. It is therefore protected by mandatory auth on **every** route, and `founder-server.ts` **refuses to start** if you ask it to bind a public address without auth properly configured. Don't work around that check.
+
+**Steps:**
+
+1. Get an Anthropic API key (console.anthropic.com → API Keys). Set a spend limit on it — this key is what a Generate tap actually spends.
+2. Deploy. Fly.io is pre-configured (`fly.toml`, `Dockerfile` in this directory):
+   ```bash
+   cd pintag-studio
+   fly launch --no-deploy --name marketing-os     # pick your own app name
+   fly secrets set \
+     SUPABASE_URL='https://<project>.supabase.co' \
+     SUPABASE_ANON_KEY='<anon key>' \
+     SUPABASE_SERVICE_ROLE_KEY='<service role key>' \
+     MARKETING_OS_FOUNDER_EMAIL='ninee@pintag.io' \
+     MARKETING_OS_ALLOWED_ORIGINS='https://pintag.io' \
+     ANTHROPIC_API_KEY='<your key>'
+   fly deploy
+   ```
+   Any host that runs a container works the same way (Render, Railway, a VPS) — the env vars are what matter, not the platform.
+3. Confirm it's up and in the right mode: `curl https://<your-app>/healthz` should return `{"ok":true,"authRequired":true}`. If `authRequired` is `false`, stop — auth isn't on.
+4. In `marketing-os.html` (repo root), set `MARKETING_OS_API` to your deployed origin, e.g. `'https://marketing-os.fly.dev'`, and add that same origin to the file's `Content-Security-Policy` → `connect-src`. Commit and let GitHub Pages redeploy.
+5. Open `https://pintag.io/marketing-os.html` on your phone, sign in (same account as section 9 — one login, not a second one), and tap **Generate New Brief**.
+
+**What the env vars do:**
+
+| Variable | Purpose |
+|---|---|
+| `HOST` | `0.0.0.0` to accept outside traffic. Unset/loopback = local mode, no auth. |
+| `MARKETING_OS_REQUIRE_AUTH` | Must be `true` for any public deployment. Enforces auth on every route. |
+| `SUPABASE_URL` | Also used to verify access tokens against Supabase Auth. |
+| `SUPABASE_ANON_KEY` | Used to *verify* the founder's token. Not the service role key — deliberately. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-side pipeline writes (publishing the brief). Never sent to a browser. |
+| `MARKETING_OS_FOUNDER_EMAIL` | Only this account may use the workspace; any other valid Supabase user is rejected. |
+| `MARKETING_OS_ALLOWED_ORIGINS` | CORS allowlist for browser calls. Never `*` — a wildcard plus bearer tokens would let any site you visit drive Marketing OS. |
+| `ANTHROPIC_API_KEY` | Required because the container can't use the interactive `claude` CLI. |
+
+**Troubleshooting:**
+
+- *Button doesn't appear* → `MARKETING_OS_API` is still empty in `marketing-os.html`. That's the intended read-only state.
+- *401 Unauthorized* → the signed-in email doesn't match `MARKETING_OS_FOUNDER_EMAIL`, or the session expired (reload and sign in).
+- *Origin not allowed (403)* → add your site's exact origin to `MARKETING_OS_ALLOWED_ORIGINS`.
+- *Server won't start* → read the boot log; the fail-closed guard names exactly which variable is missing.
+- *"Generation failed: ... ANTHROPIC_API_KEY"* → the key isn't set, or `LLM_PROVIDER` isn't `anthropic-api`.
+
+For where this is heading beyond an always-on process, see [`EXECUTION_ARCHITECTURE.md`](./EXECUTION_ARCHITECTURE.md).
 
 ## Daily use — starting Marketing OS (no Terminal needed)
 
