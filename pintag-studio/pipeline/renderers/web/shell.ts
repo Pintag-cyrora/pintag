@@ -22,6 +22,7 @@ export const PRIMARY_NAV: NavLink[] = [
   { href: '/video', label: 'Video', enabled: true },
   { href: '/analytics', label: 'Analytics', enabled: false },
   { href: '/publish', label: 'Publish', enabled: true },
+  { href: '/runs', label: 'Runs', enabled: true },
   { href: '/learning', label: 'Learning', enabled: true },
   { href: '/teach', label: 'Teach', enabled: true },
   { href: '/settings', label: 'Settings', enabled: false },

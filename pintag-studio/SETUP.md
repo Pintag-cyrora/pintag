@@ -142,6 +142,14 @@ Section 9 makes the brief *readable* anywhere. This section makes it *generatabl
 
 For where this is heading beyond an always-on process, see [`EXECUTION_ARCHITECTURE.md`](./EXECUTION_ARCHITECTURE.md).
 
+## 11. Run history (autonomy roadmap step 1)
+
+Apply migration `0006_pipeline_runs.sql` (same project, same way as the others — step 1 of section 1). Then every Morning Brief generation and campaign execution is recorded durably, and **Runs** appears in the Founder Workspace with what ran, when, how long it took, what it produced, what failed, and what it cost.
+
+**This is optional to apply and safe to defer.** The ledger degrades to a no-op if the migration isn't there: runs still execute normally, the workspace logs one warning, and the Runs page tells you history may be incomplete. Nothing breaks — recording work must never be able to prevent work.
+
+Why it matters beyond convenience: run state used to live in memory and die with the process. Durable records are what let the Morning Brief eventually *report on completed work* instead of generating it on demand — see `EXECUTION_ARCHITECTURE.md` §7 and §8.1.
+
 ## Daily use — starting Marketing OS (no Terminal needed)
 
 Once step 1 (Supabase) is done, this is the everyday way to open Marketing OS — the Founder Workspace (`npm run founder-ui`) is the browser front end for everything else in this file.

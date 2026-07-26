@@ -65,6 +65,8 @@ import { readCampaign, readLatestCampaign, listCampaigns, writeCampaign } from '
 import { scoreOpportunity, scoreOpportunities, selectTopOpportunities } from './services/campaign/score.js';
 import { renderCampaignPage, renderCampaignsPage, renderCampaignEditPage, renderLearningPage, renderResearchPage, renderContentPage, renderVideoPage, renderPublishPage } from './renderers/web/campaign.js';
 import { deriveFounderLearning, generateLessons, writeLearningSnapshot } from './services/learning/learn.js';
+import { startRun, completeRun, failRun, findRunningRun, findLatestRun, listRecentRuns, reconcileOrphanedRuns, isLedgerAvailable } from './services/runs/ledger.js';
+import { renderRunsPage } from './renderers/web/runs.js';
 import {
   FEEDBACK_REASONS,
   RATEABLE_DEPARTMENTS,
@@ -252,6 +254,10 @@ function renderHome(founderName: string): string {
 
     <a class="nav-link" href="/campaigns">
       <div class="card"><h2>📦 Campaigns</h2><p>Every generated campaign — status, score, priority, and the full review bundle.</p></div>
+    </a>
+
+    <a class="nav-link" href="/runs">
+      <div class="card"><h2>🗂 Run History</h2><p>Every department execution and what it produced — the record the Morning Brief will eventually report over.</p></div>
     </a>
 
     <a class="nav-link" href="/learning">
@@ -546,44 +552,88 @@ interface GenerationJob {
   generatedAt?: string;
 }
 
-/** One slot: a single founder, a single pipeline, no reason to run two at once (and a good reason not to — duplicate LLM spend). */
+/**
+ * In-memory view of the current run. This is now a CACHE over the run ledger
+ * (services/runs/, autonomy roadmap step 1), not the source of truth: the
+ * durable record lives in Supabase's pipeline_runs and survives this process.
+ *
+ * Kept because it's the zero-latency answer for the common case (the founder
+ * polling the run they just started, in this process), and because the ledger
+ * is allowed to be unavailable — see ledger.ts's degradation rule. When both
+ * exist the ledger wins; when the ledger is down this still works exactly as
+ * it did before.
+ */
 let morningJob: GenerationJob | null = null;
+/** The ledger row for the in-flight run, so completion updates the durable record too. */
+let morningRunId: string | null = null;
 
-function morningJobPayload(): GenerationJob & { cachedGeneratedAt: string | null } {
+/**
+ * Reads run state, preferring the durable ledger over the in-memory cache.
+ * This is what makes "a run started on another device" and "the workspace
+ * restarted mid-run" visible to the phone instead of looking like no run
+ * ever happened.
+ */
+async function morningJobPayload(): Promise<GenerationJob & { cachedGeneratedAt: string | null; durable: boolean }> {
+  const cachedGeneratedAt = readLatestMorningBrief()?.generatedAt ?? null;
+
+  const ledgerRun = await findLatestRun('morning-brief');
+  if (ledgerRun) {
+    return {
+      // 'interrupted' is reported to the client as a failure with an honest
+      // explanation — from the phone's perspective the run is over and did
+      // not produce a brief, which is what it needs to act on.
+      status: ledgerRun.status === 'complete' ? 'complete' : ledgerRun.status === 'running' ? 'running' : 'failed',
+      startedAt: ledgerRun.startedAt,
+      finishedAt: ledgerRun.finishedAt,
+      error: ledgerRun.error,
+      generatedAt: typeof ledgerRun.output.generatedAt === 'string' ? ledgerRun.output.generatedAt : undefined,
+      cachedGeneratedAt,
+      durable: true,
+    };
+  }
+
   return {
     ...(morningJob ?? { status: 'complete' as const, startedAt: '', finishedAt: '' }),
-    // Always included so a client that missed the job (e.g. reloaded
-    // mid-run, or a different device) can still tell whether what it's
-    // showing is current.
-    cachedGeneratedAt: readLatestMorningBrief()?.generatedAt ?? null,
+    cachedGeneratedAt,
+    durable: false,
   };
 }
 
-function handleMorningGenerate(res: ServerResponse): void {
-  if (morningJob?.status === 'running') {
+async function handleMorningGenerate(res: ServerResponse): Promise<void> {
+  // Check the ledger too, not just this process — a run started from another
+  // device (or before a restart) should not be duplicated.
+  const inFlight = morningJob?.status === 'running' || (await findRunningRun('morning-brief')) !== null;
+  if (inFlight) {
     // Idempotent: a double-tap joins the run in progress rather than
     // starting a second one and paying twice.
-    sendJson(res, 202, morningJobPayload());
+    sendJson(res, 202, await morningJobPayload());
     return;
   }
 
-  morningJob = { status: 'running', startedAt: new Date().toISOString() };
-  sendJson(res, 202, morningJobPayload());
+  const startedAt = new Date().toISOString();
+  morningJob = { status: 'running', startedAt };
+  // No idempotencyKey: a founder pressing Generate deliberately may want a
+  // second brief today. Scheduled runs (step 6) will pass a cycle key.
+  const run = await startRun({ department: 'morning-brief', trigger: 'founder' });
+  morningRunId = run?.id ?? null;
+
+  sendJson(res, 202, await morningJobPayload());
 
   void generateDailyBriefing()
-    .then(() => {
-      morningJob = {
-        status: 'complete',
-        startedAt: morningJob!.startedAt,
-        finishedAt: new Date().toISOString(),
-        generatedAt: readLatestMorningBrief()?.generatedAt,
-      };
+    .then(async () => {
+      const generatedAt = readLatestMorningBrief()?.generatedAt;
+      morningJob = { status: 'complete', startedAt, finishedAt: new Date().toISOString(), generatedAt };
+      await completeRun(morningRunId, { output: generatedAt ? { generatedAt } : {} });
       console.log('[founder-server] Morning Brief generation finished (triggered via API).');
     })
-    .catch((err) => {
+    .catch(async (err) => {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      morningJob = { status: 'failed', startedAt: morningJob!.startedAt, finishedAt: new Date().toISOString(), error: message };
+      morningJob = { status: 'failed', startedAt, finishedAt: new Date().toISOString(), error: message };
+      await failRun(morningRunId, err);
       console.error('[founder-server] Morning Brief generation failed (triggered via API):', err);
+    })
+    .finally(() => {
+      morningRunId = null;
     });
 }
 
@@ -634,18 +684,37 @@ function toScorable(title: string, detail: string, source: string): ScorableOppo
   return { title, detail, evidence: [], kind: source === 'opportunity' ? 'outperforming-content' : source };
 }
 
-/** Kicks a created campaign off in the background — the founder watches progress on its page. executeCampaign persists every step and records failures on the campaign itself; the catch is a last line of defense so an unexpected error still lands on disk. */
+/**
+ * Kicks a created campaign off in the background — the founder watches progress
+ * on its page. executeCampaign persists every step and records failures on the
+ * campaign itself; the catch is a last line of defense so an unexpected error
+ * still lands on disk.
+ *
+ * Also opens a ledger run (step 1), so a campaign generated overnight appears
+ * in run history with its outcome and cost alongside every other department's
+ * work — which is what the Morning Brief will eventually report over (§7).
+ */
 function startCampaignRun(campaign: Campaign): void {
   activeCampaigns.set(campaign.id, campaign);
-  executeCampaign(campaign)
-    .catch((err) => {
+  void (async () => {
+    const run = await startRun({ department: 'campaign', trigger: 'founder', progress: { campaignId: campaign.id, title: campaign.title } });
+    try {
+      const finished = await executeCampaign(campaign);
+      const output = { campaignId: finished.id, title: finished.title, status: finished.status, qaApproved: finished.qaReport?.approved ?? null };
+      // A campaign that stops at a failed department is a failed run, even
+      // though executeCampaign() returns normally — the ledger records what
+      // actually happened, not whether the function threw.
+      if (finished.status === 'complete') await completeRun(run?.id ?? null, { output });
+      else await failRun(run?.id ?? null, finished.steps.find((s) => s.status === 'failed')?.detail ?? `Campaign ended as "${finished.status}"`, { output });
+    } catch (err) {
       console.error(`[Campaign ${campaign.id}] Unexpected orchestration error:`, err);
       campaign.status = 'failed';
       writeCampaign(campaign);
-    })
-    .finally(() => {
+      await failRun(run?.id ?? null, err, { output: { campaignId: campaign.id } });
+    } finally {
       activeCampaigns.delete(campaign.id);
-    });
+    }
+  })();
 }
 
 async function handleCampaignExecute(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -931,9 +1000,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     } else if (req.method === 'GET' && pathname === '/api/morning/status') {
       handleMorningStatus(res);
     } else if (req.method === 'POST' && pathname === '/api/morning/generate') {
-      handleMorningGenerate(res);
+      await handleMorningGenerate(res);
     } else if (req.method === 'GET' && pathname === '/api/morning/generate/status') {
-      sendJson(res, 200, morningJobPayload());
+      sendJson(res, 200, await morningJobPayload());
     } else if (req.method === 'POST' && pathname === '/campaign/execute') {
       await handleCampaignExecute(req, res);
     } else if (req.method === 'POST' && pathname === '/campaign/execute-top') {
@@ -949,6 +1018,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     } else if (req.method === 'POST' && /^\/campaign\/[^/]+\/edit\/[^/]+\/[^/]+$/.test(pathname)) {
       const [, , id, , language, field] = pathname.split('/');
       await handleCampaignEditSave(req, res, decodeURIComponent(id), language, field);
+    } else if (req.method === 'GET' && pathname === '/runs') {
+      // listRecentRuns() before isLedgerAvailable() — the availability flag is
+      // only meaningful after a read has been attempted in this process.
+      const runs = await listRecentRuns();
+      sendHtml(res, 200, renderRunsPage(runs, { ledgerAvailable: isLedgerAvailable() }));
     } else if (req.method === 'GET' && pathname === '/learning') {
       sendHtml(res, 200, renderLearningPage(deriveFounderLearning(listCampaigns())));
     } else if (req.method === 'GET' && pathname === '/campaigns') {
@@ -1056,6 +1130,13 @@ const server = createServer((req, res) => {
 // so the invariant is visible at the point it actually matters, and so a
 // future refactor that drops the import can't silently remove the check.
 assertSafeExposure();
+
+// Any run still flagged 'running' belonged to a process that no longer
+// exists, so it was orphaned by a restart — not failed by an agent. Recording
+// that distinction is the whole point of having a durable ledger (step 1);
+// without it, a redeploy mid-generation would look like a department fault
+// forever. Fire-and-forget: it must never delay or prevent startup.
+void reconcileOrphanedRuns();
 
 server.listen(PORT, HOST, () => {
   if (isLoopback(HOST)) {
