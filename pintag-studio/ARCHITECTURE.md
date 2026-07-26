@@ -24,11 +24,25 @@ The founder (Keomany) wants an internal, Claude-Code-driven "AI marketing depart
 
 ---
 
-## 0. Guiding Principle: Business-First Architecture *(v2.5)*
+## 0. Guiding Principle: Business-First Architecture *(v2.6)*
 
 **Marketing OS is not being built as a SaaS product first. It exists to operate our own businesses first.** Its first responsibility is to become the marketing department for Pintag and our other companies. If it eventually becomes a product, that will happen because it already proved itself internally — not the other way around.
 
-**The test for every feature going forward:** does this improve how Marketing OS runs Pintag's (or another of our companies') actual operations *today*? If yes, it's core. If the honest answer is "it would matter once we have external users / need it to run unattended / need to scale beyond one founder," it's a **deployment adapter** — real, possibly valuable, but optional and deferred until that need is actually here. Don't build infrastructure because it might be needed one day; build it when it's the thing actually in the way.
+**The test for every feature going forward:** does this improve how Marketing OS runs Pintag's (or another of our companies') actual operations *today*? If yes, it's core. If the honest answer is "it would matter once we have external users / need to scale beyond our own companies," it's a **deployment adapter** — real, possibly valuable, but optional and deferred until that need is actually here. Don't build infrastructure because it might be needed one day; build it when it's the thing actually in the way.
+
+### v2.6 correction: "internal-first" never meant "laptop-only"
+
+v2.5 drew the core/adapter line in the wrong place. It classified *anything remote, unattended, or cloud-hosted* as an adapter — and from that concluded that Morning Brief generation must "always" be local on the Claude Code CLI. That conflated two unrelated things: **who Marketing OS serves** (us, not external customers — still true) with **where it runs** (an implementation detail).
+
+The founder operates these businesses from a phone, daily, alongside every other business tool. So:
+
+- **Operating Marketing OS from a phone is a CORE internal requirement, not an adapter.** It is the primary interface, not a convenience over a local tool. The development machine builds Marketing OS; it is not where Marketing OS runs.
+- **The AI organization working continuously, without the founder present, is CORE.** The Morning Brief's entire premise (`DEPARTMENT.md`, the CEO Brain) is an executive briefing on work the departments *already completed* — which requires unattended execution by definition. Calling unattended execution an "adapter" contradicted the product it exists to serve.
+- **Production credentials are not a blocker.** We already run production secrets for Pintag. Marketing OS holding its own is normal operations, not scope creep.
+
+**What still holds, and is the part actually worth protecting:** don't build for hypothetical *customers*. Multi-tenancy, an external API surface, team roles, and per-tenant billing remain deferred until real tenants exist (§12). The test is "does a business we actually run need this today," and the honest answer for mobile operation and continuous execution is yes.
+
+The earlier removal of cloud generation (commit `7c5415d`) was a correct call about *one bad implementation* — CI credentials and a generation path that duplicated the local one. It was never evidence that cloud execution is wrong in principle, and it should not be cited as such.
 
 This isn't a new constraint on top of the frozen v2.1 architecture — §12 ("Future Expansion") already deferred multi-tenancy, a second consuming app, and an API surface over the Knowledge Layer to explicit future triggers. §0 generalizes that same instinct into a standing classification, and applies it retroactively to one place it had slipped (below).
 
@@ -37,10 +51,13 @@ This isn't a new constraint on top of the frozen v2.1 architecture — §12 ("Fu
 - Departments (`departments/`, `DEPARTMENT.md`)
 - AI Employees (`.claude/agents/*.md`, `pipeline/lib/agent.ts`)
 - Pipeline (`pipeline/stages/`, `pipeline/services/`, `pipeline/lib/` — including `llm.ts`'s `LlmProvider` abstraction, defaulting to the Claude Code CLI)
-- Morning Brief (`pipeline/services/morning/`, `pipeline/renderers/`, `pipeline/daily-briefing.ts`) — **generation** specifically: always local, always the Claude Code CLI. See the generation/publication distinction below.
-- Founder UI (`founder-server.ts`, `dashboard/index.html`) — a founder's own local, browser-based interface is still core; "has a browser UI" isn't the same test as "needs the cloud." What makes something an adapter is being for unattended, remote, or multi-user access — not having a UI at all.
+- Morning Brief (`pipeline/services/morning/`, `pipeline/renderers/`, `pipeline/daily-briefing.ts`) — generation, wherever it runs. *(v2.6: previously "always local, always the Claude Code CLI." That was the misclassification §0's correction describes — the CLI is the default **provider**, not a constraint on **where** generation happens. `llm.ts`'s `LlmProvider` abstraction exists precisely so the runtime can differ.)*
+- Founder UI — both the local `founder-server.ts` and the **deployed, authenticated instance the founder uses from their phone** (`lib/auth.ts`, `lib/exposure-guard.ts`, `marketing-os.html`'s Generate flow, SETUP.md §10). *(v2.6: remote founder access is core, not an adapter. It is how the founder actually operates the business.)*
+- Continuous/unattended department execution — the premise of the Morning Brief as an executive briefing on completed work. Core by definition; see §0's correction.
 
-**Generation vs. publication (the Morning Brief's own version of this line):** `generateMorningBrief()` — Core, local, Claude Code CLI, the only runtime — never changes based on where the result will be read. *Publication* is a separate, later step that only synchronizes an already-generated brief; it never generates anything itself. `daily-briefing.ts` does both, in that order: generate once, locally, then publish to every target (local files, and optionally Supabase) — see it and `pipeline/services/morning/publish.ts` for the exact split. This is what keeps "read it on my phone" from ever becoming "run it in the cloud."
+**Generation vs. publication (still a useful distinction, with v2.6's correction applied):** `generateMorningBrief()` produces the brief; *publication* only synchronizes an already-generated one and never generates anything itself. `daily-briefing.ts` does both, in that order — see it and `pipeline/services/morning/publish.ts`. Keeping the two separate is what makes the brief readable from anywhere without duplicating generation logic per target.
+
+What this distinction does **not** imply — and v2.5 wrongly concluded — is that generation must run on the founder's machine. Generation runs wherever the execution layer lives; there is exactly one generation implementation, and the only thing that varies is which `LlmProvider` it uses. The rule worth keeping is *"one generation path, many publication targets,"* never *"generation is local-only."*
 
 **Optional deployment adapters** — separately triggered, not required for the core to work, adopted only when an actual need shows up:
 - GitHub Actions (`.github/workflows/*.yml` — the five pre-existing, currently-dormant `pintag-studio/.github/workflows/*.yml` files; the Morning Brief has none of its own — generation never runs there, see above)
