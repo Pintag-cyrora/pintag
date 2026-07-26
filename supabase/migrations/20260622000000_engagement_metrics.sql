@@ -26,8 +26,17 @@ CREATE TRIGGER trg_properties_updated_at
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ── AGENTS: response time for Fast Response badge ─────────────────────────────
-ALTER TABLE agents
-  ADD COLUMN IF NOT EXISTS response_time_minutes INTEGER;
+-- Guarded: 20260705000000_agents_becomes_parties.sql later RENAMEs this
+-- table to `parties`, so a re-run of this file against a database where
+-- that's already happened would otherwise fail on "relation agents does
+-- not exist" even though the IF NOT EXISTS on the column itself is fine.
+DO $$
+BEGIN
+  IF to_regclass('public.agents') IS NOT NULL THEN
+    ALTER TABLE agents
+      ADD COLUMN IF NOT EXISTS response_time_minutes INTEGER;
+  END IF;
+END $$;
 
 -- ── LISTING EVENTS: future engagement tracking ────────────────────────────────
 CREATE TABLE IF NOT EXISTS listing_events (

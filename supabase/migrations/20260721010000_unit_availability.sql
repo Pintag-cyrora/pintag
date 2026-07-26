@@ -13,10 +13,11 @@
 -- unit-availability.js for the resolver that is the sole reader of these
 -- columns.
 
-ALTER TABLE unit_types ADD COLUMN total_units integer;
-ALTER TABLE unit_types ADD COLUMN next_available_date date;
-ALTER TABLE unit_types ADD COLUMN availability_note text;
+ALTER TABLE unit_types ADD COLUMN IF NOT EXISTS total_units integer;
+ALTER TABLE unit_types ADD COLUMN IF NOT EXISTS next_available_date date;
+ALTER TABLE unit_types ADD COLUMN IF NOT EXISTS availability_note text;
 
+ALTER TABLE unit_types DROP CONSTRAINT IF EXISTS unit_types_available_within_total;
 ALTER TABLE unit_types ADD CONSTRAINT unit_types_available_within_total
   CHECK (total_units IS NULL OR available_count <= total_units);
 

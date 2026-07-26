@@ -17,11 +17,13 @@ DROP POLICY IF EXISTS "Authenticated full access properties" ON properties;
 DROP POLICY IF EXISTS "Agent select own properties"          ON properties;
 DROP POLICY IF EXISTS "Agent delete own properties"          ON properties;
 
+DROP POLICY IF EXISTS "Staff full access properties" ON properties;
 CREATE POLICY "Staff full access properties"
   ON properties TO authenticated
   USING (is_pintag_staff(auth.uid()))
   WITH CHECK (is_pintag_staff(auth.uid()));
 
+DROP POLICY IF EXISTS "Party select own properties" ON properties;
 CREATE POLICY "Party select own properties"
   ON properties FOR SELECT TO authenticated
   USING (
@@ -29,6 +31,7 @@ CREATE POLICY "Party select own properties"
     AND managed_by_party_id IN (SELECT owned_party_ids(auth.uid()))
   );
 
+DROP POLICY IF EXISTS "Party delete own properties" ON properties;
 CREATE POLICY "Party delete own properties"
   ON properties FOR DELETE TO authenticated
   USING (
@@ -38,6 +41,7 @@ CREATE POLICY "Party delete own properties"
 
 -- NEW: the previously-missing grants that make add-property.html /
 -- edit-listing.html actually work for real agents.
+DROP POLICY IF EXISTS "Party insert own properties" ON properties;
 CREATE POLICY "Party insert own properties"
   ON properties FOR INSERT TO authenticated
   WITH CHECK (
@@ -46,6 +50,7 @@ CREATE POLICY "Party insert own properties"
     AND contact_id IS NOT NULL
   );
 
+DROP POLICY IF EXISTS "Party update own properties" ON properties;
 CREATE POLICY "Party update own properties"
   ON properties FOR UPDATE TO authenticated
   USING (
@@ -60,19 +65,23 @@ DROP POLICY IF EXISTS "Admin update agents" ON parties;
 DROP POLICY IF EXISTS "Admin select agents" ON parties;
 DROP POLICY IF EXISTS "Public read agents"  ON parties;
 
+DROP POLICY IF EXISTS "Staff insert parties" ON parties;
 CREATE POLICY "Staff insert parties"
   ON parties FOR INSERT TO authenticated
   WITH CHECK (is_pintag_staff(auth.uid()));
 
+DROP POLICY IF EXISTS "Staff update parties" ON parties;
 CREATE POLICY "Staff update parties"
   ON parties FOR UPDATE TO authenticated
   USING (is_pintag_staff(auth.uid()))
   WITH CHECK (is_pintag_staff(auth.uid()));
 
+DROP POLICY IF EXISTS "Staff select parties" ON parties;
 CREATE POLICY "Staff select parties"
   ON parties FOR SELECT TO authenticated
   USING (is_pintag_staff(auth.uid()));
 
+DROP POLICY IF EXISTS "Public read parties" ON parties;
 CREATE POLICY "Public read parties"
   ON parties FOR SELECT TO anon
   USING (true);
@@ -81,6 +90,7 @@ CREATE POLICY "Public read parties"
 -- own type/auth_user_id (claiming/reassigning stays a staff-mediated action
 -- via agent-setup.html for this phase — self-serve identity verification is
 -- explicitly out of scope, flagged as future work).
+DROP POLICY IF EXISTS "Party update own profile" ON parties;
 CREATE POLICY "Party update own profile"
   ON parties FOR UPDATE TO authenticated
   USING (auth_user_id = auth.uid())
@@ -89,6 +99,8 @@ CREATE POLICY "Party update own profile"
 -- ── lead_events ──────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "Admin full access lead_events" ON lead_events;
 DROP POLICY IF EXISTS "Agent read own leads"          ON lead_events;
+DROP POLICY IF EXISTS "Staff full access lead_events" ON lead_events;
+DROP POLICY IF EXISTS "Party read own leads"          ON lead_events;
 
 CREATE POLICY "Staff full access lead_events"
   ON lead_events TO authenticated

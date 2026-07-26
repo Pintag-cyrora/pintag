@@ -6,14 +6,28 @@
 -- defined in any tracked migration) — PostgREST resource embedding needs a
 -- real FK to auto-detect the join, so add it as part of the rename.
 
--- Backfill safety: null out any properties.agent_id that doesn't match a real
--- parties.id before the FK can be added (dangling values would abort the
--- ALTER otherwise). Pre-migration check for this was run manually; see
--- migration notes.
-UPDATE properties SET agent_id = NULL
-WHERE agent_id IS NOT NULL AND agent_id NOT IN (SELECT id FROM parties);
+-- Guarded on agent_id still existing, for the same reason
+-- 20260705000000_agents_becomes_parties.sql guards its own RENAME: once
+-- this has run once, agent_id no longer exists to backfill/rename, so an
+-- unguarded re-run (e.g. after a later crash resumes from the top of this
+-- file) would fail on "column agent_id does not exist" even though there
+-- is nothing left for these two statements to do.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'properties' AND column_name = 'agent_id'
+  ) THEN
+    -- Backfill safety: null out any properties.agent_id that doesn't match a real
+    -- parties.id before the FK can be added (dangling values would abort the
+    -- ALTER otherwise). Pre-migration check for this was run manually; see
+    -- migration notes.
+    UPDATE properties SET agent_id = NULL
+    WHERE agent_id IS NOT NULL AND agent_id NOT IN (SELECT id FROM parties);
 
-ALTER TABLE properties RENAME COLUMN agent_id TO managed_by_party_id;
+    ALTER TABLE properties RENAME COLUMN agent_id TO managed_by_party_id;
+  END IF;
+END $$;
 
 -- Pre-existing trigger function (not part of any tracked migration, found
 -- only by scanning pg_proc against production) directly referenced the old
@@ -65,14 +79,15 @@ ALTER TABLE properties
   ADD CONSTRAINT properties_managed_by_party_id_fkey
   FOREIGN KEY (managed_by_party_id) REFERENCES parties(id) ON DELETE SET NULL;
 
-ALTER TABLE properties ADD COLUMN contact_id uuid REFERENCES contacts(id);
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS contact_id uuid REFERENCES contacts(id);
 
-CREATE INDEX idx_properties_contact_id ON properties(contact_id);
-CREATE INDEX idx_properties_managed_by_party_id ON properties(managed_by_party_id);
+CREATE INDEX IF NOT EXISTS idx_properties_contact_id ON properties(contact_id);
+CREATE INDEX IF NOT EXISTS idx_properties_managed_by_party_id ON properties(managed_by_party_id);
 
 -- Now that properties.contact_id exists, add the public contact-visibility
 -- policy deferred from 20260705000100_contacts_table.sql: a contact is
 -- publicly readable only when linked to a listing that's actually public.
+DROP POLICY IF EXISTS "Public read contacts of active properties" ON contacts;
 CREATE POLICY "Public read contacts of active properties"
   ON contacts FOR SELECT TO anon
   USING (id IN (SELECT contact_id FROM properties WHERE status IN ('active','available')));

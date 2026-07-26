@@ -6,28 +6,42 @@
 -- represent owners, developers, or agencies that Pintag staff pre-register
 -- on their behalf before they ever sign in. See the table comment below.
 
-ALTER TABLE agents
-  ADD COLUMN type text NOT NULL DEFAULT 'agent'
-    CHECK (type IN ('staff','agent','owner','property_manager','developer','agency_rep','enterprise_user','other'));
+-- Everything through the RENAME below only makes sense while the table is
+-- still called `agents` — once renamed to `parties`, re-running any of it
+-- (ADD COLUMN, backfill, index, the RENAME itself) against a table that no
+-- longer exists would fail outright, IF NOT EXISTS or not. Guarding the
+-- whole block on `agents` still existing is what makes this file safe to
+-- re-run at any point: before it's ever run (does everything), mid-way
+-- through a crashed prior run (finishes what's left, thanks to the
+-- IF NOT EXISTS/idempotent statements inside), or long after it already
+-- fully succeeded (skips entirely, a clean no-op).
+DO $$
+BEGIN
+  IF to_regclass('public.agents') IS NOT NULL THEN
+    ALTER TABLE agents
+      ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'agent'
+        CHECK (type IN ('staff','agent','owner','property_manager','developer','agency_rep','enterprise_user','other'));
 
-ALTER TABLE agents
-  ADD COLUMN auth_user_id uuid REFERENCES auth.users(id);
+    ALTER TABLE agents
+      ADD COLUMN IF NOT EXISTS auth_user_id uuid REFERENCES auth.users(id);
 
--- Backfill: most existing agents rows were created under the "id == auth uid"
--- convention (agent-setup.html has staff type in the future auth uid as the
--- row's own PK) — preserve that linkage explicitly now that the two are
--- decoupled going forward. Guarded with an existence check: some rows'
--- id was never actually a real auth.users id (e.g. agents pre-registered by
--- staff with no login yet) — those correctly stay auth_user_id = NULL,
--- exactly the "unclaimed identity" state this redesign is meant to support,
--- rather than aborting the whole migration on a dangling reference.
-UPDATE agents SET auth_user_id = id
-WHERE auth_user_id IS NULL
-  AND id IN (SELECT id FROM auth.users);
+    -- Backfill: most existing agents rows were created under the "id == auth uid"
+    -- convention (agent-setup.html has staff type in the future auth uid as the
+    -- row's own PK) — preserve that linkage explicitly now that the two are
+    -- decoupled going forward. Guarded with an existence check: some rows'
+    -- id was never actually a real auth.users id (e.g. agents pre-registered by
+    -- staff with no login yet) — those correctly stay auth_user_id = NULL,
+    -- exactly the "unclaimed identity" state this redesign is meant to support,
+    -- rather than aborting the whole migration on a dangling reference.
+    UPDATE agents SET auth_user_id = id
+    WHERE auth_user_id IS NULL
+      AND id IN (SELECT id FROM auth.users);
 
-CREATE UNIQUE INDEX idx_agents_auth_user_id ON agents(auth_user_id) WHERE auth_user_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_auth_user_id ON agents(auth_user_id) WHERE auth_user_id IS NOT NULL;
 
-ALTER TABLE agents RENAME TO parties;
+    ALTER TABLE agents RENAME TO parties;
+  END IF;
+END $$;
 
 COMMENT ON TABLE parties IS
   'Any person or organization Pintag has a relationship with for listing management or buyer contact purposes — may or may not have signed in; see type and the nullable auth_user_id.';

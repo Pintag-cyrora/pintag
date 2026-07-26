@@ -18,7 +18,7 @@
 -- numeric column would reject that payload outright, so these are `text`,
 -- exactly like properties.price_display.
 
-CREATE TABLE unit_types (
+CREATE TABLE IF NOT EXISTS unit_types (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   property_id   uuid NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
   sort_order    integer NOT NULL DEFAULT 0,  -- staff-controlled display order, drag-reordered in admin.html
@@ -62,7 +62,7 @@ CREATE TABLE unit_types (
 COMMENT ON TABLE unit_types IS
   'One row per unit variant (Studio/1BR/2BR/...) within a multi-unit building. A properties row is a multi-unit building purely by having 1+ rows here -- no flag on properties. Every nullable column means "inherit the building''s own value"; see resolveUnitType() in terminology.js.';
 
-CREATE INDEX idx_unit_types_property_id ON unit_types(property_id);
+CREATE INDEX IF NOT EXISTS idx_unit_types_property_id ON unit_types(property_id);
 
 -- Defined here with CREATE OR REPLACE (same convention as
 -- 20260705000100_contacts_table.sql) since this function's application
@@ -76,12 +76,14 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_unit_types_updated_at ON unit_types;
 CREATE TRIGGER trg_unit_types_updated_at
   BEFORE UPDATE ON unit_types
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 ALTER TABLE unit_types ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Staff full access unit_types" ON unit_types;
 CREATE POLICY "Staff full access unit_types"
   ON unit_types TO authenticated
   USING (is_pintag_staff(auth.uid()))
@@ -91,6 +93,7 @@ CREATE POLICY "Staff full access unit_types"
 -- owned_party_ids() join, through properties.managed_by_party_id) -- so a
 -- future self-service Unit Types UI (add-property.html/edit-listing.html)
 -- needs no RLS changes to work, even though Phase 1's UI is admin.html-only.
+DROP POLICY IF EXISTS "Party manage own unit_types" ON unit_types;
 CREATE POLICY "Party manage own unit_types"
   ON unit_types TO authenticated
   USING (
@@ -108,6 +111,7 @@ CREATE POLICY "Party manage own unit_types"
 
 -- Public read, gated the same way properties/contacts already are: only
 -- unit types belonging to a currently-visible listing.
+DROP POLICY IF EXISTS "Public read unit_types of active properties" ON unit_types;
 CREATE POLICY "Public read unit_types of active properties"
   ON unit_types FOR SELECT TO anon
   USING (property_id IN (SELECT id FROM properties WHERE status IN ('active','available')));

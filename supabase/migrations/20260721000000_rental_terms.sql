@@ -18,8 +18,8 @@
 -- analytics) -- those stay flat and relational, matching every other table
 -- in this schema.
 
-ALTER TABLE properties ADD COLUMN rental_terms jsonb NOT NULL DEFAULT '{"version":1}'::jsonb;
-ALTER TABLE unit_types ADD COLUMN rental_terms_overrides jsonb NOT NULL DEFAULT '{"version":1}'::jsonb;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS rental_terms jsonb NOT NULL DEFAULT '{"version":1}'::jsonb;
+ALTER TABLE unit_types ADD COLUMN IF NOT EXISTS rental_terms_overrides jsonb NOT NULL DEFAULT '{"version":1}'::jsonb;
 
 COMMENT ON COLUMN properties.rental_terms IS
   'Building-level rental terms (deposit, utilities, services, fees). Keys are defined by RENTAL_TERMS_FIELDS in rental-terms.js -- that registry is the single source of truth for valid keys/types, not this column. "version" is a serialization/schema-version marker only, never a business concept. Never read this column directly -- call resolveRentalTerms(property, unitType).';
