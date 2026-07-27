@@ -482,6 +482,7 @@ nav{
 <script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
+<script src="analytics-tracking.js"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -1115,7 +1116,7 @@ function renderListings() {
       activityBadgesHtml: getActivityBadgesHtml(p, lang),
       showAmenities: true,
       isSaved: saved.has(p.slug),
-      onHeartToggle: function(slug, e) { return ptToggleSave(slug, e); },
+      onHeartToggle: function(slug, e) { return ptToggleSave(slug, e, p.id); },
       footerHtml: actLineTxt ? '<p class="card-activity-line">' + esc(actLineTxt) + '</p>' : '',
       dataTrack: p.id ? {
         track: 'listing-card', type: 'card', propertyId: p.id, label: p['title_'+lang] || p.title_en || '',

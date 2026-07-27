@@ -299,12 +299,16 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
         <button class="tab active">All Listings</button>
         <button class="tab" onclick="toggleAnalytics()" id="analytics-tab">📊 Analytics</button>
         <a class="tab" href="intelligence.html" style="text-decoration:none;">🧠 Intelligence</a>
+        <a class="tab" href="analytics.html" style="text-decoration:none;">📈 Full Analytics</a>
       </div>
 
       <div id="analytics-panel" style="display:none;padding:20px 0;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
-          <p style="font-size:13px;color:var(--ink-muted);">Aggregated counts below. For a per-session, event-by-event trace across ui_events/search_events/listing_events/lead_events/leads, use the Inspector.</p>
-          <a href="analytics-inspector.html" class="admin-nav-btn" style="background:var(--ink);color:#fff;white-space:nowrap;margin-left:16px;">🔬 Analytics Inspector →</a>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+          <p style="font-size:13px;color:var(--ink-muted);">Lead counts below. For traffic, search, behavior, device/location, and full charts, see the Full Analytics dashboard. For a per-session, event-by-event trace across ui_events/search_events/listing_events/lead_events/leads, use the Inspector.</p>
+          <div style="display:flex;gap:8px;flex-shrink:0;">
+            <a href="analytics.html" class="admin-nav-btn" style="background:var(--teal);color:#fff;white-space:nowrap;">📈 Full Analytics →</a>
+            <a href="analytics-inspector.html" class="admin-nav-btn" style="background:var(--ink);color:#fff;white-space:nowrap;">🔬 Analytics Inspector →</a>
+          </div>
         </div>
         <div class="analytics-grid">
           <div class="analytics-card">

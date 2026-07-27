@@ -46,12 +46,27 @@ function ptGetSavedSet() {
   try { return new Set(JSON.parse(localStorage.getItem('pintag_saved') || '[]')); }
   catch (e) { return new Set(); }
 }
-function ptToggleSave(slug, e) {
+function ptToggleSave(slug, e, propertyId) {
   if (e) { e.preventDefault(); e.stopPropagation(); }
   var saved = ptGetSavedSet();
-  if (saved.has(slug)) saved.delete(slug); else saved.add(slug);
+  var nowSaved = !saved.has(slug);
+  if (nowSaved) saved.add(slug); else saved.delete(slug);
   try { localStorage.setItem('pintag_saved', JSON.stringify([...saved])); } catch (e2) {}
-  return saved.has(slug); // caller uses this to update the clicked button's visible state
+  // Server-side save tracking -- was localStorage-only until now (the
+  // listing_events schema has always had 'save' in its event_type CHECK,
+  // but nothing ever wrote one). Only fires on an actual save, not an
+  // unsave, matching how 'share'/'contact' are one-directional actions too.
+  // propertyId is optional -- callers that only have a slug (no id in
+  // scope) simply skip server-side tracking rather than posting a
+  // property_id-less row that couldn't answer "which listing."
+  if (nowSaved && propertyId && typeof postEvent === 'function') {
+    postEvent('listing_events', {
+      property_id: propertyId,
+      event_type: 'save',
+      session_id: (typeof getOrCreateSessionId === 'function') ? getOrCreateSessionId() : null
+    });
+  }
+  return nowSaved; // caller uses this to update the clicked button's visible state
 }
 
 function _ptEsc(s) {
@@ -538,7 +553,7 @@ function renderAgentPreview(party, opts) {
     var viewProfileLabel = PT_VIEW_PROFILE_LABEL[lang] || PT_VIEW_PROFILE_LABEL.en;
     buttonsHtml = '<div class="pt-agent-card-ctas">' +
       (opts.whatsappHref ? '<a href="' + _ptEsc(opts.whatsappHref) + '" target="_blank" rel="noopener noreferrer" class="pt-btn pt-btn-primary">WhatsApp</a>' : '') +
-      (d.slug ? '<a href="agent.html?slug=' + encodeURIComponent(d.slug) + '" class="pt-btn pt-btn-outline">' + _ptEsc(viewProfileLabel) + '</a>' : '') +
+      (d.slug ? '<a href="agent.html?slug=' + encodeURIComponent(d.slug) + '" class="pt-btn pt-btn-outline" data-track="agent-profile-link" data-track-type="cta" data-track-label="' + _ptEsc(d.name) + '">' + _ptEsc(viewProfileLabel) + '</a>' : '') +
     '</div>';
   }
 

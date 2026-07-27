@@ -536,6 +536,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 <script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
+<script src="analytics-tracking.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // PINTAG · listing.html v4 — fully dynamic, no hardcoded content
@@ -947,12 +948,23 @@ function handleShare(btn){
   // link or a unit-selector deep link that hasn't gone through setLang().
   var url=getCanonicalListingUrl(propertyContext,getCurrentLang())||window.location.href;
   var title=document.title||'Pintag';
+  // Server-side share tracking (listing_events event_type='share') -- was
+  // schema-supported but never written by any caller. Only fires once the
+  // share/copy genuinely succeeds -- Web Share API rejects on user-cancel
+  // the same way it does on a real failure, so firing from .then() (not
+  // .catch()) is what keeps this from counting a cancelled share sheet.
+  function trackShare(){
+    if(propertyContext&&propertyContext.id&&typeof postEvent==='function'){
+      postEvent('listing_events',{property_id:propertyContext.id,event_type:'share',session_id:getOrCreateSessionId()});
+    }
+  }
   if(navigator.share){
-    navigator.share({title:title,url:url}).catch(function(){});
+    navigator.share({title:title,url:url}).then(trackShare).catch(function(){});
     return;
   }
   if(navigator.clipboard){
     navigator.clipboard.writeText(url).then(function(){
+      trackShare();
       if(!btn)return;
       var spans=btn.querySelectorAll('span');
       var origText=spans.length?spans[0].textContent:'';
