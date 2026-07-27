@@ -899,6 +899,19 @@ async function sbFetch(path){
   try{return await res.json();}catch(e){throw new Error('JSON parse: '+e.message);}
 }
 
+// Single fallback rule for every bilingual/trilingual DATA field on this
+// page (title/description/property_highlight/district/...): the active
+// language's own value, else English -- NEVER Lao, unless lang itself IS
+// 'lo' (the primary lookup above already covers that case, so this never
+// needs to reach for '_lo' as a fallback). Centralizing this in one place
+// is what makes "no mixed languages" an invariant instead of something
+// that can silently drift back per call site -- every text field on this
+// page must resolve through this function, not repeat the chain inline.
+function resolveLangField(obj,field,lang,fallback){
+  if(!obj)return fallback||'';
+  return obj[field+'_'+lang]||obj[field+'_en']||fallback||'';
+}
+
 function getCurrentLang(){
   if(document.body.classList.contains('lang-en'))return 'en';
   if(document.body.classList.contains('lang-zh'))return 'zh';
@@ -1003,13 +1016,13 @@ var OG_GENERIC_DESC={
 
 function updateOGTags(data){
   var lang=getCurrentLang();
-  var title=(data['title_'+lang]||data.title_en||data.title_lo||'Pintag Property')+' · Pintag';
-  var desc=data['property_highlight_'+lang]||data.property_highlight_en||data.property_highlight
-    ||data['description_'+lang]||data.description_en
+  var title=resolveLangField(data,'title',lang,'Pintag Property')+' · Pintag';
+  var desc=resolveLangField(data,'property_highlight',lang,null)
+    ||resolveLangField(data,'description',lang,null)
     ||OG_GENERIC_DESC[lang]||OG_GENERIC_DESC.en;
   var imgs=Array.isArray(data.images)?data.images.filter(function(u){return u&&typeof u==='string';}):[];
   var img=imgs[0]||'https://pintag.io/og-preview.jpg';
-  var imgAlt=(OG_IMG_ALT_PREFIX[lang]||OG_IMG_ALT_PREFIX.en)+(data['title_'+lang]||data.title_en||data.title_lo||'Pintag');
+  var imgAlt=(OG_IMG_ALT_PREFIX[lang]||OG_IMG_ALT_PREFIX.en)+resolveLangField(data,'title',lang,'Pintag');
   var url=getCanonicalListingUrl(data,lang)||('https://pintag.io/listing.html?lang='+encodeURIComponent(lang));
   function setMeta(sel,val){var el=document.querySelector(sel);if(el)el.setAttribute('content',val);}
   function setHref(sel,val){var el=document.querySelector(sel);if(el)el.setAttribute('href',val);}
@@ -1500,18 +1513,20 @@ function buildMockupLayout(){
   var lang=getCurrentLang();
   PT.log('Rendering',{lang:lang,id:data.id});
 
-  var resolvedTitle    = esc(data['title_'+lang]       || data.title_en    || data.title_lo    || '');
-  var resolvedDesc     = esc(data['description_'+lang] || data.description_en || data.description_lo || '');
-  var resolvedDistrict = esc(data['district_'+lang]    || data.district_en  || '');
+  var resolvedTitle    = esc(resolveLangField(data,'title',lang));
+  var resolvedDesc     = esc(resolveLangField(data,'description',lang));
+  var resolvedDistrict = esc(resolveLangField(data,'district',lang));
 
-  // Village + district — "Thongkang, Sisattanak" style hyperlocal label
-  var resolvedVillage  = data['village_'+lang] || data.village_en || data.village || '';
+  // Village + district — "Thongkang, Sisattanak" style hyperlocal label.
+  // village has no per-language column (place names aren't translated) —
+  // village_en is the only source, in every language.
+  var resolvedVillage  = data.village_en || data.village || '';
   var locationLabel    = resolvedVillage
     ? esc(resolvedVillage) + ', ' + resolvedDistrict
     : resolvedDistrict;
 
-  // Property highlight — language-specific, falls back to shared field
-  var resolvedHighlight = data['property_highlight_'+lang] || data.property_highlight_en || data.property_highlight || '';
+  // Property highlight — language-specific, English fallback (never Lao)
+  var resolvedHighlight = resolveLangField(data,'property_highlight',lang);
 
   var isSale = data.transaction_type==='for_sale'||data.transaction_type==='sale';
   var isSor  = data.transaction_type==='sale_or_rent';
@@ -1547,7 +1562,7 @@ function buildMockupLayout(){
   // fallback — nothing more to inherit here.
   if(selectedUnit){
     var _descByLang={en:selectedUnit.resolved.descriptionEn,lo:selectedUnit.resolved.descriptionLo,zh:selectedUnit.resolved.descriptionZh};
-    var _selDesc=_descByLang[lang]||selectedUnit.resolved.descriptionEn||selectedUnit.resolved.descriptionLo||'';
+    var _selDesc=_descByLang[lang]||selectedUnit.resolved.descriptionEn||'';
     if(_selDesc) resolvedDesc=esc(_selDesc);
   }
   var effectiveAmenities=selectedUnit?(Array.isArray(selectedUnit.resolved.amenities)?selectedUnit.resolved.amenities:[]):(Array.isArray(data.amenities)?data.amenities:[]);
@@ -2326,7 +2341,7 @@ var WA_UNIT_AVAILABLE_QUESTION={lo:'ຍັງມີຢູ່ບໍ?',en:'Is it s
 var WA_UNIT_PRICE_ON_REQUEST={lo:'ລາຄາຕິດຕໍ່ສອບຖາມ',en:'price on request',zh:'价格面议'};
 
 function buildUnitWhatsAppMessage(property, unitName, priceText, availabilityResolved, lang){
-  var propertyName=property['title_'+lang]||property.title_en||property.title_lo||'';
+  var propertyName=resolveLangField(property,'title',lang);
   var priceStr=priceText||(WA_UNIT_PRICE_ON_REQUEST[lang]||WA_UNIT_PRICE_ON_REQUEST.en);
   var availLine=(availabilityResolved&&availabilityResolved.status==='available')
     ? (WA_UNIT_AVAILABLE_QUESTION[lang]||WA_UNIT_AVAILABLE_QUESTION.en)

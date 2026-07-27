@@ -59,6 +59,13 @@ function _ptEsc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Card-chrome a11y strings (heart button / no-photo placeholder) -- were
+// hardcoded English regardless of `lang`, invisible to sighted users but
+// still part of "the site's language" for a screen-reader visitor.
+var PT_SAVE_LABEL = { lo:'ບັນທຶກລາຍການ', en:'Save listing', zh:'收藏房源' };
+var PT_UNSAVE_LABEL = { lo:'ເອົາອອກຈາກທີ່ບັນທຶກ', en:'Remove from saved', zh:'取消收藏' };
+var PT_NO_PHOTO_LABEL = { lo:'ບໍ່ມີຮູບພາບ', en:'No photo available', zh:'暂无照片' };
+
 function _ptApplyDataTrack(el, dataTrack) {
   if (!dataTrack) return;
   Object.keys(dataTrack).forEach(function(key) {
@@ -129,9 +136,17 @@ function formatPropertyPrice(property, lang) {
 // pre-existing behavior; English-primary contexts want name_en first).
 function resolvePartyDisplay(party, listingCount, lang) {
   if (!party) return null;
+  // lang==='lo' is the only case allowed to prefer name_lo/bio_lo -- every
+  // other language falls back to English only, never Lao (party has no
+  // name_zh/bio_zh source data today, so zh also resolves through the
+  // English branch here, same "never leak Lao" rule as every other
+  // localized field on the site).
   var name = (lang === 'lo')
     ? (party.name_lo || party.name_en || 'Agent')
-    : (party.name_en || party.name_lo || 'Agent');
+    : (party.name_en || 'Agent');
+  var bio = (lang === 'lo')
+    ? (party.bio_lo || party.bio_en || null)
+    : (party.bio_en || null);
   return {
     photo: party.photo_url || null,
     initial: (name.trim().charAt(0) || 'P').toUpperCase(),
@@ -139,7 +154,7 @@ function resolvePartyDisplay(party, listingCount, lang) {
     nameLo: party.name_lo || null,
     agency: party.agency_name || null,
     verified: !!party.is_verified,
-    bio: party.bio_lo || party.bio_en || null,
+    bio: bio,
     listingCount: (listingCount != null && listingCount > 0) ? listingCount : null,
     slug: party.slug || null,
     whatsapp: party.whatsapp || null
@@ -229,14 +244,14 @@ function renderPropertyCard(property, opts) {
   var images = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
   var imgHtml = images.length
     ? '<img src="' + _ptEsc(images[0]) + '" alt="' + title + '" loading="lazy">'
-    : '<div class="pt-card-no-img" role="img" aria-label="No photo available"></div>';
+    : '<div class="pt-card-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';
 
   var overlayTl = (opts.statusBadgeHtml || '') + (opts.extraOverlayHtml || '');
   var badgeHtml = opts.showTransactionBadge ? renderTransactionBadge(p.transaction_type, lang).outerHTML : '';
 
   var heartHtml = opts.showHeart !== false
     ? '<button type="button" class="pt-heart-btn' + (opts.isSaved ? ' pt-saved' : '') + '" aria-label="' +
-        (opts.isSaved ? 'Remove from saved' : 'Save listing') + '" aria-pressed="' + (!!opts.isSaved) + '">' +
+        _ptEsc((opts.isSaved ? PT_UNSAVE_LABEL : PT_SAVE_LABEL)[lang] || (opts.isSaved ? PT_UNSAVE_LABEL : PT_SAVE_LABEL).en) + '" aria-pressed="' + (!!opts.isSaved) + '">' +
         '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1A2428" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
       '</button>'
     : '';
@@ -280,7 +295,7 @@ function renderPropertyCard(property, opts) {
 
   var agentHtml = '';
   if (opts.showAgentRow !== false) {
-    var contact = _ptResolveCardContact(p);
+    var contact = _ptResolveCardContact(p, lang);
     if (contact) {
       var initial = _ptEsc(contact.name.trim().charAt(0) || 'P');
       var avatarInner = contact.photo
@@ -327,7 +342,7 @@ function renderPropertyCard(property, opts) {
       if (isNowSaved != null) {
         heartBtn.classList.toggle('pt-saved', isNowSaved);
         heartBtn.setAttribute('aria-pressed', String(isNowSaved));
-        heartBtn.setAttribute('aria-label', isNowSaved ? 'Remove from saved' : 'Save listing');
+        heartBtn.setAttribute('aria-label', (isNowSaved ? PT_UNSAVE_LABEL : PT_SAVE_LABEL)[lang] || (isNowSaved ? PT_UNSAVE_LABEL : PT_SAVE_LABEL).en);
       }
     });
   }
@@ -346,14 +361,18 @@ var PT_CONTACT_ROLE_LABELS = {
   developer:{lo:'ຜູ້ພັດທະນາ',en:'Developer',zh:'开发商'}, family_representative:{lo:'ຕົວແທນຄອບຄົວ',en:'Family Representative',zh:'家庭代表'},
   other:{lo:'ຜູ້ຕິດຕໍ່',en:'Contact',zh:'联系人'}
 };
-function _ptResolveCardContact(p) {
+function _ptResolveCardContact(p, lang) {
   var party = p.parties, contact = p.contacts;
   var isAgent = !!(party && party.type === 'agent');
-  var name = isAgent ? (party.name_en || (contact && contact.name) || '') : ((contact && contact.name) || '');
+  // party has no name_zh source data (see resolvePartyDisplay's own note) --
+  // only lang==='lo' is allowed to prefer name_lo; every other language,
+  // including zh, resolves through name_en only, never Lao.
+  var partyName = party && ((lang === 'lo') ? (party.name_lo || party.name_en) : party.name_en);
+  var name = isAgent ? (partyName || (contact && contact.name) || '') : ((contact && contact.name) || '');
   if (!name) return null;
   var roleKey = isAgent ? 'agent' : ((contact && contact.role) || 'other');
   var roleLabels = PT_CONTACT_ROLE_LABELS[roleKey] || PT_CONTACT_ROLE_LABELS.other;
-  return { name: name, photo: isAgent ? party.photo_url : null, roleLabel: roleLabels.en };
+  return { name: name, photo: isAgent ? party.photo_url : null, roleLabel: roleLabels[lang] || roleLabels.en };
 }
 
 // ---------------------------------------------------------------------------
@@ -379,7 +398,7 @@ function renderPropertyPreview(property, opts) {
   var images = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
   var imgHtml = images.length
     ? '<img src="' + _ptEsc(images[0]) + '" alt="' + title + '" loading="lazy" decoding="async">'
-    : '<div class="pt-preview-no-img" role="img" aria-label="No photo available"></div>';
+    : '<div class="pt-preview-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';
 
   var specsHtml = '';
   if (opts.showSpecs !== false && typeof getCardFacts === 'function') {
@@ -426,6 +445,17 @@ function renderPropertyPreview(property, opts) {
 // note above .pt-agent-row.
 // ---------------------------------------------------------------------------
 var PT_BIO_FALLBACK = { lo:'ຕົວແທນອະສັງຫາລິມະຊັບ · ວຽງຈັນ', en:'Real Estate Agent · Vientiane', zh:'房地产经纪人 · 万象' };
+// Chrome around the agent card/preview -- was hardcoded English regardless
+// of `lang`, so an English-language page rendered correctly but a Lao/zh
+// page's Agent Profile card still said "VERIFIED AGENT"/"View Profile" in
+// English. Same "no mixed languages" rule as every data field on the page.
+var PT_VERIFIED_LABEL = { lo:'ຕົວແທນກວດສອບແລ້ວ', en:'VERIFIED AGENT', zh:'已认证经纪人' };
+var PT_VIEW_PROFILE_LABEL = { lo:'ເບິ່ງໂປຣໄຟລ໌', en:'View Profile', zh:'查看资料' };
+function _ptListingCountText(n, lang) {
+  if (lang === 'lo') return n + ' ລາຍການທີ່ກຳລັງລົງຂາຍ';
+  if (lang === 'zh') return n + ' 个在售房源';
+  return n + ' active listing' + (n === 1 ? '' : 's');
+}
 function renderAgentCard(party, opts) {
   opts = opts || {};
   var lang = opts.lang || 'en';
@@ -437,6 +467,8 @@ function renderAgentCard(party, opts) {
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
   var bioText = d.bio || (PT_BIO_FALLBACK[lang] || PT_BIO_FALLBACK.en);
 
+  var verifiedLabel = PT_VERIFIED_LABEL[lang] || PT_VERIFIED_LABEL.en;
+
   if (opts.layout === 'row') {
     card.className = 'pt-agent-row';
     var rowPortraitInner = d.photo
@@ -446,7 +478,7 @@ function renderAgentCard(party, opts) {
     card.innerHTML =
       '<div class="pt-agent-row-portrait">' + rowPortraitInner + '</div>' +
       '<div class="pt-agent-row-info">' +
-        (d.verified ? '<span class="pt-agent-row-verified">VERIFIED AGENT</span>' : '') +
+        (d.verified ? '<span class="pt-agent-row-verified">' + _ptEsc(verifiedLabel) + '</span>' : '') +
         '<p class="pt-agent-row-name">' + _ptEsc(d.name) + '</p>' +
         '<p class="pt-agent-row-bio">' + _ptEsc(bioText) + '</p>' +
       '</div>' +
@@ -466,13 +498,13 @@ function renderAgentCard(party, opts) {
     '<div class="pt-agent-card-head">' +
       '<div class="pt-agent-card-portrait">' + portraitInner + '</div>' +
       '<div>' +
-        (d.verified ? '<span class="pt-agent-card-verified">VERIFIED AGENT</span><br>' : '') +
+        (d.verified ? '<span class="pt-agent-card-verified">' + _ptEsc(verifiedLabel) + '</span><br>' : '') +
         '<span class="pt-agent-card-name">' + _ptEsc(d.name) + '</span>' +
         (d.agency ? '<div class="pt-agent-card-agency">' + _ptEsc(d.agency) + '</div>' : '') +
       '</div>' +
     '</div>' +
     '<p class="pt-agent-card-bio">' + _ptEsc(bioText) + '</p>' +
-    (d.listingCount ? '<p class="pt-agent-card-count">' + d.listingCount + ' active listing' + (d.listingCount === 1 ? '' : 's') + '</p>' : '');
+    (d.listingCount ? '<p class="pt-agent-card-count">' + _ptEsc(_ptListingCountText(d.listingCount, lang)) + '</p>' : '');
 
   return card;
 }
@@ -503,23 +535,25 @@ function renderAgentPreview(party, opts) {
 
   var buttonsHtml = '';
   if (opts.showButtons) {
+    var viewProfileLabel = PT_VIEW_PROFILE_LABEL[lang] || PT_VIEW_PROFILE_LABEL.en;
     buttonsHtml = '<div class="pt-agent-card-ctas">' +
       (opts.whatsappHref ? '<a href="' + _ptEsc(opts.whatsappHref) + '" target="_blank" rel="noopener noreferrer" class="pt-btn pt-btn-primary">WhatsApp</a>' : '') +
-      (d.slug ? '<a href="agent.html?slug=' + encodeURIComponent(d.slug) + '" class="pt-btn pt-btn-outline">View Profile</a>' : '') +
+      (d.slug ? '<a href="agent.html?slug=' + encodeURIComponent(d.slug) + '" class="pt-btn pt-btn-outline">' + _ptEsc(viewProfileLabel) + '</a>' : '') +
     '</div>';
   }
 
+  var verifiedLabel = PT_VERIFIED_LABEL[lang] || PT_VERIFIED_LABEL.en;
   wrap.innerHTML =
     '<div class="pt-agent-card-head">' +
       '<div class="pt-agent-card-portrait">' + portraitInner + '</div>' +
       '<div>' +
-        (d.verified ? '<span class="pt-agent-card-verified">VERIFIED AGENT</span><br>' : '') +
+        (d.verified ? '<span class="pt-agent-card-verified">' + _ptEsc(verifiedLabel) + '</span><br>' : '') +
         '<span class="pt-agent-card-name">' + _ptEsc(d.name) + '</span>' +
         (d.agency ? '<div class="pt-agent-card-agency">' + _ptEsc(d.agency) + '</div>' : '') +
       '</div>' +
     '</div>' +
     '<p class="pt-agent-card-bio">' + _ptEsc(bioText) + '</p>' +
-    (d.listingCount ? '<p class="pt-agent-card-count">' + d.listingCount + ' active listing' + (d.listingCount === 1 ? '' : 's') + '</p>' : '') +
+    (d.listingCount ? '<p class="pt-agent-card-count">' + _ptEsc(_ptListingCountText(d.listingCount, lang)) + '</p>' : '') +
     buttonsHtml;
 
   return wrap;
