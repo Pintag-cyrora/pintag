@@ -5,15 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src https://maps.google.com https://www.google.com https://www.youtube.com; media-src *; object-src 'none';">
 <title>Pintag · ລາຍລະອິດອະສັງຫາ</title>
+<meta name="description" content="Discover premium properties for sale and rent in Vientiane, Laos.">
+<link rel="canonical" href="https://pintag.io/listing.html">
+<link rel="alternate" hreflang="en" href="https://pintag.io/listing.html">
+<link rel="alternate" hreflang="lo" href="https://pintag.io/listing.html">
+<link rel="alternate" hreflang="x-default" href="https://pintag.io/listing.html">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="Pintag">
 <meta property="og:title" content="Pintag · Premium Real Estate in Laos">
 <meta property="og:description" content="Discover premium properties for sale and rent in Vientiane, Laos.">
+<meta property="og:url" content="https://pintag.io/listing.html">
 <meta property="og:image" content="https://pintag.io/og-preview.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:type" content="image/jpeg">
-<meta property="og:site_name" content="Pintag">
+<meta property="og:image:alt" content="Pintag · Premium Real Estate in Laos">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pintag · Premium Real Estate in Laos">
+<meta name="twitter:description" content="Discover premium properties for sale and rent in Vientiane, Laos.">
 <meta name="twitter:image" content="https://pintag.io/og-preview.jpg">
 <link rel="icon" type="image/png" href="favicon.png">
 <meta name="theme-color" content="#F3EFE8">
@@ -464,9 +473,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   </div>
   <div class="nav-right">
     <div class="lang-switcher">
-      <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
-      <button class="lang-btn" onclick="setLang('en',this)">EN</button>
-      <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
+      <button class="lang-btn active" data-lang="lo" onclick="setLang('lo',this)">ລາວ</button>
+      <button class="lang-btn" data-lang="en" onclick="setLang('en',this)">EN</button>
+      <button class="lang-btn" data-lang="zh" onclick="setLang('zh',this)">中文</button>
     </div>
     <button class="nav-cta" onclick="var el=document.getElementById('agent-band-anchor');if(el)el.scrollIntoView({behavior:'smooth'})">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -900,11 +909,30 @@ function setLang(lang,btn){
   document.body.classList.remove('lang-lo','lang-en','lang-zh');
   document.body.classList.add('lang-'+lang);
   if(btn){document.querySelectorAll('.lang-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');}
-  if(propertyContext){try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on lang switch',e);}if(similarCache)renderSimilarGrid(similarCache);if(_publicStats)applyPublicStats(_publicStats);}
+  // Keep the address bar's own &lang= in sync with the visible language —
+  // replaceState (never pushState), same rationale as _syncUnitUrlParam()'s
+  // unit-selection sync elsewhere in this file: switching language is not a
+  // navigation event and must never pollute back-button history. This is
+  // what makes a plain copy-paste of the address bar (not just the Share
+  // button) also carry the right language forward.
+  try{
+    var url=new URL(window.location.href);
+    url.searchParams.set('lang',lang);
+    window.history.replaceState(null,'',url.toString());
+  }catch(e){PT.warn('lang URL sync failed',e);}
+  if(propertyContext){
+    try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on lang switch',e);}
+    try{updateOGTags(propertyContext);}catch(e){PT.err('updateOGTags on lang switch',e);}
+    if(similarCache)renderSimilarGrid(similarCache);if(_publicStats)applyPublicStats(_publicStats);
+  }
 }
 
 function handleShare(btn){
-  var url=window.location.href;
+  // Always share the canonical &lang= URL, never the raw address bar — the
+  // two normally match (setLang() keeps the bar in sync), but this is what
+  // guarantees a correct localized preview even from a stale/bookmarked
+  // link or a unit-selector deep link that hasn't gone through setLang().
+  var url=getCanonicalListingUrl(propertyContext,getCurrentLang())||window.location.href;
   var title=document.title||'Pintag';
   if(navigator.share){
     navigator.share({title:title,url:url}).catch(function(){});
@@ -924,6 +952,20 @@ function handleShare(btn){
 }
 
 window.addEventListener('DOMContentLoaded',function(){
+  // Honor an explicit ?lang= from a shared link (the same param the
+  // Cloudflare Worker reads to generate the crawler-visible OG preview —
+  // see cloudflare-worker/og-listing-preview.js) so a real visitor who
+  // clicks through lands on the matching visible language, not always the
+  // site's own Lao default. Silently ignored if invalid/absent — setLang()
+  // is never called with anything but a real lang code.
+  var urlLang=getParam('lang');
+  if(urlLang==='en'||urlLang==='lo'||urlLang==='zh'){
+    document.body.classList.remove('lang-lo','lang-en','lang-zh');
+    document.body.classList.add('lang-'+urlLang);
+    var btn=document.querySelector('.lang-btn[data-lang="'+urlLang+'"]');
+    if(btn){document.querySelectorAll('.lang-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');}
+    document.documentElement.setAttribute('lang',urlLang);
+  }
   var slug=getParam('slug');
   if(!slug){showErrorState('No property selected. Please navigate from the listings page.');return;}
   PT.log('Loading',{slug:slug});
@@ -935,24 +977,75 @@ window.addEventListener('DOMContentLoaded',function(){
 // the WhatsApp pre-filled message. Returns null (not a broken/blank URL)
 // when a listing has no slug, so callers can fall back cleanly instead of
 // sending a dead link — see WA_MESSAGE_TEMPLATES_FALLBACK below.
-function getCanonicalListingUrl(data){
+//
+// Always carries &lang= explicitly (the current page language, unless
+// overridden) — this is the one piece of state that makes a shared link
+// reproduce the same OG preview language for whoever opens it. WhatsApp/
+// Facebook bots don't preserve a sender's browser language, so the
+// language has to live in the URL itself, not be inferred at share time —
+// see cloudflare-worker/og-listing-preview.js, which reads this exact
+// param server-side to generate the crawler-visible preview.
+function getCanonicalListingUrl(data,langOverride){
   if(!data||!data.slug)return null;
-  return 'https://pintag.io/listing.html?slug='+encodeURIComponent(data.slug);
+  var lang=langOverride||getCurrentLang();
+  return 'https://pintag.io/listing.html?slug='+encodeURIComponent(data.slug)+'&lang='+encodeURIComponent(lang);
 }
+
+// Per-language "photo of {title}" alt text and generic fallback copy —
+// small, self-contained, not worth a shared registry entry the way
+// site-wide vocabulary (PROPERTY_TYPES etc.) is.
+var OG_IMG_ALT_PREFIX={lo:'ຮູບພາບ: ',en:'Photo: ',zh:'照片：'};
+var OG_GENERIC_DESC={
+  lo:'ຄົ້ນພົບອະສັງຫາລິມະຊັບຄຸນນະພາບສູງສຳລັບຂາຍ ແລະ ເຊົ່າ ໃນນະຄອນຫຼວງວຽງຈັນ.',
+  en:'Discover premium properties for sale and rent in Vientiane, Laos.',
+  zh:'探索万象优质房产，涵盖出售与出租房源。'
+};
 
 function updateOGTags(data){
   var lang=getCurrentLang();
-  var title=(data['title_'+lang]||data.title_en||'Pintag Property')+' · Pintag';
-  var desc=data['property_highlight_'+lang]||data.property_highlight_en||data.property_highlight||'Premium real estate in Vientiane, Laos.';
+  var title=(data['title_'+lang]||data.title_en||data.title_lo||'Pintag Property')+' · Pintag';
+  var desc=data['property_highlight_'+lang]||data.property_highlight_en||data.property_highlight
+    ||data['description_'+lang]||data.description_en
+    ||OG_GENERIC_DESC[lang]||OG_GENERIC_DESC.en;
   var imgs=Array.isArray(data.images)?data.images.filter(function(u){return u&&typeof u==='string';}):[];
   var img=imgs[0]||'https://pintag.io/og-preview.jpg';
-  var url=getCanonicalListingUrl(data)||'https://pintag.io/listing.html';
+  var imgAlt=(OG_IMG_ALT_PREFIX[lang]||OG_IMG_ALT_PREFIX.en)+(data['title_'+lang]||data.title_en||data.title_lo||'Pintag');
+  var url=getCanonicalListingUrl(data,lang)||('https://pintag.io/listing.html?lang='+encodeURIComponent(lang));
   function setMeta(sel,val){var el=document.querySelector(sel);if(el)el.setAttribute('content',val);}
+  function setHref(sel,val){var el=document.querySelector(sel);if(el)el.setAttribute('href',val);}
+  document.documentElement.setAttribute('lang',lang);
+  setMeta('meta[name="description"]',desc);
   setMeta('meta[property="og:title"]',title);
   setMeta('meta[property="og:description"]',desc);
   setMeta('meta[property="og:image"]',img);
+  setMeta('meta[property="og:image:alt"]',imgAlt);
   setMeta('meta[property="og:url"]',url);
+  setMeta('meta[name="twitter:title"]',title);
+  setMeta('meta[name="twitter:description"]',desc);
   setMeta('meta[name="twitter:image"]',img);
+  setHref('link[rel="canonical"]',url);
+  // hreflang alternates: always en/lo (every listing has at least these —
+  // see the AI generation pipeline, which always produces all 3, but en/lo
+  // are the base languages data entry never leaves blank); zh only when
+  // this specific listing actually has Chinese content, so a crawler is
+  // never pointed at an "alternate" that resolves to the same English
+  // fallback content as the base version.
+  setHref('link[rel="alternate"][hreflang="en"]',getCanonicalListingUrl(data,'en'));
+  setHref('link[rel="alternate"][hreflang="lo"]',getCanonicalListingUrl(data,'lo'));
+  setHref('link[rel="alternate"][hreflang="x-default"]',getCanonicalListingUrl(data,'lo'));
+  var zhLink=document.querySelector('link[rel="alternate"][hreflang="zh"]');
+  if(data.title_zh){
+    var zhHref=getCanonicalListingUrl(data,'zh');
+    if(!zhLink){
+      zhLink=document.createElement('link');
+      zhLink.setAttribute('rel','alternate');
+      zhLink.setAttribute('hreflang','zh');
+      document.head.appendChild(zhLink);
+    }
+    zhLink.setAttribute('href',zhHref);
+  }else if(zhLink){
+    zhLink.parentNode.removeChild(zhLink);
+  }
   document.title=title;
 }
 
