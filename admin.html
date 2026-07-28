@@ -54,6 +54,11 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .status-draft{background:rgba(122,144,152,0.13);color:var(--ink-muted);}
 .status-sale-rent{background:rgba(139,92,246,0.1);color:#7C3AED;}
 .action-btn{font-size:11px;font-weight:500;padding:5px 10px;border-radius:2px;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;text-decoration:none;display:inline-block;transition:all 0.2s;}
+/* Owner Phone cell actions (internal column) — small enough to sit inline
+   with the number without widening the table. */
+.owner-mini-btn{font-size:11px;line-height:1;padding:3px 6px;border-radius:3px;border:1px solid var(--border-mid,rgba(26,36,40,0.13));background:#fff;color:var(--ink-soft,#3D5058);cursor:pointer;text-decoration:none;display:inline-block;font-family:'DM Sans',sans-serif;}
+.owner-mini-btn:hover{background:var(--warm,#F7F3EC);}
+.listings-search{font-family:'DM Sans',sans-serif;font-size:13px;padding:8px 12px;border:1px solid var(--border-mid,rgba(26,36,40,0.13));border-radius:4px;width:100%;max-width:340px;}
 .btn-edit{background:var(--warm);color:var(--ink);border:1px solid var(--border);}
 .btn-edit:hover{background:var(--warm-deep);}
 .btn-delete{background:rgba(192,57,43,0.08);color:var(--red);border:1px solid rgba(192,57,43,0.2);}
@@ -687,6 +692,51 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               <label class="form-label">Download URL</label>
               <input class="form-input" id="f-download-url" type="text" placeholder="Google Drive link for watermarked video">
             </div>
+          </div>
+        </div>
+
+        <!-- INTERNAL OWNER (staff-only — NEVER shown to buyers) -->
+        <!-- Deliberately placed immediately BEFORE Buyer Contact so the two
+             are visually adjacent and impossible to confuse: this one is
+             private, the next one is public. See
+             20260728000000_owners_internal_contacts.sql for why they are
+             separate tables rather than one. -->
+        <div class="form-section" style="border-left:3px solid var(--ink);padding-left:14px;background:rgba(26,36,40,0.02);">
+          <p class="form-section-title">&#128274; Internal Owner <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; staff-only, never shown on the public site or API</span></p>
+          <div class="form-grid">
+            <div class="form-group" style="grid-column:1/-1;">
+              <label class="form-label">Owner</label>
+              <select class="form-input" id="f-owner-select" onchange="onOwnerSelectChange()">
+                <option value="">— No owner on file —</option>
+                <option value="__new__">+ Create new owner…</option>
+              </select>
+              <p style="font-size:10.5px;color:var(--ink-muted);margin-top:4px;">One owner can own many listings — pick an existing owner to reuse their details, and updating them once updates every listing.</p>
+            </div>
+          </div>
+          <div id="owner-fields" style="display:none;">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Owner Name *</label>
+                <input class="form-input" id="f-owner-name" type="text" placeholder="e.g. Mr. Somchai">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Owner Phone</label>
+                <input class="form-input" id="f-owner-phone" type="text" placeholder="020 XXXXXXXX">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Owner WhatsApp</label>
+                <input class="form-input" id="f-owner-whatsapp" type="text" placeholder="Defaults to phone if blank">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Owner Email</label>
+                <input class="form-input" id="f-owner-email" type="email" placeholder="owner@example.com">
+              </div>
+            </div>
+            <div class="form-group" style="margin-top:10px;">
+              <label class="form-label">Internal Notes</label>
+              <textarea class="form-input" id="f-owner-notes" rows="2" placeholder="Access arrangements, payment preferences, best time to call…"></textarea>
+            </div>
+            <p id="owner-portfolio-note" style="font-size:11px;color:var(--ink-muted);margin-top:8px;"></p>
           </div>
         </div>
 
@@ -2000,6 +2050,7 @@ function showAdminScreen() {
   document.getElementById('admin-screen').style.display = 'block';
   loadListings();
   loadAgentsForDropdown();
+  loadOwners();
   WM.init('assets/pintag-watermark.png');
   // Deep-link support: ?edit=<property-id> opens straight into that
   // listing's edit form, e.g. from an Intelligence Alert's one-click
@@ -2322,11 +2373,140 @@ async function loadAnalytics() {
 }
 
 // ── LISTINGS ──────────────────────────────────────────────────────
+// ── Internal Owners (staff-only) ──────────────────────────────────────
+// Normalized: one owners row can back many listings via properties.owner_id,
+// so a phone number is updated in exactly one place. Never exposed publicly
+// -- the owners table has no anon RLS policy at all.
+let _ownersAll = [];
+
+async function loadOwners() {
+  _ownersAll = await sbApi('GET', 'owners?select=id,name,phone,whatsapp,email,notes&order=name.asc').catch(() => []);
+  populateOwnerSelect();
+}
+
+function populateOwnerSelect(selectedId) {
+  const sel = document.getElementById('f-owner-select');
+  if (!sel) return;
+  const current = selectedId !== undefined ? selectedId : sel.value;
+  sel.innerHTML =
+    '<option value="">— No owner on file —</option>' +
+    (_ownersAll || []).map(o =>
+      `<option value="${esc(o.id)}">${esc(o.name)}${o.phone ? ' · ' + esc(o.phone) : ''}</option>`
+    ).join('') +
+    '<option value="__new__">+ Create new owner…</option>';
+  sel.value = current || '';
+}
+
+function onOwnerSelectChange() {
+  const sel = document.getElementById('f-owner-select');
+  const fields = document.getElementById('owner-fields');
+  const note = document.getElementById('owner-portfolio-note');
+  const v = sel.value;
+  if (!v) { fields.style.display = 'none'; note.textContent = ''; return; }
+  fields.style.display = 'block';
+  if (v === '__new__') {
+    ['f-owner-name','f-owner-phone','f-owner-whatsapp','f-owner-email','f-owner-notes']
+      .forEach(id => { document.getElementById(id).value = ''; });
+    note.textContent = 'A new owner record will be created and linked to this listing.';
+    return;
+  }
+  const o = _ownersAll.find(x => x.id === v);
+  if (!o) return;
+  document.getElementById('f-owner-name').value     = o.name || '';
+  document.getElementById('f-owner-phone').value    = o.phone || '';
+  document.getElementById('f-owner-whatsapp').value = o.whatsapp || '';
+  document.getElementById('f-owner-email').value    = o.email || '';
+  document.getElementById('f-owner-notes').value    = o.notes || '';
+  // "Editing this owner updates N listings" is the whole point of
+  // normalizing -- surface it so an edit is never a surprise.
+  const count = (_listingsAll || []).filter(p => p.owner_id === v).length;
+  note.textContent = count > 1
+    ? `⚠ This owner is linked to ${count} listings — edits here update all of them.`
+    : 'Linked to this listing only.';
+}
+
+// Returns the owner_id to store on the property: null (none), an existing
+// id (possibly with edits saved back), or a newly-created owner's id.
+async function resolveOwnerId() {
+  const sel = document.getElementById('f-owner-select');
+  if (!sel) return null;
+  const v = sel.value;
+  if (!v) return null;
+  const payload = {
+    name:     document.getElementById('f-owner-name').value.trim(),
+    phone:    document.getElementById('f-owner-phone').value.trim() || null,
+    whatsapp: document.getElementById('f-owner-whatsapp').value.trim() || null,
+    email:    document.getElementById('f-owner-email').value.trim() || null,
+    notes:    document.getElementById('f-owner-notes').value.trim() || null
+  };
+  if (!payload.name) throw new Error('Owner Name is required when an owner is selected.');
+  // whatsapp defaults to phone, matching the Buyer Contact convention.
+  if (!payload.whatsapp) payload.whatsapp = payload.phone;
+  if (v === '__new__') {
+    const created = await sbApi('POST', 'owners', payload);
+    const row = Array.isArray(created) ? created[0] : created;
+    await loadOwners();
+    return row && row.id;
+  }
+  await sbApi('PATCH', `owners?id=eq.${encodeURIComponent(v)}`, payload);
+  await loadOwners();
+  return v;
+}
+
+// ── Owner Phone cell (internal, staff-only) ───────────────────────────
+// Three one-tap actions on the number staff use most: copy (desktop),
+// call (tel: -- becomes a real dialer tap on mobile), and WhatsApp when
+// the owner has one on file. Deliberately compact so the column doesn't
+// crowd the table.
+function _ownerWaDigits(v) { return String(v || '').replace(/[^0-9]/g, ''); }
+
+function copyOwnerPhone(phone, btn) {
+  function done() {
+    if (!btn) return;
+    const prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = prev; }, 1200);
+  }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(phone).then(done).catch(() => {});
+    return;
+  }
+  // execCommand fallback for non-secure-context/older browsers -- the admin
+  // is sometimes opened over a plain-http preview URL where the async
+  // Clipboard API is unavailable.
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = phone; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    done();
+  } catch (e) {}
+}
+
+function renderOwnerPhoneCell(owner) {
+  if (!owner || !owner.phone) {
+    return '<span style="color:var(--ink-muted);font-size:12px;">—</span>';
+  }
+  const phone = esc(owner.phone);
+  const wa = _ownerWaDigits(owner.whatsapp || owner.phone);
+  const name = owner.name ? esc(owner.name) : '';
+  return `<div style="display:flex;align-items:center;gap:5px;white-space:nowrap;">
+    <a href="tel:${phone}" title="Call ${name}" style="font-size:12.5px;color:var(--ink);text-decoration:none;font-variant-numeric:tabular-nums;">${phone}</a>
+    <button type="button" class="owner-mini-btn" title="Copy number" onclick="copyOwnerPhone('${phone}',this)">⧉</button>
+    ${owner.whatsapp ? `<a class="owner-mini-btn" title="WhatsApp ${name}" target="_blank" rel="noopener noreferrer" href="https://wa.me/${wa}">✆</a>` : ''}
+  </div>${name ? `<div style="font-size:10.5px;color:var(--ink-muted);">${name}</div>` : ''}`;
+}
+
 async function loadListings() {
   const container = document.getElementById('listings-container');
   container.innerHTML = '<div class="loading">Loading...</div>';
   const [data, leads] = await Promise.all([
-    sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,managed_by_party_id,district_en,view_count,contacts(role,name,phone)'),
+    // owners(...) is an INTERNAL embed -- staff-only by RLS (no anon policy
+    // exists on that table at all). It is safe here because admin.html only
+    // ever queries with a staff JWT; it must never be copied into a public
+    // page's select. See 20260728000000_owners_internal_contacts.sql.
+    sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,managed_by_party_id,district_en,view_count,contacts(role,name,phone),owner_id,owners(id,name,phone,whatsapp)'),
     // leads, not lead_events — the canonical Lead (Property Inquiry) entity,
     // one row per inquiry across every contact channel (see
     // 20260722000000_leads_recipient_model.sql), same source the Analytics
@@ -2340,7 +2520,15 @@ async function loadListings() {
     container.innerHTML = '<div class="empty"><p class="empty-title">No listings yet</p><p>Click "+New Listing" to add your first property.</p></div>';
     return;
   }
-  let html = '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Status</th><th style="white-space:nowrap;">👁 Views · 📞 Leads</th><th>Actions</th></tr></thead><tbody>';
+  // Cache the full row set so filterListings() can match against fields that
+  // aren't rendered as plain text in the table (owner phone/whatsapp live
+  // inside link hrefs, and are normalized before comparison).
+  _listingsAll = data;
+  let html = `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+      <input id="listings-search" class="listings-search" type="search" placeholder="Search title, district, owner name or owner phone…" oninput="filterListings()">
+      <span id="listings-search-count" style="font-size:12px;color:var(--ink-muted);"></span>
+    </div>`;
+  html += '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Owner Phone</th><th>Status</th><th style="white-space:nowrap;">👁 Views · 📞 Leads</th><th>Actions</th></tr></thead><tbody>';
   data.forEach(p => {
     const agentDisplay = esc((() => {
       const a = p.managed_by_party_id ? _agentsAll.find(x => x.id === p.managed_by_party_id) : null;
@@ -2352,11 +2540,12 @@ async function loadListings() {
     const v = Number(p.view_count || 0);
     const l = Number(leadCounts[p.id] || 0);
     const conv = v > 0 ? ((l/v)*100).toFixed(1) : '—';
-    html += `<tr>
+    html += `<tr data-property-id="${esc(p.id)}">
       <td><strong style="color:var(--ink);font-weight:500;">${esc(p.title_en||'—')}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}</td>
       <td style="color:var(--ink-muted)">${esc(p.district_en||'—')}</td>
       <td>${p.price_display ? esc(p.price_display) : '<em style="color:var(--ink-muted)">On request</em>'}</td>
       <td>${agentDisplay}</td>
+      <td>${renderOwnerPhoneCell(p.owners)}</td>
       <td><span class="status-badge status-${statusCls}">${statusCls}</span></td>
       <td style="white-space:nowrap;font-size:12px;color:var(--ink-muted);"><span style="color:var(--ink);">${v}</span> views · <span style="color:var(--teal);font-weight:600;">${l}</span> leads${v > 0 ? ` <span style="opacity:0.6;">(${conv}%)</span>` : ''}</td>
       <td style="display:flex;gap:6px;align-items:center;">
@@ -2368,6 +2557,42 @@ async function loadListings() {
   });
   html += '</tbody></table>';
   container.innerHTML = html;
+}
+
+// ── Listings search ───────────────────────────────────────────────────
+// Filters the already-rendered table client-side (the full set is already
+// in the DOM -- no refetch). Owner phone is matched with non-digits
+// stripped on BOTH sides, so "02055512345", "020 555 12345" and
+// "020-5551-2345" all find the same owner regardless of how the number was
+// typed into either the search box or the owner record.
+let _listingsAll = [];
+
+function _digitsOnly(v) { return String(v || '').replace(/[^0-9]/g, ''); }
+
+function filterListings() {
+  const raw = (document.getElementById('listings-search') || {}).value || '';
+  const s = raw.trim().toLowerCase();
+  const sDigits = _digitsOnly(raw);
+  const rows = document.querySelectorAll('.listings-table tbody tr');
+  let shown = 0;
+  rows.forEach(tr => {
+    if (!s) { tr.style.display = ''; shown++; return; }
+    const p = _listingsAll.find(x => x.id === tr.dataset.propertyId);
+    const owner = p && p.owners;
+    const hay = [
+      p && p.title_en, p && p.district_en, p && p.price_display,
+      owner && owner.name
+    ].map(x => String(x || '').toLowerCase()).join(' ');
+    // A search that is purely digits is treated as a phone lookup; anything
+    // else also still matches the text fields above.
+    const phoneHit = sDigits.length >= 3 && owner &&
+      (_digitsOnly(owner.phone).includes(sDigits) || _digitsOnly(owner.whatsapp).includes(sDigits));
+    const match = hay.includes(s) || phoneHit;
+    tr.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  const note = document.getElementById('listings-search-count');
+  if (note) note.textContent = s ? `${shown} of ${rows.length} listings` : '';
 }
 
 // ── TRANSACTION TYPE TOGGLE ───────────────────────────────────────
@@ -2434,6 +2659,10 @@ function showForm(id) {
   document.getElementById('agent-preview').style.display = 'none';
   document.getElementById('contact-shared-note').style.display = 'none';
   if (!id) {
+    // Reset the internal owner picker too -- a fresh listing must never
+    // silently inherit the previously-edited listing's owner.
+    populateOwnerSelect('');
+    onOwnerSelectChange();
     document.getElementById('f-contact-role').value = 'agent';
     document.getElementById('f-contact-name').value = '';
     document.getElementById('f-contact-phone').value = '';
@@ -2538,6 +2767,12 @@ async function editListing(id) {
   // going forward). Falls back to the sentinel-shaped defaults for listings
   // that predate this field.
   const c = p.contacts || null;
+  // Internal owner — select the linked owner (if any) and populate its
+  // fields via the same handler the manual picker uses, so there is one
+  // code path for "show this owner's details".
+  const ownerSel = document.getElementById('f-owner-select');
+  if (ownerSel) { populateOwnerSelect(p.owner_id || ''); onOwnerSelectChange(); }
+
   _editingContactId = p.contact_id || null;
   document.getElementById('f-contact-role').value     = c ? c.role : 'agent';
   document.getElementById('f-contact-name').value     = c ? (c.name || '') : '';
@@ -2636,6 +2871,18 @@ async function saveListing(e) {
       return;
     }
   }
+  // Internal owner: resolved before the contact so a failure here (e.g. an
+  // owner selected with no name) aborts the save before any contact row is
+  // created, leaving no orphan behind.
+  let resolvedOwnerId = null;
+  try {
+    resolvedOwnerId = await resolveOwnerId();
+  } catch (e) {
+    const msg = document.getElementById('form-msg');
+    msg.textContent = '✗ ' + e.message;
+    msg.style.display = 'block';
+    return;
+  }
   let resolvedContactId;
   try {
     if (!contactPhone) {
@@ -2725,7 +2972,8 @@ async function saveListing(e) {
     download_url:      document.getElementById('f-download-url').value.trim() || null,
     managed_by_party_id: _selAgent ? _selAgent.id : null,
     agent_title:         document.getElementById('f-agent-title').value.trim() || null,
-    contact_id:          resolvedContactId
+    contact_id:          resolvedContactId,
+    owner_id:            resolvedOwnerId
   };
 
   const editId = document.getElementById('edit-id').value;
