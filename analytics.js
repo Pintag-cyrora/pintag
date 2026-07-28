@@ -263,34 +263,25 @@ async function loadOverviewTab() {
 // ══════════════════════════════════════════════════════════════════════
 async function loadTrafficTab() {
   const el = document.getElementById('view-traffic');
-  const [trend, pvRows] = await Promise.all([
+  // Was: a raw page_views fetch capped at 10,000 rows, aggregated by
+  // source/referrer/campaign in JS. analytics_traffic_sources() does the
+  // same three GROUP BYs server-side and returns only the aggregated
+  // result (source counts, top-10 referrer hosts, top-20 campaigns) --
+  // kilobytes instead of a payload that grows with total traffic.
+  const [trend, sources] = await Promise.all([
     sbRpc('analytics_traffic_by_day', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) }),
-    sbGet(`page_views?select=referrer,referrer_source,utm_source,utm_medium,utm_campaign,session_id&created_at=gte.${_range.start.toISOString()}&created_at=lt.${_range.end.toISOString()}&limit=10000`)
+    sbRpc('analytics_traffic_sources', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })
   ]);
   const rows = trend || [];
-  const pv = pvRows || [];
+  const src = sources || {};
 
-  const bySource = {};
-  pv.forEach(r => { bySource[r.referrer_source || 'direct'] = (bySource[r.referrer_source || 'direct'] || 0) + 1; });
+  const bySource = src.by_source || {};
   const sourceOrder = ['direct', 'google', 'facebook', 'instagram', 'tiktok', 'whatsapp', 'referral'];
   const sourceSlices = sourceOrder.filter(s => bySource[s]).map(s => ({ label: s.charAt(0).toUpperCase() + s.slice(1), value: bySource[s] }));
 
-  const byReferrer = {};
-  pv.forEach(r => {
-    if (!r.referrer || r.referrer_source === 'direct') return;
-    let host; try { host = new URL(r.referrer).hostname.replace(/^www\./, ''); } catch (e) { return; }
-    byReferrer[host] = (byReferrer[host] || 0) + 1;
-  });
-  const topReferrers = Object.entries(byReferrer).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([label, value]) => ({ label, value }));
+  const topReferrers = src.top_referrers || [];
 
-  const byCampaign = {};
-  pv.forEach(r => {
-    if (!r.utm_campaign) return;
-    const key = r.utm_campaign + '|' + (r.utm_source || '') + '|' + (r.utm_medium || '');
-    byCampaign[key] = byCampaign[key] || { campaign: r.utm_campaign, source: r.utm_source, medium: r.utm_medium, sessions: new Set() };
-    byCampaign[key].sessions.add(r.session_id);
-  });
-  const campaignRows = Object.values(byCampaign).map(c => ({ campaign: c.campaign, source: c.source || '—', medium: c.medium || '—', sessions: c.sessions.size }));
+  const campaignRows = (src.campaigns || []).map(c => ({ campaign: c.campaign, source: c.source, medium: c.medium, sessions: c.sessions }));
   _lastRows.campaigns = campaignRows;
 
   el.innerHTML =
@@ -321,35 +312,27 @@ async function loadTrafficTab() {
 async function loadListingsTab() {
   const el = document.getElementById('view-listings');
   const range = `created_at=gte.${_range.start.toISOString()}&created_at=lt.${_range.end.toISOString()}`;
-  const [events, properties] = await Promise.all([
-    sbGet(`listing_events?select=property_id,event_type,created_at&${range}&limit=20000`),
-    sbGet('properties?select=id,title_en,title_lo&status=eq.active&limit=5000')
-  ]);
-  const titleOf = {}; (properties || []).forEach(p => { titleOf[p.id] = p.title_en || p.title_lo || p.id; });
-
-  const counts = {}; // property_id -> {view,impression,click,save,share}
-  const byDay = {};  // day -> view count
-  (events || []).forEach(e => {
-    if (!e.property_id) return;
-    counts[e.property_id] = counts[e.property_id] || { view: 0, impression: 0, click: 0, save: 0, share: 0 };
-    if (counts[e.property_id][e.event_type] != null) counts[e.property_id][e.event_type]++;
-    if (e.event_type === 'view') {
-      const day = e.created_at.slice(0, 10);
-      byDay[day] = (byDay[day] || 0) + 1;
-    }
-  });
-
-  const mostViewed = Object.entries(counts).map(([id, c]) => ({ label: titleOf[id] || id, value: c.view })).filter(r => r.value > 0).sort((a, b) => b.value - a.value).slice(0, 10);
-  const ctrRows = Object.entries(counts).filter(([, c]) => c.impression >= 5).map(([id, c]) => ({ label: titleOf[id] || id, value: Math.round((c.click / c.impression) * 1000) / 10 })).sort((a, b) => b.value - a.value).slice(0, 10);
-  const savesTotal = Object.values(counts).reduce((a, c) => a + c.save, 0);
-  const sharesTotal = Object.values(counts).reduce((a, c) => a + c.share, 0);
-
-  const [waClicks, callClicks, agentClicks] = await Promise.all([
+  // Was: a raw listing_events fetch capped at 20,000 rows plus the entire
+  // active-properties catalog (limit 5000), joined and aggregated per
+  // property_id in JS. analytics_listing_engagement() does the same
+  // per-property GROUP BY + the view-by-day rollup + the title join
+  // server-side, returning only the top-10 lists the UI renders. The 3
+  // stat-tile counts stay as sbCount() -- those already use
+  // Prefer:count=exact + Range:0-0, which downloads zero rows, so they
+  // were never the bottleneck.
+  const [engagement, waClicks, callClicks, agentClicks] = await Promise.all([
+    sbRpc('analytics_listing_engagement', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) }),
     sbCount(`lead_events?select=id&event_type=eq.whatsapp_click&${range}`),
     sbCount(`lead_events?select=id&event_type=eq.call_click&${range}`),
     sbCount(`ui_events?select=id&element_id=eq.agent-profile-link&${range}`)
   ]);
+  const eng = engagement || {};
+  const mostViewed = eng.most_viewed || [];
+  const ctrRows = eng.top_ctr || [];
+  const savesTotal = eng.saves_total || 0;
+  const sharesTotal = eng.shares_total || 0;
 
+  const byDay = {}; (eng.views_by_day || []).forEach(r => { byDay[r.day] = r.views; });
   const days = Object.keys(byDay).sort();
   _lastRows.listings = mostViewed;
 
@@ -384,18 +367,16 @@ async function loadListingsTab() {
 // ══════════════════════════════════════════════════════════════════════
 async function loadSearchTab() {
   const el = document.getElementById('view-search');
-  const rows = await sbGet(`search_events?select=property_type,transaction_type,district,result_count,created_at&created_at=gte.${_range.start.toISOString()}&created_at=lt.${_range.end.toISOString()}&limit=20000`);
-  const total = (rows || []).length;
-  const zeroResult = (rows || []).filter(r => r.result_count === 0).length;
-  const byType = {}, byTx = {}, byDistrict = {};
-  (rows || []).forEach(r => {
-    if (r.property_type) byType[r.property_type] = (byType[r.property_type] || 0) + 1;
-    if (r.transaction_type) byTx[r.transaction_type] = (byTx[r.transaction_type] || 0) + 1;
-    if (r.district) byDistrict[r.district] = (byDistrict[r.district] || 0) + 1;
-  });
-  const typeRows = Object.entries(byType).sort((a,b) => b[1]-a[1]).map(([label, value]) => ({ label, value }));
-  const txSlices = Object.entries(byTx).map(([label, value]) => ({ label: label === 'for_rent' ? 'Rent' : label === 'for_sale' ? 'Sale' : label, value }));
-  const hasDistrictData = Object.keys(byDistrict).length > 0;
+  // Was: a raw search_events fetch capped at 20,000 rows, aggregated by
+  // type/transaction/district in JS. analytics_search_breakdown() does
+  // the same 3 GROUP BYs plus the zero-result count server-side.
+  const b = (await sbRpc('analytics_search_breakdown', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })) || {};
+  const total = b.total || 0;
+  const zeroResult = b.zero_result || 0;
+  const typeRows = b.by_type || [];
+  const txSlices = (b.by_tx || []).map(r => ({ label: r.label === 'for_rent' ? 'Rent' : r.label === 'for_sale' ? 'Sale' : r.label, value: r.value }));
+  const byDistrict = {}; (b.by_district || []).forEach(r => { byDistrict[r.label] = r.value; });
+  const hasDistrictData = (b.by_district || []).length > 0;
 
   el.innerHTML =
     '<div class="section-block">' + sectionHeader('Search Analytics') +
@@ -449,48 +430,23 @@ function renderTable(headers, rows, rowFn, emptyLabel) {
 // ══════════════════════════════════════════════════════════════════════
 async function loadBehaviorTab() {
   const el = document.getElementById('view-behavior');
-  const range = `created_at=gte.${_range.start.toISOString()}&created_at=lt.${_range.end.toISOString()}`;
-  const [funnel, pvRows, clickRows, scrollRows] = await Promise.all([
+  // Was: three raw fetches (page_views, ui_events clicks, ui_events
+  // scroll), each capped at 20,000 rows -- up to 60,000 rows downloaded
+  // for one tab -- then a hand-rolled session-ordered walk in JS to derive
+  // entry/exit pages and time-on-page. analytics_behavior() computes the
+  // exact same thing with SQL window functions (ROW_NUMBER/LEAD partitioned
+  // by session_id) plus 2 more GROUP BYs for scroll/clicks, all in one
+  // round trip returning only the top-8/top-10 lists actually rendered.
+  const [funnel, behavior] = await Promise.all([
     sbRpc('analytics_funnel', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) }),
-    sbGet(`page_views?select=session_id,page,created_at&${range}&order=session_id,created_at&limit=20000`),
-    sbGet(`ui_events?select=element_id,element_type,label&event_type=eq.click&${range}&limit=20000`),
-    sbGet(`ui_events?select=element_id&event_type=eq.scroll&${range}&limit=20000`)
+    sbRpc('analytics_behavior', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })
   ]);
-
-  // Entry/exit pages + time-on-page, all derived from one ordered pass over
-  // each session's page_views (already ordered by session_id,created_at).
-  const entryCounts = {}, exitCounts = {}, pageDurations = {}; // page -> [seconds]
-  let curSession = null, sessionPages = [];
-  function flushSession() {
-    if (!sessionPages.length) return;
-    entryCounts[sessionPages[0].page] = (entryCounts[sessionPages[0].page] || 0) + 1;
-    exitCounts[sessionPages[sessionPages.length - 1].page] = (exitCounts[sessionPages[sessionPages.length - 1].page] || 0) + 1;
-    for (let i = 0; i < sessionPages.length - 1; i++) {
-      const secs = (new Date(sessionPages[i + 1].created_at) - new Date(sessionPages[i].created_at)) / 1000;
-      if (secs >= 0 && secs < 3600) { // discard obvious outliers (tab left open overnight, etc.)
-        (pageDurations[sessionPages[i].page] = pageDurations[sessionPages[i].page] || []).push(secs);
-      }
-    }
-  }
-  (pvRows || []).forEach(r => {
-    if (r.session_id !== curSession) { flushSession(); curSession = r.session_id; sessionPages = []; }
-    sessionPages.push(r);
-  });
-  flushSession();
-
-  const entryRows = Object.entries(entryCounts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }));
-  const exitRows = Object.entries(exitCounts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value }));
-  const avgDurationRows = Object.entries(pageDurations).map(([label, arr]) => ({ label, value: Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) })).sort((a, b) => b.value - a.value).slice(0, 8);
-
-  const scrollBuckets = { '25': 0, '50': 0, '75': 0, '100': 0 };
-  (scrollRows || []).forEach(r => { if (scrollBuckets[r.element_id] != null) scrollBuckets[r.element_id]++; });
-
-  const clickCounts = {};
-  (clickRows || []).forEach(r => {
-    const key = r.label || r.element_id;
-    clickCounts[key] = (clickCounts[key] || 0) + 1;
-  });
-  const topClicks = Object.entries(clickCounts).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([label, value]) => ({ label, value }));
+  const beh = behavior || {};
+  const entryRows = beh.entry || [];
+  const exitRows = beh.exit || [];
+  const avgDurationRows = beh.avg_duration || [];
+  const scrollBuckets = Object.assign({ '25': 0, '50': 0, '75': 0, '100': 0 }, beh.scroll || {});
+  const topClicks = beh.top_clicks || [];
 
   const f = {}; (funnel || []).forEach(row => { f[row.stage] = row.sessions; });
   const funnelRows = [
@@ -542,53 +498,33 @@ async function loadBehaviorTab() {
 // ══════════════════════════════════════════════════════════════════════
 async function loadLeadsTab() {
   const el = document.getElementById('view-leads');
-  const range = `created_at=gte.${_range.start.toISOString()}&created_at=lt.${_range.end.toISOString()}`;
-  const [leads, properties, parties, leadEvents] = await Promise.all([
-    sbGet(`leads?select=id,property_id,party_id,lead_event_id,status,created_at&${range}&limit=10000`),
-    sbGet('properties?select=id,title_en,title_lo&limit=5000'),
-    sbGet('parties?select=id,name_en&type=eq.agent&limit=1000'),
-    sbGet(`lead_events?select=id,session_id&${range}&limit=10000`)
-  ]);
-  const titleOf = {}; (properties || []).forEach(p => { titleOf[p.id] = p.title_en || p.title_lo || p.id; });
-  const nameOf = {}; (parties || []).forEach(p => { nameOf[p.id] = p.name_en || p.id; });
-  const sessionOfLeadEvent = {}; (leadEvents || []).forEach(e => { sessionOfLeadEvent[e.id] = e.session_id; });
+  // Was: 4 fetches (leads limit 10000, the ENTIRE properties catalog limit
+  // 5000, parties limit 1000, lead_events limit 10000), then a SECOND,
+  // sequential fetch of up to 20,000 more page_views rows just to resolve
+  // first-touch attribution for the leads already in hand -- up to ~46,000
+  // rows for one tab, only to render 3 stat cards, 2 top-10 charts, a
+  // donut, and a 50-row table. analytics_leads_breakdown() computes all of
+  // it server-side in one call, including the first-touch join (a LATERAL
+  // join per lead instead of pulling every candidate page_views row into
+  // the browser), and returns only the most recent 50 leads for the table
+  // -- not the whole range, matching what's actually displayed.
+  const lb = (await sbRpc('analytics_leads_breakdown', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })) || {};
 
-  const total = (leads || []).length;
-  const closed = (leads || []).filter(l => l.status === 'closed').length;
+  const total = lb.total || 0;
+  const closed = lb.closed || 0;
+  const byListingRows = lb.by_listing || [];
+  const byAgentRows = lb.by_agent || [];
 
-  const byListing = {}, byAgent = {};
-  (leads || []).forEach(l => {
-    if (l.property_id) byListing[l.property_id] = (byListing[l.property_id] || 0) + 1;
-    if (l.party_id) byAgent[l.party_id] = (byAgent[l.party_id] || 0) + 1;
-  });
-  const byListingRows = Object.entries(byListing).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, value]) => ({ label: titleOf[id] || id, value }));
-  const byAgentRows = Object.entries(byAgent).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, value]) => ({ label: nameOf[id] || 'Unassigned', value }));
-
-  // Leads by day
-  const byDay = {};
-  (leads || []).forEach(l => { const d = l.created_at.slice(0, 10); byDay[d] = (byDay[d] || 0) + 1; });
+  const byDay = {}; (lb.by_day || []).forEach(r => { byDay[r.day] = r.value; });
   const days = Object.keys(byDay).sort();
 
-  // Leads by source: first-touch referrer_source of the originating session,
-  // via lead_event_id -> lead_events.session_id -> that session's earliest
-  // page_view. Sessions with no page_views row (e.g. captured before this
-  // migration shipped) fall into "unknown" rather than being dropped.
-  const sessionIds = [...new Set(Object.values(sessionOfLeadEvent).filter(Boolean))];
-  let sourceBySession = {};
-  if (sessionIds.length) {
-    const inList = sessionIds.map(s => `"${s}"`).join(',');
-    const firstTouch = await sbGet(`page_views?select=session_id,referrer_source,created_at&session_id=in.(${inList})&order=session_id,created_at&limit=20000`);
-    (firstTouch || []).forEach(r => { if (!sourceBySession[r.session_id]) sourceBySession[r.session_id] = r.referrer_source; });
-  }
-  const bySource = {};
-  (leads || []).forEach(l => {
-    const sess = sessionOfLeadEvent[l.lead_event_id];
-    const src = (sess && sourceBySession[sess]) || 'unknown';
-    bySource[src] = (bySource[src] || 0) + 1;
-  });
-  const sourceSlices = Object.entries(bySource).map(([label, value]) => ({ label: label.charAt(0).toUpperCase() + label.slice(1), value }));
+  const sourceSlices = Object.entries(lb.by_source || {}).map(([label, value]) => ({ label: label.charAt(0).toUpperCase() + label.slice(1), value }));
 
-  _lastRows.leads = (leads || []).map(l => ({ id: l.id, listing: titleOf[l.property_id] || '', agent: nameOf[l.party_id] || '', status: l.status, created_at: l.created_at }));
+  // Capped server-side at the 50 most recent leads in range -- the CSV
+  // export below reflects exactly what's on screen, not a hidden larger
+  // set (see the "Recent Leads" heading/filename, renamed from "All
+  // Leads" for the same reason).
+  _lastRows.leads = lb.recent || [];
 
   el.innerHTML =
     '<div class="section-block">' + sectionHeader('Leads') +
@@ -609,8 +545,8 @@ async function loadLeadsTab() {
       '<div class="chart-card"><div id="ld-source-chart"></div>' +
       '<p class="disclosure">First-touch attribution: the referrer source of the earliest page view in the same browser session that generated the lead.</p></div>' +
     '</div>' +
-    '<div class="section-block">' + sectionHeader('All Leads', "exportCsv('leads.csv',['id','listing','agent','status','created_at'],_lastRows.leads)") +
-      renderTable(['Listing', 'Agent', 'Status', 'Date'], (_lastRows.leads || []).slice(0, 50), r => [r.listing, r.agent || '—', r.status, r.created_at.slice(0, 10)], 'No leads in this period yet.') +
+    '<div class="section-block">' + sectionHeader('Recent Leads (up to 50)', "exportCsv('recent-leads.csv',['id','listing','agent','status','created_at'],_lastRows.leads)") +
+      renderTable(['Listing', 'Agent', 'Status', 'Date'], _lastRows.leads || [], r => [r.listing, r.agent || '—', r.status, r.created_at.slice(0, 10)], 'No leads in this period yet.') +
     '</div>';
 
   PT_CHART.renderLineChart(document.getElementById('ld-trend-chart'), {
@@ -628,14 +564,11 @@ async function loadLeadsTab() {
 // ══════════════════════════════════════════════════════════════════════
 async function loadLocationTab() {
   const el = document.getElementById('view-location');
-  const rows = await sbGet(`page_views?select=device_type,browser,os,lang&created_at=gte.${_range.start.toISOString()}&created_at=lt.${_range.end.toISOString()}&limit=20000`);
-  const byDevice = {}, byBrowser = {}, byOs = {}, byLang = {};
-  (rows || []).forEach(r => {
-    if (r.device_type) byDevice[r.device_type] = (byDevice[r.device_type] || 0) + 1;
-    if (r.browser) byBrowser[r.browser] = (byBrowser[r.browser] || 0) + 1;
-    if (r.os) byOs[r.os] = (byOs[r.os] || 0) + 1;
-    if (r.lang) byLang[r.lang] = (byLang[r.lang] || 0) + 1;
-  });
+  // Was: a raw page_views fetch capped at 20,000 rows, aggregated by
+  // device/browser/os/lang in JS. analytics_location_breakdown() does the
+  // same 4 GROUP BYs server-side.
+  const loc = (await sbRpc('analytics_location_breakdown', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })) || {};
+  const byDevice = loc.device || {}, byBrowser = loc.browser || {}, byOs = loc.os || {}, byLang = loc.lang || {};
   const langNames = { en: 'English', lo: 'Lao', zh: 'Chinese' };
 
   el.innerHTML =
@@ -667,43 +600,26 @@ async function loadLocationTab() {
 async function loadAdminTab() {
   const el = document.getElementById('view-admin');
   const range = `created_at=gte.${_range.start.toISOString()}&created_at=lt.${_range.end.toISOString()}`;
-  const [newListings, allProperties, leads, parties, viewEvents] = await Promise.all([
+  // Was: sbCount for new listings (cheap, kept) plus the ENTIRE properties
+  // catalog fetched unfiltered (limit 5000, every column) just to compute
+  // "no views" / "high view, low convert" client-side, plus leads (limit
+  // 10000), parties (limit 1000), and listing_events views (limit 20000)
+  // -- none of it actually date-scoped except the leads. This payload grew
+  // with total catalog + total leads ever recorded, not with the ~10 rows
+  // per list the UI shows. analytics_admin_insights() computes every
+  // GROUP BY/EXISTS check server-side and returns only the top-10/top-15
+  // lists rendered below.
+  const [newListings, insights] = await Promise.all([
     sbCount(`properties?select=id&${range}`),
-    sbGet('properties?select=id,title_en,title_lo,district_en,property_type,managed_by_party_id,view_count,status&limit=5000'),
-    sbGet(`leads?select=property_id,party_id&${range}&limit=10000`),
-    sbGet('parties?select=id,name_en&type=eq.agent&limit=1000'),
-    sbGet(`listing_events?select=property_id&event_type=eq.view&${range}&limit=20000`)
+    sbRpc('analytics_admin_insights', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })
   ]);
-  const nameOf = {}; (parties || []).forEach(p => { nameOf[p.id] = p.name_en || p.id; });
-  const titleOf = {}; (allProperties || []).forEach(p => { titleOf[p.id] = p.title_en || p.title_lo || p.id; });
+  const adm = insights || {};
+  const activeAgentRows = adm.by_agent || [];
+  const districtRows = adm.by_district || [];
+  const typeRows = adm.by_type || [];
+  const highViewLowConvert = adm.high_view_low_convert || [];
 
-  const leadsByAgent = {}, leadsByDistrict = {}, leadsByType = {}, leadsByListing = {};
-  const districtOf = {}, typeOf = {};
-  (allProperties || []).forEach(p => { districtOf[p.id] = p.district_en; typeOf[p.id] = p.property_type; });
-  (leads || []).forEach(l => {
-    if (l.party_id) leadsByAgent[l.party_id] = (leadsByAgent[l.party_id] || 0) + 1;
-    if (l.property_id) {
-      leadsByListing[l.property_id] = (leadsByListing[l.property_id] || 0) + 1;
-      const d = districtOf[l.property_id]; if (d) leadsByDistrict[d] = (leadsByDistrict[d] || 0) + 1;
-      const t = typeOf[l.property_id]; if (t) leadsByType[t] = (leadsByType[t] || 0) + 1;
-    }
-  });
-  const activeAgentRows = Object.entries(leadsByAgent).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, value]) => ({ label: nameOf[id] || 'Unassigned', value }));
-  const districtRows = Object.entries(leadsByDistrict).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([label, value]) => ({ label, value }));
-  const typeRows = Object.entries(leadsByType).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }));
-
-  const viewCountInRange = {};
-  (viewEvents || []).forEach(e => { if (e.property_id) viewCountInRange[e.property_id] = (viewCountInRange[e.property_id] || 0) + 1; });
-
-  const activeListings = (allProperties || []).filter(p => p.status === 'active');
-  const noViews = activeListings.filter(p => !p.view_count || p.view_count === 0).slice(0, 15).map(p => ({ label: titleOf[p.id], value: 0 }));
-  const highViewLowConvert = activeListings
-    .filter(p => (p.view_count || 0) >= 20 && !leadsByListing[p.id])
-    .sort((a, b) => (b.view_count || 0) - (a.view_count || 0))
-    .slice(0, 10)
-    .map(p => ({ label: titleOf[p.id], value: p.view_count }));
-
-  _lastRows.noViews = (allProperties || []).filter(p => p.status === 'active' && (!p.view_count || p.view_count === 0)).map(p => ({ title: titleOf[p.id], district: p.district_en, type: p.property_type }));
+  _lastRows.noViews = adm.no_views || [];
 
   el.innerHTML =
     '<div class="section-block">' + sectionHeader('Admin Insights') +
@@ -717,7 +633,7 @@ async function loadAdminTab() {
     '</div>' +
     '<div class="section-block">' + sectionHeader('Top Performing Property Types (by leads)') + '<div class="chart-card"><div id="ad-types-chart"></div></div></div>' +
     '<div class="section-block">' + sectionHeader('Listings With No Views', "exportCsv('no-view-listings.csv',['title','district','type'],_lastRows.noViews)") +
-      renderTable(['Listing', 'District', 'Type'], (_lastRows.noViews || []).slice(0, 15), r => [r.title, r.district || '—', r.type || '—'], 'Every active listing has at least one view — nice.') +
+      renderTable(['Listing', 'District', 'Type'], _lastRows.noViews || [], r => [r.title, r.district || '—', r.type || '—'], 'Every active listing has at least one view — nice.') +
     '</div>' +
     '<div class="section-block">' + sectionHeader('High Views, Low Conversion (≥20 views, 0 leads in range)') +
       '<div class="chart-card"><div id="ad-highlow-chart"></div></div>' +
