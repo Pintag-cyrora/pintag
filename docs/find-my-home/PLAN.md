@@ -1,450 +1,283 @@
 # Find My Home — Product & Technical Design
 
-> **Status: DESIGN ONLY. No implementation has begun.** This document is for review
-> and approval. Section 12 lists the decisions needed before any code is written.
+> **Revision 2 — decisions incorporated. DESIGN ONLY, no implementation.**
+> Revision 1 raised six open questions; all are now resolved (§1). This revision
+> is for final review before development begins. §15 lists what still needs a
+> decision — it is deliberately short.
 
 ---
 
-## 0. What I verified in the codebase first
+## 1. Decisions locked
 
-Three claims in the brief don't match what Pintag actually has today. They change
-the shape of the plan, so they're stated up front rather than buried.
-
-| Brief says | Reality in the repo | Consequence |
+| # | Decision | Resolution |
 |---|---|---|
-| Customers can "book viewings" free today | **No booking feature exists.** The only match is `viewing_scheduled` — an *agent-side CRM lead status* in `dashboard.html:748`. A buyer has never been able to book anything. | "Nothing changes in the marketplace" is true, but viewing-booking isn't an existing thing being preserved. Find My Home's `viewing_scheduled` status is agent-reported, same as today. |
-| Customer Dashboard showing assigned agent, status, notes, history | **Pintag has no customer accounts at all.** Auth exists only for staff (`admin@pintag.io`) and agents (`parties.auth_user_id`). Buyers are fully anonymous — `visitor_id` in localStorage, nothing more. | Find My Home would be Pintag's **first consumer identity system**. This is the largest unstated scope item in the brief. See §3.1. |
-| Customer/agent receive completion surveys; statuses update | **No email, SMS, or WhatsApp API infrastructure exists.** Nothing in the repo sends a message to anyone, ever. | Every "customer receives…" step is currently a human on WhatsApp. Must be designed as such. See §5.7. |
-
-Everything else in the brief maps cleanly onto existing infrastructure:
-`parties` (agents, with `type` and `is_verified`), `properties`, private Supabase
-Storage, `is_pintag_staff()` / `owned_party_ids()` RLS helpers, SECURITY DEFINER
-RPCs, and the terminology registries (`PROPERTY_TYPES`, districts, `FURNISHED_OPTIONS`,
-`RENTAL_CURRENCIES`) that the request form should reuse rather than re-declare.
-
----
-
-## 1. Product review
-
-**The core strategic instinct is right.** Agents in Vientiane already sell this
-service informally over Facebook. The value Pintag adds isn't the search — it's
-*trust and recourse*. A customer paying a stranger on Facebook has no protection;
-a customer paying Pintag has a verified agent, an audit trail, and someone to
-complain to. That is a real, defensible product, and it's genuinely separable
-from the marketplace.
-
-**Keeping the marketplace free and untouched is correct and non-negotiable.**
-Any drift toward "pay to see listings" would destroy the top of the funnel that
-makes Find My Home viable in the first place. The plan is right to firewall them.
-Worth stating as an explicit architectural invariant (§5.9) so a future
-contributor can't erode it by accident.
-
-**The two products genuinely complement each other**, and there's a compounding
-effect the brief doesn't mention: when an agent proposes an off-platform property
-to a Find My Home customer, that's a **listing-acquisition signal**. Every
-off-market property surfaced through a paid search is a property Pintag now knows
-exists and can recruit. Designing `fmh_proposals` to capture off-platform
-properties (§5.4) turns the premium service into a supply-side growth engine.
-This may end up worth more than the fee revenue.
-
-**Where the plan is weakest:** it treats payment as a solved step ("customer pays,
-uploads receipt, admin verifies") when payment is actually the highest-risk part
-of the funnel, and it specifies a refund rule that cannot be enforced (§2.1, §2.2).
+| 1 | Customer accounts | **No consumer auth in MVP.** High-entropy per-request token portal. Forward-compatible with future accounts (§5.1, §5.10). |
+| 2 | Viewings | **No customer booking system.** All language becomes *"Coordinate Viewings with Your Assigned Agent."* (§4, §6.2) |
+| 3 | Notifications | **Not built.** Domain-event log + subscription registry + intent records, no delivery mechanism (§9). |
+| 4 | Refund policy | **Commission-triggered model removed.** Replaced with an objectively verifiable Service Delivery Guarantee, versioned (§11). |
+| 5 | Payment timing | **Pay after assignment.** Customer sees their named agent before paying (§4.1, §6). |
+| 6 | Status architecture | **Three independent axes**: `payment_status`, `fulfilment_status`, `review_status` (§5.1, §6). |
+| 7 | Marketplace growth | Off-platform properties become a tracked **listing-acquisition pipeline** (§10). |
+| 8 | Analytics & Intelligence | **Extends the existing platform.** No parallel system; reuses the event spine, Metrics Engine, and Insight Engine (§8). |
+| 9 | Legal | Lao-specific considerations documented for professional review; non-blocking (§13). |
 
 ---
 
-## 2. Risks and weaknesses
+## 2. Codebase ground truth
 
-Ordered by severity.
+Verified before designing. Find My Home builds on these; nothing here is assumed.
 
-### 2.1 The commission-linked refund is structurally unenforceable — **critical**
+**Exists and is reused:**
+`parties` (agents; `type`, `is_verified`, `auth_user_id`) · `properties` ·
+`is_pintag_staff()` / `owned_party_ids()` RLS helpers · SECURITY DEFINER RPC
+pattern (`analytics_*`) · private + public Supabase Storage buckets ·
+`session.js`'s `getOrCreateSessionId()` · the behavioural event spine
+(`page_views`, `search_events`, `listing_events`, `ui_events`, `lead_events`) ·
+`intelligence_daily_metrics()` + `intelligence_insights` + the Insight Engine's
+generalized detector interface · terminology registries (`PROPERTY_TYPES`,
+districts, `FURNISHED_OPTIONS`, `RENTAL_CURRENCIES`).
 
-> *"If a participating agent earns a commission from the completed rental, that
-> agent refunds the customer's Find My Home service fee."*
+**Does not exist (confirmed, must not be assumed):**
 
-Every incentive points the wrong way:
-
-- **The agent is the only party who knows** whether commission was paid. It
-  happens off-platform, between agent and landlord, in cash. Pintag has zero
-  visibility.
-- **The agent is financially punished for honesty.** Report commission → refund
-  $50. Stay quiet → keep $50 *and* the commission. The rule taxes truth-telling.
-- **The customer is incentivised to allege commission** whether or not it
-  occurred, because it returns their money.
-- **Pintag has no adjudication evidence** — only two self-interested claims.
-
-This converts the (manageable) outcome-mismatch problem into a *monetary*
-dispute, which is far worse: it generates support load, damages agent
-relationships, and produces exactly the trust erosion the product exists to fix.
-
-There is also a mechanical gap: refunding "from the agent" requires an agent
-payout/clawback rail. None exists, and building one is a large regulated project.
-
-**Alternatives (ranked):**
-
-| Option | How it works | Assessment |
-|---|---|---|
-| **A. Outcome-based guarantee** *(recommended)* | "If we don't find you a home within N days, full refund from Pintag." Trigger is **outcome**, which Pintag can observe, not **commission**, which it can't. | Verifiable, marketable, aligns everyone: agent wants to succeed, customer is protected, Pintag controls the promise. Cost is bounded and forecastable. |
-| **B. Service credit, not cash** | Unsuccessful search converts the fee into credit toward a future search or a partner service. | No money movement, no payout rail, softer than a refund. Weaker trust signal than A. |
-| **C. Platform commission share** | Fee stays low/non-refundable; Pintag takes a share of agent commission instead. | Cleanest long-run economics but requires commission visibility Pintag doesn't have — same enforcement problem, moved. |
-| **D. As briefed** | Agent refunds on commission. | Not recommended. Unenforceable and incentive-inverted. |
-
-**Recommendation: adopt A**, keep the schema neutral (a `fee_disposition` field —
-`retained` / `refund_due` / `refunded` / `credited` / `waived`) so B or C remain
-possible without migration. Do not encode "commission triggers refund" anywhere.
-
-### 2.2 Prepaid fee vs. scam anxiety — a trust paradox — **high**
-
-The stated reason customers want this service is *"worried about scams."* The MVP
-flow then asks them to: scan a QR, send $50 to an account, photograph a receipt,
-upload it, and wait for a human to maybe confirm — all **before** anything of
-value is delivered, and before they know which agent they get.
-
-That is the exact shape of the interaction they're afraid of.
-
-**Recommendation: pay-on-assignment, not pay-on-submit.** Customer submits the
-brief free → Pintag assigns and *names* a verified agent (with photo, profile,
-verification badge, track record) → *then* the customer pays to activate.
-
-This is a small state-machine change with disproportionate benefits:
-- Removes the leap of faith. They're paying a named, visible professional.
-- Kills the worst support case ("I paid and nothing happened").
-- Free submission raises top-of-funnel volume, giving demand data even from
-  non-converters — valuable for the Intelligence layer regardless.
-- Lets Pintag decline requests it can't service *before* taking money.
-
-Cost: a request can sit assigned-but-unpaid, so agents need "don't start work
-until activated" discipline, and unpaid requests need auto-expiry. Both cheap.
-
-### 2.3 The status list conflates three independent axes — **high**
-
-The briefed statuses — *Payment Pending, Payment Verified, New, Assigned,
-Searching, Viewing Scheduled, Completed, Needs Review, Closed* — mix three
-things that vary independently:
-
-- **Payment state** (unpaid / awaiting verification / verified / refunded)
-- **Fulfilment state** (new / assigned / searching / viewing / completed / closed)
-- **Exception state** (needs review / disputed)
-
-A single flat enum can't express "payment verified **and** searching," or
-"completed **and** needs review" — both of which are normal, everyday states.
-
-This is the *same* mistake `properties.status` made, which we split into
-`workflow_status` + `market_status` in `20260729000000_listing_status_model.sql`
-last week. The precedent, the reasoning, and the migration pattern all exist in
-this repo already.
-
-**Recommendation: three axes** — `payment_status`, `request_status`, and a
-separate `needs_review` flag with a linked dispute record. Cheap now; a painful
-migration once dashboards, filters, and analytics are built on top.
-
-### 2.4 Manual payment verification creates a latency hole — **medium**
-
-Customer pays at 21:00; admin verifies the next morning. For a *premium* product
-whose entire pitch is professionalism, a 12-hour silent gap is a bad first
-impression and a support-ticket generator.
-
-Mitigations (all cheap): publish an explicit SLA ("verified within N working
-hours"), auto-acknowledge submission on-screen and via WhatsApp, and give admins
-a dedicated, sorted verification queue with the oldest-waiting first. Acceptable
-for MVP volume — but it must be *designed* as a queue with a promise attached,
-not an afterthought.
-
-### 2.5 Dual-confirmation surveys will suffer non-response bias — **medium**
-
-Satisfied customers disappear; dissatisfied ones reply. Treating silence as a
-failure state will systematically understate conversion; treating it as success
-will overstate it.
-
-**Recommendation:** make `no_response` a first-class outcome value distinct from
-`no`, never infer, and never let a missing *customer* response block the agent's
-closure or (future) payout indefinitely — use a timeout that resolves to
-`unresolved` and reports it separately from genuine `not_converted`.
-
-### 2.6 Agent disintermediation ("poaching") — **medium, structural**
-
-The agent necessarily receives the customer's phone number. Nothing technically
-stops them completing the deal privately and reporting `no`. This is inherent to
-any marketplace that connects two humans — it cannot be engineered away.
-
-Realistic defenses, in order of effectiveness: (1) make continued platform access
-worth more than one poached deal — steady request flow is the actual lock-in;
-(2) reputation and suspension with real consequence; (3) cross-check reported
-outcomes against on-platform signals (`leads`, `listing_events`) for the proposed
-properties; (4) periodic customer spot-checks by staff. Accept residual leakage
-as a cost of doing business and monitor its rate rather than pretending it's zero.
-
-### 2.7 Legal, tax, and consumer-protection exposure — **medium, non-engineering**
-
-Taking money for a service (as opposed to running a free listings board) creates
-obligations Pintag doesn't have today: VAT/invoicing treatment of service fees,
-refund terms as published consumer commitments, business-registration scope, and
-retention rules for customer PII (name, phone, budget, requirements) now held for
-paying customers. **This needs a real answer from someone qualified in Lao law
-before launch — it is not an engineering task and should not be discovered late.**
-
-### 2.8 Capacity and expectation risk — **medium**
-
-The service promises human effort. If 40 requests arrive in a week and there are
-six verified agents, quality collapses and refunds spike. There is no throttle in
-the brief.
-
-**Recommendation:** a simple capacity gate — max concurrent active requests per
-agent, and a global intake cap that shows "we're at capacity, join the waitlist"
-rather than accepting money Pintag can't service. Cheap, and protects the
-guarantee in §2.1.
-
-### 2.9 Receipt fraud — **low but trivially preventable**
-
-Same receipt image submitted for two requests; edited screenshots; wrong amount
-for the tier. Hash every uploaded receipt (SHA-256) with a unique index, record
-the amount admin actually observed vs. the amount quoted, and keep the file
-immutable in a private bucket. Effectively free to add now.
+- **No consumer authentication.** Auth covers staff and agents only. Resolved by decision 1.
+- **No viewing/booking feature.** The only match is `viewing_scheduled`, an agent-side CRM *lead status* (`dashboard.html:748`). Resolved by decision 2.
+- **No email/SMS/WhatsApp delivery of any kind.** Resolved by decision 3.
+- **No agent payout or clawback rail.** Reinforces decision 4.
 
 ---
 
-## 3. Suggested improvements
+## 3. Remaining risks
 
-### 3.1 Customer identity: token link, not accounts *(the key decision)*
+The largest risks from Revision 1 (unenforceable refund, prepayment trust
+paradox, conflated status enum) are resolved by decisions 4, 5 and 6. What
+survives:
 
-Pintag has no consumer auth. Three options:
+### 3.1 Agent disintermediation — medium, structural, unfixable by code
+The agent necessarily receives the customer's phone number and can complete a
+deal privately. Inherent to any marketplace connecting two humans. Defenses, in
+order of real effectiveness: steady request flow as the actual lock-in;
+reputation and suspension with consequence; cross-checking reported outcomes
+against on-platform `leads`/`listing_events` for proposed properties; periodic
+staff spot-checks. **Monitor the rate; do not pretend it is zero.**
 
-| Option | Friction | Fit for Laos | Effort |
-|---|---|---|---|
-| **A. Signed access token in a URL** *(recommended)* | None — no signup | Excellent: link delivered over WhatsApp, where users already are | Low |
-| B. Phone + SMS OTP | Moderate | Good identity model, but needs an SMS provider; Lao deliverability unproven; per-message cost | High |
-| C. Email + password | High — email is not the primary identity here | Poor | Medium |
+Note that decision 4 materially reduces the *incentive* here: with refunds no
+longer tied to outcome self-reports, an agent gains nothing financially from
+misreporting the outcome (§11.3).
 
-**Recommendation: A for MVP, designed to upgrade to B later.**
+### 3.2 Capacity vs. the guarantee — medium
+The Service Delivery Guarantee (§11) is only affordable if Pintag can actually
+staff the requests it accepts. Forty requests against six agents means mass
+refunds. **Mitigation:** per-agent concurrent-request cap and a global intake
+cap that shows a waitlist rather than accepting money Pintag can't service. This
+is now load-bearing, not optional — it is what makes the guarantee safe.
 
-Each request mints a long random `access_token`. The customer's dashboard is
-`find-my-home-status.html?t=<token>`, delivered by WhatsApp. No signup, no
-password, no forgotten-credentials support load — at the exact moment the
-customer is deciding whether to trust Pintag with money.
+### 3.3 Manual payment verification latency — medium
+Customer pays at 21:00, admin verifies next morning. Mitigations: a published
+SLA, on-screen acknowledgement, and an oldest-first verification queue (§12.1).
+Acceptable at MVP volume, but it is now inside a guarantee window, so the SLA
+clock must be visible to staff.
 
-Security posture: equivalent to a password-reset link or an unlisted document
-URL. A 32-byte random token is not brute-forceable. Because the data behind it is
-moderately sensitive (name, phone, budget) but not catastrophic, this is a
-reasonable trade — **stated explicitly so it's a decision, not an accident.**
-Mitigations: token rotation on request, expiry N days after closure, no
-credentials or payment instruments ever behind the link, and rate limiting on
-token lookup.
+### 3.4 Outcome-survey non-response — low (downgraded)
+Still expect silence from satisfied customers. `no_response` remains a
+first-class value distinct from `no`, resolving to `unresolved` and reported
+separately. Downgraded from Revision 1 because outcome data no longer gates
+money — bias now affects reporting accuracy only, not refunds.
 
-Upgrade path: `customer_phone` is stored on every request from day one, so when
-phone-OTP arrives, existing requests group into real accounts retroactively with
-no migration of the request data itself.
-
-### 3.2 Capture off-platform proposals as a supply funnel
-
-When an agent proposes a property that isn't on Pintag, record it (`external_url`,
-free-text). This costs nothing at design time and creates a continuously
-refreshing list of known-real, off-market properties to recruit — from the mouths
-of the agents who found them. Recommend surfacing this as an admin view
-("properties proposed but not listed") in a later phase.
-
-### 3.3 Reuse existing registries in the request form
-
-Property type, districts, furnished state, and currency should all come from
-`terminology.js` / `rental-terms.js`, not be re-declared. This keeps the
-customer's brief in the same vocabulary as the listings it will be matched
-against — otherwise matching degrades into fuzzy string comparison later.
-
-### 3.4 Model assignments as history, not a column
-
-`assigned_agent_id` as a single column loses the record of who declined and when
-— precisely the data needed later for response-rate and reliability scoring. An
-`fmh_assignments` table costs nothing extra now and makes agent performance
-metrics a query rather than a re-architecture.
-
-### 3.5 Notifications: build the outbox, not the sender
-
-No messaging infrastructure exists. Rather than bolting on email nobody in this
-market reads, write every outbound message into an `fmh_notifications` outbox
-table that staff work manually via WhatsApp in MVP. When WhatsApp Business API
-(or SMS) is adopted, the sender becomes a consumer of a table that already has
-the full message history — no retrofit of every call site.
-
-### 3.6 Keep Find My Home out of the marketplace's hot path
-
-Zero new queries, scripts, or blocking calls on `index.html`, `listings.html`, or
-`listing.html`. Entry point is a separate page (`find-my-home.html`) reached from
-navigation. This makes "the marketplace is unaffected" mechanically true rather
-than a promise, and keeps the analytics work just completed uncontaminated.
+### 3.5 Token link exposure — low, accepted
+A token URL shared or leaked exposes one request's brief (name, phone, budget,
+requirements). Equivalent to a password-reset link. Mitigations in §5.10.
+Accepted as a deliberate trade for zero signup friction.
 
 ---
 
 ## 4. UX flow
 
-### 4.1 Customer
+### 4.1 Customer — revised payment order (decision 5)
 
 ```
 Marketplace nav → "Find My Home" (find-my-home.html)
-   │
-   ├─ Explainer: what it is, price by tier, guarantee, verified-agent promise
-   │
+   │  Explainer: what it is · price by tier · Service Delivery Guarantee ·
+   │  what "Verified Agent" means · what we do NOT promise
    ▼
-Request form (free, no account)
-   property type · budget+currency · districts · beds · baths ·
-   furnished · pets · move-in date · requirements · name · phone/WhatsApp · language
-   │
+Request form — FREE, no account, no payment
+   property type · budget + currency · districts · beds · baths · furnished ·
+   pets · move-in date · requirements · name · phone/WhatsApp · language
    ▼
-Submitted  →  reference code shown (FMH-2607-A3K9) + status link
-              status link also sent by WhatsApp
-   │
+Submitted → reference code (FMH-2607-A3K9) + private portal link
+            fulfilment_status = submitted   payment_status = not_required
    ▼
-[RECOMMENDED ORDER — see §2.2]
-Pintag reviews & assigns a NAMED verified agent
-   │
+Pintag reviews (capacity + serviceability) and assigns a Verified Agent
    ▼
-Customer sees: agent name, photo, verification badge → "Activate — US$50"
-   │
+┌─────────────────────────────────────────────────────────────┐
+│ PORTAL: "Your agent: [photo] Somchai P. — Verified          │
+│          [N] completed searches · responds within [X]"      │
+│          → Activate your search — US$50                     │
+└─────────────────────────────────────────────────────────────┘
+            fulfilment_status = assigned    payment_status = awaiting_payment
    ▼
-BCEL QR displayed  →  customer pays  →  uploads receipt
-   │
+BCEL QR shown → customer pays → uploads receipt
+            payment_status = pending_verification   (SLA stated on screen)
    ▼
-"Payment received — verifying"   (SLA stated on screen)
-   │
+Admin verifies → payment_status = verified → AGENT BEGINS WORK
+            fulfilment_status = searching
    ▼
-Verified → Active. Agent begins searching.
-   │
+Portal (token link) shows throughout:
+   assigned agent card · current status · proposed properties (accept/decline) ·
+   progress notes · "Coordinate viewings with your agent" · guarantee status
    ▼
-Status page (token link): agent card · current status · proposed properties ·
-                          progress notes · [chat placeholder — not built]
-   │
-   ▼
-Completion → "Did you rent a property?" YES / NO
+Completion → "Did you rent a property?" YES / NO  +  feedback (rating + comment)
 ```
 
-### 4.2 Agent
+The customer knows exactly who they are working with before any money moves.
 
-```
-dashboard.html → new "Find My Home" section
-   │
-   ├─ Offered requests → Accept / Decline (with reason)
-   │
-   ▼
-Accepted → full brief visible (contact details revealed only on accept)
-   │
-   ├─ Propose properties (on-platform picker OR off-platform URL/note)
-   ├─ Update status: searching → viewing scheduled → completed
-   ├─ Add progress notes (customer-visible) and internal notes (staff-visible)
-   │
-   ▼
-Mark complete → "Did this customer successfully rent?" YES / NO
-                (+ which property, + commission earned? — recorded, not acted on)
-```
+### 4.2 Viewing language (decision 2)
 
-### 4.3 Staff
+Pintag does not schedule anything. Everywhere the product previously implied
+booking, it now reads:
 
-```
-admin.html → new "Find My Home" tab
-   │
-   ├─ Verification queue (oldest first)  — verify / reject payment
-   ├─ Unassigned requests                — assign verified agent
-   ├─ Active requests                    — monitor, reassign, note
-   ├─ Needs review                       — outcome mismatches, disputes
-   └─ Closed / archive                   — history, exports
-```
+| Context | Wording |
+|---|---|
+| Portal status | **Coordinating Viewings with Your Assigned Agent** |
+| Explainer | "Your agent arranges viewings directly with you by phone or WhatsApp." |
+| Agent action | "Mark as coordinating viewings" |
+| Status value | `viewing` (fulfilment axis) |
+
+No calendar, no time slots, no availability, no reminders — none of it exists and
+none is being built.
 
 ---
 
 ## 5. Database design
 
-All tables prefixed `fmh_`. Migration follows repo conventions: idempotent
+All tables `fmh_`-prefixed. Repo conventions: idempotent DDL
 (`CREATE TABLE IF NOT EXISTS`, `DROP POLICY IF EXISTS` before `CREATE POLICY`),
-RLS enabled on every table, `is_pintag_staff()` / `owned_party_ids()` reused.
+RLS enabled everywhere, `is_pintag_staff()` / `owned_party_ids()` reused.
 
-### 5.1 `fmh_requests` — the search mandate
+### 5.1 `fmh_requests`
 
 ```sql
 id                  uuid PK default gen_random_uuid()
-reference_code      text UNIQUE NOT NULL     -- 'FMH-2607-A3K9', human-quotable
-access_token        text UNIQUE NOT NULL     -- customer dashboard access (§3.1)
+reference_code      text UNIQUE NOT NULL      -- 'FMH-2607-A3K9', human-quotable
+access_token        text UNIQUE NOT NULL      -- 32-byte base64url, portal access
 token_expires_at    timestamptz
 
--- Customer (no auth account today; phone is the durable identity)
+-- Customer. No account today; phone is the durable identity (§5.10).
+customer_account_id uuid NULL                 -- FORWARD-COMPAT: always NULL in MVP
 customer_name       text NOT NULL
 customer_phone      text NOT NULL
 customer_whatsapp   text
 customer_email      text
-preferred_language  text                     -- lo|en|zh, reuse site languages
+preferred_language  text                      -- lo|en|zh
 
--- The brief (vocabulary reused from terminology.js / rental-terms.js)
+-- Analytics spine link (§8.2) — the anonymous browsing session that led here
+session_id          text
+visitor_id          text
+
+-- The brief. Vocabulary reused from terminology.js / rental-terms.js.
 property_type       text
 transaction_type    text default 'for_rent'
 budget_min          numeric
 budget_max          numeric
-budget_currency     text default 'USD'       -- RENTAL_CURRENCIES
-districts           text[]                   -- the 7 Vientiane districts
+budget_currency     text default 'USD'
+districts           text[]
 bedrooms_min        integer
 bathrooms_min       integer
-furnished           text                     -- FURNISHED_OPTIONS
+furnished           text
 pets_required       boolean
 move_in_date        date
 requirements        text
 
--- THREE INDEPENDENT AXES (§2.3)
-payment_status      text NOT NULL default 'unpaid'
-                    CHECK IN ('unpaid','awaiting_verification','verified',
-                              'rejected','refunded','waived')
-request_status      text NOT NULL default 'new'
-                    CHECK IN ('new','assigned','awaiting_activation','searching',
-                              'viewing_scheduled','completed','closed','cancelled','expired')
-needs_review        boolean NOT NULL default false
+-- THREE INDEPENDENT AXES (decision 6)
+payment_status      text NOT NULL default 'not_required'
+                    CHECK IN ('not_required','awaiting_payment','pending_verification',
+                              'verified','failed','refunded')
+fulfilment_status   text NOT NULL default 'submitted'
+                    CHECK IN ('submitted','assigned','searching','viewing',
+                              'completed','closed','cancelled')
+review_status       text NOT NULL default 'none'
+                    CHECK IN ('none','needs_review','disputed','resolved')
 
 -- Commercial
 service_tier        text CHECK IN ('apartment_condo','house','row_house')
 quoted_amount       numeric
 quoted_currency     text default 'USD'
-fee_disposition     text default 'retained'  -- §2.1: retained|refund_due|refunded|credited|waived
+refund_policy_version text NOT NULL default 'sdg_v1'   -- §11.4
+fee_disposition     text NOT NULL default 'retained'
+                    CHECK IN ('retained','refund_due','refunded','credited','waived')
+cancellation_reason text
 
 created_at, updated_at, assigned_at, activated_at, completed_at, closed_at
 ```
 
-Indexes: `payment_status`, `request_status`, `needs_review`, `customer_phone`,
-`created_at DESC`, and `access_token` (already unique).
+**Two refinements to the proposed vocabulary, flagged rather than applied silently:**
+
+1. **`payment_status` has six values, not five.** The proposal's single `pending`
+   cannot distinguish *waiting on the customer to pay* from *waiting on staff to
+   verify* — but those are different queues with different owners and different
+   SLA clocks, and the admin verification queue (§12.1) cannot be built without
+   the distinction. Split into `awaiting_payment` and `pending_verification`.
+   If the five-value vocabulary is preferred, the same distinction can be derived
+   from whether an `fmh_payments` row exists in `pending` state — but storing it
+   is simpler and indexable. `failed` is retained for rejected/abandoned payments.
+2. **`fulfilment_status` adds `cancelled`.** The proposed list has no terminal
+   state for abandonment. Expiry is modelled as a cancellation *reason*
+   (`cancellation_reason`) rather than a separate status, keeping the axis tight.
+
+Indexes: each status column, `customer_phone`, `session_id`, `created_at DESC`.
 
 ### 5.2 `fmh_payments` — append-only attempts
-
-Separate from the request because customers resubmit wrong receipts and the
-history matters for disputes.
 
 ```sql
 id, request_id FK
 method              text default 'bcel_qr'
-amount, currency
-receipt_path        text          -- private bucket 'fmh-receipts'
-receipt_sha256      text UNIQUE   -- §2.9 anti-reuse
+quoted_amount       numeric, quoted_currency  text   -- e.g. 50 USD
+observed_amount     numeric, observed_currency text  -- e.g. 1,080,000 LAK (§13.5)
+fx_rate             numeric                          -- rate applied, if converted
+receipt_path        text                             -- private bucket 'fmh-receipts'
+receipt_sha256      text UNIQUE                      -- anti-reuse (§3, fraud)
 submitted_at
 verification_status text CHECK IN ('pending','verified','rejected')
-verified_by         uuid FK parties
-verified_at, rejection_reason, admin_note
-observed_amount     numeric       -- what admin actually saw vs. quoted
+verified_by         uuid FK parties, verified_at
+rejection_reason, admin_note
 ```
 
-### 5.3 `fmh_assignments` — offer/accept history (§3.4)
+Separate from the request because customers resubmit wrong receipts and the
+attempt history is dispute evidence. `observed_*` and `fx_rate` exist because
+pricing is quoted in USD while BCEL settles in LAK (§13.5).
+
+### 5.3 `fmh_assignments` — offer/response history
 
 ```sql
 id, request_id FK, party_id FK parties
 state          text CHECK IN ('offered','accepted','rejected','withdrawn','expired')
 offered_by     uuid FK parties, offered_at, responded_at, reject_reason
 ```
-Partial unique index: at most one `accepted` assignment per request.
+Partial unique index: at most one `accepted` assignment per request. Keeping
+assignments as history (not a column on the request) is what makes agent
+response-rate and reliability metrics a query rather than a re-architecture.
 
-### 5.4 `fmh_proposals` — properties put to the customer (§3.2)
+### 5.4 `fmh_proposals` — properties put to the customer
 
 ```sql
 id, request_id FK
-property_id       uuid FK properties NULL   -- on-platform
-external_url      text                       -- OFF-platform: supply funnel
-external_note     text
-proposed_by       uuid FK parties, proposed_at
-customer_response text CHECK IN ('pending','interested','rejected','viewed')
+property_id        uuid FK properties NULL     -- on-platform
+external_title     text                        -- OFF-platform (§10)
+external_url       text
+external_district  text
+external_price     numeric, external_currency text
+external_note      text
+acquisition_status text NOT NULL default 'none'
+                   CHECK IN ('none','candidate','contacted','permission_granted',
+                             'declined','listed')
+acquired_property_id uuid FK properties NULL   -- set when it becomes a listing
+proposed_by        uuid FK parties, proposed_at
+customer_response  text CHECK IN ('pending','interested','declined','viewed')
 responded_at
 ```
-CHECK: exactly one of `property_id` / `external_url` present.
+CHECK: exactly one of `property_id` / `external_title` present. The
+`acquisition_*` fields are decision 7 — see §10.
 
-### 5.5 `fmh_outcomes` — dual confirmation (§2.5)
+### 5.5 `fmh_outcomes` — dual confirmation
 
 ```sql
 id, request_id FK UNIQUE
@@ -454,269 +287,618 @@ agent_response      text CHECK IN ('yes','no','no_response')
 agent_responded_at
 resolution          text CHECK IN ('converted','not_converted','needs_review','unresolved')
 property_id         uuid FK properties NULL
-commission_reported boolean          -- agent self-report; RECORDED, NOT ACTED ON (§2.1)
+external_property   text                 -- rented something off-platform
 resolved_by, resolved_at, admin_note
 ```
 
-### 5.6 `fmh_events` — append-only audit log
+**`commission_reported` is deliberately removed** (Revision 1 had it). With
+decision 4, commission has no bearing on any Pintag process, and collecting a
+number nobody acts on invites the exact misreporting incentive the decision
+eliminates. If commission analytics are wanted later, add it then, with a stated
+purpose.
+
+### 5.6 `fmh_feedback` — customer feedback (decision 1)
+
+```sql
+id, request_id FK UNIQUE
+rating          integer CHECK (rating BETWEEN 1 AND 5)
+comment         text
+would_recommend boolean
+submitted_at
+is_public       boolean NOT NULL default false   -- staff-gated before any display
+moderated_by    uuid FK parties, moderated_at
+```
+Separate from `fmh_outcomes` because "did you rent?" (a fact, feeding conversion
+metrics) and "how did we do?" (an opinion, feeding agent quality) are different
+questions with different audiences and different response rates. `is_public`
+defaults false — no customer comment surfaces anywhere without staff moderation.
+
+### 5.7 `fmh_request_events` — the single domain event log
 
 ```sql
 id bigserial, request_id FK
-actor_role   text CHECK IN ('customer','agent','staff','system')
-actor_party_id uuid NULL           -- null for customer (no account) and system
-event_type   text
+event_type    text NOT NULL          -- see §9.1 registry
+actor_role    text CHECK IN ('customer','agent','staff','system')
+actor_party_id uuid NULL             -- null for customer (no account) and system
 from_value, to_value jsonb
 note text, created_at
 ```
-Every status change, payment action, assignment, and outcome write appends here.
-No updates, no deletes — this is the dispute-resolution evidence base.
 
-### 5.7 `fmh_notifications` — outbox (§3.5)
+**This one table has three consumers** — audit trail (§12), notification source
+(§9), and analytics milestone source (§8.3). Append-only: no updates, no deletes.
+Every status transition, payment action, assignment, proposal and outcome write
+appends here.
 
-```sql
-id, request_id FK
-channel      text CHECK IN ('whatsapp','sms','email','none')
-recipient    text
-template_key text, payload jsonb
-state        text CHECK IN ('queued','sent','failed','manual_sent')
-queued_at, sent_at, sent_by uuid NULL, error text
-```
-MVP: staff work the queue by hand and mark `manual_sent`. Automation later
-replaces the worker, not the call sites.
+### 5.8 `fmh_notification_intents` — see §9
 
-### 5.8 Storage
+### 5.9 Storage
 
-New **private** bucket `fmh-receipts` (contrast with the public `property-images`
-/ `agent-photos` buckets). No anon SELECT, no anon INSERT — uploads go through an
-edge function that validates the token, hashes the file, and writes with the
-service role (§6.1). Receipts are financial records: immutable, staff-readable.
+New **private** bucket `fmh-receipts` — no anon SELECT, no anon INSERT. Uploads
+go through an edge function that validates the token, hashes the file, and writes
+with the service role (§7.1). Contrast with the public `property-images` /
+`agent-photos` buckets: receipts are financial records.
 
-### 5.9 Marketplace isolation invariant
+### 5.10 Forward-compatibility with future customer accounts (decision 1)
+
+Three provisions, all costing nothing now:
+
+1. **`customer_account_id uuid NULL`** exists from day one, always NULL in MVP.
+   When accounts arrive it becomes a FK — an `ALTER TABLE ... ADD CONSTRAINT`,
+   not a schema redesign.
+2. **`customer_phone` is mandatory on every request.** Phone is the identity
+   anchor in this market. A future phone-OTP signup back-fills
+   `customer_account_id` by matching phone — existing requests join a new account
+   retroactively with zero migration of request data.
+3. **All customer-facing access already goes through RPCs** (§7.1), not direct
+   table reads. Adding account-based auth means adding a second authorization
+   path inside those same functions; no client rewrite, no new endpoints.
+
+Token hygiene: 32-byte base64url (not brute-forceable), rotatable on request,
+expiring N days after `closed_at`, never carrying credentials or payment
+instruments, rate-limited lookup, and every access appended to
+`fmh_request_events`.
+
+### 5.11 Marketplace isolation invariant
 
 > **No `fmh_*` table may be joined into, or queried by, any public marketplace
 > page (`index.html`, `listings.html`, `listing.html`, `agent.html`). Find My
 > Home must never add a query, a script, or a blocking call to the browse path.**
 
-Recommend recording this in `ARCHITECTURE.md` alongside the existing Platform
-Identity / Buyer Contact / Authentication invariants, so it's enforceable in
-review rather than remembered.
+Recommend recording this in `ARCHITECTURE.md` beside the existing Platform
+Identity / Buyer Contact / Authentication invariants so it is enforceable at
+review time.
 
 ---
 
-## 6. API design
+## 6. State machine
 
-Follows existing conventions: PostgREST for RLS-scoped table access, SECURITY
-DEFINER RPCs (staff-gated internally, mirroring the `analytics_*` functions) for
-anything crossing trust boundaries, edge functions where secrets or file
-processing are involved.
+### 6.1 `payment_status`
 
-### 6.1 Public (anon) — RPC and edge function only, **zero table access**
+```
+not_required ──agent assigned & accepted──> awaiting_payment
+                                                   │
+                                          receipt uploaded
+                                                   ▼
+                                          pending_verification
+                                            │            │
+                                      verify│            │reject
+                                            ▼            ▼
+                                        verified      failed ──resubmit──> pending_verification
+                                            │
+                                   guarantee triggered (§11)
+                                            ▼
+                                        refunded
 
-Customers have no account, so RLS cannot identify them. Token-bearing RPCs are
-the entire public surface; `fmh_requests` itself gets **no anon policy at all**
-(same default-deny posture as the `owners` table).
+not_required ──staff waiver / promotional──> (stays not_required, fee_disposition='waived')
+```
+
+### 6.2 `fulfilment_status`
+
+```
+submitted ──assign──> assigned ──payment verified──> searching ──> viewing ──> completed ──> closed
+    ▲                     │                                                         │
+    └──agent declines─────┘                                                          └──> closed
+                          
+any non-terminal ──> cancelled   (reason: customer_withdrew | capacity | unserviceable | expired)
+```
+
+**Hard gate:** `fulfilment_status` cannot advance beyond `assigned` unless
+`payment_status IN ('verified','not_required')`. Enforced inside the transition
+RPC, not left to UI discipline. This is the mechanism that makes "agent begins
+work only after payment is verified" true.
+
+`viewing` means *coordinating viewings with the assigned agent* (decision 2) —
+it records that a real-world viewing is being arranged, not that Pintag scheduled
+anything.
+
+### 6.3 `review_status`
+
+Fully orthogonal — settable at any point on either other axis without changing
+them.
+
+```
+none ──outcome mismatch / customer or agent raises──> needs_review
+                                                          │
+                                            staff escalates│
+                                                          ▼
+                                                      disputed
+                                                          │
+                                            staff adjudicates
+                                                          ▼
+                                                      resolved
+```
+A request can be `completed` + `disputed`, or `searching` + `needs_review` —
+combinations a single enum could never express.
+
+### 6.4 Outcome resolution
+
+| Customer | Agent | `resolution` | Effect |
+|---|---|---|---|
+| yes | yes | `converted` | Counted as a conversion |
+| no | no | `not_converted` | Counted as non-conversion |
+| yes/no mismatch | | `needs_review` | `review_status` → `needs_review`, staff adjudicates |
+| any | `no_response` (timeout) | `unresolved` | Reported separately; **never** counted as failure |
+
+---
+
+## 7. API design
+
+Existing conventions: PostgREST for RLS-scoped access, SECURITY DEFINER RPCs for
+trust-boundary crossings, edge functions where secrets or file processing are
+involved.
+
+### 7.1 Public (anon) — RPC and edge function only, zero table access
+
+Customers have no account, so RLS cannot identify them. `fmh_requests` gets **no
+anon policy at all** — the same default-deny posture as `owners`. Token-bearing
+RPCs are the entire public surface.
 
 | Endpoint | Type | Purpose |
 |---|---|---|
-| `fmh_create_request(payload jsonb)` | RPC | Create request, mint reference code + token, return them. Rate-limited by phone + IP. |
-| `fmh_get_request(p_token)` | RPC | Full status view: request, agent card, proposals, notes, payment state. |
-| `fmh_submit_receipt` | **Edge function** | Validates token → hashes file → writes to private bucket with service role → inserts `fmh_payments`. Never exposes storage to anon. |
-| `fmh_respond_proposal(p_token, p_proposal_id, p_response)` | RPC | Customer marks interested / rejected. |
-| `fmh_customer_outcome(p_token, p_response)` | RPC | Completion survey answer. |
+| `fmh_create_request(payload jsonb)` | RPC | Create request, mint code + token. Rate-limited by phone + IP. Accepts `session_id` for spine linkage (§8.2). |
+| `fmh_get_request(p_token)` | RPC | Portal view: request, agent card, proposals, notes, payment + guarantee state. |
+| `fmh_submit_receipt` | **Edge fn** | Validates token → hashes file → private-bucket write with service role → inserts `fmh_payments`. Storage never exposed to anon. |
+| `fmh_respond_proposal(p_token, p_proposal_id, p_response)` | RPC | Interested / declined / viewed. |
+| `fmh_customer_outcome(p_token, p_response)` | RPC | Completion survey. |
+| `fmh_submit_feedback(p_token, p_rating, p_comment)` | RPC | Rating + comment (§5.6). |
 
-All token RPCs: constant-time-ish lookup on the unique index, rate limited, and
-every call appends to `fmh_events`.
+Every token RPC appends to `fmh_request_events` and is rate-limited.
 
-### 6.2 Agent (authenticated, RLS-scoped)
+### 7.2 Agent (authenticated, RLS-scoped)
 
-Direct PostgREST reads on `fmh_requests` / `fmh_proposals` **only** where an
-`accepted` assignment exists for a party in `owned_party_ids(auth.uid())`.
-Critically: **customer contact details are withheld until acceptance** — the
-offer view exposes the brief, not the phone number.
+PostgREST reads on `fmh_requests`/`fmh_proposals` **only** where an `accepted`
+assignment exists for a party in `owned_party_ids(auth.uid())`. **Customer
+contact details are withheld until acceptance** — the offer view shows the brief,
+not the phone number.
 
-| Endpoint | Type |
-|---|---|
-| `fmh_agent_respond_assignment(p_assignment_id, p_state, p_reason)` | RPC |
-| `fmh_agent_set_status(p_request_id, p_status, p_note)` | RPC (validates transition) |
-| `fmh_agent_propose(p_request_id, ...)` | RPC |
-| `fmh_agent_outcome(p_request_id, p_response, p_property_id, p_commission)` | RPC |
+`fmh_agent_respond_assignment` · `fmh_agent_set_status` (validates transition and
+the payment gate) · `fmh_agent_propose` · `fmh_agent_outcome`.
 
-### 6.3 Staff
+### 7.3 Staff
 
-Full PostgREST access on all `fmh_*` tables via `is_pintag_staff()`, plus:
-`fmh_verify_payment`, `fmh_reject_payment`, `fmh_assign_agent`,
-`fmh_set_status`, `fmh_resolve_outcome`, `fmh_set_fee_disposition`.
+Full access via `is_pintag_staff()`, plus `fmh_verify_payment` ·
+`fmh_reject_payment` · `fmh_assign_agent` · `fmh_set_status` ·
+`fmh_resolve_outcome` · `fmh_set_fee_disposition` · `fmh_moderate_feedback` ·
+`fmh_set_acquisition_status` (§10).
 
-### 6.4 Permissions matrix
+### 7.4 Permissions matrix
 
 | Table | anon | agent (assigned) | agent (other) | staff |
 |---|---|---|---|---|
 | `fmh_requests` | none (RPC only) | SELECT own-assigned | none | ALL |
-| `fmh_payments` | none (edge fn only) | none | none | ALL |
+| `fmh_payments` | none (edge fn only) | **none** | none | ALL |
 | `fmh_assignments` | none | SELECT own | none | ALL |
 | `fmh_proposals` | none (RPC only) | SELECT/INSERT own-assigned | none | ALL |
 | `fmh_outcomes` | none (RPC only) | SELECT/UPDATE own-assigned | none | ALL |
-| `fmh_events` | none | SELECT own-assigned | none | SELECT |
-| `fmh_notifications` | none | none | none | ALL |
+| `fmh_feedback` | none (RPC only) | **none** | none | ALL |
+| `fmh_request_events` | none | SELECT own-assigned | none | SELECT |
+| `fmh_notification_intents` | none | none | none | ALL |
 
-Agents never see other agents' requests. Payment data is staff-only throughout —
-an agent has no business seeing what a customer paid.
+Agents never see other agents' requests, never see payment data (no business
+seeing what a customer paid), and never see raw feedback (staff moderate first,
+then surface aggregates).
 
 ---
 
-## 7. State machine
+## 8. Analytics & Intelligence integration (decision 8)
 
-### 7.1 `payment_status`
+**No parallel analytics system.** Find My Home emits into the existing spine and
+extends the existing Metrics Engine and Insight Engine. Three distinct layers,
+matching the boundaries already documented in `INTELLIGENCE_ARCHITECTURE.md`.
+
+### 8.1 Funnel behaviour — zero new infrastructure
+
+`find-my-home.html` and the portal are ordinary pages. They load
+`analytics-tracking.js` and `tracking.js` exactly like every other page, emitting
+`page_views` and `ui_events` with the shared `getOrCreateSessionId()`. This gives
+the top-of-funnel for free:
+
+> FMH page view → form start → form submit → assigned → paid → completed
+
+No new table, no new tracking code, and it appears in the existing Analytics
+Behavior/Traffic tabs automatically.
+
+### 8.2 The spine link — `fmh_requests.session_id`
+
+This is the highest-value integration point in the whole feature.
+
+Storing the originating `session_id` (and `visitor_id`) on the request joins the
+paid product into the **existing continuous buyer-journey chain**:
 
 ```
-unpaid ──submit receipt──> awaiting_verification ──verify──> verified
-                                    │                            │
-                                    └──reject──> rejected         └──(future)──> refunded
-                                          │                                    
-                                          └──resubmit──> awaiting_verification
-unpaid ──staff waiver──> waived
+search_events → listing_events (impression/click/view) → [gave up] → fmh_requests
 ```
 
-### 7.2 `request_status` (recommended pay-on-assignment ordering, §2.2)
+That makes a previously unanswerable question answerable: *what did this customer
+search for, and fail to find, immediately before paying us to find it for them?*
+Every Find My Home request is a **labelled supply-gap signal with a budget
+attached** — the highest-intent demand data Pintag has ever had.
 
+### 8.3 Metrics Engine — additive keys only
+
+Per the architecture's additive-versioning invariant, `intelligence_daily_metrics()`
+gains new keys; nothing existing changes meaning:
+
+```jsonc
+"fmh": {
+  "requests_created":       n,
+  "requests_assigned":      n,
+  "payments_verified":      n,
+  "requests_completed":     n,
+  "conversion_rate":        0.0,   // converted ÷ resolved outcomes
+  "median_hours_to_assign": n,
+  "median_hours_to_verify": n,     // the §3.3 SLA, measured
+  "guarantee_triggered":    n,     // §11
+  "by_district":            { ... },
+  "by_property_type":       { ... },
+  "by_budget_band":         { ... },
+  "unmet_demand_ratio":     { "by_district": {...}, "by_property_type": {...} }
+}
 ```
-new ──assign──> assigned ──agent accepts──> awaiting_activation
-                    │                              │
-                    │                        payment verified
-                    │                              ▼
-                    │                          searching ──> viewing_scheduled ──> completed ──> closed
-                    │                              
-                    └──agent declines──> new (reassign)
 
-any non-terminal ──> cancelled          awaiting_activation ──timeout──> expired
-```
+All derived from `fmh_requests` + `fmh_request_events` + `fmh_outcomes` — the
+same way `intelligence_daily_metrics()` already reads `leads` directly. No
+separate FMH event feed exists or is needed.
 
-**Gate:** `request_status` cannot advance past `awaiting_activation` unless
-`payment_status = 'verified'` (or `'waived'`). Enforced in the transition RPC,
-not left to UI discipline.
+### 8.4 Insight Engine — one registry entry per metric, no new machinery
 
-`needs_review` is orthogonal — it can be raised at any point (typically on
-outcome mismatch) without changing either status axis.
+The detector interface was generalized during the hardening pass specifically so
+new signals are a one-file plugin. Find My Home adds entries to the existing
+`TRACKED_SCALAR_METRICS` / `TRACKED_BREAKDOWN_METRICS` arrays and reuses the
+existing z-score-vs-30-day-baseline detector unchanged:
 
-### 7.3 Outcome resolution
-
-| Customer | Agent | `resolution` |
+| Metric key | Existing insight type | What it detects |
 |---|---|---|
-| yes | yes | `converted` |
-| no | no | `not_converted` |
-| yes | no *or* no | yes | `needs_review` → staff adjudicates |
-| any | no_response (timeout) | `unresolved` — reported separately, never counted as failure (§2.5) |
+| `fmh.requests_created` | `demand_spike` | Paid-demand volume moving off its own baseline |
+| `fmh.unmet_demand_ratio.by_district` | **`supply_shortage`** | Districts where paid demand outruns inventory |
+| `fmh.unmet_demand_ratio.by_property_type` | `supply_shortage` | Same, by type |
+| `fmh.conversion_rate` | `conversion_anomaly` | Service effectiveness drifting |
+| `fmh.median_hours_to_verify` | `ux_anomaly` | Payment-verification SLA slipping |
+
+**Correction to Revision 1:** I previously implied `supply_shortage` had no
+detector. It does — wired to `new_listings_added`, `listings_removed` and
+`active_inventory` by `20260725000000_intelligence_bi_metrics.sql`. Those measure
+*inventory* movement. What they cannot see is **demand against that inventory**.
+`fmh.unmet_demand_ratio` (paid requests per district ÷ active inventory there) is
+exactly that missing input, feeding the *same* insight type through the *same*
+detector. This is extension in the precise sense decision 8 asks for: one array
+entry each, zero new machinery.
+
+No new insight `type` values are required — a migration to the `type` CHECK is
+only needed if a genuinely new *category* emerges later.
+
+### 8.5 Analytics vs. Intelligence boundary
+
+The separation established earlier holds without exception:
+
+- **Analytics** (`analytics.html`): raw verifiable facts — request counts,
+  conversion rates, SLA timings, revenue. Delivered by a new
+  `analytics_fmh_breakdown(p_start, p_end)` RPC following the aggregate-in-SQL
+  pattern the analytics tabs were just rebuilt on. **No client-side row
+  aggregation.**
+- **Intelligence** (`intelligence.html`): interpretation only, and every number
+  it cites must be verifiable in Analytics.
+- **Marketing OS** consumes the same metrics — it reads the Metrics Engine
+  output, so it inherits FMH data with no FMH-specific integration.
 
 ---
 
-## 8. Admin workflow
+## 9. Notification architecture (decision 3)
 
-New **Find My Home** tab in `admin.html`, alongside Listings / Analytics /
-Intelligence. Five queues:
+**Nothing is delivered in the MVP.** What is built is the *interface*, so a
+future WhatsApp/SMS/email/push integration subscribes without touching business
+logic.
 
-1. **Verify payments** — oldest first, receipt image side by side with quoted
-   amount; verify / reject with reason. The SLA queue from §2.4.
-2. **Assign agent** — request brief + verified-agent picker filtered to those
-   with FMH enabled and spare capacity (§2.8).
-3. **Active** — monitor status, add internal notes, reassign, cancel.
-4. **Needs review** — outcome mismatches and disputes, with the full
-   `fmh_events` timeline as evidence.
-5. **Closed** — history and CSV export.
+### 9.1 Domain events are the contract
 
-Every action appends to `fmh_events` with the acting staff party recorded.
+Business logic emits domain events into `fmh_request_events` (§5.7) and **knows
+nothing about notification**. A data-only registry maps event types to intended
+audiences:
+
+```js
+// find-my-home.js — pure data, no delivery code
+const FMH_NOTIFIABLE_EVENTS = {
+  'request.submitted':   { audience: ['customer','staff'], template: 'fmh_submitted' },
+  'agent.assigned':      { audience: ['customer','agent'], template: 'fmh_assigned' },
+  'payment.submitted':   { audience: ['staff'],            template: 'fmh_receipt_received' },
+  'payment.verified':    { audience: ['customer','agent'], template: 'fmh_activated' },
+  'payment.rejected':    { audience: ['customer'],         template: 'fmh_receipt_problem' },
+  'proposal.created':    { audience: ['customer'],         template: 'fmh_new_proposal' },
+  'status.changed':      { audience: ['customer'],         template: 'fmh_status_update' },
+  'request.completed':   { audience: ['customer','agent'], template: 'fmh_outcome_survey' },
+  'guarantee.triggered': { audience: ['customer','staff'], template: 'fmh_guarantee' }
+};
+```
+
+### 9.2 `fmh_notification_intents` — recorded, not sent
+
+A trigger on `fmh_request_events` writes one intent row per audience member for
+notifiable events:
+
+```sql
+id, request_id FK, event_id FK fmh_request_events
+audience     text CHECK IN ('customer','agent','staff')
+template_key text
+payload      jsonb                    -- rendered context, channel-agnostic
+channel      text NULL                -- NULL in MVP: no channel decided yet
+state        text NOT NULL default 'pending'
+             CHECK IN ('pending','sent','skipped','failed')
+sent_at, sent_by uuid NULL, sent_via text NULL, error text
+```
+
+**MVP:** intents accumulate as `pending`. Staff see them as a checklist in the
+admin module, message the customer over WhatsApp by hand, and mark them
+`sent` (recording `sent_via='whatsapp_manual'`, `sent_by`). Nothing is lost, and
+the manual work is measured from day one.
+
+**Future:** a dispatcher consumes `state='pending'` and fills the same columns.
+**No business-logic call site changes** — the emit path is already correct. That
+is precisely what decision 3 asks for.
 
 ---
 
-## 9. Agent workflow
+## 10. Marketplace growth: listing acquisition (decision 7)
 
-New section in `dashboard.html` (the existing self-service agent portal):
+When an agent proposes a property not on Pintag, that is a supply-side lead.
 
-- **Offers** — brief *without* contact details; Accept / Decline with reason,
-  and an expiry so unanswered offers return to the pool.
-- **Active requests** — full brief with contact details; propose properties
-  (on-platform picker or off-platform URL); update status; add
-  customer-visible progress notes and staff-only internal notes.
-- **Complete** — outcome survey (rented? which property? commission earned?).
+**Pipeline** (`fmh_proposals.acquisition_status`, §5.4):
 
-Only agents with `type='agent'`, `is_verified = true`, and an explicit FMH opt-in
-capability receive offers. Recommend a boolean capability flag on `parties`
-rather than a separate agent table — verification already lives there.
+```
+none → candidate → contacted → permission_granted → listed
+                            ↘ declined
+```
+
+- **`candidate`** — staff triage flags it worth pursuing.
+- **`contacted`** — staff or agent has approached the owner.
+- **`permission_granted`** — owner consents to listing. **This gate is mandatory:
+  no off-platform property is ever added without explicit owner permission**
+  (a legal and trust requirement, §13.4 — not merely a workflow nicety).
+- **`listed`** — created on Pintag; `acquired_property_id` links back, closing
+  the loop and making acquisition attributable.
+
+**Integration, not a separate system** (decision 7 + 8):
+- Surfaced as an **Acquisition queue in the existing admin module**, not a new tool.
+- Counted in the Metrics Engine as `fmh.acquisition.{candidates,granted,listed}`.
+- Feeds the existing `supply_shortage` insight type: off-platform proposals
+  concentrated in a district are corroborating evidence of the same inventory gap
+  `fmh.unmet_demand_ratio` detects (§8.4).
+- Once `listed`, the property is an ordinary listing — no FMH-specific fields
+  leak into `properties`, preserving §5.11.
+
+**Why this matters commercially:** every paid search surfaces real, verified,
+off-market inventory found by professionals who know the market. The premium
+service quietly becomes a supply funnel for the free marketplace. That may prove
+worth more than the fee revenue.
 
 ---
 
-## 10. Customer workflow
+## 11. Refund policy (decision 4)
 
-Covered in §4.1. Two implementation notes:
+### 11.1 Principle
 
-- **Trilingual from day one.** The request form and status page must support
-  lo/en/zh like every other Pintag surface. A premium paid product that only
-  speaks one language is a worse experience than the free marketplace.
-- **The status page is the product's trust surface.** For a customer who has
-  paid $50 and is waiting, this page *is* Pintag. It should show the agent's
-  face, the last update timestamp, and what happens next — never an empty state.
+> **Refund eligibility depends only on facts recorded in Pintag's own database.**
+
+No trigger may depend on off-platform events (commission), self-reports (did you
+rent?), or subjective judgement (did the agent try hard?). Every condition below
+is computable in SQL from `fmh_request_events`, `fmh_assignments` and
+`fmh_proposals`.
+
+### 11.2 Service Delivery Guarantee v1 (`sdg_v1`)
+
+Pintag guarantees the **search effort**, not the market outcome — stated plainly
+to the customer, because promising a home Pintag cannot control is exactly the
+overpromise that destroys trust.
+
+| # | Trigger (objectively verifiable) | Outcome |
+|---|---|---|
+| G1 | No agent accepts within **N days** of `payment_status='verified'` | Full refund |
+| G2 | Fewer than **M proposals** delivered within **P days** of activation | Full refund |
+| G3 | Agent inactive **Q consecutive days** while `fulfilment_status='searching'` (no proposal, no status change, no note) | Reassign, or full refund at customer's choice |
+| G4 | Customer cancels **before** `payment_status='verified'` | No charge |
+| G5 | Pintag cancels (capacity, unserviceable) | Full refund |
+
+N/M/P/Q are policy parameters, not code constants — stored with the policy
+version so historical requests keep the terms they were sold under.
+
+### 11.3 The consequence worth noting
+
+Decoupling refunds from outcomes **removes every financial incentive to
+misreport the outcome survey.** Neither agent nor customer gains money from
+answering "did you rent?" either way. The conversion data in §8 therefore becomes
+substantially more trustworthy — a reporting-quality benefit, not just a fraud
+fix. Under the original commission-linked model, the single most
+business-critical metric would have been the one everyone had a reason to
+corrupt.
+
+### 11.4 Schema flexibility without redesign
+
+`fmh_requests.refund_policy_version text` (default `'sdg_v1'`) plus a SQL
+function:
+
+```sql
+fmh_check_refund_eligibility(p_request_id uuid) → jsonb
+  -- { eligible: bool, policy: 'sdg_v1', triggered: ['G2'], evidence: {...} }
+```
+
+Adding a future model — outcome-based, credit-based, commission-share — means a
+**new policy version** and a new branch in that one function. Historical requests
+keep evaluating under the version they were sold, matching the Intelligence
+layer's additive-versioning invariant ("never change the meaning of historical
+data"). `fee_disposition` already spans `retained | refund_due | refunded |
+credited | waived`, so a credit model needs no new column.
+
+**MVP scope:** eligibility is *computed and surfaced to staff*; the refund itself
+is executed manually by bank transfer and recorded. No payout automation — none
+exists to build on.
 
 ---
 
-## 11. Roadmap and implementation phases
+## 12. Workflows
 
-### Phase 0 — Decisions (no code) 
-Resolve §12. Blocks everything.
+### 12.1 Admin — new "Find My Home" tab in `admin.html`
 
-### Phase 1 — Manual-operations MVP *(the recommended first shippable unit)*
-Migration (all `fmh_*` tables, RLS, RPCs) · `find-my-home.html` request form ·
-token status page · receipt-upload edge function · admin module (all five
-queues). **No agent portal yet** — staff relay to agents over WhatsApp exactly
-as listings are onboarded manually today.
+| Queue | Purpose |
+|---|---|
+| **Triage** | New submissions: serviceable? capacity available? → assign or decline |
+| **Verify payments** | Oldest-first, receipt image beside quoted vs. observed amount; verify/reject. SLA clock visible (§3.3) |
+| **Active** | Monitor, reassign, note, cancel |
+| **Guarantee watch** | Requests approaching or breaching G1–G3 (§11.2) — proactive, before the customer complains |
+| **Needs review** | Outcome mismatches and disputes, with the full `fmh_request_events` timeline as evidence |
+| **Acquisition** | Off-platform proposals through the §10 pipeline |
+| **Notifications** | Pending intents to send manually (§9.2) |
 
-This is a *complete, sellable product*. It proves demand and price before any
-agent-facing engineering. Recommend running 10–20 real requests through it
-before Phase 2.
+Every action appends to `fmh_request_events` with the acting staff party recorded.
+
+### 12.2 Agent — new section in `dashboard.html`
+
+- **Offers** — brief *without* contact details; Accept / Decline with reason; expiry returns the offer to the pool.
+- **Active** — full brief (contact details revealed on acceptance); propose properties (on-platform picker or off-platform details); update status; customer-visible progress notes and staff-only internal notes. **Work must not begin until `payment_status='verified'`** — enforced by the §6.2 gate, and shown in the UI as a locked state.
+- **Complete** — outcome survey (rented? which property?).
+
+Only agents with `type='agent'`, `is_verified=true`, and an explicit FMH opt-in
+capability receive offers. Recommend a capability flag on `parties` rather than a
+new agent table — verification already lives there.
+
+### 12.3 Customer
+
+Covered in §4.1. Two requirements:
+
+- **Trilingual (lo/en/zh) from day one**, like every other Pintag surface. A paid product speaking fewer languages than the free one is indefensible.
+- **The portal is the trust surface.** For someone who has paid and is waiting, this page *is* Pintag: agent's face, last-updated timestamp, what happens next, guarantee status. Never an empty state.
+
+---
+
+## 13. Lao-specific legal and accounting considerations (decision 9)
+
+**Not legal advice.** This is a question list for a qualified Lao lawyer and
+accountant. Charging for a service moves Pintag from operating a free listings
+board into regulated commercial territory. Non-blocking for design; **blocking
+for launch.**
+
+### 13.1 Business scope and licensing
+Does Pintag's current registration cover **paid service fees** and **real-estate
+intermediation**? Does acting as a paid search intermediary trigger brokerage or
+agency licensing? Does introducing customers to agents for a fee create
+obligations regarding those agents' own licensing status?
+
+### 13.2 Tax, VAT and invoicing
+Is a service fee VATable in Laos, and is Pintag over the registration threshold?
+What constitutes a valid tax invoice — required format, sequential numbering,
+Lao-language requirement, physical vs. electronic? Must an invoice be issued at
+payment or at service completion? Retention period for financial records
+(receipts are stored in `fmh-receipts`, §5.9 — retention must match the legal
+requirement, not an arbitrary default).
+
+### 13.3 Consumer protection
+The Service Delivery Guarantee (§11) is a **published consumer commitment** and
+likely enforceable as offered — its terms must be reviewed before publication.
+Requirements for refund/cancellation terms, mandatory complaint handling, and
+whether terms must be presented in Lao. **"Verified Agent" is an advertising
+claim** — what Pintag must actually verify to make it lawfully, and the liability
+if a Verified Agent misbehaves.
+
+### 13.4 Data protection and privacy
+Paying customers' PII (name, phone, budget, requirements) is more sensitive than
+anything Pintag holds today. Questions: lawful basis and consent wording;
+retention and deletion periods; **cross-border data storage** — Supabase hosts
+outside Laos, which may carry residency or disclosure obligations; customer
+rights of access/erasure; and, for §10, the **owner-permission requirement before
+listing an off-platform property**, which is a privacy and property-rights matter
+as much as a workflow gate.
+
+### 13.5 Payments and currency
+BCEL merchant account terms for receiving business payments; any AML/KYC
+thresholds; whether commercial pricing must be **quoted in LAK** given USD
+pricing settling in kip (the `observed_amount` / `fx_rate` fields in §5.2 exist
+for this); who bears FX variance; refund mechanics and timelines for bank
+transfers.
+
+### 13.6 Agent relationship
+Are Verified Agents independent contractors or something closer to employees or
+sub-agents under Lao law? Withholding-tax implications for any future payout
+model. Pintag's liability for agent conduct toward a customer who paid *Pintag*.
+
+### 13.7 Recommended sequence
+Design and Phase 1 build can proceed now. Obtain advice on §13.1–13.3 **before
+taking the first real payment**, and on §13.4 before storing production customer
+data at volume. Budget for terms-of-service and privacy-policy drafting as a real
+line item, not an afterthought.
+
+---
+
+## 14. Implementation phases
+
+### Phase 0 — Approval
+This document. No code.
+
+### Phase 1 — Manual-operations MVP *(recommended first shippable unit)*
+Migration (all `fmh_*` tables, RLS, RPCs, the notification-intent trigger) ·
+`find-my-home.html` request form · token portal · receipt-upload edge function ·
+admin module (all seven queues) · `analytics_fmh_breakdown` RPC.
+**No agent portal** — staff relay to agents over WhatsApp, exactly as listings
+are onboarded manually today.
+
+This is a complete, sellable product. It proves demand and price before any
+agent-facing engineering. Recommend 10–20 real requests through it before Phase 2.
 
 ### Phase 2 — Agent self-service
-Agent section in `dashboard.html`, offer/accept, proposals, status, outcome
-survey. Removes staff from the middle of the fulfilment loop.
+Agent section in `dashboard.html`: offers, accept/decline, proposals, status,
+outcome survey. Removes staff from the fulfilment loop.
 
-### Phase 3 — Conversion reporting
-Dual-outcome resolution UI, conversion metrics, agent performance (response
-rate, acceptance rate, completion rate) fed from `fmh_assignments` +
-`fmh_outcomes`. Integrate into the existing Analytics page — as *facts*, kept
-separate from Intelligence's interpretation, per the established boundary.
+### Phase 3 — Intelligence integration
+`intelligence_daily_metrics()` FMH keys · Insight Engine registry entries (§8.4) ·
+Analytics FMH section · acquisition metrics · agent performance from
+`fmh_assignments` + `fmh_outcomes`.
 
 ### Phase 4 — Trust and scale
-Verification tiers, ratings, trust score, capacity-aware auto-assignment,
-notification automation (WhatsApp Business API consuming the outbox),
-off-platform proposal → listing recruitment view (§3.2).
+Verification tiers · ratings from moderated `fmh_feedback` · capacity-aware
+assignment · notification dispatcher consuming the existing intent table ·
+acquisition pipeline surfaced to Marketing OS.
 
-### Phase 5 — Deferred by design, not forgotten
-Online payment gateway · agent payouts and any refund automation · in-app chat ·
-sale-side Find My Home · buyer accounts via phone OTP (§3.1 upgrade path).
-
----
-
-## 12. Recommendation: what to change before development begins
-
-Six decisions. The first three are consequential; the rest are cheap-now,
-expensive-later.
-
-| # | Decision | Recommendation | Why it can't wait |
-|---|---|---|---|
-| 1 | **Customer identity model** | Token link, no accounts (§3.1) | Determines the entire public API surface, the RLS posture, and the status page. Nothing can be built before this is settled. |
-| 2 | **Payment timing** | Pay-on-**assignment**, not on submit (§2.2) | Changes the state machine and, more importantly, is the single biggest lever on conversion and trust. Cheap now, structural later. |
-| 3 | **Refund model** | Drop commission-linked refund. Adopt an outcome-based Pintag guarantee; keep `fee_disposition` neutral (§2.1) | Unenforceable as briefed and incentive-inverted. Also shapes what the completion survey must capture. |
-| 4 | **Status model** | Three axes, not one enum (§2.3) | Exactly the `properties.status` mistake we just spent a migration undoing. |
-| 5 | **Notification reality** | Outbox table + manual WhatsApp for MVP (§3.5) | Every "customer receives…" step in the brief currently has no delivery mechanism. |
-| 6 | **Capacity gate** | Per-agent concurrent cap + global intake cap (§2.8) | Protects the guarantee in #3 and prevents selling work that can't be delivered. |
-
-**Also required before launch, and not an engineering task:** a qualified answer
-on Lao consumer-protection, invoicing/VAT, and PII-retention obligations for paid
-services (§2.7).
-
-**One correction to the brief for the record:** viewing-booking is not an
-existing free marketplace feature — it doesn't exist anywhere in the product
-today (§0). If customer-facing viewing booking is wanted, it's a separate piece
-of work that should be scoped on its own merits, for the free marketplace,
-independent of Find My Home.
+### Phase 5 — Deferred by design
+Online payment gateway · agent payouts and refund automation · in-app chat ·
+sale-side Find My Home · customer accounts via phone OTP (§5.10 upgrade path).
 
 ---
 
-*Prepared for review. No implementation will begin until this plan is approved.*
+## 15. Open items
+
+Everything material is now decided. Four parameters need values before Phase 1
+ships, none of which block starting:
+
+1. **Guarantee parameters** — N/M/P/Q in §11.2. Suggested starting point: assign
+   within **3 days**, **3 proposals** within **7 days**, inactivity threshold
+   **5 days**. Needs a commercial judgement on what Pintag can consistently meet.
+2. **Capacity caps** (§3.2) — max concurrent requests per agent, and global
+   intake cap. Needs the real count of FMH-enabled verified agents.
+3. **Payment-verification SLA** (§3.3) — the number published to customers.
+4. **`payment_status` vocabulary** — confirm the six-value split in §5.1, or
+   direct that the proposed five-value list be kept with the queue distinction
+   derived from `fmh_payments`.
+
+**Pre-launch, non-engineering:** §13.1–13.3 legal advice before the first real
+payment.
+
+---
+
+*Revision 2 — prepared for approval. No implementation will begin until approved.*
