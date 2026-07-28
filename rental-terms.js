@@ -82,6 +82,19 @@ var RENTAL_MONTHS_OPTIONS = [
   {value:'months_of_rent', label:{en:'Months of rent', lo:'ຈຳນວນເດືອນຄ່າເຊົ່າ', zh:'按月租计算'}},
   {value:'fixed_amount',   label:{en:'Fixed amount',   lo:'ຈຳນວນຄົງທີ່',        zh:'固定金额'}}
 ];
+// Currency for monetary rental terms (deposit, advance rent). Pintag has no
+// `currency` column anywhere -- properties.price_display is free text with
+// the symbol typed inline ("$550,000"), so a monetary rental term has to
+// carry its own currency or it can only ever render as a bare number. This
+// registry is that currency, stored per-value inside the rental_terms JSONB
+// blob (no migration needed -- the column is already jsonb).
+var RENTAL_CURRENCIES = {
+  USD: { symbol: '$', code: 'USD' },
+  LAK: { symbol: '₭', code: 'LAK' },
+  THB: { symbol: '฿', code: 'THB' }
+};
+var RENTAL_DEFAULT_CURRENCY = 'USD';
+
 var RENTAL_FREQUENCY_OPTIONS = [
   {value:'daily',        label:{en:'Daily',            lo:'ທຸກມື້',          zh:'每天'}},
   {value:'twice_weekly',  label:{en:'Twice a Week',     lo:'ອາທິດລະ 2 ຄັ້ງ',  zh:'每周两次'}},
@@ -227,12 +240,42 @@ function _rtOptionLabel(options, value, lang) {
   return value;
 }
 
+// Money vs. rent-multiplier rendering for the money_multiplier kind.
+//
+// Every field using this kind (deposit, advance_rent) is MONETARY by
+// definition. "N months of rent" is a legitimate, widely-used way to quote a
+// deposit in this market, so it stays -- but it is a rent MULTIPLIER, never a
+// duration, and it only ever applies when explicitly chosen. See the
+// formatter below for why the default direction matters.
+function _rtFormatMoney(value, currency) {
+  var cur = RENTAL_CURRENCIES[currency] || RENTAL_CURRENCIES[RENTAL_DEFAULT_CURRENCY];
+  var n = Number(value);
+  return cur.symbol + (isNaN(n) ? String(value) : n.toLocaleString('en-US'));
+}
+function _rtFormatRentMultiplier(value, lang) {
+  var T = {
+    en: function(v) { return v + (Number(v) === 1 ? " month's rent" : " months' rent"); },
+    lo: function(v) { return v + ' ເດືອນຄ່າເຊົ່າ'; },
+    zh: function(v) { return v + '个月租金'; }
+  };
+  return (T[lang] || T.en)(value);
+}
+
 var RENTAL_TERM_KIND_FORMATTERS = {
   money_multiplier: function(fieldDef, raw, lang) {
     if (!raw || raw.value == null) return null;
-    if (raw.type === 'fixed_amount') return String(raw.value);
-    var unit = raw.value === 1 ? {en:'Month', lo:'ເດືອນ', zh:'月'} : {en:'Months', lo:'ເດືອນ', zh:'月'};
-    return raw.value + ' ' + (unit[lang] || unit.en);
+    // Rent-multiplier ONLY when explicitly chosen. Everything else --
+    // 'fixed_amount', a missing type, or an unrecognized one -- renders as
+    // money, because this kind is only ever used for monetary fields.
+    //
+    // The old code had this backwards: it special-cased 'fixed_amount' and
+    // let EVERY other case (including a missing type) fall through to a
+    // "N Months" branch. That is what produced "Deposit: 100 Months" on a
+    // listing whose owner meant $100 -- a monetary value silently rendered
+    // as a duration. Defaulting to money is the safe direction for a field
+    // that is monetary by definition.
+    if (raw.type === 'months_of_rent') return _rtFormatRentMultiplier(raw.value, lang);
+    return _rtFormatMoney(raw.value, raw.currency);
   },
   utility: function(fieldDef, raw, lang) {
     if (!raw || !raw.type) return null;
@@ -253,7 +296,17 @@ var RENTAL_TERM_KIND_FORMATTERS = {
   },
   fee_list: function(fieldDef, raw, lang) {
     if (!Array.isArray(raw) || !raw.length) return null;
-    return raw.length === 1 ? raw[0].label : (raw.length + ' fees');
+    // A fee's `amount` is free text entered by staff ("$50", "200,000 LAK")
+    // -- it carries its own currency inline, the same convention
+    // properties.price_display already uses, so it is never re-formatted
+    // through _rtFormatMoney() here. Previously the amount was dropped
+    // entirely (label only), and the multi-fee count was hardcoded English.
+    if (raw.length === 1) {
+      var f = raw[0];
+      return f.amount ? (f.label + ': ' + f.amount) : f.label;
+    }
+    var more = { en: ' fees', lo: ' ລາຍການຄ່າທຳນຽມ', zh: ' 项费用' };
+    return raw.length + (more[lang] || more.en);
   }
 };
 
@@ -303,21 +356,51 @@ var RENTAL_TERM_KIND_RENDERERS = {
     row.className = 'rt-field rt-field-money';
     var typeSel = document.createElement('select');
     typeSel.className = 'form-input rt-input';
+    // Explicit placeholder FIRST. Without it the select silently sits on
+    // whichever option happens to be first ('Months of rent'), so a staff
+    // member who types a plain amount and never opens the dropdown saves a
+    // rent multiplier. That is the data-entry half of the "Deposit: 100
+    // Months" bug -- the formatter change alone would not have prevented it.
+    var ph = document.createElement('option');
+    ph.value = ''; ph.textContent = '— select —';
+    typeSel.appendChild(ph);
     fieldDef.typeOptions.forEach(function(opt) {
       var o = document.createElement('option');
       o.value = opt.value; o.textContent = opt.label.en;
       if (value && value.type === opt.value) o.selected = true;
       typeSel.appendChild(o);
     });
+    if (!value || !value.type) ph.selected = true;
+
     var numInput = document.createElement('input');
     numInput.type = 'number'; numInput.min = '0'; numInput.className = 'form-input rt-input';
     numInput.value = (value && value.value != null) ? value.value : '';
+
+    var curSel = document.createElement('select');
+    curSel.className = 'form-input rt-input';
+    Object.keys(RENTAL_CURRENCIES).forEach(function(code) {
+      var o = document.createElement('option');
+      o.value = code; o.textContent = RENTAL_CURRENCIES[code].symbol + ' ' + code;
+      curSel.appendChild(o);
+    });
+    curSel.value = (value && value.currency) || RENTAL_DEFAULT_CURRENCY;
+
+    // Currency is meaningless for a rent multiplier -- "2 months' rent"
+    // inherits whatever currency the rent itself is quoted in.
+    function syncCurrency() { curSel.style.display = (typeSel.value === 'months_of_rent') ? 'none' : ''; }
     function emit() {
+      syncCurrency();
       var v = numInput.value === '' ? null : parseFloat(numInput.value);
-      onChange(fieldDef.key, (v == null) ? null : { type: typeSel.value, value: v });
+      if (v == null) { onChange(fieldDef.key, null); return; }
+      // An amount typed with no type chosen is money, not a duration --
+      // same safe-direction rule the formatter uses.
+      var out = { type: typeSel.value || 'fixed_amount', value: v };
+      if (out.type !== 'months_of_rent') out.currency = curSel.value;
+      onChange(fieldDef.key, out);
     }
-    typeSel.onchange = emit; numInput.oninput = emit;
-    row.appendChild(typeSel); row.appendChild(numInput);
+    typeSel.onchange = emit; numInput.oninput = emit; curSel.onchange = emit;
+    syncCurrency();
+    row.appendChild(typeSel); row.appendChild(numInput); row.appendChild(curSel);
     return row;
   },
   utility: function(fieldDef, value, onChange) {

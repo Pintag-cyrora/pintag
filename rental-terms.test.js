@@ -110,10 +110,14 @@ test('formatRentalTermValue: works for a synthetic new field added only to the r
   RENTAL_TERMS_FIELDS.pop(); // clean up
 });
 
-test('formatRentalTermValue: money_multiplier formats months vs fixed amount', () => {
-  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 2 }, 'en'), 'Deposit: 2 Months');
-  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 1 }, 'en'), 'Deposit: 1 Month');
-  assert.equal(formatRentalTermValue('deposit', { type: 'fixed_amount', value: 500 }, 'en'), 'Deposit: 500');
+// Updated for the money/duration fix: "2 Months" was ambiguous enough to
+// read as a lease duration on a monetary field, and a bare "500" carried no
+// currency at all. Both now render unambiguously -- see the regression block
+// at the end of this file.
+test('formatRentalTermValue: money_multiplier formats rent multiplier vs fixed amount', () => {
+  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 2 }, 'en'), "Deposit: 2 months' rent");
+  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 1 }, 'en'), "Deposit: 1 month's rent");
+  assert.equal(formatRentalTermValue('deposit', { type: 'fixed_amount', value: 500 }, 'en'), 'Deposit: $500');
 });
 
 test('formatRentalTermValue: returns null for absent/empty values', () => {
@@ -148,4 +152,65 @@ test('summarizeRentalTermOverrides: truncates with "+N more"', () => {
   const lines = summarizeRentalTermOverrides(overriddenKeys, values, 'en', 3);
   assert.equal(lines.length, 4); // 3 shown + 1 "+N more"
   assert.equal(lines[3], '+2 more');
+});
+
+// ---------------------------------------------------------------------------
+// Money vs. rent-multiplier formatting. Regression cover for the production
+// bug where a deposit of $100 rendered as "Deposit: 100 Months" -- the old
+// money_multiplier formatter special-cased 'fixed_amount' and let every
+// other case (including a missing type) fall through to a "N Months"
+// branch, so a monetary value rendered as a duration.
+// ---------------------------------------------------------------------------
+
+test('deposit: fixed_amount renders a currency symbol, never a duration', () => {
+  const out = formatRentalTermValue('deposit', { type: 'fixed_amount', value: 100, currency: 'USD' }, 'en');
+  assert.equal(out, 'Deposit: $100');
+  assert.ok(!/month/i.test(out));
+});
+
+test('deposit: honours LAK and THB currencies', () => {
+  assert.equal(formatRentalTermValue('deposit', { type: 'fixed_amount', value: 2500000, currency: 'LAK' }, 'en'), 'Deposit: ₭2,500,000');
+  assert.equal(formatRentalTermValue('deposit', { type: 'fixed_amount', value: 5000, currency: 'THB' }, 'en'), 'Deposit: ฿5,000');
+});
+
+test('deposit: MISSING type falls back to money, not months (the actual bug)', () => {
+  const out = formatRentalTermValue('deposit', { value: 100 }, 'en');
+  assert.equal(out, 'Deposit: $100');
+  assert.ok(!/month/i.test(out), 'a monetary field must never render as a duration');
+});
+
+test('deposit: unrecognized type also falls back to money', () => {
+  const out = formatRentalTermValue('deposit', { type: 'wat', value: 100 }, 'en');
+  assert.ok(!/month/i.test(out));
+  assert.equal(out, 'Deposit: $100');
+});
+
+test('deposit: months_of_rent stays available but reads as a rent multiplier', () => {
+  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 2 }, 'en'), "Deposit: 2 months' rent");
+  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 1 }, 'en'), "Deposit: 1 month's rent");
+});
+
+test('deposit: rent multiplier is localized', () => {
+  assert.ok(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 2 }, 'lo').includes('ເດືອນຄ່າເຊົ່າ'));
+  assert.ok(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 2 }, 'zh').includes('个月租金'));
+});
+
+test('advance_rent: same money-first rule as deposit', () => {
+  assert.equal(formatRentalTermValue('advance_rent', { value: 300 }, 'en'), 'Advance Rent: $300');
+  assert.equal(formatRentalTermValue('advance_rent', { type: 'months_of_rent', value: 1 }, 'en'), "Advance Rent: 1 month's rent");
+});
+
+test('additional_fees: single fee shows its amount, not just the label', () => {
+  const out = formatRentalTermValue('additional_fees', [{ label: 'Cleaning', amount: '$50', frequency: 'one_time' }], 'en');
+  assert.equal(out, 'Additional Fees: Cleaning: $50');
+});
+
+test('additional_fees: multi-fee count is localized', () => {
+  const fees = [{ label: 'A', amount: '$1' }, { label: 'B', amount: '$2' }];
+  assert.equal(formatRentalTermValue('additional_fees', fees, 'en'), 'Additional Fees: 2 fees');
+  assert.ok(formatRentalTermValue('additional_fees', fees, 'zh').includes('项费用'));
+});
+
+test('duration-style fields still render their own units', () => {
+  assert.equal(formatRentalTermValue('lease_length', '12_months', 'en'), 'Lease Length: 12 Months');
 });

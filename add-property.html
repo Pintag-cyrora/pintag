@@ -409,6 +409,11 @@ body{
             min="0"
             placeholder="ຈຳນວນ"
           >
+
+          <!-- Currency: only meaningful for a fixed amount ("ຈຳນວນຄົງທີ່").
+               A months-of-rent deposit inherits whatever currency the rent
+               itself is quoted in, so this hides for that type. -->
+          <select class="select" id="depositCurrency"></select>
         </div>
       </div>
 
@@ -611,11 +616,32 @@ async function resolveMyPartyId(userId){
   });
 })();
 
+(function populateDepositCurrencyOptions(){
+  const sel = document.getElementById('depositCurrency');
+  Object.keys(RENTAL_CURRENCIES).forEach(function(code){
+    const o = document.createElement('option');
+    o.value = code;
+    o.textContent = RENTAL_CURRENCIES[code].symbol + ' ' + code;
+    sel.appendChild(o);
+  });
+  sel.value = RENTAL_DEFAULT_CURRENCY;
+  const typeSel = document.getElementById('depositType');
+  function syncCurrency(){
+    sel.style.display = (typeSel.value === 'months_of_rent') ? 'none' : '';
+  }
+  typeSel.addEventListener('change', syncCurrency);
+  syncCurrency();
+})();
+
 function getDepositFromForm(){
   const type = document.getElementById('depositType').value;
   const amountStr = document.getElementById('depositAmount').value.trim();
   if(!type || amountStr === '') return null;
-  return { type: type, value: Number(amountStr) };
+  const out = { type: type, value: Number(amountStr) };
+  // Currency is stored only for real monetary amounts -- a months-of-rent
+  // deposit is a multiplier on the rent, not its own currency figure.
+  if (type !== 'months_of_rent') out.currency = document.getElementById('depositCurrency').value;
+  return out;
 }
 
 // Populate the Property Type dropdown from PROPERTY_TYPES (terminology.js)
