@@ -479,6 +479,7 @@ nav{
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
+<script src="listing-status.js"></script>
 <script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
@@ -536,44 +537,35 @@ function esc(s) {
 // own saved-lookup for its "already saved" heart-icon state, done via
 // ptGetSavedSet() directly at render time.
 
+// Bucket -> existing CSS class, matching listing.html's MARKET_STATUS_CSS_CLASS
+// mapping (same 4 colors reused for the 7 market_status values rather than
+// inventing new ones per file).
+const MARKET_STATUS_BADGE_CLASS_MAP = {
+  available: 'pt-status-available', coming_soon: 'pt-status-available',
+  reserved: 'pt-status-offer', fully_occupied: 'pt-status-offer',
+  sold: 'pt-status-sold', off_market: 'pt-status-sold',
+  rented: 'pt-status-rented'
+};
 function getBadgeHtml(p, lang, isFeaturedCard) {
-  const L = {
-    curated:   { lo: 'ຄັດເລືອກ',       en: 'Curated',      zh: '精选'   },
-    available: { lo: 'ວ່າງ',             en: 'Available',    zh: '在售'   },
-    sold:      { lo: 'ຂາຍແລ້ວ',        en: 'Sold',         zh: '已售'   },
-    rented:    { lo: 'ເຊົ່າແລ້ວ',      en: 'Rented',       zh: '已租'   },
-    offer:     { lo: 'ກຳລັງດຳເນີນ',   en: 'Under Offer',  zh: '洽谈中' },
-    land:      { lo: 'ທີ່ດິນ',          en: 'Land',         zh: '土地'   }
-  };
-  if (isFeaturedCard)             return '<span class="pt-badge-status pt-status-curated">'   + L.curated[lang]   + '</span>';
-  if (p.status === 'sold')        return '<span class="pt-badge-status pt-status-sold">'      + L.sold[lang]      + '</span>';
-  if (p.status === 'rented')      return '<span class="pt-badge-status pt-status-rented">'    + L.rented[lang]    + '</span>';
-  if (p.status === 'under_offer') return '<span class="pt-badge-status pt-status-offer">'     + L.offer[lang]     + '</span>';
-  if (p.property_type === 'land') return '<span class="pt-badge-status pt-status-land">'      + L.land[lang]      + '</span>';
-  return                                 '<span class="pt-badge-status pt-status-available">' + L.available[lang] + '</span>';
+  const L = { curated: { lo: 'ຄັດເລືອກ', en: 'Curated', zh: '精选' }, land: { lo: 'ທີ່ດິນ', en: 'Land', zh: '土地' } };
+  if (isFeaturedCard) return '<span class="pt-badge-status pt-status-curated">' + L.curated[lang] + '</span>';
+  const market = (typeof resolveListingStatus === 'function') ? resolveListingStatus(p).market : 'available';
+  if (market === 'available' && p.property_type === 'land') return '<span class="pt-badge-status pt-status-land">' + L.land[lang] + '</span>';
+  const cls = MARKET_STATUS_BADGE_CLASS_MAP[market] || 'pt-status-available';
+  const label = (typeof getMarketStatusLabel === 'function') ? getMarketStatusLabel(market, lang) : 'Available';
+  return '<span class="pt-badge-status ' + cls + '">' + esc(label) + '</span>';
 }
 
-// Role-appropriate label — only listings with a real linked Pintag Agent
-// Profile (parties.type === 'agent') get the "Pintag Agent" badge; every
-// other contact (owner, reception, sales office, etc.) shows its own role,
-// so buyers can tell who they're actually about to contact.
-var CONTACT_ROLE_LABELS_LO = {
-  owner: 'ເຈົ້າຂອງ', agent: 'ຕົວແທນ', property_manager: 'ຜູ້ຈັດການອາຄານ',
-  reception: 'ພະນັກງານຕ້ອນຮັບ', sales_office: 'ຫ້ອງການຂາຍ', developer: 'ຜູ້ພັດທະນາ',
-  family_representative: 'ຕົວແທນຄອບຄົວ', other: 'ຜູ້ຕິດຕໍ່'
-};
-
-function getContactDisplay(p) {
-  var contact = p.contacts;
-  var party = p.parties;
-  var isAgent = !!(party && party.type === 'agent');
-  var name = isAgent ? (party.name_en || (contact && contact.name) || '') : ((contact && contact.name) || '');
-  if (!name) return null;
-  return {
-    name: name,
-    photo: isAgent ? party.photo_url : null,
-    platformLabel: isAgent ? 'ຕົວແທນ Pintag' : (CONTACT_ROLE_LABELS_LO[contact && contact.role] || CONTACT_ROLE_LABELS_LO.other)
-  };
+// Role-appropriate, trilingual contact label. Delegates to components.js's
+// _ptResolveCardContact() -- the same resolver already used for every other
+// role label on this page -- instead of keeping a second, Lao-only copy of
+// this logic (that duplicate was the cause of the Map Preview always
+// showing Lao regardless of the active language; see components.js's
+// PT_CONTACT_ROLE_LABELS for the trilingual table).
+function getContactDisplay(p, lang) {
+  var resolved = _ptResolveCardContact(p, lang || getCurrentLang());
+  if (!resolved) return null;
+  return { name: resolved.name, photo: resolved.photo, platformLabel: resolved.roleLabel };
 }
 
 function sortProperties(arr) {
@@ -831,7 +823,7 @@ function showMapPreview(p) {
 
   // Agent / Buyer Contact
   var agentRow = document.getElementById('mp-agent-row');
-  var mpContact = getContactDisplay(p);
+  var mpContact = getContactDisplay(p, lang);
   if (mpContact) {
     var agentInitial = esc(mpContact.name.charAt(0) || 'P');
     var avatarInner = mpContact.photo

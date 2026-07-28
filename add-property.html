@@ -1041,6 +1041,21 @@ async function saveProperty(){
   const status =
     document.getElementById('status').value;
 
+  // properties.status is now derived server-side from workflow_status by
+  // trg_properties_status_sync (20260729000000_listing_status_model.sql) --
+  // it collapses to 'active' for any active listing regardless of
+  // market_status, and to 'draft' when workflow_status='draft'. Sending
+  // status:'published'/'sold'/'rented' directly, with no matching
+  // workflow_status/market_status, would get silently overwritten to
+  // 'active' by the trigger on INSERT (it always fires), which happened to
+  // still work by accident for 'published' but would have permanently hid
+  // this listing from every RLS-gated table (contacts/listing_events/
+  // unit_types all key off status IN ('active','available')) had this
+  // stayed 'sold'/'rented'/anything else unmapped. Map explicitly instead
+  // of relying on that accident.
+  const workflowStatus = status === 'draft' ? 'draft' : 'active';
+  const marketStatus = (status === 'sold' || status === 'rented') ? status : 'available';
+
   const amenities =
     getCheckedFeatureKeys();
 
@@ -1084,7 +1099,8 @@ async function saveProperty(){
 
         images:imageUrls,
 
-        status:status,
+        workflow_status:workflowStatus,
+        market_status:marketStatus,
 
         managed_by_party_id:myParty.id,
         contact_id:contactId,

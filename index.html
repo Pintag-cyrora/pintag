@@ -472,6 +472,7 @@ nav{
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
 <script src="terminology.js"></script>
+<script src="listing-status.js"></script>
 <script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
@@ -560,6 +561,25 @@ async function loadFeatured() {
 // also fixes a real pre-existing bug -- .badge-sale/.badge-rent/.badge-sor
 // were referenced here but never defined in any CSS, so the transaction
 // badge always rendered colorless; renderTransactionBadge() fixes that.
+// Same bucket->class mapping as listings.html/listing.html's own market_status
+// badge -- kept local (not exported from components.js) since components.js
+// stays generic (it doesn't own status semantics), but the 4 CSS classes and
+// their meaning are identical everywhere.
+const IDX_MARKET_STATUS_BADGE_CLASS = {
+  available: 'pt-status-available', coming_soon: 'pt-status-available',
+  reserved: 'pt-status-offer', fully_occupied: 'pt-status-offer',
+  sold: 'pt-status-sold', off_market: 'pt-status-sold',
+  rented: 'pt-status-rented'
+};
+function idxStatusBadgeHtml(p, lang) {
+  if (typeof resolveListingStatus !== 'function') return '';
+  const market = resolveListingStatus(p).market;
+  if (market === 'available') return ''; // normal case, no badge needed
+  const cls = IDX_MARKET_STATUS_BADGE_CLASS[market] || 'pt-status-available';
+  const label = (typeof getMarketStatusLabel === 'function') ? getMarketStatusLabel(market, lang) : market;
+  return '<span class="pt-badge-status ' + cls + '">' + label.replace(/</g, '&lt;') + '</span>';
+}
+
 function renderCards(props, lang) {
   const grid = document.getElementById('card-grid');
   grid.innerHTML = '';
@@ -570,6 +590,7 @@ function renderCards(props, lang) {
     const card = renderPropertyCard(p, {
       lang: lang,
       showTransactionBadge: true,
+      statusBadgeHtml: idxStatusBadgeHtml(p, lang),
       showSpecs: true,
       showAgentRow: true,
       isSaved: saved.has(p.slug),

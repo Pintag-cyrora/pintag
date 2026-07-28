@@ -365,6 +365,48 @@ label{
 
 </div>
 
+<!-- Internal Owner -- staff-only concept in spirit, but this self-service
+     portal has no separate "buyer contact role" selector to gate on (every
+     listing here is by definition managed by the logged-in agent), so this
+     section is simply always available, mirroring admin.html's capability
+     set: view the linked owner, edit it, change it, create a new one, and
+     see how many other listings share it before editing. -->
+<div class="section">
+
+  <div class="section-title">
+    ເຈົ້າຂອງ (Internal Owner) <span style="font-weight:400;font-size:12px;color:#7A9098;">— private, never shown to buyers</span>
+  </div>
+
+  <div class="field">
+    <label>Owner</label>
+    <select class="input" id="ownerSelect" onchange="onOwnerSelectChange()">
+      <option value="">— No owner on file —</option>
+      <option value="__new__">+ Create new owner…</option>
+    </select>
+  </div>
+
+  <div id="ownerFields" style="display:none;">
+    <div class="field">
+      <label>Owner Name *</label>
+      <input type="text" class="input" id="ownerName">
+    </div>
+    <div class="field">
+      <label>Owner Phone</label>
+      <input type="text" class="input" id="ownerPhone">
+    </div>
+    <div class="field">
+      <label>Owner WhatsApp</label>
+      <input type="text" class="input" id="ownerWhatsapp">
+    </div>
+    <div class="field">
+      <label>Internal Notes</label>
+      <input type="text" class="input" id="ownerNotes">
+    </div>
+    <p id="ownerPortfolioNote" style="font-size:12px;color:#7A9098;margin-top:4px;"></p>
+  </div>
+
+</div>
+
 <div class="section">
 
   <div class="section-title">
@@ -626,6 +668,99 @@ async function compressImage(file){
 
 let editingContactId = null;
 let editingContactSharedCount = 0;
+// Rental term fields this form has no editor for (electricity, water,
+// internet, cleaning, parking, pets, lease length, ...) -- captured on load
+// and re-merged back in on save so this form only ever touches `deposit`
+// and never wipes out fields set elsewhere (e.g. admin.html's full Unit
+// Type editor). Previously this form saved rental_terms:{version,deposit}
+// outright, silently clearing every other field on every self-service edit.
+let existingRentalTerms = {};
+
+// ── Internal Owners (self-service) ──────────────────────────────────────
+// Same normalized model as admin.html: one owners row can back many
+// listings via properties.owner_id. RLS ("Authenticated read own-scope
+// owners") already scopes a plain SELECT here to owners this agent created
+// or that link to their own party -- no client-side filtering needed on
+// top of it.
+let ownersAll = [];
+
+async function loadOwners(){
+  const { data } = await supabaseClient
+    .from('owners')
+    .select('id,name,phone,whatsapp,notes')
+    .order('name');
+  ownersAll = data || [];
+  populateOwnerSelect();
+}
+
+function populateOwnerSelect(selectedId){
+  const sel = document.getElementById('ownerSelect');
+  if (!sel) return;
+  const current = selectedId !== undefined ? selectedId : sel.value;
+  sel.innerHTML =
+    '<option value="">— No owner on file —</option>' +
+    ownersAll.map(o => `<option value="${o.id}">${o.name}${o.phone ? ' · ' + o.phone : ''}</option>`).join('') +
+    '<option value="__new__">+ Create new owner…</option>';
+  sel.value = current || '';
+}
+
+async function onOwnerSelectChange(){
+  const sel = document.getElementById('ownerSelect');
+  const fields = document.getElementById('ownerFields');
+  const note = document.getElementById('ownerPortfolioNote');
+  const v = sel.value;
+  if (!v){ fields.style.display = 'none'; note.textContent = ''; return; }
+  fields.style.display = 'block';
+  if (v === '__new__'){
+    ['ownerName','ownerPhone','ownerWhatsapp','ownerNotes'].forEach(id => { document.getElementById(id).value = ''; });
+    note.textContent = 'A new owner record will be created and linked to this listing.';
+    return;
+  }
+  const o = ownersAll.find(x => x.id === v);
+  if (!o) return;
+  document.getElementById('ownerName').value = o.name || '';
+  document.getElementById('ownerPhone').value = o.phone || '';
+  document.getElementById('ownerWhatsapp').value = o.whatsapp || '';
+  document.getElementById('ownerNotes').value = o.notes || '';
+  // Portfolio count is RLS-scoped to what this agent can see, same as the
+  // rest of this page -- "how many other listings share this owner" from
+  // this agent's own point of view.
+  const { data: linked } = await supabaseClient.from('properties').select('id').eq('owner_id', v);
+  const count = (linked || []).filter(p => p.id !== propertyId).length;
+  note.textContent = count > 0
+    ? `⚠ This owner is linked to ${count} other listing${count > 1 ? 's' : ''} you manage — edits here update all of them.`
+    : 'Linked to this listing only.';
+}
+
+// Returns the owner_id to store on the property: null, an existing id
+// (possibly with edits saved back), or a newly-created owner's id.
+async function resolveOwnerId(){
+  const sel = document.getElementById('ownerSelect');
+  if (!sel) return null;
+  const v = sel.value;
+  if (!v) return null;
+  const payload = {
+    name: document.getElementById('ownerName').value.trim(),
+    phone: document.getElementById('ownerPhone').value.trim() || null,
+    whatsapp: document.getElementById('ownerWhatsapp').value.trim() || null,
+    notes: document.getElementById('ownerNotes').value.trim() || null
+  };
+  if (!payload.whatsapp) payload.whatsapp = payload.phone;
+  if (!payload.name) throw new Error('Owner Name is required when an owner is selected.');
+  if (v === '__new__'){
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    const { data, error } = await supabaseClient
+      .from('owners')
+      .insert({ ...payload, created_by: user ? user.id : null })
+      .select('id')
+      .single();
+    if (error) throw error;
+    return data.id;
+  }
+  const { error } = await supabaseClient.from('owners').update(payload).eq('id', v);
+  if (error) throw error;
+  return v;
+}
 
 // Resolves the logged-in user's own party row — checks auth_user_id first
 // (the decoupled model going forward), falling back to id (the legacy
@@ -786,8 +921,16 @@ async function loadProperty(){
   document.getElementById('village').value =
   data.village_lo || '';
 
+  // Reconstruct this dropdown's legacy published/draft/sold/rented
+  // vocabulary from the real workflow_status/market_status columns --
+  // data.status itself now always collapses to just active/draft/archived
+  // (see 20260729000000_listing_status_model.sql's sync trigger), so
+  // reading it directly here would silently forget "sold"/"rented" on
+  // every load.
   document.getElementById('status').value =
-  data.status || 'published';
+    (data.workflow_status === 'draft') ? 'draft' :
+    (data.market_status === 'sold' || data.market_status === 'rented') ? data.market_status :
+    'published';
 
   document.getElementById('propertyType').value =
   data.property_type || '';
@@ -799,6 +942,7 @@ async function loadProperty(){
   // rental_terms (rental-terms.js rule 3); unitType is null here since
   // this self-service form has no per-unit override UI, so this always
   // resolves to the property's own default (never an inherited override).
+  existingRentalTerms = _normalizeRentalTermsBlob(data.rental_terms);
   const depositValue = resolveRentalTerms(data, null).values.deposit;
   if(depositValue){
     document.getElementById('depositType').value = depositValue.type || '';
@@ -808,6 +952,13 @@ async function loadProperty(){
     document.getElementById('depositCurrency').value = depositValue.currency || RENTAL_DEFAULT_CURRENCY;
     document.getElementById('depositType').dispatchEvent(new Event('change'));
   }
+
+  // Internal Owner -- populate from the linked owner (if any) via the same
+  // handler the manual picker uses. loadOwners() has already resolved by
+  // the time this runs (see the loadOwners().then(loadProperty) chain
+  // below), so ownersAll is populated before this select renders.
+  populateOwnerSelect(data.owner_id || '');
+  await onOwnerSelectChange();
 
   editingContactId = data.contact_id || null;
   document.getElementById('contactName').value =
@@ -965,6 +1116,17 @@ async function saveProperty(){
     return;
   }
 
+  // Internal owner resolved before the contact so a failure here (e.g. an
+  // owner selected with no name) aborts the save before any contact row
+  // is touched.
+  let resolvedOwnerId = null;
+  try {
+    resolvedOwnerId = await resolveOwnerId();
+  } catch (e) {
+    document.getElementById('statusText').innerHTML = e.message;
+    return;
+  }
+
   const contactBody = {
     name: document.getElementById('contactName').value.trim() || null,
     phone: contactPhone,
@@ -1042,10 +1204,17 @@ async function saveProperty(){
         'village'
       ).value,
 
-    status:
-      document.getElementById(
-        'status'
-      ).value,
+    // properties.status is derived server-side from workflow_status by
+    // trg_properties_status_sync -- write workflow_status/market_status
+    // instead of the legacy status vocabulary (published/draft/sold/rented)
+    // this dropdown still uses, or the trigger would collapse it to just
+    // 'active'/'draft' and silently forget sold/rented on every save.
+    workflow_status:
+      (document.getElementById('status').value === 'draft') ? 'draft' : 'active',
+    market_status:
+      (['sold','rented'].includes(document.getElementById('status').value))
+        ? document.getElementById('status').value
+        : 'available',
 
     property_type: propertyType,
 
@@ -1055,7 +1224,15 @@ async function saveProperty(){
 
     contact_id: editingContactId,
 
-    rental_terms: buildRentalTermsPayload(deposit ? {deposit:deposit} : {}),
+    owner_id: resolvedOwnerId,
+
+    rental_terms: buildRentalTermsPayload((function(){
+      // Start from every previously-saved field (electricity/water/etc. this
+      // form doesn't expose), then update only the field this form owns.
+      const merged = Object.assign({}, existingRentalTerms);
+      if (deposit) { merged.deposit = deposit; } else { delete merged.deposit; }
+      return merged;
+    })()),
 
     ...buildTypedFieldsPayload(propertyType)
 
@@ -1114,7 +1291,7 @@ async function confirmDelete(){
 
 }
 
-loadProperty();
+loadOwners().then(loadProperty);
 
 </script>
 

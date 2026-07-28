@@ -47,11 +47,11 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 .listings-table tr:last-child td{border-bottom:none;}
 .listings-table tr:hover td{background:rgba(45,140,140,0.02);}
 .status-badge{display:inline-block;font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;padding:3px 8px;border-radius:2px;}
-.status-available,.status-active{background:rgba(30,107,69,0.1);color:var(--green);}
-.status-sold{background:rgba(192,57,43,0.1);color:var(--red);}
+.status-available,.status-active,.status-coming_soon{background:rgba(30,107,69,0.1);color:var(--green);}
+.status-sold,.status-off_market{background:rgba(192,57,43,0.1);color:var(--red);}
 .status-rented{background:rgba(154,98,0,0.1);color:#9A6200;}
-.status-under_offer{background:rgba(45,140,140,0.1);color:var(--teal);}
-.status-draft{background:rgba(122,144,152,0.13);color:var(--ink-muted);}
+.status-under_offer,.status-reserved,.status-fully_occupied{background:rgba(45,140,140,0.1);color:var(--teal);}
+.status-draft,.status-archived{background:rgba(122,144,152,0.13);color:var(--ink-muted);}
 .status-sale-rent{background:rgba(139,92,246,0.1);color:#7C3AED;}
 .action-btn{font-size:11px;font-weight:500;padding:5px 10px;border-radius:2px;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;text-decoration:none;display:inline-block;transition:all 0.2s;}
 /* Owner Phone cell actions (internal column) — small enough to sit inline
@@ -425,15 +425,26 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Status</label>
-              <select class="form-select" id="f-status">
-                <option value="active">Active</option>
-                <option value="available">Available</option>
-                <option value="under_offer">Under Offer</option>
-                <option value="sold">Sold</option>
-                <option value="rented">Rented</option>
+              <label class="form-label">Workflow Status</label>
+              <select class="form-select" id="f-workflow-status">
                 <option value="draft">Draft</option>
+                <option value="active" selected>Active</option>
+                <option value="archived">Archived</option>
               </select>
+              <p style="font-size:10.5px;color:var(--ink-muted);margin-top:4px;">Internal only — Draft/Archived hide this listing everywhere public.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Market Status</label>
+              <select class="form-select" id="f-market-status">
+                <option value="available" selected>Available</option>
+                <option value="reserved">Reserved</option>
+                <option value="rented">Rented</option>
+                <option value="sold">Sold</option>
+                <option value="fully_occupied">Fully Occupied</option>
+                <option value="coming_soon">Coming Soon</option>
+                <option value="off_market">Off Market</option>
+              </select>
+              <p style="font-size:10.5px;color:var(--ink-muted);margin-top:4px;">Public — drives the status badge, price area, and CTA on the listing page. A Sold/Rented listing stays browsable, it just stops looking available.</p>
             </div>
           </div>
 
@@ -701,8 +712,10 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
              private, the next one is public. See
              20260728000000_owners_internal_contacts.sql for why they are
              separate tables rather than one. -->
-        <div class="form-section" style="border-left:3px solid var(--ink);padding-left:14px;background:rgba(26,36,40,0.02);">
+        <div class="form-section" id="internal-owner-section" style="border-left:3px solid var(--ink);padding-left:14px;background:rgba(26,36,40,0.02);">
           <p class="form-section-title">&#128274; Internal Owner <span style="color:var(--ink-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">&#8212; staff-only, never shown on the public site or API</span></p>
+          <p id="internal-owner-skip-note" style="display:none;font-size:11px;color:var(--ink-muted);margin:-4px 0 4px;">Buyer Contact is set to "Owner" — the owner is already the public contact, so no separate internal record is needed.</p>
+          <div id="internal-owner-picker">
           <div class="form-grid">
             <div class="form-group" style="grid-column:1/-1;">
               <label class="form-label">Owner</label>
@@ -738,6 +751,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             </div>
             <p id="owner-portfolio-note" style="font-size:11px;color:var(--ink-muted);margin-top:8px;"></p>
           </div>
+          </div>
         </div>
 
         <!-- BUYER CONTACT (mandatory — who the buyer should actually call) -->
@@ -746,7 +760,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Contact Role *</label>
-              <select class="form-input" id="f-contact-role">
+              <select class="form-input" id="f-contact-role" onchange="updateOwnerSectionVisibility()">
                 <option value="owner">Owner</option>
                 <option value="agent" selected>Agent</option>
                 <option value="property_manager">Property Manager</option>
@@ -2250,12 +2264,47 @@ async function loadAnalytics() {
     const leads = await sbApi('GET', 'leads?select=id,property_id,party_id,recipient_type,recipient_verified,status,created_at&order=created_at.desc&limit=5000');
     if (!leads) return;
 
-    // Top listings
+    // Top listings / Top agents / Districts+Types / Conversion rates each
+    // need one lookup query, but none of those four lookups depends on any
+    // other's result -- they all only need `leads`, already fetched above.
+    // Compute every id set first (pure JS, no round trip), then fire all
+    // four lookups together instead of one after another; this alone cuts
+    // ~3 sequential round trips off every Analytics tab load.
     const byListing = {};
     leads.forEach(l => { if (l.property_id) byListing[l.property_id] = (byListing[l.property_id] || 0) + 1; });
     const topListingIds = Object.keys(byListing).sort((a,b) => byListing[b]-byListing[a]).slice(0,10);
+
+    const byAgent = {};
+    leads.forEach(l => { if (l.party_id) byAgent[l.party_id] = (byAgent[l.party_id] || 0) + 1; });
+    const topAgentIds = Object.keys(byAgent).sort((a,b) => byAgent[b]-byAgent[a]).slice(0,10);
+
+    const allListingIds = [...new Set(leads.map(l => l.property_id).filter(Boolean))];
+
+    const MIN_PIPELINE_SAMPLE = 3;
+    const totalByAgent = {};
+    leads.forEach(l => { if (l.party_id) totalByAgent[l.party_id] = (totalByAgent[l.party_id]||0) + 1; });
+    const closedByAgent = {};
+    const updatedByAgent = {};
+    leads.forEach(l => {
+      if (!l.party_id) return;
+      if (l.status === 'closed') closedByAgent[l.party_id] = (closedByAgent[l.party_id]||0) + 1;
+      if (l.status !== 'new') updatedByAgent[l.party_id] = (updatedByAgent[l.party_id]||0) + 1;
+    });
+    const rateByAgent = Object.keys(totalByAgent)
+      .filter(id => totalByAgent[id] >= 3 && (updatedByAgent[id]||0) >= MIN_PIPELINE_SAMPLE)
+      .map(id => ({ id, rate: (closedByAgent[id]||0) / totalByAgent[id] }))
+      .sort((a,b) => b.rate - a.rate)
+      .slice(0,10);
+
+    const [props, agents, distProps, rateAgents] = await Promise.all([
+      topListingIds.length ? sbApi('GET', 'properties?id=in.('+topListingIds.join(',')+')&select=id,title_en') : Promise.resolve([]),
+      topAgentIds.length   ? sbApi('GET', 'parties?id=in.('+topAgentIds.join(',')+')&select=id,name_en')       : Promise.resolve([]),
+      allListingIds.length ? sbApi('GET', 'properties?id=in.('+allListingIds.join(',')+')&select=id,district_en,property_type') : Promise.resolve([]),
+      rateByAgent.length    ? sbApi('GET', 'parties?id=in.('+rateByAgent.map(r=>r.id).join(',')+')&select=id,name_en') : Promise.resolve([])
+    ]);
+
+    // Top listings
     if (topListingIds.length) {
-      const props = await sbApi('GET', 'properties?id=in.('+topListingIds.join(',')+')&select=id,title_en');
       const titleMap = Object.fromEntries((props||[]).map(p => [p.id, p.title_en||'—']));
       document.getElementById('adm-top-listings').innerHTML = topListingIds.map(id =>
         `<tr><td style="font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(titleMap[id]||'—')}</td><td><span class="lead-pill">${Number(byListing[id])}</span></td></tr>`
@@ -2268,11 +2317,7 @@ async function loadAnalytics() {
     // Platform Identity party, not just agents strictly speaking, but
     // that's what this table has always shown and party_id is almost
     // always an agent in practice today).
-    const byAgent = {};
-    leads.forEach(l => { if (l.party_id) byAgent[l.party_id] = (byAgent[l.party_id] || 0) + 1; });
-    const topAgentIds = Object.keys(byAgent).sort((a,b) => byAgent[b]-byAgent[a]).slice(0,10);
     if (topAgentIds.length) {
-      const agents = await sbApi('GET', 'parties?id=in.('+topAgentIds.join(',')+')&select=id,name_en');
       const nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.name_en||'—']));
       document.getElementById('adm-top-agents').innerHTML = topAgentIds.map(id =>
         `<tr><td style="font-weight:500;">${esc(nameMap[id]||'—')}</td><td><span class="lead-pill">${Number(byAgent[id])}</span></td></tr>`
@@ -2304,12 +2349,11 @@ async function loadAnalytics() {
     }
 
     // Top districts + Top property types — one shared properties fetch
-    // (same property_ids already collected above), just carrying an extra
-    // column, rather than a second round trip for property_type alone.
-    const allListingIds = [...new Set(leads.map(l => l.property_id).filter(Boolean))];
+    // (same property_ids already collected above, resolved together with
+    // the other three lookups), just carrying an extra column, rather than
+    // a second round trip for property_type alone.
     let distMap = {}, typeMap = {};
     if (allListingIds.length) {
-      const distProps = await sbApi('GET', 'properties?id=in.('+allListingIds.join(',')+')&select=id,district_en,property_type');
       (distProps||[]).forEach(p => { distMap[p.id] = p.district_en||'Unknown'; typeMap[p.id] = p.property_type||'Unknown'; });
 
       const byDistrict = {};
@@ -2344,24 +2388,8 @@ async function loadAnalytics() {
     // on); now that every leads row already represents a real inquiry
     // regardless of channel, no event_type/contact_method filter is needed
     // here at all — the click-volume undercount from before is gone.
-    const MIN_PIPELINE_SAMPLE = 3;
-    const totalByAgent = {};
-    leads.forEach(l => { if (l.party_id) totalByAgent[l.party_id] = (totalByAgent[l.party_id]||0) + 1; });
-    const closedByAgent = {};
-    const updatedByAgent = {};
-    leads.forEach(l => {
-      if (!l.party_id) return;
-      if (l.status === 'closed') closedByAgent[l.party_id] = (closedByAgent[l.party_id]||0) + 1;
-      if (l.status !== 'new') updatedByAgent[l.party_id] = (updatedByAgent[l.party_id]||0) + 1;
-    });
-    const rateByAgent = Object.keys(totalByAgent)
-      .filter(id => totalByAgent[id] >= 3 && (updatedByAgent[id]||0) >= MIN_PIPELINE_SAMPLE)
-      .map(id => ({ id, rate: (closedByAgent[id]||0) / totalByAgent[id] }))
-      .sort((a,b) => b.rate - a.rate)
-      .slice(0,10);
     if (rateByAgent.length) {
-      const agents = await sbApi('GET', 'parties?id=in.('+rateByAgent.map(r=>r.id).join(',')+')&select=id,name_en');
-      const nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.name_en||'—']));
+      const nameMap = Object.fromEntries((rateAgents||[]).map(a => [a.id, a.name_en||'—']));
       document.getElementById('adm-conversion-rates').innerHTML = rateByAgent.map(r =>
         `<tr><td style="font-weight:500;">${esc(nameMap[r.id]||'—')}</td><td><span class="lead-pill">${(r.rate*100).toFixed(0)}%</span></td></tr>`
       ).join('');
@@ -2395,6 +2423,26 @@ function populateOwnerSelect(selectedId) {
     ).join('') +
     '<option value="__new__">+ Create new owner…</option>';
   sel.value = current || '';
+}
+
+// When the Buyer Contact IS the owner (role='owner'), a separate internal
+// Owner record would just duplicate the same name/phone that's already
+// public -- hide the picker and clear any selection so a stale owner_id
+// never lingers on an owner-direct listing. Any other role (agent,
+// property manager, reception, ...) means the public contact is NOT the
+// owner, so the internal record is worth keeping.
+function updateOwnerSectionVisibility() {
+  const roleSel = document.getElementById('f-contact-role');
+  const picker = document.getElementById('internal-owner-picker');
+  const skipNote = document.getElementById('internal-owner-skip-note');
+  if (!roleSel || !picker || !skipNote) return;
+  const isDirectOwner = roleSel.value === 'owner';
+  picker.style.display = isDirectOwner ? 'none' : '';
+  skipNote.style.display = isDirectOwner ? 'block' : 'none';
+  if (isDirectOwner) {
+    populateOwnerSelect('');
+    onOwnerSelectChange();
+  }
 }
 
 function onOwnerSelectChange() {
@@ -2506,7 +2554,7 @@ async function loadListings() {
     // exists on that table at all). It is safe here because admin.html only
     // ever queries with a staff JWT; it must never be copied into a public
     // page's select. See 20260728000000_owners_internal_contacts.sql.
-    sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,is_featured,managed_by_party_id,district_en,view_count,contacts(role,name,phone),owner_id,owners(id,name,phone,whatsapp)'),
+    sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,view_count,contacts(role,name,phone),owner_id,owners(id,name,phone,whatsapp)'),
     // leads, not lead_events — the canonical Lead (Property Inquiry) entity,
     // one row per inquiry across every contact channel (see
     // 20260722000000_leads_recipient_model.sql), same source the Analytics
@@ -2536,7 +2584,13 @@ async function loadListings() {
       if (p.contacts && p.contacts.name) return p.contacts.name + ' (contact only)';
       return '—';
     })());
-    const statusCls = esc(p.status || 'draft');
+    // Shows market_status (public availability), not the legacy `status`
+    // column -- status now always collapses to active/draft/archived (see
+    // 20260729000000_listing_status_model.sql's sync trigger), so it can no
+    // longer tell sold/rented/reserved apart. Workflow state (draft) is
+    // shown as its own separate badge when relevant.
+    const marketStatusCls = esc(p.market_status || 'available');
+    const isDraft = (p.workflow_status || 'active') !== 'active';
     const v = Number(p.view_count || 0);
     const l = Number(leadCounts[p.id] || 0);
     const conv = v > 0 ? ((l/v)*100).toFixed(1) : '—';
@@ -2546,7 +2600,7 @@ async function loadListings() {
       <td>${p.price_display ? esc(p.price_display) : '<em style="color:var(--ink-muted)">On request</em>'}</td>
       <td>${agentDisplay}</td>
       <td>${renderOwnerPhoneCell(p.owners)}</td>
-      <td><span class="status-badge status-${statusCls}">${statusCls}</span></td>
+      <td><span class="status-badge status-${marketStatusCls}">${marketStatusCls.replace(/_/g,' ')}</span>${isDraft ? ` <span class="status-badge status-draft">${esc(p.workflow_status)}</span>` : ''}</td>
       <td style="white-space:nowrap;font-size:12px;color:var(--ink-muted);"><span style="color:var(--ink);">${v}</span> views · <span style="color:var(--teal);font-weight:600;">${l}</span> leads${v > 0 ? ` <span style="opacity:0.6;">(${conv}%)</span>` : ''}</td>
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="action-btn btn-edit" onclick="editListing('${esc(p.id)}')">Edit</button>
@@ -2668,6 +2722,7 @@ function showForm(id) {
     document.getElementById('f-contact-phone').value = '';
     document.getElementById('f-contact-whatsapp').value = '';
     _editingContactId = null;
+    updateOwnerSectionVisibility();
   }
   buildAgentOptions('');
   // Reload agents every time form opens (handles timing + RLS token readiness)
@@ -2687,8 +2742,9 @@ async function editListing(id) {
   document.getElementById('f-style').value       = p.property_style || '';
   document.getElementById('f-transaction').value = p.transaction_type || '';
   onTransactionChange();
-  document.getElementById('f-status').value      = p.status || 'active';
-  document.getElementById('publish-btn').style.display = (p.status === 'draft') ? 'inline-block' : 'none';
+  document.getElementById('f-workflow-status').value = p.workflow_status || 'active';
+  document.getElementById('f-market-status').value   = p.market_status || 'available';
+  document.getElementById('publish-btn').style.display = ((p.workflow_status || 'active') === 'draft') ? 'inline-block' : 'none';
   document.getElementById('f-price').value          = p.price_display || '';
   document.getElementById('f-sale-price').value     = p.sale_price || '';
   document.getElementById('f-rent-price').value     = p.rent_price || '';
@@ -2778,6 +2834,7 @@ async function editListing(id) {
   document.getElementById('f-contact-name').value     = c ? (c.name || '') : '';
   document.getElementById('f-contact-phone').value    = c ? (c.phone || '') : '';
   document.getElementById('f-contact-whatsapp').value = c ? (c.whatsapp || '') : '';
+  updateOwnerSectionVisibility();
 
   document.getElementById('contact-shared-note').style.display = 'none';
   _editingContactSharedCount = 0;
@@ -2814,7 +2871,8 @@ async function saveListing(e) {
   const _selAgentId = document.getElementById('f-agent-id').value;
   const _selAgent = _selAgentId ? (_agentsAll.find(a => a.id === _selAgentId) || null) : null;
 
-  const status = document.getElementById('f-status').value || 'active';
+  const workflowStatus = document.getElementById('f-workflow-status').value || 'active';
+  const marketStatus = document.getElementById('f-market-status').value || 'available';
   const contactPhone = document.getElementById('f-contact-phone').value.trim();
   // A draft may be saved with any of these still blank — straight out of
   // Smart Import, before staff has reviewed/filled them in. Any other
@@ -2828,7 +2886,7 @@ async function saveListing(e) {
   // enforces them, with a real error message. Location (District) and
   // Price are intentionally NOT required — a listing can be published
   // with either left blank; only owner/buyer contact info is mandatory.
-  if (status !== 'draft') {
+  if (workflowStatus !== 'draft') {
     const requiredChecks = [
       [document.getElementById('f-type').value,        'Property Type'],
       [document.getElementById('f-transaction').value,  'Transaction'],
@@ -2928,7 +2986,8 @@ async function saveListing(e) {
     property_type:     document.getElementById('f-type').value || null,
     property_style:    document.getElementById('f-style').value || null,
     transaction_type:  document.getElementById('f-transaction').value || null,
-    status:            document.getElementById('f-status').value || 'active',
+    workflow_status:   workflowStatus,
+    market_status:     marketStatus,
     price_display:     (document.getElementById('f-transaction').value === 'sale_or_rent'
                           ? document.getElementById('f-sale-price').value.trim()
                           : document.getElementById('f-price').value.trim()) || null,
@@ -3741,7 +3800,8 @@ function populateFormFromImport(data) {
   applyConfidence('f-style', data.property_style);
   document.getElementById('f-transaction').value = fv(data.transaction_type) || 'for_sale';
   onTransactionChange();
-  document.getElementById('f-status').value      = 'draft';
+  document.getElementById('f-workflow-status').value = 'draft';
+  document.getElementById('f-market-status').value   = 'available';
   document.getElementById('f-price').value          = fv(data.price_display) || '';
   applyConfidence('f-price', data.price_display);
   document.getElementById('f-sale-price').value     = '';
@@ -3842,6 +3902,7 @@ function populateFormFromImport(data) {
   document.getElementById('f-contact-name').value     = fv(contact.name) || '';
   document.getElementById('f-contact-phone').value    = contactPhone || '';
   document.getElementById('f-contact-whatsapp').value = contactPhone || '';
+  updateOwnerSectionVisibility();
   flagContactSectionForReview(!contactPhone);
 }
 
@@ -3907,8 +3968,8 @@ async function publishDraft() {
   btn.disabled = true;
   btn.textContent = 'Publishing...';
   try {
-    await sbApi('PATCH', `properties?id=eq.${editId}`, { status: 'active' });
-    document.getElementById('f-status').value = 'active';
+    await sbApi('PATCH', `properties?id=eq.${editId}`, { workflow_status: 'active' });
+    document.getElementById('f-workflow-status').value = 'active';
     document.getElementById('publish-btn').style.display = 'none';
     const msg = document.getElementById('form-message');
     msg.className = 'form-message success';

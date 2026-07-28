@@ -533,6 +533,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 <script src="terminology.js"></script>
 <script src="unit-availability.js"></script>
 <script src="rental-terms.js"></script>
+<script src="listing-status.js"></script>
 <script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
@@ -799,16 +800,25 @@ function resolveLabel(value,registry,lang){
 
 var agentFallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%237A9098' stroke-width='1'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
 
-function getStatusBadgeHtml(status, lang){
-  var S = {
-    active:       { lo:'ວ່າງ',           en:'Available',   zh:'在售',   cls:'prop-status-available' },
-    sold:         { lo:'ຂາຍແລ້ວ',       en:'Sold',        zh:'已售',   cls:'prop-status-sold'      },
-    rented:       { lo:'ເຊົ່າແລ້ວ',     en:'Rented',      zh:'已租',   cls:'prop-status-rented'    },
-    under_offer:  { lo:'ກຳລັງດຳເນີນ',  en:'Under Offer', zh:'洽谈中', cls:'prop-status-offer'     }
-  };
-  var key = S[status] ? status : 'active';
-  var info = S[key];
-  return '<span class="prop-status-badge '+info.cls+'">'+(info[lang]||info.en)+'</span>';
+// Badge class per market_status -- reuses the 4 CSS colors already defined
+// above (.prop-status-available/sold/rented/offer) rather than inventing a
+// 7th color, bucketed by what each status visually communicates: green for
+// "get it now" (available, coming_soon), blue for "in progress, not final"
+// (reserved, fully_occupied), and the existing dark-red/orange for the two
+// genuinely final legacy states (sold, rented) -- off_market shares sold's
+// treatment since both mean "not available, no further action open."
+var MARKET_STATUS_CSS_CLASS = {
+  available: 'prop-status-available', coming_soon: 'prop-status-available',
+  reserved: 'prop-status-offer', fully_occupied: 'prop-status-offer',
+  sold: 'prop-status-sold', off_market: 'prop-status-sold',
+  rented: 'prop-status-rented'
+};
+function getStatusBadgeHtml(marketStatus, lang){
+  var cls = MARKET_STATUS_CSS_CLASS[marketStatus] || 'prop-status-available';
+  var label = (typeof getMarketStatusLabel === 'function')
+    ? getMarketStatusLabel(marketStatus, lang)
+    : 'Available';
+  return '<span class="prop-status-badge '+cls+'">'+esc(label)+'</span>';
 }
 
 var PT = (function(){
@@ -1580,7 +1590,8 @@ function buildMockupLayout(){
   var effectiveAmenities=selectedUnit?(Array.isArray(selectedUnit.resolved.amenities)?selectedUnit.resolved.amenities:[]):(Array.isArray(data.amenities)?data.amenities:[]);
   var effectiveFeatures =selectedUnit?(Array.isArray(selectedUnit.resolved.features) ?selectedUnit.resolved.features :[]):(Array.isArray(data.features) ?data.features :[]);
 
-  var statusBadgeHtml=getStatusBadgeHtml(data.status||'active',lang);
+  var listingStatusResolved=(typeof resolveListingStatus==='function')?resolveListingStatus(data):{market:'available',isPubliclyAvailable:true};
+  var statusBadgeHtml=getStatusBadgeHtml(listingStatusResolved.market,lang);
   var desktopGalleryMarkup=buildDesktopGallery(imagesArray);
   var mobileGalleryMarkup=buildMobileGallery(imagesArray,statusBadgeHtml);
 
@@ -1608,7 +1619,8 @@ function buildMockupLayout(){
     viewingUnit:{lo:'ກຳລັງເບິ່ງ',en:'Viewing',zh:'正在查看'},
     showOverview:{lo:'ເບິ່ງພາບລວມອາຄານ',en:'Show building overview',zh:'查看整栋概览'},
     buildingPhotosAmenities:{lo:'ຮູບພາບ ແລະ ສິ່ງອຳນວຍຄວາມສະດວກຂອງອາຄານ',en:'Building Photos & Shared Amenities',zh:'楼栋照片与公共设施'},
-    unitFurnished:{lo:'ເຄື່ອງເຟີນີເຈີ',en:'Furnished',zh:'装修情况'}
+    unitFurnished:{lo:'ເຄື່ອງເຟີນີເຈີ',en:'Furnished',zh:'装修情况'},
+    rentalTerms:{lo:'ເງື່ອນໄຂການເຊົ່າ',en:'Rental Terms',zh:'租赁条款'}
   };
 
   var I={
@@ -1700,6 +1712,45 @@ function buildMockupLayout(){
     :null;
   var depositLine=(depositValue&&typeof formatRentalTermValue==='function')?formatRentalTermValue('deposit',depositValue,lang):null;
   if(depositLine) resolvedPriceHtml+='<p class="price-deposit">'+esc(depositLine)+'</p>';
+
+  // ── Rental Terms (every field besides deposit) ── previously this page
+  // only ever read .values.deposit and silently dropped every other
+  // resolved field (electricity/water/internet/cleaning/parking/pets/lease
+  // length/etc.), even when a listing had them fully filled in via
+  // admin.html's Unit Type editor. Rendering the full resolved set here
+  // keeps this page as the single, complete consumer of resolveRentalTerms()
+  // rather than a second, partial template. Uses the same
+  // "render nothing when nothing resolves" self-suppression as the deposit
+  // line above -- sale listings and rentals with no terms set show no block.
+  var rentalTermsHtml='';
+  if(typeof resolveRentalTerms==='function'&&typeof RENTAL_TERMS_FIELDS!=='undefined'){
+    var _rtResolved=resolveRentalTerms(data,selectedUnit?selectedUnit.raw:null).values;
+    var _rtLines=RENTAL_TERMS_FIELDS
+      .filter(function(f){return f.key!=='deposit';})
+      .map(function(f){return formatRentalTermValue(f.key,_rtResolved[f.key],lang);})
+      .filter(Boolean);
+    if(_rtLines.length){
+      rentalTermsHtml=(
+        '<div class="amenity-row" data-track="rental-terms-section" data-track-type="section" data-track-label="Rental terms section" style="flex-direction:column;align-items:flex-start;gap:8px;">'+
+        '<span class="section-label" style="margin:0;">'+esc(L.rentalTerms[lang])+'</span>'+
+        _rtLines.map(function(line){return '<div class="amenity-item" style="width:100%;">'+esc(line)+'</div>';}).join('')+
+        '</div>'
+      );
+    }
+  }
+
+  // ── Unavailable listings: replace the price area, never show "Price on
+  // request" for a listing that's sold/rented/reserved/fully occupied/off
+  // market. isPubliclyAvailable() is the single gate (listing-status.js) --
+  // wins over both the base price and any selected-unit price computed
+  // above, since market_status is a property-level fact that overrides
+  // whatever a single unit's price would otherwise show. The matching CTA
+  // swap (Find Similar / Join Waiting List / Notify Me replacing
+  // WhatsApp/Call) happens further below once cleanPhone/WA_SVG exist.
+  if(listingStatusResolved&&!listingStatusResolved.isPubliclyAvailable){
+    var unavailMsg=(typeof getUnavailableMessage==='function')?getUnavailableMessage(listingStatusResolved.market,lang):null;
+    resolvedPriceHtml='<p class="price-inquire" style="font-weight:600;">'+esc(unavailMsg||getMarketStatusLabel(listingStatusResolved.market,lang))+'</p>';
+  }
 
   // ── Persistent Building Photos / Shared Amenities strip ──────────────
   // Only shown once a unit is selected (the hero already IS the building
@@ -1848,6 +1899,27 @@ function buildMockupLayout(){
     // shown, not faked.
     agentProfileHtml = renderAgentPreview(party, { lang: lang, showButtons: true }).outerHTML;
   }
+  // Unavailable listings get a "keep browsing" CTA instead of Contact
+  // WhatsApp/Call -- reusing the same wa.me channel for waiting-list/notify
+  // requests (there's no separate lead-capture form yet, and WhatsApp is
+  // already how every other inquiry on this page reaches a human) while
+  // Find Similar just jumps to the Similar Properties section already on
+  // this page.
+  if(listingStatusResolved&&!listingStatusResolved.isPubliclyAvailable&&typeof getListingStatusCTA==='function'){
+    var statusCta=getListingStatusCTA(listingStatusResolved.market,lang);
+    if(statusCta){
+      var statusCtaHtml;
+      if(statusCta.action==='find_similar'){
+        statusCtaHtml='<a href="#similar-section" class="btn-primary" style="justify-content:center;">'+esc(statusCta.label)+'</a>';
+      }else{
+        var waStatusMsg=encodeURIComponent(statusCta.label+' — '+(data.title_en||''));
+        var waStatusUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waStatusMsg:'#';
+        statusCtaHtml='<a href="'+esc(waStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" data-track="contact-whatsapp-status-cta" data-track-type="cta" data-track-label="'+esc(statusCta.action)+'">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
+      }
+      contactHtml='<div class="agent-band" id="agent-band-anchor"><div class="agent-ctas" style="width:100%;">'+statusCtaHtml+'</div></div>';
+      agentProfileHtml='';
+    }
+  }
   var agentHtml=contactHtml+agentProfileHtml+'<div id="sp-fomo" class="sp-fomo-agent" style="display:none;"></div>';
 
   // ════════════════════════════════════════════════════════════════
@@ -1872,6 +1944,7 @@ function buildMockupLayout(){
     '<p class="body-narrative">'+resolvedDesc+'</p>'+
     amenityRowHtml+
     pdetailHtml+
+    rentalTermsHtml+
     '</div>'
   );
 
