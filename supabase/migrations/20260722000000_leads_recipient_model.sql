@@ -162,7 +162,16 @@ SELECT
   le.created_at
 FROM lead_events le
 WHERE le.listing_id IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM leads l WHERE l.lead_event_id = le.id);
+  AND NOT EXISTS (SELECT 1 FROM leads l WHERE l.lead_event_id = le.id)
+  -- leads.property_id is NOT NULL REFERENCES properties(id) -- a lead_events
+  -- row recorded before this migration can reference a property that has
+  -- since been hard-deleted (properties has no soft-delete/archive state
+  -- today). That history is still real (the click happened), but it can't
+  -- be backfilled into a table whose FK requires the property to still
+  -- exist, and there's no NULL-property-id escape hatch to fall back to.
+  -- Skip those rows here rather than weakening the FK or the NOT NULL
+  -- constraint for every other lead just to accommodate historical orphans.
+  AND EXISTS (SELECT 1 FROM properties p WHERE p.id = le.listing_id);
 
 -- 2. Backfill recipient_type/recipient_verified on pre-existing leads rows
 --    (created by the old whatsapp_click-only trigger, so these two brand-new
