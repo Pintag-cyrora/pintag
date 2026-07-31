@@ -119,9 +119,25 @@ COMMENT ON COLUMN unit_types.price_amount IS
 -- directly onto the new frequency vocabulary; a rental with no rent_period
 -- set defaults to 'monthly', the overwhelmingly common case in this market.
 
+-- Guard predicate applied before every ::numeric cast below: the raw text
+-- stripped of anything but digits/dot must be a SINGLE well-formed number
+-- (one optional decimal point) or the row is left NULL rather than
+-- attempted. Without this, a legacy value using '.' as a thousands
+-- separator (e.g. staff typing "1.200.000" for 1,200,000 LAK -- a real,
+-- observed pattern, not hypothetical) strips to "1.200.000", which is not
+-- valid numeric input; Postgres throws invalid_text_representation on that
+-- cast, and because this whole file runs as one implicit transaction when
+-- submitted as a single batch, that single bad row rolled back EVERY
+-- statement before it too, including the ADD COLUMN calls above -- which
+-- is exactly the failure this migration hit in production (confirmed: the
+-- columns never persisted from a full-file run, only from an isolated
+-- single-statement ALTER run separately). This mirrors the guard
+-- point_in_time_supply_snapshot() already uses successfully for the same
+-- regexp-strip-then-cast pattern.
+
 -- properties: for_sale / for_rent (single price_display, no dual pricing)
 UPDATE properties SET
-  price_amount = NULLIF(regexp_replace(price_display, '[^0-9.]', '', 'g'), '')::numeric,
+  price_amount = regexp_replace(price_display, '[^0-9.]', '', 'g')::numeric,
   price_currency = CASE
     WHEN price_display ~* '₭|LAK' THEN 'LAK'
     WHEN price_display ~* '฿|THB' THEN 'THB'
@@ -137,12 +153,12 @@ UPDATE properties SET
   END
 WHERE price_amount IS NULL
   AND price_display IS NOT NULL
-  AND price_display ~ '[0-9]'
+  AND regexp_replace(price_display, '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
   AND transaction_type IN ('for_sale', 'for_rent');
 
 -- properties: sale_or_rent (sale leg from sale_price, rent leg from rent_price)
 UPDATE properties SET
-  price_amount = NULLIF(regexp_replace(sale_price, '[^0-9.]', '', 'g'), '')::numeric,
+  price_amount = regexp_replace(sale_price, '[^0-9.]', '', 'g')::numeric,
   price_currency = CASE
     WHEN sale_price ~* '₭|LAK' THEN 'LAK'
     WHEN sale_price ~* '฿|THB' THEN 'THB'
@@ -152,10 +168,10 @@ UPDATE properties SET
 WHERE price_amount IS NULL
   AND transaction_type = 'sale_or_rent'
   AND sale_price IS NOT NULL
-  AND sale_price ~ '[0-9]';
+  AND regexp_replace(sale_price, '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$';
 
 UPDATE properties SET
-  rent_price_amount = NULLIF(regexp_replace(rent_price, '[^0-9.]', '', 'g'), '')::numeric,
+  rent_price_amount = regexp_replace(rent_price, '[^0-9.]', '', 'g')::numeric,
   rent_price_currency = CASE
     WHEN rent_price ~* '₭|LAK' THEN 'LAK'
     WHEN rent_price ~* '฿|THB' THEN 'THB'
@@ -168,14 +184,14 @@ UPDATE properties SET
 WHERE rent_price_amount IS NULL
   AND transaction_type = 'sale_or_rent'
   AND rent_price IS NOT NULL
-  AND rent_price ~ '[0-9]';
+  AND regexp_replace(rent_price, '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$';
 
 -- unit_types: same three passes, scoped through the parent property's
 -- transaction_type (unit_types has no transaction_type of its own -- it
 -- always belongs to one property and follows that property's transaction
 -- type, same assumption resolveUnitType() already makes).
 UPDATE unit_types ut SET
-  price_amount = NULLIF(regexp_replace(ut.price_display, '[^0-9.]', '', 'g'), '')::numeric,
+  price_amount = regexp_replace(ut.price_display, '[^0-9.]', '', 'g')::numeric,
   price_currency = CASE
     WHEN ut.price_display ~* '₭|LAK' THEN 'LAK'
     WHEN ut.price_display ~* '฿|THB' THEN 'THB'
@@ -193,11 +209,11 @@ FROM properties p
 WHERE ut.property_id = p.id
   AND ut.price_amount IS NULL
   AND ut.price_display IS NOT NULL
-  AND ut.price_display ~ '[0-9]'
+  AND regexp_replace(ut.price_display, '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
   AND p.transaction_type IN ('for_sale', 'for_rent');
 
 UPDATE unit_types ut SET
-  price_amount = NULLIF(regexp_replace(ut.sale_price, '[^0-9.]', '', 'g'), '')::numeric,
+  price_amount = regexp_replace(ut.sale_price, '[^0-9.]', '', 'g')::numeric,
   price_currency = CASE
     WHEN ut.sale_price ~* '₭|LAK' THEN 'LAK'
     WHEN ut.sale_price ~* '฿|THB' THEN 'THB'
@@ -209,10 +225,10 @@ WHERE ut.property_id = p.id
   AND ut.price_amount IS NULL
   AND p.transaction_type = 'sale_or_rent'
   AND ut.sale_price IS NOT NULL
-  AND ut.sale_price ~ '[0-9]';
+  AND regexp_replace(ut.sale_price, '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$';
 
 UPDATE unit_types ut SET
-  rent_price_amount = NULLIF(regexp_replace(ut.rent_price, '[^0-9.]', '', 'g'), '')::numeric,
+  rent_price_amount = regexp_replace(ut.rent_price, '[^0-9.]', '', 'g')::numeric,
   rent_price_currency = CASE
     WHEN ut.rent_price ~* '₭|LAK' THEN 'LAK'
     WHEN ut.rent_price ~* '฿|THB' THEN 'THB'
@@ -227,7 +243,7 @@ WHERE ut.property_id = p.id
   AND ut.rent_price_amount IS NULL
   AND p.transaction_type = 'sale_or_rent'
   AND ut.rent_price IS NOT NULL
-  AND ut.rent_price ~ '[0-9]';
+  AND regexp_replace(ut.rent_price, '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$';
 
 CREATE INDEX IF NOT EXISTS idx_properties_price_amount ON properties(price_amount);
 CREATE INDEX IF NOT EXISTS idx_properties_price_currency ON properties(price_currency);
