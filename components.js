@@ -111,32 +111,74 @@ function transactionLabel(transactionType, lang) {
 
 // formatPropertyPrice(property, lang) -- single source of truth for how a
 // listing's price renders, whether single-price or sale_or_rent dual-price,
-// including the "Price on request" fallback. Strips a pre-existing "/
-// month"-style suffix from price_display before re-appending the localized
-// unit, so callers never risk double-suffixing.
+// including the "Price on request" fallback.
+//
+// Reads the structured price_amount/price_currency/price_frequency columns
+// (20260731000000_structured_pricing.sql) when present -- the source of
+// truth. Falls back to the legacy price_display/sale_price/rent_price text
+// only for a row that predates that migration's backfill (should be zero
+// once the backfill has run, but costs nothing to keep as a safety net
+// during rollout). Never mixes the two per property: a listing either has
+// structured data or it doesn't.
+//
+// PT_PER_MONTH is kept as the legacy-path suffix (that text path never had
+// any other frequency to express). The structured path uses
+// _ptFrequencySuffix(), which is what actually fixes the pre-existing bug
+// where every rental rendered "/ month" regardless of its real
+// price_frequency (yearly/weekly/daily/negotiable were silently ignored).
 var PT_PER_MONTH = { lo:'/ ເດືອນ', en:'/ month', zh:'/ 月' };
 var PT_PRICE_ON_REQUEST = { lo:'ສອບຖາມລາຄາ', en:'Price on request', zh:'价格面议' };
+var PT_FREQUENCY_SUFFIX = {
+  monthly:    { lo:'/ ເດືອນ',      en:'/ month', zh:'/ 月' },
+  yearly:     { lo:'/ ປີ',         en:'/ year',  zh:'/ 年' },
+  weekly:     { lo:'/ ອາທິດ',      en:'/ week',  zh:'/ 周' },
+  daily:      { lo:'/ ມື້',        en:'/ day',   zh:'/ 天' },
+  negotiable: { lo:'(ເຈລະຈາໄດ້)',  en:'(negotiable)', zh:'(可议价)' }
+};
+function _ptFrequencySuffix(frequency, lang) {
+  var entry = PT_FREQUENCY_SUFFIX[frequency] || PT_FREQUENCY_SUFFIX.monthly;
+  return entry[lang] || entry.en;
+}
 function formatPropertyPrice(property, lang) {
   lang = lang || 'en';
   var kind = _ptTransactionKind(property.transaction_type);
   var isSor = kind === 'sor';
-  if (isSor && (property.sale_price || property.rent_price)) {
-    return {
-      isSor: true,
-      saleText: property.sale_price || null,
-      rentText: property.rent_price ? (property.rent_price + ' ' + PT_PER_MONTH[lang]) : null,
-      isPriceOnRequest: false
-    };
+
+  if (isSor) {
+    var hasStructuredSor = property.price_amount != null || property.rent_price_amount != null;
+    if (hasStructuredSor) {
+      var saleText = property.price_amount != null ? formatMoney(property.price_amount, property.price_currency) : (property.sale_price || null);
+      var rentText = property.rent_price_amount != null
+        ? (formatMoney(property.rent_price_amount, property.rent_price_currency) + ' ' + _ptFrequencySuffix(property.rent_price_frequency, lang))
+        : (property.rent_price ? (property.rent_price + ' ' + PT_PER_MONTH[lang]) : null);
+      return { isSor: true, saleText: saleText, rentText: rentText, isPriceOnRequest: false };
+    }
+    if (property.sale_price || property.rent_price) {
+      return {
+        isSor: true,
+        saleText: property.sale_price || null,
+        rentText: property.rent_price ? (property.rent_price + ' ' + PT_PER_MONTH[lang]) : null,
+        isPriceOnRequest: false
+      };
+    }
+    // Neither leg has any data at all (structured or legacy) -- fall
+    // through to the single-price path below, matching the original
+    // behavior of treating price_display as a plain price in this case.
   }
-  // "month" must be tried before "mo" in the alternation -- otherwise the
-  // shorter alternative matches first and leaves a stray "nth" behind
-  // (a real, pre-existing bug this consolidation fixes once, here, instead
-  // of leaving it duplicated across every page that used to have its own
-  // copy of this regex).
+
+  if (property.price_amount != null) {
+    var moneyText = formatMoney(property.price_amount, property.price_currency);
+    var showUnit = kind === 'rent';
+    return { isSor: false, singleText: moneyText, unitText: showUnit ? _ptFrequencySuffix(property.price_frequency, lang) : null, isPriceOnRequest: false };
+  }
+
+  // Legacy fallback -- unbackfilled row. "month" must be tried before "mo"
+  // in the alternation, otherwise the shorter alternative matches first
+  // and leaves a stray "nth" behind.
   var raw = (property.price_display || '').replace(/\s*\/\s*(ເດືອນ|month|mo|月)\s*/i, '').trim();
   if (!raw) return { isSor: false, singleText: null, isPriceOnRequest: true, requestText: PT_PRICE_ON_REQUEST[lang] };
-  var showUnit = kind === 'rent';
-  return { isSor: false, singleText: raw, unitText: showUnit ? PT_PER_MONTH[lang] : null, isPriceOnRequest: false };
+  var showUnitLegacy = kind === 'rent';
+  return { isSor: false, singleText: raw, unitText: showUnitLegacy ? PT_PER_MONTH[lang] : null, isPriceOnRequest: false };
 }
 
 // resolvePartyDisplay(party, listingCount, lang) -- the shared data-shaping
