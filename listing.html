@@ -4,25 +4,33 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src https://maps.google.com https://www.google.com https://www.youtube.com; media-src *; object-src 'none';">
+<!-- Static defaults are Lao, matching html lang="lo" -- the resolved
+     language before ?slug=/?lang= is known (a bare /listing.html request
+     has no property to describe yet, so showErrorState() runs and these
+     never get overwritten). Once a property loads, updateOGTags() below
+     re-syncs everything (+ html[lang] + og:locale) to the real ?lang= (or
+     this same Lao default), and cloudflare-worker/og-listing-preview.js
+     does the equivalent server-side for crawlers that never run JS. -->
 <title>Pintag · ລາຍລະອິດອະສັງຫາ</title>
-<meta name="description" content="Discover premium properties for sale and rent in Vientiane, Laos.">
+<meta name="description" content="ຄົ້ນພົບອະສັງຫາລິມະຊັບຄຸນນະພາບສູງສຳລັບຂາຍ ແລະ ເຊົ່າ ໃນນະຄອນຫຼວງວຽງຈັນ.">
 <link rel="canonical" href="https://pintag.io/listing.html">
 <link rel="alternate" hreflang="en" href="https://pintag.io/listing.html">
 <link rel="alternate" hreflang="lo" href="https://pintag.io/listing.html">
 <link rel="alternate" hreflang="x-default" href="https://pintag.io/listing.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Pintag">
-<meta property="og:title" content="Pintag · Premium Real Estate in Laos">
-<meta property="og:description" content="Discover premium properties for sale and rent in Vientiane, Laos.">
+<meta property="og:title" content="Pintag · ລາຍລະອິດອະສັງຫາ">
+<meta property="og:description" content="ຄົ້ນພົບອະສັງຫາລິມະຊັບຄຸນນະພາບສູງສຳລັບຂາຍ ແລະ ເຊົ່າ ໃນນະຄອນຫຼວງວຽງຈັນ.">
 <meta property="og:url" content="https://pintag.io/listing.html">
 <meta property="og:image" content="https://pintag.io/og-preview.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:type" content="image/jpeg">
-<meta property="og:image:alt" content="Pintag · Premium Real Estate in Laos">
+<meta property="og:image:alt" content="Pintag · ລາຍລະອິດອະສັງຫາ">
+<meta property="og:locale" content="lo_LA">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Pintag · Premium Real Estate in Laos">
-<meta name="twitter:description" content="Discover premium properties for sale and rent in Vientiane, Laos.">
+<meta name="twitter:title" content="Pintag · ລາຍລະອິດອະສັງຫາ">
+<meta name="twitter:description" content="ຄົ້ນພົບອະສັງຫາລິມະຊັບຄຸນນະພາບສູງສຳລັບຂາຍ ແລະ ເຊົ່າ ໃນນະຄອນຫຼວງວຽງຈັນ.">
 <meta name="twitter:image" content="https://pintag.io/og-preview.jpg">
 <link rel="icon" type="image/png" href="favicon.png">
 <meta name="theme-color" content="#F3EFE8">
@@ -1036,6 +1044,10 @@ var OG_GENERIC_DESC={
   en:'Discover premium properties for sale and rent in Vientiane, Laos.',
   zh:'探索万象优质房产，涵盖出售与出租房源。'
 };
+// Matches cloudflare-worker/og-listing-preview.js's locale mapping, so
+// the crawler-visible og:locale (server-rewritten, no JS) and the
+// real-visitor og:locale (set here, client-side) always agree.
+var OG_LOCALE={lo:'lo_LA',en:'en_US',zh:'zh_CN'};
 
 function updateOGTags(data){
   var lang=getCurrentLang();
@@ -1055,6 +1067,7 @@ function updateOGTags(data){
   setMeta('meta[property="og:description"]',desc);
   setMeta('meta[property="og:image"]',img);
   setMeta('meta[property="og:image:alt"]',imgAlt);
+  setMeta('meta[property="og:locale"]',OG_LOCALE[lang]||OG_LOCALE.lo);
   setMeta('meta[property="og:url"]',url);
   setMeta('meta[name="twitter:title"]',title);
   setMeta('meta[name="twitter:description"]',desc);

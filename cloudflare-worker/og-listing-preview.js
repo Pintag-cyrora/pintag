@@ -37,6 +37,11 @@ const OG_GENERIC_DESC = {
 };
 const DEFAULT_OG_IMAGE = 'https://pintag.io/og-preview.jpg';
 
+// Matches listing.html's own OG_LOCALE map, so the crawler-visible
+// og:locale (rewritten here, server-side) and the real-visitor og:locale
+// (set client-side once the page's own JS runs) always agree.
+const OG_LOCALE = { lo: 'lo_LA', en: 'en_US', zh: 'zh_CN' };
+
 // Public by design — anon keys are meant to be embeddable (RLS is the real
 // security boundary), same convention already committed in config.prod.js.
 // Overridable via Worker environment variables/secrets if ever rotated
@@ -160,6 +165,7 @@ async function rewriteListingHead(response, row, lang, slug) {
     .on('meta[property="og:description"]', new AttrSetter('content', desc))
     .on('meta[property="og:image"]', new AttrSetter('content', image))
     .on('meta[property="og:image:alt"]', new AttrSetter('content', imageAlt))
+    .on('meta[property="og:locale"]', new AttrSetter('content', OG_LOCALE[lang] || OG_LOCALE.lo))
     .on('meta[property="og:url"]', new AttrSetter('content', url))
     .on('meta[name="twitter:title"]', new AttrSetter('content', title))
     .on('meta[name="twitter:description"]', new AttrSetter('content', desc))

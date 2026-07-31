@@ -4,21 +4,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com https://unpkg.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
-<title>Properties for Rent & Sale in Laos | Pintag</title>
-<meta name="description" content="Browse verified apartments, houses, condos, land and commercial properties across Laos. Updated daily with photos, prices and maps.">
+<!-- Lao is the default resolved language (html lang="lo" below, no ?lang=
+     param, no persisted language on this page -- see getCurrentLang()),
+     so these static tags are the Lao copy. updateListingsMetaForFilters()
+     re-syncs all of this (+ html[lang] + og:locale) on every render,
+     including the very first one, using the SAME LISTINGS_META_I18N
+     source, so the static default and every later language/filter change
+     always agree. -->
+<title>ຊັບສິນໃຫ້ເຊົ່າ ແລະ ຂາຍ ໃນລາວ | Pintag</title>
+<meta name="description" content="ຄົ້ນຫາອາພາດເມັນ, ເຮືອນ, ຄອນໂດ, ທີ່ດິນ ແລະ ອາຄານທຸລະກິດທີ່ຢືນຢັນແລ້ວທົ່ວປະເທດລາວ. ອັບເດດທຸກມື້ພ້ອມຮູບພາບ, ລາຄາ ແລະ ແຜນທີ່.">
 <link rel="canonical" href="https://pintag.io/listings.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Pintag">
-<meta property="og:title" content="Properties for Rent & Sale in Laos | Pintag">
-<meta property="og:description" content="Browse verified apartments, houses, condos, land and commercial properties across Laos. Updated daily with photos, prices and maps.">
+<meta property="og:title" content="ຊັບສິນໃຫ້ເຊົ່າ ແລະ ຂາຍ ໃນລາວ | Pintag">
+<meta property="og:description" content="ຄົ້ນຫາອາພາດເມັນ, ເຮືອນ, ຄອນໂດ, ທີ່ດິນ ແລະ ອາຄານທຸລະກິດທີ່ຢືນຢັນແລ້ວທົ່ວປະເທດລາວ. ອັບເດດທຸກມື້ພ້ອມຮູບພາບ, ລາຄາ ແລະ ແຜນທີ່.">
 <meta property="og:url" content="https://pintag.io/listings.html">
 <meta property="og:image" content="https://pintag.io/og-preview-listings.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:type" content="image/jpeg">
+<meta property="og:locale" content="lo_LA">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Properties for Rent & Sale in Laos | Pintag">
-<meta name="twitter:description" content="Browse verified apartments, houses, condos, land and commercial properties across Laos. Updated daily with photos, prices and maps.">
+<meta name="twitter:title" content="ຊັບສິນໃຫ້ເຊົ່າ ແລະ ຂາຍ ໃນລາວ | Pintag">
+<meta name="twitter:description" content="ຄົ້ນຫາອາພາດເມັນ, ເຮືອນ, ຄອນໂດ, ທີ່ດິນ ແລະ ອາຄານທຸລະກິດທີ່ຢືນຢັນແລ້ວທົ່ວປະເທດລາວ. ອັບເດດທຸກມື້ພ້ອມຮູບພາບ, ລາຄາ ແລະ ແຜນທີ່.">
 <meta name="twitter:image" content="https://pintag.io/og-preview-listings.jpg">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -1067,8 +1075,37 @@ function scheduleBehavioralEvents(sorted) {
 // are a real future goal — see the header comment on
 // updateListingsMetaForFilters() below for exactly what would still need
 // to be built and why this function alone doesn't get you there yet).
-var LISTINGS_DEFAULT_TITLE = 'Properties for Rent & Sale in Laos | Pintag';
-var LISTINGS_DEFAULT_DESCRIPTION = 'Browse verified apartments, houses, condos, land and commercial properties across Laos. Updated daily with photos, prices and maps.';
+// Trilingual copy for the default (unfiltered) and per-filter title/
+// description, keyed by getCurrentLang()'s three values -- the single
+// source both the static <head> (Lao, the actual default resolved
+// language on a plain request) and updateListingsMetaForFilters() below
+// read, so nothing is ever translated separately in two places.
+var LISTINGS_META_I18N = {
+  lo: {
+    defaultTitle: 'ຊັບສິນໃຫ້ເຊົ່າ ແລະ ຂາຍ ໃນລາວ | Pintag',
+    defaultDescription: 'ຄົ້ນຫາອາພາດເມັນ, ເຮືອນ, ຄອນໂດ, ທີ່ດິນ ແລະ ອາຄານທຸລະກິດທີ່ຢືນຢັນແລ້ວທົ່ວປະເທດລາວ. ອັບເດດທຸກມື້ພ້ອມຮູບພາບ, ລາຄາ ແລະ ແຜນທີ່.',
+    rent: 'ໃຫ້ເຊົ່າ', sale: 'ຂາຍ',
+    subjectJoiner: ' ', subjectSuffix: ' ໃນລາວ | Pintag',
+    descPrefix: 'ຄົ້ນຫາລາຍການ ', descSuffix: ' ທີ່ຢືນຢັນແລ້ວທົ່ວປະເທດລາວ. ອັບເດດທຸກມື້ພ້ອມຮູບພາບ, ລາຄາ ແລະ ແຜນທີ່.',
+    locale: 'lo_LA'
+  },
+  en: {
+    defaultTitle: 'Properties for Rent & Sale in Laos | Pintag',
+    defaultDescription: 'Browse verified apartments, houses, condos, land and commercial properties across Laos. Updated daily with photos, prices and maps.',
+    rent: 'For Rent', sale: 'For Sale',
+    subjectJoiner: ' ', subjectSuffix: ' in Laos | Pintag',
+    descPrefix: 'Browse verified ', descSuffix: ' listings across Laos. Updated daily with photos, prices and maps.',
+    locale: 'en_US'
+  },
+  zh: {
+    defaultTitle: '老挝出租出售房产 | Pintag',
+    defaultDescription: '浏览老挝各地已核实的公寓、房屋、公寓大楼、土地和商业地产。每日更新，含照片、价格与地图。',
+    rent: '租房', sale: '出售',
+    subjectJoiner: '', subjectSuffix: ' | Pintag',
+    descPrefix: '浏览老挝各地已核实的', descSuffix: '房源。每日更新，含照片、价格与地图。',
+    locale: 'zh_CN'
+  }
+};
 
 function _setListingsMeta(sel, val) {
   var el = document.querySelector(sel);
@@ -1106,22 +1143,26 @@ function _setListingsMeta(sel, val) {
 // generator or an edge function, not rewriting how titles/descriptions
 // are derived.
 function updateListingsMetaForFilters() {
+  var lang = getCurrentLang();
+  var t = LISTINGS_META_I18N[lang] || LISTINGS_META_I18N.lo;
   var typeLabel = (currentTypeFilter !== 'all' && typeof PROPERTY_TYPES !== 'undefined' && PROPERTY_TYPES[currentTypeFilter])
-    ? PROPERTY_TYPES[currentTypeFilter].en : null;
-  var txLabel = currentTxFilter === 'for_rent' ? 'Rent' : currentTxFilter === 'for_sale' ? 'Sale' : null;
+    ? PROPERTY_TYPES[currentTypeFilter][lang] : null;
+  var txLabel = currentTxFilter === 'for_rent' ? t.rent : currentTxFilter === 'for_sale' ? t.sale : null;
 
-  var title = LISTINGS_DEFAULT_TITLE;
-  var description = LISTINGS_DEFAULT_DESCRIPTION;
+  var title = t.defaultTitle;
+  var description = t.defaultDescription;
   if (typeLabel || txLabel) {
-    var subject = [typeLabel, txLabel].filter(Boolean).join(' for ');
-    title = subject + ' in Laos | Pintag';
-    description = 'Browse verified ' + subject.toLowerCase() + ' listings across Laos. Updated daily with photos, prices and maps.';
+    var subject = [typeLabel, txLabel].filter(Boolean).join(t.subjectJoiner);
+    title = subject + t.subjectSuffix;
+    description = t.descPrefix + subject + t.descSuffix;
   }
 
+  document.documentElement.setAttribute('lang', lang);
   document.title = title;
   _setListingsMeta('meta[name="description"]', description);
   _setListingsMeta('meta[property="og:title"]', title);
   _setListingsMeta('meta[property="og:description"]', description);
+  _setListingsMeta('meta[property="og:locale"]', t.locale);
   _setListingsMeta('meta[name="twitter:title"]', title);
   _setListingsMeta('meta[name="twitter:description"]', description);
   // og:url / canonical deliberately untouched here, and this isn't a gap
