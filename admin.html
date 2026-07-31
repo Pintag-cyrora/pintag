@@ -448,35 +448,47 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             </div>
           </div>
 
-          <!-- PRICING — single-unit editable fields by default. When 1+ Unit
-               Types exist below, the relevant field(s) become a read-only,
-               live-calculated range instead (see the syncPricingMode
-               function further down this page). Previous Price only makes
-               sense for a single price, so it's hidden in multi-unit mode. -->
+          <!-- PRICING — structured (price_amount/price_currency/price_frequency,
+               20260731000000_structured_pricing.sql), single-unit editable
+               fields by default. When 1+ Unit Types exist below, the
+               relevant field(s) become a read-only, live-calculated range
+               instead (see syncPricingMode() further down). price_frequency
+               is generic across sale AND rent (one_time for any sale;
+               monthly/yearly/weekly/daily/negotiable for a rental cadence)
+               -- not modeled as a rent-only "period", since Pintag lists
+               both. price_display/sale_price/rent_price/rent_period are
+               still written alongside these as derived legacy values (see
+               deriveLegacyPriceFields() below) so every not-yet-migrated
+               reader keeps working during rollout; they are never read
+               back from here. Previous Price only makes sense for a single
+               price, so it's hidden in multi-unit mode. -->
           <p class="form-section-sub">Pricing</p>
           <div class="form-grid">
             <div class="form-group" id="price-field-single">
-              <label class="form-label">Price Display</label>
-              <input class="form-input" id="f-price" type="text" placeholder="$550,000 or leave blank">
+              <label class="form-label">Price</label>
+              <div class="form-grid-3">
+                <input class="form-input" id="f-price-amount" type="number" min="0" placeholder="550000">
+                <select class="form-select" id="f-price-currency"></select>
+                <select class="form-select" id="f-price-frequency"></select>
+              </div>
               <p class="form-hint" id="price-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
             </div>
             <div class="form-group" id="price-field-sale" style="display:none">
               <label class="form-label">Sale Price</label>
-              <input class="form-input" id="f-sale-price" type="text" placeholder="$550,000">
+              <div class="form-grid-3">
+                <input class="form-input" id="f-sale-amount" type="number" min="0" placeholder="550000">
+                <select class="form-select" id="f-sale-currency"></select>
+              </div>
               <p class="form-hint" id="sale-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
             </div>
             <div class="form-group" id="price-field-rent" style="display:none">
               <label class="form-label">Rent Price</label>
-              <input class="form-input" id="f-rent-price" type="text" placeholder="$1,200">
+              <div class="form-grid-3">
+                <input class="form-input" id="f-rent-amount" type="number" min="0" placeholder="1200">
+                <select class="form-select" id="f-rent-currency"></select>
+                <select class="form-select" id="f-rent-frequency"></select>
+              </div>
               <p class="form-hint" id="rent-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
-            </div>
-            <div class="form-group" id="price-field-period" style="display:none">
-              <label class="form-label">Rent Period</label>
-              <select class="form-select" id="f-rent-period">
-                <option value="month">Per Month</option>
-                <option value="year">Per Year</option>
-                <option value="day">Per Day</option>
-              </select>
             </div>
             <div class="form-group" id="price-field-previous">
               <label class="form-label">Previous Price</label>
@@ -1334,6 +1346,112 @@ function getNearbyPlaces() {
 // Price, Bedrooms, Bathrooms, Availability).
 let _removedUnitTypeIds = [];
 
+// ── Structured pricing (20260731000000_structured_pricing.sql) ─────────
+// price_frequency is generic across sale AND rent -- 'one_time' for any
+// sale, one of these five for a rental cadence. Never includes 'one_time'
+// itself: every consumer of this list only ever shows it for a rental
+// context (single-mode Price when transaction=for_rent, or the Rent Price
+// leg of a sale_or_rent listing) and forces 'one_time' at save time for a
+// sale, so the select never needs to offer it.
+var PRICE_FREQUENCY_OPTIONS = [
+  { value: 'monthly',    label: 'Monthly' },
+  { value: 'yearly',     label: 'Yearly' },
+  { value: 'weekly',     label: 'Weekly' },
+  { value: 'daily',      label: 'Daily' },
+  { value: 'negotiable', label: 'Negotiable' }
+];
+function _priceCurrencyOptionsHtml(selected) {
+  return Object.keys(CURRENCIES).map(function(code) {
+    return '<option value="' + code + '"' + (code === selected ? ' selected' : '') + '>' + CURRENCIES[code].symbol + ' ' + code + '</option>';
+  }).join('');
+}
+function _priceFrequencyOptionsHtml(selected) {
+  return PRICE_FREQUENCY_OPTIONS.map(function(o) {
+    return '<option value="' + o.value + '"' + (o.value === selected ? ' selected' : '') + '>' + o.label + '</option>';
+  }).join('');
+}
+// Populates the three building-level pricing <select>s once at page load --
+// their options never change, only which group is visible (onTransactionChange).
+function populatePriceSelectors() {
+  ['f-price-currency', 'f-sale-currency', 'f-rent-currency'].forEach(function(id) {
+    document.getElementById(id).innerHTML = _priceCurrencyOptionsHtml(DEFAULT_CURRENCY);
+  });
+  ['f-price-frequency', 'f-rent-frequency'].forEach(function(id) {
+    document.getElementById(id).innerHTML = _priceFrequencyOptionsHtml('monthly');
+  });
+}
+// deriveLegacyPriceFields(amount, currency, frequency) -- computes the
+// legacy price_display-shaped text ("$550,000", "$1,200 / month") from a
+// structured value, via currency.js's formatMoney(). Written alongside the
+// new structured columns on every save so every not-yet-migrated reader
+// (agent.html/agents.html/for-agents.html, listings.html's sort/map-bubble,
+// listing.html's own inline resolver, the AI/importer edge functions, the
+// Intelligence Layer) keeps working unchanged during the pricing rollout --
+// see PLAN notes in 20260731000000_structured_pricing.sql's header. Never
+// read back into the form; the structured fields are the only source of
+// truth on load (editListing()).
+var LEGACY_FREQUENCY_SUFFIX = { monthly: ' / month', yearly: ' / year', weekly: ' / week', daily: ' / day', negotiable: ' (negotiable)' };
+function deriveLegacyPriceFields(amount, currency, frequency) {
+  var text = formatMoney(amount, currency);
+  if (text == null) return null;
+  if (frequency && frequency !== 'one_time') text += (LEGACY_FREQUENCY_SUFFIX[frequency] || '');
+  return text;
+}
+// The old rent_period vocabulary (month/year/day, no weekly/negotiable) is
+// still what unit_types.rent_period's CHECK constraint accepts -- map down
+// to it for the legacy column, dropping to NULL for a frequency that has
+// no legacy equivalent (harmless; that column is display-only from here on).
+var FREQUENCY_TO_LEGACY_PERIOD = { monthly: 'month', yearly: 'year', daily: 'day' };
+
+// Reads the building-level Pricing fields (single or sale_or_rent mode,
+// per the current Transaction) and returns both the structured payload
+// and its derived legacy fields in one shot -- the one place saveListing()
+// and generateAIContent() compute "the price" from, so the "price_amount
+// (and thus price_display) is always the SALE leg for a sale_or_rent
+// listing" convention only has to be encoded once. When Unit Types exist,
+// syncPricingMode() has already written the calculated MIN into these
+// same inputs (disabled, but .value still reads fine), so this naturally
+// picks up the "starting from" range too.
+function computeStructuredPrice() {
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  const isRental = typeof isRentalTransactionType === 'function' && isRentalTransactionType(document.getElementById('f-transaction').value);
+  const amountEl = isSor ? document.getElementById('f-sale-amount') : document.getElementById('f-price-amount');
+  const amountRaw = amountEl.value.trim();
+  const priceAmount = amountRaw === '' ? null : Number(amountRaw);
+  const priceCurrency = priceAmount != null ? (isSor ? document.getElementById('f-sale-currency') : document.getElementById('f-price-currency')).value : null;
+  const priceFrequency = priceAmount == null ? null : ((isSor || !isRental) ? 'one_time' : document.getElementById('f-price-frequency').value);
+
+  let rentPriceAmount = null, rentPriceCurrency = null, rentPriceFrequency = null;
+  if (isSor) {
+    const rentRaw = document.getElementById('f-rent-amount').value.trim();
+    rentPriceAmount = rentRaw === '' ? null : Number(rentRaw);
+    rentPriceCurrency = rentPriceAmount != null ? document.getElementById('f-rent-currency').value : null;
+    rentPriceFrequency = rentPriceAmount != null ? document.getElementById('f-rent-frequency').value : null;
+  }
+
+  const priceDisplay = deriveLegacyPriceFields(priceAmount, priceCurrency, priceFrequency);
+  return {
+    price_amount: priceAmount, price_currency: priceCurrency, price_frequency: priceFrequency,
+    rent_price_amount: rentPriceAmount, rent_price_currency: rentPriceCurrency, rent_price_frequency: rentPriceFrequency,
+    price_display: priceDisplay,
+    sale_price: isSor ? priceDisplay : null,
+    rent_price: isSor ? deriveLegacyPriceFields(rentPriceAmount, rentPriceCurrency, rentPriceFrequency) : null,
+    rent_period: isSor ? (FREQUENCY_TO_LEGACY_PERIOD[rentPriceFrequency] || 'month') : null
+  };
+}
+// Smart Import still returns a free-text price string until the importer
+// itself is upgraded to emit structured amount/currency (a separate,
+// later pass). Best-effort parse into the new Price fields so imports
+// stay usable in the meantime -- intentionally not reused anywhere else,
+// since every other consumer already has real structured data.
+function _parseImportPriceText(text) {
+  if (!text) return { amount: null, currency: DEFAULT_CURRENCY };
+  const currency = /₭|LAK/i.test(text) ? 'LAK' : (/฿|THB/i.test(text) ? 'THB' : DEFAULT_CURRENCY);
+  const digits = String(text).replace(/[^\d.]/g, '');
+  const amount = digits === '' ? null : parseFloat(digits);
+  return { amount: isNaN(amount) ? null : amount, currency: currency };
+}
+
 function addUnitType(data) {
   const list = document.getElementById('unit-types-list');
   const card = document.createElement('div');
@@ -1342,10 +1460,12 @@ function addUnitType(data) {
   const nameEn = data ? (data.name_en || '') : '';
   const nameLo = data ? (data.name_lo || '') : '';
   const nameZh = data ? (data.name_zh || '') : '';
-  const priceDisplay = data ? (data.price_display || '') : '';
-  const salePrice    = data ? (data.sale_price || '') : '';
-  const rentPrice    = data ? (data.rent_price || '') : '';
-  const rentPeriod   = data ? (data.rent_period || 'month') : 'month';
+  const priceAmount    = data && data.price_amount != null ? data.price_amount : '';
+  const priceCurrency  = data ? (data.price_currency || DEFAULT_CURRENCY) : DEFAULT_CURRENCY;
+  const priceFrequency = data ? (data.price_frequency || 'monthly') : 'monthly';
+  const rentAmount    = data && data.rent_price_amount != null ? data.rent_price_amount : '';
+  const rentCurrency  = data ? (data.rent_price_currency || DEFAULT_CURRENCY) : DEFAULT_CURRENCY;
+  const rentFrequency = data ? (data.rent_price_frequency || 'monthly') : 'monthly';
   const bedrooms  = data && data.bedrooms  != null ? data.bedrooms  : '';
   const bathrooms = data && data.bathrooms != null ? data.bathrooms : '';
   const sqm       = data && data.sqm       != null ? data.sqm       : '';
@@ -1392,23 +1512,26 @@ function addUnitType(data) {
       <div class="ut-grid">
         <div class="ut-field ut-price-single" style="display:${isSor ? 'none' : ''}">
           <label>Price ${isAvailable ? '*' : ''}</label>
-          <input class="form-input ut-price-display" type="text" placeholder="$250/month" value="${esc(priceDisplay)}" oninput="_utUpdateSummary(this)">
+          <div class="form-grid-3">
+            <input class="form-input ut-price-amount" type="number" min="0" placeholder="250000" value="${esc(String(priceAmount))}" oninput="_utUpdateSummary(this)">
+            <select class="form-select ut-price-currency" onchange="_utUpdateSummary(this)">${_priceCurrencyOptionsHtml(priceCurrency)}</select>
+            <select class="form-select ut-price-frequency" onchange="_utUpdateSummary(this)">${_priceFrequencyOptionsHtml(priceFrequency)}</select>
+          </div>
         </div>
         <div class="ut-field ut-price-sale" style="display:${isSor ? '' : 'none'}">
           <label>Sale Price ${isAvailable ? '*' : ''}</label>
-          <input class="form-input ut-sale-price" type="text" placeholder="$250,000" value="${esc(salePrice)}" oninput="_utUpdateSummary(this)">
+          <div class="form-grid-3">
+            <input class="form-input ut-sale-amount" type="number" min="0" placeholder="250000" value="${esc(String(priceAmount))}" oninput="_utUpdateSummary(this)">
+            <select class="form-select ut-sale-currency" onchange="_utUpdateSummary(this)">${_priceCurrencyOptionsHtml(priceCurrency)}</select>
+          </div>
         </div>
         <div class="ut-field ut-price-rent" style="display:${isSor ? '' : 'none'}">
           <label>Rent Price ${isAvailable ? '*' : ''}</label>
-          <input class="form-input ut-rent-price" type="text" placeholder="$250/month" value="${esc(rentPrice)}" oninput="_utUpdateSummary(this)">
-        </div>
-        <div class="ut-field ut-price-period" style="display:${isSor ? '' : 'none'}">
-          <label>Rent Period</label>
-          <select class="form-select ut-rent-period">
-            <option value="month" ${rentPeriod==='month'?'selected':''}>Per Month</option>
-            <option value="year" ${rentPeriod==='year'?'selected':''}>Per Year</option>
-            <option value="day" ${rentPeriod==='day'?'selected':''}>Per Day</option>
-          </select>
+          <div class="form-grid-3">
+            <input class="form-input ut-rent-amount" type="number" min="0" placeholder="250" value="${esc(String(rentAmount))}" oninput="_utUpdateSummary(this)">
+            <select class="form-select ut-rent-currency" onchange="_utUpdateSummary(this)">${_priceCurrencyOptionsHtml(rentCurrency)}</select>
+            <select class="form-select ut-rent-frequency" onchange="_utUpdateSummary(this)">${_priceFrequencyOptionsHtml(rentFrequency)}</select>
+          </div>
         </div>
       </div>
       <div class="ut-grid ut-rt-row" style="display:${isRentalTx ? '' : 'none'}">
@@ -1696,9 +1819,21 @@ function _utUpdateSummary(inputEl) {
   const nameEn = card.querySelector('.ut-name-en').value.trim();
   card.querySelector('.ut-name-display').textContent = nameEn || 'New Unit Type';
   const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
-  const price = isSor
-    ? [card.querySelector('.ut-sale-price').value.trim(), card.querySelector('.ut-rent-price').value.trim()].filter(Boolean).join(' / ')
-    : card.querySelector('.ut-price-display').value.trim();
+  let price = '';
+  if (isSor) {
+    const saleAmt = card.querySelector('.ut-sale-amount').value;
+    const rentAmt = card.querySelector('.ut-rent-amount').value;
+    const parts = [];
+    if (saleAmt !== '') parts.push(formatMoney(parseFloat(saleAmt), card.querySelector('.ut-sale-currency').value));
+    if (rentAmt !== '') parts.push(formatMoney(parseFloat(rentAmt), card.querySelector('.ut-rent-currency').value) + (LEGACY_FREQUENCY_SUFFIX[card.querySelector('.ut-rent-frequency').value] || ''));
+    price = parts.filter(Boolean).join(' / ');
+  } else {
+    const amt = card.querySelector('.ut-price-amount').value;
+    if (amt !== '') {
+      const money = formatMoney(parseFloat(amt), card.querySelector('.ut-price-currency').value);
+      price = money ? (money + (LEGACY_FREQUENCY_SUFFIX[card.querySelector('.ut-price-frequency').value] || '')) : '';
+    }
+  }
   const bed = card.querySelector('.ut-bedrooms').value.trim();
   const bath = card.querySelector('.ut-bathrooms').value.trim();
   const parts = [];
@@ -1720,7 +1855,6 @@ function syncUnitTypePriceFields() {
     card.querySelector('.ut-price-single').style.display = isSor ? 'none' : '';
     card.querySelector('.ut-price-sale').style.display   = isSor ? '' : 'none';
     card.querySelector('.ut-price-rent').style.display   = isSor ? '' : 'none';
-    card.querySelector('.ut-price-period').style.display = isSor ? '' : 'none';
     const rtRow = card.querySelector('.ut-rt-row');
     if (rtRow) rtRow.style.display = isRentalTx ? '' : 'none';
     _utUpdateSummary(card.querySelector('.ut-name-en'));
@@ -1728,53 +1862,41 @@ function syncUnitTypePriceFields() {
 }
 
 // ── Pricing ↔ Unit Types (single source of truth, admin UX redesign) ────
-// Prices are free text everywhere in this schema (price_display/sale_price/
-// rent_price are all `text`, matching properties' own columns) -- staff
-// type "$250/month", "1,200", etc. _utParsePrice pulls the first number out
-// (stripping thousands separators) plus whatever text trails it, so a
-// range can be computed and, when every active unit agrees on that
-// trailing text ("/month"), reused as the range's own suffix.
-function _utParsePrice(str) {
-  if (!str) return null;
-  const m = String(str).match(/[\d,]+(\.\d+)?/);
-  if (!m) return null;
-  const value = parseFloat(m[0].replace(/,/g, ''));
-  if (isNaN(value)) return null;
-  const suffix = str.slice(str.indexOf(m[0]) + m[0].length).trim();
-  return { value, suffix };
-}
-function _utFormatMoney(n) {
-  return Math.round(n).toLocaleString('en-US');
-}
-// rawPrices: array of free-text price strings from active (is_available)
-// unit type cards only -- the building-level, always-safe-to-display view
-// of "what active units cost right now." Returns null text when nothing
-// parses (caller falls back to "Price on request", matching the same
-// fallback string already used publicly for an empty price_display).
-function _utComputeRange(rawPrices) {
-  const parsed = rawPrices.map(_utParsePrice).filter(Boolean);
-  if (!parsed.length) return { text: null, parsedCount: 0, totalCount: rawPrices.length };
-  const values = parsed.map(p => p.value);
-  const min = Math.min(...values), max = Math.max(...values);
-  const suffixes = [...new Set(parsed.map(p => p.suffix))];
-  const suffix = (suffixes.length === 1 && suffixes[0]) ? (suffixes[0].startsWith('/') ? suffixes[0] : ' ' + suffixes[0]) : '';
-  const range = (min === max) ? '$' + _utFormatMoney(min) : '$' + _utFormatMoney(min) + '–' + _utFormatMoney(max);
-  return { text: range + suffix, parsedCount: parsed.length, totalCount: rawPrices.length };
-}
-function _utActiveRawPrices(selector) {
+// Structured now (price_amount is numeric) -- no parsing needed. Computes
+// [min, max] across active (is_available) unit type cards' amounts;
+// currency is taken from the first active unit (a building with genuinely
+// mixed currencies across its own units is a data-quality edge case out of
+// scope here); frequency is included in the summary text only when every
+// active unit agrees on it, mirroring the old text-parser's same
+// all-agree-or-omit rule for a trailing suffix.
+function _utActiveAmounts(amountSelector, currencySelector, frequencySelector) {
   return [...document.querySelectorAll('.ut-card')]
     .filter(card => card.querySelector('.ut-is-available').checked)
-    .map(card => card.querySelector(selector).value.trim())
+    .map(card => {
+      const raw = card.querySelector(amountSelector).value;
+      if (raw === '') return null;
+      const amount = parseFloat(raw);
+      if (isNaN(amount)) return null;
+      return {
+        amount: amount,
+        currency: currencySelector ? card.querySelector(currencySelector).value : null,
+        frequency: frequencySelector ? card.querySelector(frequencySelector).value : null
+      };
+    })
     .filter(Boolean);
 }
-// The one function that switches Pricing between Single Price (default,
-// unchanged) and Price Range (as soon as 1+ Unit Type cards exist) --
-// called whenever that could change: adding/removing a card, editing a
-// unit's price or Available checkbox, changing Transaction, and on
-// initial load. Sets the visible price input(s)' own .value to the
-// computed range and disables them, so saveListing()'s existing
-// `document.getElementById('f-price').value` reads need no changes at all
-// to pick up the computed value.
+function _utComputeRange(entries) {
+  if (!entries.length) return { min: null, max: null, currency: null, frequency: null, text: null };
+  const amounts = entries.map(e => e.amount);
+  const min = Math.min(...amounts), max = Math.max(...amounts);
+  const currency = entries[0].currency || DEFAULT_CURRENCY;
+  const frequencies = [...new Set(entries.map(e => e.frequency).filter(Boolean))];
+  const frequency = frequencies.length === 1 ? frequencies[0] : null;
+  const minText = formatMoney(min, currency), maxText = formatMoney(max, currency);
+  const rangeText = (min === max) ? minText : (minText + ' – ' + maxText);
+  const suffix = frequency ? (LEGACY_FREQUENCY_SUFFIX[frequency] || '') : '';
+  return { min: min, max: max, currency: currency, frequency: frequency, text: rangeText + suffix };
+}
 // Keeps a card's Price/Sale Price/Rent Price labels' required-asterisk in
 // sync with its own Available checkbox (price is only required while
 // Available — see the validation comment in saveListing()), then
@@ -1789,6 +1911,16 @@ function _utOnAvailableChange(checkbox) {
   _utUpdateAvailabilityBadge(card);
 }
 
+// The one function that switches Pricing between Single Price (default,
+// unchanged) and a live-calculated MINIMUM (as soon as 1+ Unit Type cards
+// exist) — called whenever that could change: adding/removing a card,
+// editing a unit's price or Available checkbox, changing Transaction, and
+// on initial load. price_amount becomes the MIN across active units (a
+// "starting from" convention, the same one real-estate listings elsewhere
+// already use for multi-unit buildings) while the full human-readable
+// range ("$250 – $400 / month") is shown in the hint text and also becomes
+// the legacy price_display (see saveListing()) for pages not yet reading
+// the structured columns.
 function syncPricingMode() {
   const hasUnitTypes = document.querySelectorAll('.ut-card').length > 0;
   const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
@@ -1796,41 +1928,51 @@ function syncPricingMode() {
   if (hasUnitTypes && document.getElementById('f-price-previous').value) {
     document.getElementById('f-price-previous').value = ''; // stale "before" price has no meaning for a range
   }
+  const singleIds = ['f-price-amount', 'f-price-currency', 'f-price-frequency'];
+  const saleIds = ['f-sale-amount', 'f-sale-currency'];
+  const rentIds = ['f-rent-amount', 'f-rent-currency', 'f-rent-frequency'];
   if (!hasUnitTypes) {
-    ['f-price', 'f-sale-price', 'f-rent-price'].forEach(id => document.getElementById(id).disabled = false);
+    singleIds.concat(saleIds, rentIds).forEach(id => document.getElementById(id).disabled = false);
     document.getElementById('price-range-hint').style.display = 'none';
     document.getElementById('sale-range-hint').style.display = 'none';
     document.getElementById('rent-range-hint').style.display = 'none';
     return;
   }
   if (isSor) {
-    const saleRange = _utComputeRange(_utActiveRawPrices('.ut-sale-price'));
-    const rentRange = _utComputeRange(_utActiveRawPrices('.ut-rent-price'));
-    document.getElementById('f-sale-price').value = saleRange.text || 'Price on request';
-    document.getElementById('f-rent-price').value = rentRange.text || 'Price on request';
-    document.getElementById('f-sale-price').disabled = true;
-    document.getElementById('f-rent-price').disabled = true;
+    const saleRange = _utComputeRange(_utActiveAmounts('.ut-sale-amount', '.ut-sale-currency', null));
+    const rentRange = _utComputeRange(_utActiveAmounts('.ut-rent-amount', '.ut-rent-currency', '.ut-rent-frequency'));
+    document.getElementById('f-sale-amount').value = saleRange.min != null ? saleRange.min : '';
+    if (saleRange.currency) document.getElementById('f-sale-currency').value = saleRange.currency;
+    document.getElementById('f-rent-amount').value = rentRange.min != null ? rentRange.min : '';
+    if (rentRange.currency) document.getElementById('f-rent-currency').value = rentRange.currency;
+    if (rentRange.frequency) document.getElementById('f-rent-frequency').value = rentRange.frequency;
+    saleIds.forEach(id => document.getElementById(id).disabled = true);
+    rentIds.forEach(id => document.getElementById(id).disabled = true);
+    document.getElementById('sale-range-hint').textContent = saleRange.text ? ('Calculated: ' + saleRange.text + ' (from active Unit Types)') : 'Calculated from active Unit Types below — not editable here.';
     document.getElementById('sale-range-hint').style.display = '';
+    document.getElementById('rent-range-hint').textContent = rentRange.text ? ('Calculated: ' + rentRange.text + ' (from active Unit Types)') : 'Calculated from active Unit Types below — not editable here.';
     document.getElementById('rent-range-hint').style.display = '';
-    // f-price is hidden while sale_or_rent, but saveListing() only reads it
-    // when NOT sale_or_rent -- still clear+re-enable it so it never carries
-    // a stale computed range into a later single-price mode switch.
-    document.getElementById('f-price').value = '';
-    document.getElementById('f-price').disabled = false;
+    // f-price-* is hidden while sale_or_rent, but saveListing() only reads
+    // it when NOT sale_or_rent -- still clear+re-enable it so it never
+    // carries a stale computed value into a later single-price mode switch.
+    document.getElementById('f-price-amount').value = '';
+    singleIds.forEach(id => document.getElementById(id).disabled = false);
     document.getElementById('price-range-hint').style.display = 'none';
   } else {
-    const range = _utComputeRange(_utActiveRawPrices('.ut-price-display'));
-    document.getElementById('f-price').value = range.text || 'Price on request';
-    document.getElementById('f-price').disabled = true;
+    const range = _utComputeRange(_utActiveAmounts('.ut-price-amount', '.ut-price-currency', '.ut-price-frequency'));
+    document.getElementById('f-price-amount').value = range.min != null ? range.min : '';
+    if (range.currency) document.getElementById('f-price-currency').value = range.currency;
+    if (range.frequency) document.getElementById('f-price-frequency').value = range.frequency;
+    singleIds.forEach(id => document.getElementById(id).disabled = true);
+    document.getElementById('price-range-hint').textContent = range.text ? ('Calculated: ' + range.text + ' (from active Unit Types)') : 'Calculated from active Unit Types below — not editable here.';
     document.getElementById('price-range-hint').style.display = '';
-    // saveListing() reads sale_price/rent_price unconditionally regardless
-    // of transaction type -- clear+re-enable them so a computed range never
+    // saveListing() reads sale/rent unconditionally regardless of
+    // transaction type -- clear+re-enable them so a computed value never
     // bleeds into the wrong column if transaction later switches away from
     // Sale or Rent while Unit Types still exist.
-    document.getElementById('f-sale-price').value = '';
-    document.getElementById('f-rent-price').value = '';
-    document.getElementById('f-sale-price').disabled = false;
-    document.getElementById('f-rent-price').disabled = false;
+    document.getElementById('f-sale-amount').value = '';
+    document.getElementById('f-rent-amount').value = '';
+    saleIds.concat(rentIds).forEach(id => document.getElementById(id).disabled = false);
     document.getElementById('sale-range-hint').style.display = 'none';
     document.getElementById('rent-range-hint').style.display = 'none';
   }
@@ -1874,17 +2016,51 @@ function loadUnitTypes(unitTypes) {
   syncPricingMode(); // unconditional: also resets Pricing back to Single Price when unitTypes is empty
 }
 
+// Reads a card's structured Price fields (single or sale+rent legs,
+// depending on the listing's current Transaction) and derives the legacy
+// price_display/sale_price/rent_price/rent_period text alongside them --
+// same convention as computeStructuredPrice() below (price_amount is
+// always the sale leg for a sale_or_rent unit), just per-unit instead of
+// building-level.
+function _utReadCardPrice(card, isSor, isRental) {
+  let priceAmount, priceCurrency, priceFrequency, rentAmount, rentCurrency, rentFrequency;
+  if (isSor) {
+    const saleRaw = card.querySelector('.ut-sale-amount').value.trim();
+    priceAmount = saleRaw === '' ? null : Number(saleRaw);
+    priceCurrency = priceAmount != null ? card.querySelector('.ut-sale-currency').value : null;
+    priceFrequency = priceAmount != null ? 'one_time' : null;
+    const rentRaw = card.querySelector('.ut-rent-amount').value.trim();
+    rentAmount = rentRaw === '' ? null : Number(rentRaw);
+    rentCurrency = rentAmount != null ? card.querySelector('.ut-rent-currency').value : null;
+    rentFrequency = rentAmount != null ? card.querySelector('.ut-rent-frequency').value : null;
+  } else {
+    const raw = card.querySelector('.ut-price-amount').value.trim();
+    priceAmount = raw === '' ? null : Number(raw);
+    priceCurrency = priceAmount != null ? card.querySelector('.ut-price-currency').value : null;
+    priceFrequency = priceAmount == null ? null : (isRental ? card.querySelector('.ut-price-frequency').value : 'one_time');
+    rentAmount = null; rentCurrency = null; rentFrequency = null;
+  }
+  const priceDisplay = deriveLegacyPriceFields(priceAmount, priceCurrency, priceFrequency);
+  return {
+    price_amount: priceAmount, price_currency: priceCurrency, price_frequency: priceFrequency,
+    rent_price_amount: rentAmount, rent_price_currency: rentCurrency, rent_price_frequency: rentFrequency,
+    price_display: priceDisplay,
+    sale_price: isSor ? priceDisplay : null,
+    rent_price: isSor ? deriveLegacyPriceFields(rentAmount, rentCurrency, rentFrequency) : null,
+    rent_period: isSor ? (FREQUENCY_TO_LEGACY_PERIOD[rentFrequency] || 'month') : null
+  };
+}
 function getUnitTypesFromDom() {
+  const txType = document.getElementById('f-transaction').value;
+  const isSor = txType === 'sale_or_rent';
+  const isRental = typeof isRentalTransactionType === 'function' && isRentalTransactionType(txType);
   return [...document.querySelectorAll('.ut-card')].map((card, index) => ({
     id: card.dataset.id || null,
     sort_order:    index,
     name_en:       card.querySelector('.ut-name-en').value.trim(),
     name_lo:       card.querySelector('.ut-name-lo').value.trim() || null,
     name_zh:       card.querySelector('.ut-name-zh').value.trim() || null,
-    price_display: card.querySelector('.ut-price-display').value.trim() || null,
-    sale_price:    card.querySelector('.ut-sale-price').value.trim() || null,
-    rent_price:    card.querySelector('.ut-rent-price').value.trim() || null,
-    rent_period:   card.querySelector('.ut-rent-period').value || null,
+    ..._utReadCardPrice(card, isSor, isRental),
     bedrooms:      card.querySelector('.ut-bedrooms').value.trim()  === '' ? null : Number(card.querySelector('.ut-bedrooms').value),
     bathrooms:     card.querySelector('.ut-bathrooms').value.trim() === '' ? null : Number(card.querySelector('.ut-bathrooms').value),
     sqm:           card.querySelector('.ut-sqm').value.trim()       === '' ? null : Number(card.querySelector('.ut-sqm').value),
@@ -2666,13 +2842,18 @@ function filterListings() {
 function onTransactionChange() {
   var tx = document.getElementById('f-transaction').value;
   var isSor = tx === 'sale_or_rent';
+  var isRental = typeof isRentalTransactionType === 'function' && isRentalTransactionType(tx);
   document.getElementById('price-field-single').style.display = isSor ? 'none' : '';
   document.getElementById('price-field-sale').style.display   = isSor ? ''     : 'none';
   document.getElementById('price-field-rent').style.display   = isSor ? ''     : 'none';
-  document.getElementById('price-field-period').style.display = isSor ? ''     : 'none';
+  // Single-mode frequency only means something for a rental cadence -- a
+  // sale's frequency is always forced to 'one_time' in code (see
+  // computeStructuredPrice()), and the select never offers a 'one_time'
+  // option, so it's hidden rather than shown-but-meaningless for a sale.
+  document.getElementById('f-price-frequency').style.display = (!isSor && !isRental) ? 'none' : '';
   var rentalTermsSection = document.getElementById('rental-terms-section');
   if (rentalTermsSection) {
-    rentalTermsSection.style.display = (typeof isRentalTransactionType === 'function' && isRentalTransactionType(tx)) ? '' : 'none';
+    rentalTermsSection.style.display = isRental ? '' : 'none';
   }
   syncUnitTypePriceFields();
   syncPricingMode();
@@ -2764,10 +2945,19 @@ async function editListing(id) {
   document.getElementById('f-workflow-status').value = p.workflow_status || 'active';
   document.getElementById('f-market-status').value   = p.market_status || 'available';
   document.getElementById('publish-btn').style.display = ((p.workflow_status || 'active') === 'draft') ? 'inline-block' : 'none';
-  document.getElementById('f-price').value          = p.price_display || '';
-  document.getElementById('f-sale-price').value     = p.sale_price || '';
-  document.getElementById('f-rent-price').value     = p.rent_price || '';
-  document.getElementById('f-rent-period').value    = p.rent_period || 'month';
+  // Structured fields are the source of truth; price_display/sale_price/
+  // rent_price/rent_period are legacy-derived and never read back here.
+  // price_amount is always the sale leg (see computeStructuredPrice()), so
+  // it seeds both the single-mode and sale-leg inputs -- whichever one
+  // ends up visible is decided by onTransactionChange() below.
+  document.getElementById('f-price-amount').value    = p.price_amount != null ? p.price_amount : '';
+  document.getElementById('f-price-currency').value  = p.price_currency || DEFAULT_CURRENCY;
+  document.getElementById('f-price-frequency').value = p.price_frequency && p.price_frequency !== 'one_time' ? p.price_frequency : 'monthly';
+  document.getElementById('f-sale-amount').value      = p.price_amount != null ? p.price_amount : '';
+  document.getElementById('f-sale-currency').value    = p.price_currency || DEFAULT_CURRENCY;
+  document.getElementById('f-rent-amount').value      = p.rent_price_amount != null ? p.rent_price_amount : '';
+  document.getElementById('f-rent-currency').value    = p.rent_price_currency || DEFAULT_CURRENCY;
+  document.getElementById('f-rent-frequency').value   = p.rent_price_frequency || 'monthly';
   document.getElementById('f-price-previous').value = p.price_previous || '';
   document.getElementById('f-land-title').value  = p.land_title_type || '';
   document.getElementById('f-featured').value    = String(p.is_featured || false);
@@ -2931,9 +3121,9 @@ async function saveListing(e) {
       if (ut.bathrooms === null) missingLabels.push(label + ': Bathrooms');
       if (ut.is_available) {
         if (isSorForValidation) {
-          if (!_utParsePrice(ut.sale_price)) missingLabels.push(label + ': Sale Price');
-          if (!_utParsePrice(ut.rent_price)) missingLabels.push(label + ': Rent Price');
-        } else if (!_utParsePrice(ut.price_display)) {
+          if (ut.price_amount == null) missingLabels.push(label + ': Sale Price');
+          if (ut.rent_price_amount == null) missingLabels.push(label + ': Rent Price');
+        } else if (ut.price_amount == null) {
           missingLabels.push(label + ': Price');
         }
       }
@@ -3001,20 +3191,23 @@ async function saveListing(e) {
   const slugBase = titleEn.toLowerCase().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').substring(0,60);
   const slug = slugBase + '-' + Date.now().toString().slice(-6);
 
+  const priceFields = computeStructuredPrice();
   const body = {
     property_type:     document.getElementById('f-type').value || null,
     property_style:    document.getElementById('f-style').value || null,
     transaction_type:  document.getElementById('f-transaction').value || null,
     workflow_status:   workflowStatus,
     market_status:     marketStatus,
-    price_display:     (document.getElementById('f-transaction').value === 'sale_or_rent'
-                          ? document.getElementById('f-sale-price').value.trim()
-                          : document.getElementById('f-price').value.trim()) || null,
-    sale_price:        document.getElementById('f-sale-price').value.trim() || null,
-    rent_price:        document.getElementById('f-rent-price').value.trim() || null,
-    rent_period:       (document.getElementById('f-transaction').value === 'sale_or_rent'
-                          ? document.getElementById('f-rent-period').value || 'month'
-                          : null),
+    price_amount:         priceFields.price_amount,
+    price_currency:        priceFields.price_currency,
+    price_frequency:       priceFields.price_frequency,
+    rent_price_amount:    priceFields.rent_price_amount,
+    rent_price_currency:   priceFields.rent_price_currency,
+    rent_price_frequency:  priceFields.rent_price_frequency,
+    price_display:     priceFields.price_display,
+    sale_price:        priceFields.sale_price,
+    rent_price:        priceFields.rent_price,
+    rent_period:       priceFields.rent_period,
     price_previous:    document.getElementById('f-price-previous').value.trim() || null,
     rental_terms:      buildRentalTermsPayload(_buildingRentalTermsValues),
     land_title_type:   document.getElementById('f-land-title').value || null,
@@ -3320,7 +3513,7 @@ async function generateAIContent() {
     bathrooms:      getFieldValueSafe('f-bathrooms'),
     sqm:            getFieldValueSafe('f-sqm'),
     sqm_land:       getFieldValueSafe('f-sqm-land'),
-    price_display:  document.getElementById('f-price').value,
+    price_display:  computeStructuredPrice().price_display || '',
     village:        village,
     district:       districtEn,
     features:       getCheckedKeys('features-grid'),
@@ -3837,11 +4030,16 @@ function populateFormFromImport(data) {
   onTransactionChange();
   document.getElementById('f-workflow-status').value = 'draft';
   document.getElementById('f-market-status').value   = 'available';
-  document.getElementById('f-price').value          = fv(data.price_display) || '';
-  applyConfidence('f-price', data.price_display);
-  document.getElementById('f-sale-price').value     = '';
-  document.getElementById('f-rent-price').value     = '';
-  document.getElementById('f-rent-period').value    = 'month';
+  // Smart Import still returns a free-text price string until the
+  // importer itself emits structured amount/currency (a later pass) --
+  // best-effort parsed here so the new Price fields stay usable meanwhile.
+  const _importedPrice = _parseImportPriceText(fv(data.price_display));
+  document.getElementById('f-price-amount').value    = _importedPrice.amount != null ? _importedPrice.amount : '';
+  document.getElementById('f-price-currency').value  = _importedPrice.currency;
+  document.getElementById('f-price-frequency').value = 'monthly';
+  applyConfidence('f-price-amount', data.price_display);
+  document.getElementById('f-sale-amount').value    = '';
+  document.getElementById('f-rent-amount').value    = '';
   document.getElementById('f-price-previous').value = '';
   document.getElementById('f-land-title').value  = '';
   document.getElementById('f-featured').value    = 'false';
@@ -4024,6 +4222,7 @@ async function publishDraft() {
 // ── INIT ──────────────────────────────────────────────────────────
 renderPropertyTypeFields(document.getElementById('f-type').value || '');
 initHighlightPresets();
+populatePriceSelectors();
 </script>
 </body>
 </html>
