@@ -53,3 +53,31 @@ function currencySymbol(currency) {
 function currencyCode(currency) {
   return (CURRENCIES[currency] || CURRENCIES[DEFAULT_CURRENCY]).code;
 }
+
+// price_frequency vocabulary shared by every structured-price UI (admin.html/
+// add-property.html/edit-listing.html) and every reader that derives legacy
+// display text from it. 'one_time' is deliberately excluded from the option
+// list -- every consumer only ever shows this list for a rental context
+// (a sale's frequency is hardcoded to 'one_time' at save time) so the
+// select never needs to offer it.
+var PRICE_FREQUENCY_OPTIONS = [
+  { value: 'monthly',    label: 'Monthly' },
+  { value: 'yearly',     label: 'Yearly' },
+  { value: 'weekly',     label: 'Weekly' },
+  { value: 'daily',      label: 'Daily' },
+  { value: 'negotiable', label: 'Negotiable' }
+];
+var LEGACY_FREQUENCY_SUFFIX = { monthly: ' / month', yearly: ' / year', weekly: ' / week', daily: ' / day', negotiable: ' (negotiable)' };
+
+// deriveLegacyPriceFields(amount, currency, frequency) -- computes the
+// legacy price_display-shaped text ("$550,000", "$1,200 / month") from a
+// structured value. The one place every writer (admin.html/add-property.html/
+// edit-listing.html) builds the backwards-compatible display text every
+// not-yet-migrated reader still depends on, so the format is defined
+// exactly once rather than reimplemented per page.
+function deriveLegacyPriceFields(amount, currency, frequency) {
+  var text = formatMoney(amount, currency);
+  if (text == null) return null;
+  if (frequency && frequency !== 'one_time') text += (LEGACY_FREQUENCY_SUFFIX[frequency] || '');
+  return text;
+}

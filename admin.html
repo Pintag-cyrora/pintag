@@ -1347,19 +1347,10 @@ function getNearbyPlaces() {
 let _removedUnitTypeIds = [];
 
 // ── Structured pricing (20260731000000_structured_pricing.sql) ─────────
-// price_frequency is generic across sale AND rent -- 'one_time' for any
-// sale, one of these five for a rental cadence. Never includes 'one_time'
-// itself: every consumer of this list only ever shows it for a rental
-// context (single-mode Price when transaction=for_rent, or the Rent Price
-// leg of a sale_or_rent listing) and forces 'one_time' at save time for a
-// sale, so the select never needs to offer it.
-var PRICE_FREQUENCY_OPTIONS = [
-  { value: 'monthly',    label: 'Monthly' },
-  { value: 'yearly',     label: 'Yearly' },
-  { value: 'weekly',     label: 'Weekly' },
-  { value: 'daily',      label: 'Daily' },
-  { value: 'negotiable', label: 'Negotiable' }
-];
+// PRICE_FREQUENCY_OPTIONS/LEGACY_FREQUENCY_SUFFIX/deriveLegacyPriceFields
+// now live in currency.js (shared with add-property.html/edit-listing.html,
+// which need the identical derivation) -- see that file for the "never
+// includes 'one_time'" rationale.
 function _priceCurrencyOptionsHtml(selected) {
   return Object.keys(CURRENCIES).map(function(code) {
     return '<option value="' + code + '"' + (code === selected ? ' selected' : '') + '>' + CURRENCIES[code].symbol + ' ' + code + '</option>';
@@ -1380,23 +1371,11 @@ function populatePriceSelectors() {
     document.getElementById(id).innerHTML = _priceFrequencyOptionsHtml('monthly');
   });
 }
-// deriveLegacyPriceFields(amount, currency, frequency) -- computes the
-// legacy price_display-shaped text ("$550,000", "$1,200 / month") from a
-// structured value, via currency.js's formatMoney(). Written alongside the
-// new structured columns on every save so every not-yet-migrated reader
-// (agent.html/agents.html/for-agents.html, listings.html's sort/map-bubble,
-// listing.html's own inline resolver, the AI/importer edge functions, the
-// Intelligence Layer) keeps working unchanged during the pricing rollout --
-// see PLAN notes in 20260731000000_structured_pricing.sql's header. Never
-// read back into the form; the structured fields are the only source of
-// truth on load (editListing()).
-var LEGACY_FREQUENCY_SUFFIX = { monthly: ' / month', yearly: ' / year', weekly: ' / week', daily: ' / day', negotiable: ' (negotiable)' };
-function deriveLegacyPriceFields(amount, currency, frequency) {
-  var text = formatMoney(amount, currency);
-  if (text == null) return null;
-  if (frequency && frequency !== 'one_time') text += (LEGACY_FREQUENCY_SUFFIX[frequency] || '');
-  return text;
-}
+// deriveLegacyPriceFields() (currency.js) is written alongside the new
+// structured columns on every save so every not-yet-migrated reader keeps
+// working unchanged during the pricing rollout. Never read back into the
+// form; the structured fields are the only source of truth on load
+// (editListing()).
 // The old rent_period vocabulary (month/year/day, no weekly/negotiable) is
 // still what unit_types.rent_period's CHECK constraint accepts -- map down
 // to it for the legacy column, dropping to NULL for a frequency that has

@@ -56,10 +56,18 @@ function groupByTitle(properties) {
 // bedrooms/bathrooms/price (the common case for most non-unit-type
 // listings today) still group together exactly as before this fix.
 function variantSignature(property) {
+  // price_amount (structured) is a more stable signal than the legacy text
+  // fields -- two listings priced identically but formatted differently
+  // ("$550,000" vs "550000") could otherwise land in different variant
+  // buckets. Falls back to the legacy text chain only for a row that
+  // predates the pricing migration's backfill.
+  const priceSignal = property.price_amount != null
+    ? (property.price_amount + '_' + (property.price_currency || ''))
+    : (property.sale_price || property.rent_price || property.price_display || '');
   return [
     property.bedrooms ?? '',
     property.bathrooms ?? '',
-    property.sale_price || property.rent_price || property.price_display || '',
+    priceSignal,
   ].join('|');
 }
 

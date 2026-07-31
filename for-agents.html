@@ -329,7 +329,7 @@ async function load(){
     // Alias managed_by_party_id back to agent_id client-side so the rest of
     // this file's local bookkeeping (which predates the Platform Identity
     // rename) doesn't need to change.
-    var r2=await fetch(SB+'/rest/v1/properties?order=is_featured.desc,created_at.desc&select=agent_id:managed_by_party_id,images,slug,price_display,transaction_type',
+    var r2=await fetch(SB+'/rest/v1/properties?order=is_featured.desc,created_at.desc&select=agent_id:managed_by_party_id,images,slug,price_display,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency,transaction_type',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var listings=await r2.json();
     if(!Array.isArray(listings)) listings=[];
@@ -378,7 +378,12 @@ function renderStrip(listings){
     if(thumb){var si=document.createElement('img');si.src=thumb;si.alt='';si.loading='lazy';si.decoding='async';imgDiv.appendChild(si);}
     else{var ph=document.createElement('div');ph.className='strip-img-ph';imgDiv.appendChild(ph);}
     var ov=document.createElement('div');ov.className='strip-overlay';imgDiv.appendChild(ov);
-    if(p.price_display){var pr=document.createElement('span');pr.className='strip-price';pr.textContent=p.price_display;imgDiv.appendChild(pr);}
+    // Matches renderRoster()'s lang:'lo' above -- this page has no language switcher.
+    var priceInfo=formatPropertyPrice(p,'lo');
+    var priceText=priceInfo.isSor
+      ? [priceInfo.saleText,priceInfo.rentText].filter(Boolean).join(' / ')
+      : (priceInfo.singleText?(priceInfo.singleText+(priceInfo.unitText?' '+priceInfo.unitText:'')):null);
+    if(priceText){var pr=document.createElement('span');pr.className='strip-price';pr.textContent=priceText;imgDiv.appendChild(pr);}
     card.appendChild(imgDiv);strip.appendChild(card);
   });
 }

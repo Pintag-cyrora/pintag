@@ -655,19 +655,20 @@ function getContactDisplay(p, lang) {
   return { name: resolved.name, photo: resolved.photo, platformLabel: resolved.roleLabel };
 }
 
+// price_amount is the structured source of truth; only falls back to
+// parsing legacy price_display for a row that predates the pricing
+// migration and was never backfilled. Comparing raw numeric price_amount
+// across different currencies (a USD listing vs. a LAK listing) without
+// normalization is a pre-existing limitation this sort inherits unchanged
+// from the legacy text-parsing version -- not something this fix expands.
+function _numericPrice(p) {
+  return p.price_amount != null ? p.price_amount : (parseFloat((p.price_display||'').replace(/[^0-9.]/g,''))||0);
+}
 function sortProperties(arr) {
   var copy = arr.slice();
   if (currentSort === 'featured')  return copy.sort(function(a,b){ return (b.is_featured?1:0)-(a.is_featured?1:0); });
-  if (currentSort === 'price_asc') return copy.sort(function(a,b){
-    var pa = parseFloat((a.price_display||'').replace(/[^0-9.]/g,''))||0;
-    var pb = parseFloat((b.price_display||'').replace(/[^0-9.]/g,''))||0;
-    return pa-pb;
-  });
-  if (currentSort === 'price_desc') return copy.sort(function(a,b){
-    var pa = parseFloat((a.price_display||'').replace(/[^0-9.]/g,''))||0;
-    var pb = parseFloat((b.price_display||'').replace(/[^0-9.]/g,''))||0;
-    return pb-pa;
-  });
+  if (currentSort === 'price_asc') return copy.sort(function(a,b){ return _numericPrice(a)-_numericPrice(b); });
+  if (currentSort === 'price_desc') return copy.sort(function(a,b){ return _numericPrice(b)-_numericPrice(a); });
   return copy; /* newest: already ordered by created_at desc from API */
 }
 
@@ -700,17 +701,24 @@ function getLatLng(p) {
   return [base[0] + jitter(), base[1] + jitter()];
 }
 
+// price_amount/price_currency are the structured source; only falls back
+// to sniffing the legacy price_display text for a row that predates the
+// pricing migration's backfill.
 function formatPriceBubble(p) {
-  var raw = p.price_display || '';
-  if (!raw) return '?';
-  var str = raw.replace(/,/g, '');
-  var match = str.match(/[\d.]+/);
-  if (!match) return raw.slice(0, 8);
-  var num = parseFloat(match[0]);
-  var hasUSD = /\$/i.test(raw) || /USD/i.test(raw);
-  var hasKip = /₭|LAK|kip/i.test(raw);
-  var sym = hasUSD ? '$' : hasKip ? '₭' : '';
-  if (hasKip) {
+  var num = p.price_amount;
+  var currency = p.price_currency;
+  if (num == null) {
+    var raw = p.price_display || '';
+    if (!raw) return '?';
+    var str = raw.replace(/,/g, '');
+    var match = str.match(/[\d.]+/);
+    if (!match) return raw.slice(0, 8);
+    num = parseFloat(match[0]);
+    currency = /\$/i.test(raw) || /USD/i.test(raw) ? 'USD' : (/₭|LAK|kip/i.test(raw) ? 'LAK' : null);
+  }
+  if (num == null || isNaN(num)) return '?';
+  var sym = currency ? currencySymbol(currency) : '';
+  if (currency === 'LAK') {
     if (num >= 1e9) return sym + (num/1e9).toFixed(1).replace(/\.0$/,'') + 'B';
     if (num >= 1e6) return sym + (num/1e6).toFixed(0) + 'M';
     if (num >= 1e3) return sym + (num/1e3).toFixed(0) + 'k';
@@ -887,9 +895,15 @@ function showMapPreview(p) {
   // Activity badges
   document.getElementById('mp-act-badges').innerHTML = getActivityBadgesHtml(p, lang);
 
-  var mpPriceText = p.transaction_type === 'sale_or_rent' && (p.sale_price || p.rent_price)
-    ? [p.sale_price, p.rent_price].filter(Boolean).join(' / ')
-    : (p.price_display || {lo:'ສອບຖາມ',en:'Price on request',zh:'价格面议'}[lang]);
+  // formatPropertyPrice() (components.js) prefers structured price_amount/
+  // rent_price_amount, falling back to legacy sale_price/rent_price/
+  // price_display only for a row that predates the pricing migration.
+  var mpPriceInfo = formatPropertyPrice(p, lang);
+  var mpPriceText = mpPriceInfo.isSor
+    ? [mpPriceInfo.saleText, mpPriceInfo.rentText].filter(Boolean).join(' / ')
+    : (mpPriceInfo.singleText
+        ? (mpPriceInfo.singleText + (mpPriceInfo.unitText ? ' ' + mpPriceInfo.unitText : ''))
+        : {lo:'ສອບຖາມ',en:'Price on request',zh:'价格面议'}[lang]);
   document.getElementById('mp-price').textContent = mpPriceText;
 
   var title = p['title_' + lang] || p.title_en || '';
@@ -1199,7 +1213,7 @@ function renderListings() {
   // Derive Best Value: price > 15% below group average (same district + type + transaction, min 3 peers)
   var _grp = {};
   allProperties.forEach(function(p) {
-    var np = parseNumericPrice(p.price_display);
+    var np = p.price_amount != null ? p.price_amount : parseNumericPrice(p.price_display);
     if (!np || !p.district_en || !p.property_type || !p.transaction_type) return;
     var k = p.district_en + '|' + p.property_type + '|' + p.transaction_type;
     if (!_grp[k]) _grp[k] = [];
@@ -1211,7 +1225,7 @@ function renderListings() {
     if (arr.length >= 3) _grpAvg[k] = arr.reduce(function(a,b){return a+b;},0) / arr.length;
   });
   sorted.forEach(function(p) {
-    var np = parseNumericPrice(p.price_display);
+    var np = p.price_amount != null ? p.price_amount : parseNumericPrice(p.price_display);
     var k = (p.district_en||'') + '|' + (p.property_type||'') + '|' + (p.transaction_type||'');
     p._isBestValue = !!(np && _grpAvg[k] && np < _grpAvg[k] * 0.85);
   });

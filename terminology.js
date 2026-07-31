@@ -460,6 +460,18 @@ function resolveUnitType(property, unitType) {
     salePrice:    pick('sale_price'),
     rentPrice:    pick('rent_price'),
     rentPeriod:   pick('rent_period'),
+    // Structured pricing (20260731000000_structured_pricing.sql) -- same
+    // null-means-inherit-from-building contract as every other field here,
+    // via the same pick() helper. priceDisplay/salePrice/rentPrice/rentPeriod
+    // above stay as the legacy derived text; callers building UI should
+    // prefer these structured fields and fall back to the legacy text only
+    // when priceAmount is null (an unbackfilled or pre-migration row).
+    priceAmount:         pick('price_amount'),
+    priceCurrency:       pick('price_currency'),
+    priceFrequency:      pick('price_frequency'),
+    rentPriceAmount:     pick('rent_price_amount'),
+    rentPriceCurrency:   pick('rent_price_currency'),
+    rentPriceFrequency:  pick('rent_price_frequency'),
     bedrooms:  pick('bedrooms'),
     bathrooms: pick('bathrooms'),
     sqm:       pick('sqm'),

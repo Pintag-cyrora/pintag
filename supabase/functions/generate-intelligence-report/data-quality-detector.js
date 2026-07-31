@@ -52,12 +52,14 @@ function isMissingAiDescription(property) {
 function isMissingNeighborhoodInsight(property) {
   return !(property.neighborhood_insight_en && property.neighborhood_insight_en.trim());
 }
-// price_display is the single field every buyer-facing surface actually
-// renders (listings.html/listing.html), regardless of transaction_type --
-// checking it directly, rather than sale_price/rent_price (which are only
-// populated for the 'sale_or_rent' transaction type), is what makes this
-// rule correct across all three transaction types.
+// price_amount (structured pricing, 20260731000000_structured_pricing.sql)
+// is now the reliable source of truth across all three transaction types --
+// falls back to price_display only for a row that predates that
+// migration's backfill. price_display is still checked, not dropped,
+// since it's the single field every buyer-facing surface actually renders
+// (listings.html/listing.html) and remains derived on every save.
 function isMissingPrice(property) {
+  if (property.price_amount != null) return false;
   return !(property.price_display && property.price_display.trim());
 }
 function isMissingLocation(property) {

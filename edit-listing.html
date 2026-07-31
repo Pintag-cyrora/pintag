@@ -305,9 +305,20 @@ label{
     <select class="select" id="propertyType" onchange="renderPropertyTypeFields(this.value)"></select>
   </div>
 
+  <!-- Structured pricing (20260731000000_structured_pricing.sql) -- mirrors
+       admin.html's single-price mode. Transaction type is immutable on this
+       page (see below), so frequency visibility is set once at load, not
+       wired to an onchange. Same "no dual sale+rent leg on this simpler
+       self-service form" scope as add-property.html: a sale_or_rent
+       listing edited here still captures one price, written as the sale
+       leg (price_frequency='one_time'). -->
   <div class="field">
     <label>ລາຄາ</label>
-    <input type="text" class="input" id="price">
+    <div class="rt-field-money">
+      <input type="number" min="0" class="input" id="priceAmount">
+      <select class="select" id="priceCurrency"></select>
+      <select class="select" id="priceFrequency"></select>
+    </div>
   </div>
 
   <div class="field">
@@ -583,6 +594,12 @@ let existingImages = [];
 // on a rental shows every previously-saved field, not just Deposit.
 let _rentalTermsFieldValues = {};
 
+// Captured in loadProperty() -- transaction_type is immutable on this page
+// (no field lets the user change it), so it's read once at load time and
+// reused by buildPricePayload() at save time rather than re-read from a
+// nonexistent form field.
+let _propertyTransactionType = null;
+
 function renderRentalTermsPanel(){
   renderRentalTermsFields(
     document.getElementById('rental-terms-grid'),
@@ -665,6 +682,40 @@ async function compressImage(file){
 
   });
 
+}
+
+// Populates the currency/frequency <select>s once at page load -- their
+// options never change. currency.js/PRICE_FREQUENCY_OPTIONS is the single
+// source of truth (shared with admin.html/add-property.html).
+(function populatePriceSelectors(){
+  const curEl = document.getElementById('priceCurrency');
+  curEl.innerHTML = Object.keys(CURRENCIES).map(function(code){
+    return '<option value="' + code + '">' + CURRENCIES[code].symbol + ' ' + code + '</option>';
+  }).join('');
+  const freqEl = document.getElementById('priceFrequency');
+  freqEl.innerHTML = PRICE_FREQUENCY_OPTIONS.map(function(o){
+    return '<option value="' + o.value + '">' + o.label + '</option>';
+  }).join('');
+})();
+
+// Reads the Price fields and returns both the structured payload and its
+// derived legacy price_display text (currency.js's deriveLegacyPriceFields())
+// -- mirrors add-property.html's buildPricePayload()/admin.html's
+// computeStructuredPrice(). transactionType is passed in explicitly since
+// this page never lets the user change it (loadProperty() captures it into
+// _propertyTransactionType at load time).
+function buildPricePayload(transactionType){
+  const isRental = isRentalTransactionType(transactionType);
+  const raw = document.getElementById('priceAmount').value.trim();
+  const amount = raw === '' ? null : Number(raw);
+  const currency = amount != null ? document.getElementById('priceCurrency').value : null;
+  const frequency = amount == null ? null : (isRental ? document.getElementById('priceFrequency').value : 'one_time');
+  return {
+    price_amount: amount,
+    price_currency: currency,
+    price_frequency: frequency,
+    price_display: deriveLegacyPriceFields(amount, currency, frequency)
+  };
 }
 
 let editingContactId = null;
@@ -903,8 +954,20 @@ async function loadProperty(){
   document.getElementById('title').value =
   data.title_en || '';
 
-  document.getElementById('price').value =
-  data.price_display || '';
+  // Structured fields are the source of truth; price_display is legacy-
+  // derived and never read back into the form (matches admin.html's
+  // editListing()).
+  _propertyTransactionType = data.transaction_type || null;
+  document.getElementById('priceAmount').value =
+    data.price_amount != null ? data.price_amount : '';
+  document.getElementById('priceCurrency').value =
+    data.price_currency || DEFAULT_CURRENCY;
+  document.getElementById('priceFrequency').value =
+    data.price_frequency && data.price_frequency !== 'one_time' ? data.price_frequency : 'monthly';
+  // Frequency only means something for a rental cadence -- see the markup
+  // comment; hidden for a sale the same way admin.html hides it.
+  document.getElementById('priceFrequency').style.display =
+    isRentalTransactionType(data.transaction_type) ? '' : 'none';
 
   document.getElementById('description').value =
   data.description_lo || '';
@@ -1153,6 +1216,9 @@ async function saveProperty(){
     editingContactId = created[0].id;
   }
 
+  const pricePayload =
+    buildPricePayload(_propertyTransactionType);
+
   const payload = {
 
     title_en:
@@ -1165,10 +1231,17 @@ async function saveProperty(){
         'title'
       ).value,
 
+    price_amount:
+      pricePayload.price_amount,
+
+    price_currency:
+      pricePayload.price_currency,
+
+    price_frequency:
+      pricePayload.price_frequency,
+
     price_display:
-      document.getElementById(
-        'price'
-      ).value,
+      pricePayload.price_display,
 
     description_lo:
       document.getElementById(

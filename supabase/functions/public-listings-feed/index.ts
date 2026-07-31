@@ -22,7 +22,15 @@ const corsHeaders = {
 const PUBLIC_FIELDS = [
   'slug', 'title_en', 'title_lo', 'title_zh',
   'property_type', 'property_style', 'transaction_type',
-  'sale_price', 'rent_price', 'rent_period',
+  // Structured pricing (20260731000000_structured_pricing.sql) is the
+  // source of truth; price_display is kept alongside as ready-to-display
+  // text so this consumer doesn't need its own currency/frequency
+  // formatting logic. sale_price/rent_price/rent_period (the old
+  // allowlist) were only ever populated for a sale_or_rent listing --
+  // a plain for_sale/for_rent listing got NO price at all through this
+  // feed before this fix.
+  'price_display', 'price_amount', 'price_currency', 'price_frequency',
+  'rent_price_amount', 'rent_price_currency', 'rent_price_frequency',
   'district', 'district_en', 'district_lo', 'district_zh', 'village',
   'bedrooms', 'bathrooms', 'sqm', 'sqm_land', 'furnished',
   'property_highlight_en', 'property_highlight_lo', 'property_highlight_zh',

@@ -1179,7 +1179,11 @@ async function fetchProperty(slug){
 // ══════════════════════════════════════════════════════════════════
 var SIMILAR_RANK_SIGNALS = [
   { key:'price', weight:100, score:function(t,c){
-      var tp=parseSimPrice(t.price_display), cp=parseSimPrice(c.price_display);
+      // price_amount is the structured source of truth; only fall back to
+      // parsing legacy price_display for a row that predates the pricing
+      // migration and was never backfilled (see structured_pricing.sql).
+      var tp=t.price_amount!=null?t.price_amount:parseSimPrice(t.price_display);
+      var cp=c.price_amount!=null?c.price_amount:parseSimPrice(c.price_display);
       if(!tp||!cp) return 0;
       var diff=Math.abs(tp-cp)/tp;
       if(diff<=0.10) return 100;
@@ -1239,8 +1243,10 @@ async function fetchSimilarProperties(prop){
   PT.time('fetchSimilar');
   var MAX = 8;   // upper bound of the requested 4–8 cards
   var cols = 'id,slug,title_lo,title_en,title_zh,district_lo,district_en,district_zh,' +
-             'images,bedrooms,bathrooms,sqm,sqm_land,price_display,transaction_type,' +
-             'status,property_type,created_at';
+             'images,bedrooms,bathrooms,sqm,sqm_land,price_display,' +
+             'price_amount,price_currency,price_frequency,' +
+             'rent_price_amount,rent_price_currency,rent_price_frequency,' +
+             'transaction_type,status,property_type,created_at';
   var results = [];
 
   if(!prop.property_type){ PT.timeEnd('fetchSimilar'); hideSimilarSection(); return; }
@@ -1443,15 +1449,28 @@ function _resolveOptionLabel(options, value, lang){
   return null;
 }
 
+// Prefers resolveUnitType()'s structured priceAmount/rentPriceAmount fields
+// (via formatMoney()/_ptFrequencySuffix() -- components.js) over the legacy
+// salePrice/rentPrice/priceDisplay text, falling back to the legacy text
+// only for a unit row that predates the pricing migration's backfill.
 function buildUnitPriceText(property, resolved, lang){
   var isSorUnit = property.transaction_type==='sale_or_rent';
-  if(isSorUnit && (resolved.salePrice || resolved.rentPrice)){
-    var periodLabel={month:{lo:'/ ເດືອນ',en:'/ month',zh:'/ 月'},year:{lo:'/ ປີ',en:'/ year',zh:'/ 年'},day:{lo:'/ ວັນ',en:'/ day',zh:'/ 天'}};
-    var period=resolved.rentPeriod||'month';
+  if(isSorUnit){
     var parts=[];
-    if(resolved.salePrice) parts.push(resolved.salePrice);
-    if(resolved.rentPrice) parts.push(resolved.rentPrice+(periodLabel[period]||periodLabel.month)[lang]);
-    return parts.join(' · ');
+    if(resolved.priceAmount!=null || resolved.rentPriceAmount!=null){
+      if(resolved.priceAmount!=null) parts.push(formatMoney(resolved.priceAmount, resolved.priceCurrency));
+      if(resolved.rentPriceAmount!=null) parts.push(formatMoney(resolved.rentPriceAmount, resolved.rentPriceCurrency)+' '+_ptFrequencySuffix(resolved.rentPriceFrequency, lang));
+    }else if(resolved.salePrice || resolved.rentPrice){
+      var periodLabel={month:{lo:'/ ເດືອນ',en:'/ month',zh:'/ 月'},year:{lo:'/ ປີ',en:'/ year',zh:'/ 年'},day:{lo:'/ ວັນ',en:'/ day',zh:'/ 天'}};
+      var period=resolved.rentPeriod||'month';
+      if(resolved.salePrice) parts.push(resolved.salePrice);
+      if(resolved.rentPrice) parts.push(resolved.rentPrice+(periodLabel[period]||periodLabel.month)[lang]);
+    }
+    return parts.length ? parts.join(' · ') : null;
+  }
+  if(resolved.priceAmount!=null){
+    var text=formatMoney(resolved.priceAmount, resolved.priceCurrency);
+    return property.transaction_type==='for_rent' ? (text+' '+_ptFrequencySuffix(resolved.priceFrequency, lang)) : text;
   }
   return resolved.priceDisplay || null;
 }
@@ -1650,15 +1669,21 @@ function buildMockupLayout(){
     share:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>'
   };
 
-  // ── Price ──
+  // ── Price ── formatPropertyPrice() (components.js) is the single source
+  // of truth for structured-vs-legacy resolution -- reads price_amount/
+  // price_currency/price_frequency (and the rent_price_* leg for a
+  // sale_or_rent listing) when present, falling back to the legacy sale_price/
+  // rent_price/price_display text only for a row that predates the pricing
+  // migration's backfill.
   var resolvedPriceHtml='';
-  if(isSor && (data.sale_price || data.rent_price)){
-    var periodLabel={month:{lo:'/ ເດືອນ',en:'/ month',zh:'/ 月'},year:{lo:'/ ປີ',en:'/ year',zh:'/ 年'},day:{lo:'/ ວັນ',en:'/ day',zh:'/ 天'}};
-    var period=data.rent_period||'month';
-    if(data.sale_price) resolvedPriceHtml+='<p class="price-value">'+esc(data.sale_price)+'<span class="price-type-label"> &mdash; <span class="lo-i">ຂາຍ</span><span class="en-i">For Sale</span><span class="zh-i">出售</span></span></p>';
-    if(data.rent_price) resolvedPriceHtml+='<p class="price-value">'+esc(data.rent_price)+'<span class="price-type-label"> '+esc((periodLabel[period]||periodLabel.month)[lang])+' &mdash; <span class="lo-i">ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">出租</span></span></p>';
-  }else if(data.price_display){
-    resolvedPriceHtml='<p class="price-value">'+esc(data.price_display)+'</p>';
+  var priceInfo=formatPropertyPrice(data,lang);
+  if(priceInfo.isSor){
+    if(priceInfo.saleText) resolvedPriceHtml+='<p class="price-value">'+esc(priceInfo.saleText)+'<span class="price-type-label"> &mdash; <span class="lo-i">ຂາຍ</span><span class="en-i">For Sale</span><span class="zh-i">出售</span></span></p>';
+    if(priceInfo.rentText) resolvedPriceHtml+='<p class="price-value">'+esc(priceInfo.rentText)+'<span class="price-type-label"> &mdash; <span class="lo-i">ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">出租</span></span></p>';
+  }else if(priceInfo.isPriceOnRequest){
+    resolvedPriceHtml='<p class="price-inquire">'+L.inquire[lang]+'</p>';
+  }else if(priceInfo.singleText){
+    resolvedPriceHtml='<p class="price-value">'+esc(priceInfo.singleText)+(priceInfo.unitText?' <span class="price-type-label">'+esc(priceInfo.unitText)+'</span>':'')+'</p>';
     if(data.price_lak)resolvedPriceHtml+='<p class="price-lak">'+esc(data.price_lak)+'</p>';
   }else{
     resolvedPriceHtml='<p class="price-inquire">'+L.inquire[lang]+'</p>';
@@ -2267,7 +2292,9 @@ function buildMockupLayout(){
   // Mobile CTA bar
   var mCtaBar=document.getElementById('mobile-cta-bar');
   if(mCtaBar){
-    var mPriceDisplay=selectedUnit?buildUnitPriceText(data,selectedUnit.resolved,lang):(isSor?(data.sale_price||data.rent_price||data.price_display):data.price_display);
+    var mPriceDisplay=selectedUnit?buildUnitPriceText(data,selectedUnit.resolved,lang):(priceInfo.isSor
+      ? ([priceInfo.saleText,priceInfo.rentText].filter(Boolean).join(' · ')||null)
+      : (priceInfo.singleText?(priceInfo.singleText+(priceInfo.unitText?' '+priceInfo.unitText:'')):null));
     var mPriceHtml=mPriceDisplay?'<span class="mcta-price-value">'+esc(mPriceDisplay)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+

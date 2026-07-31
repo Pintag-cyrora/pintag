@@ -298,6 +298,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
+<script src="currency.js"></script>
+<script src="components.js"></script>
 <script src="session.js"></script>
 <script src="tracking.js"></script>
 <script src="analytics-tracking.js"></script>
@@ -435,7 +437,7 @@ async function load(){
     var a=ag[0];
     console.log('Agent ID:', a.id);
     var r2=await fetch(
-      SB+'/rest/v1/properties?managed_by_party_id=eq.'+encodeURIComponent(a.id)+'&order=is_featured.desc,created_at.desc&select=id,slug,title_lo,title_en,price_display,district_lo,district_en,images,transaction_type,is_featured',
+      SB+'/rest/v1/properties?managed_by_party_id=eq.'+encodeURIComponent(a.id)+'&order=is_featured.desc,created_at.desc&select=id,slug,title_lo,title_en,price_display,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency,district_lo,district_en,images,transaction_type,is_featured',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var listings=await r2.json();
     console.log('Listings returned:', listings);
@@ -556,7 +558,13 @@ function render(a,listings){
     tx.textContent=p.transaction_type==='for_sale'?'ຂາຍ':isSor?'ຊື້/ເຊົ່າ':'ເຊົ່າ';imgDiv.appendChild(tx);
     if(p.is_featured){var dot=document.createElement('span');dot.className='p-featured-dot';imgDiv.appendChild(dot);}
     var body=document.createElement('div');body.className='p-body';
-    if(p.price_display){var pe=document.createElement('p');pe.className='p-price';pe.textContent=p.price_display;body.appendChild(pe);}
+    // This page has no language switcher (all hardcoded Lao, e.g. the
+    // ຂາຍ/ຊື້ເຊົ່າ/ເຊົ່າ badge above) -- 'lo' matches that fixed convention.
+    var priceInfo=formatPropertyPrice(p,'lo');
+    var priceText=priceInfo.isSor
+      ? [priceInfo.saleText,priceInfo.rentText].filter(Boolean).join(' / ')
+      : (priceInfo.singleText?(priceInfo.singleText+(priceInfo.unitText?' '+priceInfo.unitText:'')):null);
+    if(priceText){var pe=document.createElement('p');pe.className='p-price';pe.textContent=priceText;body.appendChild(pe);}
     if(p.district_lo||p.district_en){var de=document.createElement('p');de.className='p-loc';de.textContent=p.district_lo||p.district_en;body.appendChild(de);}
     card.appendChild(imgDiv);card.appendChild(body);grid.appendChild(card);
 

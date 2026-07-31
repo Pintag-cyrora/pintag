@@ -397,15 +397,21 @@ body{
 
       </div>
 
+      <!-- Structured pricing (20260731000000_structured_pricing.sql) --
+           mirrors admin.html's single-price mode. This page has no dual
+           sale+rent UI (never did, even before this migration -- the
+           listingType select already offers "ຊື້ / ເຊົ່າ" but only ever
+           had one price field), so sale_or_rent listings created here
+           still capture one price only, written as the sale leg
+           (price_frequency='one_time'), matching how the legacy single
+           #price field already behaved for that case. -->
       <div class="field">
         <label>ລາຄາ</label>
-
-        <input
-          type="text"
-          class="input"
-          id="price"
-          placeholder="$120,000"
-        >
+        <div class="rt-field-money">
+          <input type="number" min="0" class="input" id="priceAmount" placeholder="120000">
+          <select class="select" id="priceCurrency"></select>
+          <select class="select" id="priceFrequency"></select>
+        </div>
       </div>
 
     </div>
@@ -638,8 +644,49 @@ function updateRentalTermsVisibility(){
   const tx = document.getElementById('listingType').value;
   const section = document.getElementById('rental-terms-section');
   if (section) section.style.display = isRentalTransactionType(tx) ? '' : 'none';
+  // Single-mode frequency only means something for a rental cadence -- a
+  // sale's frequency is always forced to 'one_time' at save time (see
+  // buildPricePayload()), and the select never offers a 'one_time' option,
+  // so it's hidden rather than shown-but-meaningless for a sale.
+  const freqEl = document.getElementById('priceFrequency');
+  if (freqEl) freqEl.style.display = isRentalTransactionType(tx) ? '' : 'none';
 }
 updateRentalTermsVisibility();
+
+// Populates the currency/frequency <select>s once at page load -- their
+// options never change. currency.js/PRICE_FREQUENCY_OPTIONS is the single
+// source of truth (shared with admin.html/edit-listing.html).
+(function populatePriceSelectors(){
+  const curEl = document.getElementById('priceCurrency');
+  curEl.innerHTML = Object.keys(CURRENCIES).map(function(code){
+    return '<option value="' + code + '"' + (code === DEFAULT_CURRENCY ? ' selected' : '') + '>' + CURRENCIES[code].symbol + ' ' + code + '</option>';
+  }).join('');
+  const freqEl = document.getElementById('priceFrequency');
+  freqEl.innerHTML = PRICE_FREQUENCY_OPTIONS.map(function(o){
+    return '<option value="' + o.value + '"' + (o.value === 'monthly' ? ' selected' : '') + '>' + o.label + '</option>';
+  }).join('');
+})();
+
+// Reads the Price fields and returns both the structured payload and its
+// derived legacy price_display text (currency.js's deriveLegacyPriceFields())
+// -- the one place "the price" is computed from, mirroring admin.html's
+// computeStructuredPrice(). price_frequency is forced to 'one_time' for any
+// non-rental listingType (including sale_or_rent, which has no separate
+// rent leg on this simpler self-service form -- see the markup comment).
+function buildPricePayload(){
+  const listingType = document.getElementById('listingType').value;
+  const isRental = isRentalTransactionType(listingType);
+  const raw = document.getElementById('priceAmount').value.trim();
+  const amount = raw === '' ? null : Number(raw);
+  const currency = amount != null ? document.getElementById('priceCurrency').value : null;
+  const frequency = amount == null ? null : (isRental ? document.getElementById('priceFrequency').value : 'one_time');
+  return {
+    price_amount: amount,
+    price_currency: currency,
+    price_frequency: frequency,
+    price_display: deriveLegacyPriceFields(amount, currency, frequency)
+  };
+}
 
 // Populate the Property Type dropdown from PROPERTY_TYPES (terminology.js)
 // using Lao labels, since this page is Lao-only UI.
@@ -1023,8 +1070,8 @@ async function saveProperty(){
   const listingType =
     document.getElementById('listingType').value;
 
-  const price =
-    document.getElementById('price').value;
+  const pricePayload =
+    buildPricePayload();
 
   const district =
     document.getElementById('district').value;
@@ -1078,7 +1125,10 @@ async function saveProperty(){
 
         transaction_type:listingType,
 
-        price_display:price,
+        price_amount:pricePayload.price_amount,
+        price_currency:pricePayload.price_currency,
+        price_frequency:pricePayload.price_frequency,
+        price_display:pricePayload.price_display,
 
         district_en:district,
         district_lo:district,
