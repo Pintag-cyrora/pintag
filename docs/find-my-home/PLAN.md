@@ -20,6 +20,8 @@
 | 7 | Marketplace growth | Off-platform properties become a tracked **listing-acquisition pipeline** (§10). |
 | 8 | Analytics & Intelligence | **Extends the existing platform.** No parallel system; reuses the event spine, Metrics Engine, and Insight Engine (§8). |
 | 9 | Legal | Lao-specific considerations documented for professional review; non-blocking (§13). |
+| 10 | Conversion motivation | **Required** multi-select at submission: *why Find My Home instead of searching yourself?* (§5.1, §8.6) |
+| 11 | Property choice drivers | Multi-select at completion: *what made you choose this property?* (§5.5, §8.6) |
 
 ---
 
@@ -187,6 +189,13 @@ pets_required       boolean
 move_in_date        date
 requirements        text
 
+-- WHY they came (decision 10). Required at submission. Registry-backed
+-- (FMH_MOTIVATIONS, §5.12) — deliberately NO DB CHECK constraint, matching
+-- properties.amenities / properties.features, so adding a motivation is one
+-- line of JS rather than a migration.
+motivations         text[] NOT NULL default '{}'
+motivation_other    text                      -- free text when 'other' selected
+
 -- THREE INDEPENDENT AXES (decision 6)
 payment_status      text NOT NULL default 'not_required'
                     CHECK IN ('not_required','awaiting_payment','pending_verification',
@@ -288,8 +297,20 @@ agent_responded_at
 resolution          text CHECK IN ('converted','not_converted','needs_review','unresolved')
 property_id         uuid FK properties NULL
 external_property   text                 -- rented something off-platform
+
+-- WHY they chose it (decision 11). Only asked when customer_response='yes';
+-- meaningless otherwise. Registry-backed (FMH_CHOICE_FACTORS, §5.12), same
+-- no-CHECK rationale as motivations.
+choice_factors      text[] NOT NULL default '{}'
+choice_factor_other text
+
 resolved_by, resolved_at, admin_note
 ```
+
+**Optional, unlike motivations.** The completion survey already suffers
+non-response (§3.4); making a second question mandatory risks losing the outcome
+answer too, which matters more. Both questions live on **one screen** as tap
+chips — one interaction, not two.
 
 **`commission_reported` is deliberately removed** (Revision 1 had it). With
 decision 4, commission has no bearing on any Pintag process, and collecting a
@@ -357,6 +378,56 @@ Token hygiene: 32-byte base64url (not brute-forceable), rotatable on request,
 expiring N days after `closed_at`, never carrying credentials or payment
 instruments, rate-limited lookup, and every access appended to
 `fmh_request_events`.
+
+### 5.12 Registries (decisions 10 & 11)
+
+Both new signals are registry-backed, following the `AMENITIES` / `FEATURES` /
+`PROPERTY_TYPES` convention — trilingual labels, stable machine keys, display
+order = declaration order. They live in `find-my-home.js` alongside
+`FMH_NOTIFIABLE_EVENTS` (§9.1) and the service-tier definitions.
+
+```js
+// Stable keys are the contract: labels may be reworded freely, keys never
+// change, because historical rows are interpreted through them.
+var FMH_MOTIVATIONS = {
+  no_time:            { en:'I don\'t have time',              lo:'…', zh:'…' },
+  couldnt_find:       { en:'I couldn\'t find suitable listings', lo:'…', zh:'…' },
+  new_to_laos:        { en:'I\'m new to Laos',                 lo:'…', zh:'…' },
+  distrust_facebook:  { en:'I don\'t trust Facebook',          lo:'…', zh:'…' },
+  language_barrier:   { en:'I don\'t speak Lao',               lo:'…', zh:'…' },
+  need_local_advice:  { en:'I need local advice',              lo:'…', zh:'…' },
+  relocating_for_work:{ en:'I\'m relocating for work',         lo:'…', zh:'…' },
+  want_negotiation:   { en:'I want someone to negotiate for me',lo:'…', zh:'…' },
+  other:              { en:'Other',                            lo:'…', zh:'…' }
+};
+
+var FMH_CHOICE_FACTORS = {
+  price:              { en:'Price',              lo:'…', zh:'…' },
+  location:           { en:'Location',           lo:'…', zh:'…' },
+  size:               { en:'Size',               lo:'…', zh:'…' },
+  furnished:          { en:'Furnished',          lo:'…', zh:'…' },
+  parking:            { en:'Parking',            lo:'…', zh:'…' },
+  pet_friendly:       { en:'Pet friendly',       lo:'…', zh:'…' },
+  school_nearby:      { en:'School nearby',      lo:'…', zh:'…' },
+  workplace_nearby:   { en:'Workplace nearby',   lo:'…', zh:'…' },
+  agent_recommendation:{en:'Agent recommendation',lo:'…', zh:'…' },
+  negotiation:        { en:'Negotiation',        lo:'…', zh:'…' },
+  other:              { en:'Other',              lo:'…', zh:'…' }
+};
+```
+
+Three deliberate choices:
+
+1. **Trilingual, not English-only.** These are customer-facing questions on a
+   trilingual site. An English-only form would exclude exactly the Lao-speaking
+   customers whose motivation data is most interesting.
+2. **No DB CHECK constraint** on the `text[]` columns, matching
+   `properties.amenities`. Adding a motivation stays a one-line JS change. The
+   trade — a typo'd key could be written — is handled by the registry being the
+   only writer, exactly as amenities work today.
+3. **Six of the eleven choice factors map to fields Pintag already stores**
+   (price, location, size, furnished, parking, pet-friendly). That is what makes
+   §8.6's stated-vs-revealed analysis computable rather than merely descriptive.
 
 ### 5.11 Marketplace isolation invariant
 
