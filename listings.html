@@ -114,8 +114,21 @@ nav{
 .tx-btn.active{background:var(--teal);color:#fff;border-color:var(--teal);box-shadow:0 2px 10px rgba(45,140,140,0.25);}
 .tx-btn:hover:not(.active){background:rgba(45,140,140,0.06);border-color:rgba(45,140,140,0.28);}
 
-.filters{display:flex;gap:6px;flex:1;overflow-x:auto;scrollbar-width:none;}
+.filters-wrap{position:relative;flex:1;min-width:0;}
+.filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;scroll-snap-type:x proximity;}
 .filters::-webkit-scrollbar{display:none;}
+.filter-btn{scroll-snap-align:start;}
+/* Bug 2 fix: right-edge fade signaling more Property Type chips exist
+   off-screen. Hidden by default (no overflow yet, e.g. desktop with few
+   types); shown/hidden by updateFiltersFade() based on actual scroll
+   position, not just presence of overflow, so it fades out once the user
+   has actually scrolled to the last chip. */
+.filters-fade{
+  position:absolute;top:0;right:0;bottom:0;width:32px;
+  background:linear-gradient(to right, rgba(255,255,255,0), var(--white) 75%);
+  pointer-events:none;opacity:0;transition:opacity 0.2s;
+}
+.filters-wrap.has-more-filters .filters-fade{opacity:1;}
 .filter-btn{
   font-size:11px;font-weight:400;padding:5px 14px;
   border-radius:2px;
@@ -133,6 +146,21 @@ nav{
 .avail-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans',sans-serif;white-space:nowrap;letter-spacing:0.02em;}
 .avail-btn.active{background:var(--ink);color:#fff;}
 .avail-btn:hover:not(.active){background:rgba(26,32,36,0.06);}
+
+/* Pet Friendly / No Smoking — rental-only filters (Priority 2). Same pill
+   shape/sizing as .filter-btn for visual consistency, but a teal active
+   state (matching .tx-btn's Rent-branded teal) since these only ever
+   apply within a rental context, unlike Property Type's neutral ink. */
+.rental-filters{display:flex;gap:6px;flex-shrink:0;}
+.rf-btn{
+  font-size:11px;font-weight:400;padding:5px 12px;
+  border-radius:2px;display:inline-flex;align-items:center;gap:4px;
+  border:1px solid var(--border);background:transparent;color:var(--ink-muted);
+  cursor:pointer;white-space:nowrap;transition:all 0.2s;
+  font-family:'DM Sans',sans-serif;letter-spacing:0.02em;
+}
+.rf-btn.active{background:var(--teal);color:#fff;border-color:var(--teal);}
+.rf-btn:hover:not(.active){background:rgba(45,140,140,0.06);border-color:rgba(45,140,140,0.28);}
 .sort-select{
   font-size:11px;font-weight:400;padding:5px 24px 5px 10px;
   border-radius:2px;
@@ -223,11 +251,13 @@ nav{
   /* Second filter-bar row wraps for one-handed reach: scrollable type
      pills get their own line, status/sort/view controls share the next. */
   .filter-bar-row.filter-bar-row2{flex-wrap:wrap;row-gap:8px;}
-  .filter-bar-row2 .filters{flex:1 1 100%;order:1;}
+  .filter-bar-row2 .filters-wrap{flex:1 1 100%;order:1;}
   .filter-bar-row2 .filter-sep{display:none;}
   .filter-bar-row2 .avail-toggle{order:2;}
-  .filter-bar-row2 .sort-select{order:3;flex:1;min-width:0;}
-  .filter-bar-row2 .view-toggle{order:4;margin-left:0;}
+  .filter-bar-row2 .rental-filters{order:3;}
+  .filter-bar-row2 #rental-filters-sep{display:none !important;}
+  .filter-bar-row2 .sort-select{order:4;flex:1;min-width:0;}
+  .filter-bar-row2 .view-toggle{order:5;margin-left:0;}
 }
 @media(max-width:500px){
   .listings-grid{
@@ -374,31 +404,43 @@ nav{
       </div>
     </div>
     <div class="filter-bar-row filter-bar-row2">
-      <div class="filters" id="filters">
-        <button class="filter-btn active" data-filter="all" onclick="setTypeFilter('all',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: All">
-          <span class="lo-i">ທັງໝົດ</span><span class="en-i">All Types</span><span class="zh-i">全部</span>
-        </button>
-        <button class="filter-btn" data-filter="house" onclick="setTypeFilter('house',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: House">
-          <span class="lo-i">ເຮືອນ</span><span class="en-i">House</span><span class="zh-i">住宅</span>
-        </button>
-        <button class="filter-btn" data-filter="townhouse" onclick="setTypeFilter('townhouse',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Townhouse">
-          <span class="lo-i">ທາວເຮົາ</span><span class="en-i">Townhouse</span><span class="zh-i">联排别墅</span>
-        </button>
-        <button class="filter-btn" data-filter="villa" onclick="setTypeFilter('villa',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Villa">
-          <span class="lo-i">ວິລລ່າ</span><span class="en-i">Villa</span><span class="zh-i">别墅</span>
-        </button>
-        <button class="filter-btn" data-filter="apartment" onclick="setTypeFilter('apartment',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Apartment">
-          <span class="lo-i">ອາພາດເມັນ</span><span class="en-i">Apartment</span><span class="zh-i">公寓</span>
-        </button>
-        <button class="filter-btn" data-filter="condo" onclick="setTypeFilter('condo',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Condo">
-          <span class="lo-i">ຄອນໂດ</span><span class="en-i">Condo</span><span class="zh-i">公寓楼</span>
-        </button>
-        <button class="filter-btn" data-filter="commercial" onclick="setTypeFilter('commercial',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Commercial">
-          <span class="lo-i">ອາຄານພານິດ</span><span class="en-i">Commercial</span><span class="zh-i">商业</span>
-        </button>
-        <button class="filter-btn" data-filter="land" onclick="setTypeFilter('land',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Land">
-          <span class="lo-i">ທີ່ດິນ</span><span class="en-i">Land</span><span class="zh-i">土地</span>
-        </button>
+      <!-- filters-wrap + filters-fade: the pill row scrolls horizontally
+           and always clips mid-chip when more types exist off-screen (no
+           extra markup needed for that "peek" — flex-shrink:0 chips inside
+           a narrower overflow-x:auto container already do it). The fade
+           overlay is the discoverability signal on top of that peek: it
+           only appears while there's unscrolled content to the right
+           (toggled by updateFiltersFade() below), so it disappears once
+           the user has scrolled to the end instead of permanently
+           suggesting more content. -->
+      <div class="filters-wrap" id="filters-wrap">
+        <div class="filters" id="filters">
+          <button class="filter-btn active" data-filter="all" onclick="setTypeFilter('all',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: All">
+            <span class="lo-i">ທັງໝົດ</span><span class="en-i">All Types</span><span class="zh-i">全部</span>
+          </button>
+          <button class="filter-btn" data-filter="house" onclick="setTypeFilter('house',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: House">
+            <span class="lo-i">ເຮືອນ</span><span class="en-i">House</span><span class="zh-i">住宅</span>
+          </button>
+          <button class="filter-btn" data-filter="townhouse" onclick="setTypeFilter('townhouse',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Townhouse">
+            <span class="lo-i">ທາວເຮົາ</span><span class="en-i">Townhouse</span><span class="zh-i">联排别墅</span>
+          </button>
+          <button class="filter-btn" data-filter="villa" onclick="setTypeFilter('villa',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Villa">
+            <span class="lo-i">ວິລລ່າ</span><span class="en-i">Villa</span><span class="zh-i">别墅</span>
+          </button>
+          <button class="filter-btn" data-filter="apartment" onclick="setTypeFilter('apartment',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Apartment">
+            <span class="lo-i">ອາພາດເມັນ</span><span class="en-i">Apartment</span><span class="zh-i">公寓</span>
+          </button>
+          <button class="filter-btn" data-filter="condo" onclick="setTypeFilter('condo',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Condo">
+            <span class="lo-i">ຄອນໂດ</span><span class="en-i">Condo</span><span class="zh-i">公寓楼</span>
+          </button>
+          <button class="filter-btn" data-filter="commercial" onclick="setTypeFilter('commercial',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Commercial">
+            <span class="lo-i">ອາຄານພານິດ</span><span class="en-i">Commercial</span><span class="zh-i">商业</span>
+          </button>
+          <button class="filter-btn" data-filter="land" onclick="setTypeFilter('land',this)" data-track="filter-property-type" data-track-type="filter" data-track-label="Type: Land">
+            <span class="lo-i">ທີ່ດິນ</span><span class="en-i">Land</span><span class="zh-i">土地</span>
+          </button>
+        </div>
+        <div class="filters-fade" aria-hidden="true"></div>
       </div>
       <div class="filter-sep"></div>
       <!-- Priority 2: All Listings / Available Only — its own visible
@@ -409,6 +451,23 @@ nav{
         </button>
         <button class="avail-btn" data-avail="available" onclick="setAvailFilter('available',this)" data-track="filter-availability" data-track-type="filter" data-track-label="Availability: Available Only">
           <span class="lo-i">ວ່າງເທົ່ານັ້ນ</span><span class="en-i">Available Only</span><span class="zh-i">仅在售/租</span>
+        </button>
+      </div>
+      <!-- Priority 2: Pet Friendly / No Smoking. Only meaningful for
+           rentals, so only shown when the Listing Type row above is set to
+           For Rent (toggleRentalFiltersVisibility(), called from
+           setTxFilter()). Reuses resolveRentalTerms()/pet_policy/
+           smoking_policy from rental-terms.js -- no separate filter logic
+           or duplicate field definitions. Kept to just these two per the
+           "keep search simple" scope for this release; parking/internet/
+           furnished/deposits/etc. stay listing-detail-only for now. -->
+      <div class="filter-sep" id="rental-filters-sep" style="display:none;"></div>
+      <div class="rental-filters" id="rental-filters" style="display:none;">
+        <button type="button" class="rf-btn" id="rf-pet" onclick="toggleRentalFilter('pet',this)" data-track="filter-pet-friendly" data-track-type="filter" data-track-label="Filter: Pet Friendly">
+          <span aria-hidden="true">🐶</span> <span class="lo-i">ລ້ຽງສັດໄດ້</span><span class="en-i">Pet Friendly</span><span class="zh-i">允许宠物</span>
+        </button>
+        <button type="button" class="rf-btn" id="rf-nosmoke" onclick="toggleRentalFilter('smoking',this)" data-track="filter-no-smoking" data-track-type="filter" data-track-label="Filter: No Smoking">
+          <span aria-hidden="true">🚭</span> <span class="lo-i">ຫ້າມສູບຢາ</span><span class="en-i">No Smoking</span><span class="zh-i">禁止吸烟</span>
         </button>
       </div>
       <div class="filter-sep"></div>
@@ -479,6 +538,7 @@ nav{
 <script src="dev-banner.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
+<script src="rental-terms.js"></script>
 <script src="listing-status.js"></script>
 <script src="components.js"></script>
 <script src="session.js"></script>
@@ -503,12 +563,23 @@ let currentTxFilter = 'all';
 let currentTypeFilter = 'all';
 let currentSort = 'newest';
 let currentAvailOnly = false;
+let currentPetFriendly = false;
+let currentNoSmoking = false;
 
-// "Available Only" excludes sold/rented/under_offer; a null/undefined/
-// literal 'available' status all count as available (matches getBadgeHtml's
-// existing status handling below).
+// "Available Only" excludes sold/rented/reserved/off_market/fully_occupied —
+// must read market_status via the canonical resolveListingStatus()
+// (listing-status.js), the ONE gate for "is this listing publicly
+// available" (see that file's header). The legacy properties.status column
+// this used to check is now kept in sync with workflow_status only
+// (20260729000000_listing_status_model.sql's trg_properties_status_sync
+// comment: "a sold listing stays visible/browsable" via legacy status) —
+// it is always 'active' for any live listing regardless of market_status,
+// so checking it here silently filtered out every listing once that
+// migration shipped. This is what made "Available Only" appear broken.
 function isAvailableStatus(p) {
-  return !p.status || p.status === 'available';
+  return (typeof resolveListingStatus === 'function')
+    ? resolveListingStatus(p).isPubliclyAvailable
+    : (!p.status || p.status === 'available');
 }
 
 function setAvailFilter(val, btn) {
@@ -752,7 +823,8 @@ function renderMap() {
     var matchesTx = currentTxFilter === 'all' || p.transaction_type === currentTxFilter;
     var matchesType = currentTypeFilter === 'all' || p.property_type === currentTypeFilter;
     var matchesAvail = !currentAvailOnly || isAvailableStatus(p);
-    return matchesTx && matchesType && matchesAvail;
+    var matchesRental = matchesRentalFilters(p);
+    return matchesTx && matchesType && matchesAvail && matchesRental;
   });
 
   filtered.forEach(function(p) {
@@ -870,9 +942,54 @@ function setTxFilter(filter, btn) {
   currentTxFilter = filter;
   document.querySelectorAll('.tx-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
+  updateRentalFiltersVisibility();
   closeMapPreview();
   if (_viewMode === 'map') renderMap();
   else renderListings();
+}
+
+// Pet Friendly / No Smoking only make sense once the visitor has actually
+// narrowed to rentals -- showing them under "All" or "For Sale" would ask
+// a sale-listing question with no possible answer. Also clears any active
+// selection when hidden, so switching away from For Rent and back never
+// leaves a stale filter silently applied.
+function updateRentalFiltersVisibility() {
+  var show = currentTxFilter === 'for_rent';
+  var wrap = document.getElementById('rental-filters');
+  var sep = document.getElementById('rental-filters-sep');
+  if (wrap) wrap.style.display = show ? '' : 'none';
+  if (sep) sep.style.display = show ? '' : 'none';
+  if (!show && (currentPetFriendly || currentNoSmoking)) {
+    currentPetFriendly = false;
+    currentNoSmoking = false;
+    var petBtn = document.getElementById('rf-pet');
+    var smokeBtn = document.getElementById('rf-nosmoke');
+    if (petBtn) petBtn.classList.remove('active');
+    if (smokeBtn) smokeBtn.classList.remove('active');
+  }
+}
+
+function toggleRentalFilter(kind, btn) {
+  if (kind === 'pet') { currentPetFriendly = !currentPetFriendly; }
+  else if (kind === 'smoking') { currentNoSmoking = !currentNoSmoking; }
+  btn.classList.toggle('active');
+  closeMapPreview();
+  if (_viewMode === 'map') renderMap();
+  else renderListings();
+}
+
+// Single source of truth: reads the exact same rental-terms.js registry/
+// resolver Add Listing, Edit Listing, Admin, and the public listing page
+// all read from -- no parallel pet/smoking filter logic. Building-level
+// values only (no unit_types embed on this list query), matching how
+// every other card-level fact on this page already works.
+function matchesRentalFilters(p) {
+  if (!currentPetFriendly && !currentNoSmoking) return true;
+  if (typeof resolveRentalTerms !== 'function') return true;
+  var values = resolveRentalTerms(p, null).values;
+  if (currentPetFriendly && values.pet_policy !== 'allowed') return false;
+  if (currentNoSmoking && values.smoking_policy !== 'not_allowed') return false;
+  return true;
 }
 
 function setTypeFilter(filter, btn) {
@@ -1008,7 +1125,8 @@ function renderListings() {
     var matchesTx = currentTxFilter === 'all' || p.transaction_type === currentTxFilter;
     var matchesType = currentTypeFilter === 'all' || p.property_type === currentTypeFilter;
     var matchesAvail = !currentAvailOnly || isAvailableStatus(p);
-    return matchesTx && matchesType && matchesAvail;
+    var matchesRental = matchesRentalFilters(p);
+    return matchesTx && matchesType && matchesAvail && matchesRental;
   });
   var sorted = sortProperties(filtered);
   updateListingsMetaForFilters();
@@ -1140,6 +1258,29 @@ function setLang(lang, btn) {
   updateSortLabels();
   renderListings();
 }
+
+// Bug 2 fix: drives the right-edge fade on the horizontally-scrollable
+// Property Type row. Shown only while there is real unscrolled content
+// past the right edge (not just "content is scrollable in principle") so
+// it correctly disappears once the user scrolls to the last chip.
+function updateFiltersFade() {
+  var scroller = document.getElementById('filters');
+  var wrap = document.getElementById('filters-wrap');
+  if (!scroller || !wrap) return;
+  var hasMore = scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft > 2;
+  wrap.classList.toggle('has-more-filters', hasMore);
+}
+(function initFiltersFade() {
+  var scroller = document.getElementById('filters');
+  if (!scroller) return;
+  scroller.addEventListener('scroll', updateFiltersFade, { passive: true });
+  window.addEventListener('resize', updateFiltersFade);
+  // Fonts/layout may still be settling on first paint -- recheck one tick
+  // later so the initial fade state (shown when the row genuinely
+  // overflows) is accurate rather than racing layout.
+  updateFiltersFade();
+  setTimeout(updateFiltersFade, 0);
+})();
 
 loadListings();
 

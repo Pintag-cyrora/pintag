@@ -126,6 +126,11 @@ var RENTAL_PARKING_OPTIONS = [
   {value:'extra_fee',   label:{en:'Available (Extra Fee)', lo:'ມີໃຫ້ (ເສຍຄ່າເພີ່ມ)', zh:'可提供(需额外付费)'}},
   {value:'not_available', label:{en:'Not Available',    lo:'ບໍ່ມີ',            zh:'不提供'}}
 ];
+var RENTAL_SMOKING_POLICY_OPTIONS = [
+  {value:'allowed',        label:{en:'Smoking Allowed',    lo:'ສູບຢາໄດ້',           zh:'允许吸烟'}},
+  {value:'not_allowed',    label:{en:'No Smoking',         lo:'ຫ້າມສູບຢາ',          zh:'禁止吸烟'}},
+  {value:'designated_areas',label:{en:'Designated Areas Only', lo:'ສະເພາະບ່ອນທີ່ກຳນົດ', zh:'仅限指定区域'}}
+];
 
 // Included Services — a filtered, rental-specific registry, same shape as
 // AMENITIES ({key: {en,lo,zh,icon}}) but deliberately its own set: this is
@@ -146,7 +151,9 @@ var RENTAL_SERVICES = {
 // a future grouped admin/public UI — not consumed by any renderer yet.
 var RENTAL_TERMS_FIELDS = [
   { key:'deposit', kind:'money_multiplier', group:'financial',
-    label:{en:'Deposit', lo:'ເງິນມັດຈຳ', zh:'押金'}, typeOptions:RENTAL_MONTHS_OPTIONS },
+    label:{en:'Security Deposit', lo:'ເງິນມັດຈຳ', zh:'押金'}, typeOptions:RENTAL_MONTHS_OPTIONS },
+  { key:'cleaning_deposit', kind:'money_multiplier', group:'financial',
+    label:{en:'Cleaning Deposit', lo:'ເງິນມັດຈຳທຳຄວາມສະອາດ', zh:'清洁押金'}, typeOptions:RENTAL_MONTHS_OPTIONS },
   { key:'advance_rent', kind:'money_multiplier', group:'financial',
     label:{en:'Advance Rent', lo:'ຄ່າເຊົ່າລ່ວງໜ້າ', zh:'预付租金'}, typeOptions:RENTAL_MONTHS_OPTIONS },
   { key:'electricity', kind:'utility', group:'utilities',
@@ -181,9 +188,25 @@ var RENTAL_TERMS_FIELDS = [
     label:{en:'Lease Length', lo:'ໄລຍະເວລາເຊົ່າ', zh:'租期'}, options:RENTAL_LEASE_LENGTH_OPTIONS },
   { key:'pet_policy', kind:'select', group:'services',
     label:{en:'Pet Policy', lo:'ນະໂຍບາຍລ້ຽງສັດ', zh:'宠物政策'}, options:RENTAL_PET_POLICY_OPTIONS },
+  { key:'smoking_policy', kind:'select', group:'services',
+    label:{en:'Smoking Policy', lo:'ນະໂຍບາຍສູບຢາ', zh:'吸烟政策'}, options:RENTAL_SMOKING_POLICY_OPTIONS },
   { key:'parking', kind:'select', group:'services',
     label:{en:'Parking', lo:'ບ່ອນຈອດລົດ', zh:'停车位'}, options:RENTAL_PARKING_OPTIONS }
 ];
+
+// isRentalTransactionType(tx) -- the single source of truth for "does this
+// listing_type mean rental terms are relevant" (Rental Terms refactor:
+// base gating on listing_type === rent, not property_type). A property_type
+// of any kind (apartment/condo/house/villa/townhouse/shophouse/office/
+// warehouse/land/etc.) is irrelevant here on purpose -- rental contract
+// terms are a function of HOW a property is being transacted, never WHAT
+// kind of property it is. Every consumer that needs to decide whether to
+// show/require Rental Terms (admin.html, add-property.html,
+// edit-listing.html, listings.html's search filters) calls this instead of
+// re-deriving the for_rent/sale_or_rent check inline.
+function isRentalTransactionType(transactionType) {
+  return transactionType === 'for_rent' || transactionType === 'sale_or_rent';
+}
 
 // ---------------------------------------------------------------------------
 // Resolver — the sole public read API (rule 3). Pure (rule 5). Frozen
@@ -348,10 +371,36 @@ function summarizeRentalTermOverrides(overriddenKeys, values, lang, maxShown) {
 // Admin rendering -- DOM-touching, browser-only (unlike the resolver/
 // formatter functions above, which stay portable per this file's header).
 // Kept generic over `kind`, never over field key (rule 4).
+//
+// Every renderer below takes `lang` as its final argument, defaulting to
+// 'en' when omitted -- admin.html (the original, only caller before this)
+// never passes it, so its output is byte-for-byte unchanged. add-property.
+// html/edit-listing.html pass 'lo' so the self-service portal can reuse
+// this exact renderer instead of hand-rolling a second, partial one (which
+// is how those two pages ended up exposing only Deposit in the first
+// place -- see the Rental Terms listing_type refactor).
 // ---------------------------------------------------------------------------
 
+// Renderer-chrome strings (placeholders, static option labels) that aren't
+// part of RENTAL_TERMS_FIELDS itself -- kept here, not duplicated per
+// caller, so add-property.html/edit-listing.html get the same trilingual
+// treatment as every registry-driven label without a second copy of this
+// text living in either HTML file.
+var _RT_CHROME = {
+  selectPlaceholder: { en: '— select —', lo: '— ເລືອກ —', zh: '— 请选择 —' },
+  blank:             { en: '—', lo: '—', zh: '—' },
+  rateOptional:      { en: 'Rate (optional)', lo: 'ອັດຕາ (ຖ້າມີ)', zh: '费率（可选）' },
+  feeName:           { en: 'Fee name', lo: 'ຊື່ຄ່າທຳນຽມ', zh: '费用名称' },
+  amount:            { en: 'Amount', lo: 'ຈຳນວນ', zh: '金额' },
+  oneTime:           { en: 'One-Time', lo: 'ເທື່ອດຽວ', zh: '一次性' },
+  monthly:           { en: 'Monthly', lo: 'ລາຍເດືອນ', zh: '每月' },
+  addFee:            { en: '+ Add Fee', lo: '+ ເພີ່ມຄ່າທຳນຽມ', zh: '+ 添加费用' }
+};
+function _rtChrome(key, lang) { return (_RT_CHROME[key][lang] || _RT_CHROME[key].en); }
+
 var RENTAL_TERM_KIND_RENDERERS = {
-  money_multiplier: function(fieldDef, value, onChange) {
+  money_multiplier: function(fieldDef, value, onChange, lang) {
+    lang = lang || 'en';
     var row = document.createElement('div');
     row.className = 'rt-field rt-field-money';
     var typeSel = document.createElement('select');
@@ -362,11 +411,11 @@ var RENTAL_TERM_KIND_RENDERERS = {
     // rent multiplier. That is the data-entry half of the "Deposit: 100
     // Months" bug -- the formatter change alone would not have prevented it.
     var ph = document.createElement('option');
-    ph.value = ''; ph.textContent = '— select —';
+    ph.value = ''; ph.textContent = _rtChrome('selectPlaceholder', lang);
     typeSel.appendChild(ph);
     fieldDef.typeOptions.forEach(function(opt) {
       var o = document.createElement('option');
-      o.value = opt.value; o.textContent = opt.label.en;
+      o.value = opt.value; o.textContent = opt.label[lang] || opt.label.en;
       if (value && value.type === opt.value) o.selected = true;
       typeSel.appendChild(o);
     });
@@ -403,19 +452,20 @@ var RENTAL_TERM_KIND_RENDERERS = {
     row.appendChild(typeSel); row.appendChild(numInput); row.appendChild(curSel);
     return row;
   },
-  utility: function(fieldDef, value, onChange) {
+  utility: function(fieldDef, value, onChange, lang) {
+    lang = lang || 'en';
     var row = document.createElement('div');
     row.className = 'rt-field rt-field-utility';
     var typeSel = document.createElement('select');
     typeSel.className = 'form-input rt-input';
     fieldDef.typeOptions.forEach(function(opt) {
       var o = document.createElement('option');
-      o.value = opt.value; o.textContent = opt.label.en;
+      o.value = opt.value; o.textContent = opt.label[lang] || opt.label.en;
       if (value && value.type === opt.value) o.selected = true;
       typeSel.appendChild(o);
     });
     var rateInput = document.createElement('input');
-    rateInput.type = 'text'; rateInput.placeholder = 'Rate (optional)'; rateInput.className = 'form-input rt-input';
+    rateInput.type = 'text'; rateInput.placeholder = _rtChrome('rateOptional', lang); rateInput.className = 'form-input rt-input';
     rateInput.value = (value && value.rate) ? value.rate : '';
     function emit() {
       onChange(fieldDef.key, typeSel.value ? { type: typeSel.value, rate: rateInput.value.trim() || null } : null);
@@ -424,21 +474,23 @@ var RENTAL_TERM_KIND_RENDERERS = {
     row.appendChild(typeSel); row.appendChild(rateInput);
     return row;
   },
-  select: function(fieldDef, value, onChange) {
+  select: function(fieldDef, value, onChange, lang) {
+    lang = lang || 'en';
     var sel = document.createElement('select');
     sel.className = 'form-input rt-input rt-field';
-    var blank = document.createElement('option'); blank.value = ''; blank.textContent = '—';
+    var blank = document.createElement('option'); blank.value = ''; blank.textContent = _rtChrome('blank', lang);
     sel.appendChild(blank);
     fieldDef.options.forEach(function(opt) {
       var o = document.createElement('option');
-      o.value = opt.value; o.textContent = opt.label.en;
+      o.value = opt.value; o.textContent = opt.label[lang] || opt.label.en;
       if (value === opt.value) o.selected = true;
       sel.appendChild(o);
     });
     sel.onchange = function() { onChange(fieldDef.key, sel.value || null); };
     return sel;
   },
-  checkbox_ref: function(fieldDef, value, onChange) {
+  checkbox_ref: function(fieldDef, value, onChange, lang) {
+    lang = lang || 'en';
     var wrap = document.createElement('div');
     wrap.className = 'rt-field rt-field-checkboxes';
     var registry = (fieldDef.registry === 'RENTAL_SERVICES') ? RENTAL_SERVICES : {};
@@ -453,12 +505,13 @@ var RENTAL_TERM_KIND_RENDERERS = {
         onChange(fieldDef.key, current.length ? current : null);
       };
       label.appendChild(cb);
-      label.appendChild(document.createTextNode(' ' + registry[key].icon + ' ' + registry[key].en));
+      label.appendChild(document.createTextNode(' ' + registry[key].icon + ' ' + (registry[key][lang] || registry[key].en)));
       wrap.appendChild(label);
     });
     return wrap;
   },
-  fee_list: function(fieldDef, value, onChange) {
+  fee_list: function(fieldDef, value, onChange, lang) {
+    lang = lang || 'en';
     var wrap = document.createElement('div');
     wrap.className = 'rt-field rt-field-fees';
     var rows = Array.isArray(value) ? value.slice() : [];
@@ -468,15 +521,15 @@ var RENTAL_TERM_KIND_RENDERERS = {
         var row = document.createElement('div');
         row.className = 'rt-fee-row';
         var labelInput = document.createElement('input');
-        labelInput.type = 'text'; labelInput.placeholder = 'Fee name'; labelInput.className = 'form-input rt-input';
+        labelInput.type = 'text'; labelInput.placeholder = _rtChrome('feeName', lang); labelInput.className = 'form-input rt-input';
         labelInput.value = fee.label || '';
         var amountInput = document.createElement('input');
-        amountInput.type = 'text'; amountInput.placeholder = 'Amount'; amountInput.className = 'form-input rt-input';
+        amountInput.type = 'text'; amountInput.placeholder = _rtChrome('amount', lang); amountInput.className = 'form-input rt-input';
         amountInput.value = fee.amount || '';
         var freqSel = document.createElement('select');
         freqSel.className = 'form-input rt-input';
         ['one_time', 'monthly'].forEach(function(f) {
-          var o = document.createElement('option'); o.value = f; o.textContent = f === 'one_time' ? 'One-Time' : 'Monthly';
+          var o = document.createElement('option'); o.value = f; o.textContent = f === 'one_time' ? _rtChrome('oneTime', lang) : _rtChrome('monthly', lang);
           if (fee.frequency === f) o.selected = true;
           freqSel.appendChild(o);
         });
@@ -492,7 +545,7 @@ var RENTAL_TERM_KIND_RENDERERS = {
         wrap.appendChild(row);
       });
       var addBtn = document.createElement('button');
-      addBtn.type = 'button'; addBtn.textContent = '+ Add Fee'; addBtn.className = 'rt-fee-add';
+      addBtn.type = 'button'; addBtn.textContent = _rtChrome('addFee', lang); addBtn.className = 'rt-fee-add';
       addBtn.onclick = function() { rows.push({label:'', amount:'', frequency:'one_time'}); redraw(); };
       wrap.appendChild(addBtn);
     }
@@ -501,9 +554,9 @@ var RENTAL_TERM_KIND_RENDERERS = {
   }
 };
 
-// renderRentalTermsFields(container, values, onChange, fieldKeys) -- the
-// generic renderer every admin/self-service surface calls. Adding a field
-// that fits an existing `kind` requires zero changes here (rule 4).
+// renderRentalTermsFields(container, values, onChange, fieldKeys, lang) --
+// the generic renderer every admin/self-service surface calls. Adding a
+// field that fits an existing `kind` requires zero changes here (rule 4).
 //
 // fieldKeys (optional): renders only the given keys, in registry order,
 // instead of every field in RENTAL_TERMS_FIELDS -- e.g. a page that only
@@ -513,7 +566,13 @@ var RENTAL_TERM_KIND_RENDERERS = {
 // single-field special case (rule 4's actual concern), and every filtered
 // caller still goes through the exact same per-`kind` renderer map as the
 // full panel.
-function renderRentalTermsFields(container, values, onChange, fieldKeys) {
+//
+// lang (optional, default 'en'): admin.html never passes it, so its output
+// is unchanged. add-property.html/edit-listing.html pass 'lo' -- this is
+// what lets the self-service portal show the full field set (not just
+// Deposit) without hand-rolling a second, English-hardcoded renderer.
+function renderRentalTermsFields(container, values, onChange, fieldKeys, lang) {
+  lang = lang || 'en';
   container.innerHTML = '';
   var fields = fieldKeys
     ? RENTAL_TERMS_FIELDS.filter(function(f) { return fieldKeys.indexOf(f.key) !== -1; })
@@ -523,9 +582,9 @@ function renderRentalTermsFields(container, values, onChange, fieldKeys) {
     row.className = 'form-field rt-row';
     var label = document.createElement('label');
     label.className = 'form-label';
-    label.textContent = fieldDef.label.en;
+    label.textContent = fieldDef.label[lang] || fieldDef.label.en;
     row.appendChild(label);
-    var control = RENTAL_TERM_KIND_RENDERERS[fieldDef.kind](fieldDef, values[fieldDef.key], onChange);
+    var control = RENTAL_TERM_KIND_RENDERERS[fieldDef.kind](fieldDef, values[fieldDef.key], onChange, lang);
     row.appendChild(control);
     container.appendChild(row);
   });

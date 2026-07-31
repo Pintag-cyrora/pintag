@@ -490,9 +490,16 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
                rental-terms.js's header comment for the full architecture.
                Registry-driven: this container is rebuilt entirely from
                RENTAL_TERMS_FIELDS by renderRentalTermsFields(), so adding a
-               new term is a registry change only, never a change here. -->
-          <p class="form-section-sub">Rental Terms</p>
-          <div id="rental-terms-building" class="rental-terms-grid"></div>
+               new term is a registry change only, never a change here.
+               Gated on listing_type === rent (isRentalTransactionType(),
+               rental-terms.js), not property_type -- rental contract terms
+               apply identically to every rental property type, so the only
+               thing that should ever hide this section is "this listing
+               isn't a rental at all." See onTransactionChange(). -->
+          <div id="rental-terms-section" style="display:none;">
+            <p class="form-section-sub">Rental Terms</p>
+            <div id="rental-terms-building" class="rental-terms-grid"></div>
+          </div>
 
           <!-- UNIT TYPES — an extension of Pricing, not an independent
                section (Multi-Unit Buildings, Phase 1). Optional; add one
@@ -1359,6 +1366,7 @@ function addUnitType(data) {
   const unitAmenities = data && Array.isArray(data.amenities) ? data.amenities : [];
   const unitImages = data && Array.isArray(data.images) ? data.images : [];
   const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  const isRentalTx = isRentalTransactionType(document.getElementById('f-transaction').value);
   card.dataset.images = JSON.stringify(unitImages);
   card.innerHTML = `
     <div class="ut-head" draggable="true" ondragstart="_utDragStart(event)" ondragover="_utDragOver(event)" ondrop="_utDrop(event)" ondragend="_utDragEnd(event)" onclick="_utToggle(event)">
@@ -1402,7 +1410,7 @@ function addUnitType(data) {
           </select>
         </div>
       </div>
-      <div class="ut-grid">
+      <div class="ut-grid ut-rt-row" style="display:${isRentalTx ? '' : 'none'}">
         <div class="ut-field ut-field-full">
           <label>Rental Terms</label>
           <div class="ut-rt-toggle-row">
@@ -1704,12 +1712,16 @@ function _utUpdateSummary(inputEl) {
 // building's own transaction type — mirrors onTransactionChange() above,
 // which does the same for the building's own price fields.
 function syncUnitTypePriceFields() {
-  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  const tx = document.getElementById('f-transaction').value;
+  const isSor = tx === 'sale_or_rent';
+  const isRentalTx = isRentalTransactionType(tx);
   document.querySelectorAll('.ut-card').forEach(card => {
     card.querySelector('.ut-price-single').style.display = isSor ? 'none' : '';
     card.querySelector('.ut-price-sale').style.display   = isSor ? '' : 'none';
     card.querySelector('.ut-price-rent').style.display   = isSor ? '' : 'none';
     card.querySelector('.ut-price-period').style.display = isSor ? '' : 'none';
+    const rtRow = card.querySelector('.ut-rt-row');
+    if (rtRow) rtRow.style.display = isRentalTx ? '' : 'none';
     _utUpdateSummary(card.querySelector('.ut-name-en'));
   });
 }
@@ -2657,6 +2669,10 @@ function onTransactionChange() {
   document.getElementById('price-field-sale').style.display   = isSor ? ''     : 'none';
   document.getElementById('price-field-rent').style.display   = isSor ? ''     : 'none';
   document.getElementById('price-field-period').style.display = isSor ? ''     : 'none';
+  var rentalTermsSection = document.getElementById('rental-terms-section');
+  if (rentalTermsSection) {
+    rentalTermsSection.style.display = (typeof isRentalTransactionType === 'function' && isRentalTransactionType(tx)) ? '' : 'none';
+  }
   syncUnitTypePriceFields();
   syncPricingMode();
 }
@@ -2694,10 +2710,12 @@ function showForm(id) {
     _buildingRentalTermsValues = {};
     renderBuildingRentalTerms();
     loadUnitTypes([]);
-    // form.reset() does not fire f-type's onchange, so Property Details
-    // must be re-rendered explicitly for the blank state (also clears
+    // form.reset() does not fire f-type's/f-transaction's onchange, so
+    // Property Details and the Rental Terms section's visibility must be
+    // re-rendered explicitly for the blank state (also clears
     // features/amenities, which form.reset() likewise doesn't touch).
     renderPropertyTypeFields('');
+    onTransactionChange();
     setHighlights([]);
     customTags = [];
     populateExistingImages([]);
@@ -3271,12 +3289,27 @@ async function generateAIContent() {
 
   // Deposit — reuses rental-terms.js's own formatter rather than
   // re-deriving "2 Months"/"500" from the raw {type,value} shape here;
-  // the "Deposit: " label prefix is stripped since the prompt already
-  // labels this line itself. Only ever non-null for a rental listing with
-  // a deposit actually entered — generateAIContent's prompt is what
-  // decides whether "when appropriate" means including it at all.
+  // the "Security Deposit: " label prefix is stripped since the prompt
+  // already labels this line itself. Only ever non-null for a rental
+  // listing with a deposit actually entered — generateAIContent's prompt
+  // is what decides whether "when appropriate" means including it at all.
   const depositRaw = _buildingRentalTermsValues.deposit;
-  const depositText = depositRaw ? (formatRentalTermValue('deposit', depositRaw, 'en') || '').replace(/^Deposit:\s*/, '') : '';
+  const depositText = depositRaw ? (formatRentalTermValue('deposit', depositRaw, 'en') || '').replace(/^Security Deposit:\s*/, '') : '';
+
+  // Every OTHER Rental Term (cleaning deposit, electricity, water, internet,
+  // cleaning/sheet-changing frequency, laundry, included services,
+  // additional fees, lease length, pet policy, smoking policy, parking) --
+  // previously the AI prompt only ever saw Deposit, so a rental listing's
+  // pet policy or included utilities were never reflected in the generated
+  // description even when fully filled in. Same self-suppression rule as
+  // deposit: only fields actually set anywhere resolve to a line here, via
+  // the exact same formatRentalTermValue() every other consumer uses --
+  // never re-derived, never invented.
+  const rentalTermsSummary = (typeof RENTAL_TERMS_FIELDS !== 'undefined' ? RENTAL_TERMS_FIELDS : [])
+    .filter(f => f.key !== 'deposit')
+    .map(f => formatRentalTermValue(f.key, _buildingRentalTermsValues[f.key], 'en'))
+    .filter(Boolean)
+    .join('; ');
 
   const propertyData = {
     property_type:  document.getElementById('f-type').value,
@@ -3292,7 +3325,8 @@ async function generateAIContent() {
     features:       getCheckedKeys('features-grid'),
     furnished:      getFieldValueSafe('f-furnished'),
     nearby_places:  getNearbyPlaces(),
-    deposit_text:   depositText || null
+    deposit_text:   depositText || null,
+    rental_terms_summary: rentalTermsSummary || null
   };
 
   const originalHtml = btn.innerHTML;

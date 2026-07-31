@@ -57,6 +57,15 @@ Deno.serve(async (req) => {
     // description regardless of transaction type.
     const depositLine = data.deposit_text ? `\n- Deposit: ${data.deposit_text}` : '';
 
+    // Every other Rental Term (cleaning deposit, electricity, water,
+    // internet, cleaning/sheet-changing frequency, laundry, included
+    // services, additional fees, lease length, pet policy, smoking policy,
+    // parking) — admin.html sends one pre-formatted "key: value; key: value"
+    // string built from whichever fields are actually set (rental-terms.js's
+    // own formatter), never null-padded. Same "only mention if present"
+    // rule as deposit below.
+    const rentalTermsLine = data.rental_terms_summary ? `\n- Other Rental Terms: ${data.rental_terms_summary}` : '';
+
     const prompt = `You are a professional real estate copywriter for Pintag, a premium real estate platform in Vientiane, Laos.
 
 Generate listing content in THREE languages: Lao (lo), English (en), and Chinese (zh).
@@ -73,7 +82,7 @@ PROPERTY DETAILS:
 - Village: ${data.village || 'not specified'}
 - District: ${data.district || 'not specified'}, Vientiane, Laos
 - Features: ${featuresList || 'not specified'}
-- Furnished: ${data.furnished || 'not specified'}${depositLine}
+- Furnished: ${data.furnished || 'not specified'}${depositLine}${rentalTermsLine}
 - Nearby Landmarks: ${nearbyNames.join(', ') || 'not specified'}
 
 CONTENT RULES:
@@ -101,6 +110,11 @@ DESCRIPTIONS (2–4 short paragraphs each):
   in the description (e.g. as part of the rental terms), in all three
   languages. If no Deposit line is present, do not mention a deposit at
   all — never invent or estimate one.
+- If "Other Rental Terms" is listed above, naturally weave in whichever of
+  those are most relevant (e.g. pet policy, included utilities, parking) as
+  part of describing the rental terms, in all three languages — do not
+  simply list every field verbatim, and never mention a rental term that
+  isn't present in PROPERTY DETAILS.
 
 NEARBY LANDMARKS:
 - Translate each landmark to official/common names in all 3 languages

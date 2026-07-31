@@ -115,9 +115,9 @@ test('formatRentalTermValue: works for a synthetic new field added only to the r
 // currency at all. Both now render unambiguously -- see the regression block
 // at the end of this file.
 test('formatRentalTermValue: money_multiplier formats rent multiplier vs fixed amount', () => {
-  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 2 }, 'en'), "Deposit: 2 months' rent");
-  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 1 }, 'en'), "Deposit: 1 month's rent");
-  assert.equal(formatRentalTermValue('deposit', { type: 'fixed_amount', value: 500 }, 'en'), 'Deposit: $500');
+  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 2 }, 'en'), "Security Deposit: 2 months' rent");
+  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 1 }, 'en'), "Security Deposit: 1 month's rent");
+  assert.equal(formatRentalTermValue('deposit', { type: 'fixed_amount', value: 500 }, 'en'), 'Security Deposit: $500');
 });
 
 test('formatRentalTermValue: returns null for absent/empty values', () => {
@@ -136,7 +136,7 @@ test('summarizeRentalTermOverrides: registry order, not insertion order', () => 
     deposit: { type: 'months_of_rent', value: 1 }
   };
   const lines = summarizeRentalTermOverrides(['additional_fees', 'deposit'], values, 'en', 5);
-  assert.equal(lines[0].startsWith('Deposit'), true);
+  assert.equal(lines[0].startsWith('Security Deposit'), true);
   assert.equal(lines[1].startsWith('Additional Fees'), true);
 });
 
@@ -164,30 +164,30 @@ test('summarizeRentalTermOverrides: truncates with "+N more"', () => {
 
 test('deposit: fixed_amount renders a currency symbol, never a duration', () => {
   const out = formatRentalTermValue('deposit', { type: 'fixed_amount', value: 100, currency: 'USD' }, 'en');
-  assert.equal(out, 'Deposit: $100');
+  assert.equal(out, 'Security Deposit: $100');
   assert.ok(!/month/i.test(out));
 });
 
 test('deposit: honours LAK and THB currencies', () => {
-  assert.equal(formatRentalTermValue('deposit', { type: 'fixed_amount', value: 2500000, currency: 'LAK' }, 'en'), 'Deposit: ₭2,500,000');
-  assert.equal(formatRentalTermValue('deposit', { type: 'fixed_amount', value: 5000, currency: 'THB' }, 'en'), 'Deposit: ฿5,000');
+  assert.equal(formatRentalTermValue('deposit', { type: 'fixed_amount', value: 2500000, currency: 'LAK' }, 'en'), 'Security Deposit: ₭2,500,000');
+  assert.equal(formatRentalTermValue('deposit', { type: 'fixed_amount', value: 5000, currency: 'THB' }, 'en'), 'Security Deposit: ฿5,000');
 });
 
 test('deposit: MISSING type falls back to money, not months (the actual bug)', () => {
   const out = formatRentalTermValue('deposit', { value: 100 }, 'en');
-  assert.equal(out, 'Deposit: $100');
+  assert.equal(out, 'Security Deposit: $100');
   assert.ok(!/month/i.test(out), 'a monetary field must never render as a duration');
 });
 
 test('deposit: unrecognized type also falls back to money', () => {
   const out = formatRentalTermValue('deposit', { type: 'wat', value: 100 }, 'en');
   assert.ok(!/month/i.test(out));
-  assert.equal(out, 'Deposit: $100');
+  assert.equal(out, 'Security Deposit: $100');
 });
 
 test('deposit: months_of_rent stays available but reads as a rent multiplier', () => {
-  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 2 }, 'en'), "Deposit: 2 months' rent");
-  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 1 }, 'en'), "Deposit: 1 month's rent");
+  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 2 }, 'en'), "Security Deposit: 2 months' rent");
+  assert.equal(formatRentalTermValue('deposit', { type: 'months_of_rent', value: 1 }, 'en'), "Security Deposit: 1 month's rent");
 });
 
 test('deposit: rent multiplier is localized', () => {

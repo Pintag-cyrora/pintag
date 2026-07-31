@@ -123,6 +123,25 @@ body{
   font-weight:600;
 }
 
+/* Rental Terms panel: reuses rental-terms.js's shared renderRentalTermsFields()
+   DOM structure (form-field/rt-row/form-label/form-input/rt-*) rather than a
+   second hand-rolled per-field renderer -- these rules only make that shared
+   structure look native to this page (rounded .input/.select look, Noto Sans
+   Lao), they don't change any behavior or duplicate field definitions. */
+.rt-row{margin-bottom:14px;}
+.rt-row .form-label{display:block;margin-bottom:10px;font-size:15px;font-weight:600;}
+.rt-row select,.rt-row input[type=text],.rt-row input[type=number]{
+  border:1px solid var(--line);background:#fff;border-radius:18px;
+  padding:14px;font-size:15px;font-family:"Noto Sans Lao",sans-serif;outline:none;
+}
+.rt-field-money,.rt-field-utility{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.rt-field-fees{display:flex;flex-direction:column;gap:8px;}
+.rt-fee-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:center;}
+.rt-fee-remove{border:none;background:#EFE7E4;color:var(--danger);border-radius:12px;padding:10px 12px;cursor:pointer;}
+.rt-fee-add{border:1px dashed rgba(45,140,140,0.4);background:rgba(45,140,140,0.04);color:var(--teal);border-radius:14px;padding:10px;cursor:pointer;width:100%;}
+.rt-field-checkboxes{display:flex;flex-wrap:wrap;gap:10px;}
+.rt-checkbox-item{display:flex;align-items:center;gap:6px;background:#F8F5F1;border-radius:14px;padding:8px 12px;font-size:14px;}
+
 .input,
 .select,
 .textarea{
@@ -369,7 +388,7 @@ body{
         <div class="field">
           <label>ຂາຍ / ເຊົ່າ</label>
 
-          <select class="select" id="listingType">
+          <select class="select" id="listingType" onchange="updateRentalTermsVisibility()">
             <option value="for_sale">ຂາຍ</option>
             <option value="for_rent">ເຊົ່າ</option>
             <option value="sale_or_rent">ຊື້ / ເຊົ່າ</option>
@@ -389,33 +408,23 @@ body{
         >
       </div>
 
-      <!-- Deposit (rental_terms.deposit, shared with admin.html/listing.html
-           via rental-terms.js's resolver — see that file's header). Shown
-           unconditionally, same as admin.html's own Rental Terms section:
-           harmless to leave empty on a sale listing, no separate
-           for-rent-only visibility toggle to maintain. -->
-      <div class="field">
-        <label>ເງິນມັດຈຳ (ຖ້າມີ)</label>
+    </div>
 
-        <div class="grid">
-          <select class="select" id="depositType">
-            <option value="">— ບໍ່ມີ —</option>
-          </select>
+    <!-- RENTAL TERMS (deposit, cleaning deposit, utilities, policies, fees)
+         — the full set from RENTAL_TERMS_FIELDS (rental-terms.js), the same
+         registry admin.html's Rental Terms section reads from. Gated on
+         listing_type === rent via isRentalTransactionType(), not
+         property_type -- these are rental contract terms, identical
+         regardless of whether the property is an apartment, condo, house,
+         villa, townhouse, shophouse, office, warehouse, or land lease.
+         See updateRentalTermsVisibility(). -->
+    <div class="section" id="rental-terms-section" style="display:none;">
 
-          <input
-            type="number"
-            class="input"
-            id="depositAmount"
-            min="0"
-            placeholder="ຈຳນວນ"
-          >
-
-          <!-- Currency: only meaningful for a fixed amount ("ຈຳນວນຄົງທີ່").
-               A months-of-rent deposit inherits whatever currency the rent
-               itself is quoted in, so this hides for that type. -->
-          <select class="select" id="depositCurrency"></select>
-        </div>
+      <div class="section-title">
+        ເງື່ອນໄຂການເຊົ່າ
       </div>
+
+      <div id="rental-terms-grid"></div>
 
     </div>
 
@@ -598,51 +607,38 @@ async function resolveMyPartyId(userId){
   return (data && data[0]) || null;
 }
 
-// Deposit: the one Rental Term field this self-service form exposes (see
-// rental-terms.js). Hand-rolled here rather than calling
-// renderRentalTermsFields() -- that renderer hardcodes English option text
-// (admin.html is English-only), while this page is Lao-only like the rest
-// of its fields; only the option VALUES/registry are shared, not the DOM.
-// Reads/writes go through resolveRentalTerms()/buildRentalTermsPayload()
-// (rental-terms.js) so this is still one source of truth for the deposit
-// shape, not a parallel implementation.
-(function populateDepositTypeOptions(){
-  const sel = document.getElementById('depositType');
-  RENTAL_MONTHS_OPTIONS.forEach(function(opt){
-    const o = document.createElement('option');
-    o.value = opt.value;
-    o.textContent = opt.label.lo;
-    sel.appendChild(o);
-  });
-})();
+// Rental Terms: the full RENTAL_TERMS_FIELDS registry (rental-terms.js),
+// the same one admin.html's Rental Terms section reads from -- not just
+// Deposit. Rendered via the shared renderRentalTermsFields(container,
+// values, onChange, fieldKeys, lang) with lang='lo' so it reads in Lao
+// like the rest of this page; the CSS above (.rt-row etc.) is what makes
+// that shared DOM structure look native here instead of admin.html's
+// English styling. _rentalTermsFieldValues mirrors the same
+// "local working object, mutated via onChange, read at save time" pattern
+// admin.html's _buildingRentalTermsValues already uses.
+let _rentalTermsFieldValues = {};
 
-(function populateDepositCurrencyOptions(){
-  const sel = document.getElementById('depositCurrency');
-  Object.keys(RENTAL_CURRENCIES).forEach(function(code){
-    const o = document.createElement('option');
-    o.value = code;
-    o.textContent = RENTAL_CURRENCIES[code].symbol + ' ' + code;
-    sel.appendChild(o);
-  });
-  sel.value = RENTAL_DEFAULT_CURRENCY;
-  const typeSel = document.getElementById('depositType');
-  function syncCurrency(){
-    sel.style.display = (typeSel.value === 'months_of_rent') ? 'none' : '';
-  }
-  typeSel.addEventListener('change', syncCurrency);
-  syncCurrency();
-})();
-
-function getDepositFromForm(){
-  const type = document.getElementById('depositType').value;
-  const amountStr = document.getElementById('depositAmount').value.trim();
-  if(!type || amountStr === '') return null;
-  const out = { type: type, value: Number(amountStr) };
-  // Currency is stored only for real monetary amounts -- a months-of-rent
-  // deposit is a multiplier on the rent, not its own currency figure.
-  if (type !== 'months_of_rent') out.currency = document.getElementById('depositCurrency').value;
-  return out;
+function renderRentalTermsPanel(){
+  renderRentalTermsFields(
+    document.getElementById('rental-terms-grid'),
+    _rentalTermsFieldValues,
+    function(key, value){ if (value == null) delete _rentalTermsFieldValues[key]; else _rentalTermsFieldValues[key] = value; },
+    undefined,
+    'lo'
+  );
 }
+renderRentalTermsPanel();
+
+// Rental Terms only applies once listing_type is a rental (for_rent or
+// sale_or_rent) -- not property_type. isRentalTransactionType() is
+// rental-terms.js's single source of truth for that check, shared with
+// admin.html/edit-listing.html/listings.html's search filters.
+function updateRentalTermsVisibility(){
+  const tx = document.getElementById('listingType').value;
+  const section = document.getElementById('rental-terms-section');
+  if (section) section.style.display = isRentalTransactionType(tx) ? '' : 'none';
+}
+updateRentalTermsVisibility();
 
 // Populate the Property Type dropdown from PROPERTY_TYPES (terminology.js)
 // using Lao labels, since this page is Lao-only UI.
@@ -1062,9 +1058,6 @@ async function saveProperty(){
   const imageUrls =
     await uploadImages();
 
-  const deposit =
-    getDepositFromForm();
-
   const slug =
     slugify(title) +
     '-' +
@@ -1105,7 +1098,7 @@ async function saveProperty(){
         managed_by_party_id:myParty.id,
         contact_id:contactId,
 
-        rental_terms:buildRentalTermsPayload(deposit ? {deposit:deposit} : {}),
+        rental_terms:buildRentalTermsPayload(isRentalTransactionType(listingType) ? _rentalTermsFieldValues : {}),
 
         ...buildTypedFieldsPayload(propertyType)
 

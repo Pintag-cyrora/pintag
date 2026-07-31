@@ -102,6 +102,25 @@ label{
   resize:none;
 }
 
+/* Rental Terms panel: reuses rental-terms.js's shared renderRentalTermsFields()
+   DOM structure (form-field/rt-row/form-label/form-input/rt-*) rather than a
+   second hand-rolled per-field renderer -- see add-property.html's matching
+   block for the full rationale. These rules only make that shared structure
+   look native to this page's visual language. */
+.rt-row{margin-bottom:14px;}
+.rt-row .form-label{display:block;margin-bottom:10px;font-size:15px;font-weight:700;}
+.rt-row select,.rt-row input[type=text],.rt-row input[type=number]{
+  border:1px solid #E4DED7;background:#FAF8F5;border-radius:20px;
+  padding:14px;font-size:15px;font-family:inherit;color:var(--text);outline:none;
+}
+.rt-field-money,.rt-field-utility{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.rt-field-fees{display:flex;flex-direction:column;gap:8px;}
+.rt-fee-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:center;}
+.rt-fee-remove{border:none;background:#EFE7E4;color:var(--danger,#B45B5B);border-radius:12px;padding:10px 12px;cursor:pointer;}
+.rt-fee-add{border:1px dashed rgba(45,140,140,0.4);background:rgba(45,140,140,0.04);color:var(--teal);border-radius:14px;padding:10px;cursor:pointer;width:100%;}
+.rt-field-checkboxes{display:flex;flex-wrap:wrap;gap:10px;}
+.rt-checkbox-item{display:flex;align-items:center;gap:6px;background:#F8F5F1;border-radius:14px;padding:8px 12px;font-size:14px;}
+
 .preview-grid{
   display:grid;
   grid-template-columns:1fr 1fr;
@@ -291,27 +310,28 @@ label{
     <input type="text" class="input" id="price">
   </div>
 
-  <!-- Deposit (rental_terms.deposit, shared with admin.html/listing.html
-       via rental-terms.js — see add-property.html's matching field for
-       the full rationale). Shown unconditionally, mirroring admin.html's
-       own Rental Terms section. -->
-  <div class="field">
-    <label>ເງິນມັດຈຳ (ຖ້າມີ)</label>
-    <div class="grid">
-      <select class="select" id="depositType">
-        <option value="">— ບໍ່ມີ —</option>
-      </select>
-      <input type="number" class="input" id="depositAmount" min="0" placeholder="ຈຳນວນ">
-      <!-- Currency applies only to a fixed amount; a months-of-rent deposit
-           inherits the rent's own currency (see add-property.html). -->
-      <select class="select" id="depositCurrency"></select>
-    </div>
-  </div>
-
   <div class="field">
     <label>ລາຍລະອຽດ</label>
     <textarea class="textarea" id="description"></textarea>
   </div>
+
+</div>
+
+<!-- RENTAL TERMS (deposit, cleaning deposit, utilities, policies, fees) --
+     the full RENTAL_TERMS_FIELDS set (rental-terms.js), same registry
+     admin.html's Rental Terms section and add-property.html read from.
+     Gated on the listing's transaction_type being a rental
+     (isRentalTransactionType()) -- there is no field on this page to
+     change transaction_type itself (immutable here), so this is a
+     one-time show/hide at load, not wired to an onchange. See
+     loadProperty(). -->
+<div class="section" id="rental-terms-section" style="display:none;">
+
+  <div class="section-title">
+    ເງື່ອນໄຂການເຊົ່າ
+  </div>
+
+  <div id="rental-terms-grid"></div>
 
 </div>
 
@@ -553,43 +573,23 @@ new URLSearchParams(
 
 let existingImages = [];
 
-// Deposit — see add-property.html's matching block for the full rationale
-// (hand-rolled Lao-language control over the shared rental-terms.js
-// registry/resolver, not a parallel deposit implementation).
-(function populateDepositTypeOptions(){
-  const sel = document.getElementById('depositType');
-  RENTAL_MONTHS_OPTIONS.forEach(function(opt){
-    const o = document.createElement('option');
-    o.value = opt.value;
-    o.textContent = opt.label.lo;
-    sel.appendChild(o);
-  });
-})();
+// Rental Terms: the full RENTAL_TERMS_FIELDS registry (rental-terms.js) --
+// see add-property.html's matching block for the full rationale (shared
+// renderRentalTermsFields() with lang='lo', not a parallel per-field
+// renderer). _rentalTermsFieldValues is populated from the loaded
+// property's existing rental_terms in loadProperty() below (unlike
+// add-property.html, which always starts empty), so opening Edit Listing
+// on a rental shows every previously-saved field, not just Deposit.
+let _rentalTermsFieldValues = {};
 
-(function populateDepositCurrencyOptions(){
-  const sel = document.getElementById('depositCurrency');
-  Object.keys(RENTAL_CURRENCIES).forEach(function(code){
-    const o = document.createElement('option');
-    o.value = code;
-    o.textContent = RENTAL_CURRENCIES[code].symbol + ' ' + code;
-    sel.appendChild(o);
-  });
-  sel.value = RENTAL_DEFAULT_CURRENCY;
-  const typeSel = document.getElementById('depositType');
-  function syncCurrency(){
-    sel.style.display = (typeSel.value === 'months_of_rent') ? 'none' : '';
-  }
-  typeSel.addEventListener('change', syncCurrency);
-  syncCurrency();
-})();
-
-function getDepositFromForm(){
-  const type = document.getElementById('depositType').value;
-  const amountStr = document.getElementById('depositAmount').value.trim();
-  if(!type || amountStr === '') return null;
-  const out = { type: type, value: Number(amountStr) };
-  if (type !== 'months_of_rent') out.currency = document.getElementById('depositCurrency').value;
-  return out;
+function renderRentalTermsPanel(){
+  renderRentalTermsFields(
+    document.getElementById('rental-terms-grid'),
+    _rentalTermsFieldValues,
+    function(key, value){ if (value == null) delete _rentalTermsFieldValues[key]; else _rentalTermsFieldValues[key] = value; },
+    undefined,
+    'lo'
+  );
 }
 
 async function compressImage(file){
@@ -668,13 +668,6 @@ async function compressImage(file){
 
 let editingContactId = null;
 let editingContactSharedCount = 0;
-// Rental term fields this form has no editor for (electricity, water,
-// internet, cleaning, parking, pets, lease length, ...) -- captured on load
-// and re-merged back in on save so this form only ever touches `deposit`
-// and never wipes out fields set elsewhere (e.g. admin.html's full Unit
-// Type editor). Previously this form saved rental_terms:{version,deposit}
-// outright, silently clearing every other field on every self-service edit.
-let existingRentalTerms = {};
 
 // ── Internal Owners (self-service) ──────────────────────────────────────
 // Same normalized model as admin.html: one owners row can back many
@@ -938,19 +931,24 @@ async function loadProperty(){
   renderPropertyTypeFields(data.property_type || '', data.amenities || []);
   populateTypedFields(data.property_type || '', data);
 
-  // Deposit — resolveRentalTerms() is the only allowed read path for
+  // Rental Terms -- resolveRentalTerms() is the only allowed read path for
   // rental_terms (rental-terms.js rule 3); unitType is null here since
   // this self-service form has no per-unit override UI, so this always
   // resolves to the property's own default (never an inherited override).
-  existingRentalTerms = _normalizeRentalTermsBlob(data.rental_terms);
-  const depositValue = resolveRentalTerms(data, null).values.deposit;
-  if(depositValue){
-    document.getElementById('depositType').value = depositValue.type || '';
-    document.getElementById('depositAmount').value = (depositValue.value != null) ? depositValue.value : '';
-    // Restore the saved currency -- without this, editing any listing would
-    // silently reset a ₭/฿ deposit back to the USD default on next save.
-    document.getElementById('depositCurrency').value = depositValue.currency || RENTAL_DEFAULT_CURRENCY;
-    document.getElementById('depositType').dispatchEvent(new Event('change'));
+  // Seeds _rentalTermsFieldValues with every previously-saved field (not
+  // just deposit), then renders the full panel from it.
+  _rentalTermsFieldValues = Object.assign({}, resolveRentalTerms(data, null).values);
+  renderRentalTermsPanel();
+
+  // Rental Terms only applies when this listing's transaction_type is a
+  // rental (for_rent/sale_or_rent) -- isRentalTransactionType() is
+  // rental-terms.js's single source of truth for that check, shared with
+  // admin.html/add-property.html/listings.html's search filters. No field
+  // on this page can change transaction_type, so this is a one-time
+  // show/hide, not wired to any onchange.
+  const rentalTermsSection = document.getElementById('rental-terms-section');
+  if (rentalTermsSection) {
+    rentalTermsSection.style.display = isRentalTransactionType(data.transaction_type) ? '' : 'none';
   }
 
   // Internal Owner -- populate from the linked owner (if any) via the same
@@ -1104,9 +1102,6 @@ async function saveProperty(){
   const propertyType =
     document.getElementById('propertyType').value;
 
-  const deposit =
-    getDepositFromForm();
-
   const contactPhone =
     document.getElementById('contactPhone').value.trim();
 
@@ -1226,13 +1221,11 @@ async function saveProperty(){
 
     owner_id: resolvedOwnerId,
 
-    rental_terms: buildRentalTermsPayload((function(){
-      // Start from every previously-saved field (electricity/water/etc. this
-      // form doesn't expose), then update only the field this form owns.
-      const merged = Object.assign({}, existingRentalTerms);
-      if (deposit) { merged.deposit = deposit; } else { delete merged.deposit; }
-      return merged;
-    })()),
+    // _rentalTermsFieldValues was seeded from the property's full existing
+    // rental_terms at load (loadProperty()) and is kept live by the panel's
+    // onChange -- it IS the payload, not a merge of a partial edit onto a
+    // separately-tracked snapshot.
+    rental_terms: buildRentalTermsPayload(_rentalTermsFieldValues),
 
     ...buildTypedFieldsPayload(propertyType)
 
