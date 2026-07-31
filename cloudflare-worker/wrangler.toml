@@ -8,12 +8,25 @@ compatibility_date = "2024-09-23"
 # Fill in from the Cloudflare dashboard (Workers & Pages → Overview → Account ID).
 account_id = "REPLACE_WITH_YOUR_CLOUDFLARE_ACCOUNT_ID"
 
-# Runs this Worker in front of pintag.io for exactly the one route it needs
-# to touch — every other path/asset keeps being served by GitHub Pages with
-# zero Worker involvement (see the pathname check at the top of fetch()).
+# Runs this Worker in front of pintag.io for exactly the three routes it
+# needs to touch (listing.html, listings.html, and the homepage) — every
+# other path/asset keeps being served by GitHub Pages with zero Worker
+# involvement (see the pathname check at the top of fetch()).
 # Zone name must match the zone that already proxies pintag.io in Cloudflare.
 [[routes]]
 pattern = "pintag.io/listing.html*"
+zone_name = "pintag.io"
+
+[[routes]]
+pattern = "pintag.io/listings.html*"
+zone_name = "pintag.io"
+
+[[routes]]
+pattern = "pintag.io/"
+zone_name = "pintag.io"
+
+[[routes]]
+pattern = "pintag.io/index.html*"
 zone_name = "pintag.io"
 
 # Optional overrides — only needed if the Supabase project URL/anon key ever

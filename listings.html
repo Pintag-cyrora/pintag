@@ -358,9 +358,9 @@ nav{
   </a>
   <div class="nav-right">
     <div class="lang-switcher">
-      <button class="lang-btn active" onclick="setLang('lo',this)">ລາວ</button>
-      <button class="lang-btn" onclick="setLang('en',this)">EN</button>
-      <button class="lang-btn" onclick="setLang('zh',this)">中文</button>
+      <button class="lang-btn" data-lang="lo" onclick="setLang('lo',this)">ລາວ</button>
+      <button class="lang-btn" data-lang="en" onclick="setLang('en',this)">EN</button>
+      <button class="lang-btn" data-lang="zh" onclick="setLang('zh',this)">中文</button>
     </div>
     <a href="index.html" class="nav-home">← <span class="lo-i">ໜ້າຫຼັກ</span><span class="en-i">Home</span><span class="zh-i">首页</span></a>
   </div>
@@ -551,6 +551,7 @@ nav{
 
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
+<script src="lang.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
 <script src="currency.js"></script>
@@ -1320,10 +1321,22 @@ function updateSortLabels() {
   });
 }
 
-function setLang(lang, btn) {
+// applyPintagLang() -- the DOM-mutation portion of a language switch,
+// shared by an explicit setLang() click and the page-init resolution
+// below (see index.html for the same pattern). Always reflects the
+// resolved language into the URL via lang.js's reflectLangInUrl() so a
+// copied/shared listings.html URL reproduces the language being viewed.
+function applyPintagLang(lang, btn) {
   document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
   document.querySelectorAll('.lang-btn').forEach(function(b){ b.classList.remove('active'); });
-  btn.classList.add('active');
+  var activeBtn = btn || document.querySelector('.lang-btn[data-lang="' + lang + '"]');
+  if (activeBtn) activeBtn.classList.add('active');
+  reflectLangInUrl(lang);
+}
+
+function setLang(lang, btn) {
+  persistPintagLang(lang);
+  applyPintagLang(lang, btn);
   updateSortLabels();
   renderListings();
 }
@@ -1350,6 +1363,14 @@ function updateFiltersFade() {
   updateFiltersFade();
   setTimeout(updateFiltersFade, 0);
 })();
+
+// Resolve once at init, before the first fetch/render -- deliberately no
+// persistPintagLang() here (only an explicit setLang() click persists),
+// so an inferred default is never written back as if the visitor chose
+// it. updateListingsMetaForFilters() (called from inside renderListings())
+// reads getCurrentLang() off the body class this sets, so metadata is
+// correct from the very first render.
+applyPintagLang(resolvePintagLang());
 
 loadListings();
 

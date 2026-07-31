@@ -42,6 +42,44 @@ const DEFAULT_OG_IMAGE = 'https://pintag.io/og-preview.jpg';
 // (set client-side once the page's own JS runs) always agree.
 const OG_LOCALE = { lo: 'lo_LA', en: 'en_US', zh: 'zh_CN' };
 
+// index.html's HOME_META_I18N and listings.html's LISTINGS_META_I18N
+// (default/unfiltered copy only), duplicated here by hand — this Worker is
+// a separate Cloudflare deploy from the static site and can't literally
+// import a browser file. Keep in sync manually whenever either client-side
+// copy changes. listings.html's per-filter title/description variants are
+// NOT reproduced here: filters aren't reflected in listings.html's URL
+// today (see that file's updateListingsMetaForFilters() comment), so a
+// crawler visiting a bare /listings.html request has no filter state to
+// read in the first place — only the unfiltered default applies.
+const HOME_META_I18N = {
+  lo: {
+    title: 'Pintag — ຄົ້ນຫາອະສັງຫາລິມະຊັບທົ່ວລາວ',
+    desc: 'ຄົ້ນຫາອະສັງຫາລິມະຊັບສຳລັບຂາຍ ແລະ ເຊົ່າທົ່ວປະເທດລາວ. Pintag ເຊື່ອມຕໍ່ຜູ້ຊື້, ຜູ້ເຊົ່າ ແລະ ນາຍໜ້າ ໃນເວັບໄຊອະສັງຫາລິມະຊັບຊັ້ນນຳຂອງລາວ.',
+  },
+  en: {
+    title: 'Pintag — Discover Properties Across Laos',
+    desc: "Discover properties for sale and rent across Laos. Pintag connects buyers, renters and agents on Laos's premier real estate platform.",
+  },
+  zh: {
+    title: 'Pintag — 探索老挝各地房产',
+    desc: 'Pintag 帮助您在老挝各地寻找出售与出租的房产，连接买家、租户与房产经纪人的领先平台。',
+  },
+};
+const LISTINGS_META_I18N = {
+  lo: {
+    title: 'ຊັບສິນໃຫ້ເຊົ່າ ແລະ ຂາຍ ໃນລາວ | Pintag',
+    desc: 'ຄົ້ນຫາອາພາດເມັນ, ເຮືອນ, ຄອນໂດ, ທີ່ດິນ ແລະ ອາຄານທຸລະກິດທີ່ຢືນຢັນແລ້ວທົ່ວປະເທດລາວ. ອັບເດດທຸກມື້ພ້ອມຮູບພາບ, ລາຄາ ແລະ ແຜນທີ່.',
+  },
+  en: {
+    title: 'Properties for Rent & Sale in Laos | Pintag',
+    desc: 'Browse verified apartments, houses, condos, land and commercial properties across Laos. Updated daily with photos, prices and maps.',
+  },
+  zh: {
+    title: '老挝出租出售房产 | Pintag',
+    desc: '浏览老挝各地已核实的公寓、房屋、公寓大楼、土地和商业地产。每日更新，含照片、价格与地图。',
+  },
+};
+
 // Public by design — anon keys are meant to be embeddable (RLS is the real
 // security boundary), same convention already committed in config.prod.js.
 // Overridable via Worker environment variables/secrets if ever rotated
@@ -57,6 +95,20 @@ const LISTING_COLUMNS = [
   'images',
 ].join(',');
 
+// Server-side counterpart to lang.js's resolvePintagLang(), used identically
+// for all three rewritten paths (listing.html/index.html/listings.html).
+// Only the URL ?lang= tier of that shared precedence is reproducible here:
+// a persisted preference lives in the visitor's own browser localStorage,
+// and the browser-language tier reads navigator.language — both
+// fundamentally client-only, unavailable to a Worker running ahead of any
+// page load for an anonymous crawler request. Accept-Language *is*
+// available server-side but is deliberately NOT used as a stand-in for
+// either tier: crawlers (WhatsApp/Facebook/etc.) don't send a header that
+// reflects the original sharer's language, so keying off it here would
+// produce a preview language uncorrelated with what any real person chose
+// — worse than just falling through to the same 'lo' default the client
+// uses. ?lang= explicit in the URL is the one signal both sides can always
+// see and agree on; everything else collapses to the shared default.
 function resolveLang(rawLang) {
   return VALID_LANGS.includes(rawLang) ? rawLang : DEFAULT_LANG;
 }
@@ -187,45 +239,84 @@ async function rewriteListingHead(response, row, lang, slug) {
   return rewriter.transform(response);
 }
 
+// Rewrites the static, non-listing pages' <head> (index.html, listings.html)
+// to the resolved language's generic trilingual copy. Unlike
+// rewriteListingHead(), there's no per-property data and no lang-suffixed
+// og:url/canonical to compute — those pages' own client-side
+// updateHeadMeta()/updateListingsMetaForFilters() deliberately leave og:url
+// untouched by language too (see listings.html's own comment on that), so
+// this mirrors that exactly rather than introducing a URL scheme the client
+// doesn't use.
+function rewriteGenericHead(response, lang, i18n) {
+  const t = i18n[lang] || i18n[DEFAULT_LANG];
+  return new HTMLRewriter()
+    .on('html', new AttrSetter('lang', lang))
+    .on('title', new TextSetter(t.title))
+    .on('meta[name="description"]', new AttrSetter('content', t.desc))
+    .on('meta[property="og:title"]', new AttrSetter('content', t.title))
+    .on('meta[property="og:description"]', new AttrSetter('content', t.desc))
+    .on('meta[property="og:locale"]', new AttrSetter('content', OG_LOCALE[lang] || OG_LOCALE.lo))
+    .on('meta[name="twitter:title"]', new AttrSetter('content', t.title))
+    .on('meta[name="twitter:description"]', new AttrSetter('content', t.desc))
+    .transform(response);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const path = url.pathname;
 
-    // Only /listing.html is a per-property page; everything else (the site
-    // shell, listings.html, static assets) passes straight through with no
-    // Supabase call and no rewriting.
-    if (!url.pathname.endsWith('/listing.html') && url.pathname !== '/listing.html') {
-      return fetch(request);
+    // /listing.html: per-property page, needs a Supabase lookup for its
+    // title/description/image — the original, most involved case.
+    if (path === '/listing.html' || path.endsWith('/listing.html')) {
+      const slug = url.searchParams.get('slug');
+      const origin = await fetch(request);
+      if (!slug) return origin;
+
+      const lang = resolveLang(url.searchParams.get('lang'));
+
+      let row;
+      try {
+        row = await fetchListing(env, slug);
+      } catch (err) {
+        // Network/parse failure talking to Supabase — degrade to the
+        // unmodified origin response rather than showing a broken preview.
+        return origin;
+      }
+      if (!row) return origin;
+
+      try {
+        return await rewriteListingHead(origin, row, lang, slug);
+      } catch (err) {
+        // HTMLRewriter failure of any kind — never let a preview-generation
+        // bug break the actual page for a real visitor.
+        return origin;
+      }
     }
 
-    const slug = url.searchParams.get('slug');
-    const origin = await fetch(request);
-
-    if (!slug) return origin;
-
-    const lang = resolveLang(url.searchParams.get('lang'));
-
-    let row;
-    try {
-      row = await fetchListing(env, slug);
-    } catch (err) {
-      // Network/parse failure talking to Supabase — degrade to the
-      // unmodified origin response rather than showing a broken preview.
-      return origin;
+    // index.html (including a bare "/" request) and listings.html: no
+    // per-property data needed, just the resolved language's static
+    // trilingual copy — but still worth guarding with the same
+    // never-break-the-real-page try/catch as the listing.html path.
+    const isHome = path === '/' || path === '/index.html' || path.endsWith('/index.html');
+    const isListings = path === '/listings.html' || path.endsWith('/listings.html');
+    if (isHome || isListings) {
+      const origin = await fetch(request);
+      const lang = resolveLang(url.searchParams.get('lang'));
+      try {
+        return rewriteGenericHead(origin, lang, isHome ? HOME_META_I18N : LISTINGS_META_I18N);
+      } catch (err) {
+        return origin;
+      }
     }
-    if (!row) return origin;
 
-    try {
-      return await rewriteListingHead(origin, row, lang, slug);
-    } catch (err) {
-      // HTMLRewriter failure of any kind — never let a preview-generation
-      // bug break the actual page for a real visitor.
-      return origin;
-    }
+    // Everything else (static assets, other pages) passes straight through
+    // with no Supabase call and no rewriting.
+    return fetch(request);
   },
 };
 
 // Named exports of the pure logic (no fetch/HTMLRewriter) purely so it can
 // be unit-tested with plain Node — unused by the Worker runtime itself,
 // which only ever imports the default export.
-export { resolveLang, buildOgFields, canonicalUrl };
+export { resolveLang, buildOgFields, canonicalUrl, HOME_META_I18N, LISTINGS_META_I18N };

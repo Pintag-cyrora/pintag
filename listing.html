@@ -537,6 +537,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
+<script src="lang.js"></script>
 <script src="amenities.js"></script>
 <script src="terminology.js"></script>
 <script src="unit-availability.js"></script>
@@ -942,17 +943,17 @@ function setLang(lang,btn){
   document.body.classList.remove('lang-lo','lang-en','lang-zh');
   document.body.classList.add('lang-'+lang);
   if(btn){document.querySelectorAll('.lang-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');}
-  // Keep the address bar's own &lang= in sync with the visible language —
-  // replaceState (never pushState), same rationale as _syncUnitUrlParam()'s
-  // unit-selection sync elsewhere in this file: switching language is not a
-  // navigation event and must never pollute back-button history. This is
-  // what makes a plain copy-paste of the address bar (not just the Share
-  // button) also carry the right language forward.
-  try{
-    var url=new URL(window.location.href);
-    url.searchParams.set('lang',lang);
-    window.history.replaceState(null,'',url.toString());
-  }catch(e){PT.warn('lang URL sync failed',e);}
+  // Persist an explicit user choice (lang.js) so it's remembered on the
+  // next visit even without &lang= in the URL, and keep the address bar's
+  // own &lang= in sync with the visible language via lang.js's
+  // reflectLangInUrl() (replaceState, never pushState — same rationale as
+  // _syncUnitUrlParam()'s unit-selection sync elsewhere in this file:
+  // switching language is not a navigation event and must never pollute
+  // back-button history). This is what makes a plain copy-paste of the
+  // address bar (not just the Share button) also carry the right language
+  // forward.
+  persistPintagLang(lang);
+  reflectLangInUrl(lang);
   if(propertyContext){
     try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on lang switch',e);}
     try{updateOGTags(propertyContext);}catch(e){PT.err('updateOGTags on lang switch',e);}
@@ -996,20 +997,24 @@ function handleShare(btn){
 }
 
 window.addEventListener('DOMContentLoaded',function(){
-  // Honor an explicit ?lang= from a shared link (the same param the
-  // Cloudflare Worker reads to generate the crawler-visible OG preview —
-  // see cloudflare-worker/og-listing-preview.js) so a real visitor who
-  // clicks through lands on the matching visible language, not always the
-  // site's own Lao default. Silently ignored if invalid/absent — setLang()
-  // is never called with anything but a real lang code.
-  var urlLang=getParam('lang');
-  if(urlLang==='en'||urlLang==='lo'||urlLang==='zh'){
-    document.body.classList.remove('lang-lo','lang-en','lang-zh');
-    document.body.classList.add('lang-'+urlLang);
-    var btn=document.querySelector('.lang-btn[data-lang="'+urlLang+'"]');
-    if(btn){document.querySelectorAll('.lang-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');}
-    document.documentElement.setAttribute('lang',urlLang);
-  }
+  // Resolve the page language once, before anything renders, via lang.js's
+  // shared precedence: explicit ?lang= from a shared link (the same param
+  // the Cloudflare Worker reads to generate the crawler-visible OG preview
+  // — see cloudflare-worker/og-listing-preview.js) > a previously persisted
+  // choice > the browser's own language > 'lo' default. Deliberately NOT
+  // persisted here (persistPintagLang() only runs from an explicit setLang()
+  // click) so an inferred default is never written back as if the visitor
+  // chose it — but it IS reflected into the URL (reflectLangInUrl(), a
+  // no-op when ?lang= already matches) so a plain copy-paste of this first
+  // load's address bar still reproduces the same resolved language for
+  // whoever it's shared with next.
+  var resolvedLang=resolvePintagLang();
+  document.body.classList.remove('lang-lo','lang-en','lang-zh');
+  document.body.classList.add('lang-'+resolvedLang);
+  var btn=document.querySelector('.lang-btn[data-lang="'+resolvedLang+'"]');
+  if(btn){document.querySelectorAll('.lang-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');}
+  document.documentElement.setAttribute('lang',resolvedLang);
+  reflectLangInUrl(resolvedLang);
   var slug=getParam('slug');
   if(!slug){showErrorState('No property selected. Please navigate from the listings page.');return;}
   PT.log('Loading',{slug:slug});

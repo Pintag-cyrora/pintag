@@ -348,9 +348,9 @@ nav{
     <span class="logo-text">Pintag</span>
   </a>
   <div class="nav-center">
-    <button class="nav-lang-item active" onclick="setLang('lo',this)">ລາວ</button>
-    <button class="nav-lang-item" onclick="setLang('en',this)">EN</button>
-    <button class="nav-lang-item" onclick="setLang('zh',this)">中文</button>
+    <button class="nav-lang-item" data-lang="lo" onclick="setLang('lo',this)">ລາວ</button>
+    <button class="nav-lang-item" data-lang="en" onclick="setLang('en',this)">EN</button>
+    <button class="nav-lang-item" data-lang="zh" onclick="setLang('zh',this)">中文</button>
   </div>
   <div class="nav-right">
     <a href="for-agents.html" class="nav-agent-btn" data-track="nav-agent-login" data-track-type="cta" data-track-label="Agent login">
@@ -481,6 +481,7 @@ nav{
 
 <script src="config.js"></script>
 <script src="dev-banner.js"></script>
+<script src="lang.js"></script>
 <script src="terminology.js"></script>
 <script src="currency.js"></script>
 <script src="listing-status.js"></script>
@@ -574,11 +575,24 @@ function updateHeadMeta(lang) {
   _setHeadMeta('meta[name="twitter:description"]', t.desc);
 }
 
-function setLang(lang, btn) {
+// applyPintagLang() -- the DOM-mutation portion of a language switch,
+// shared by an explicit setLang() click and the page-init resolution
+// below. Always reflects the resolved language into the URL (via
+// lang.js's reflectLangInUrl()) so the page currently being viewed is
+// exactly what a copied/shared URL reproduces -- init-time resolution and
+// an explicit click both need this, only persistence (below) differs.
+function applyPintagLang(lang, btn) {
   document.body.className = lang === 'lo' ? '' : 'lang-' + lang;
   document.querySelectorAll('.nav-lang-item').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  var activeBtn = btn || document.querySelector('.nav-lang-item[data-lang="' + lang + '"]');
+  if (activeBtn) activeBtn.classList.add('active');
   updateHeadMeta(lang);
+  reflectLangInUrl(lang);
+}
+
+function setLang(lang, btn) {
+  persistPintagLang(lang);
+  applyPintagLang(lang, btn);
   renderCards(window._props || [], lang);
 }
 
@@ -587,6 +601,12 @@ function getCurrentLang() {
   if (document.body.classList.contains('lang-zh')) return 'zh';
   return 'lo';
 }
+
+// Resolve once at init, before any metadata or content renders in a
+// specific language -- persistPintagLang() is deliberately NOT called
+// here (only from an explicit setLang() click) so an inferred default
+// never gets silently written back as if the visitor chose it.
+applyPintagLang(resolvePintagLang());
 
 async function loadFeatured() {
   try {

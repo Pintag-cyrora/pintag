@@ -1,9 +1,14 @@
 # Language-aware OG preview Worker
 
 Generates the correct-language WhatsApp/Facebook/Telegram link preview for
-`listing.html?slug=...&lang=...` by rewriting just the `<head>` tags of the
-real origin response — see the comment block at the top of
-`og-listing-preview.js` for the full rationale.
+`listing.html?slug=...&lang=...`, `listings.html?lang=...`, and
+`index.html`/`/?lang=...` by rewriting just the `<head>` tags of the real
+origin response — see the comment block at the top of
+`og-listing-preview.js` for the full rationale. All three paths read the
+same `?lang=` precedence tier via the shared `resolveLang()` — see that
+function's comment for why the other tiers of `lang.js`'s client-side
+precedence (persisted preference, browser language) can't be reproduced
+server-side.
 
 ## ⚠️ Before deploying: this replaces an existing, unseen Worker
 
@@ -28,6 +33,12 @@ Cloudflare dashboard access should:
    before cutting over.
 3. Only then update the route to point at this Worker (or replace the old
    one directly), rather than running both simultaneously on the same route.
+
+Note the route this Worker needs now covers `pintag.io/listing.html*`,
+`pintag.io/listings.html*`, and `pintag.io/` + `pintag.io/index.html*` — the
+old Worker being replaced may only have been routed to the first of these;
+confirm the new route pattern in `wrangler.toml` before deploying, not just
+the script contents.
 
 ## One-time setup
 
@@ -63,15 +74,24 @@ Or use Meta's [Sharing Debugger](https://developers.facebook.com/tools/debug/)
 
 ## What it does NOT do
 
-- Does not touch any page other than `/listing.html` (checked by pathname
-  before any Supabase call happens).
-- Does not change anything for a real visitor with JavaScript enabled —
-  `listing.html`'s own `updateOGTags()` performs the equivalent client-side
-  update on load and on every language switch; this Worker only matters for
-  requests that never execute JS (link-preview crawlers).
+- Does not touch any page other than `/listing.html`, `/listings.html`,
+  `/index.html`, and `/` (checked by pathname before any Supabase call
+  happens) — every other path/asset passes straight through unmodified.
+- Only `/listing.html` performs a Supabase lookup (for that property's
+  title/description/image); `/listings.html` and `/index.html`/`/` rewrite
+  to static trilingual copy with no network call, mirroring their own
+  client-side `LISTINGS_META_I18N`/`HOME_META_I18N`.
+- Does not change anything for a real visitor with JavaScript enabled — each
+  page's own client-side code (`updateOGTags()`, `updateListingsMetaForFilters()`,
+  `updateHeadMeta()`) performs the equivalent update on load and on every
+  language switch; this Worker only matters for requests that never execute
+  JS (link-preview crawlers).
 - Does not require a `lang` param to function — a request with no `&lang=`
-  gets the Lao (site default) preview, matching the page's own
-  `<html lang="lo">` default.
+  gets the Lao (site default) preview on any of the three routes, matching
+  each page's own `<html lang="lo">` default.
+- Does not read `Accept-Language` or any other header as a language signal
+  on any route — see `resolveLang()`'s comment in `og-listing-preview.js`
+  for why.
 - Does not fail visibly if Supabase is unreachable or a slug doesn't
   resolve — it always falls back to returning the unmodified origin
   response rather than serving a broken page.
