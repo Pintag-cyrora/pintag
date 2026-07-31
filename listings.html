@@ -147,7 +147,7 @@ nav{
 .avail-btn.active{background:var(--ink);color:#fff;}
 .avail-btn:hover:not(.active){background:rgba(26,32,36,0.06);}
 
-/* Pet Friendly / No Smoking — rental-only filters (Priority 2). Same pill
+/* Pet Friendly / Smoking Allowed — rental-only filters (Priority 2). Same pill
    shape/sizing as .filter-btn for visual consistency, but a teal active
    state (matching .tx-btn's Rent-branded teal) since these only ever
    apply within a rental context, unlike Property Type's neutral ink. */
@@ -453,21 +453,28 @@ nav{
           <span class="lo-i">ວ່າງເທົ່ານັ້ນ</span><span class="en-i">Available Only</span><span class="zh-i">仅在售/租</span>
         </button>
       </div>
-      <!-- Priority 2: Pet Friendly / No Smoking. Only meaningful for
+      <!-- Priority 2: Pet Friendly / Smoking Allowed. Only meaningful for
            rentals, so only shown when the Listing Type row above is set to
            For Rent (toggleRentalFiltersVisibility(), called from
            setTxFilter()). Reuses resolveRentalTerms()/pet_policy/
            smoking_policy from rental-terms.js -- no separate filter logic
            or duplicate field definitions. Kept to just these two per the
            "keep search simple" scope for this release; parking/internet/
-           furnished/deposits/etc. stay listing-detail-only for now. -->
+           furnished/deposits/etc. stay listing-detail-only for now.
+           Smoking Allowed (not "No Smoking") deliberately: most rentals
+           already prohibit smoking, so a No-Smoking toggle would match the
+           majority of listings and add little filtering value. Off (the
+           default) shows every rental regardless of policy; On narrows to
+           smoking_policy==='allowed' only -- the listing detail page still
+           shows the property's actual policy either way (see listing.html's
+           Rental Terms block), this is a search-narrowing control only. -->
       <div class="filter-sep" id="rental-filters-sep" style="display:none;"></div>
       <div class="rental-filters" id="rental-filters" style="display:none;">
         <button type="button" class="rf-btn" id="rf-pet" onclick="toggleRentalFilter('pet',this)" data-track="filter-pet-friendly" data-track-type="filter" data-track-label="Filter: Pet Friendly">
           <span aria-hidden="true">🐶</span> <span class="lo-i">ລ້ຽງສັດໄດ້</span><span class="en-i">Pet Friendly</span><span class="zh-i">允许宠物</span>
         </button>
-        <button type="button" class="rf-btn" id="rf-nosmoke" onclick="toggleRentalFilter('smoking',this)" data-track="filter-no-smoking" data-track-type="filter" data-track-label="Filter: No Smoking">
-          <span aria-hidden="true">🚭</span> <span class="lo-i">ຫ້າມສູບຢາ</span><span class="en-i">No Smoking</span><span class="zh-i">禁止吸烟</span>
+        <button type="button" class="rf-btn" id="rf-smoking-allowed" onclick="toggleRentalFilter('smoking',this)" data-track="filter-smoking-allowed" data-track-type="filter" data-track-label="Filter: Smoking Allowed">
+          <span aria-hidden="true">🚬</span> <span class="lo-i">ສູບຢາໄດ້</span><span class="en-i">Smoking Allowed</span><span class="zh-i">允许吸烟</span>
         </button>
       </div>
       <div class="filter-sep"></div>
@@ -564,7 +571,7 @@ let currentTypeFilter = 'all';
 let currentSort = 'newest';
 let currentAvailOnly = false;
 let currentPetFriendly = false;
-let currentNoSmoking = false;
+let currentSmokingAllowed = false;
 
 // "Available Only" excludes sold/rented/reserved/off_market/fully_occupied —
 // must read market_status via the canonical resolveListingStatus()
@@ -948,22 +955,22 @@ function setTxFilter(filter, btn) {
   else renderListings();
 }
 
-// Pet Friendly / No Smoking only make sense once the visitor has actually
-// narrowed to rentals -- showing them under "All" or "For Sale" would ask
-// a sale-listing question with no possible answer. Also clears any active
-// selection when hidden, so switching away from For Rent and back never
-// leaves a stale filter silently applied.
+// Pet Friendly / Smoking Allowed only make sense once the visitor has
+// actually narrowed to rentals -- showing them under "All" or "For Sale"
+// would ask a sale-listing question with no possible answer. Also clears
+// any active selection when hidden, so switching away from For Rent and
+// back never leaves a stale filter silently applied.
 function updateRentalFiltersVisibility() {
   var show = currentTxFilter === 'for_rent';
   var wrap = document.getElementById('rental-filters');
   var sep = document.getElementById('rental-filters-sep');
   if (wrap) wrap.style.display = show ? '' : 'none';
   if (sep) sep.style.display = show ? '' : 'none';
-  if (!show && (currentPetFriendly || currentNoSmoking)) {
+  if (!show && (currentPetFriendly || currentSmokingAllowed)) {
     currentPetFriendly = false;
-    currentNoSmoking = false;
+    currentSmokingAllowed = false;
     var petBtn = document.getElementById('rf-pet');
-    var smokeBtn = document.getElementById('rf-nosmoke');
+    var smokeBtn = document.getElementById('rf-smoking-allowed');
     if (petBtn) petBtn.classList.remove('active');
     if (smokeBtn) smokeBtn.classList.remove('active');
   }
@@ -971,7 +978,7 @@ function updateRentalFiltersVisibility() {
 
 function toggleRentalFilter(kind, btn) {
   if (kind === 'pet') { currentPetFriendly = !currentPetFriendly; }
-  else if (kind === 'smoking') { currentNoSmoking = !currentNoSmoking; }
+  else if (kind === 'smoking') { currentSmokingAllowed = !currentSmokingAllowed; }
   btn.classList.toggle('active');
   closeMapPreview();
   if (_viewMode === 'map') renderMap();
@@ -983,12 +990,18 @@ function toggleRentalFilter(kind, btn) {
 // all read from -- no parallel pet/smoking filter logic. Building-level
 // values only (no unit_types embed on this list query), matching how
 // every other card-level fact on this page already works.
+//
+// Smoking Allowed, not "No Smoking": most rentals already prohibit
+// smoking, so a No-Smoking toggle would match the majority of listings
+// and add little value. Off (default) shows every rental; On narrows to
+// smoking_policy==='allowed' only. The listing detail page still shows
+// the actual policy either way -- this is a search-narrowing control.
 function matchesRentalFilters(p) {
-  if (!currentPetFriendly && !currentNoSmoking) return true;
+  if (!currentPetFriendly && !currentSmokingAllowed) return true;
   if (typeof resolveRentalTerms !== 'function') return true;
   var values = resolveRentalTerms(p, null).values;
   if (currentPetFriendly && values.pet_policy !== 'allowed') return false;
-  if (currentNoSmoking && values.smoking_policy !== 'not_allowed') return false;
+  if (currentSmokingAllowed && values.smoking_policy !== 'allowed') return false;
   return true;
 }
 
