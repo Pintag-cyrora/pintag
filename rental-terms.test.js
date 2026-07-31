@@ -16,6 +16,8 @@ import fs from 'node:fs';
 // file's own literals, even when the data is identical) runs the script
 // against the real global context, so `var` declarations land on
 // globalThis with the same prototypes as everything in this test file.
+const currencySrc = fs.readFileSync(new URL('./currency.js', import.meta.url), 'utf8');
+vm.runInThisContext(currencySrc, { filename: 'currency.js' });
 const src = fs.readFileSync(new URL('./rental-terms.js', import.meta.url), 'utf8');
 vm.runInThisContext(src, { filename: 'rental-terms.js' });
 

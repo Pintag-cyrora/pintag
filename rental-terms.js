@@ -82,18 +82,14 @@ var RENTAL_MONTHS_OPTIONS = [
   {value:'months_of_rent', label:{en:'Months of rent', lo:'ຈຳນວນເດືອນຄ່າເຊົ່າ', zh:'按月租计算'}},
   {value:'fixed_amount',   label:{en:'Fixed amount',   lo:'ຈຳນວນຄົງທີ່',        zh:'固定金额'}}
 ];
-// Currency for monetary rental terms (deposit, advance rent). Pintag has no
-// `currency` column anywhere -- properties.price_display is free text with
-// the symbol typed inline ("$550,000"), so a monetary rental term has to
-// carry its own currency or it can only ever render as a bare number. This
-// registry is that currency, stored per-value inside the rental_terms JSONB
-// blob (no migration needed -- the column is already jsonb).
-var RENTAL_CURRENCIES = {
-  USD: { symbol: '$', code: 'USD' },
-  LAK: { symbol: '₭', code: 'LAK' },
-  THB: { symbol: '฿', code: 'THB' }
-};
-var RENTAL_DEFAULT_CURRENCY = 'USD';
+// Currency for monetary rental terms (deposit, advance rent) is read from
+// the shared currency.js registry (CURRENCIES/DEFAULT_CURRENCY/
+// formatMoney()) -- see that file's header. This used to be a private
+// RENTAL_CURRENCIES/RENTAL_DEFAULT_CURRENCY copy defined here; consolidated
+// once properties.price_amount/price_currency needed the exact same
+// currency list, so there is now exactly one currency registry in the app.
+// currency.js must be loaded before this file (<script src="currency.js">
+// then <script src="rental-terms.js">).
 
 var RENTAL_FREQUENCY_OPTIONS = [
   {value:'daily',        label:{en:'Daily',            lo:'ທຸກມື້',          zh:'每天'}},
@@ -271,9 +267,9 @@ function _rtOptionLabel(options, value, lang) {
 // duration, and it only ever applies when explicitly chosen. See the
 // formatter below for why the default direction matters.
 function _rtFormatMoney(value, currency) {
-  var cur = RENTAL_CURRENCIES[currency] || RENTAL_CURRENCIES[RENTAL_DEFAULT_CURRENCY];
   var n = Number(value);
-  return cur.symbol + (isNaN(n) ? String(value) : n.toLocaleString('en-US'));
+  if (isNaN(n)) return currencySymbol(currency) + String(value);
+  return formatMoney(n, currency);
 }
 function _rtFormatRentMultiplier(value, lang) {
   var T = {
@@ -427,12 +423,12 @@ var RENTAL_TERM_KIND_RENDERERS = {
 
     var curSel = document.createElement('select');
     curSel.className = 'form-input rt-input';
-    Object.keys(RENTAL_CURRENCIES).forEach(function(code) {
+    Object.keys(CURRENCIES).forEach(function(code) {
       var o = document.createElement('option');
-      o.value = code; o.textContent = RENTAL_CURRENCIES[code].symbol + ' ' + code;
+      o.value = code; o.textContent = CURRENCIES[code].symbol + ' ' + code;
       curSel.appendChild(o);
     });
-    curSel.value = (value && value.currency) || RENTAL_DEFAULT_CURRENCY;
+    curSel.value = (value && value.currency) || DEFAULT_CURRENCY;
 
     // Currency is meaningless for a rent multiplier -- "2 months' rent"
     // inherits whatever currency the rent itself is quoted in.
