@@ -1150,19 +1150,40 @@ function handleNotifyMeClick(){
   }
 }
 
-// Share UX Improvement -- payload builder feeding components.js's shared
-// renderShareButton()/ptShareContent(). Always shares the canonical &lang=
-// URL, never the raw address bar -- the two normally match (setLang() keeps
-// the bar in sync), but this is what guarantees a correct localized preview
-// even from a stale/bookmarked link or a unit-selector deep link that hasn't
-// gone through setLang(). Replaces the old page-local handleShare(); the
-// native-share-first/clipboard-fallback/analytics behavior it used to
-// implement now lives once in components.js so every page can share it.
+// Share Strategy -- "Keep Sharing About the Listing, Not the Contact":
+// Share and Contact are different actions with different intents (Share =
+// introduce the property to someone else; Contact = start a conversation).
+// This payload MUST NEVER include a phone number, WhatsApp number, or any
+// other contact detail -- a shared link only ever routes the recipient back
+// to the full Pintag listing, never around it. Title/price/district are the
+// property-identifying facts a recipient needs to recognize what's being
+// shared; propertyContext.contacts is deliberately never read here.
+//
+// Payload builder feeding components.js's shared renderShareButton()/
+// ptShareContent(). Always shares the tagged share URL (getShareableListingUrl,
+// canonical &lang= URL + utm_source/medium=share -- never the raw address
+// bar) so a recipient always lands on the live listing (the two normally
+// match; the tagging is what guarantees a correct localized preview even
+// from a stale/bookmarked link, AND is what makes a shared visit
+// attributable in page_views without any new schema). Replaces the old
+// page-local handleShare(); the native-share-first/clipboard-fallback/
+// analytics behavior it used to implement now lives once in components.js.
 function getListingSharePayload(){
   if(!propertyContext)return null;
+  var lang=getCurrentLang();
+  var priceInfo=(typeof formatPropertyPrice==='function')?formatPropertyPrice(propertyContext,lang):null;
+  var priceLine=priceInfo?(priceInfo.isPriceOnRequest
+    ? (typeof PT_PRICE_ON_REQUEST!=='undefined'?PT_PRICE_ON_REQUEST[lang]:null)
+    : (priceInfo.isSor
+        ? [priceInfo.saleText,priceInfo.rentText].filter(Boolean).join(' · ')
+        : (priceInfo.singleText?(priceInfo.singleText+(priceInfo.unitText?' '+priceInfo.unitText:'')):null)))
+    :null;
+  var districtLine=propertyContext['district_'+lang]||propertyContext.district_en||null;
+  var text=[priceLine,districtLine].filter(Boolean).join(' · ')||null;
   return {
     title:document.title||'Pintag',
-    url:getCanonicalListingUrl(propertyContext,getCurrentLang())||window.location.href
+    url:getShareableListingUrl(propertyContext,lang)||window.location.href,
+    text:text
   };
 }
 
@@ -1210,6 +1231,21 @@ function getCanonicalListingUrl(data,langOverride){
   return 'https://pintag.io/listing.html?slug='+encodeURIComponent(data.slug)+'&lang='+encodeURIComponent(lang);
 }
 
+// Share Strategy -- the URL actually put in a share sheet/clipboard carries
+// utm_source/utm_medium so a share can be measured (analytics-tracking.js's
+// captureUtm() already stamps every page_views row with whatever utm_*
+// params were present on first load of a session -- this needs no new
+// column, just a URL that supplies them). Deliberately NOT the same string
+// as getCanonicalListingUrl(): the <link rel="canonical">/og:url tags must
+// stay the bare slug+lang URL (Rented Listings UX v2, Priority 9 -- URL
+// stability for SEO), so this only ever feeds a share payload, never a meta
+// tag or the canonical link.
+function getShareableListingUrl(data,langOverride){
+  var base=getCanonicalListingUrl(data,langOverride);
+  if(!base)return null;
+  return base+'&utm_source=pintag_share&utm_medium=share';
+}
+
 // Per-language "photo of {title}" alt text and generic fallback copy —
 // small, self-contained, not worth a shared registry entry the way
 // site-wide vocabulary (PROPERTY_TYPES etc.) is.
@@ -1245,9 +1281,24 @@ function updateOGTags(data){
   // metadata). Appending " — {Status}" and swapping the description keeps
   // the page indexable while being honest about what a visitor will find.
   var title=titleBase+(!listingStatusForMeta.isPubliclyAvailable?' — '+getMarketStatusLabel(listingStatusForMeta.market,lang):'')+' · Pintag';
-  var desc=resolveLangField(data,'property_highlight',lang,null)
+  // Share Strategy: "the ideal preview contains price and neighborhood" --
+  // this is what a WhatsApp/Messenger/Facebook link preview actually reads
+  // (crawlers fetch the URL's OG tags, not the Web Share API's `text`
+  // field -- see getListingSharePayload() for that side), so price/district
+  // lead the description rather than living only in the share payload.
+  var ogPriceInfo=(typeof formatPropertyPrice==='function')?formatPropertyPrice(data,lang):null;
+  var ogPriceLine=ogPriceInfo?(ogPriceInfo.isPriceOnRequest
+    ? (typeof PT_PRICE_ON_REQUEST!=='undefined'?PT_PRICE_ON_REQUEST[lang]:null)
+    : (ogPriceInfo.isSor
+        ? [ogPriceInfo.saleText,ogPriceInfo.rentText].filter(Boolean).join(' · ')
+        : (ogPriceInfo.singleText?(ogPriceInfo.singleText+(ogPriceInfo.unitText?' '+ogPriceInfo.unitText:'')):null)))
+    :null;
+  var ogDistrictLine=data['district_'+lang]||data.district_en||null;
+  var ogPriceLocLine=[ogPriceLine,ogDistrictLine].filter(Boolean).join(' · ');
+  var ogHighlight=resolveLangField(data,'property_highlight',lang,null)
     ||resolveLangField(data,'description',lang,null)
     ||OG_GENERIC_DESC[lang]||OG_GENERIC_DESC.en;
+  var desc=ogPriceLocLine?(ogPriceLocLine+' — '+ogHighlight):ogHighlight;
   if(!listingStatusForMeta.isPubliclyAvailable){
     var unavailLead=(typeof getUnavailableMessage==='function')?getUnavailableMessage(listingStatusForMeta.market,lang):getMarketStatusLabel(listingStatusForMeta.market,lang);
     desc=unavailLead+' '+(SEO_UNAVAILABLE_DESC_SUFFIX[lang]||SEO_UNAVAILABLE_DESC_SUFFIX.en);

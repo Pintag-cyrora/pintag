@@ -338,6 +338,20 @@ async function loadListingsTab() {
   // so this shows "—" rather than a fabricated "0%".
   const shareRate = eng.share_rate != null ? eng.share_rate + '%' : '—';
 
+  // Share Strategy: "Every shared listing should create another listing
+  // view, another potential lead, another opportunity to share again." --
+  // these four read straight off the utm_source=pintag_share tag every
+  // shared link carries (getShareableListingUrl() in listing.html) joined
+  // through the existing session_id spine, no new columns. views_per_share
+  // is deliberately labeled that way, not "CTR" -- Pintag never learns how
+  // many people a share reached, only how many share actions were taken and
+  // how many landing views carried the tag, so this is an honest
+  // amplification ratio, not a fabricated per-recipient click-through rate.
+  const sharedLinkViews = eng.shared_link_views || 0;
+  const viewsPerShare = eng.views_per_share != null ? eng.views_per_share + 'x' : '—';
+  const sharedLinkLeads = eng.shared_link_leads || 0;
+  const secondaryShares = eng.secondary_shares || 0;
+
   const byDay = {}; (eng.views_by_day || []).forEach(r => { byDay[r.day] = r.views; });
   const days = Object.keys(byDay).sort();
   _lastRows.listings = mostViewed;
@@ -349,6 +363,14 @@ async function loadListingsTab() {
         statCard('Favorites / Saves', savesTotal) + statCard('Shares', sharesTotal) +
         statCard('Share Rate', shareRate) +
         statCard('Agent profile clicks', agentClicks) +
+      '</div>' +
+    '</div>' +
+    '<div class="section-block">' + sectionHeader('Share Attribution — did the shared link bring someone in?') +
+      '<div class="stat-grid">' +
+        statCard('Views from shared links', sharedLinkViews) +
+        statCard('Views per share', viewsPerShare) +
+        statCard('Enquiries from shared links', sharedLinkLeads) +
+        statCard('Secondary shares', secondaryShares) +
       '</div>' +
     '</div>' +
     '<div class="section-block">' + sectionHeader('Listing Views Over Time') +

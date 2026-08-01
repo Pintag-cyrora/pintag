@@ -38,6 +38,40 @@ const OG_GENERIC_DESC = {
 };
 const DEFAULT_OG_IMAGE = 'https://pintag.io/og-preview.jpg';
 
+// Share Strategy: "the ideal preview contains price and neighborhood" --
+// minimal, hand-duplicated counterparts of currency.js's CURRENCIES/
+// formatMoney() and components.js's PT_FREQUENCY_SUFFIX/PT_PRICE_ON_REQUEST/
+// formatPropertyPrice() (single-price path only -- a sale_or_rent dual-price
+// listing falls back to price_display, same "coarse is fine for a preview
+// snippet" precedent as this file's other duplicated vocabulary). This
+// Worker is a separate Cloudflare deploy that can't import a browser file --
+// keep in sync manually whenever currency.js/components.js's price
+// formatting changes.
+const CURRENCY_SYMBOL = { USD: '$', LAK: '₭', THB: '฿' };
+const FREQUENCY_SUFFIX = {
+  monthly: { lo: '/ ເດືອນ', en: '/ month', zh: '/ 月' },
+  yearly: { lo: '/ ປີ', en: '/ year', zh: '/ 年' },
+  weekly: { lo: '/ ອາທິດ', en: '/ week', zh: '/ 周' },
+  daily: { lo: '/ ມື້', en: '/ day', zh: '/ 天' },
+  negotiable: { lo: '(ເຈລະຈາໄດ້)', en: '(negotiable)', zh: '(可议价)' },
+};
+const PRICE_ON_REQUEST = { lo: 'ສອບຖາມລາຄາ', en: 'Price on request', zh: '价格面议' };
+
+function formatPriceLine(row, lang) {
+  if (row.price_amount != null) {
+    const symbol = CURRENCY_SYMBOL[row.price_currency] || '$';
+    const amount = symbol + Math.round(Number(row.price_amount)).toLocaleString('en-US');
+    const isRent = row.transaction_type === 'for_rent' || row.transaction_type === 'sale_or_rent';
+    if (!isRent) return amount;
+    const suffix = FREQUENCY_SUFFIX[row.price_frequency] || FREQUENCY_SUFFIX.monthly;
+    return amount + ' ' + (suffix[lang] || suffix.en);
+  }
+  if (row.price_display) {
+    return String(row.price_display).replace(/\s*\/\s*(ເດືອນ|month|mo|月)\s*/i, '').trim() || null;
+  }
+  return PRICE_ON_REQUEST[lang] || PRICE_ON_REQUEST.en;
+}
+
 // Matches listing.html's own OG_LOCALE map, so the crawler-visible
 // og:locale (rewritten here, server-side) and the real-visitor og:locale
 // (set client-side once the page's own JS runs) always agree.
@@ -94,6 +128,8 @@ const LISTING_COLUMNS = [
   'description_en', 'description_lo', 'description_zh',
   'property_highlight', 'property_highlight_en', 'property_highlight_zh',
   'images', 'market_status',
+  'price_amount', 'price_currency', 'price_frequency', 'price_display', 'transaction_type',
+  'district_en', 'district_lo', 'district_zh',
 ].join(',');
 
 // Mirrors listing-status.js's LISTING_UNAVAILABLE_MARKET_STATUSES /
@@ -159,10 +195,19 @@ function pick(row, ...keys) {
 // catch-all since every listing is guaranteed to have Lao content.
 function buildOgFields(row, lang) {
   const titleBase = pick(row, `title_${lang}`, 'title_en', 'title_lo') || 'Pintag Property';
-  let desc =
+  const highlight =
     pick(row, `property_highlight_${lang}`, 'property_highlight_en', 'property_highlight') ||
     pick(row, `description_${lang}`, 'description_en') ||
     OG_GENERIC_DESC[lang] || OG_GENERIC_DESC.en;
+  // Share Strategy: lead the crawler-visible description with price +
+  // neighborhood -- "the ideal preview contains price and neighborhood" --
+  // this IS the WhatsApp/Messenger/Facebook link-preview text (native share
+  // sheet text is a separate, client-side-only field -- see listing.html's
+  // getListingSharePayload()).
+  const priceLine = formatPriceLine(row, lang);
+  const districtLine = pick(row, `district_${lang}`, 'district_en');
+  const priceLocLine = [priceLine, districtLine].filter(Boolean).join(' · ');
+  let desc = priceLocLine ? `${priceLocLine} — ${highlight}` : highlight;
   const images = Array.isArray(row.images) ? row.images.filter((u) => typeof u === 'string' && u) : [];
   const image = images[0] || DEFAULT_OG_IMAGE;
   const imageAlt = (OG_IMG_ALT_PREFIX[lang] || OG_IMG_ALT_PREFIX.en) + titleBase;
