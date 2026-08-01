@@ -227,3 +227,22 @@
 
 /* ─── Empty/placeholder state (shared) ──────────────────────────────── */
 .pt-empty{padding:40px 20px;text-align:center;color:var(--pt-ink-muted);font-size:13px;}
+
+/* ─── Share button (components.js's renderShareButton()) ───────────────
+   Reusable across property listings, agent profiles, neighborhood pages,
+   and market reports -- no page-specific styling here, only the two
+   generic sizes every caller picks between. Both variants keep a real
+   text label (never icon-only) and meet the 44x44px minimum tap target
+   via padding, regardless of how small the visual footprint looks. */
+.pt-share-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:44px;min-height:44px;background:var(--pt-white);color:var(--pt-ink);border:1.5px solid var(--pt-border-mid);border-radius:10px;font-family:var(--pt-font);font-weight:600;cursor:pointer;transition:background var(--pt-transition-fast),border-color var(--pt-transition-fast),color var(--pt-transition-fast);}
+.pt-share-btn:hover,.pt-share-btn:focus-visible{background:var(--pt-warm);border-color:var(--pt-teal);color:var(--pt-teal);}
+.pt-share-btn:focus-visible{outline:2px solid var(--pt-teal);outline-offset:2px;}
+.pt-share-btn svg{flex-shrink:0;}
+.pt-share-label{white-space:nowrap;}
+/* --prominent: a page's own action row (e.g. listing.html's left-actions,
+   sitting alongside Save/Verified) -- full-size, clearly a peer action. */
+.pt-share-btn--prominent{padding:11px 20px;font-size:14px;}
+/* --compact: a mobile sticky CTA bar, as the secondary action next to a
+   primary Contact/Find-Similar button -- same tap target, tighter
+   footprint so both buttons fit one row. */
+.pt-share-btn--compact{padding:11px 14px;font-size:12.5px;flex-shrink:0;}

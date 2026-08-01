@@ -331,6 +331,12 @@ async function loadListingsTab() {
   const ctrRows = eng.top_ctr || [];
   const savesTotal = eng.saves_total || 0;
   const sharesTotal = eng.shares_total || 0;
+  // Share UX Improvement: "Share Rate = Shares / Listing Views" -- the
+  // metric that tells us whether the redesigned, more prominent Share
+  // button actually increases organic distribution. share_rate is NULL
+  // (not 0) from the RPC when there have been zero views in the period,
+  // so this shows "—" rather than a fabricated "0%".
+  const shareRate = eng.share_rate != null ? eng.share_rate + '%' : '—';
 
   const byDay = {}; (eng.views_by_day || []).forEach(r => { byDay[r.day] = r.views; });
   const days = Object.keys(byDay).sort();
@@ -341,6 +347,7 @@ async function loadListingsTab() {
       '<div class="stat-grid">' +
         statCard('WhatsApp clicks', waClicks) + statCard('Call clicks', callClicks) +
         statCard('Favorites / Saves', savesTotal) + statCard('Shares', sharesTotal) +
+        statCard('Share Rate', shareRate) +
         statCard('Agent profile clicks', agentClicks) +
       '</div>' +
     '</div>' +

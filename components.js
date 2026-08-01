@@ -615,3 +615,117 @@ function renderAgentPreview(party, opts) {
 
   return wrap;
 }
+
+// ---------------------------------------------------------------------------
+// Share UX Improvement — renderShareButton()/ptShareContent(): the ONE
+// share affordance for the whole site, replacing whatever tiny/one-off
+// share link a page used to keep locally (e.g. listing.html's old
+// handleShare()). Deliberately generic: neither function reads a listing,
+// an agent, or any other page-specific object directly -- every caller
+// supplies its own {title, text, url} via getPayload(), so this same pair
+// works unmodified for a property listing today and an agent profile,
+// neighborhood page, or market report later (per the "Future
+// Compatibility" requirement -- no listing-specific assumptions here).
+//
+// Always tries the native OS share sheet first (Web Share API — the same
+// interaction pattern Facebook/TikTok's own share buttons trigger on
+// mobile, without copying either platform's icon or branding), falling
+// back to a clipboard copy + visible "Copied!" label swap only on
+// platforms that don't support navigator.share (desktop Chrome/Firefox
+// today). This mirrors listing.html's pre-existing handleShare() exactly
+// (same two-path logic, same "only track on genuine success, not on a
+// user-cancelled share sheet" rule) — centralized here instead of
+// duplicated per page.
+// ---------------------------------------------------------------------------
+var PT_SHARE_ARROW_SVG =
+  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>' +
+  '<polyline points="16 6 12 2 8 6"/>' +
+  '<line x1="12" y1="2" x2="12" y2="15"/>' +
+  '</svg>';
+var PT_SHARE_LABEL = { lo: 'ແບ່ງປັນ', en: 'Share', zh: '分享' };
+var PT_SHARE_COPIED_LABEL = { lo: 'ຄັດລອກແລ້ວ', en: 'Copied!', zh: '已复制' };
+
+// ptShareContent(payload, btn, opts) -- payload: {title, text, url}
+// (text is optional -- passed through to navigator.share() when the
+// caller has a short description available, per "Optionally include a
+// short description if already supported"). opts.analytics, when given
+// as {table, extra}, posts one row to `table` (via the PAGE's own global
+// postEvent() -- gracefully skipped if that function doesn't exist on a
+// page that hasn't defined one, same defensive pattern as
+// ptToggleSave()'s save-tracking above) with event_type='share' plus
+// whatever identifying fields the caller supplies in `extra` (e.g.
+// {property_id: ...}). Only fires on a genuine successful share/copy,
+// never on a cancelled share sheet.
+function ptShareContent(payload, btn, opts) {
+  opts = opts || {};
+  if (!payload || !payload.url) return;
+  var url = payload.url;
+  var title = payload.title || 'Pintag';
+  function trackSuccess() {
+    if (!opts.analytics || typeof postEvent !== 'function') return;
+    var body = Object.assign(
+      { event_type: 'share', session_id: (typeof getOrCreateSessionId === 'function') ? getOrCreateSessionId() : null },
+      opts.analytics.extra || {}
+    );
+    postEvent(opts.analytics.table || 'listing_events', body);
+  }
+  if (navigator.share) {
+    var sharePayload = { title: title, url: url };
+    if (payload.text) sharePayload.text = payload.text;
+    navigator.share(sharePayload).then(trackSuccess).catch(function () {});
+    return;
+  }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(function () {
+      trackSuccess();
+      if (!btn) return;
+      var labelEl = btn.querySelector('.pt-share-label');
+      if (!labelEl) return;
+      var lang = btn.getAttribute('data-lang') || 'en';
+      labelEl.textContent = PT_SHARE_COPIED_LABEL[lang] || PT_SHARE_COPIED_LABEL.en;
+      setTimeout(function () {
+        labelEl.textContent = PT_SHARE_LABEL[lang] || PT_SHARE_LABEL.en;
+      }, 1800);
+    }).catch(function () {});
+  }
+}
+
+// renderShareButton(opts) -> DOM node (<button>)
+// opts:
+//   lang: 'en'|'lo'|'zh' (default 'en')
+//   variant: 'prominent' (default; full-size, e.g. a page's action row)
+//            | 'compact' (tighter, e.g. a mobile sticky CTA bar sitting
+//              next to a primary Contact/Find-Similar button) -- both
+//              variants meet the 44x44px minimum tap target and always
+//              show the text label, never icon-only (per "Do not rely on
+//              the icon alone").
+//   getPayload: fn() -> {title, text, url} -- called at CLICK time, not
+//     render time, so a caller can build a button before the data it
+//     will share is even fetched yet (e.g. before a listing's async
+//     fetch resolves).
+//   analytics: { table, extra } -- see ptShareContent() above. Omit to
+//     skip analytics entirely (e.g. a future page with no event table).
+//   dataTrack: {...} -- same data-track-* convention as every other
+//     components.js renderer (tracking.js's generic click instrumentation
+//     picks these up automatically, independent of the analytics.share
+//     event above -- one is "a share happened," the other is "this UI
+//     element was interacted with," and both are useful).
+function renderShareButton(opts) {
+  opts = opts || {};
+  var lang = opts.lang || 'en';
+  var variant = opts.variant === 'compact' ? 'compact' : 'prominent';
+  var label = PT_SHARE_LABEL[lang] || PT_SHARE_LABEL.en;
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pt-share-btn pt-share-btn--' + variant;
+  btn.setAttribute('data-lang', lang);
+  btn.setAttribute('aria-label', label);
+  btn.innerHTML = PT_SHARE_ARROW_SVG + '<span class="pt-share-label">' + _ptEsc(label) + '</span>';
+  _ptApplyDataTrack(btn, opts.dataTrack);
+  btn.addEventListener('click', function () {
+    if (typeof opts.getPayload !== 'function') return;
+    ptShareContent(opts.getPayload(), btn, { analytics: opts.analytics });
+  });
+  return btn;
+}
