@@ -328,9 +328,39 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
    status badge. Links straight to the Similar Properties section: the
    whole point is to redirect a buyer toward something they can still get,
    not to make the page feel like a dead end. */
-.unavailable-notice{background:rgba(194,65,12,0.06);border:1px solid rgba(194,65,12,0.18);border-radius:8px;padding:11px 14px;margin-bottom:16px;}
-.unavailable-notice a{display:block;font-size:13px;line-height:1.55;color:#9A3412;text-decoration:none;}
-.unavailable-notice a:hover{text-decoration:underline;}
+/* Rented Listings UX v2 -- conversion panel (Priority 3), replacing v1's
+   simpler one-line .unavailable-notice. */
+.conversion-panel{background:rgba(194,65,12,0.06);border:1px solid rgba(194,65,12,0.18);border-radius:10px;padding:16px 18px;margin-bottom:16px;}
+.conversion-panel-lead{font-size:14px;font-weight:600;color:#9A3412;margin:0 0 4px;line-height:1.5;}
+.conversion-panel-urgency{font-size:13px;color:var(--ink-muted);margin:0 0 10px;line-height:1.5;}
+.conversion-panel-checks{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:5px;}
+.conversion-panel-check{font-size:12.5px;color:var(--ink);}
+.conversion-panel-cta{display:inline-flex;align-items:center;justify-content:center;background:var(--ink);color:#fff;padding:10px 18px;border-radius:var(--r-btn);font-size:13px;font-weight:500;text-decoration:none;}
+.conversion-panel-cta:hover{opacity:0.9;}
+/* Priority 4 -- secondary "notify me" waiting-list CTA, deliberately
+   visually secondary to the primary contact/Find-Similar CTA above it
+   (agentHtml renders immediately before this in the layout). */
+.waitlist-cta{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 48px;border-top:1px dashed var(--border-mid);margin-top:-4px;margin-bottom:24px;}
+.waitlist-cta-label{font-size:12.5px;color:var(--ink-muted);margin:0;}
+.waitlist-cta-btn{background:transparent;border:1px solid var(--border-mid);color:var(--ink);padding:8px 14px;border-radius:var(--r-btn);font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap;}
+.waitlist-cta-btn:hover{background:rgba(26,32,36,0.04);}
+@media(max-width:960px){.waitlist-cta{padding:12px 16px;}}
+/* Priority 1 -- "Original Asking Price" label, shown only above an
+   unavailable listing's price (an available listing's price needs no
+   disambiguating label -- it already IS the current asking price). */
+.price-orig-label{font-size:10.5px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);margin:0 0 3px;}
+/* Priority 6 -- Market Insight panel, progressive enhancement: hidden
+   entirely (via inline style/JS) whenever neither line has real data. */
+.market-insight{margin-top:10px;padding:10px 14px;background:rgba(45,140,140,0.05);border:1px solid rgba(45,140,140,0.14);border-radius:8px;}
+.market-insight-title{font-size:9.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--teal);margin:0 0 4px;}
+.market-insight-line{font-size:12.5px;color:var(--ink);margin:0;line-height:1.5;}
+/* Priority 7 -- Price History, hidden entirely whenever buildPriceHistoryEvents() returns no events. */
+.price-history{margin-top:18px;}
+.price-history-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px;}
+.price-history-row:last-child{border-bottom:none;}
+.price-history-label{color:var(--ink-muted);flex:0 0 auto;}
+.price-history-value{color:var(--ink);font-weight:600;flex:1;text-align:right;font-variant-numeric:tabular-nums;}
+.price-history-date{color:var(--ink-muted);flex:0 0 auto;font-size:11px;min-width:80px;text-align:right;}
 @media(max-width:960px){
   .prop-status-badge{font-size:11px;padding:6px 13px;}
 }
@@ -622,6 +652,10 @@ var LEAD_POPULAR_MIN       = 5;   // "Popular Listing" badge threshold
 
 // ── Social proof helpers ───────────────────────────────────────────
 var _publicStats = null;
+// Rented Listings UX v2, Priority 6 -- cached so a language switch can
+// re-localize the "typically rents within N days" line without a second
+// RPC round-trip (same pattern as _publicStats above).
+var _marketTransitionStats = null;
 
 function formatViewCount(n) {
   if (!SHOW_PUBLIC_VIEWS || !n || n < 10) return null;
@@ -743,6 +777,49 @@ async function loadPublicStats(listingId) {
   } catch(e) {}
 }
 
+// ── Rented Listings UX v2, Priority 6 ("Market Statistics") ──────────────
+// applyMarketTransitionStats() renders "Homes like this typically rent
+// within N days" -- strictly from market_transition_stats()'s
+// sample_size (see migration 20260801000000): a 0 sample means "not
+// enough real data yet," which hides the line entirely rather than
+// showing an estimate. Called for both available and unavailable
+// listings alike (this is general market context, not specific to
+// unavailable ones), and again on every language switch to re-localize
+// the already-fetched number without a second RPC round-trip.
+function applyMarketTransitionStats(stats, lang, transactionType) {
+  var lineEl = document.getElementById('market-insight-days');
+  var panelEl = document.getElementById('market-insight');
+  if (!lineEl) return;
+  if (!stats || !stats.sample_size || stats.sample_size < 3 || stats.median_days == null) {
+    lineEl.style.display = 'none';
+    lineEl.textContent = '';
+    if (panelEl) panelEl.style.display = 'none';
+    return;
+  }
+  var days = Math.round(stats.median_days);
+  var isSale = transactionType === 'for_sale';
+  var text = isSale
+    ? { lo:'ອະສັງຫາປະເພດນີ້ໂດຍປົກກະຕິຂາຍພາຍໃນ '+days+' ມື້', en:'Homes like this typically sell within '+days+' days', zh:'此类房源通常在 '+days+' 天内售出' }[lang]
+    : { lo:'ອະສັງຫາປະເພດນີ້ໂດຍປົກກະຕິເຊົ່າພາຍໃນ '+days+' ມື້', en:'Homes like this typically rent within '+days+' days', zh:'此类房源通常在 '+days+' 天内租出' }[lang];
+  lineEl.textContent = text;
+  lineEl.style.display = 'block';
+  if (panelEl) panelEl.style.display = 'block';
+}
+
+async function loadMarketTransitionStats(propertyType, districtEn, transactionType) {
+  if (!propertyType || !districtEn || !transactionType) return;
+  try {
+    var res = await fetch(BASE_DB + '/rest/v1/rpc/market_transition_stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SEC_KEY, 'Authorization': 'Bearer ' + SEC_KEY },
+      body: JSON.stringify({ p_property_type: propertyType, p_district_en: districtEn, p_transaction_type: transactionType })
+    });
+    if (!res.ok) return;
+    _marketTransitionStats = await res.json();
+    applyMarketTransitionStats(_marketTransitionStats, getCurrentLang(), transactionType);
+  } catch(e) {}
+}
+
 function incrementView(listingId) {
   if (!listingId) return;
   fetch(BASE_DB + '/rest/v1/rpc/increment_listing_view', {
@@ -841,12 +918,68 @@ var MARKET_STATUS_CSS_CLASS = {
   sold: 'prop-status-sold', off_market: 'prop-status-sold',
   rented: 'prop-status-rented'
 };
-function getStatusBadgeHtml(marketStatus, lang){
+// dateText: optional, from formatStatusChangeDate() -- a real transition
+// date/relative phrase ("12 days ago", "July 2026"), or null/omitted when
+// none is on file. Rented Listings UX v2, Priority 2: appended after a
+// " • " separator, never fabricated -- a status with no dateText just
+// shows the bare label, exactly like before this was added.
+// ── Price History (Rented Listings UX v2, Priority 7) ───────────────────
+// Fully generic: renderPriceHistory() takes an array of
+// {label, price, date} events and renders nothing at all when the array
+// is empty -- "hidden unless data exists," never fabricated. A future
+// backend price_history JSONB column (a proper timestamped log of every
+// price the listing ever had) is a pure additive change on that side;
+// this component already accepts whatever array it's given, so wiring
+// that up later needs zero changes here.
+//
+// buildPriceHistoryEvents() is what populates it TODAY, from only two
+// already-real, already-tracked sources -- never estimated:
+//   1. properties.price_previous (existing column, set by staff in
+//      admin.html when they reduce a listing's price) -- if present and
+//      different from the current price, becomes a Listed/Price Reduced
+//      pair. Neither step carries a date: there's no tracked "price
+//      changed on X" timestamp, only a before/after value, so showing one
+//      would be fabricating precision that doesn't exist.
+//   2. properties.market_status_changed_at (added by migration
+//      20260801000000) -- if the listing is unavailable AND that column
+//      has a real value, becomes a status-transition step (Rented/Sold/
+//      etc) with a REAL date via formatStatusChangeDate().
+function buildPriceHistoryEvents(data, lang, priceInfo, statusResolved, statusChangeDateText){
+  var events=[];
+  var currentPriceText=(priceInfo&&priceInfo.singleText)?(priceInfo.singleText+(priceInfo.unitText?' '+priceInfo.unitText:'')):(data.price_display||null);
+  if(data.price_previous && currentPriceText && data.price_previous!==currentPriceText && data.price_previous!==data.price_display){
+    events.push({label:{lo:'ລາຄາທຳອິດ',en:'Listed',zh:'首次挂牌'}[lang],price:data.price_previous,date:null});
+    events.push({label:{lo:'ຫຼຸດລາຄາ',en:'Price Reduced',zh:'降价'}[lang],price:currentPriceText,date:null});
+  }
+  if(statusResolved&&!statusResolved.isPubliclyAvailable&&data.market_status_changed_at&&statusChangeDateText){
+    events.push({
+      label:(typeof getMarketStatusLabel==='function')?getMarketStatusLabel(statusResolved.market,lang):statusResolved.market,
+      price:currentPriceText,
+      date:statusChangeDateText
+    });
+  }
+  return events;
+}
+function renderPriceHistory(events, lang){
+  if(!Array.isArray(events)||!events.length) return '';
+  var title={lo:'ປະຫວັດລາຄາ',en:'Price History',zh:'价格历史'}[lang];
+  var rows=events.map(function(e){
+    return '<div class="price-history-row">'+
+      '<span class="price-history-label">'+esc(e.label||'')+'</span>'+
+      (e.price?'<span class="price-history-value">'+esc(e.price)+'</span>':'')+
+      (e.date?'<span class="price-history-date">'+esc(e.date)+'</span>':'')+
+      '</div>';
+  }).join('');
+  return '<div class="price-history" id="price-history"><span class="section-label">'+esc(title)+'</span>'+rows+'</div>';
+}
+
+function getStatusBadgeHtml(marketStatus, lang, dateText){
   var cls = MARKET_STATUS_CSS_CLASS[marketStatus] || 'prop-status-available';
   var label = (typeof getMarketStatusLabel === 'function')
     ? getMarketStatusLabel(marketStatus, lang)
     : 'Available';
-  return '<span class="prop-status-badge '+cls+'">'+esc(label)+'</span>';
+  var text = dateText ? (label + ' • ' + dateText) : label;
+  return '<span class="prop-status-badge '+cls+'">'+esc(text)+'</span>';
 }
 
 var PT = (function(){
@@ -975,7 +1108,45 @@ function setLang(lang,btn){
   if(propertyContext){
     try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on lang switch',e);}
     try{updateOGTags(propertyContext);}catch(e){PT.err('updateOGTags on lang switch',e);}
-    if(similarCache)renderSimilarGrid(similarCache);if(_publicStats)applyPublicStats(_publicStats);
+    if(similarCache){renderSimilarGrid(similarCache);populateConversionPanelChecks(propertyContext,similarCache);}
+    if(_publicStats)applyPublicStats(_publicStats);
+    if(_marketTransitionStats)applyMarketTransitionStats(_marketTransitionStats,lang,propertyContext.transaction_type);
+  }
+}
+
+// Rented Listings UX v2, Priority 3 -- the conversion panel's CTA smooth-
+// scrolls straight to Similar Properties rather than relying on the
+// browser's default instant-jump anchor behavior.
+function scrollToSimilar(e){
+  if(e&&e.preventDefault)e.preventDefault();
+  var el=document.getElementById('similar-section');
+  if(el)el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// Rented Listings UX v2, Priority 4 -- "Notify Me About Similar
+// Properties" waiting-list CTA. Deliberately isolated behind this one
+// function (never called any other way, and the button markup never
+// branches on how the notification actually happens) so a future proper
+// saved-search/notification backend can replace the body here without
+// touching the UI anywhere on the page. For now: opens WhatsApp with a
+// pre-filled request, reusing the same contact channel every other
+// inquiry on this page already goes through -- no new backend needed to
+// ship this today.
+function handleNotifyMeClick(){
+  if(!propertyContext)return;
+  var lang=getCurrentLang();
+  var typeLabel=(typeof PROPERTY_TYPES!=='undefined'&&PROPERTY_TYPES[propertyContext.property_type]&&PROPERTY_TYPES[propertyContext.property_type][lang])||propertyContext.property_type||'';
+  var msg={
+    lo:'ສະບາຍດີ, ຂ້ອຍພາດອະສັງຫາລິມະຊັບນີ້ໄປ. ກະລຸນາແຈ້ງຂ້ອຍເມື່ອມີ'+typeLabel+'ທີ່ຄ້າຍຄືກັນວ່າງ.',
+    en:'Hi, I missed this property. Please notify me when a similar '+typeLabel+' becomes available.',
+    zh:'您好，这套房源我错过了，有类似的'+typeLabel+'时请通知我。'
+  }[lang];
+  if(_currentContactPhone){
+    var url='https://wa.me/'+_currentContactPhone+'?text='+encodeURIComponent(msg+' — '+(propertyContext.title_en||''));
+    window.open(url,'_blank','noopener,noreferrer');
+  }
+  if(typeof postEvent==='function'&&propertyContext.id){
+    postEvent('listing_events',{property_id:propertyContext.id,event_type:'contact',session_id:getOrCreateSessionId(),source:'waitlist_notify_me'});
   }
 }
 
@@ -1169,6 +1340,7 @@ async function fetchProperty(slug){
       fetchSimilarProperties(propertyContext);
       incrementView(propertyContext.id);
       loadPublicStats(propertyContext.id);
+      loadMarketTransitionStats(propertyContext.property_type,propertyContext.district_en,propertyContext.transaction_type);
     }
   }catch(err){
     PT.timeEnd('fetchProperty');
@@ -1330,6 +1502,7 @@ async function fetchSimilarProperties(prop){
 
     similarCache = results;
     renderSimilarGrid(results);
+    populateConversionPanelChecks(prop, results);
 
   }catch(e){
     PT.timeEnd('fetchSimilar');
@@ -1366,6 +1539,35 @@ function updateSimilarSectionHeading(isUnavailable){
   var set=isUnavailable?SIMILAR_HEADING.unavailable:SIMILAR_HEADING.normal;
   titleEl.innerHTML='<span class="lo-i">'+esc(set.lo)+'</span><span class="en-i">'+esc(set.en)+'</span><span class="zh-i">'+esc(set.zh)+'</span>';
   if(secEl)secEl.classList.toggle('similar-emphasized',!!isUnavailable);
+}
+
+// Rented Listings UX v2, Priority 3 -- fills the conversion panel's ✓
+// checklist with facts derived from the ACTUAL results
+// fetchSimilarProperties() found, never a guessed/rounded number. Called
+// once fetchSimilarProperties() resolves (the panel itself already
+// rendered synchronously, before this count was known) and again on every
+// language switch (from the cached results, no re-fetch). A no-op when
+// the panel isn't in the DOM at all (an available listing has no
+// conversion panel to populate).
+function populateConversionPanelChecks(target, results){
+  var el=document.getElementById('conversion-panel-checks');
+  if(!el)return;
+  if(!Array.isArray(results)||!results.length){el.innerHTML='';return;}
+  var lang=getCurrentLang();
+  var typeLabel=(typeof PROPERTY_TYPES!=='undefined'&&PROPERTY_TYPES[target.property_type]&&PROPERTY_TYPES[target.property_type][lang])||target.property_type||'';
+  var n=results.length;
+  var items=[];
+  items.push({
+    lo:n+' '+typeLabel+'ທີ່ຄ້າຍຄືກັນ',
+    en:n+' similar '+typeLabel.toLowerCase()+(n===1?'':'s'),
+    zh:n+'套类似'+typeLabel
+  }[lang]);
+  var sameDistrictCount=results.filter(function(r){return r.district_en&&target.district_en&&r.district_en===target.district_en;}).length;
+  if(sameDistrictCount>0)items.push({lo:'ໃນເຂດດຽວກັນ',en:'Same neighborhood',zh:'同一区域'}[lang]);
+  var priceSignal=SIMILAR_RANK_SIGNALS.filter(function(s){return s.key==='price';})[0];
+  var priceCloseCount=priceSignal?results.filter(function(r){return priceSignal.score(target,r)>0;}).length:0;
+  if(priceCloseCount>0)items.push({lo:'ລາຄາໃກ້ຄຽງກັນ',en:'Similar price range',zh:'价格相近'}[lang]);
+  el.innerHTML=items.map(function(t){return '<li class="conversion-panel-check">✓ '+esc(t)+'</li>';}).join('');
 }
 
 // Card markup/classes mirror listings.html's .prop-card component (same
@@ -1489,6 +1691,14 @@ function _syncUnitUrlParam(){
 // whichever gallery is actually on screen rather than always reopening the
 // building's photos underneath a unit's swapped-in hero.
 var _currentGalleryImages = [];
+
+// Rented Listings UX v2, Priority 4 -- the "Notify Me About Similar
+// Properties" waiting-list CTA needs the buyer contact's WhatsApp number,
+// but that's normally a buildMockupLayout()-local `cleanPhone` var. Mirrors
+// _currentGalleryImages's own pattern: stash the current render's value in
+// a module-level var so a global click handler (handleNotifyMeClick(),
+// defined once, outside any single render) can reach it.
+var _currentContactPhone = '';
 
 // Deep linking (?unit=slugified-name or ?unit=<uuid>) -- resolves to a
 // unit_types id so the caller can pre-select it before the first render.
@@ -1694,21 +1904,57 @@ function buildMockupLayout(){
   var effectiveFeatures =selectedUnit?(Array.isArray(selectedUnit.resolved.features) ?selectedUnit.resolved.features :[]):(Array.isArray(data.features) ?data.features :[]);
 
   var listingStatusResolved=(typeof resolveListingStatus==='function')?resolveListingStatus(data):{market:'available',isPubliclyAvailable:true};
-  var statusBadgeHtml=getStatusBadgeHtml(listingStatusResolved.market,lang);
+  // Rented Listings UX v2, Priority 2 -- a real transition date (never
+  // fabricated: formatStatusChangeDate() returns null for any row with no
+  // recorded market_status_changed_at, and the badge just shows the bare
+  // status in that case, exactly like v1 did).
+  var statusChangeDateText=(typeof formatStatusChangeDate==='function')?formatStatusChangeDate(data.market_status_changed_at,lang):null;
+  var statusBadgeHtml=getStatusBadgeHtml(listingStatusResolved.market,lang,statusChangeDateText);
   var desktopGalleryMarkup=buildDesktopGallery(imagesArray);
   var mobileGalleryMarkup=buildMobileGallery(imagesArray,statusBadgeHtml);
 
-  // ── Unavailable-listing notice — near the top of the page, right under
-  // the status badge. This is the "market history" framing: the listing
-  // stays fully browsable (price, photos, details all intact below), this
-  // banner just explains why it's no longer actionable and immediately
-  // points at the Similar Properties section as the next step.
-  var unavailableNoticeHtml='';
+  // ── Rented Listings UX v2, Priority 3/4/8 — conversion panel + waiting-
+  // list CTA, near the top of the page, right under the status badge. This
+  // replaces v1's simpler one-line notice: same "market history, not a
+  // dead end" framing, but now with a real-data checklist (populated once
+  // fetchSimilarProperties() resolves -- see populateConversionPanelChecks()
+  // below, since the exact similar-listing count isn't known synchronously
+  // here) and a CTA that smooth-scrolls straight to Similar Properties.
+  //
+  // Priority 8 also asks for Similar Properties to "immediately follow the
+  // status notice." Deliberately NOT implemented as a literal DOM move of
+  // the whole Similar Properties grid above the gallery/price/description:
+  // Priority 5 explicitly requires the full listing to stay normally
+  // browsable, and jumping straight to a *different* section before a
+  // visitor has even seen this listing's own photos would contradict that
+  // more directly than it satisfies "immediately follows." Instead, the
+  // panel's own CTA is the literal next step in the user journey (one
+  // click/tap from the notice straight to Similar Properties), and Similar
+  // Properties itself keeps its larger heading + stronger visual emphasis
+  // (updateSimilarSectionHeading() below) so it reads as the clear
+  // destination once reached.
+  var conversionPanelHtml='';
+  var waitlistCtaHtml='';
   if(listingStatusResolved&&!listingStatusResolved.isPubliclyAvailable){
-    var noticeText=(typeof getUnavailableNoticeText==='function')?getUnavailableNoticeText(listingStatusResolved.market,lang):null;
-    if(noticeText){
-      unavailableNoticeHtml='<div class="unavailable-notice"><a href="#similar-section">'+esc(noticeText)+'</a></div>';
-    }
+    var panelLead=(typeof getUnavailableMessage==='function')?getUnavailableMessage(listingStatusResolved.market,lang):getMarketStatusLabel(listingStatusResolved.market,lang);
+    var panelUrgency={lo:'ຊັບສິນດີໆແບບນີ້ບໍ່ຄ່ອຍວ່າງດົນ.',en:"Good properties like this don't stay available for long.",zh:'像这样的优质房源通常很快就会被订走。'}[lang];
+    var panelCtaLabel={lo:'ເບິ່ງຊັບສິນທີ່ຄ້າຍຄືກັນ',en:'View Similar Properties',zh:'查看类似房源'}[lang];
+    conversionPanelHtml=(
+      '<div class="conversion-panel" id="conversion-panel">'+
+      '<p class="conversion-panel-lead">'+esc(panelLead)+'</p>'+
+      '<p class="conversion-panel-urgency">'+esc(panelUrgency)+'</p>'+
+      '<ul class="conversion-panel-checks" id="conversion-panel-checks"></ul>'+
+      '<a href="#similar-section" class="conversion-panel-cta" onclick="scrollToSimilar(event)">'+esc(panelCtaLabel)+'</a>'+
+      '</div>'
+    );
+    var waitlistLabel={lo:'ບໍ່ໄດ້ຊັບສິນນີ້ບໍ?',en:"Didn't get this one?",zh:'没抢到这套？'}[lang];
+    var waitlistBtnLabel={lo:'ແຈ້ງເຕືອນຊັບສິນທີ່ຄ້າຍຄືກັນ',en:'Notify Me About Similar Properties',zh:'类似房源上架时通知我'}[lang];
+    waitlistCtaHtml=(
+      '<div class="waitlist-cta" id="waitlist-cta">'+
+      '<p class="waitlist-cta-label">'+esc(waitlistLabel)+'</p>'+
+      '<button type="button" class="waitlist-cta-btn" onclick="handleNotifyMeClick()" data-track="waitlist-notify-me" data-track-type="cta" data-track-label="Notify me about similar properties">'+esc(waitlistBtnLabel)+'</button>'+
+      '</div>'
+    );
   }
   updateSimilarSectionHeading(listingStatusResolved&&!listingStatusResolved.isPubliclyAvailable);
 
@@ -1864,15 +2110,20 @@ function buildMockupLayout(){
 
   // ── Unavailable listings: the original asking price stays fully visible
   // (Pintag's price data is market history, not something that disappears
-  // once a listing is off-market) -- this ONLY appends a status-explainer
-  // line after whatever price/inquire markup was already computed above
+  // once a listing is off-market). Rented Listings UX v2, Priority 1: a
+  // small "Original Asking Price" label is prepended so it reads
+  // unambiguously as historical, not a live/current asking price --
+  // followed by whatever price/inquire markup was already computed above
   // (base price, selected-unit price, or "inquire" for a listing that
-  // genuinely has no price on file). isPubliclyAvailable() is the single
-  // gate (listing-status.js). The matching CTA swap (Find Similar / Join
+  // genuinely has no price on file), then a status-explainer line
+  // appended after it. isPubliclyAvailable() is the single gate
+  // (listing-status.js). The matching CTA swap (Find Similar / Join
   // Waiting List / Notify Me replacing WhatsApp/Call) happens further below
   // once cleanPhone/WA_SVG exist.
   if(listingStatusResolved&&!listingStatusResolved.isPubliclyAvailable){
     var unavailMsg=(typeof getUnavailableMessage==='function')?getUnavailableMessage(listingStatusResolved.market,lang):null;
+    var origPriceLabel={lo:'ລາຄາທຳອິດທີ່ຕັ້ງໄວ້',en:'Original Asking Price',zh:'原始挂牌价'}[lang];
+    resolvedPriceHtml='<p class="price-orig-label">'+esc(origPriceLabel)+'</p>'+resolvedPriceHtml;
     resolvedPriceHtml+='<p class="price-status-note">'+esc(unavailMsg||getMarketStatusLabel(listingStatusResolved.market,lang))+'</p>';
   }
 
@@ -1946,6 +2197,7 @@ function buildMockupLayout(){
   var contact=data.contacts||null;
   var contactPhone=contact?(contact.whatsapp||contact.phone||''):'';
   var cleanPhone=String(contactPhone).replace(/[^0-9]/g,'');
+  _currentContactPhone=cleanPhone;
   // Localized pre-filled WhatsApp message — {{PLACEHOLDER}} template per
   // language so word order can differ freely (Chinese puts location before
   // property type; Lao has no article). Property type name reuses the same
@@ -2062,6 +2314,14 @@ function buildMockupLayout(){
     amenityRowHtml+='</div>';
   }
 
+  // Rented Listings UX v2, Priority 7 -- see buildPriceHistoryEvents()'s
+  // own header comment for exactly which real data sources feed this and
+  // why it's often empty (and therefore invisible) today.
+  var priceHistoryHtml=renderPriceHistory(
+    buildPriceHistoryEvents(data,lang,priceInfo,listingStatusResolved,statusChangeDateText),
+    lang
+  );
+
   var overviewColHtml=(
     '<div>'+
     '<span class="section-label">'+L.overview[lang]+'</span>'+
@@ -2069,6 +2329,7 @@ function buildMockupLayout(){
     amenityRowHtml+
     pdetailHtml+
     rentalTermsHtml+
+    priceHistoryHtml+
     '</div>'
   );
 
@@ -2342,10 +2603,14 @@ function buildMockupLayout(){
     '<span class="tx-badge'+(isSor?' tx-badge-sor':'')+'" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
     statusBadgeHtml+
     '</div>'+
-    unavailableNoticeHtml+
+    conversionPanelHtml+
     '<div id="sp-badges" class="sp-badges-row"></div>'+
     viewingUnitBannerHtml+
     '<div class="price-block">'+resolvedPriceHtml+'</div>'+
+    '<div class="market-insight" id="market-insight" style="display:none;">'+
+    '<p class="market-insight-title">'+esc({lo:'ຂໍ້ມູນຕະຫຼາດ',en:'Market Insight',zh:'市场洞察'}[lang])+'</p>'+
+    '<p class="market-insight-line" id="market-insight-days" style="display:none;"></p>'+
+    '</div>'+
     '<div class="sp-metrics-row"><span class="sp-metric" id="sp-views" style="display:none;"></span><span class="sp-metric" id="sp-inquiries" style="display:none;"></span></div>'+
     (specsHtml?'<div class="spec-grid">'+specsHtml+'</div>':'')+
     highlightPillsHtml+
@@ -2361,6 +2626,7 @@ function buildMockupLayout(){
     availableUnitsHtml+
     mobileAmenitiesSlotHtml+
     agentHtml+
+    waitlistCtaHtml+
     emotionalIntroHtml+
     '<div class="detail-wrap">'+
     propertyHighlightsHtml+

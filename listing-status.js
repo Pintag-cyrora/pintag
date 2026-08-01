@@ -157,3 +157,38 @@ function getUnavailableNoticeText(marketStatus, lang) {
   var trailer = UNAVAILABLE_NOTICE_TRAILER[lang] || UNAVAILABLE_NOTICE_TRAILER.en;
   return lead + ' ' + trailer;
 }
+
+// ── Rented Listings UX v2, Priority 2 ("Rented Date") ───────────────────
+// formatStatusChangeDate(dateStr, lang, nowMs) -- turns a REAL
+// properties.market_status_changed_at timestamp (see migration
+// 20260801000000_market_status_transition_tracking.sql) into either a
+// short relative phrase ("12 days ago") for a recent transition, or an
+// absolute "Month YYYY" for an older one. Returns null for a missing/
+// invalid date -- callers MUST NOT fabricate a date when this returns
+// null (e.g. a listing whose status changed before that migration shipped
+// has no real value to show, and must fall back to the bare status badge
+// with no date, per the "do not fabricate dates" requirement).
+var STATUS_DATE_MONTH_NAMES = {
+  en: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+  lo: ['ມັງກອນ','ກຸມພາ','ມີນາ','ເມສາ','ພຶດສະພາ','ມິຖຸນາ','ກໍລະກົດ','ສິງຫາ','ກັນຍາ','ຕຸລາ','ພະຈິກ','ທັນວາ'],
+  zh: ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
+};
+function formatStatusChangeDate(dateStr, lang, nowMs) {
+  if (!dateStr) return null;
+  var t = new Date(dateStr).getTime();
+  if (!t || isNaN(t)) return null;
+  var now = typeof nowMs === 'number' ? nowMs : Date.now();
+  var days = Math.floor((now - t) / 86400000);
+  if (days < 0) days = 0;
+  lang = lang || 'en';
+  if (days <= 30) {
+    if (days === 0) return { lo: 'ມື້ນີ້', en: 'today', zh: '今天' }[lang];
+    if (days === 1) return { lo: 'ມື້ວານນີ້', en: 'yesterday', zh: '昨天' }[lang];
+    return { lo: days + ' ມື້ກ່ອນ', en: days + ' days ago', zh: days + ' 天前' }[lang];
+  }
+  var d = new Date(t);
+  var names = STATUS_DATE_MONTH_NAMES[lang] || STATUS_DATE_MONTH_NAMES.en;
+  var month = names[d.getMonth()];
+  var year = d.getFullYear();
+  return lang === 'zh' ? (year + '年' + month) : (month + ' ' + year);
+}

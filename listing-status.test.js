@@ -9,7 +9,8 @@ vm.runInThisContext(src, { filename: 'listing-status.js' });
 
 const {
   resolveListingStatus, getMarketStatusLabel, getWorkflowStatusLabel,
-  getMarketStatusBadgeClass, getListingStatusCTA, getUnavailableMessage
+  getMarketStatusBadgeClass, getListingStatusCTA, getUnavailableMessage,
+  getUnavailableNoticeText, formatStatusChangeDate
 } = globalThis;
 
 test('resolveListingStatus: defaults to active/available when unset (pre-migration-default rows)', () => {
@@ -75,4 +76,35 @@ test('getListingStatusCTA: coming_soon -> Notify Me When Available, trilingual',
 test('getUnavailableMessage: full sentence per status, null for available', () => {
   assert.equal(getUnavailableMessage('sold', 'en'), 'This property has been sold.');
   assert.equal(getUnavailableMessage('available', 'en'), null);
+});
+
+test('getUnavailableNoticeText: lead sentence + trailer, null for available', () => {
+  const t = getUnavailableNoticeText('rented', 'en');
+  assert.ok(t.startsWith('This property has been rented.'));
+  assert.ok(/similar/i.test(t));
+  assert.equal(getUnavailableNoticeText('available', 'en'), null);
+});
+
+test('formatStatusChangeDate: null/invalid input never fabricates a date', () => {
+  assert.equal(formatStatusChangeDate(null, 'en'), null);
+  assert.equal(formatStatusChangeDate(undefined, 'en'), null);
+  assert.equal(formatStatusChangeDate('not-a-date', 'en'), null);
+});
+
+test('formatStatusChangeDate: today/yesterday/relative within 30 days', () => {
+  const now = new Date('2026-08-01T12:00:00Z').getTime();
+  assert.equal(formatStatusChangeDate(new Date(now).toISOString(), 'en', now), 'today');
+  assert.equal(formatStatusChangeDate(new Date(now - 86400000).toISOString(), 'en', now), 'yesterday');
+  assert.equal(formatStatusChangeDate(new Date(now - 12 * 86400000).toISOString(), 'en', now), '12 days ago');
+  assert.equal(formatStatusChangeDate(new Date(now - 12 * 86400000).toISOString(), 'lo', now), '12 ມື້ກ່ອນ');
+  assert.equal(formatStatusChangeDate(new Date(now - 12 * 86400000).toISOString(), 'zh', now), '12 天前');
+});
+
+test('formatStatusChangeDate: falls back to Month YYYY beyond 30 days', () => {
+  const now = new Date('2026-08-01T12:00:00Z').getTime();
+  const past = new Date('2026-07-05T00:00:00Z').getTime(); // 27 days -> still relative
+  assert.equal(formatStatusChangeDate(new Date(past).toISOString(), 'en', now), '27 days ago');
+  const older = new Date('2026-06-01T00:00:00Z').getTime(); // 61 days -> absolute
+  assert.equal(formatStatusChangeDate(new Date(older).toISOString(), 'en', now), 'June 2026');
+  assert.equal(formatStatusChangeDate(new Date(older).toISOString(), 'zh', now), '2026年6月');
 });
