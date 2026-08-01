@@ -102,6 +102,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .price-lak{font-size:11px;color:var(--ink-muted);margin-top:4px;font-variant-numeric:tabular-nums;}
 .price-deposit{font-size:13px;color:var(--ink-muted);margin-top:6px;}
 .price-inquire{font-size:14px;font-weight:400;color:var(--ink-muted);}
+/* Shown ALONGSIDE the price (never replacing it) for a sold/rented/reserved/
+   fully-occupied/off-market listing -- the original asking price stays the
+   headline number, this is a secondary line explaining why it's no longer
+   actionable. See the "Rented Listings UX" requirement: prices are market
+   history, never hidden. */
+.price-status-note{font-size:13px;font-weight:500;color:#B45309;margin-top:6px;}
 .spec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 8px;margin:26px 0 0;}
 .spec-item{display:flex;flex-direction:column;gap:4px;}
 .spec-icon{color:var(--ink-muted);display:block;line-height:1;}
@@ -256,6 +262,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .asset-iframe-wrapper iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
 /* Similar */
 .similar-section{max-width:1400px;margin:0 auto;padding:56px 48px 88px;background:linear-gradient(to bottom,#fff,#fcfaf7);}
+/* Extra emphasis when this is the primary conversion point (the listing
+   being viewed is itself unavailable) -- a subtle top accent + slightly
+   larger heading, not a full restyle of the section. */
+.similar-section.similar-emphasized{box-shadow:inset 0 3px 0 var(--teal);}
+.similar-section.similar-emphasized .similar-title{font-size:22px;}
 .similar-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:28px;}
 .similar-title{font-size:19px;font-weight:600;color:var(--ink);letter-spacing:-0.025em;}
 .similar-view-all{font-size:12.5px;font-weight:500;color:var(--teal);text-decoration:none;display:flex;align-items:center;gap:4px;transition:gap 0.15s;}
@@ -313,6 +324,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .prop-status-rented{background:#C2410C;}
 .prop-status-offer{background:#1D4ED8;}
 .mg-status-wrap{position:absolute;top:12px;right:12px;z-index:4;pointer-events:none;}
+/* Unavailable-listing notice — near the top of the page, right under the
+   status badge. Links straight to the Similar Properties section: the
+   whole point is to redirect a buyer toward something they can still get,
+   not to make the page feel like a dead end. */
+.unavailable-notice{background:rgba(194,65,12,0.06);border:1px solid rgba(194,65,12,0.18);border-radius:8px;padding:11px 14px;margin-bottom:16px;}
+.unavailable-notice a{display:block;font-size:13px;line-height:1.55;color:#9A3412;text-decoration:none;}
+.unavailable-notice a:hover{text-decoration:underline;}
 @media(max-width:960px){
   .prop-status-badge{font-size:11px;padding:6px 13px;}
 }
@@ -501,7 +519,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
   </div>
   <div id="similar-section" class="similar-section" style="display:none;">
     <div class="similar-header">
-      <span class="similar-title">
+      <span class="similar-title" id="similar-title">
         <span class="lo-i">ຊັບສິນທີ່ຄ້າຍຄືກັນ</span>
         <span class="en-i">Similar Properties</span>
         <span class="zh-i">相似房源</span>
@@ -1054,12 +1072,34 @@ var OG_GENERIC_DESC={
 // real-visitor og:locale (set here, client-side) always agree.
 var OG_LOCALE={lo:'lo_LA',en:'en_US',zh:'zh_CN'};
 
+// Trailing SEO copy for an unavailable listing's meta description --
+// distinct wording from getUnavailableNoticeText() (the on-page banner,
+// which links to #similar-section and therefore reads fine as a hyperlink)
+// since a meta description is read in isolation on a search results page,
+// never alongside a link.
+var SEO_UNAVAILABLE_DESC_SUFFIX={
+  en:'Browse similar available properties on Pintag.',
+  lo:'ຄົ້ນຫາອະສັງຫາລິມະຊັບທີ່ຄ້າຍຄືກັນທີ່ຍັງວ່າງຢູ່ໃນ Pintag.',
+  zh:'在Pintag浏览类似的可预订房源。'
+};
 function updateOGTags(data){
   var lang=getCurrentLang();
-  var title=resolveLangField(data,'title',lang,'Pintag Property')+' · Pintag';
+  var titleBase=resolveLangField(data,'title',lang,'Pintag Property');
+  var listingStatusForMeta=(typeof resolveListingStatus==='function')?resolveListingStatus(data):{market:'available',isPubliclyAvailable:true};
+  // SEO: never 404/redirect an unavailable listing, and never let its
+  // <title>/meta description silently keep claiming it's still available --
+  // both would either drop the page's existing search ranking (404/redirect)
+  // or mislead a searcher into clicking through to a dead end (unchanged
+  // metadata). Appending " — {Status}" and swapping the description keeps
+  // the page indexable while being honest about what a visitor will find.
+  var title=titleBase+(!listingStatusForMeta.isPubliclyAvailable?' — '+getMarketStatusLabel(listingStatusForMeta.market,lang):'')+' · Pintag';
   var desc=resolveLangField(data,'property_highlight',lang,null)
     ||resolveLangField(data,'description',lang,null)
     ||OG_GENERIC_DESC[lang]||OG_GENERIC_DESC.en;
+  if(!listingStatusForMeta.isPubliclyAvailable){
+    var unavailLead=(typeof getUnavailableMessage==='function')?getUnavailableMessage(listingStatusForMeta.market,lang):getMarketStatusLabel(listingStatusForMeta.market,lang);
+    desc=unavailLead+' '+(SEO_UNAVAILABLE_DESC_SUFFIX[lang]||SEO_UNAVAILABLE_DESC_SUFFIX.en);
+  }
   var imgs=Array.isArray(data.images)?data.images.filter(function(u){return u&&typeof u==='string';}):[];
   var img=imgs[0]||'https://pintag.io/og-preview.jpg';
   var imgAlt=(OG_IMG_ALT_PREFIX[lang]||OG_IMG_ALT_PREFIX.en)+resolveLangField(data,'title',lang,'Pintag');
@@ -1251,7 +1291,7 @@ async function fetchSimilarProperties(prop){
              'images,bedrooms,bathrooms,sqm,sqm_land,price_display,' +
              'price_amount,price_currency,price_frequency,' +
              'rent_price_amount,rent_price_currency,rent_price_frequency,' +
-             'transaction_type,status,property_type,created_at';
+             'transaction_type,status,workflow_status,market_status,property_type,created_at';
   var results = [];
 
   if(!prop.property_type){ PT.timeEnd('fetchSimilar'); hideSimilarSection(); return; }
@@ -1266,7 +1306,15 @@ async function fetchSimilarProperties(prop){
       +'&'+excludeParam(usedIds)+extraFilters
       +'&status=eq.active&order=created_at.desc&limit='+limit+'&select='+cols;
     var rows = await sbFetch(q);
-    return Array.isArray(rows) ? rows.filter(Boolean) : [];
+    if(!Array.isArray(rows)) return [];
+    // Similar Properties is the primary "keep browsing" conversion point,
+    // especially once the listing being viewed is itself unavailable --
+    // recommending a sold/rented listing right next to it would defeat the
+    // purpose. isPubliclyAvailable() is the same single gate used
+    // everywhere else on this page (listing-status.js).
+    return rows.filter(function(r){
+      return r && (typeof resolveListingStatus!=='function' || resolveListingStatus(r).isPubliclyAvailable);
+    });
   }
 
   try{
@@ -1301,6 +1349,23 @@ function parseSimPrice(s) {
 function hideSimilarSection(){
   var el=document.getElementById('similar-section');
   if(el)el.style.display='none';
+}
+
+// Similar Properties becomes the primary conversion point once the listing
+// being viewed is itself unavailable -- the heading (and a light visual
+// emphasis on the section) reflects that, called once per buildMockupLayout()
+// render (including every language switch, since that also re-renders).
+var SIMILAR_HEADING={
+  normal:      {lo:'ຊັບສິນທີ່ຄ້າຍຄືກັນ',        en:'Similar Properties',           zh:'相似房源'},
+  unavailable: {lo:'ຊັບສິນທີ່ຄ້າຍຄືກັນ ແລະ ຍັງວ່າງຢູ່',en:'Available Similar Properties', zh:'可预订的相似房源'}
+};
+function updateSimilarSectionHeading(isUnavailable){
+  var titleEl=document.getElementById('similar-title');
+  var secEl=document.getElementById('similar-section');
+  if(!titleEl)return;
+  var set=isUnavailable?SIMILAR_HEADING.unavailable:SIMILAR_HEADING.normal;
+  titleEl.innerHTML='<span class="lo-i">'+esc(set.lo)+'</span><span class="en-i">'+esc(set.en)+'</span><span class="zh-i">'+esc(set.zh)+'</span>';
+  if(secEl)secEl.classList.toggle('similar-emphasized',!!isUnavailable);
 }
 
 // Card markup/classes mirror listings.html's .prop-card component (same
@@ -1633,6 +1698,20 @@ function buildMockupLayout(){
   var desktopGalleryMarkup=buildDesktopGallery(imagesArray);
   var mobileGalleryMarkup=buildMobileGallery(imagesArray,statusBadgeHtml);
 
+  // ── Unavailable-listing notice — near the top of the page, right under
+  // the status badge. This is the "market history" framing: the listing
+  // stays fully browsable (price, photos, details all intact below), this
+  // banner just explains why it's no longer actionable and immediately
+  // points at the Similar Properties section as the next step.
+  var unavailableNoticeHtml='';
+  if(listingStatusResolved&&!listingStatusResolved.isPubliclyAvailable){
+    var noticeText=(typeof getUnavailableNoticeText==='function')?getUnavailableNoticeText(listingStatusResolved.market,lang):null;
+    if(noticeText){
+      unavailableNoticeHtml='<div class="unavailable-notice"><a href="#similar-section">'+esc(noticeText)+'</a></div>';
+    }
+  }
+  updateSimilarSectionHeading(listingStatusResolved&&!listingStatusResolved.isPubliclyAvailable);
+
   var L={
     wa     :{lo:'ສອບຖາມຜ່ານ WhatsApp',en:'Chat on WhatsApp',zh:'通过WhatsApp咨询'},
     call   :{lo:'ໂທຫາຕົວແທນ',en:'Call Agent',zh:'电话联系'},
@@ -1783,17 +1862,18 @@ function buildMockupLayout(){
     }
   }
 
-  // ── Unavailable listings: replace the price area, never show "Price on
-  // request" for a listing that's sold/rented/reserved/fully occupied/off
-  // market. isPubliclyAvailable() is the single gate (listing-status.js) --
-  // wins over both the base price and any selected-unit price computed
-  // above, since market_status is a property-level fact that overrides
-  // whatever a single unit's price would otherwise show. The matching CTA
-  // swap (Find Similar / Join Waiting List / Notify Me replacing
-  // WhatsApp/Call) happens further below once cleanPhone/WA_SVG exist.
+  // ── Unavailable listings: the original asking price stays fully visible
+  // (Pintag's price data is market history, not something that disappears
+  // once a listing is off-market) -- this ONLY appends a status-explainer
+  // line after whatever price/inquire markup was already computed above
+  // (base price, selected-unit price, or "inquire" for a listing that
+  // genuinely has no price on file). isPubliclyAvailable() is the single
+  // gate (listing-status.js). The matching CTA swap (Find Similar / Join
+  // Waiting List / Notify Me replacing WhatsApp/Call) happens further below
+  // once cleanPhone/WA_SVG exist.
   if(listingStatusResolved&&!listingStatusResolved.isPubliclyAvailable){
     var unavailMsg=(typeof getUnavailableMessage==='function')?getUnavailableMessage(listingStatusResolved.market,lang):null;
-    resolvedPriceHtml='<p class="price-inquire" style="font-weight:600;">'+esc(unavailMsg||getMarketStatusLabel(listingStatusResolved.market,lang))+'</p>';
+    resolvedPriceHtml+='<p class="price-status-note">'+esc(unavailMsg||getMarketStatusLabel(listingStatusResolved.market,lang))+'</p>';
   }
 
   // ── Persistent Building Photos / Shared Amenities strip ──────────────
@@ -2262,6 +2342,7 @@ function buildMockupLayout(){
     '<span class="tx-badge'+(isSor?' tx-badge-sor':'')+'" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
     statusBadgeHtml+
     '</div>'+
+    unavailableNoticeHtml+
     '<div id="sp-badges" class="sp-badges-row"></div>'+
     viewingUnitBannerHtml+
     '<div class="price-block">'+resolvedPriceHtml+'</div>'+
@@ -2301,10 +2382,18 @@ function buildMockupLayout(){
       ? ([priceInfo.saleText,priceInfo.rentText].filter(Boolean).join(' · ')||null)
       : (priceInfo.singleText?(priceInfo.singleText+(priceInfo.unitText?' '+priceInfo.unitText:'')):null));
     var mPriceHtml=mPriceDisplay?'<span class="mcta-price-value">'+esc(mPriceDisplay)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
+    // Mirrors the desktop CTA swap above (statusCta, computed earlier in
+    // this function) -- an unavailable listing's sticky mobile bar must not
+    // still invite a "Chat on WhatsApp" tap for a property that's gone.
+    var mCtaButtonHtml=(typeof statusCta!=='undefined'&&statusCta)
+      ? (statusCta.action==='find_similar'
+          ? '<a href="#similar-section" class="mcta-btn">'+esc(statusCta.label)+'</a>'
+          : '<a href="'+esc(cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+(data.title_en||''))):'#')+'" target="_blank" rel="noopener noreferrer" class="mcta-btn">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>')
+      : '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
       '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+
-      '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+      mCtaButtonHtml+
       '</div>'
     );
   }

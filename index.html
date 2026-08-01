@@ -608,12 +608,25 @@ function getCurrentLang() {
 // never gets silently written back as if the visitor chose it.
 applyPintagLang(resolvePintagLang());
 
+// Rented Listings UX: available properties should always rank first, even
+// on the homepage's small featured selection. Over-fetches a slightly
+// larger candidate pool (12, not 4) so a stable client-side sort has real
+// available listings to promote ahead of a sold/rented one that happened
+// to also be marked featured, then trims to the 4 actually shown -- a
+// plain limit=4 query has no way to do that "prefer available, but keep
+// the featured+newest ordering otherwise" tie-break server-side.
+function _homeAvailabilityRank(p) {
+  return (typeof resolveListingStatus === 'function' && resolveListingStatus(p).isPubliclyAvailable) ? 0 : 1;
+}
 async function loadFeatured() {
   try {
-    const res = await fetch(SB_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&limit=4&select=*,contacts(name),parties(type,name_en,photo_url)', {
+    const res = await fetch(SB_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&limit=12&select=*,contacts(name),parties(type,name_en,photo_url)', {
       headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
     });
-    const data = await res.json();
+    const fetched = await res.json();
+    const data = (Array.isArray(fetched) ? fetched.slice() : [])
+      .sort(function(a, b) { return _homeAvailabilityRank(a) - _homeAvailabilityRank(b); })
+      .slice(0, 4);
     window._props = data;
     renderCards(data, getCurrentLang());
     postHomepageImpressions(data);

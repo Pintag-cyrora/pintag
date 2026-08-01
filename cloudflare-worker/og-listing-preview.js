@@ -15,7 +15,8 @@
 // to patch just the <head> meta/link tags and <html lang>, streaming
 // everything else — markup, CSS, client JS — straight through untouched.
 // Real users still get the fully-functional page; only the crawler-visible
-// <head> differs, and only for /listing.html requests carrying a slug.
+// <head> differs, and only for /listing.html, /listings.html, and
+// /index.html (or "/") requests -- see the fetch handler below.
 //
 // DISCLOSURE: production (pintag.io) already has a Cloudflare-level setup
 // generating a WhatsApp preview for listing URLs today, per a comment found
@@ -92,8 +93,40 @@ const LISTING_COLUMNS = [
   'slug', 'title_en', 'title_lo', 'title_zh',
   'description_en', 'description_lo', 'description_zh',
   'property_highlight', 'property_highlight_en', 'property_highlight_zh',
-  'images',
+  'images', 'market_status',
 ].join(',');
+
+// Mirrors listing-status.js's LISTING_UNAVAILABLE_MARKET_STATUSES /
+// MARKET_STATUS_LABELS / UNAVAILABLE_MESSAGE (only the subset needed for a
+// crawler-visible title/description suffix) -- duplicated by hand for the
+// same reason every other shared vocabulary in this file is (OG_LOCALE,
+// HOME_META_I18N, ...): this Worker is a separate Cloudflare deploy that
+// can't import a browser file. Keep in sync manually whenever
+// listing-status.js's market_status vocabulary changes.
+const UNAVAILABLE_MARKET_STATUSES = ['reserved', 'rented', 'sold', 'fully_occupied', 'off_market'];
+const MARKET_STATUS_LABEL = {
+  reserved: { en: 'Reserved', lo: 'ຖືກຈອງແລ້ວ', zh: '已预订' },
+  rented: { en: 'Rented', lo: 'ເຊົ່າແລ້ວ', zh: '已出租' },
+  sold: { en: 'Sold', lo: 'ຂາຍແລ້ວ', zh: '已售出' },
+  fully_occupied: { en: 'Fully Occupied', lo: 'ເຕັມແລ້ວ', zh: '已满租' },
+  off_market: { en: 'Off Market', lo: 'ຖອນອອກຈາກຕະຫຼາດ', zh: '已下架' },
+};
+// Mirrors listing-status.js's UNAVAILABLE_MESSAGE -- the status-specific
+// lead sentence, e.g. "This property has been rented." -- so the
+// crawler-visible description reads the same as what a real visitor with
+// JS sees via listing.html's updateOGTags().
+const UNAVAILABLE_MESSAGE = {
+  reserved: { en: 'This property is currently reserved.', lo: 'ອະສັງຫາລາຍການນີ້ຖືກຈອງໄວ້ແລ້ວ.', zh: '该房源目前已被预订。' },
+  sold: { en: 'This property has been sold.', lo: 'ອະສັງຫາລາຍການນີ້ຂາຍໄປແລ້ວ.', zh: '该房源已售出。' },
+  rented: { en: 'This property has been rented.', lo: 'ອະສັງຫາລາຍການນີ້ຖືກເຊົ່າໄປແລ້ວ.', zh: '该房源已出租。' },
+  fully_occupied: { en: 'This property is fully occupied.', lo: 'ອະສັງຫາລາຍການນີ້ເຕັມແລ້ວ.', zh: '该房源目前已满租。' },
+  off_market: { en: 'This listing is currently off market.', lo: 'ລາຍການນີ້ຖືກຖອນອອກຈາກຕະຫຼາດຊົ່ວຄາວ.', zh: '该房源已暂时下架。' },
+};
+const UNAVAILABLE_DESC_SUFFIX = {
+  en: 'Browse similar available properties on Pintag.',
+  lo: 'ຄົ້ນຫາອະສັງຫາລິມະຊັບທີ່ຄ້າຍຄືກັນທີ່ຍັງວ່າງຢູ່ໃນ Pintag.',
+  zh: '请在Pintag浏览类似的可预订房源。',
+};
 
 // Server-side counterpart to lang.js's resolvePintagLang(), used identically
 // for all three rewritten paths (listing.html/index.html/listings.html).
@@ -125,14 +158,27 @@ function pick(row, ...keys) {
 // translation is missing," per the product spec, with Lao as the ultimate
 // catch-all since every listing is guaranteed to have Lao content.
 function buildOgFields(row, lang) {
-  const title = pick(row, `title_${lang}`, 'title_en', 'title_lo') || 'Pintag Property';
-  const desc =
+  const titleBase = pick(row, `title_${lang}`, 'title_en', 'title_lo') || 'Pintag Property';
+  let desc =
     pick(row, `property_highlight_${lang}`, 'property_highlight_en', 'property_highlight') ||
     pick(row, `description_${lang}`, 'description_en') ||
     OG_GENERIC_DESC[lang] || OG_GENERIC_DESC.en;
   const images = Array.isArray(row.images) ? row.images.filter((u) => typeof u === 'string' && u) : [];
   const image = images[0] || DEFAULT_OG_IMAGE;
-  const imageAlt = (OG_IMG_ALT_PREFIX[lang] || OG_IMG_ALT_PREFIX.en) + title;
+  const imageAlt = (OG_IMG_ALT_PREFIX[lang] || OG_IMG_ALT_PREFIX.en) + titleBase;
+  // Rented Listings UX: never 404/redirect a sold/rented/etc. listing, and
+  // never let the crawler-visible title/description keep silently claiming
+  // it's still available -- mirrors listing.html's own updateOGTags()
+  // logic exactly (see that function's comment), just server-side.
+  const isUnavailable = UNAVAILABLE_MARKET_STATUSES.includes(row.market_status);
+  let title = titleBase;
+  if (isUnavailable) {
+    const statusLabel = MARKET_STATUS_LABEL[row.market_status];
+    if (statusLabel) title += ` — ${statusLabel[lang] || statusLabel.en}`;
+    const lead = UNAVAILABLE_MESSAGE[row.market_status];
+    const leadText = (lead && (lead[lang] || lead.en)) || (statusLabel && (statusLabel[lang] || statusLabel.en)) || '';
+    desc = `${leadText} ${UNAVAILABLE_DESC_SUFFIX[lang] || UNAVAILABLE_DESC_SUFFIX.en}`.trim();
+  }
   return { title: `${title} · Pintag`, desc, image, imageAlt, hasZh: !!row.title_zh };
 }
 

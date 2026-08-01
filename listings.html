@@ -454,10 +454,10 @@ nav{
       <!-- Priority 2: All Listings / Available Only — its own visible
            control, not a pill hidden inside .filters. -->
       <div class="avail-toggle" id="avail-toggle">
-        <button class="avail-btn active" data-avail="all" onclick="setAvailFilter('all',this)" data-track="filter-availability" data-track-type="filter" data-track-label="Availability: All Listings">
-          <span class="lo-i">ທັງໝົດ</span><span class="en-i">All Listings</span><span class="zh-i">全部</span>
+        <button class="avail-btn" data-avail="all" onclick="setAvailFilter('all',this)" data-track="filter-availability" data-track-type="filter" data-track-label="Availability: All Listings">
+          <span class="lo-i">ທັງໝົດ (ລວມທີ່ຂາຍ/ເຊົ່າໄປແລ້ວ)</span><span class="en-i">All Listings (incl. Rented/Sold)</span><span class="zh-i">全部（含已租/已售）</span>
         </button>
-        <button class="avail-btn" data-avail="available" onclick="setAvailFilter('available',this)" data-track="filter-availability" data-track-type="filter" data-track-label="Availability: Available Only">
+        <button class="avail-btn active" data-avail="available" onclick="setAvailFilter('available',this)" data-track="filter-availability" data-track-type="filter" data-track-label="Availability: Available Only">
           <span class="lo-i">ວ່າງເທົ່ານັ້ນ</span><span class="en-i">Available Only</span><span class="zh-i">仅在售/租</span>
         </button>
       </div>
@@ -579,7 +579,11 @@ let allProperties = [];
 let currentTxFilter = 'all';
 let currentTypeFilter = 'all';
 let currentSort = 'newest';
-let currentAvailOnly = false;
+// Rented Listings UX: default to available-only (unavailable listings are
+// market history, opt-in via the "All Listings" toggle -- see the matching
+// .avail-btn[data-avail="available"] marked active in the static markup
+// below), not shown by default the way it was before this change.
+let currentAvailOnly = true;
 let currentPetFriendly = false;
 let currentSmokingAllowed = false;
 
@@ -636,8 +640,13 @@ const MARKET_STATUS_BADGE_CLASS_MAP = {
 };
 function getBadgeHtml(p, lang, isFeaturedCard) {
   const L = { curated: { lo: 'ຄັດເລືອກ', en: 'Curated', zh: '精选' }, land: { lo: 'ທີ່ດິນ', en: 'Land', zh: '土地' } };
-  if (isFeaturedCard) return '<span class="pt-badge-status pt-status-curated">' + L.curated[lang] + '</span>';
   const market = (typeof resolveListingStatus === 'function') ? resolveListingStatus(p).market : 'available';
+  // Rented Listings UX: the status badge must be impossible to miss --
+  // an unavailable listing that also happens to be marked featured (an
+  // admin oversight, not something this page should ever hide) still
+  // shows Sold/Rented/etc., never the generic "Curated" badge.
+  const isUnavailable = (typeof resolveListingStatus === 'function') && !resolveListingStatus(p).isPubliclyAvailable;
+  if (isFeaturedCard && !isUnavailable) return '<span class="pt-badge-status pt-status-curated">' + L.curated[lang] + '</span>';
   if (market === 'available' && p.property_type === 'land') return '<span class="pt-badge-status pt-status-land">' + L.land[lang] + '</span>';
   const cls = MARKET_STATUS_BADGE_CLASS_MAP[market] || 'pt-status-available';
   const label = (typeof getMarketStatusLabel === 'function') ? getMarketStatusLabel(market, lang) : 'Available';
@@ -665,12 +674,28 @@ function getContactDisplay(p, lang) {
 function _numericPrice(p) {
   return p.price_amount != null ? p.price_amount : (parseFloat((p.price_display||'').replace(/[^0-9.]/g,''))||0);
 }
+// Rented Listings UX: available listings always rank above unavailable
+// ones (sold/rented/reserved/fully occupied/off market), regardless of the
+// chosen sort mode -- the chosen sort (featured/price/newest) only breaks
+// ties *within* each of those two groups. This is a no-op when "Available
+// Only" is active (the unavailable group is empty, filtered out before
+// this ever runs), so it only actually does anything once a visitor
+// opts into "All Listings" via the avail-toggle.
+function _availabilityRank(p) {
+  return isAvailableStatus(p) ? 0 : 1;
+}
 function sortProperties(arr) {
   var copy = arr.slice();
-  if (currentSort === 'featured')  return copy.sort(function(a,b){ return (b.is_featured?1:0)-(a.is_featured?1:0); });
-  if (currentSort === 'price_asc') return copy.sort(function(a,b){ return _numericPrice(a)-_numericPrice(b); });
-  if (currentSort === 'price_desc') return copy.sort(function(a,b){ return _numericPrice(b)-_numericPrice(a); });
-  return copy; /* newest: already ordered by created_at desc from API */
+  if (currentSort === 'featured')  copy.sort(function(a,b){ return (b.is_featured?1:0)-(a.is_featured?1:0); });
+  else if (currentSort === 'price_asc') copy.sort(function(a,b){ return _numericPrice(a)-_numericPrice(b); });
+  else if (currentSort === 'price_desc') copy.sort(function(a,b){ return _numericPrice(b)-_numericPrice(a); });
+  /* else newest: already ordered by created_at desc from API */
+  // Stable secondary pass: JS's Array.sort is a stable sort in every
+  // engine this site targets, so re-sorting by availability alone here
+  // preserves whatever order the block above (or the API's default
+  // created_at desc) already produced within each availability group.
+  copy.sort(function(a,b){ return _availabilityRank(a)-_availabilityRank(b); });
+  return copy;
 }
 
 // ── DISTRICT COORDINATES (Vientiane) ──────────────────

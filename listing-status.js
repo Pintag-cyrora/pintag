@@ -136,3 +136,24 @@ function getUnavailableMessage(marketStatus, lang) {
   if (!M) return null;
   return M[lang] || M.en;
 }
+
+// getUnavailableNoticeText(marketStatus, lang) -- the fuller "keep
+// browsing" banner sentence shown near the top of an unavailable
+// listing's detail page. Distinct from getUnavailableMessage() (the
+// shorter phrase that sits in the price area): this is
+// getUnavailableMessage()'s own sentence plus a shared trust-building
+// trailer ("good properties don't stay available long, browse similar
+// ones below") -- same status-specific lead for every caller, not a
+// second, independently-maintained copy of UNAVAILABLE_MESSAGE.
+var UNAVAILABLE_NOTICE_TRAILER = {
+  en: "Good properties like this don't stay available for long. Browse similar available properties below.",
+  lo: 'ຊັບສິນດີໆແບບນີ້ບໍ່ຄ່ອຍວ່າງດົນ. ຄົ້ນຫາຊັບສິນທີ່ຄ້າຍຄືກັນທີ່ຍັງວ່າງຢູ່ລຸ່ມນີ້.',
+  zh: '像这样的优质房源通常很快就会被订走。请浏览下方类似的可预订房源。'
+};
+function getUnavailableNoticeText(marketStatus, lang) {
+  lang = lang || 'en';
+  var lead = getUnavailableMessage(marketStatus, lang);
+  if (!lead) return null;
+  var trailer = UNAVAILABLE_NOTICE_TRAILER[lang] || UNAVAILABLE_NOTICE_TRAILER.en;
+  return lead + ' ' + trailer;
+}
