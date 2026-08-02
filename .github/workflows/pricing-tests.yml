@@ -1,0 +1,80 @@
+name: Pricing Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'currency.js'
+      - 'currency.test.js'
+      - 'admin.html'
+      - 'listings.html'
+      - 'listing.html'
+      - 'tests/pricing/**'
+      - '.github/workflows/pricing-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'currency.js'
+      - 'currency.test.js'
+      - 'admin.html'
+      - 'listings.html'
+      - 'listing.html'
+      - 'tests/pricing/**'
+      - '.github/workflows/pricing-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  currency-unit-tests:
+    name: currency.js unit tests (formatMoney/formatMoneyRange/parseLegacyPriceAmount)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run currency.js unit tests
+        run: node currency.test.js
+
+  smart-import-pricing:
+    name: Smart Import price parsing end-to-end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install test dependencies
+        working-directory: tests/pricing
+        run: npm install
+
+      - name: Install Chromium
+        working-directory: tests/pricing
+        run: npx playwright install --with-deps chromium
+
+      # Drives the real populateFormFromImport() -> _parseImportPriceText()
+      # -> currency.js's parseLegacyPriceAmount() call chain end to end for
+      # rent/sale/price-range/deposit-only/no-price listings, and asserts
+      # the required globals actually exist -- added after a reported
+      # "Can't find variable: parseLegacyPriceAmount" error that did not
+      # reproduce against main, to catch a future load-order regression.
+      - name: Run Playwright suite
+        working-directory: tests/pricing
+        run: npm test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pricing-playwright-report
+          path: tests/pricing/playwright-report/
+          retention-days: 14

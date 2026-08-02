@@ -1,0 +1,11 @@
+{
+  "name": "pintag-pricing-tests",
+  "private": true,
+  "description": "End-to-end regression coverage for admin.html's Smart Import price parsing (populateFormFromImport() -> _parseImportPriceText() -> currency.js's parseLegacyPriceAmount()), added after a reported \"Can't find variable: parseLegacyPriceAmount\" error turned out not to reproduce against main -- this suite exists so any future load-order or naming regression on that call chain is caught in CI instead of discovered live.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
