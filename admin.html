@@ -1683,6 +1683,15 @@ function addUnitType(data) {
   list.appendChild(card);
   card.dataset.rentalTermsOverrides = JSON.stringify((data && data.rental_terms_overrides) || {});
   card.dataset.unitImages = JSON.stringify((data && data.images) || []);
+  // A Bedrooms/Bathrooms value already present on `data` (loading an
+  // existing unit type from the database) is authoritative -- whether it
+  // was originally typed by hand or auto-inferred from the name on a
+  // previous save, it must never be silently recomputed/cleared just
+  // because the current name doesn't happen to (re-)parse the same way.
+  // Mark it manual BEFORE the _utUpdateSummary() call below, which is what
+  // runs the name-based inference for a brand-new, still-empty card.
+  if (data && data.bedrooms  != null) card.querySelector('.ut-bedrooms').dataset.utManual  = 'true';
+  if (data && data.bathrooms != null) card.querySelector('.ut-bathrooms').dataset.utManual = 'true';
   _utUpdateSummary(card.querySelector('.ut-name-en'));
   _utRenderUnitPhotoGrid(card);
   _utRenderRentalTermsBlock(card);
@@ -1857,10 +1866,40 @@ function removeUnitType(e, btn) {
   syncPricingMode(); // may drop back to Single Price mode if this was the last card
 }
 
+// _utAutofillBedBathFromName(card, nameEn) -- infers Bedrooms/Bathrooms from
+// a unit type's own name (via parseUnitTypeTitle(), terminology.js) so a
+// name like "2 Bedroom 1 Bath" doesn't get rejected by the publish
+// validator (which requires both fields) just because staff typed the
+// name and never touched the numeric inputs. Only writes into a field
+// that hasn't been manually edited (dataset.utManual) -- once staff types
+// into Bedrooms/Bathrooms directly, that value is theirs and is never
+// overwritten by a later name edit again, including with an empty value
+// when the (possibly since-edited) name no longer parses confidently.
+function _utAutofillBedBathFromName(card, nameEn) {
+  const parsed = parseUnitTypeTitle(nameEn);
+  const bedInput  = card.querySelector('.ut-bedrooms');
+  const bathInput = card.querySelector('.ut-bathrooms');
+  if (bedInput.dataset.utManual !== 'true') {
+    bedInput.value = parsed.bedrooms === null ? '' : String(parsed.bedrooms);
+  }
+  if (bathInput.dataset.utManual !== 'true') {
+    bathInput.value = parsed.bathrooms === null ? '' : String(parsed.bathrooms);
+  }
+}
+
 function _utUpdateSummary(inputEl) {
   const card = inputEl.closest('.ut-card');
-  const nameEn = card.querySelector('.ut-name-en').value.trim();
+  const nameInput = card.querySelector('.ut-name-en');
+  const nameEn = nameInput.value.trim();
   card.querySelector('.ut-name-display').textContent = nameEn || 'New Unit Type';
+  // Bedrooms/Bathrooms typed directly are an explicit manual value -- lock
+  // them so a later Name edit never overwrites what staff just typed.
+  // Editing the Name itself re-runs the inference (see
+  // _utAutofillBedBathFromName above) into whichever of the two fields
+  // isn't already locked.
+  if (inputEl.classList.contains('ut-bedrooms'))  inputEl.dataset.utManual = 'true';
+  if (inputEl.classList.contains('ut-bathrooms')) inputEl.dataset.utManual = 'true';
+  if (inputEl === nameInput) _utAutofillBedBathFromName(card, nameEn);
   const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
   let price = '';
   if (isSor) {
@@ -4152,6 +4191,24 @@ function populateFormFromImport(data) {
   document.getElementById('f-desc-lo').value     = data.description_lo || '';
   document.getElementById('f-desc-zh').value     = data.description_zh || '';
 
+  // Best-effort fallback: if the AI extraction left Bedrooms/Bathrooms
+  // null but the title states them in words ("2 Bedroom 1 Bath" -- common
+  // for listings copied verbatim from Facebook/WhatsApp), infer them via
+  // parseUnitTypeTitle() (terminology.js, the same parser the Unit Type
+  // card's Name field uses) instead of leaving a field blank when the
+  // answer is right there in the text. Only fills a field the extraction
+  // left null -- never overrides a real extracted value -- and is marked
+  // low-confidence itself (an inference, not a direct extraction) so it
+  // still surfaces in the low-confidence styling/summary below for staff
+  // to confirm, exactly like every other AI-extracted field.
+  if (typeHasField(fv(data.property_type), 'f-bedrooms') && fv(data.bedrooms) == null) {
+    const inferredBed = parseUnitTypeTitle(data.title).bedrooms;
+    if (inferredBed !== null) data.bedrooms = { value: inferredBed, confidence: IMPORT_CONFIDENCE_THRESHOLD - 0.01 };
+  }
+  if (typeHasField(fv(data.property_type), 'f-bathrooms') && fv(data.bathrooms) == null) {
+    const inferredBath = parseUnitTypeTitle(data.title).bathrooms;
+    if (inferredBath !== null) data.bathrooms = { value: inferredBath, confidence: IMPORT_CONFIDENCE_THRESHOLD - 0.01 };
+  }
   populateTypedFields(fv(data.property_type) || '', data);
   ['f-bedrooms','f-bathrooms','f-sqm','f-sqm-land','f-furnished'].forEach(id => {
     const src = { 'f-bedrooms':data.bedrooms, 'f-bathrooms':data.bathrooms, 'f-sqm':data.sqm, 'f-sqm-land':data.sqm_land, 'f-furnished':data.furnished }[id];

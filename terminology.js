@@ -424,6 +424,42 @@ function isMultiUnitBuilding(unitTypes) {
   return Array.isArray(unitTypes) && unitTypes.length > 0;
 }
 
+// parseUnitTypeTitle(title) -- best-effort structured Bedrooms/Bathrooms
+// extraction from a free-text unit type name ("2 Bedroom 1 Bath", "3 Bed 2
+// Bath", "2BR/1BA", "Studio"). Used so staff don't have to re-type numbers
+// that are already spelled out in the name they picked, and so the
+// publish validator's "Bedrooms/Bathrooms are required" check (admin.html)
+// doesn't reject a unit type whose title plainly states them.
+//
+// Returns {bedrooms, bathrooms}, each either a number or null. A null
+// means this field genuinely wasn't found in the title with confidence --
+// it is never guessed, so a title that doesn't match a recognized pattern
+// (a name like "Deluxe Suite" or "Riverside View") comes back {null,
+// null} and the caller falls through to requiring manual input exactly
+// as before this function existed. The two fields are independent: "2
+// Bedroom" with no bath mentioned confidently returns bedrooms:2,
+// bathrooms:null, rather than refusing to infer anything at all.
+//
+// "Studio" is a real-estate-standard synonym for zero bedrooms (no
+// separate bedroom from the living space) and is handled as its own
+// pattern rather than requiring "0 Bedroom" to be spelled out.
+var UNIT_TITLE_BEDROOM_RE  = /(\d+(?:\.\d+)?)\s*-?\s*(?:bedrooms?|beds?|br)(?![a-z])/i;
+var UNIT_TITLE_BATHROOM_RE = /(\d+(?:\.\d+)?)\s*-?\s*(?:bathrooms?|baths?|ba)(?![a-z])/i;
+var UNIT_TITLE_STUDIO_RE   = /\bstudio\b/i;
+
+function parseUnitTypeTitle(title) {
+  var result = { bedrooms: null, bathrooms: null };
+  if (typeof title !== 'string') return result;
+  var text = title.trim();
+  if (!text) return result;
+  if (UNIT_TITLE_STUDIO_RE.test(text)) result.bedrooms = 0;
+  var bedMatch = text.match(UNIT_TITLE_BEDROOM_RE);
+  if (bedMatch) result.bedrooms = parseFloat(bedMatch[1]);
+  var bathMatch = text.match(UNIT_TITLE_BATHROOM_RE);
+  if (bathMatch) result.bathrooms = parseFloat(bathMatch[1]);
+  return result;
+}
+
 // resolveUnitType(property, unitType) is the ONE resolver every consumer of
 // unit-type data must call -- admin preview, the Phase 2 listing-page
 // variant switcher, Phase 2 search, future APIs, a future mobile app. Never

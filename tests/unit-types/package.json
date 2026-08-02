@@ -1,0 +1,11 @@
+{
+  "name": "pintag-unit-types-tests",
+  "private": true,
+  "description": "Regression coverage for a reported bug: a Unit Type card named \"2 Bedroom 1 Bath\" was rejected by the publish validator because the structured Bedrooms/Bathrooms fields were empty, even though the title states both numbers. Fixed by parseUnitTypeTitle() (terminology.js), wired into the Unit Type Name field (admin.html) so Bedrooms/Bathrooms auto-populate from a recognized title pattern, with manual edits always taking precedence over anything inferred from the title.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
