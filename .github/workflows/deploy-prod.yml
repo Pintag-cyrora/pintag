@@ -24,6 +24,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Every first-party <script src="X.js?v=__ASSET_VERSION__">/<link
+      # href="X.css?v=__ASSET_VERSION__"> tag gets its placeholder replaced
+      # with this commit's short SHA, so every static asset URL changes on
+      # every deploy. This is what actually prevents a cache (browser,
+      # GitHub Pages' own CDN, or Cloudflare in front of pintag.io) from
+      # ever serving two files from two different deploys together — no
+      # cache purge is required, because a stale cache simply has no entry
+      # for the new URL and must fetch it fresh. See the 2026-08 postmortem
+      # for the incident this fixes (a stale currency.js served alongside a
+      # fresh admin.html produced "Can't find variable: parseLegacyPriceAmount").
+      - name: Stamp asset version into all first-party script/link tags
+        run: sed -i "s/__ASSET_VERSION__/${GITHUB_SHA::8}/g" *.html
+
       - name: Generate config.js (production)
         run: cp config.prod.js config.js
 

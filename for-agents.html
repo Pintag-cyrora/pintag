@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="shared-components.css">
+<link rel="stylesheet" href="shared-components.css?v=__ASSET_VERSION__">
 <link rel="preload" as="image" href="https://pintag-cyrora.github.io/pintag/pintag-interior.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -309,13 +309,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 <div class="page-footer"><p>Pintag · pintag.io</p></div>
 </div>
 
-<script src="config.js"></script>
-<script src="dev-banner.js"></script>
-<script src="currency.js"></script>
-<script src="components.js"></script>
-<script src="session.js"></script>
-<script src="tracking.js"></script>
-<script src="analytics-tracking.js"></script>
+<script src="config.js?v=__ASSET_VERSION__"></script>
+<script src="dev-banner.js?v=__ASSET_VERSION__"></script>
+<script src="currency.js?v=__ASSET_VERSION__"></script>
+<script src="components.js?v=__ASSET_VERSION__"></script>
+<script src="session.js?v=__ASSET_VERSION__"></script>
+<script src="tracking.js?v=__ASSET_VERSION__"></script>
+<script src="analytics-tracking.js?v=__ASSET_VERSION__"></script>
 <script>
 const SB=window.PINTAG.supabaseUrl;
 function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}

@@ -22,6 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Same asset-versioning stamp as deploy-prod.yml -- see that file's
+      # comment for the full rationale. Keeping the dev mirror on the same
+      # mechanism means a stale-cache mismatch can't happen there either.
+      - name: Stamp asset version into all first-party script/link tags
+        run: sed -i "s/__ASSET_VERSION__/${GITHUB_SHA::8}/g" *.html
+
       - name: Generate config.js (development)
         run: cp config.dev.js config.js
 

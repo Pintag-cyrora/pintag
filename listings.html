@@ -30,7 +30,7 @@
 <meta name="twitter:image" content="https://pintag.io/og-preview-listings.jpg">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="shared-components.css">
+<link rel="stylesheet" href="shared-components.css?v=__ASSET_VERSION__">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -549,18 +549,18 @@ nav{
   </div>
 </div>
 
-<script src="config.js"></script>
-<script src="dev-banner.js"></script>
-<script src="lang.js"></script>
-<script src="amenities.js"></script>
-<script src="terminology.js"></script>
-<script src="currency.js"></script>
-<script src="rental-terms.js"></script>
-<script src="listing-status.js"></script>
-<script src="components.js"></script>
-<script src="session.js"></script>
-<script src="tracking.js"></script>
-<script src="analytics-tracking.js"></script>
+<script src="config.js?v=__ASSET_VERSION__"></script>
+<script src="dev-banner.js?v=__ASSET_VERSION__"></script>
+<script src="lang.js?v=__ASSET_VERSION__"></script>
+<script src="amenities.js?v=__ASSET_VERSION__"></script>
+<script src="terminology.js?v=__ASSET_VERSION__"></script>
+<script src="currency.js?v=__ASSET_VERSION__"></script>
+<script src="rental-terms.js?v=__ASSET_VERSION__"></script>
+<script src="listing-status.js?v=__ASSET_VERSION__"></script>
+<script src="components.js?v=__ASSET_VERSION__"></script>
+<script src="session.js?v=__ASSET_VERSION__"></script>
+<script src="tracking.js?v=__ASSET_VERSION__"></script>
+<script src="analytics-tracking.js?v=__ASSET_VERSION__"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -678,7 +678,12 @@ function _numericPrice(p) {
   // sort (and, if it ever leaked into price_amount elsewhere, display) as
   // if it were a real ~280K value.
   if (p.price_amount != null) return p.price_amount;
-  return parseLegacyPriceAmount(p.price_display) || 0;
+  // Feature-detected: currency.js is a separately-cached static asset (see
+  // the repo-wide asset versioning that guards against this in the normal
+  // case). A version-mismatched cache degrades this sort key to 0 instead
+  // of throwing a ReferenceError that would break the whole search page.
+  if (typeof window.parseLegacyPriceAmount !== 'function') return 0;
+  return window.parseLegacyPriceAmount(p.price_display) || 0;
 }
 // Rented Listings UX: available listings always rank above unavailable
 // ones (sold/rented/reserved/fully occupied/off market), regardless of the

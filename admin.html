@@ -957,13 +957,13 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
   </div>
 </div>
 
-<script src="config.js"></script>
-<script src="dev-banner.js"></script>
-<script src="amenities.js"></script>
-<script src="terminology.js"></script>
-<script src="currency.js"></script>
-<script src="rental-terms.js"></script>
-<script src="unit-availability.js"></script>
+<script src="config.js?v=__ASSET_VERSION__"></script>
+<script src="dev-banner.js?v=__ASSET_VERSION__"></script>
+<script src="amenities.js?v=__ASSET_VERSION__"></script>
+<script src="terminology.js?v=__ASSET_VERSION__"></script>
+<script src="currency.js?v=__ASSET_VERSION__"></script>
+<script src="rental-terms.js?v=__ASSET_VERSION__"></script>
+<script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
@@ -1473,7 +1473,22 @@ function _parseImportPriceText(text) {
   // (looks like a real ~280K price, not a range). This was the actual
   // source of that bug: imported text like "$280-300 / month" silently
   // corrupted price_amount on save.
-  const amount = parseLegacyPriceAmount(text);
+  //
+  // currency.js is a separately-cached static asset (see the asset
+  // versioning added alongside this fix, which is the actual permanent
+  // guard against currency.js and admin.html ever being served from two
+  // different deploys). This feature-detect is the defense-in-depth
+  // layer underneath that: window.parseLegacyPriceAmount is read via
+  // property access, which yields undefined rather than throwing, unlike
+  // calling a bare unscoped identifier that was never declared -- so a
+  // version-mismatched cache degrades to a flagged, empty price field
+  // (needsManualReview) instead of a ReferenceError that aborts the
+  // entire Smart Import population.
+  if (typeof window.parseLegacyPriceAmount !== 'function') {
+    console.error('[Smart Import] currency.js\'s parseLegacyPriceAmount() is unavailable -- currency.js may not have loaded (stale cache/CDN, or failed to load). Leaving the price field blank for manual entry instead of guessing.');
+    return { amount: null, currency: currency, needsManualReview: true };
+  }
+  const amount = window.parseLegacyPriceAmount(text);
   return { amount: amount, currency: currency };
 }
 
@@ -4104,6 +4119,14 @@ function populateFormFromImport(data) {
   document.getElementById('f-price-currency').value  = _importedPrice.currency;
   document.getElementById('f-price-frequency').value = 'monthly';
   applyConfidence('f-price-amount', data.price_display);
+  // Forces the same visual "needs a look" flag applyConfidence() uses for
+  // a low-confidence AI extraction -- covers the case where the price
+  // parser itself was unavailable (see _parseImportPriceText()'s
+  // feature-detect), not just a low-confidence value it did manage to read.
+  if (_importedPrice.needsManualReview) {
+    const priceEl = document.getElementById('f-price-amount');
+    if (priceEl) priceEl.classList.add('field-low-confidence');
+  }
   document.getElementById('f-sale-amount').value    = '';
   document.getElementById('f-rent-amount').value    = '';
   document.getElementById('f-price-previous').value = '';
