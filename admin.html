@@ -3006,7 +3006,7 @@ function revealFormPanel(titleText, id) {
   document.getElementById('import-summary-banner').style.display = 'none';
 }
 
-function showForm(id) {
+async function showForm(id) {
   revealFormPanel(id ? 'Edit Listing' : 'New Listing', id);
   if (!id) {
     document.getElementById('listing-form').reset();
@@ -3048,14 +3048,27 @@ function showForm(id) {
     updateOwnerSectionVisibility();
   }
   buildAgentOptions('');
-  // Reload agents every time form opens (handles timing + RLS token readiness)
-  loadAgentsForDropdown();
+  // Reload agents every time form opens (handles timing + RLS token
+  // readiness) -- awaited so callers (editListing()) can rely on the
+  // dropdown being fully populated with real <option>s before they try to
+  // select a value into it. Setting .value on a <select> to an id with no
+  // matching <option> yet silently resets it to "" rather than erroring,
+  // which is exactly how a real agent assignment used to go missing on
+  // edit: the properties fetch would resolve before this one, so
+  // editListing() applied managed_by_party_id to a still-empty dropdown.
+  await loadAgentsForDropdown();
   loadVillageSuggestions();
 }
 
 // ── EDIT ──────────────────────────────────────────────────────────
 async function editListing(id) {
-  showForm(id);
+  // Awaited: showForm() now waits for loadAgentsForDropdown() to finish
+  // populating #f-agent-id's <option>s before returning. Previously this
+  // call wasn't awaited, so the properties fetch below could resolve
+  // first and set #f-agent-id.value against a still-empty dropdown --
+  // silently discarded by the browser, which is why an existing listing's
+  // Agent could appear unselected after opening Edit.
+  await showForm(id);
   const data = await sbApi('GET', `properties?id=eq.${id}&select=*,contacts(*),unit_types(*)&limit=1`);
   if (!data || !data[0]) return;
   const p = data[0];
@@ -3141,10 +3154,24 @@ async function editListing(id) {
   document.getElementById('f-agent-title').value = p.agent_title || '';
   // Platform Identity dropdown: select by managed_by_party_id (nullable —
   // optional Agent Profile link, independent of the Buyer Contact below).
+  // _agentsAll/#f-agent-id's <option>s are already guaranteed populated at
+  // this point -- showForm() above (awaited) doesn't return until
+  // loadAgentsForDropdown() has finished. buildAgentOptions('') here is a
+  // cheap no-op re-render (clears any stale search-filter view from a
+  // previously-open card), not what makes the value stick.
   buildAgentOptions('');
   document.getElementById('f-agent-search').value = '';
   if (p.managed_by_party_id) {
-    document.getElementById('f-agent-id').value = p.managed_by_party_id;
+    const agentSel = document.getElementById('f-agent-id');
+    agentSel.value = p.managed_by_party_id;
+    if (agentSel.value !== p.managed_by_party_id) {
+      // The dropdown was populated (see above), so landing here means
+      // p.managed_by_party_id doesn't match any loaded agent -- e.g. the
+      // party row was deleted after this listing was assigned to it, not
+      // a timing issue. Surface it instead of silently showing "no agent"
+      // with no explanation.
+      console.warn('[editListing] managed_by_party_id ' + p.managed_by_party_id + ' has no matching option in the Agent dropdown (agent may have been deleted).');
+    }
     onAgentDropdownChange();
   } else {
     document.getElementById('f-agent-id').value = '';
@@ -3200,8 +3227,17 @@ async function saveListing(e) {
   const highlights = getHighlights();
   const nearbyPlaces = getNearbyPlaces();
 
+  // The dropdown's own value IS the party id to save -- previously this
+  // was round-tripped through `_agentsAll.find(a => a.id === _selAgentId)`
+  // to get "the same id back," which added a second, needless way to lose
+  // a valid selection: if _agentsAll was ever out of sync with the
+  // dropdown (a stale/incomplete load, a search filter reducing the
+  // rendered list without touching the underlying array, a re-fetch in
+  // flight), the .find() could return null even though _selAgentId was a
+  // perfectly valid, already-selected id, silently writing NULL over an
+  // intended agent assignment on save. Using the id directly removes that
+  // failure mode entirely -- there is nothing to look up.
   const _selAgentId = document.getElementById('f-agent-id').value;
-  const _selAgent = _selAgentId ? (_agentsAll.find(a => a.id === _selAgentId) || null) : null;
 
   const workflowStatus = document.getElementById('f-workflow-status').value || 'active';
   const marketStatus = document.getElementById('f-market-status').value || 'available';
@@ -3286,7 +3322,7 @@ async function saveListing(e) {
         name:     document.getElementById('f-contact-name').value.trim() || null,
         phone:    contactPhone,
         whatsapp: document.getElementById('f-contact-whatsapp').value.trim() || contactPhone,
-        party_id: _selAgent ? _selAgent.id : null
+        party_id: _selAgentId || null
       };
       const forkRequested = document.getElementById('f-contact-fork') && document.getElementById('f-contact-fork').checked;
       if (_editingContactId && _editingContactSharedCount === 0) {
@@ -3364,7 +3400,7 @@ async function saveListing(e) {
     video_url:         document.getElementById('f-video').value.trim() || null,
     facebook_video_url:document.getElementById('f-facebook-video').value.trim() || null,
     download_url:      document.getElementById('f-download-url').value.trim() || null,
-    managed_by_party_id: _selAgent ? _selAgent.id : null,
+    managed_by_party_id: _selAgentId || null,
     agent_title:         document.getElementById('f-agent-title').value.trim() || null,
     contact_id:          resolvedContactId,
     owner_id:            resolvedOwnerId

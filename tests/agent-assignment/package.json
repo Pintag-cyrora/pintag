@@ -1,0 +1,11 @@
+{
+  "name": "pintag-agent-assignment-tests",
+  "private": true,
+  "description": "Regression coverage for a reported bug: editing a listing caused its Agent (managed_by_party_id) to appear unselected. Root cause: editListing() set #f-agent-id's value before showForm()'s loadAgentsForDropdown() fetch (unawaited) had populated the dropdown's <option>s -- setting a <select>'s value to an id with no matching <option> yet silently resets it to \"\", and the value was never reapplied once the real options arrived. A second, related bug: the save payload derived managed_by_party_id by re-looking up the selected id in _agentsAll instead of using the dropdown's own value directly, which could null out a valid selection if _agentsAll was ever out of sync. Fixed by awaiting the agent list load before applying the selected value, and by saving the dropdown's own value directly.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
