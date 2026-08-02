@@ -225,6 +225,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 <script src="dev-banner.js"></script>
 <script src="currency.js"></script>
 <script src="components.js"></script>
+<script src="session.js"></script>
+<script src="tracking.js"></script>
+<script src="analytics-tracking.js"></script>
 <script>
 const SB=window.PINTAG.supabaseUrl;
 const KEY=window.PINTAG.anonKey;
@@ -358,8 +361,21 @@ function render(a,listings){
   // WhatsApp — human tone
   var waN=(a.whatsapp||'').replace(/[^0-9]/g,'');
   var waM=encodeURIComponent('ສະບາຍດີ '+(a.name_lo||a.name_en||'')+', ຂ້ອຍຢາກສອບຖາມກ່ຽວກັບລາຍການ Pintag ຂອງທ່ານ');
-  document.getElementById('wa-btn').href='https://wa.me/'+waN+'?text='+waM;
+  var waUrl='https://wa.me/'+waN+'?text='+waM;
+  document.getElementById('wa-btn').href=waUrl;
   document.getElementById('wa-label').textContent='ຢາກຮູ້ເພີ່ມເຕີມ? ທັກຫາ '+(a.name_lo||a.name_en||'')+'ໄດ້ເລີຍ';
+  // Contact tracking -- this page previously loaded none of the tracking
+  // stack at all (no session.js/tracking.js/analytics-tracking.js, no
+  // trackLead()-equivalent call), so a WhatsApp contact made here left zero
+  // analytics rows anywhere (2026-08 audit). listingId stays null -- this
+  // is a general agent-profile contact, not a specific-listing inquiry
+  // (see the "Agent Profile Contacts" section of admin.html's Analytics
+  // tab, which counts these separately from per-listing leads).
+  if(typeof ptContactClick==='function'){
+    document.getElementById('wa-btn').addEventListener('click',function(){
+      ptContactClick({channel:'whatsapp',listingId:null,partyId:a.id||null,trackId:'agent-whatsapp',trackLabel:'WhatsApp agent'});
+    });
+  }
 
   // Portfolio — no label, just homes
   var grid=document.getElementById('portfolio-grid');

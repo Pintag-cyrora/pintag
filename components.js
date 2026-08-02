@@ -729,3 +729,120 @@ function renderShareButton(opts) {
   });
   return btn;
 }
+
+// ---------------------------------------------------------------------------
+// ptContactClick(opts) -- the ONE tracking path for every WhatsApp/Call
+// contact action site-wide.
+//
+// WHY THIS EXISTS: an audit (2026-08) found three real contact CTAs that
+// completed a genuine WhatsApp/tel: contact while producing zero analytics
+// rows anywhere -- listing.html's mobile sticky CTA bar (no data-track, no
+// lead tracking call at all), agents.html's WhatsApp button (the page didn't
+// even load tracking.js/session.js), and agent.html's WhatsApp button before
+// it was patched (see git history). Every one of those gaps traces back to
+// the same root cause: tracking was something a caller had to remember to
+// wire up per button (a data-track attribute here, a trackLead()/postEvent()
+// call there), so it was always possible to build a working contact button
+// that silently tracked nothing. ptContactClick() removes that failure mode
+// structurally -- it is the only way to build a tracked contact action, and
+// posting both analytics events is not optional inside it.
+//
+// opts:
+//   channel: 'whatsapp' | 'call'  (required)
+//   listingId / partyId / contactId: same three FK fields trackLead() /
+//     lead_events always carried -- omit any that don't apply (e.g. an
+//     agent-profile contact has no listingId; see agent.html/agents.html).
+//   recordLead: default true. Set false for a WhatsApp click that is NOT a
+//     property inquiry in the "Total Leads" sense -- e.g. the Rented
+//     Listings waiting-list/notify-me CTA for an unavailable listing, which
+//     intentionally does not want to inflate the live-listing lead pipeline
+//     (matches this page's own pre-existing statusCtaHtml behavior). The
+//     ui_events half is unaffected by this flag -- a UI interaction still
+//     happened either way.
+//   trackId / trackType / trackLabel / trackMeta: same shape as the
+//     data-track-* attribute convention used everywhere else in this file
+//     (_ptApplyDataTrack) -- posted directly into ui_events here instead of
+//     via tracking.js's generic delegate. Elements calling this helper must
+//     NOT also carry a data-track attribute: tracking.js's global click
+//     listener would fire a second, duplicate ui_events row for the same
+//     click if they did. This helper is the single source for both events.
+//
+// Reliability: both posts use fetch(url, {keepalive:true}), not
+// navigator.sendBeacon(). sendBeacon cannot carry custom headers, and
+// Supabase's PostgREST endpoint requires an apikey/Authorization header on
+// every request (RLS resolves the anon role from the JWT in that header) --
+// a bare sendBeacon() call here would silently 401/403 (these are
+// fire-and-forget, .catch()-swallowed posts, so a header-less call would
+// just be a different, harder-to-notice version of the exact bug this
+// helper exists to fix). fetch's keepalive flag is the standards mechanism
+// built for exactly this "the current document may go away before the
+// request finishes" case -- it explicitly decouples the request's lifetime
+// from the document's -- and unlike sendBeacon it supports arbitrary
+// headers, so it is the "another reliable mechanism" this design calls for.
+//
+// Navigation: deliberately does NOT preventDefault() or drive navigation
+// itself. Both fetch calls are synchronous, non-blocking dispatches that
+// complete (from the caller's point of view) before this function returns,
+// so by the time the browser processes the anchor's own href/target
+// (immediately after this onclick handler returns), both requests are
+// already in flight and keepalive guarantees they survive whatever happens
+// to the page next -- "records analytics, records the lead, then performs
+// navigation" holds without needing to reimplement window.open()/tel:
+// dispatch and risk breaking native middle-click/copy-link/keyboard
+// behavior on the real <a href> already in the markup.
+function ptContactClick(opts) {
+  opts = opts || {};
+  if (!opts.channel || !window.PINTAG || !window.PINTAG.supabaseUrl) return;
+
+  function post(table, body) {
+    fetch(window.PINTAG.supabaseUrl + '/rest/v1/' + table, {
+      method: 'POST',
+      headers: {
+        apikey: window.PINTAG.anonKey,
+        Authorization: 'Bearer ' + window.PINTAG.anonKey,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal'
+      },
+      body: JSON.stringify(body),
+      keepalive: true
+    }).catch(function () {});
+  }
+
+  var sessionId = (typeof getOrCreateSessionId === 'function') ? getOrCreateSessionId() : null;
+  var page = (function () {
+    var seg = location.pathname.split('/').filter(Boolean).pop();
+    return seg || 'index.html';
+  })();
+  var defaultLabel = opts.channel === 'whatsapp' ? 'WhatsApp' : 'Call';
+
+  // 1. ui_events -- same shape tracking.js's data-track delegate would have
+  // produced, posted explicitly since this element must not also carry
+  // data-track (see header comment above).
+  post('ui_events', {
+    session_id: sessionId,
+    page: page,
+    element_id: opts.trackId || ('contact-' + opts.channel),
+    element_type: opts.trackType || 'cta',
+    label: opts.trackLabel || defaultLabel,
+    property_id: opts.listingId || (typeof window.PINTAG_CURRENT_PROPERTY_ID !== 'undefined' ? window.PINTAG_CURRENT_PROPERTY_ID : null) || null,
+    metadata: opts.trackMeta || null
+  });
+
+  // 2. lead_events -- feeds the leads CRM table via
+  // create_lead_from_event() (20260722000000_leads_recipient_model.sql)
+  // whenever listing_id is present. opts.recordLead:false (see header
+  // comment) is honored simply by not posting this row at all -- a
+  // waiting-list/notify-me click is a real UI interaction (ui_events above
+  // still fires) but not a property inquiry.
+  if (opts.recordLead !== false) {
+    post('lead_events', {
+      listing_id: opts.listingId || null,
+      agent_id: opts.partyId || null,
+      contact_id: opts.contactId || null,
+      event_type: opts.channel === 'whatsapp' ? 'whatsapp_click' : 'call_click',
+      user_agent: navigator.userAgent,
+      referrer: document.referrer || null,
+      session_id: sessionId
+    });
+  }
+}

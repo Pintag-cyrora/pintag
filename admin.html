@@ -334,6 +334,42 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
           </div>
         </div>
 
+        <!-- Agent Profile Contacts: a WhatsApp contact made from an agent's
+             own profile page (agent.html/agents.html), not tied to any one
+             listing. Deliberately reported separately from Total Leads
+             above, not folded into it -- leads.property_id is NOT NULL
+             (leads is the per-listing Property Inquiry CRM entity, see
+             20260715000000_leads_crm.sql), so an agent-profile contact
+             never creates a leads row (create_lead_from_event() returns
+             early when listing_id is null) and correctly never counts
+             toward Top Listings/Districts/Types or the per-property "📞
+             Leads" column below. Counted directly from lead_events instead
+             -- no CRM lifecycle (status/notes) makes sense for a contact
+             that isn't about a specific property, so there's nothing this
+             needs from the leads table's extra columns. -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:22px 0 10px;flex-wrap:wrap;gap:8px;">
+          <div class="analytics-section-title" style="margin:0;">Agent Profile Contacts</div>
+          <p style="font-size:12px;color:var(--ink-muted);margin:0;">WhatsApp contacts made from an agent's own profile page, not tied to a specific listing — reported separately from Total Leads above.</p>
+        </div>
+        <div class="analytics-grid">
+          <div class="analytics-card">
+            <div class="analytics-card-label">Total</div>
+            <div class="analytics-card-value" id="adm-agent-contacts-total">—</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-label">Today</div>
+            <div class="analytics-card-value" id="adm-agent-contacts-today">—</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-label">This Week</div>
+            <div class="analytics-card-value" id="adm-agent-contacts-week">—</div>
+          </div>
+          <div class="analytics-card">
+            <div class="analytics-card-label">This Month</div>
+            <div class="analytics-card-value" id="adm-agent-contacts-month">—</div>
+          </div>
+        </div>
+
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;">
           <div class="analytics-section">
             <div class="analytics-section-title">Top Listings</div>
@@ -364,6 +400,11 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
             <div class="analytics-section-title">Leads by Recipient Type</div>
             <table class="analytics-table"><thead><tr><th>Recipient</th><th>Leads</th></tr></thead>
             <tbody id="adm-leads-by-recipient"></tbody></table>
+          </div>
+          <div class="analytics-section">
+            <div class="analytics-section-title">Top Agents by Profile Contact</div>
+            <table class="analytics-table"><thead><tr><th>Agent</th><th>Contacts</th></tr></thead>
+            <tbody id="adm-top-agent-contacts"></tbody></table>
           </div>
         </div>
       </div>
@@ -2412,16 +2453,33 @@ async function loadAnalytics() {
     // WhatsApp). Counted exactly via `Prefer: count=exact`, not capped by
     // a row-fetch limit — a listing with thousands of inquiries must still
     // report its real total, not silently cap at some arbitrary number.
-    const [totalCount, todayCount, weekCount, monthCount] = await Promise.all([
+    // Agent Profile Contacts KPI row -- counted straight from lead_events
+    // (listing_id IS NULL, agent_id IS NOT NULL), not from leads. See the
+    // HTML comment above the "Agent Profile Contacts" section for why this
+    // is deliberately a separate, additive count rather than folded into
+    // Total Leads or leads.property_id being made nullable. No event_type
+    // filter -- agent.html/agents.html only have a WhatsApp button today,
+    // but a future Call button on either page counts here automatically.
+    const agentContactFilter = 'listing_id=is.null&agent_id=not.is.null';
+    const [totalCount, todayCount, weekCount, monthCount,
+           acTotalCount, acTodayCount, acWeekCount, acMonthCount] = await Promise.all([
       sbCount('leads?select=id'),
       sbCount('leads?select=id&created_at=gte.' + encodeURIComponent(todayStart)),
       sbCount('leads?select=id&created_at=gte.' + encodeURIComponent(weekStart)),
-      sbCount('leads?select=id&created_at=gte.' + encodeURIComponent(monthStart))
+      sbCount('leads?select=id&created_at=gte.' + encodeURIComponent(monthStart)),
+      sbCount('lead_events?select=id&' + agentContactFilter),
+      sbCount('lead_events?select=id&' + agentContactFilter + '&created_at=gte.' + encodeURIComponent(todayStart)),
+      sbCount('lead_events?select=id&' + agentContactFilter + '&created_at=gte.' + encodeURIComponent(weekStart)),
+      sbCount('lead_events?select=id&' + agentContactFilter + '&created_at=gte.' + encodeURIComponent(monthStart))
     ]);
     document.getElementById('adm-leads-total').textContent = totalCount == null ? '—' : totalCount;
     document.getElementById('adm-leads-today').textContent = todayCount == null ? '—' : todayCount;
     document.getElementById('adm-leads-week').textContent  = weekCount  == null ? '—' : weekCount;
     document.getElementById('adm-leads-month').textContent = monthCount == null ? '—' : monthCount;
+    document.getElementById('adm-agent-contacts-total').textContent = acTotalCount == null ? '—' : acTotalCount;
+    document.getElementById('adm-agent-contacts-today').textContent = acTodayCount == null ? '—' : acTodayCount;
+    document.getElementById('adm-agent-contacts-week').textContent  = acWeekCount  == null ? '—' : acWeekCount;
+    document.getElementById('adm-agent-contacts-month').textContent = acMonthCount == null ? '—' : acMonthCount;
 
     // Everything below is a secondary, most-recent-first working set — the
     // exact headline above never depends on this fetch's limit. leads now
@@ -2429,8 +2487,18 @@ async function loadAnalytics() {
     // breakdown, and conversion rates need in one row (property_id,
     // party_id, recipient_type, recipient_verified, status), so this
     // replaces what used to be two separate fetches (lead_events + leads).
-    const leads = await sbApi('GET', 'leads?select=id,property_id,party_id,recipient_type,recipient_verified,status,created_at&order=created_at.desc&limit=5000');
+    // agentContacts (raw lead_events rows) feeds the Top Agents by Profile
+    // Contact table below -- fetched alongside leads since neither depends
+    // on the other.
+    const [leads, agentContacts] = await Promise.all([
+      sbApi('GET', 'leads?select=id,property_id,party_id,recipient_type,recipient_verified,status,created_at&order=created_at.desc&limit=5000'),
+      sbApi('GET', 'lead_events?select=id,agent_id&' + agentContactFilter + '&order=created_at.desc&limit=5000').catch(() => [])
+    ]);
     if (!leads) return;
+
+    const byAgentContact = {};
+    (agentContacts || []).forEach(l => { if (l.agent_id) byAgentContact[l.agent_id] = (byAgentContact[l.agent_id] || 0) + 1; });
+    const topAgentContactIds = Object.keys(byAgentContact).sort((a,b) => byAgentContact[b]-byAgentContact[a]).slice(0,10);
 
     // Top listings / Top agents / Districts+Types / Conversion rates each
     // need one lookup query, but none of those four lookups depends on any
@@ -2464,12 +2532,23 @@ async function loadAnalytics() {
       .sort((a,b) => b.rate - a.rate)
       .slice(0,10);
 
-    const [props, agents, distProps, rateAgents] = await Promise.all([
+    const [props, agents, distProps, rateAgents, agentContactParties] = await Promise.all([
       topListingIds.length ? sbApi('GET', 'properties?id=in.('+topListingIds.join(',')+')&select=id,title_en') : Promise.resolve([]),
       topAgentIds.length   ? sbApi('GET', 'parties?id=in.('+topAgentIds.join(',')+')&select=id,name_en')       : Promise.resolve([]),
       allListingIds.length ? sbApi('GET', 'properties?id=in.('+allListingIds.join(',')+')&select=id,district_en,property_type') : Promise.resolve([]),
-      rateByAgent.length    ? sbApi('GET', 'parties?id=in.('+rateByAgent.map(r=>r.id).join(',')+')&select=id,name_en') : Promise.resolve([])
+      rateByAgent.length    ? sbApi('GET', 'parties?id=in.('+rateByAgent.map(r=>r.id).join(',')+')&select=id,name_en') : Promise.resolve([]),
+      topAgentContactIds.length ? sbApi('GET', 'parties?id=in.('+topAgentContactIds.join(',')+')&select=id,name_en') : Promise.resolve([])
     ]);
+
+    // Top Agents by Profile Contact
+    if (topAgentContactIds.length) {
+      const nameMap = Object.fromEntries((agentContactParties||[]).map(a => [a.id, a.name_en||'—']));
+      document.getElementById('adm-top-agent-contacts').innerHTML = topAgentContactIds.map(id =>
+        `<tr><td style="font-weight:500;">${esc(nameMap[id]||'—')}</td><td><span class="lead-pill">${Number(byAgentContact[id])}</span></td></tr>`
+      ).join('');
+    } else {
+      document.getElementById('adm-top-agent-contacts').innerHTML = '<tr><td colspan="2" style="color:var(--ink-muted);">No data yet</td></tr>';
+    }
 
     // Top listings
     if (topListingIds.length) {

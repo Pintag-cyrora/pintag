@@ -1,0 +1,80 @@
+name: Contact Tracking Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'listing.html'
+      - 'agent.html'
+      - 'agents.html'
+      - 'for-agents.html'
+      - 'admin.html'
+      - 'index.html'
+      - 'listings.html'
+      - 'dashboard.html'
+      - 'add-property.html'
+      - 'edit-listing.html'
+      - 'agent-setup.html'
+      - 'agent-login.html'
+      - 'components.js'
+      - 'tests/contact-tracking/**'
+      - '.github/workflows/contact-tracking-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'listing.html'
+      - 'agent.html'
+      - 'agents.html'
+      - 'for-agents.html'
+      - 'admin.html'
+      - 'index.html'
+      - 'listings.html'
+      - 'dashboard.html'
+      - 'add-property.html'
+      - 'edit-listing.html'
+      - 'agent-setup.html'
+      - 'agent-login.html'
+      - 'components.js'
+      - 'tests/contact-tracking/**'
+      - '.github/workflows/contact-tracking-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  contact-tracking:
+    name: WhatsApp/Call CTA tracking audit + live verification (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install test dependencies
+        working-directory: tests/contact-tracking
+        run: npm install
+
+      - name: Install Chromium
+        working-directory: tests/contact-tracking
+        run: npx playwright install --with-deps chromium
+
+      # contact-cta-audit.spec.js is a static source scan (no server, no
+      # mocks needed) that fails the moment any WhatsApp/Call CTA in the
+      # repo isn't wired to components.js's ptContactClick()/data-track.
+      # contact-tracking-live.spec.js drives real clicks against a mocked
+      # Supabase backend to confirm the previously-broken paths (listing.html's
+      # mobile sticky CTA bar, agents.html) now post exactly the right events.
+      - name: Run Playwright suite
+        working-directory: tests/contact-tracking
+        run: npm test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contact-tracking-playwright-report
+          path: tests/contact-tracking/playwright-report/
+          retention-days: 14

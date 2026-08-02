@@ -1,0 +1,11 @@
+{
+  "name": "pintag-contact-tracking-tests",
+  "private": true,
+  "description": "Automated protection against the 2026-08 contact-tracking regression: finds every WhatsApp/Call CTA in the repo, enforces that each one is tracked (statically), and verifies live event posting for the paths that were previously broken (Playwright).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

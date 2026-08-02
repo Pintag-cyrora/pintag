@@ -605,32 +605,17 @@ var BASE_DB = window.PINTAG.supabaseUrl;
 var SEC_KEY = window.PINTAG.anonKey;
 
 // ── Lead tracking ─────────────────────────────────────────────────
-// contactId is the Buyer Contact actually being reached (contacts.id) —
-// distinct from agentId (the Platform Identity / managed_by_party_id).
-// Both are optional metadata on the same inquiry; recipient_type/
-// recipient_verified get snapshotted from whichever is present by the
-// create_lead_from_event() trigger (see 20260722000000_leads_recipient_model.sql).
-function trackLead(listingId, agentId, eventType, contactId) {
-  if (!listingId) return;
-  fetch(BASE_DB + '/rest/v1/lead_events', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': SEC_KEY,
-      'Authorization': 'Bearer ' + SEC_KEY,
-      'Prefer': 'return=minimal'
-    },
-    body: JSON.stringify({
-      listing_id: listingId || null,
-      agent_id:   agentId   || null,
-      contact_id: contactId || null,
-      event_type: eventType,
-      user_agent: navigator.userAgent,
-      referrer:   document.referrer || null,
-      session_id: getOrCreateSessionId()
-    })
-  }).catch(function(){});
-}
+// Every WhatsApp/Call contact action on this page goes through
+// components.js's ptContactClick(opts) -- the single shared helper that
+// posts both ui_events and lead_events (see its header comment for the
+// full rationale). This page-local trackLead() wrapper used to duplicate
+// that logic by hand; it's gone -- every former call site below now calls
+// ptContactClick() directly. contactId is the Buyer Contact actually being
+// reached (contacts.id) -- distinct from partyId (the Platform Identity /
+// managed_by_party_id). Both are optional metadata on the same inquiry;
+// recipient_type/recipient_verified get snapshotted from whichever is
+// present by the create_lead_from_event() trigger (see
+// 20260722000000_leads_recipient_model.sql).
 
 // ── Behavioral event tracking (Intelligence layer) ─────────────────
 // Fire-and-forget, mirrors the pattern in listings.html/index.html.
@@ -1834,9 +1819,11 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
       // this unit, see below) — without this, clicking the CTA while the
       // card is already selected would immediately deselect it again via
       // the card's own onclick, right as the user tries to inquire.
+      // No data-track attribute here -- ptContactClick() posts ui_events
+      // itself; adding data-track too would double-post (see its header
+      // comment in components.js).
       ctaHtml='<a href="'+esc(waUnitUrl)+'" target="_blank" rel="noopener noreferrer" class="unit-cta" '+
-        'data-track="unit-inquire-whatsapp" data-track-type="cta" data-track-label="Inquire unit" data-track-meta=\'{"unit":'+JSON.stringify(unitName)+'}\' '+
-        'onclick="event.stopPropagation();trackLead(\''+esc(property.id||'')+'\',\''+esc(property.managed_by_party_id||'')+'\',\'whatsapp_click\',\''+esc((property.contacts&&property.contacts.id)||'')+'\')">'+
+        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+esc(property.id||'')+'\',partyId:\''+esc(property.managed_by_party_id||'')+'\',contactId:\''+esc((property.contacts&&property.contacts.id)||'')+'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+esc(unitName)+'\'}})">'+
         esc(L.unitInquire[lang])+'</a>';
     }
 
@@ -2277,7 +2264,10 @@ function buildMockupLayout(){
     other:{lo:'ຜູ້ຕິດຕໍ່',en:'Contact',zh:'联系人'}
   };
   var roleLabel=CONTACT_ROLE_LABELS[contact&&contact.role]||CONTACT_ROLE_LABELS.other;
-  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" data-track="contact-phone" data-track-type="cta" data-track-label="Call" onclick="trackLead(\''+esc(data.id||'')+'\',\''+esc(data.managed_by_party_id||'')+'\',\'call_click\',\''+esc(contact.id||'')+'\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  // No data-track on either button below -- ptContactClick() posts
+  // ui_events itself (see its header comment in components.js); this is a
+  // real property inquiry, so recordLead stays at its true default.
+  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" onclick="ptContactClick({channel:\'call\',listingId:\''+esc(data.id||'')+'\',partyId:\''+esc(data.managed_by_party_id||'')+'\',contactId:\''+esc(contact.id||'')+'\',trackId:\'contact-phone\',trackLabel:\'Call\'})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
   var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
     '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
@@ -2285,7 +2275,7 @@ function buildMockupLayout(){
     '<div><div class="agent-name-en">'+esc((contact&&contact.name)||roleLabel.en)+'</div></div>'+
     '</div></div>'+
     '<div class="agent-ctas">'+
-    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" data-track="contact-whatsapp" data-track-type="cta" data-track-label="WhatsApp" onclick="trackLead(\''+esc(propertyContext&&propertyContext.id||'')+'\',\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',\'whatsapp_click\',\''+esc(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\')">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+esc(propertyContext&&propertyContext.id||'')+'\',partyId:\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:\''+esc(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\',trackId:\'contact-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
     '</div></div>'
   );
@@ -2317,11 +2307,21 @@ function buildMockupLayout(){
     if(statusCta){
       var statusCtaHtml;
       if(statusCta.action==='find_similar'){
-        statusCtaHtml='<a href="#similar-section" class="btn-primary" style="justify-content:center;">'+esc(statusCta.label)+'</a>';
+        // Same-page anchor scroll, not a contact action -- data-track is
+        // sufficient (no lead_events involved either way).
+        statusCtaHtml='<a href="#similar-section" class="btn-primary" style="justify-content:center;" data-track="status-cta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>';
       }else{
+        // waiting_list/notify_me -- a waitlist ping for an UNAVAILABLE
+        // listing, not a live property inquiry (mirrors
+        // handleNotifyMeClick()'s same distinction elsewhere on this page).
+        // recordLead:false is what keeps this from inflating the leads CRM
+        // pipeline with a "lead" for a listing that's already gone --
+        // matches this button's pre-existing behavior (it never called
+        // trackLead() either), just now via the shared, audited helper
+        // instead of silently omitting a call.
         var waStatusMsg=encodeURIComponent(statusCta.label+' — '+(data.title_en||''));
         var waStatusUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waStatusMsg:'#';
-        statusCtaHtml='<a href="'+esc(waStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" data-track="contact-whatsapp-status-cta" data-track-type="cta" data-track-label="'+esc(statusCta.action)+'">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
+        statusCtaHtml='<a href="'+esc(waStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+esc(data.id||'')+'\',partyId:\''+esc(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'contact-whatsapp-status-cta\',trackLabel:\''+esc(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
       }
       contactHtml='<div class="agent-band" id="agent-band-anchor"><div class="agent-ctas" style="width:100%;">'+statusCtaHtml+'</div></div>';
       agentProfileHtml='';
@@ -2682,11 +2682,22 @@ function buildMockupLayout(){
     // Mirrors the desktop CTA swap above (statusCta, computed earlier in
     // this function) -- an unavailable listing's sticky mobile bar must not
     // still invite a "Chat on WhatsApp" tap for a property that's gone.
+    //
+    // This bar is the primary, most-visible contact CTA on a phone -- an
+    // earlier version of these three branches had NO tracking at all (no
+    // data-track, no lead_events call), which is exactly the gap a 2026-08
+    // audit found: real WhatsApp contacts made here never appeared anywhere
+    // in admin.html. All three branches now behave exactly like their
+    // desktop equivalents just above/below this block (same helper, same
+    // recordLead semantics per branch).
     var mCtaButtonHtml=(typeof statusCta!=='undefined'&&statusCta)
       ? (statusCta.action==='find_similar'
-          ? '<a href="#similar-section" class="mcta-btn">'+esc(statusCta.label)+'</a>'
-          : '<a href="'+esc(cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+(data.title_en||''))):'#')+'" target="_blank" rel="noopener noreferrer" class="mcta-btn">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>')
-      : '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
+          ? '<a href="#similar-section" class="mcta-btn" data-track="mcta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>'
+          : (function(){
+              var mWaStatusUrl=cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+(data.title_en||''))):'#';
+              return '<a href="'+esc(mWaStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+esc(data.id||'')+'\',partyId:\''+esc(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'mcta-whatsapp-status\',trackLabel:\''+esc(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
+            })())
+      : '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+esc(propertyContext&&propertyContext.id||'')+'\',partyId:\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:\''+esc(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
       '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+
