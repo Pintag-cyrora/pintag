@@ -83,6 +83,17 @@ function getMarketStatusBadgeClass(marketStatus) {
   return MARKET_STATUS_BADGE_CLASS[marketStatus] || MARKET_STATUS_BADGE_CLASS.available;
 }
 
+// getMarketStatusEmoji(marketStatus) -- a quick-scan color indicator for
+// any surface that shows a status note alongside a price (rent must never
+// be the only signal a listing is unavailable; the note needs to read at a
+// glance too). Reuses MARKET_STATUS_BADGE_CLASS's existing 3 buckets rather
+// than inventing a second taxonomy -- available/coming_soon (🟢),
+// reserved/fully_occupied (🟡), sold/rented/off_market (🔴).
+var MARKET_STATUS_BUCKET_EMOJI = { 'status-available': '🟢', 'status-pending': '🟡', 'status-unavailable': '🔴' };
+function getMarketStatusEmoji(marketStatus) {
+  return MARKET_STATUS_BUCKET_EMOJI[getMarketStatusBadgeClass(marketStatus)] || '';
+}
+
 // Per-status "keep browsing" action for the unavailable-listing treatment.
 // Intentionally distinct per status rather than one generic "Browse More" --
 // the right next step differs (a sold house is gone for good; a fully

@@ -180,6 +180,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .unit-facts{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:12px;color:var(--ink-soft);}
 .unit-fact{white-space:nowrap;}
 .unit-price{font-size:15px;font-weight:600;color:var(--ink);}
+.unit-deposit{font-size:12px;color:var(--ink-muted);}
 .unit-movein{font-size:11.5px;color:var(--ink-muted);}
 .unit-note{font-size:11.5px;color:var(--ink-muted);font-style:italic;}
 .unit-cta-row{margin-top:2px;}
@@ -1787,9 +1788,16 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
     var unitName=resolvedUnit.name[lang]||resolvedUnit.name.en||'';
     var priceText=buildUnitPriceText(property,resolvedUnit,lang);
     var availText=formatAvailabilityDisplay(p.resolved,lang);
+    var availEmoji=(typeof getUnitAvailabilityEmoji==='function')?getUnitAvailabilityEmoji(p.resolved.status):'';
     var unitCount=formatAvailableUnitCount(p.resolved);
     var noteText=getAvailabilityNoteLine(p.resolved);
     var moveInText=formatMoveInDate(p.resolved,lang);
+    // Deposit is secondary to (never a replacement for) the unit's own
+    // rent above -- resolveRentalTerms() applies this unit's override when
+    // set, else the building default, same pattern the main price panel
+    // already uses for the currently-selected unit.
+    var unitDepositValue=(typeof resolveRentalTerms==='function')?resolveRentalTerms(property,u).values.deposit:null;
+    var unitDepositText=(unitDepositValue&&typeof formatRentalTermValue==='function')?formatRentalTermValue('deposit',unitDepositValue,lang):null;
     // The move-in date is already embedded in the fully_occupied message
     // itself ("Fully Occupied — Available from {date}") — showing it again
     // as a separate line would just repeat the same date twice.
@@ -1839,10 +1847,11 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
       coverHtml+
       '<div class="unit-card-head">'+
         '<span class="unit-name">'+esc(unitName)+'</span>'+
-        '<span class="unit-status unit-status-'+esc(p.resolved.status)+'">'+esc(availText)+(unitCount?' · '+esc(String(unitCount)):'')+'</span>'+
+        '<span class="unit-status unit-status-'+esc(p.resolved.status)+'">'+(availEmoji?esc(availEmoji)+' ':'')+esc(availText)+(unitCount?' · '+esc(String(unitCount)):'')+'</span>'+
       '</div>'+
       (factsHtml?'<div class="unit-facts">'+factsHtml+'</div>':'')+
       (priceText?'<div class="unit-price">'+esc(priceText)+'</div>':'')+
+      (unitDepositText?'<div class="unit-deposit">'+esc(unitDepositText)+'</div>':'')+
       (showMoveIn?'<div class="unit-movein">'+esc(L.unitMoveIn[lang])+': '+esc(moveInText)+'</div>':'')+
       (noteText?'<div class="unit-note">'+esc(noteText)+'</div>':'')+
       (ctaHtml?'<div class="unit-cta-row">'+ctaHtml+'</div>':'')+
@@ -2141,8 +2150,14 @@ function buildMockupLayout(){
   if(listingStatusResolved&&!listingStatusResolved.isPubliclyAvailable){
     var unavailMsg=(typeof getUnavailableMessage==='function')?getUnavailableMessage(listingStatusResolved.market,lang):null;
     var origPriceLabel={lo:'ລາຄາທຳອິດທີ່ຕັ້ງໄວ້',en:'Original Asking Price',zh:'原始挂牌价'}[lang];
+    var statusEmoji=(typeof getMarketStatusEmoji==='function')?getMarketStatusEmoji(listingStatusResolved.market):'';
     resolvedPriceHtml='<p class="price-orig-label">'+esc(origPriceLabel)+'</p>'+resolvedPriceHtml;
-    resolvedPriceHtml+='<p class="price-status-note">'+esc(unavailMsg||getMarketStatusLabel(listingStatusResolved.market,lang))+'</p>';
+    // Rent + Deposit (both already built into resolvedPriceHtml above) stay
+    // fully visible above this line -- the status note is always appended
+    // after them, never substituted in their place. statusEmoji is a
+    // quick-scan color indicator only (🟢/🟡/🔴, listing-status.js) -- the
+    // underlying message text is unchanged.
+    resolvedPriceHtml+='<p class="price-status-note">'+(statusEmoji?esc(statusEmoji)+' ':'')+esc(unavailMsg||getMarketStatusLabel(listingStatusResolved.market,lang))+'</p>';
   }
 
   // ── Persistent Building Photos / Shared Amenities strip ──────────────

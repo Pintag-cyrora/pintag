@@ -1467,9 +1467,14 @@ function computeStructuredPrice() {
 function _parseImportPriceText(text) {
   if (!text) return { amount: null, currency: DEFAULT_CURRENCY };
   const currency = /₭|LAK/i.test(text) ? 'LAK' : (/฿|THB/i.test(text) ? 'THB' : DEFAULT_CURRENCY);
-  const digits = String(text).replace(/[^\d.]/g, '');
-  const amount = digits === '' ? null : parseFloat(digits);
-  return { amount: isNaN(amount) ? null : amount, currency: currency };
+  // parseLegacyPriceAmount() (currency.js) is range-aware -- it takes the
+  // lower bound of "$280-300" instead of digit-stripping the whole string
+  // into "280300", which formatMoney() would then render as "$280,300"
+  // (looks like a real ~280K price, not a range). This was the actual
+  // source of that bug: imported text like "$280-300 / month" silently
+  // corrupted price_amount on save.
+  const amount = parseLegacyPriceAmount(text);
+  return { amount: amount, currency: currency };
 }
 
 function addUnitType(data) {
@@ -1912,8 +1917,11 @@ function _utComputeRange(entries) {
   const currency = entries[0].currency || DEFAULT_CURRENCY;
   const frequencies = [...new Set(entries.map(e => e.frequency).filter(Boolean))];
   const frequency = frequencies.length === 1 ? frequencies[0] : null;
-  const minText = formatMoney(min, currency), maxText = formatMoney(max, currency);
-  const rangeText = (min === max) ? minText : (minText + ' – ' + maxText);
+  // formatMoneyRange() (currency.js) is the single shared range formatter --
+  // one currency symbol, en dash, never two formatMoney() calls joined by
+  // hand (that previously produced "$280 – $300", two symbols and spaces
+  // around the dash, inconsistent with every other range surface).
+  const rangeText = formatMoneyRange(min, max, currency);
   const suffix = frequency ? (LEGACY_FREQUENCY_SUFFIX[frequency] || '') : '';
   return { min: min, max: max, currency: currency, frequency: frequency, text: rangeText + suffix };
 }

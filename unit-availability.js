@@ -138,6 +138,19 @@ function formatMoveInDate(resolved, lang) {
   return resolved.nextAvailableDate ? _formatAvailabilityDate(resolved.nextAvailableDate, lang) : null;
 }
 
+// getUnitAvailabilityEmoji(status) -- a quick-scan color indicator to pair
+// with formatAvailabilityDisplay()'s text, mirroring
+// _AVAILABILITY_BUCKET_RANK's existing 3 buckets rather than inventing a
+// new one: available (🟢), fully_occupied/coming_soon -- i.e. a status that
+// may carry a next-available date (🟡), temporarily_unavailable -- no date
+// on file (🔴). Composes with, never replaces, the frozen 3-message
+// contract in formatAvailabilityDisplay() (rule 5 above).
+var _AVAILABILITY_BUCKET_EMOJI = { 0: '🟢', 1: '🟡', 2: '🔴' };
+function getUnitAvailabilityEmoji(status) {
+  var rank = _AVAILABILITY_BUCKET_RANK[status];
+  return _AVAILABILITY_BUCKET_EMOJI[rank] || '';
+}
+
 // compareUnitTypesForDisplay(a, b) -- public listing ordering: Available
 // Now, then Available Soon (soonest date first), then Currently
 // Unavailable, staff's own sort_order as the tiebreak within a bucket.

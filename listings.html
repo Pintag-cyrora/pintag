@@ -672,7 +672,13 @@ function getContactDisplay(p, lang) {
 // normalization is a pre-existing limitation this sort inherits unchanged
 // from the legacy text-parsing version -- not something this fix expands.
 function _numericPrice(p) {
-  return p.price_amount != null ? p.price_amount : (parseFloat((p.price_display||'').replace(/[^0-9.]/g,''))||0);
+  // parseLegacyPriceAmount() (currency.js) is range-aware -- a legacy
+  // price_display like "$280-300 / month" resolves to its lower bound
+  // instead of being digit-stripped into "280300", which would otherwise
+  // sort (and, if it ever leaked into price_amount elsewhere, display) as
+  // if it were a real ~280K value.
+  if (p.price_amount != null) return p.price_amount;
+  return parseLegacyPriceAmount(p.price_display) || 0;
 }
 // Rented Listings UX: available listings always rank above unavailable
 // ones (sold/rented/reserved/fully occupied/off market), regardless of the
