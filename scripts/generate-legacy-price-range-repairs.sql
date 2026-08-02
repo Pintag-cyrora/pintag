@@ -7,15 +7,31 @@
 -- LOW rows never get a statement here, on purpose -- they stay in the
 -- diagnostic report for a human to resolve by hand.
 --
+-- Every generated block is idempotent and concurrency-safe: the UPDATE is
+-- guarded with "AND <column> = <value the diagnostic observed>", the same
+-- compare-and-swap pattern any concurrent-safe write uses. If the record
+-- was already fixed (by an earlier run of this same block) or legitimately
+-- re-priced by staff between diagnosis and repair, the guard fails, the
+-- UPDATE affects 0 rows, and nothing is overwritten -- running the exact
+-- same block twice in a row is always safe, and running it days after the
+-- diagnostic (when other data may have changed) never clobbers a value
+-- that no longer matches what was diagnosed. A verification SELECT
+-- immediately follows every UPDATE so the result is checkable without
+-- trusting the UPDATE's own row-count message.
+--
 -- Usage:
 --   psql "<connection string>" -f scripts/generate-legacy-price-range-repairs.sql
---   # Read every line of the output. For each one you've individually
---   # confirmed against the listing (ideally by also glancing at the
---   # source in admin.html), copy it into your own psql session and run
---   # it yourself, inside its own transaction:
+--   # Read every block. For each one you've individually confirmed against
+--   # the listing (ideally by also glancing at the source in admin.html),
+--   # copy the whole block -- UPDATE then its paired verification SELECT --
+--   # into your own psql session and run it yourself, inside its own
+--   # transaction:
 --   #   BEGIN;
---   #   <paste one UPDATE statement>
---   #   SELECT id, price_display, price_amount FROM properties WHERE id = '...'; -- eyeball it
+--   #   <paste one UPDATE ... AND <column> = <old value> statement>
+--   #   -- "UPDATE 1" means it applied; "UPDATE 0" means the guard blocked
+--   #   -- it because the row already changed -- re-run the diagnostic
+--   #   -- instead of retrying, do not loosen the guard to force it through.
+--   #   <paste its paired verification SELECT>  -- eyeball the result
 --   #   COMMIT;   -- or ROLLBACK if anything looks off
 --   # Nothing in this repo runs these statements for you.
 --
@@ -108,22 +124,54 @@ high_confidence AS (
     -- reproduced from this exact row's own legacy text.
     AND p.current_amount::bigint =
         (trunc(p.lower_bound)::bigint::text || trunc(p.upper_bound)::bigint::text)::bigint
+),
+-- Column names differ per leg (price_amount / rent_price_amount) and per
+-- legacy source (price_display / sale_price / rent_price), but are
+-- identical between the properties and unit_types tables -- one mapping
+-- covers both.
+column_mapped AS (
+  SELECT h.*,
+    (CASE
+       WHEN source_column IN ('price_amount', 'price_amount (sale leg)') THEN 'price_amount'
+       WHEN source_column = 'rent_price_amount' THEN 'rent_price_amount'
+     END) AS numeric_column,
+    (CASE
+       WHEN source_column = 'price_amount' THEN 'price_display'
+       WHEN source_column = 'price_amount (sale leg)' THEN 'sale_price'
+       WHEN source_column = 'rent_price_amount' THEN 'rent_price'
+     END) AS legacy_column,
+    (CASE
+       WHEN source_column IN ('price_amount', 'price_amount (sale leg)') THEN 'price_currency'
+       WHEN source_column = 'rent_price_amount' THEN 'rent_price_currency'
+     END) AS currency_column
+  FROM high_confidence h
 )
 SELECT
-  '-- ' || source_table || '.' || row_id || ' ("' || title || '") -- legacy: "' || legacy_text ||
-    '", current ' ||
+  '-- ============================================================' || E'\n' ||
+  '-- ' || source_table || '.' || row_id || ' ("' || title || '")' || E'\n' ||
+  '-- legacy: "' || legacy_text || '", current ' ||
     (CASE current_currency WHEN 'LAK' THEN '₭' WHEN 'THB' THEN '฿' ELSE '$' END) ||
     to_char(current_amount, 'FM999,999,999,999,999,990') ||
     ' -> recommended ' ||
     (CASE current_currency WHEN 'LAK' THEN '₭' WHEN 'THB' THEN '฿' ELSE '$' END) ||
     to_char(recommended_value, 'FM999,999,999,999,999,990') || E'\n' ||
+  -- Guard: the UPDATE only ever applies if numeric_column is STILL exactly
+  -- the value the diagnostic observed. A row that already changed (already
+  -- fixed, or legitimately re-priced by staff) fails the guard and this
+  -- affects 0 rows -- idempotent and concurrency-safe by construction, not
+  -- by convention.
   'UPDATE ' || source_table ||
-  ' SET ' ||
-    (CASE
-       WHEN source_column IN ('price_amount', 'price_amount (sale leg)') THEN 'price_amount'
-       WHEN source_column = 'rent_price_amount' THEN 'rent_price_amount'
-     END) ||
-    ' = ' || recommended_value ||
-  ' WHERE id = ''' || row_id || ''';' AS review_then_run_this_statement
-FROM high_confidence
+  ' SET ' || numeric_column || ' = ' || recommended_value ||
+  ' WHERE id = ''' || row_id || '''' ||
+  '  AND ' || numeric_column || ' = ' || current_amount || ';' || E'\n' ||
+  -- Verification: run right after the UPDATE, in the same transaction,
+  -- before deciding to COMMIT. numeric_column = recommended_value means it
+  -- applied; numeric_column still = current_amount means the guard blocked
+  -- it (the record changed since the diagnostic ran -- re-diagnose, don't
+  -- just retry).
+  'SELECT id, ' || legacy_column || ' AS legacy_text, ' ||
+    numeric_column || ', ' || currency_column ||
+  ' FROM ' || source_table || ' WHERE id = ''' || row_id || ''';'
+  AS review_then_run_this_block
+FROM column_mapped
 ORDER BY source_table, row_id;
