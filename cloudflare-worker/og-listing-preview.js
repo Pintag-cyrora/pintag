@@ -352,6 +352,28 @@ function rewriteGenericHead(response, lang, i18n) {
     .transform(response);
 }
 
+// Forces every rewritten response to bypass caching entirely (browser,
+// Cloudflare's own edge cache, or anything in between). Every step of this
+// file's own language resolution — resolveLang() reading ?lang= off the
+// full request URL, buildOgFields()/HOME_META_I18N/LISTINGS_META_I18N
+// keying every field off that resolved language — is correct in isolation
+// (see og-listing-preview.test.js), but a *cache* sitting in front of this
+// Worker's response doesn't know or care about that: if a Cache Rule on
+// the zone treats the query string as irrelevant to the cache key (a
+// common setup — "Cache Everything" for .html paths, ignoring query
+// params, to reduce cache fragmentation from unrelated params like UTM
+// tags), every ?lang= variant of the same path collapses onto ONE cached
+// response, and every crawler after the first one gets served whichever
+// language happened to be cached first — indistinguishable, from the
+// outside, from "the Worker always returns Lao." This header makes that
+// impossible regardless of how the zone's Cache Rules are configured,
+// without depending on Cloudflare dashboard access to verify or fix them.
+function withNoStore(response) {
+  const out = new Response(response.body, response);
+  out.headers.set('Cache-Control', 'no-store');
+  return out;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -377,7 +399,7 @@ export default {
       if (!row) return origin;
 
       try {
-        return await rewriteListingHead(origin, row, lang, slug);
+        return withNoStore(await rewriteListingHead(origin, row, lang, slug));
       } catch (err) {
         // HTMLRewriter failure of any kind — never let a preview-generation
         // bug break the actual page for a real visitor.
@@ -395,7 +417,7 @@ export default {
       const origin = await fetch(request);
       const lang = resolveLang(url.searchParams.get('lang'));
       try {
-        return rewriteGenericHead(origin, lang, isHome ? HOME_META_I18N : LISTINGS_META_I18N);
+        return withNoStore(await rewriteGenericHead(origin, lang, isHome ? HOME_META_I18N : LISTINGS_META_I18N));
       } catch (err) {
         return origin;
       }
@@ -407,7 +429,21 @@ export default {
   },
 };
 
-// Named exports of the pure logic (no fetch/HTMLRewriter) purely so it can
-// be unit-tested with plain Node — unused by the Worker runtime itself,
-// which only ever imports the default export.
-export { resolveLang, buildOgFields, canonicalUrl, HOME_META_I18N, LISTINGS_META_I18N };
+// Named exports purely so this logic can be unit-tested with plain Node —
+// unused by the Worker runtime itself, which only ever imports the default
+// export. resolveLang/buildOgFields/canonicalUrl need nothing beyond plain
+// Node. rewriteListingHead/rewriteGenericHead use the `HTMLRewriter` global
+// that only exists inside the Cloudflare Workers runtime — see
+// cloudflare-worker/test/html-rewriter-polyfill.js and
+// og-listing-preview.test.js for how they're exercised end-to-end (against
+// real fixture HTML from listing.html/index.html/listings.html) from Node.
+export {
+  resolveLang,
+  buildOgFields,
+  canonicalUrl,
+  HOME_META_I18N,
+  LISTINGS_META_I18N,
+  rewriteListingHead,
+  rewriteGenericHead,
+  withNoStore,
+};
