@@ -10,7 +10,7 @@ function's comment for why the other tiers of `lang.js`'s client-side
 precedence (persisted preference, browser language) can't be reproduced
 server-side.
 
-## ⚠️ Before deploying: this replaces an existing, unseen Worker
+## ⚠️ Before enabling automatic deployment: this may replace an existing, unseen Worker
 
 Production already has *some* Cloudflare-level mechanism generating a
 WhatsApp preview for listing URLs today — referenced in a comment inside
@@ -20,10 +20,22 @@ account/API access here). This script is a **fresh, complete
 implementation** built from the product's full specification (language
 explicit in the URL, correct OG title/description/image/alt per language,
 canonical + hreflang tags, English/Lao fallback), not a diff against the
-current live script.
+current live script. **This has never been resolved or confirmed from any
+development session working on this repo** — it is not safe to assume it's
+already been handled.
 
-Before routing this Worker onto `pintag.io/listing.html*`, whoever has
-Cloudflare dashboard access should:
+This matters more once CI deployment (below) is wired up, not less:
+Cloudflare routes can only be owned by one Worker at a time, and `wrangler
+deploy` reassigns a route to whichever Worker it's deploying, with no
+confirmation prompt and no error if something else currently owns it. A
+one-off manual `wrangler deploy` at least puts a human in front of the
+Cloudflare dashboard at the moment of cutover; **automatic deployment on
+every push removes that checkpoint entirely** — so this manual check must
+happen once, *before* the CI job is ever allowed to run for the first time
+(see "Automatic deployment (CI)" below for exactly what gates that).
+
+Before routing this Worker onto `pintag.io/listing.html*` — manually or via
+CI — whoever has Cloudflare dashboard access should:
 1. Open **Workers & Pages** and find the Worker currently handling this
    route (check **Workers Routes** under the `pintag.io` zone for an
    existing route matching `listing.html`).
@@ -40,19 +52,76 @@ old Worker being replaced may only have been routed to the first of these;
 confirm the new route pattern in `wrangler.toml` before deploying, not just
 the script contents.
 
-## One-time setup
+## One-time setup (manual, local — do this first)
 
 1. Install Wrangler if you don't have it: `npm install -g wrangler`
 2. `wrangler login` (opens a browser to authorize against your Cloudflare account)
 3. Edit `wrangler.toml`:
    - Set `account_id` (Cloudflare dashboard → Workers & Pages → Overview, right sidebar)
    - Confirm `zone_name = "pintag.io"` matches the zone already proxying the site
-4. From this folder: `wrangler deploy`
+4. Complete the route-ownership check above, then: `wrangler deploy` from this folder
 5. In the Cloudflare dashboard, confirm the route `pintag.io/listing.html*`
    now points at `pintag-og-listing-preview` (Wrangler creates the route
    automatically from `wrangler.toml`, but worth a visual confirm the first
    time, especially if an old Worker held that route already — see the
    warning above).
+
+Do this manual deploy **before** wiring up automatic deployment below —
+it's the same route-reassignment operation either way, but doing it by hand
+first means a human directly observes the Cloudflare dashboard result,
+rather than discovering it only via a CI log after the fact.
+
+## Automatic deployment (CI)
+
+Every push to `main` deploys this Worker automatically, via the
+`deploy-worker` job in `.github/workflows/deploy-prod.yml` (using
+[`cloudflare/wrangler-action`](https://github.com/cloudflare/wrangler-action)).
+It runs `wrangler deploy` from this folder using the exact same commit that
+was just deployed to production Pages in the same workflow run — see the
+comment at the top of that workflow file. There is no separate manual
+`wrangler deploy` step required after this is set up; a failed Worker
+deploy fails the GitHub Actions run (shows red in the Actions tab), it is
+never silently swallowed.
+
+### Required GitHub Secrets
+
+Add both in the repo's **Settings → Secrets and variables → Actions**:
+
+| Secret | Where to get it |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare dashboard → **My Profile → API Tokens → Create Token**. Use the **"Edit Cloudflare Workers"** template, scoped to the specific account/zone (`pintag.io`) rather than an account-wide token — this token only needs permission to deploy this one Worker and manage its routes. |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → **Workers & Pages → Overview**, right sidebar. Same value as the `account_id` placeholder in `wrangler.toml` (that file's value is for local/manual deploys only — CI supplies this via the secret/env var instead and never reads the placeholder). |
+
+Neither value is hardcoded anywhere in this repo; both are read from GitHub
+Secrets by the workflow at deploy time.
+
+### One-time setup steps (do in order)
+
+1. Complete the "Before enabling automatic deployment" route-ownership
+   check above, and the manual `wrangler deploy` in "One-time setup" above —
+   **before** adding the secrets below. Once both secrets exist, the very
+   next push to `main` deploys automatically with no further confirmation
+   step, so this is the last point at which a human reviews the route
+   cutover directly.
+2. Create the scoped API token (table above) and copy it.
+3. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as repo secrets.
+4. Push any commit to `main` (or re-run the workflow manually via **Actions
+   → Deploy Production (Pages + Worker) → Run workflow**, which this
+   workflow also supports via `workflow_dispatch`) and confirm the
+   `deploy-worker` job succeeds.
+5. Verify the routes are still exactly the 4 declared in `wrangler.toml`
+   (Cloudflare dashboard → `pintag.io` zone → **Workers Routes**):
+   `pintag.io/listing.html*`, `pintag.io/listings.html*`, `pintag.io/`,
+   `pintag.io/index.html*`. `wrangler deploy` re-syncs routes from
+   `wrangler.toml` on every deploy, so this list should never drift from
+   what's committed — if it ever does, that's a sign something deployed
+   outside of CI (or `wrangler.toml` changed without a matching commit
+   being deployed).
+6. To confirm which commit is actually live at any point, run
+   `wrangler deployments list` (from this folder, authenticated locally, or
+   via the Cloudflare dashboard's Worker → Deployments tab) — because CI
+   deploys from a real `actions/checkout`, Wrangler picks up the commit SHA
+   and message from git automatically and shows them per deployment.
 
 ## Testing after deploy
 

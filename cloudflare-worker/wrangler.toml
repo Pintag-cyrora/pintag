@@ -1,17 +1,24 @@
-# Deploy with: wrangler deploy   (from inside cloudflare-worker/)
+# Local/manual deploy: wrangler deploy   (from inside cloudflare-worker/)
+# CI deploy (every push to main): .github/workflows/deploy-prod.yml's
+# deploy-worker job, via cloudflare/wrangler-action.
 # See README.md for the full one-time setup (account id, route, secrets).
 
 name = "pintag-og-listing-preview"
 main = "og-listing-preview.js"
 compatibility_date = "2024-09-23"
 
-# Fill in from the Cloudflare dashboard (Workers & Pages → Overview → Account ID).
+# Fill in from the Cloudflare dashboard (Workers & Pages → Overview → Account ID)
+# for LOCAL/MANUAL deploys only. In CI, wrangler reads the CLOUDFLARE_ACCOUNT_ID
+# env var instead (set from the CLOUDFLARE_ACCOUNT_ID GitHub Secret by the
+# deploy-worker job) — an env var always takes precedence over this value, so
+# leaving the placeholder below does not affect automatic deploys.
 account_id = "REPLACE_WITH_YOUR_CLOUDFLARE_ACCOUNT_ID"
 
-# Runs this Worker in front of pintag.io for exactly the three routes it
-# needs to touch (listing.html, listings.html, and the homepage) — every
-# other path/asset keeps being served by GitHub Pages with zero Worker
-# involvement (see the pathname check at the top of fetch()).
+# Runs this Worker in front of pintag.io for exactly the four routes it
+# needs to touch (listing.html, listings.html, and the homepage via both
+# "/" and "/index.html") — every other path/asset keeps being served by
+# GitHub Pages with zero Worker involvement (see the pathname check at the
+# top of fetch()).
 # Zone name must match the zone that already proxies pintag.io in Cloudflare.
 [[routes]]
 pattern = "pintag.io/listing.html*"

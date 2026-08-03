@@ -1,9 +1,16 @@
-name: Deploy Production (Pages)
+name: Deploy Production (Pages + Worker)
 
 # Builds and deploys pintag.io from main via GitHub Actions, replacing the
 # previous "Pages serves main's raw branch content" mechanism. The only
 # "build" step is generating config.js from config.prod.js — there is no
 # bundler; every other file is served as-is.
+#
+# Also deploys the Cloudflare Worker (cloudflare-worker/) that generates
+# language-aware OG preview tags for listing.html/listings.html/index.html —
+# see deploy-worker below and cloudflare-worker/README.md. Both jobs are
+# triggered by the exact same push event, so both deploy the exact same
+# commit (GITHUB_SHA) every time; there is no separate "worker build" step
+# that could drift from what Pages just published.
 on:
   push:
     branches: [main]
@@ -14,8 +21,12 @@ permissions:
   pages: write
   id-token: write
 
+# Shared across both jobs (not job-scoped) so a Pages deploy and a Worker
+# deploy from two different pushes can never interleave out of order —
+# whichever push's workflow run starts first finishes first, keeping both
+# targets on a consistent commit relative to each other.
 concurrency:
-  group: pages-prod
+  group: prod-deploy
   cancel-in-progress: false
 
 jobs:
@@ -58,3 +69,43 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # Deploys cloudflare-worker/og-listing-preview.js to Cloudflare, replacing
+  # the previously-manual `wrangler deploy` step. Independent of the Pages
+  # jobs above (different infra, no functional dependency between them) but
+  # triggered by the same push, so it always deploys the same commit that
+  # Pages just published — see the workflow-level comment at the top.
+  #
+  # ⚠️ REQUIRES A ONE-TIME MANUAL SAFETY CHECK BEFORE THIS JOB CAN RUN AT ALL:
+  # this job stays inert (no CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID
+  # secrets → wrangler-action fails fast with a clear auth error, it does not
+  # silently no-op) until those two secrets are added to the repo. Cloudflare
+  # routes can only be owned by one Worker at a time, and production may
+  # already have a *different*, undocumented Worker bound to these same 4
+  # routes (see cloudflare-worker/README.md's "Before enabling automatic
+  # deployment" section and the DISCLOSURE comment at the top of
+  # og-listing-preview.js — this was
+  # never resolved from this development environment, which has no
+  # Cloudflare dashboard/API access to check). Adding those secrets is what
+  # activates automatic deployment, and the very first automatic deploy will
+  # silently reassign those routes to this Worker if something else still
+  # owns them. Do the manual route-ownership check in README.md BEFORE
+  # adding the secrets, not after.
+  deploy-worker:
+    name: Deploy Cloudflare Worker (OG preview)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloudflare-worker
+          command: deploy
+          # No `continue-on-error` anywhere in this job: a failed Wrangler
+          # deploy fails this job, which fails the workflow run, which shows
+          # red in the Actions tab and (if branch protection/notifications
+          # are configured) surfaces exactly like any other CI failure —
+          # nothing here swallows a deploy failure.
