@@ -457,10 +457,10 @@ nav{
       <!-- Priority 2: All Listings / Available Only — its own visible
            control, not a pill hidden inside .filters. -->
       <div class="avail-toggle" id="avail-toggle">
-        <button class="avail-btn" data-avail="all" onclick="setAvailFilter('all',this)" data-track="filter-availability" data-track-type="filter" data-track-label="Availability: All Listings">
+        <button class="avail-btn active" data-avail="all" onclick="setAvailFilter('all',this)" data-track="filter-availability" data-track-type="filter" data-track-label="Availability: All Listings">
           <span class="lo-i">ທັງໝົດ (ລວມທີ່ຂາຍ/ເຊົ່າໄປແລ້ວ)</span><span class="en-i">All Listings (incl. Rented/Sold)</span><span class="zh-i">全部（含已租/已售）</span>
         </button>
-        <button class="avail-btn active" data-avail="available" onclick="setAvailFilter('available',this)" data-track="filter-availability" data-track-type="filter" data-track-label="Availability: Available Only">
+        <button class="avail-btn" data-avail="available" onclick="setAvailFilter('available',this)" data-track="filter-availability" data-track-type="filter" data-track-label="Availability: Available Only">
           <span class="lo-i">ວ່າງເທົ່ານັ້ນ</span><span class="en-i">Available Only</span><span class="zh-i">仅在售/租</span>
         </button>
       </div>
@@ -582,11 +582,29 @@ let allProperties = [];
 let currentTxFilter = 'all';
 let currentTypeFilter = 'all';
 let currentSort = 'newest';
-// Rented Listings UX: default to available-only (unavailable listings are
-// market history, opt-in via the "All Listings" toggle -- see the matching
-// .avail-btn[data-avail="available"] marked active in the static markup
-// below), not shown by default the way it was before this change.
-let currentAvailOnly = true;
+// Default to showing EVERY listing; "Available Only" is opt-in via the
+// toggle (see the matching .avail-btn[data-avail="all"] marked active in
+// the static markup above -- the two must always agree).
+//
+// REGRESSION HISTORY -- do not flip this back to `true` without first
+// auditing production's actual market_status distribution. Commit 9eccd79
+// ("Rented Listings UX") set this to `true` so unavailable listings read
+// as opt-in market history. That turned market_status into a hard,
+// silent, default-on gate on the ONLY page that lists inventory, and the
+// public site collapsed to a single visible listing -- every other row
+// was filtered out client-side for having a market_status in
+// LISTING_UNAVAILABLE_MARKET_STATUSES. The rows were never missing from
+// the database and no query/RLS/join changed; they were fetched and then
+// discarded by this one flag.
+//
+// The underlying UX idea is fine and is fully preserved by the toggle --
+// what is not acceptable is a marketplace hiding its own inventory by
+// default based on a status column whose production values are not
+// verified. Showing everything and letting the visitor narrow is the safe
+// default: the failure mode is "a rented listing is visible" (recoverable,
+// and it still renders its Rented badge + unavailable treatment), not
+// "our inventory is invisible."
+let currentAvailOnly = false;
 let currentPetFriendly = false;
 let currentSmokingAllowed = false;
 

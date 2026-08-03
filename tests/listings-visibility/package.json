@@ -1,0 +1,11 @@
+{
+  "name": "pintag-listings-visibility-tests",
+  "private": true,
+  "description": "Regression coverage for the ONE rule that matters most on listings.html: a listing that exists in the database must be visible on first page load. Added after a production incident where the public site collapsed to a single visible listing -- every other row was fetched successfully and then discarded client-side by the default-on 'Available Only' filter (currentAvailOnly, flipped to true in commit 9eccd79). Nothing was missing from the database and no query/RLS/join had changed.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
