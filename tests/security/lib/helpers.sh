@@ -285,7 +285,18 @@ acquire_jwt() {
     -H "apikey: ${SUPABASE_ANON_KEY}" \
     -H "Content-Type: application/json" \
     -d "{\"email\":\"${email}\",\"password\":\"${password}\"}")
-  resp_body "$resp" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4
+  # `|| true`: under `set -o pipefail` (run.sh), grep -o finding no match
+  # (a failed login — no "access_token" field in the response) makes this
+  # whole pipeline exit non-zero, even though `cut` itself succeeds on the
+  # empty input it receives. Combined with run.sh's `set -e` and this
+  # function being called as `ADMIN_JWT=$(acquire_jwt ...)`, that non-zero
+  # status used to abort the entire script immediately after printing
+  # "Authenticating as admin..." -- before the caller's own
+  # `[[ -z "$ADMIN_JWT" ]]` check (which exists specifically to handle a
+  # failed login as a WARNING + skip admin-only tests) ever ran, and before
+  # any other suite executed. A failed login is expected, valid input to
+  # this function, not a shell error -- it must never abort the run.
+  resp_body "$resp" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4 || true
 }
 
 # jwt_sub JWT — prints the `sub` claim (auth.uid()) from a JWT's payload,
@@ -515,13 +526,22 @@ generate_coverage_report() {
   fi
 
   # URL is the 5th tab-separated field in the log
+  # `|| true` on each pipeline: under `set -o pipefail` (run.sh), `grep -oE`
+  # finding no match (e.g. no edge-function calls were made this run --
+  # expected whenever most/all suites were skipped or ran with no admin/test
+  # JWT) makes the whole pipeline exit non-zero, even though `sed`/`sort -u`
+  # after it succeed. Combined with run.sh's `set -e` and these being plain
+  # `var=$(...)` assignments, that non-zero status used to abort the entire
+  # script mid-way through the coverage report -- silently skipping the rest
+  # of the summary and the final exit-code logic. An empty/no-match result is
+  # expected, valid input to this report, not a shell error.
   local tested_fns tested_tables tested_buckets
   tested_fns=$(awk -F'\t' 'NF>=5{print $5}' "$REQUEST_LOG" \
-    | grep -oE '/functions/v1/[^?/ ]+' | sed 's|/functions/v1/||' | sort -u)
+    | grep -oE '/functions/v1/[^?/ ]+' | sed 's|/functions/v1/||' | sort -u) || true
   tested_tables=$(awk -F'\t' 'NF>=5{print $5}' "$REQUEST_LOG" \
-    | grep -oE '/rest/v1/[^?/]+' | sed 's|/rest/v1/||' | grep -v '^rpc$' | sort -u)
+    | grep -oE '/rest/v1/[^?/]+' | sed 's|/rest/v1/||' | grep -v '^rpc$' | sort -u) || true
   tested_buckets=$(awk -F'\t' 'NF>=5{print $5}' "$REQUEST_LOG" \
-    | grep -oE '/storage/v1/object/[^/]+' | sed 's|/storage/v1/object/||' | sort -u)
+    | grep -oE '/storage/v1/object/[^/]+' | sed 's|/storage/v1/object/||' | sort -u) || true
 
   echo -e "  ${BOLD}Edge Functions:${RESET}"
   for fn in "${RESOURCE_FNS[@]}"; do
