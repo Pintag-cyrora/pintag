@@ -105,12 +105,23 @@ var RENTAL_LAUNDRY_OPTIONS = [
   {value:'paid_service', label:{en:'Paid Service',  lo:'ບໍລິການເສຍຄ່າ',  zh:'付费服务'}},
   {value:'not_available',label:{en:'Not Available', lo:'ບໍ່ມີບໍລິການ',   zh:'不提供'}}
 ];
+// Values are the only thing ever persisted (properties.rental_terms /
+// unit_types.rental_terms_overrides) -- labels are free to change without
+// touching a single saved listing. 'month_to_month' keeps its original
+// value for exactly that reason even though its label now reads "Flexible"
+// (a month-to-month lease IS the flexible/no-fixed-term option); only
+// '1_month' and '3_months' are new values, inserted between the existing
+// ones in ascending duration order. 'negotiable' is kept as-is (not part of
+// the requested list, but nothing asked for its removal, and removing a
+// live option would break any listing already using it).
 var RENTAL_LEASE_LENGTH_OPTIONS = [
-  {value:'month_to_month', label:{en:'Month-to-Month', lo:'ເປັນລາຍເດືອນ',   zh:'按月租赁'}},
-  {value:'6_months',       label:{en:'6 Months',       lo:'6 ເດືອນ',        zh:'6个月'}},
-  {value:'12_months',      label:{en:'12 Months',      lo:'12 ເດືອນ',       zh:'12个月'}},
-  {value:'24_months',      label:{en:'24 Months',      lo:'24 ເດືອນ',       zh:'24个月'}},
-  {value:'negotiable',     label:{en:'Negotiable',     lo:'ສາມາດເຈລະຈາໄດ້', zh:'可协商'}}
+  {value:'month_to_month', label:{en:'Flexible',   lo:'ຢືດຢຸ່ນ',        zh:'灵活'}},
+  {value:'1_month',        label:{en:'1 Month',    lo:'1 ເດືອນ',        zh:'1个月'}},
+  {value:'3_months',       label:{en:'3 Months',   lo:'3 ເດືອນ',        zh:'3个月'}},
+  {value:'6_months',       label:{en:'6 Months',   lo:'6 ເດືອນ',        zh:'6个月'}},
+  {value:'12_months',      label:{en:'12 Months',  lo:'12 ເດືອນ',       zh:'12个月'}},
+  {value:'24_months',      label:{en:'24 Months',  lo:'24 ເດືອນ',       zh:'24个月'}},
+  {value:'negotiable',     label:{en:'Negotiable', lo:'ສາມາດເຈລະຈາໄດ້', zh:'可协商'}}
 ];
 var RENTAL_PET_POLICY_OPTIONS = [
   {value:'allowed',      label:{en:'Pets Allowed',       lo:'ລ້ຽງສັດໄດ້',        zh:'允许宠物'}},

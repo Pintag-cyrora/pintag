@@ -24,7 +24,7 @@ vm.runInThisContext(src, { filename: 'rental-terms.js' });
 const {
   resolveRentalTerms, _normalizeRentalTermsBlob, buildRentalTermsPayload,
   formatRentalTermValue, summarizeRentalTermOverrides, RENTAL_TERMS_FIELDS,
-  RENTAL_TERMS_SCHEMA_VERSION
+  RENTAL_TERMS_SCHEMA_VERSION, RENTAL_LEASE_LENGTH_OPTIONS
 } = globalThis;
 
 function property(rental_terms) { return { id: 'p1', rental_terms }; }
@@ -215,4 +215,80 @@ test('additional_fees: multi-fee count is localized', () => {
 
 test('duration-style fields still render their own units', () => {
   assert.equal(formatRentalTermValue('lease_length', '12_months', 'en'), 'Lease Length: 12 Months');
+});
+
+// ── Lease Length: "3 months" was missing from RENTAL_LEASE_LENGTH_OPTIONS ──
+// (root cause: a fixed hop from 1-month-equivalent straight to 6 months,
+// with nothing in between). These exercise the full lifecycle the registry
+// promises for any select-kind field: selectable (present in the options
+// list with a value + all 3 language labels), displayable (formats
+// correctly per language via the exact same generic formatter every other
+// lease length uses), and saveable/editable (round-trips through the same
+// resolve/build functions real listings go through, including inheriting
+// correctly alongside pre-existing, differently-valued listings so nothing
+// already saved is disturbed by adding a new option).
+//
+// No admin.html/add-property.html/edit-listing.html DOM test is added
+// here: RENTAL_TERM_KIND_RENDERERS.select (rental-terms.js) builds every
+// <option> generically from RENTAL_TERMS_FIELDS[...].options -- there is no
+// per-field markup anywhere for lease_length to update, so the registry
+// change alone is what every form/edit surface needed. Likewise no
+// listings.html filter test: today's rental filters (toggleRentalFilter)
+// only cover pet_policy/smoking_policy -- lease_length has never had a
+// search filter, so there is nothing filter-related to add a test for.
+test('RENTAL_LEASE_LENGTH_OPTIONS: 3 months is selectable, with all three language labels', () => {
+  const opt = RENTAL_LEASE_LENGTH_OPTIONS.find(o => o.value === '3_months');
+  assert.ok(opt, '3_months must exist as a selectable lease length option');
+  assert.equal(opt.label.en, '3 Months');
+  assert.equal(opt.label.lo, '3 ເດືອນ');
+  assert.equal(opt.label.zh, '3个月');
+});
+
+test('RENTAL_LEASE_LENGTH_OPTIONS: 1 month is also present (was missing alongside 3 months)', () => {
+  const opt = RENTAL_LEASE_LENGTH_OPTIONS.find(o => o.value === '1_month');
+  assert.ok(opt);
+  assert.equal(opt.label.en, '1 Month');
+});
+
+test('RENTAL_LEASE_LENGTH_OPTIONS: ascending duration order (1, 3, 6, 12, 24 months)', () => {
+  const order = RENTAL_LEASE_LENGTH_OPTIONS.map(o => o.value);
+  assert.deepEqual(
+    order.filter(v => ['1_month', '3_months', '6_months', '12_months', '24_months'].includes(v)),
+    ['1_month', '3_months', '6_months', '12_months', '24_months']
+  );
+});
+
+test('formatRentalTermValue: 3 months displays correctly in every language (en/lo/zh)', () => {
+  assert.equal(formatRentalTermValue('lease_length', '3_months', 'en'), 'Lease Length: 3 Months');
+  assert.equal(formatRentalTermValue('lease_length', '3_months', 'lo'), 'ໄລຍະເວລາເຊົ່າ: 3 ເດືອນ');
+  assert.equal(formatRentalTermValue('lease_length', '3_months', 'zh'), '租期: 3个月');
+});
+
+test('buildRentalTermsPayload: 3 months round-trips as a plain saved value (save path)', () => {
+  const payload = buildRentalTermsPayload({ lease_length: '3_months' });
+  assert.equal(payload.lease_length, '3_months');
+  assert.equal(payload.version, RENTAL_TERMS_SCHEMA_VERSION);
+});
+
+test('resolveRentalTerms: a listing saved with 3 months resolves it back unchanged (save + reopen)', () => {
+  const r = resolveRentalTerms(property({ version: 1, lease_length: '3_months' }), null);
+  assert.equal(r.values.lease_length, '3_months');
+});
+
+test('resolveRentalTerms: a unit type can override lease_length to 3 months while the building keeps a different value (edit path)', () => {
+  const prop = property({ version: 1, lease_length: '12_months' });
+  const ut = unitType({ version: 1, lease_length: '3_months' });
+  const r = resolveRentalTerms(prop, ut);
+  assert.equal(r.values.lease_length, '3_months');   // unit override wins
+  assert.deepEqual(r.overriddenKeys, ['lease_length']);
+});
+
+test('resolveRentalTerms: existing listings on pre-existing lease lengths remain unaffected by adding 1/3 months', () => {
+  // Backward compatibility: adding new options must never change how an
+  // already-saved listing on an older value (here the pre-existing
+  // 'month_to_month', now labeled "Flexible" but with the same stored
+  // value) resolves or displays.
+  const r = resolveRentalTerms(property({ version: 1, lease_length: 'month_to_month' }), null);
+  assert.equal(r.values.lease_length, 'month_to_month');
+  assert.equal(formatRentalTermValue('lease_length', 'month_to_month', 'en'), 'Lease Length: Flexible');
 });
