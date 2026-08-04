@@ -66,11 +66,19 @@ WITH recoverable AS (
   ORDER BY property_id, removed_at DESC
 )
 INSERT INTO properties
-  (id, title_lo, property_type, district_en, transaction_type,
+  (id, title_lo, title_en, property_type, district_en, transaction_type,
    workflow_status, status, market_status)
 SELECT
   r.property_id,
   r.title_lo,
+  -- title_en is NOT NULL with no default in production (confirmed by the
+  -- PRE-CHECK), but its ONLY manifest value is the attacker's 'HACKED' string,
+  -- which must never be restored. We therefore write an EMPTY STRING — the most
+  -- honest non-null placeholder: it satisfies the constraint, invents no title,
+  -- and clearly marks the English title as still-missing for P9 enrichment
+  -- (translate from title_lo / recover from caches). Copying title_lo here would
+  -- misrepresent the Lao title as English, so we deliberately do not.
+  '',
   r.property_type,
   r.district_en,
   r.transaction_type,
@@ -116,7 +124,7 @@ WITH recoverable AS (
 ),
 restored AS (
   SELECT p.id, p.property_type, p.district_en, p.transaction_type,
-         p.images, p.title_lo
+         p.images, p.title_lo, p.title_en
   FROM properties p
   WHERE p.id IN (SELECT property_id FROM recoverable)
     AND p.workflow_status = 'draft'
@@ -129,6 +137,10 @@ SELECT
   (SELECT count(*) FROM restored WHERE property_type    IS NULL)         AS missing_property_type,
   (SELECT count(*) FROM restored WHERE district_en      IS NULL)         AS missing_district,
   (SELECT count(*) FROM restored WHERE transaction_type IS NULL)         AS missing_transaction_type,
+  -- English title is intentionally empty on every recovered draft (manifest
+  -- title_en was the attacker's 'HACKED'); this is the P9 enrichment worklist.
+  (SELECT count(*) FROM restored
+     WHERE title_en IS NULL OR title_en = '')                           AS missing_english_title,
   (SELECT count(*) FROM restored
      WHERE images IS NULL OR array_length(images,1) IS NULL)            AS missing_photos,
   (SELECT count(DISTINCT property_id) FROM properties_removal_log
