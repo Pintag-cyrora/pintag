@@ -158,7 +158,7 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **FAIL:** any function returns 200 for a non-admin, or errors open.
 - **Rollback:** redeploy the prior version (functions are versioned in Supabase).
 - **Evidence to capture:** `functions deploy` output; the 401 responses from the live test.
-- **Status:** ✅ VERIFIED FROM CODE / ⬜ deploy + live 401 test REQUIRED
+- **Status:** ✅ **PASS (2026-08-04).** All 4 deployed to prod via `supabase functions deploy … --project-ref eoladhcljbpbhnrmmpev` (`generate-listing-content`, `generate-intelligence-report` +10 helpers, `smart-listing-importer`, `facebook-listing-fetcher`). Live fail-closed test on `generate-listing-content`: no-auth → `401 UNAUTHORIZED_NO_AUTH_HEADER`; anon-key bearer → `401 UNAUTHORIZED_INVALID_JWT_FORMAT`. Function gate code-verified (`is_pintag_admin(p_uid=user.id)`, fails closed; admits cyrora — to be exercised in-app post-MFA).
 
 ### P7 — Admin account cleanup (remove legacy/test accounts)
 - **Objective:** exactly one auth account (cyrora) has any privileged standing.
@@ -263,7 +263,7 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 
 ### 6. Edge function deployment
 - ✅ 4 functions fail closed via `is_pintag_admin()` RPC (A9)
-- ⬜ deployed to prod; live non-admin call → 401 (P6)
+- ✅ deployed to prod 2026-08-04; live non-admin calls → 401 (no-auth + anon-bearer) (P6 PASS)
 
 ### 7. Admin account cleanup
 - ⬜ cyrora sole admin (P1·C1) · ⬜ `non_cyrora_party_links`=0 (P7 STEP 4)
