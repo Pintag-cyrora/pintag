@@ -141,8 +141,18 @@ SELECT
   -- title_en was the attacker's 'HACKED'); this is the P9 enrichment worklist.
   (SELECT count(*) FROM restored
      WHERE title_en IS NULL OR title_en = '')                           AS missing_english_title,
+  -- properties.images is JSONB in production (not text[] — the unit_types
+  -- migration comment claiming a "plain array" is stale). Count a row as
+  -- missing-photos when images is SQL NULL, JSON null / non-array, or an empty
+  -- JSON array. CASE (not OR) guarantees jsonb_array_length is only called on a
+  -- confirmed array, so a non-array value can never raise an error.
   (SELECT count(*) FROM restored
-     WHERE images IS NULL OR array_length(images,1) IS NULL)            AS missing_photos,
+     WHERE CASE
+             WHEN images IS NULL                     THEN true
+             WHEN jsonb_typeof(images) <> 'array'     THEN true
+             WHEN jsonb_array_length(images) = 0      THEN true
+             ELSE false
+           END)                                                        AS missing_photos,
   (SELECT count(DISTINCT property_id) FROM properties_removal_log
      WHERE title_lo IS NULL
        AND property_id NOT IN (SELECT property_id FROM recoverable))     AS unrecoverable;
