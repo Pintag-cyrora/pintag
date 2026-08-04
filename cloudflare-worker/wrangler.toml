@@ -7,12 +7,18 @@ name = "pintag-og-listing-preview"
 main = "og-listing-preview.js"
 compatibility_date = "2024-09-23"
 
-# Fill in from the Cloudflare dashboard (Workers & Pages → Overview → Account ID)
-# for LOCAL/MANUAL deploys only. In CI, wrangler reads the CLOUDFLARE_ACCOUNT_ID
-# env var instead (set from the CLOUDFLARE_ACCOUNT_ID GitHub Secret by the
-# deploy-worker job) — an env var always takes precedence over this value, so
-# leaving the placeholder below does not affect automatic deploys.
-account_id = "REPLACE_WITH_YOUR_CLOUDFLARE_ACCOUNT_ID"
+# account_id is intentionally NOT set in this file.
+#
+# IMPORTANT: an explicit `account_id` here takes PRECEDENCE over the
+# CLOUDFLARE_ACCOUNT_ID env var — the opposite of what a previous comment
+# claimed. A placeholder value therefore BREAKS CI: wrangler tries to deploy to
+# the literal placeholder account and fails with Cloudflare API error 7003
+# ("Could not route to /accounts/REPLACE_WITH_YOUR_CLOUDFLARE_ACCOUNT_ID/…").
+#
+# Leaving account_id unset makes wrangler read the account from
+# CLOUDFLARE_ACCOUNT_ID: the GitHub Secret in CI (supplied by the deploy-worker
+# job), or your `wrangler login` session / a CLOUDFLARE_ACCOUNT_ID env var for
+# local/manual deploys.
 
 # Runs this Worker in front of pintag.io for exactly the four routes it
 # needs to touch (listing.html, listings.html, and the homepage via both

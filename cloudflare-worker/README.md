@@ -90,7 +90,7 @@ Add both in the repo's **Settings → Secrets and variables → Actions**:
 | Secret | Where to get it |
 |---|---|
 | `CLOUDFLARE_API_TOKEN` | Cloudflare dashboard → **My Profile → API Tokens → Create Token**. Use the **"Edit Cloudflare Workers"** template, scoped to the specific account/zone (`pintag.io`) rather than an account-wide token — this token only needs permission to deploy this one Worker and manage its routes. |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → **Workers & Pages → Overview**, right sidebar. Same value as the `account_id` placeholder in `wrangler.toml` (that file's value is for local/manual deploys only — CI supplies this via the secret/env var instead and never reads the placeholder). |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → **Workers & Pages → Overview**, right sidebar. `wrangler.toml` intentionally leaves `account_id` **unset** so this secret (in CI) or your `wrangler login` session (local) supplies it. An explicit `account_id` in the file would take precedence over this secret and break CI with Cloudflare API error 7003. |
 
 Neither value is hardcoded anywhere in this repo; both are read from GitHub
 Secrets by the workflow at deploy time.
