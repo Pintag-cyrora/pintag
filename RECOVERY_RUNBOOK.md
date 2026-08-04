@@ -103,7 +103,7 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **FAIL:** any write policy on `TO authenticated` without `is_pintag_admin`, or an `auth.email` predicate remaining.
 - **Rollback:** read-only.
 - **Evidence to capture:** the full `pg_policies` (storage) output.
-- **Status:** ⬜ REQUIRES PRODUCTION VERIFICATION
+- **Status:** ❌ **FAIL (2026-08-04) → remediation pending.** Live `pg_policies` showed storage OPEN: `agent_photos_insert` role `{public}`/`WITH CHECK true` (anon upload); `authenticated`-any INSERT/UPDATE/DELETE on `property-images` and `agent-photos`; no `is_pintag_admin` write policy; only retired `auth.email()='admin@pintag.io'` admin policies (moot). Cause: `20260804140000`'s DROPs named non-existent policies (no-ops). Hard-fix migration **`20260804150000`** (drop-ALL-then-recreate) written; **apply to production, then re-run this query — expect exactly 8 policies, every write `is_pintag_admin`, reads public.**
 
 ### P4 — Authentication path verification (admin pages)
 - **Objective:** prove every admin page requires cyrora + valid JWT + AAL2, server-validated on load.
