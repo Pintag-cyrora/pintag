@@ -33,10 +33,10 @@ sweep checks for any surface that could sidestep it.
 - **Risk:** These listing-editor pages authenticate with `signInWithPassword` (no TOTP, no cyrora restriction) and gate only on "is there a user." They deviate from the unified admin-auth model. **Data impact is nil today:** RLS restricts every write and every sensitive read to `is_pintag_admin()` (proven P2.2/P2.3), and `owners`/`leads` are admin-only for read too (`20260804130000:110-120`) — an agent session can neither write nor read PII. The exposure is architectural (a password-only privileged UI surface), not data.
 - **Fix:** Decommission the legacy agent portal (single-admin model retired staff), or place these pages behind `PintagAdminAuth.protect` so they require cyrora + AAL2 like the other admin tools.
 
-### M2 — Medium · `marketing-os.html` founder page: password-only, no identity check, reads an unaudited table
+### M2 — Medium · `marketing-os.html` founder page: password-only, no identity check, reads an unaudited table — ✅ RESOLVED
 - **File:** `marketing-os.html:60,119,136`
 - **Risk:** Password-only login as `ninee@pintag.io` (no TOTP, outside `admin-auth.js`). Its `getUser()` gate checks only that *a* user exists — it does **not** verify `email === FOUNDER_EMAIL` — so any authenticated session reaches `fetchAndShowBrief()`. It reads `morning_briefs` (a separate founder-server subsystem table **not** present in the audited migrations, so its production RLS is unverifiable from this repo). Content is marketing briefs, not customer PII; the page performs no writes.
-- **Fix:** Verify `morning_briefs` RLS in production (must be `is_pintag_admin`-gated), or gate the page on `admin-auth.js`. Confirm whether `ninee@pintag.io` should exist at all under the single-admin model — if not, remove it in P7 ("any other non-cyrora logins").
+- **Resolution (2026-08-04):** removed from the production deployment — `deploy-prod.yml` prunes `marketing-os.html` from the Pages artifact, so it 404s on pintag.io. The file remains in the repo; the `ninee@pintag.io` login is outside the single-admin model and its account should be removed with the other non-cyrora logins in P7. (Open follow-up, not a reopen blocker: if the founder-brief viewer is wanted on the production origin later, rebuild it behind `admin-auth.js` under the single-admin model.)
 
 ### L1 — Low · Dead legacy auto-login block in `agent-setup.html`
 - **File:** `agent-setup.html:1030-1044`

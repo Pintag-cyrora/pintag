@@ -51,17 +51,19 @@ jobs:
       - name: Generate config.js (production)
         run: cp config.prod.js config.js
 
-      # The legacy agent portal (agent self-service login + dashboard + the
-      # listing editors it links to) is NOT part of the current single-admin
-      # production model — the sole administrator manages every listing inside
-      # admin.html (its own saveListing() upsert), which never navigates to
-      # these pages. Prune them from the published artifact so they are not
-      # publicly reachable on pintag.io. The files remain in the repo, for the
-      # future verified-agent phase, which will be designed from first
-      # principles rather than adapting this portal — see
-      # docs/LEGACY_AGENT_PORTAL.md.
-      - name: Prune legacy agent portal from the production artifact
-        run: rm -f agent-login.html dashboard.html edit-listing.html add-property.html
+      # Surfaces that are NOT part of the current single-administrator
+      # production model are pruned from the published artifact so they are not
+      # publicly reachable on pintag.io. All files remain in the repo.
+      #   * Legacy agent portal (agent self-service login + dashboard + the
+      #     listing editors it links to): the sole administrator manages every
+      #     listing inside admin.html (its own saveListing() upsert), which
+      #     never navigates to these pages. Deferred to the future
+      #     verified-agent phase — see docs/LEGACY_AGENT_PORTAL.md.
+      #   * marketing-os.html: a founder tool that logs in as ninee@pintag.io
+      #     (password-only, outside admin-auth.js) against a separate
+      #     founder-server subsystem — outside the single-admin auth model.
+      - name: Prune non-production surfaces from the production artifact
+        run: rm -f agent-login.html dashboard.html edit-listing.html add-property.html marketing-os.html
 
       - uses: actions/configure-pages@v5
 
