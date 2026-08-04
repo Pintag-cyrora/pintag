@@ -83,7 +83,14 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **FAIL:** any non-zero non-admin/anon write; any write policy not `is_pintag_admin`; C9 = 0 (admin locked out — investigate before anything else).
 - **Rollback:** read-only (C7–C9 use `BEGIN…ROLLBACK`).
 - **Evidence to capture:** SQL output of C3, C4, C6, C7, C8, C9.
-- **Status:** ▶ IN PROGRESS — **P2.1 (anon) PASS** (`permission denied`, privilege layer); **P2.2 (non-admin) PASS** (`new row violates row-level security policy`, RLS layer). Awaiting P2.3 (agent), P2.4 (cyrora); storage = P3; edge functions = P6.
+- **Status:** ✅ **PASS (core boundary)** — all four live write tests confirmed in production:
+  - **P2.1 (anon) PASS** — `permission denied for table properties` on UPDATE/DELETE/INSERT (blocked at the **privilege** layer; anon holds no write grants).
+  - **P2.2 (authenticated non-admin) PASS** — `new row violates row-level security policy for table "properties"` (blocked at the **RLS** layer; `WITH CHECK is_pintag_admin`).
+  - **P2.3 (real agent) PASS** — agent *Viengkhone Phomthavong* (`auth_user_id = bb7ff815-9db9-41a4-9914-c0f7b97f9046`): DELETE returned **0 rows** — an agent JWT cannot modify protected listing data. This is the agents-cannot-modify-listings proof (C7).
+  - **P2.4 (sole administrator) PASS** — cyrora UPDATE affected `cyrora_update = 5` rows inside `BEGIN … ROLLBACK` (no data changed); the single admin retains full write access (C9).
+  - **Deferred to P5 (final production verification), NOT part of this core-boundary PASS:**
+    - **P2.5 — Storage live check** → see **P3** (Storage policy verification); run the `pg_policies` (storage) query in production.
+    - **P2.6 — Edge-function live 401 test** → see **P6**; **blocked until the 4 fixed edge functions are deployed** (production currently runs the pre-fix versions). Live 401-for-non-admin / 200-for-cyrora must be tested *after* deploy, not before.
 
 ### P3 — Storage policy verification
 - **Objective:** prove Storage writes require `is_pintag_admin()`, reads are public.
@@ -134,14 +141,25 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **Evidence to capture:** STEP 4 `non_cyrora_party_links` output; screenshot of the Users list before/after deletion; post-deletion C2 output.
 - **Status:** ⬜ REQUIRES PRODUCTION VERIFICATION — **gated on P1 + P2 PASS**
 
-### P8 — Listing recovery (skeletons as hidden drafts)
-- **Objective:** re-create the deleted listings from the manifest, using original UUIDs, as drafts only.
-- **Action:** run `scripts/recover-listings-from-manifest.sql` — PRE-CHECK, then the `BEGIN…INSERT…` block, inspect counts, `COMMIT`. Restores `id`(UUID)+`title_lo`+`property_type`+`district_en`+`transaction_type`, `status='draft'`.
-- **PASS:** `drafts_now` equals the recoverable manifest rows not already present; `properties_total_now` increased by that amount; nothing published (`workflow_status='draft'`).
-- **FAIL:** a NOT-NULL column error (add it per the PRE-CHECK), or drafts count inconsistent with the manifest.
-- **Rollback:** transactional — `ROLLBACK` before `COMMIT`; or after commit, the recovered rows are drafts (not public) and can be deleted by id. Idempotent (`NOT EXISTS`), safe to re-run.
-- **Evidence to capture:** PRE-CHECK output; the count row (`manifest_recoverable`, `properties_total_now`, `drafts_now`).
-- **Status:** ⬜ REQUIRES PRODUCTION VERIFICATION
+### P8 — Listing recovery (skeletons as hidden drafts)  ← *user "P3"*
+- **Objective:** re-create the deleted listings from the manifest, using original UUIDs, as hidden drafts only, preserving every field exactly, fabricating nothing.
+- **Manifest columns available** (`properties_removal_log`): `property_id` (original UUID), `title_lo` (real Lao title, preserved), `property_type`, `district_en`, `transaction_type`, plus `title_en` (**corrupted to `HACKED` — deliberately NOT copied**), `status_at_removal`, `listed_at`, `removed_at`. Everything not in this list (price, bedrooms, sizes, images, description, slug, title_en/zh, coordinates, amenities, contacts/owner/agent) is left **NULL** for P9 enrichment.
+- **Action — run `scripts/recover-listings-from-manifest.sql` in order, one block at a time:**
+  1. **PRE-CHECK** (outside the txn): list NOT-NULL columns without a default. Expect only the 8 the INSERT sets; if a new one appears, add a non-fabricated value first.
+  2. **STEP 1 — restore** (`BEGIN … INSERT … SELECT` from the deduped `recoverable` CTE, `COMMIT`). Sets `id`(UUID)+`title_lo`+`property_type`+`district_en`+`transaction_type`, `workflow_status='draft'`, `status='draft'`, `market_status='available'`. `DISTINCT ON (property_id) … ORDER BY removed_at DESC` dedups the one-row-per-delete manifest so no duplicate-PK error; `NOT EXISTS(id)` makes it idempotent.
+  3. **STEP 2 — recovery statistics** (read-only): `restored`, `partially_restored`, `missing_property_type/district/transaction_type`, `missing_photos`, `unrecoverable`.
+  4. **STEP 3 — post-recovery validation V1–V4** (read-only, all must PASS).
+- **PASS (all of):**
+  - STEP 1 counts: `drafts_now` = the recoverable manifest UUIDs not already present; `properties_total_now` rose by exactly that many.
+  - STEP 2: `restored` = `manifest_recoverable`; `missing_photos` = `restored` (expected — photos re-attach in P9); `unrecoverable` = manifest UUIDs with no `title_lo`.
+  - **V1** `match_gap = 0` (restored UUIDs = recoverable manifest UUIDs).
+  - **V2** 0 rows (no duplicate UUID).
+  - **V3** `not_draft = 0` (every restored row is `workflow_status='draft'` AND `status='draft'`).
+  - **V4** `publicly_visible_recovered = 0` **and** `recovered_publicly_reachable_by_slug = 0` (reproduces the live public predicate `or=(status.neq.draft,status.is.null)` — `listings.html:1018` — plus the slug guard).
+- **FAIL:** a NOT-NULL column error (add per PRE-CHECK, retry); any non-zero `match_gap`/`not_draft`/`publicly_visible_recovered`/duplicate row; `restored` ≠ `manifest_recoverable`.
+- **Rollback:** STEP 1 is transactional — `ROLLBACK` before `COMMIT` if STEP-1 counts look wrong. After commit, recovered rows are drafts (never public) and can be deleted by `id`. Idempotent — safe to re-run.
+- **Evidence to capture:** PRE-CHECK output; STEP-1 count row; STEP-2 statistics row; V1–V4 outputs.
+- **Status:** ⬜ REQUIRES PRODUCTION VERIFICATION — **plan ready; awaiting your run + outputs. Publishes nothing; maintenance mode stays ON.**
 
 ### P9 — Photo + metadata recovery (manual enrichment)
 - **Objective:** re-attach surviving Storage photos and enrich remaining fields — no fabrication.
@@ -220,8 +238,9 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 - ⬜ `admin@pintag.io`, `testadmin@pintag.io`, other test accounts deleted (P7 STEP 5) · ⬜ C2=0 after (P7)
 
 ### 8. Listing recovery
-- ✅ recovery SQL correct: original UUIDs, drafts only (A10)
-- ⬜ executed; `drafts_now` matches manifest; nothing published (P8)
+- ✅ recovery SQL correct: original UUIDs, hidden drafts only, dedup-by-UUID, idempotent, no fabrication, NULL for missing (A10 / P8)
+- ✅ recovery statistics + V1–V4 post-recovery validation queries written into the script (P8 STEP 2 / STEP 3)
+- ⬜ executed; `restored`=`manifest_recoverable`; V1 `match_gap=0`; V2 no dupes; V3 `not_draft=0`; V4 `publicly_visible_recovered=0`; nothing published (P8)
 
 ### 9. Photo recovery
 - ✅ photo-matching script correct (A10)
@@ -241,7 +260,7 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 |---|---|---|---|---|
 | P0 | 2026-08-04 | owner | GUARD 0: `admin_accounts_exists=true`, `is_pintag_admin_exists=true` | ✔ PASS |
 | P1 | 2026-08-04 | owner | C1=1 (cyrora); C5a=t/t/f/f; C5b=0; C5c=0 after deleting staff party `95bdc7c6` (FKs SET NULL, side-effects previewed) | ✔ PASS |
-| P2 | 2026-08-04 | owner | P2.1 anon `permission denied`; P2.2 non-admin `new row violates RLS`. Awaiting P2.3–P2.6. | ▶ IN PROGRESS |
+| P2 | 2026-08-04 | owner | P2.1 anon `permission denied`; P2.2 non-admin `new row violates RLS`; P2.3 agent Viengkhone Phomthavong (`bb7ff815…`) DELETE=0 rows; P2.4 cyrora `cyrora_update=5` in BEGIN/ROLLBACK. P2.5 (storage)→P3, P2.6 (edge-fn 401)→P6 after deploy. | ✔ PASS (core boundary) |
 | P3 | | | | ⬜ |
 | P4 | | | | ⬜ |
 | P5 | | | | ⬜ |
