@@ -114,6 +114,20 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **Evidence to capture:** screen recording/screenshots of (i)–(iv) for at least `admin.html` (repeat for others if desired).
 - **Status:** ✅ VERIFIED FROM CODE / ⬜ live browser test REQUIRED
 
+### P4b — Auth URL Configuration (fix localhost recovery redirect)
+- **Objective:** password-recovery / auth emails redirect to production, not `localhost:3000`.
+- **Root cause (VERIFIED FROM CODE):** the app set no `redirectTo`, so recovery used the project **Site URL**, whose factory default is `http://localhost:3000`. The only `3000` in the repo is `supabase/config.toml` (local CLI emulator) — **not** the hosted config.
+- **Action (dashboard — production project `eoladhcljbpbhnrmmpev`, Authentication → URL Configuration):**
+  - **Site URL:** `https://pintag.io`
+  - **Redirect URLs:** `https://pintag.io/reset-password.html`
+  - Dev project `ebtgoqrywdywuqrvudcp` (separate): Site URL `https://pintag-cyrora.github.io/pintag-dev/`; Redirect URLs `…/pintag-dev/reset-password.html` (+ `http://localhost:8000/reset-password.html`, `http://127.0.0.1:8000/reset-password.html` if the local flow is used). Full rationale + the exact lists: **`docs/AUTH_URL_CONFIGURATION.md`**.
+- **Code (VERIFIED FROM CODE):** `admin-auth.js` now initiates recovery via the **Forgot password?** link → `resetPasswordForEmail(email, { redirectTo: new URL('reset-password.html', location.href).href })`, gated to `cyrora.trading@gmail.com`; new handler `reset-password.html` consumes the token → `updateUser({password})` → signs out → `admin.html` (AAL2 gate unchanged). Deterministic even if a Site URL is ever wrong again.
+- **PASS:** dashboard shows the values above; a real reset email's link opens `https://pintag.io/reset-password.html` (not localhost); setting a new password succeeds and the next admin sign-in still requires AAL2.
+- **FAIL:** link still opens localhost (Site URL not saved), or the redirect target isn't allow-listed (Supabase shows "redirect URL not allowed").
+- **Rollback:** dashboard settings are reversible; the code path is additive (no change to the existing login/AAL2 gate).
+- **Evidence to capture:** screenshot of the URL Configuration screen; the opened reset link URL; a successful password update.
+- **Status:** ✅ CODE + DOCS DONE / ⬜ dashboard values REQUIRE PRODUCTION VERIFICATION
+
 ### P5 — MFA (TOTP / AAL2) verification
 - **Objective:** MFA is enabled in the project and enforced for cyrora; also protect the Supabase account itself.
 - **Action (dashboard):** Authentication → Providers → confirm **TOTP MFA enabled**; confirm cyrora has an **enrolled + verified** TOTP factor; enable 2FA on the **Supabase account** (Account → Security) and on cyrora's Google login.
@@ -214,7 +228,9 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 
 ### 2. Authentication
 - ✅ 6 admin pages on `admin-auth.js`, cyrora-only, server-validated JWT (A8)
+- ✅ password recovery uses an **explicit `redirectTo`** (deterministic per-env), never the Site URL; handler `reset-password.html` added (P4b)
 - ⬜ live: non-cyrora rejected; reload re-validates; cleared session → login (P4)
+- ⬜ **Auth URL Configuration** set in the prod project — Site URL `https://pintag.io`, Redirect URL `https://pintag.io/reset-password.html` (P4b; see `docs/AUTH_URL_CONFIGURATION.md`)
 
 ### 3. MFA verification
 - ✅ AAL2 enforced in `admin-auth.js` code

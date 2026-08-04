@@ -53,6 +53,8 @@
       '#pintag-admin-auth button{width:100%;padding:.7rem;margin-top:.6rem;border:0;border-radius:8px;' +
       'background:#2D8C8C;color:#fff;font-size:1rem;font-weight:600;cursor:pointer}' +
       '#pintag-admin-auth button:disabled{opacity:.6;cursor:default}' +
+      '#pintag-admin-auth .forgot{display:inline-block;margin-top:.8rem;color:#9AA7B0;font-size:.8rem;text-decoration:none}' +
+      '#pintag-admin-auth .forgot:hover{color:#2D8C8C}' +
       '#pintag-admin-auth .err{color:#F2837B;font-size:.85rem;margin-top:.6rem;display:none}' +
       '#pintag-admin-auth .note{color:#9AA7B0;font-size:.85rem;margin-top:.6rem;line-height:1.5;display:none}' +
       '#pintag-admin-auth #paa-qr{width:168px;height:168px;margin:.6rem auto;display:block;background:#fff;border-radius:10px;padding:8px}' +
@@ -72,6 +74,7 @@
       '</div>' +
       '<input type="text" id="paa-code" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="display:none">' +
       '<button id="paa-btn">Sign In</button>' +
+      '<a href="#" id="paa-forgot" class="forgot">Forgot password?</a>' +
       '<div class="err" id="paa-err"></div><div class="note" id="paa-note"></div>' +
       '</div>';
     document.body.appendChild(wrap);
@@ -80,6 +83,7 @@
     document.getElementById('paa-pw').addEventListener('keydown', onEnter);
     document.getElementById('paa-code').addEventListener('keydown', onEnter);
     document.getElementById('paa-btn').addEventListener('click', doLogin);
+    document.getElementById('paa-forgot').addEventListener('click', function (e) { e.preventDefault(); requestPasswordReset(); });
   }
   function showOverlay() { buildOverlay(); var o = document.getElementById('pintag-admin-auth'); if (o) o.style.display = 'flex'; }
   function removeOverlay() { var o = document.getElementById('pintag-admin-auth'); if (o) o.remove(); }
@@ -179,6 +183,39 @@
     }
   }
 
+  // ── password recovery (deterministic redirect, never the Site URL) ─────────
+  // The app NEVER relies on the Supabase project's Site URL for the recovery
+  // link target — that default is 'http://localhost:3000' and is the wrong
+  // destination for production. We pass an explicit redirectTo built from the
+  // CURRENT page's own origin+path, so the reset link always returns to the
+  // exact site the admin initiated from: pintag.io in production, the dev
+  // GitHub Pages subpath in development, localhost when testing locally — with
+  // no environment-specific constant to drift. The one URL this resolves to per
+  // environment is what must be on the Supabase "Redirect URLs" allowlist (see
+  // docs/AUTH_URL_CONFIGURATION.md). resetPasswordForEmail is gated to the sole
+  // admin email so the admin panel can't be used to send recovery mail to
+  // arbitrary addresses.
+  function resetRedirectUrl() {
+    // Resolve reset-password.html relative to the current page so the /pintag-dev/
+    // subpath (dev GitHub Pages) is preserved automatically.
+    return new URL('reset-password.html', window.location.href).href;
+  }
+  async function requestPasswordReset() {
+    var email = (document.getElementById('paa-email').value || '').trim();
+    if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+      msg('Enter the administrator email above first, then tap "Forgot password?".', true);
+      return;
+    }
+    try {
+      var r = await _client.auth.resetPasswordForEmail(email, { redirectTo: resetRedirectUrl() });
+      if (r.error) throw r.error;
+    } catch (e) {
+      msg('Could not send the reset email right now. Please try again in a moment.', true);
+      return;
+    }
+    msg('Password reset email sent to ' + email + '. Open it on this device and follow the link to set a new password.', false);
+  }
+
   // ── public API ─────────────────────────────────────────────────────────────
   // protect(client, onReady): gate the page. Shows the login overlay until an
   // AAL2 cyrora session is verified server-side, then removes it and calls
@@ -206,6 +243,7 @@
     logout: forceLogout,
     token: token,
     isVerifiedAdminSession: isVerifiedAdminSession,
+    requestPasswordReset: requestPasswordReset,
     ADMIN_EMAIL: ADMIN_EMAIL
   };
 })();
