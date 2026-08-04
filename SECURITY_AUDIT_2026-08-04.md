@@ -199,7 +199,7 @@ uses the same single boundary as RLS and the edge functions.
 | A1 | Low (accepted) | `is_pintag_staff()` name retained as a single-admin alias across historical RLS policies | Accepted — §8 |
 | A2 | Low (out of scope) | `marketing-os.html` + `pintag-studio/`: separate Supabase project (`ninee@pintag.io`), password-only | Flagged — §10 |
 | A3 | Low (by design) | Agent self-service portal (`agent-login.html`, `dashboard.html`, `add-property.html`, `edit-listing.html`): agent-tier password login | By design — §10 |
-| F7 | High (operational) | Maintenance-mode Cloudflare Worker not fully deployed. `account_id` placeholder fixed (commit `3fd1ae2`) → the Worker **script now uploads**; but **route binding to the `pintag.io` zone fails** — the `CLOUDFLARE_API_TOKEN` lacks **Zone → Workers Routes → Edit** (auth error 10000). Maintenance mode is **not yet active**. | ⚠ **OPEN** — add the token permission (or bind the 4 routes manually), re-run; see "Maintenance mode deployment — UNVERIFIED" |
+| F7 | High (operational) | Maintenance-mode Cloudflare Worker deployment. Resolved via three fixes: (1) removed placeholder `account_id` (`3fd1ae2`); (2) user API token with **Zone → Workers Routes → Edit**; (3) freed `pintag.io/listing.html*` from the legacy `pintag-og` worker. `pintag-og-listing-preview` (v`d55e1ff4`) now bound to all 4 routes; maintenance mode active. | ✅ **RESOLVED** (CI run #78, 2026-08-04 ~09:32 UTC) — pending operator's live 503 check + deletion of legacy `pintag-og` worker |
 
 **Unresolved Critical/High _code_ findings: none.** One **operational** finding —
 **F7** — is open: it is a deployment-state issue (the maintenance worker never
@@ -267,7 +267,21 @@ verified.** None can be done from this sandbox (no network to Supabase).
 
 ---
 
-## ⚠ Maintenance mode deployment — UNVERIFIED (required verification before recovery continues)
+## Maintenance mode deployment — ✅ RESOLVED (worker deployed + routes bound; live 503 check pending)
+
+> **✅ Resolved 2026-08-04 ~09:32 UTC** via `deploy-prod.yml` run #78. Three fixes
+> in sequence: (1) removed the placeholder `account_id`; (2) replaced
+> `CLOUDFLARE_API_TOKEN` with a **user** API token carrying **Zone → Workers Routes
+> → Edit**; (3) freed the `pintag.io/listing.html*` route from the legacy
+> **`pintag-og`** worker (a route-ownership conflict that surfaced only once the
+> token worked). Worker **`pintag-og-listing-preview`** (version
+> `d55e1ff4-a828-4aa4-b6e1-3f39f53c10fc`) is now deployed and bound to all four
+> routes — it carries `MAINTENANCE_MODE = true`, so maintenance mode is active on
+> `pintag.io/`, `/index.html*`, `/listing.html*`, `/listings.html*`, pending the
+> operator's live 503 confirmation. **Cleanup remaining:** delete the now-routeless
+> legacy `pintag-og` worker to leave a single authoritative worker.
+>
+> The original investigation record follows.
 
 **Finding F7 (operational, High).** The maintenance-mode implementation exists in
 the repository and is committed (`MAINTENANCE_MODE = true` in
@@ -301,8 +315,12 @@ state alone.** Explicitly:
 3. Record the deployment timestamp and verification result here:
 
    > **Maintenance-mode verification log:**
-   > - Verified returning 503 at: `________________` UTC — by: `________________`
-   > - Deployment method: ☐ CI (secrets configured)  ☐ manual `wrangler deploy`
+   > - Deployed: **2026-08-04 ~09:32 UTC** via CI (`deploy-prod.yml` run #78),
+   >   worker `pintag-og-listing-preview` version
+   >   `d55e1ff4-a828-4aa4-b6e1-3f39f53c10fc`, bound to all 4 routes.
+   > - Deployment method: ☑ **CI** (user token with Zone → Workers Routes → Edit)
+   > - Live 503 confirmation (visit `https://pintag.io/listings.html`):
+   >   `________________` UTC — by: `________________`
 
 **Progress log (2026-08-04, CI):**
 
@@ -326,6 +344,14 @@ state alone.** Explicitly:
      `pintag-og-listing-preview` → Settings → Domains & Routes: add `pintag.io/`,
      `pintag.io/index.html*`, `pintag.io/listing.html*`, `pintag.io/listings.html*`),
      which activates maintenance mode without waiting on the token change.
+- **✅ RESOLVED (CI run #78, 2026-08-04 ~09:32 UTC).** Fixed by a **user** API token
+  with **Zone → Workers Routes → Edit** *and* freeing the `listing.html*` route
+  from the legacy **`pintag-og`** worker (a route-ownership conflict — `"pintag-og"
+  is already assigned to routes` — surfaced once the token worked). `wrangler
+  deploy` then bound all four routes to **`pintag-og-listing-preview`** (version
+  `d55e1ff4`); all three `deploy-prod.yml` jobs green. **Cleanup remaining:** delete
+  the now-routeless legacy `pintag-og` worker so a single authoritative worker owns
+  the routes.
 
 ---
 
