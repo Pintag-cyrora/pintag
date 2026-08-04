@@ -374,10 +374,65 @@ function withNoStore(response) {
   return out;
 }
 
+// ── MAINTENANCE MODE ────────────────────────────────────────────────────────
+// While MAINTENANCE_MODE is true, the public browsing surface this Worker
+// fronts — home ("/", /index.html), search (/listings.html), and listing
+// detail (/listing.html) — returns a clean HTTP 503 with a Retry-After hint,
+// so search engines treat the downtime as temporary and never index the
+// placeholder. Every other path (admin.html, the agent portal, all JS/CSS/
+// image assets) passes straight through untouched, so administration and
+// listing recovery are unaffected. Fully reversible: set MAINTENANCE_MODE to
+// false (or `git revert` the commit that introduced this block) and redeploy.
+const MAINTENANCE_MODE = true;
+const MAINTENANCE_HTML = '<!doctype html><html lang="lo"><head>' +
+  '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+  '<meta name="robots" content="noindex,nofollow"><title>Pintag — ບຳລຸງຮັກສາລະບົບ / Under Maintenance</title>' +
+  '<style>' +
+  ':root{--teal:#2D8C8C;--ink:#1A2428;--warm:#F7F3EC;--muted:#5A6670}' +
+  '*{box-sizing:border-box}html,body{margin:0;height:100%}' +
+  'body{background:var(--warm);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;' +
+  'display:flex;align-items:center;justify-content:center;padding:24px;line-height:1.6}' +
+  '.card{max-width:30rem;text-align:center}' +
+  '.logo{font-weight:800;font-size:1.5rem;letter-spacing:-.02em;color:var(--teal);margin-bottom:1.25rem}' +
+  '.mark{width:56px;height:56px;border-radius:14px;background:var(--teal);margin:0 auto 1.25rem;' +
+  'display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.6rem}' +
+  'h1{font-size:1.3rem;margin:.25rem 0 .5rem;letter-spacing:-.01em}' +
+  'p{margin:.4rem 0;color:var(--muted);font-size:.98rem}' +
+  '.en{margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(26,36,40,.12)}' +
+  '</style></head><body><div class="card">' +
+  '<div class="mark">\u{1F3E1}</div>' +
+  '<div class="logo">Pintag</div>' +
+  '<h1>ກຳລັງບຳລຸງຮັກສາລະບົບ</h1>' +
+  '<p>ເວັບໄຊຕ໌ປິດຊົ່ວຄາວເພື່ອປັບປຸງລະບົບ. ພວກເຮົາຈະກັບມາໃນໄວໆນີ້.</p>' +
+  '<div class="en"><p><strong>Pintag is temporarily offline for scheduled maintenance.</strong></p>' +
+  '<p>We’re making improvements and will be back shortly. Thank you for your patience.</p></div>' +
+  '</div></body></html>';
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+
+    // Maintenance short-circuit: 503 the public browsing pages only; leave
+    // admin.html, the agent portal, and every static asset reachable so
+    // recovery and administration continue. See MAINTENANCE_MODE above.
+    if (MAINTENANCE_MODE) {
+      const isPublicBrowsing =
+        path === '/' ||
+        path === '/index.html' || path.endsWith('/index.html') ||
+        path === '/listings.html' || path.endsWith('/listings.html') ||
+        path === '/listing.html' || path.endsWith('/listing.html');
+      if (isPublicBrowsing) {
+        return new Response(MAINTENANCE_HTML, {
+          status: 503,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store',
+            'Retry-After': '3600',
+          },
+        });
+      }
+    }
 
     // /listing.html: per-property page, needs a Supabase lookup for its
     // title/description/image — the original, most involved case.
