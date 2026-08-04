@@ -83,7 +83,7 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **FAIL:** any non-zero non-admin/anon write; any write policy not `is_pintag_admin`; C9 = 0 (admin locked out — investigate before anything else).
 - **Rollback:** read-only (C7–C9 use `BEGIN…ROLLBACK`).
 - **Evidence to capture:** SQL output of C3, C4, C6, C7, C8, C9.
-- **Status:** ⬜ REQUIRES PRODUCTION VERIFICATION
+- **Status:** ▶ IN PROGRESS — **P2.1 (anon) PASS**: `permission denied` on UPDATE/DELETE/INSERT (privilege-layer deny, below RLS). Awaiting P2.2 (non-admin), P2.3 (agent), P2.4 (cyrora); storage = P3; edge functions = P6.
 
 ### P3 — Storage policy verification
 - **Objective:** prove Storage writes require `is_pintag_admin()`, reads are public.
@@ -241,7 +241,7 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 |---|---|---|---|---|
 | P0 | 2026-08-04 | owner | GUARD 0: `admin_accounts_exists=true`, `is_pintag_admin_exists=true` | ✔ PASS |
 | P1 | 2026-08-04 | owner | C1=1 (cyrora); C5a=t/t/f/f; C5b=0; C5c=0 after deleting staff party `95bdc7c6` (FKs SET NULL, side-effects previewed) | ✔ PASS |
-| P2 | | | | ⬜ |
+| P2 | 2026-08-04 | owner | P2.1 anon: `permission denied` on UPDATE/DELETE/INSERT (privilege-layer). Awaiting P2.2–P2.6. | ▶ IN PROGRESS |
 | P3 | | | | ⬜ |
 | P4 | | | | ⬜ |
 | P5 | | | | ⬜ |
