@@ -69,11 +69,12 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 ### P1 — Verify single administrator + authorization boundary
 - **Objective:** prove cyrora is the only admin and `is_pintag_admin()` is true only for cyrora.
 - **Action:** run checks **1** and **5** of `scripts/verify-single-admin-lockdown.sql`.
-- **PASS:** C1 = exactly one row `cyrora.trading@gmail.com`; C5 `admin_cyrora`/`staff_cyrora`=`true`, `admin_random`/`staff_random`=`false`; C5b 0 rows; C5c `staff_parties_remaining`=0.
-- **FAIL:** more than one admin row, any random uid true, or any staff policy/party remaining.
+- **PASS:** C1 = exactly one row `cyrora.trading@gmail.com`; C5a `admin_cyrora`/`staff_cyrora`=`true`, `admin_random`/`staff_random`=`false`; C5b = 0 rows. **C5c (`staff_parties_remaining`) is expected to be `1` until P7** — the obsolete `admin@pintag.io` staff party is deleted in P7·STEP 4a; **`C5c=0` is a P7 post-condition, not a P1 gate.**
+- **FAIL:** more than one admin row (C1), any random uid `true` (C5a), or any **policy** still referencing the staff model / an email check (C5b > 0).
+- **Note (residual finding, Medium — tracked, closed by P6+P7):** `is_pintag_staff` is aliased to `is_pintag_admin`, so the leftover staff party grants **no RLS write access** (admin@pintag.io ∉ `admin_accounts`). However, the **currently-deployed** edge functions are still the pre-fix versions that trust `type='staff'`/`admin@pintag.io`, so that party + the live `admin@pintag.io` account remain a residual **edge-function-invocation** path (Gemini cost/abuse only — **not** DB writes, which RLS blocks) until **P6** redeploys the functions and **P7** removes the account + staff party.
 - **Rollback:** read-only (probes run inside `BEGIN…ROLLBACK`) — nothing to roll back.
-- **Evidence to capture:** SQL output of C1, C5, C5b, C5c.
-- **Status:** ⬜ REQUIRES PRODUCTION VERIFICATION
+- **Evidence to capture:** SQL output of C1, C5a, C5b, C5c.
+- **Status:** ▶ IN PROGRESS — C5c=1 captured (expected pre-P7); **awaiting C1, C5a, C5b** to close P1.
 
 ### P2 — RLS verification (no write holes; only admin writes)
 - **Objective:** prove anon/non-admin/agents cannot write, cyrora can.
@@ -239,7 +240,7 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 | Step | Date (UTC) | Operator | Evidence (output / screenshot / log ref) | Result |
 |---|---|---|---|---|
 | P0 | 2026-08-04 | owner | GUARD 0: `admin_accounts_exists=true`, `is_pintag_admin_exists=true` | ✔ PASS |
-| P1 | | | | ⬜ |
+| P1 | 2026-08-04 | owner | C5c `staff_parties_remaining`=1 (expected pre-P7). Awaiting C1/C5a/C5b. | ▶ IN PROGRESS |
 | P2 | | | | ⬜ |
 | P3 | | | | ⬜ |
 | P4 | | | | ⬜ |
