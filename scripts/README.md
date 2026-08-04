@@ -56,3 +56,18 @@ is opt-in, as it was before the regression was introduced. See
 - [`market-status-report.sql`](market-status-report.sql) — read-only. Breaks down every listing by `market_status`/`workflow_status`, and flags listings marked unavailable suspiciously soon after creation. This incident revealed that production's `market_status` distribution has likely never been reviewed by a human — run this once to confirm the values it contains are real, not a second, independent data bug.
 
 **To do once run:** if `market-status-report.sql` shows an implausibly large share of listings marked unavailable, that's a separate bug from the one fixed here (client-side filtering vs. bad underlying data) and needs its own investigation.
+
+**Follow-up escalation (Admin also reported showing only 1 listing):** every
+application-code path was re-audited and re-proven correct by executing it
+live (47 synthetic rows fed to `admin.html`'s real `loadListings()` → 47
+rendered; 78 rows fed to `listings.html` → 78 rendered — see git history for
+the reproduction scripts). Admin and Public do not share any query, view, or
+helper. No `.single()`/`maybeSingle()`/`limit(1)`/`range(0,...)` exists in
+either page's listing-fetch code. This ruled out a code-level cause for the
+Admin-side report; whatever is being observed in production requires
+database access to isolate. See
+[`production-diagnosis-runbook.md`](production-diagnosis-runbook.md) — a
+copy-paste checklist (every SQL block verified against a local Postgres
+replica) for whoever has that access to isolate the cause in under 10
+minutes, and to safely repair every corrupted `price_amount` in one guarded
+transaction.
