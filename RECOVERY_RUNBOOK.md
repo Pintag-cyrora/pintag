@@ -188,7 +188,7 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **FAIL:** a NOT-NULL column error (add per PRE-CHECK, retry); any non-zero `match_gap`/`not_draft`/`publicly_visible_recovered`/duplicate row; `restored` ≠ `manifest_recoverable`.
 - **Rollback:** STEP 1 is transactional — `ROLLBACK` before `COMMIT` if STEP-1 counts look wrong. After commit, recovered rows are drafts (never public) and can be deleted by `id`. Idempotent — safe to re-run.
 - **Evidence to capture:** PRE-CHECK output; STEP-1 count row; STEP-2 statistics row; V1–V4 outputs.
-- **Status:** ⬜ REQUIRES PRODUCTION VERIFICATION — **plan ready; awaiting your run + outputs. Publishes nothing; maintenance mode stays ON.**
+- **Status:** ✅ **PASS — recovered in production 2026-08-04.** Evidence: PRE-CHECK = `title_en` only (handled `''`); dry-run = 91 recoverable / 2 unrecoverable (91+2 = the 93 breached) / 5 survivors; STEP 1 = `properties_total_now` 5→**96** (+91), `manifest_recoverable`=91; STEP 2 = `restored`=91, `partially_restored`=4 (all = `missing_district`=4; `property_type`/`transaction_type` complete), `missing_english_title`=91 (by design), `missing_photos`=91 (P9 worklist), `unrecoverable`=2; STEP 3 = **V1 `match_gap`=0, V2 dup=0, V3 `not_draft`=0, V4 `publicly_visible`=0 & `reachable_by_slug`=0**. 91 hidden drafts; nothing published; maintenance ON. **P9 worklist:** 91 English titles, 91 photo sets, 4 districts.
 
 ### P9 — Photo + metadata recovery (manual enrichment)
 - **Objective:** re-attach surviving Storage photos and enrich remaining fields — no fabrication.
@@ -272,7 +272,7 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 ### 8. Listing recovery
 - ✅ recovery SQL correct: original UUIDs, hidden drafts only, dedup-by-UUID, idempotent, no fabrication, NULL for missing (A10 / P8)
 - ✅ recovery statistics + V1–V4 post-recovery validation queries written into the script (P8 STEP 2 / STEP 3)
-- ⬜ executed; `restored`=`manifest_recoverable`; V1 `match_gap=0`; V2 no dupes; V3 `not_draft=0`; V4 `publicly_visible_recovered=0`; nothing published (P8)
+- ✅ executed 2026-08-04: 91 hidden drafts restored; `restored`=`manifest_recoverable`=91; V1 `match_gap=0`; V2 no dupes; V3 `not_draft=0`; V4 `publicly_visible_recovered=0`; nothing published (P8)
 
 ### 9. Photo recovery
 - ✅ photo-matching script correct (A10)
@@ -299,7 +299,7 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 | P5 | | | | ⬜ |
 | P6 | | | | ⬜ |
 | P7 | | | | ⬜ |
-| P8 | | | | ⬜ |
+| P8 | 2026-08-04 | owner | 91 restored as hidden drafts (total 5→96); STEP2 restored=91/partial=4(district)/missing_en_title=91/missing_photos=91/unrecoverable=2; V1 gap=0, V2 dup=0, V3 not_draft=0, V4 0/0 | ✔ PASS |
 | P9 | | | | ⬜ |
 | P10 | | | | ⬜ |
 
