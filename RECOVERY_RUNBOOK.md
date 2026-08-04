@@ -103,7 +103,7 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **FAIL:** any write policy on `TO authenticated` without `is_pintag_admin`, or an `auth.email` predicate remaining.
 - **Rollback:** read-only.
 - **Evidence to capture:** the full `pg_policies` (storage) output.
-- **Status:** ❌ **FAIL (2026-08-04) → remediation pending.** Live `pg_policies` showed storage OPEN: `agent_photos_insert` role `{public}`/`WITH CHECK true` (anon upload); `authenticated`-any INSERT/UPDATE/DELETE on `property-images` and `agent-photos`; no `is_pintag_admin` write policy; only retired `auth.email()='admin@pintag.io'` admin policies (moot). Cause: `20260804140000`'s DROPs named non-existent policies (no-ops). Hard-fix migration **`20260804150000`** (drop-ALL-then-recreate) written; **apply to production, then re-run this query — expect exactly 8 policies, every write `is_pintag_admin`, reads public.**
+- **Status:** ✅ **PASS (2026-08-04) after remediation.** Initial live `pg_policies` showed storage OPEN (`agent_photos_insert` role `{public}`/`WITH CHECK true` = anon upload; `authenticated`-any INSERT/UPDATE/DELETE on both buckets; no `is_pintag_admin` write policy). Cause: `20260804140000`'s DROPs named non-existent policies (no-ops). Applied drift-proof hard-fix `20260804150000` (drop-ALL-then-recreate) in production → re-verify shows **exactly 8 policies, every write `is_pintag_admin(auth.uid())`, reads public, zero `auth.email`/`{public}`-write survivors.**
 
 ### P4 — Authentication path verification (admin pages)
 - **Objective:** prove every admin page requires cyrora + valid JWT + AAL2, server-validated on load.
@@ -258,8 +258,8 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 - ⬜ C4 predicates live (P2·C4); C7 non-admin/agents cannot write (P2·C7); C8 anon cannot (P2·C8); C9 cyrora can (P2·C9)
 
 ### 5. Storage policy verification
-- ✅ `140000` gates writes on `is_pintag_admin()` (A7)
-- ⬜ live `pg_policies(storage.objects)` shows admin-only writes, public reads (P3)
+- ✅ `140000` gates writes on `is_pintag_admin()` (A7) — but did NOT apply live (name-mismatched DROPs); hard-fixed by drift-proof `150000`
+- ✅ live `pg_policies(storage.objects)` = exactly 8 policies, every write `is_pintag_admin`, reads public (`{anon,authenticated}`), no `auth.email`/`{public}` survivors — **applied + verified 2026-08-04 (P3 PASS)**
 
 ### 6. Edge function deployment
 - ✅ 4 functions fail closed via `is_pintag_admin()` RPC (A9)
