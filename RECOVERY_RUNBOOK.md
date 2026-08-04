@@ -64,7 +64,7 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **FAIL:** either `false` after applying → stop; capture the migration error output.
 - **Rollback:** each migration is one `BEGIN…COMMIT`; a failed apply rolls back automatically, changing nothing. Migrations are idempotent (safe to re-run).
 - **Evidence to capture:** GUARD 0 output (2 columns); if applied, the "Success. No rows returned" confirmations.
-- **Status:** ⬜ REQUIRES PRODUCTION VERIFICATION
+- **Status:** ✔ **DONE** (2026-08-04) — evidence: GUARD 0 returned `admin_accounts_exists=true`, `is_pintag_admin_exists=true`. The cyrora lockdown migrations are applied to production.
 
 ### P1 — Verify single administrator + authorization boundary
 - **Objective:** prove cyrora is the only admin and `is_pintag_admin()` is true only for cyrora.
@@ -238,7 +238,7 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 
 | Step | Date (UTC) | Operator | Evidence (output / screenshot / log ref) | Result |
 |---|---|---|---|---|
-| P0 | | | | ⬜ |
+| P0 | 2026-08-04 | owner | GUARD 0: `admin_accounts_exists=true`, `is_pintag_admin_exists=true` | ✔ PASS |
 | P1 | | | | ⬜ |
 | P2 | | | | ⬜ |
 | P3 | | | | ⬜ |
