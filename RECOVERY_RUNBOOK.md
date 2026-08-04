@@ -74,7 +74,7 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **Note (residual finding, Medium — tracked, closed by P6+P7):** `is_pintag_staff` is aliased to `is_pintag_admin`, so the leftover staff party grants **no RLS write access** (admin@pintag.io ∉ `admin_accounts`). However, the **currently-deployed** edge functions are still the pre-fix versions that trust `type='staff'`/`admin@pintag.io`, so that party + the live `admin@pintag.io` account remain a residual **edge-function-invocation** path (Gemini cost/abuse only — **not** DB writes, which RLS blocks) until **P6** redeploys the functions and **P7** removes the account + staff party.
 - **Rollback:** read-only (probes run inside `BEGIN…ROLLBACK`) — nothing to roll back.
 - **Evidence to capture:** SQL output of C1, C5a, C5b, C5c.
-- **Status:** ▶ IN PROGRESS — C5c=1 captured (expected pre-P7); **awaiting C1, C5a, C5b** to close P1.
+- **Status:** ✔ **DONE** (2026-08-04) — C1=1 (cyrora sole admin); C5a booleans true/true/false/false; C5b=0; C5c=0 after a surgical, side-effect-previewed deletion of the `95bdc7c6…` staff party (all 4 FKs `ON DELETE SET NULL`; blast-radius previewed before COMMIT). The retired staff model is gone from both the authorization layer and the data model. Evidence in Part D.
 
 ### P2 — RLS verification (no write holes; only admin writes)
 - **Objective:** prove anon/non-admin/agents cannot write, cyrora can.
@@ -240,7 +240,7 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 | Step | Date (UTC) | Operator | Evidence (output / screenshot / log ref) | Result |
 |---|---|---|---|---|
 | P0 | 2026-08-04 | owner | GUARD 0: `admin_accounts_exists=true`, `is_pintag_admin_exists=true` | ✔ PASS |
-| P1 | 2026-08-04 | owner | C5c `staff_parties_remaining`=1 (expected pre-P7). Awaiting C1/C5a/C5b. | ▶ IN PROGRESS |
+| P1 | 2026-08-04 | owner | C1=1 (cyrora); C5a=t/t/f/f; C5b=0; C5c=0 after deleting staff party `95bdc7c6` (FKs SET NULL, side-effects previewed) | ✔ PASS |
 | P2 | | | | ⬜ |
 | P3 | | | | ⬜ |
 | P4 | | | | ⬜ |
