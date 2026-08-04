@@ -264,6 +264,20 @@ verified.** None can be done from this sandbox (no network to Supabase).
    `analytics-inspector`, `watermark-migrate`, `agent-setup`): confirm the login
    overlay appears, only cyrora + a valid 2FA code enters, and a wrong/absent
    session cannot reach the dashboard.
+9. **Disable public sign-up (single-admin model) — final pre-reopen gate.**
+   Local vs production: `supabase/config.toml`'s `enable_signup = true` configures
+   **only the local Supabase CLI emulator** and is acceptable for local dev; it does
+   **not** affect the hosted project. The **production** project must have public
+   sign-up **disabled** in Authentication settings so new accounts are created only
+   through the intentional dashboard/admin process, never public registration. The
+   app already has no `signUp` call (removed, §11 / `SECURITY.md`).
+   **Verify — "Attempt to access the public sign-up flow in production":** try to
+   self-register as an unauthenticated user (e.g. `POST /auth/v1/signup` with the
+   anon key, and any public registration UI).
+   - **PASS:** public sign-up is disabled/unavailable; the request is rejected and no
+     unauthenticated user can create an account.
+   - **FAIL:** a new public account can be created.
+   Full step + curl: `docs/AUTH_URL_CONFIGURATION.md`; runbook gate: `RECOVERY_RUNBOOK.md` P4c / checklist 11.
 
 ---
 

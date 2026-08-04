@@ -130,6 +130,18 @@ Run top to bottom. Do not pass a step until its Evidence field is filled and PAS
 - **Evidence to capture:** screenshot of the URL Configuration screen; the opened reset link URL; a successful password update.
 - **Status:** ✅ CODE + DOCS DONE / ⬜ dashboard values REQUIRE PRODUCTION VERIFICATION
 
+### P4c — Public sign-up disabled (single-admin model)
+- **Objective:** no unauthenticated visitor can create an account in production; new accounts are created only through the intentional dashboard/admin process.
+- **Local vs production distinction (VERIFIED FROM CODE):** `supabase/config.toml` has `enable_signup = true`, but that file configures **only the local Supabase CLI emulator** (`supabase start`) and has **no effect** on the hosted production project. `enable_signup = true` is acceptable for local development. The **hosted production project** must have public sign-up **disabled** in the dashboard, consistent with the single-admin model — and the app itself has no `signUp` call (removed, `SECURITY.md:126`).
+- **Action (dashboard — production project `eoladhcljbpbhnrmmpev`):** Authentication → Sign In / Providers → **disable "Allow new users to sign up"** (email provider) so account creation is admin-initiated only.
+- **Verification step — "Attempt to access the public sign-up flow in production":**
+  - Try to self-register as an unauthenticated user against production — e.g. `POST https://eoladhcljbpbhnrmmpev.supabase.co/auth/v1/signup` with the anon key and a fresh email/password, and/or any public registration UI.
+  - **PASS:** public sign-up is disabled or unavailable — the request is rejected (e.g. "Signups not allowed for this instance") and **no** unauthenticated user can create an account.
+  - **FAIL:** a new public account can be created.
+- **Rollback:** the setting is reversible in the dashboard (do not re-enable without cause).
+- **Evidence to capture:** screenshot of the sign-up setting = disabled; the rejected `signup` response body/status.
+- **Status:** ⬜ REQUIRES PRODUCTION VERIFICATION — **final pre-reopen gate (see checklist 11)**
+
 ### P5 — MFA (TOTP / AAL2) verification
 - **Objective:** MFA is enabled in the project and enforced for cyrora; also protect the Supabase account itself.
 - **Action (dashboard):** Authentication → Providers → confirm **TOTP MFA enabled**; confirm cyrora has an **enrolled + verified** TOTP factor; enable 2FA on the **Supabase account** (Account → Security) and on cyrora's Google login.
@@ -233,6 +245,7 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 - ✅ password recovery uses an **explicit `redirectTo`** (deterministic per-env), never the Site URL; handler `reset-password.html` added (P4b)
 - ⬜ live: non-cyrora rejected; reload re-validates; cleared session → login (P4)
 - ⬜ **Auth URL Configuration** set in the prod project — Site URL `https://pintag.io`, Redirect URL `https://pintag.io/reset-password.html` (P4b; see `docs/AUTH_URL_CONFIGURATION.md`)
+- ⬜ **Public sign-up disabled** in the prod project; "attempt public sign-up" verification PASS — no unauthenticated account creation (P4c). `config.toml enable_signup=true` is local-emulator only.
 
 ### 3. MFA verification
 - ✅ AAL2 enforced in `admin-auth.js` code
@@ -268,6 +281,7 @@ Legend per line: `✅` verified from code · `⬜` requires production verificat
 - ⬜ all 12 surfaces in P10 table have evidence; zero unresolved High/Critical
 
 ### 11. Go / No-Go decision
+- ⬜ **Public sign-up disabled in production + "attempt public sign-up" verification PASS** (P4c) — mandatory final pre-reopen gate
 - ⬜ every checklist above PASS with evidence · ⬜ owner explicitly approves · ⬜ only then reopen
 
 ---

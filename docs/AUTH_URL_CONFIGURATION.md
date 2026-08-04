@@ -181,6 +181,40 @@ redirects, and are unaffected by the URL Configuration.
   dashboard. (Per the single-admin model, keep public signup **disabled** on the
   hosted production project.)
 
+## Public sign-up must be disabled in production
+
+Local development and production are configured independently — do not read one
+from the other:
+
+- **`supabase/config.toml` is only for the local Supabase CLI emulator**
+  (`supabase start`).
+- **`enable_signup = true` there is acceptable for local development** and has
+  **no effect** on the hosted production project.
+- **The production Supabase project must have public sign-up DISABLED** in
+  Authentication settings, consistent with the single-admin security model
+  (`cyrora.trading@gmail.com` only). The app carries no `signUp` call — it was
+  removed (`SECURITY.md:126`) — so this closes the account-creation path at the
+  project level too.
+- **New accounts must be created intentionally** through the dashboard/admin
+  process only, never through public registration.
+
+**Verification — "Attempt to access the public sign-up flow in production":**
+try to self-register as an unauthenticated user, e.g.
+
+```bash
+curl -i -X POST 'https://eoladhcljbpbhnrmmpev.supabase.co/auth/v1/signup' \
+  -H "apikey: <production anon key>" -H 'Content-Type: application/json' \
+  -d '{"email":"probe+signup@example.com","password":"Test-1234!"}'
+```
+
+- **PASS:** public sign-up is disabled or unavailable — the request is rejected
+  (e.g. `422` / "Signups not allowed for this instance") and no unauthenticated
+  user can create an account.
+- **FAIL:** a new public account can be created.
+
+This is a **final pre-reopen gate** in the Go/No-Go checklist
+(`RECOVERY_RUNBOOK.md` P4c / checklist 11).
+
 ## Maintenance-mode note
 
 `reset-password.html` is **not** one of the four routes the Cloudflare maintenance
