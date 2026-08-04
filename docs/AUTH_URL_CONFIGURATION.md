@@ -115,17 +115,104 @@ return new URL('reset-password.html', window.location.href).href;
 - The exact URL this resolves to per environment is precisely what each
   project's Redirect URL allow-list above must contain.
 
-## Maintenance-mode note
+## Password recovery flow (end to end)
 
-`reset-password.html` is **not** one of the four routes the Cloudflare
-maintenance worker intercepts (`listing.html`, `listings.html`, `/`,
-`index.html`), so it passes straight through to GitHub Pages and is reachable
-while maintenance mode is on — same as `admin.html`.
+1. On the admin sign-in overlay (`admin-auth.js`), the operator enters the admin
+   email and taps **Forgot password?**.
+2. `resetPasswordForEmail(email, { redirectTo })` is called with
+   `redirectTo = new URL('reset-password.html', location.href).href` and gated to
+   `cyrora.trading@gmail.com`. Supabase sends the recovery email.
+3. The email link goes to GoTrue's `/auth/v1/verify?...&redirect_to=<redirectTo>`.
+   GoTrue verifies the token, then redirects to `<redirectTo>` **only because that
+   URL is on the Redirect URL allow-list** (otherwise it silently falls back to
+   the Site URL — this is the whole reason the allow-list entry is required).
+4. The browser lands on `reset-password.html` with the recovery tokens in the URL
+   hash. supabase-js (`detectSessionInUrl`, on by default) parses them, establishes
+   a short-lived recovery session, and fires `onAuthStateChange('PASSWORD_RECOVERY')`.
+5. The page shows the new-password + confirm form and calls
+   `auth.updateUser({ password })`.
+6. On success it **signs the recovery session out** and redirects to `admin.html`,
+   where the operator must complete a full **password + TOTP (AAL2)** sign-in.
+   The recovery page never grants admin access — it only rotates the password.
 
-## The other three login pages
+## Auth flow audit (every email/redirect auth flow)
+
+Verified across the whole repo (app + edge functions). Every flow that can emit a
+link email is accounted for; none relies on implicit Site URL behavior:
+
+| Flow | Present in app? | Emits a link email? | `redirectTo` |
+|---|---|---|---|
+| **Password recovery** (`resetPasswordForEmail`) | ✅ `admin-auth.js` | Yes | ✅ explicit → `reset-password.html` |
+| **Magic link / email OTP** (`signInWithOtp`) | ❌ not used | — | n/a (add explicit `redirectTo` if ever introduced) |
+| **Email verification** (`signUp` confirmation) | ❌ no `signUp` in app (removed, `SECURITY.md:126`) | — | n/a — accounts are provisioned in the Supabase dashboard |
+| **Invite** (`inviteUserByEmail` / `generateLink`) | ❌ not used (no edge fn provisions users) | — | n/a (dashboard-only; add explicit `redirectTo` if ever automated) |
+| **Reauthentication / email change** | ❌ not used | — | n/a |
+| Password sign-in (`signInWithPassword`) | ✅ `admin-auth.js`, `agent-login.html`, `marketing-os.html`, `pintag-studio/dashboard/index.html` | No (no email/redirect) | n/a — pure credential exchange |
+| Admin gate — TOTP/AAL2 (`mfa.*`) | ✅ `admin-auth.js` | No | n/a |
+
+**Standing rule:** if any magic-link, invite, email-verification, or email-change
+flow is ever added, it MUST pass an explicit `redirectTo` to a dedicated handler
+page and that URL MUST be added to the relevant project's Redirect URL allow-list.
+Never rely on the Site URL.
+
+## The three non-admin login pages
 
 `agent-login.html`, `marketing-os.html`, and `pintag-studio/dashboard/index.html`
-are password-login only and have **no** recovery/magic-link flow, so they need no
-Redirect URL entries today. If a recovery flow is ever added to any of them, add
-its handler URL to the relevant project's allow-list and pass an explicit
-`redirectTo` the same way `admin-auth.js` does — never rely on the Site URL.
+are password-login only, with no recovery/magic-link flow, so they need no
+Redirect URL entries today. Their post-login `window.location.href` navigations
+(e.g. → `dashboard.html`) are ordinary in-app page loads, **not** Supabase auth
+redirects, and are unaffected by the URL Configuration.
+
+## Local development behavior
+
+- **Where dev auth runs:** the dev website (`https://pintag-cyrora.github.io/pintag-dev/`)
+  authenticates against the **dev** Supabase project `ebtgoqrywdywuqrvudcp`, never
+  production. So the dev project owns the dev/localhost Redirect URLs above; the
+  production project's allow-list stays production-only.
+- **`redirectTo` is origin-relative,** so local testing needs no code change: served
+  from `http://localhost:8000/admin.html`, the reset link resolves to
+  `http://localhost:8000/reset-password.html` automatically. Add that URL (and the
+  `127.0.0.1` form) to the **dev** project's allow-list if you exercise recovery locally.
+- **`supabase/config.toml` is the local CLI emulator only** (`supabase start`). Its
+  `site_url = "http://127.0.0.1:3000"` / `additional_redirect_urls` and its
+  `enable_signup = true` / `enable_confirmations = false` apply to that local stack
+  and **must not** be pushed to, or copied into, either hosted project. Hosted Site
+  URL / Redirect URLs / signup policy are configured only in each project's
+  dashboard. (Per the single-admin model, keep public signup **disabled** on the
+  hosted production project.)
+
+## Maintenance-mode note
+
+`reset-password.html` is **not** one of the four routes the Cloudflare maintenance
+worker intercepts — it 503s only `/`, `/index.html`, `/listings.html`,
+`/listing.html` (`cloudflare-worker/og-listing-preview.js:419-424`); "every other
+path … passes straight through untouched." So the recovery page is reachable while
+maintenance mode is on, exactly like `admin.html` — password resets keep working
+during the incident.
+
+## Test plan (run after applying the dashboard values)
+
+Prerequisites: production project Site URL + Redirect URL set as above; TOTP MFA
+enabled; maintenance mode still ON.
+
+1. **Email lands on the reset page.** Admin sign-in → **Forgot password?** with
+   `cyrora.trading@gmail.com` → open the email → the link opens
+   `https://pintag.io/reset-password.html#...type=recovery...` (NOT localhost, NOT
+   the Site URL root). ✅ if the URL host+path is exactly the reset page.
+2. **Recovery token accepted.** The page shows the new-password form (not the
+   "invalid or expired link" error). ✅ = form visible.
+3. **Password can be changed.** Enter a new password twice → **Update password** →
+   "Password updated" → auto-redirect to `admin.html`. ✅ = success message + redirect.
+4. **Old password no longer works.** On `admin.html`, sign in with the OLD password
+   → "Incorrect email or password." ✅ = rejected.
+5. **New password works.** Sign in with the NEW password → proceeds to the TOTP step.
+   ✅ = password accepted.
+6. **Admin login still requires TOTP.** After the new password, access is granted
+   only after a valid 6-digit code (AAL2). Password-only never reaches the admin UI.
+   ✅ = code required; wrong/absent code blocks entry.
+7. **Reachable under maintenance.** With `MAINTENANCE_MODE = true`, `curl -I
+   https://pintag.io/reset-password.html` returns 200 (not 503), while
+   `https://pintag.io/listings.html` returns 503. ✅ = reset page passes through.
+8. **Negative — stale link.** Reopen an already-used or expired reset link → the
+   page shows the invalid/expired message and offers the sign-in page; no session is
+   granted. ✅ = no password change possible.
