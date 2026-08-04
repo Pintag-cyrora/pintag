@@ -199,7 +199,7 @@ uses the same single boundary as RLS and the edge functions.
 | A1 | Low (accepted) | `is_pintag_staff()` name retained as a single-admin alias across historical RLS policies | Accepted — §8 |
 | A2 | Low (out of scope) | `marketing-os.html` + `pintag-studio/`: separate Supabase project (`ninee@pintag.io`), password-only | Flagged — §10 |
 | A3 | Low (by design) | Agent self-service portal (`agent-login.html`, `dashboard.html`, `add-property.html`, `edit-listing.html`): agent-tier password login | By design — §10 |
-| F7 | High (operational) | Maintenance-mode Cloudflare Worker did **not** deploy through CI (missing `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`); maintenance mode cannot be confirmed active from repository state | ⚠ **OPEN** — verify before recovery continues (see "Maintenance mode deployment — UNVERIFIED") |
+| F7 | High (operational) | Maintenance-mode Cloudflare Worker not fully deployed. `account_id` placeholder fixed (commit `3fd1ae2`) → the Worker **script now uploads**; but **route binding to the `pintag.io` zone fails** — the `CLOUDFLARE_API_TOKEN` lacks **Zone → Workers Routes → Edit** (auth error 10000). Maintenance mode is **not yet active**. | ⚠ **OPEN** — add the token permission (or bind the 4 routes manually), re-run; see "Maintenance mode deployment — UNVERIFIED" |
 
 **Unresolved Critical/High _code_ findings: none.** One **operational** finding —
 **F7** — is open: it is a deployment-state issue (the maintenance worker never
@@ -303,6 +303,29 @@ state alone.** Explicitly:
    > **Maintenance-mode verification log:**
    > - Verified returning 503 at: `________________` UTC — by: `________________`
    > - Deployment method: ☐ CI (secrets configured)  ☐ manual `wrangler deploy`
+
+**Progress log (2026-08-04, CI):**
+
+- Secrets `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` configured — confirmed
+  passed into the deploy job.
+- **Fix 1 (commit `3fd1ae2`):** removed the placeholder `account_id` from
+  `wrangler.toml` that was overriding the account-id secret (Cloudflare API error
+  7003). After this, the Worker **script uploads successfully**
+  (`Uploaded pintag-og-listing-preview`, resolving "Cyrora.trading@gmail.com's Account").
+- **Remaining blocker (token permission, not code):** binding the Worker
+  **routes** to the `pintag.io` zone fails with **Authentication error [code:
+  10000]** — the `CLOUDFLARE_API_TOKEN` is missing **Zone → Workers Routes → Edit**
+  for the `pintag.io` zone. Until the routes bind, the Worker is not in front of
+  `pintag.io`, so **maintenance mode is NOT yet active**.
+- **To finish (either path):**
+  1. **Recommended:** add **Zone → Workers Routes → Edit** (scoped to `pintag.io`)
+     to the token — and, to clear the secondary warning, **User → User Details →
+     Read** — then re-run `deploy-prod.yml`.
+  2. **Immediate alternative:** the Worker script is already uploaded, so the four
+     routes can be bound manually in the Cloudflare dashboard (Workers & Pages →
+     `pintag-og-listing-preview` → Settings → Domains & Routes: add `pintag.io/`,
+     `pintag.io/index.html*`, `pintag.io/listing.html*`, `pintag.io/listings.html*`),
+     which activates maintenance mode without waiting on the token change.
 
 ---
 
