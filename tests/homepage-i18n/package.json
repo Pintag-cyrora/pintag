@@ -1,0 +1,11 @@
+{
+  "name": "pintag-homepage-i18n-tests",
+  "private": true,
+  "description": "Regression coverage for index.html's language switching. Added after the hero panel labels (.panel-label, 'Buyer/Renter' and 'Seller/Landlord') were found to be single hardcoded Lao strings with no en-i/zh-i counterpart at all -- unlike every other string on the page, switching to English or Chinese never changed them. Also covers a second bug found in the same audit: Card 2's Lao sublabel literally contained the untranslated English word 'Agent'.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
