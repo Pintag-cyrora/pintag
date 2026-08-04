@@ -22,6 +22,11 @@
 -- This script does the SQL-automatable part (inventory, orphan detection,
 -- clustering, confidence, guarded attach + verification). Assigning a cluster
 -- to a listing is a human step (STEP C), because the identifier is gone.
+--
+-- NOTE: production `properties.images` is JSONB (a JSON array of URL strings) —
+-- NOT text[]. All checks below use jsonb operators (`::text` scan for the
+-- filename; `jsonb_typeof`/`jsonb_array_length` guarded by CASE so a non-array
+-- value can never raise an error), and STEP D writes with `jsonb_build_array`.
 -- ============================================================================
 
 -- ── STEP A — Inventory every surviving photo ────────────────────────────────
@@ -45,7 +50,7 @@ FROM photos p
 WHERE NOT EXISTS (
   SELECT 1 FROM properties pr
   WHERE pr.images IS NOT NULL
-    AND array_to_string(pr.images, ',') LIKE '%' || p.name || '%'
+    AND pr.images::text LIKE '%' || p.name || '%'   -- JSONB: scan the array's text for the filename
 );
 
 -- ── STEP C — Reconstruct probable galleries by upload-time clustering ───────
@@ -61,7 +66,7 @@ orphans AS (
   WHERE NOT EXISTS (
     SELECT 1 FROM properties pr
     WHERE pr.images IS NOT NULL
-      AND array_to_string(pr.images, ',') LIKE '%' || p.name || '%')
+      AND pr.images::text LIKE '%' || p.name || '%')
 ),
 gapped AS (
   SELECT *,
@@ -95,13 +100,16 @@ ORDER BY cluster_start;
 -- cluster's `files` in STEP C.
 --
 --   UPDATE properties
---   SET images = ARRAY[
+--   SET images = jsonb_build_array(               -- JSONB column, not text[]
 --     'https://eoladhcljbpbhnrmmpev.supabase.co/storage/v1/object/public/property-images/<file1>',
 --     'https://eoladhcljbpbhnrmmpev.supabase.co/storage/v1/object/public/property-images/<file2>'
 --     -- ... in display order
---   ]
+--   )
 --   WHERE id = '<recovered-listing-uuid>'
---     AND (images IS NULL OR array_length(images, 1) IS NULL);   -- guard: only if empty
+--     -- guard: only fill when currently empty, never overwrite (safe to re-run)
+--     AND (images IS NULL
+--          OR jsonb_typeof(images) <> 'array'
+--          OR jsonb_array_length(images) = 0);
 
 -- ── STEP E — HIGH-confidence remap from Wayback (external, not SQL) ─────────
 -- The one path that assigns files to a SPECIFIC listing automatically:
@@ -118,9 +126,13 @@ ORDER BY cluster_start;
 -- ── STEP F — Verification / report ──────────────────────────────────────────
 -- Progress: how many listings now have photos vs. still empty.
 SELECT
-  count(*) FILTER (WHERE images IS NOT NULL AND array_length(images,1) > 0) AS listings_with_photos,
-  count(*) FILTER (WHERE images IS NULL OR array_length(images,1) IS NULL)  AS listings_without_photos,
-  count(*)                                                                  AS listings_total
+  count(*) FILTER (WHERE CASE WHEN jsonb_typeof(images)='array'
+                              THEN jsonb_array_length(images) > 0 ELSE false END) AS listings_with_photos,
+  count(*) FILTER (WHERE CASE WHEN images IS NULL                 THEN true
+                              WHEN jsonb_typeof(images) <> 'array' THEN true
+                              WHEN jsonb_array_length(images) = 0  THEN true
+                              ELSE false END)                                     AS listings_without_photos,
+  count(*)                                                                        AS listings_total
 FROM properties;
 
 -- Report buckets:
@@ -132,4 +144,4 @@ WITH photos AS (SELECT name FROM storage.objects WHERE bucket_id='property-image
 SELECT count(*) AS unassigned_photos_remaining
 FROM photos p
 WHERE NOT EXISTS (SELECT 1 FROM properties pr
-  WHERE pr.images IS NOT NULL AND array_to_string(pr.images,',') LIKE '%'||p.name||'%');
+  WHERE pr.images IS NOT NULL AND pr.images::text LIKE '%'||p.name||'%');
