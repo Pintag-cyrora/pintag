@@ -281,24 +281,10 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 </head>
 <body>
 
-<div id="login-screen">
-  <div class="login-box">
-    <p class="login-logo">Pintag</p>
-    <p class="login-sub">Admin Panel</p>
-    <input type="email" class="login-input" id="email-input" placeholder="Admin email" autocomplete="username" autocapitalize="none" spellcheck="false" onkeydown="if(event.key==='Enter')login()">
-    <input type="password" class="login-input" id="password-input" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
-    <div id="mfa-enroll" style="display:none;text-align:center">
-      <p class="login-sub" style="margin:.5rem 0">Set up two-factor authentication</p>
-      <p style="font-size:.78rem;color:#9aa7b0;margin:.25rem 0">Scan with Google Authenticator or Authy, then enter the 6-digit code.</p>
-      <img id="mfa-qr" alt="2FA QR code" style="width:172px;height:172px;margin:.6rem auto;display:block;background:#fff;border-radius:10px;padding:8px">
-      <p id="mfa-secret" style="font-family:monospace;font-size:.72rem;word-break:break-all;color:#9aa7b0"></p>
-    </div>
-    <input type="text" class="login-input" id="mfa-input" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="display:none" onkeydown="if(event.key==='Enter')login()">
-    <button class="login-btn" onclick="login()">Sign In</button>
-    <p class="login-error" id="login-error" style="display:none">Incorrect credentials</p>
-    <p id="login-note" style="display:none;color:#9aa7b0;font-size:.85rem;margin-top:.6rem;line-height:1.5"></p>
-  </div>
-</div>
+<!-- The administrator login screen is injected by admin-auth.js (the shared,
+     single-source-of-truth auth module used by every privileged Pintag page).
+     It covers the page with a full-screen overlay until a server-validated
+     AAL2 cyrora session is confirmed, then reveals #admin-screen below. -->
 
 <div id="admin-screen">
   <nav class="admin-nav">
@@ -976,6 +962,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 <script src="currency.js?v=__ASSET_VERSION__"></script>
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
+<script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
@@ -2315,161 +2302,32 @@ const WM = {
   }
 };
 
-// ── AUTH — single administrator, email + password + 2FA (AAL2), no bypass ──
-// The ONLY way into the admin panel is a live, server-validated session that
-// belongs to ADMIN_EMAIL and has reached Authenticator Assurance Level 2 (a
-// TOTP code was verified this session). There is no auto-login from
-// localStorage, no password-only entry, no test account, and no dev shortcut:
-// every page load and every privileged action re-checks the session against
-// Supabase (getUser round-trips to the server, so an expired/forged JWT fails).
+// ── AUTH — unified administrator authentication (admin-auth.js) ────────────
+// This panel gates on the SAME shared module every privileged Pintag page uses
+// (admin-auth.js): only cyrora.trading@gmail.com, email + password + TOTP
+// two-factor (AAL2), the session validated SERVER-SIDE on every page load, and
+// re-validated before every privileged action via requireAdminSession(). There
+// is deliberately no second in-page copy of this logic to drift out of sync —
+// eliminating that per-page duplication is the whole point of the consolidation.
 let _adminToken = null;
 let _agentsAll = [];
 let _editingContactId = null; // contact_id currently loaded into the Buyer Contact form, if any
 let _editingContactSharedCount = 0; // how many other listings also use _editingContactId
-let _mfaPending = null;       // { factorId } while awaiting the 6-digit code
-let _mfaEnrolling = false;    // true while a first-time TOTP enrollment is in progress
 
+// Mirror the live session's bearer token for the REST helpers (sbApi/uploads).
+// admin-auth.js owns the gate and the sign-out flow; this only keeps the token
+// the fetch calls send in sync as the session refreshes.
 sbClient.auth.onAuthStateChange((event, session) => {
   _adminToken = session ? session.access_token : null;
-  // If the session disappears while the panel is open, drop access immediately.
-  if (!session && document.getElementById('admin-screen').style.display === 'block') {
-    forceLogout();
-  }
 });
 
-function loginMsg(msg, isError) {
-  const err = document.getElementById('login-error');
-  const note = document.getElementById('login-note');
-  const el = isError ? err : note, other = isError ? note : err;
-  other.style.display = 'none';
-  el.textContent = msg || '';
-  el.style.display = msg ? 'block' : 'none';
-}
-
-// Server-side validation of the current session. Returns true ONLY for a live,
-// unexpired JWT that belongs to ADMIN_EMAIL AND is at AAL2 (2FA verified).
-// Never trusts localStorage alone — getUser() calls the Supabase auth server.
-async function isVerifiedAdminSession() {
-  try {
-    const { data: { user }, error } = await sbClient.auth.getUser();
-    if (error || !user) return false;
-    if ((user.email || '').toLowerCase() !== ADMIN_EMAIL.toLowerCase()) return false;
-    const { data: aal, error: aErr } = await sbClient.auth.mfa.getAuthenticatorAssuranceLevel();
-    return !aErr && aal && aal.currentLevel === 'aal2';
-  } catch (_) { return false; }
-}
-
-// Re-verify before any privileged/destructive action. Throws (after forcing a
-// logout) if the session is no longer a valid AAL2 administrator session.
-async function requireAdminSession() {
-  if (await isVerifiedAdminSession()) return true;
-  alert('Your secure admin session has expired or is no longer valid. Please sign in again.');
-  await forceLogout();
-  throw new Error('admin session invalid');
-}
-
-async function forceLogout() {
-  _adminToken = null; _mfaPending = null; _mfaEnrolling = false;
-  try { await sbClient.auth.signOut(); } catch (_) {}
-  location.reload();
-}
-async function logout() { await forceLogout(); }
-
-async function login() {
-  const btn = document.querySelector('.login-btn');
-  btn.disabled = true;
-
-  // ── Step 2: a 6-digit code is expected (existing 2FA, or new enrollment) ──
-  if (_mfaPending) {
-    const code = (document.getElementById('mfa-input').value || '').trim();
-    try {
-      const { data: ch, error: cErr } = await sbClient.auth.mfa.challenge({ factorId: _mfaPending.factorId });
-      if (cErr) throw cErr;
-      const { error: vErr } = await sbClient.auth.mfa.verify({ factorId: _mfaPending.factorId, challengeId: ch.id, code });
-      if (vErr) throw vErr;
-    } catch (e) {
-      btn.disabled = false;
-      loginMsg('Invalid or expired code. Please try again.', true);
-      return;
-    }
-    _mfaPending = null; _mfaEnrolling = false;
-    await enterAdmin();  // session is now AAL2
-    return;
-  }
-
-  // ── Step 1: email + password ──
-  const email = (document.getElementById('email-input').value || '').trim();
-  const pw    = document.getElementById('password-input').value;
-  btn.textContent = 'Signing in…';
-  const { data, error } = await sbClient.auth.signInWithPassword({ email, password: pw });
-  btn.textContent = 'Sign In';
-  if (error) { btn.disabled = false; loginMsg('Incorrect email or password.', true); return; }
-
-  // Only the single authorized administrator may proceed — reject anyone else.
-  if ((data.user.email || '').toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-    await sbClient.auth.signOut();
-    btn.disabled = false;
-    loginMsg('This account is not authorized for admin access.', true);
-    return;
-  }
-
-  // Already AAL2 (unlikely on a fresh sign-in, but honour it).
-  const { data: aal } = await sbClient.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (aal && aal.currentLevel === 'aal2') { await enterAdmin(); return; }
-
-  // Does this account already have a verified TOTP factor?
-  const { data: factors, error: fErr } = await sbClient.auth.mfa.listFactors();
-  if (fErr) {
-    // MFA not available on the project — deny rather than fall back to 1FA.
-    await sbClient.auth.signOut(); btn.disabled = false;
-    loginMsg('Two-factor authentication is required but is not enabled on this project. Enable TOTP MFA in the Supabase dashboard, then sign in again.', true);
-    return;
-  }
-  const verified = (factors && factors.totp || []).filter(f => f.status === 'verified');
-
-  if (verified.length > 0) {
-    // 2FA is set up — require the code (elevate to AAL2).
-    _mfaPending = { factorId: verified[0].id };
-    revealCodeStep('Enter the 6-digit code from your authenticator app.');
-    btn.disabled = false; btn.textContent = 'Verify code';
-    return;
-  }
-
-  // No 2FA yet — enrol now (guided). Access stays denied until it succeeds.
-  try {
-    const { data: enr, error: eErr } = await sbClient.auth.mfa.enroll({ factorType: 'totp' });
-    if (eErr) throw eErr;
-    _mfaPending = { factorId: enr.id }; _mfaEnrolling = true;
-    if (enr.totp && enr.totp.qr_code) document.getElementById('mfa-qr').src = enr.totp.qr_code;
-    if (enr.totp && enr.totp.secret) document.getElementById('mfa-secret').textContent = enr.totp.secret;
-    document.getElementById('mfa-enroll').style.display = 'block';
-    revealCodeStep('');
-    btn.disabled = false; btn.textContent = 'Activate 2FA';
-    loginMsg('Two-factor authentication is required. Scan the code above, then enter the 6-digit code to finish setup.', false);
-  } catch (e) {
-    await sbClient.auth.signOut(); btn.disabled = false;
-    loginMsg('Could not start two-factor setup. Ensure TOTP MFA is enabled for this project in Supabase, then try again.', true);
-  }
-}
-
-function revealCodeStep(note) {
-  document.getElementById('email-input').style.display = 'none';
-  document.getElementById('password-input').style.display = 'none';
-  const mfa = document.getElementById('mfa-input');
-  mfa.style.display = 'block'; mfa.focus();
-  if (note) loginMsg(note, false);
-}
-
-async function enterAdmin() {
-  // Final gate: never reveal the panel without a server-validated AAL2 session.
-  if (!(await isVerifiedAdminSession())) { await forceLogout(); return; }
-  const { data: { session } } = await sbClient.auth.getSession();
-  _adminToken = session ? session.access_token : null;
-  showAdminScreen();
-}
+// Re-verify before any privileged/destructive action. Delegates to the shared
+// module, which throws (after forcing a re-login) if the session is no longer a
+// valid AAL2 administrator session.
+async function requireAdminSession() { return PintagAdminAuth.requireAdminSession(); }
+async function logout() { await PintagAdminAuth.logout(); }
 
 function showAdminScreen() {
-  document.getElementById('login-screen').style.display = 'none';
   document.getElementById('admin-screen').style.display = 'block';
   loadListings();
   loadAgentsForDropdown();
@@ -2483,17 +2341,15 @@ function showAdminScreen() {
   if (editId) editListing(editId);
 }
 
-// On EVERY page load: validate server-side. A persisted session that is not a
-// live AAL2 administrator session shows the login screen (never the panel) —
-// this is what removes the old "auto-login from localStorage" bypass.
-(async function verifyOnLoad() {
-  if (await isVerifiedAdminSession()) {
-    const { data: { session } } = await sbClient.auth.getSession();
-    _adminToken = session ? session.access_token : null;
-    showAdminScreen();
-  }
-  // else: default state (login screen visible, admin-screen display:none) stands.
-})();
+// admin-auth.js injects its own full-screen login overlay, validates the session
+// server-side on every page load, and calls bootAdmin() exactly once a live AAL2
+// cyrora session is confirmed — no auto-login from localStorage, no password-only
+// entry, no test account, no dev shortcut.
+async function bootAdmin() {
+  _adminToken = await PintagAdminAuth.token();
+  showAdminScreen();
+}
+PintagAdminAuth.protect(sbClient, bootAdmin);
 
 // ── SUPABASE ──────────────────────────────────────────────────────
 async function sbApi(method, path, body) {

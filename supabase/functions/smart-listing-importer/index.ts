@@ -70,17 +70,19 @@ async function requireAdmin(req: Request): Promise<string | null> {
   if (!r.ok) return 'Invalid token';
   const user = await r.json();
   if (!user?.id) return 'Invalid token';
-  // `parties` is publicly readable, so this check works with just the
-  // caller's own token — no service-role key needed. Replaces the old
-  // auth.email() === 'admin@pintag.io' string match with real data, same as
-  // the is_pintag_staff() Postgres function used by RLS.
-  const staffCheck = await fetch(
-    `${supabaseUrl}/rest/v1/parties?auth_user_id=eq.${user.id}&type=eq.staff&select=id&limit=1`,
-    { headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey } },
-  );
-  if (!staffCheck.ok) return 'Server misconfigured';
-  const staffRows = await staffCheck.json();
-  if (!Array.isArray(staffRows) || staffRows.length === 0) return 'Admin only';
+  // Authorization boundary: the is_pintag_admin() Postgres function (the single
+  // admin allowlist, admin_accounts — cyrora.trading@gmail.com today). It is
+  // SECURITY DEFINER and granted to authenticated, so the caller's own token
+  // resolves it. Replaces the retired parties.type='staff' lookup (the staff
+  // model is gone; is_pintag_admin() is now the one server boundary used by RLS,
+  // storage, and every admin edge function). Fails CLOSED (denies) on any error.
+  const adminCheck = await fetch(`${supabaseUrl}/rest/v1/rpc/is_pintag_admin`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_uid: user.id }),
+  });
+  if (!adminCheck.ok) return 'Server misconfigured';
+  if ((await adminCheck.json()) !== true) return 'Admin only';
   return null;
 }
 

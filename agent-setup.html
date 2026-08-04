@@ -103,15 +103,7 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
   <p class="sub">Create agents or manage existing agents and their listing assignments</p>
 
   <!-- LOGIN -->
-  <div class="card" id="login-card">
-    <div class="card-title">Admin Sign-In</div>
-    <div class="field">
-      <label for="pw-input">Admin Password</label>
-      <input type="password" id="pw-input" placeholder="Enter password" autocomplete="current-password">
-    </div>
-    <button class="btn btn-primary" id="login-btn" onclick="signIn()">Sign In</button>
-    <div class="status-box error" id="login-err"></div>
-  </div>
+  <!-- Login is handled by the shared admin-auth.js overlay (cyrora + 2FA). -->
 
   <!-- MAIN (hidden until signed in) -->
   <div id="form-wrap" style="display:none;">
@@ -346,10 +338,10 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
 
 <script src="config.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>
+<script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script>
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
 const SUPABASE_ANON = window.PINTAG.anonKey;
-const ADMIN_EMAIL   = 'admin@pintag.io';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
@@ -577,22 +569,16 @@ async function sbApi(method, path, body, extraHeaders) {
 }
 
 // ── Sign in ───────────────────────────────────────────────────────────
-async function signIn() {
-  var pw  = document.getElementById('pw-input').value.trim();
-  var btn = document.getElementById('login-btn');
-  var err = document.getElementById('login-err');
-  err.style.display = 'none';
-  if (!pw) { err.textContent = 'Enter the admin password.'; err.style.display = 'block'; return; }
-  btn.disabled = true; btn.textContent = 'Signing in…';
-  var { data, error } = await sb.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
-  btn.disabled = false; btn.textContent = 'Sign In';
-  if (error) { err.textContent = 'Sign-in failed: ' + error.message; err.style.display = 'block'; return; }
-  _token = data.session.access_token;
-  document.getElementById('login-card').style.display = 'none';
+// ── AUTH — unified admin authentication (admin-auth.js) ───────────────
+// cyrora.trading@gmail.com only, email + password + TOTP (AAL2), session
+// validated server-side on every load. No page-local login logic remains.
+async function bootAgentSetup() {
+  _token = await PintagAdminAuth.token();
   document.getElementById('form-wrap').style.display = 'block';
   genUUID();
   await loadAgentsAndListings();
 }
+PintagAdminAuth.protect(sb, bootAgentSetup);
 
 // ── Mode switching ────────────────────────────────────────────────────
 function switchMode(mode) {

@@ -65,7 +65,20 @@ async function requireStaffOrService(req: Request): Promise<string | null> {
   });
   if (!r.ok) return 'Invalid token';
   const user = await r.json();
-  if (user?.email !== 'admin@pintag.io') return 'Admin only';
+  if (!user?.id) return 'Invalid token';
+  // Authorization boundary: the is_pintag_admin() Postgres function (the single
+  // admin allowlist, admin_accounts — cyrora.trading@gmail.com today). It is
+  // SECURITY DEFINER and granted to authenticated, so the caller's own token
+  // resolves it. Replaces the legacy hardcoded-admin-email check; fails CLOSED
+  // (denies) on any error. (The service-role/pg_cron path
+  // returned above, before this user check, is unaffected.)
+  const adminCheck = await fetch(`${supabaseUrl}/rest/v1/rpc/is_pintag_admin`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_uid: user.id }),
+  });
+  if (!adminCheck.ok) return 'Server misconfigured';
+  if ((await adminCheck.json()) !== true) return 'Admin only';
   return null;
 }
 

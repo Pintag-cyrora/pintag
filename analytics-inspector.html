@@ -140,15 +140,7 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 </head>
 <body>
 
-<div id="login-screen">
-  <div class="login-box">
-    <p class="login-logo">Pintag</p>
-    <p class="login-sub">Analytics Inspector</p>
-    <input type="password" class="login-input" id="password-input" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()">
-    <button class="login-btn" onclick="login()">Sign In</button>
-    <p class="login-error" id="login-error">Incorrect password</p>
-  </div>
-</div>
+<!-- Login is handled by the shared admin-auth.js overlay (cyrora + 2FA). -->
 
 <div id="insp-screen">
   <nav class="admin-nav">
@@ -220,34 +212,23 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 
 <script src="config.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>
+<script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script>
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
 const SUPABASE_ANON = window.PINTAG.anonKey;
-const ADMIN_EMAIL   = 'admin@pintag.io';
 const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
+// ── AUTH — unified admin authentication (admin-auth.js) ──────────────
+// cyrora.trading@gmail.com only, email + password + TOTP (AAL2), session
+// validated server-side on every load. No page-local login logic remains.
 let _adminToken = null;
-sbClient.auth.onAuthStateChange((event, session) => { _adminToken = session ? session.access_token : null; });
-
-async function login() {
-  const pw  = document.getElementById('password-input').value;
-  const btn = document.querySelector('.login-btn');
-  btn.disabled = true; btn.textContent = 'Signing in…';
-  const { data, error } = await sbClient.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
-  btn.disabled = false; btn.textContent = 'Sign In';
-  if (error) { document.getElementById('login-error').style.display = 'block'; return; }
-  _adminToken = data.session.access_token;
-  showInspectorScreen();
-}
-async function logout() { _adminToken = null; await sbClient.auth.signOut(); location.reload(); }
-function showInspectorScreen() {
-  document.getElementById('login-screen').style.display = 'none';
+async function logout() { await PintagAdminAuth.logout(); }
+async function showInspectorScreen() {
+  _adminToken = await PintagAdminAuth.token();
   document.getElementById('insp-screen').style.display = 'block';
   resetToLatestSessions();
 }
-sbClient.auth.getSession().then(({ data: { session } }) => {
-  if (session) { _adminToken = session.access_token; showInspectorScreen(); }
-});
+PintagAdminAuth.protect(sbClient, showInspectorScreen);
 
 // ── REST helper — same pattern as admin.html's sbApi() ─────────────
 async function sbGet(path) {

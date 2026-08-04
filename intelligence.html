@@ -218,15 +218,11 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 </head>
 <body>
 
-<div id="login-screen">
-  <div class="login-box">
-    <p class="login-logo">Pintag</p>
-    <p class="login-sub">Intelligence</p>
-    <input type="password" class="login-input" id="password-input" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()">
-    <button class="login-btn" onclick="login()">Sign In</button>
-    <p class="login-error" id="login-error">Incorrect password</p>
-  </div>
-</div>
+<!-- The administrator login screen is injected by admin-auth.js (the shared,
+     single-source-of-truth auth module used by every privileged Pintag page):
+     only cyrora.trading@gmail.com, email + password + TOTP 2FA, validated
+     server-side on every load. It covers the page until access is confirmed,
+     then reveals #intel-screen. -->
 
 <div id="intel-screen">
   <nav class="admin-nav">
@@ -419,6 +415,7 @@ body{font-family:'DM Sans',sans-serif;font-size:14px;background:var(--warm);colo
 
 <script src="config.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>
+<script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script src="intelligence.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>

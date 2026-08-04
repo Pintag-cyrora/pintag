@@ -21,32 +21,28 @@
 
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
 const SUPABASE_ANON = window.PINTAG.anonKey;
-const ADMIN_EMAIL   = 'admin@pintag.io';
 const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
+// Unified administrator authentication — the SAME shared module every
+// privileged Pintag page uses (admin-auth.js): only cyrora.trading@gmail.com,
+// email + password + TOTP two-factor (AAL2), the session validated SERVER-SIDE
+// on every page load. This replaces the old password-only legacy-admin-email
+// login and the getSession() auto-login from a persisted localStorage session.
 let _adminToken = null;
 sbClient.auth.onAuthStateChange((event, session) => { _adminToken = session ? session.access_token : null; });
-
-async function login() {
-  const pw  = document.getElementById('password-input').value;
-  const btn = document.querySelector('.login-btn');
-  btn.disabled = true; btn.textContent = 'Signing in…';
-  const { data, error } = await sbClient.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
-  btn.disabled = false; btn.textContent = 'Sign In';
-  if (error) { document.getElementById('login-error').style.display = 'block'; return; }
-  _adminToken = data.session.access_token;
-  showAnScreen();
-}
-async function logout() { _adminToken = null; await sbClient.auth.signOut(); location.reload(); }
+async function logout() { await PintagAdminAuth.logout(); }
 function showAnScreen() {
-  document.getElementById('login-screen').style.display = 'none';
   document.getElementById('an-screen').style.display = 'block';
   setRange('7d');
   startLivePolling();
 }
-sbClient.auth.getSession().then(({ data: { session } }) => {
-  if (session) { _adminToken = session.access_token; showAnScreen(); }
-});
+// admin-auth.js injects its own login overlay, verifies an AAL2 cyrora session
+// server-side, then calls bootAnalytics() exactly once.
+async function bootAnalytics() {
+  _adminToken = await PintagAdminAuth.token();
+  showAnScreen();
+}
+PintagAdminAuth.protect(sbClient, bootAnalytics);
 
 // ── REST / RPC helpers ───────────────────────────────────────────────
 async function sbGet(path) {

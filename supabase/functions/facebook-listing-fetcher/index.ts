@@ -74,13 +74,18 @@ async function requireAdmin(req: Request): Promise<{ error: string | null; token
   if (!r.ok) return { error: 'Invalid token', token: '' };
   const user = await r.json();
   if (!user?.id) return { error: 'Invalid token', token: '' };
-  const staffCheck = await fetch(
-    `${supabaseUrl}/rest/v1/parties?auth_user_id=eq.${user.id}&type=eq.staff&select=id&limit=1`,
-    { headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey } },
-  );
-  if (!staffCheck.ok) return { error: 'Server misconfigured', token: '' };
-  const staffRows = await staffCheck.json();
-  if (!Array.isArray(staffRows) || staffRows.length === 0) return { error: 'Admin only', token: '' };
+  // Authorization boundary: the is_pintag_admin() Postgres function (the single
+  // admin allowlist, admin_accounts — cyrora.trading@gmail.com today). It is
+  // SECURITY DEFINER and granted to authenticated, so the caller's own token
+  // resolves it. Replaces the retired parties.type='staff' lookup (the staff
+  // model is gone); fails CLOSED (denies) on any error.
+  const adminCheck = await fetch(`${supabaseUrl}/rest/v1/rpc/is_pintag_admin`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_uid: user.id }),
+  });
+  if (!adminCheck.ok) return { error: 'Server misconfigured', token: '' };
+  if ((await adminCheck.json()) !== true) return { error: 'Admin only', token: '' };
   return { error: null, token };
 }
 

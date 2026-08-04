@@ -2,6 +2,35 @@
 
 Last updated: 2026-06-25 (deep audit pass + final verification pass)
 
+> ## ⚠ SUPERSEDED IN PART — read this first (2026-08-04)
+>
+> This document is the **pre-incident June 2026 audit**. On **2026-08-03** Pintag
+> suffered a production breach (a weak-password `testadmin@pintag.io` account +
+> permissive `USING(true)` write policies that dashboard drift had reintroduced).
+> The response replaced the entire authorization model. The current, authoritative
+> posture is **`SECURITY_AUDIT_2026-08-04.md`** — read it for anything about
+> administrators, authentication, RLS, storage, or edge-function auth.
+>
+> What changed, and what is now **stale below**:
+>
+> - **One administrator, `cyrora.trading@gmail.com`** — not `admin@pintag.io`.
+>   Every "`admin@pintag.io`" reference below describes the retired model.
+> - **`is_pintag_admin()`** (an explicit `admin_accounts` allowlist) is the single
+>   server authorization boundary — for RLS on every table, for storage writes,
+>   and for every admin edge function. The staff model (`parties.type='staff'` /
+>   `is_pintag_staff()`) is retired (`is_pintag_staff()` now just aliases
+>   `is_pintag_admin()`).
+> - **`agents` was renamed `parties`; `properties.agent_id` → `managed_by_party_id`.**
+> - **Every privileged page shares one auth module (`admin-auth.js`)**: email +
+>   password + **mandatory TOTP 2FA (AAL2)**, validated server-side on every load.
+>   The old password-only / `getSession()` auto-login logins are gone.
+> - **Storage** writes now require `is_pintag_admin()` (was `admin@pintag.io`).
+> - **`copy-edge-function.html` was removed** (it embedded a stale, insecure
+>   edge-function copy — the LOW-4 item below).
+>
+> The still-valid parts of this document (XSS/`esc()` coverage, CSP, SSRF fixes,
+> rate-limiting, the API-key posture) remain accurate and are not superseded.
+
 ## Summary
 
 Pintag is a static HTML + Supabase real estate platform. There is no server-side

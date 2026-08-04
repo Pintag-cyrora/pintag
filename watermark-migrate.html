@@ -53,15 +53,7 @@ input:focus{border-color:#2D8C8C;box-shadow:0 0 0 3px rgba(45,140,140,0.08);}
   <h1>Pintag · Watermark Migration</h1>
   <p class="sub">Apply Pintag watermarks to all existing property photos in Supabase Storage</p>
 
-  <div class="card" id="login-card">
-    <div class="card-title">Admin Login</div>
-    <div style="margin-bottom:14px;">
-      <label>Admin Password</label>
-      <input type="password" id="pw" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
-    <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign In</button>
-    <div class="msg" id="login-msg"></div>
-  </div>
+  <!-- Login is handled by the shared admin-auth.js overlay (cyrora + 2FA). -->
 
   <div id="main" style="display:none;">
 
@@ -120,10 +112,10 @@ input:focus{border-color:#2D8C8C;box-shadow:0 0 0 3px rgba(45,140,140,0.08);}
 
 <script src="config.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>
+<script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script>
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
 const SUPABASE_ANON = window.PINTAG.anonKey;
-const ADMIN_EMAIL   = 'admin@pintag.io';
 const STORAGE_PREFIX = SUPABASE_URL + '/storage/v1/object/public/property-images/';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -239,21 +231,15 @@ async function sbApi(method, path, body) {
   return text ? JSON.parse(text) : [];
 }
 
-// ── AUTH ──────────────────────────────────────────────────────────
-async function doLogin() {
-  const pw  = document.getElementById('pw').value.trim();
-  const btn = document.getElementById('login-btn');
-  const msg = document.getElementById('login-msg');
-  if (!pw) { showMsg('login-msg', 'Enter password', 'error'); return; }
-  btn.disabled = true; btn.textContent = 'Signing in…';
-  const { data, error } = await sb.auth.signInWithPassword({ email: ADMIN_EMAIL, password: pw });
-  btn.disabled = false; btn.textContent = 'Sign In';
-  if (error) { showMsg('login-msg', 'Sign-in failed: ' + error.message, 'error'); return; }
-  _token = data.session.access_token;
-  document.getElementById('login-card').style.display = 'none';
+// ── AUTH — unified admin authentication (admin-auth.js) ───────────────
+// cyrora.trading@gmail.com only, email + password + TOTP (AAL2), session
+// validated server-side on every load. No page-local login logic remains.
+async function bootWatermarkTool() {
+  _token = await PintagAdminAuth.token();
   document.getElementById('main').style.display = 'block';
   showMsg('scan-msg', 'Signed in. Click "Scan Listings" to see how many photos need watermarking.', 'info');
 }
+PintagAdminAuth.protect(sb, bootWatermarkTool);
 
 // ── SCAN ──────────────────────────────────────────────────────────
 async function scanListings() {
