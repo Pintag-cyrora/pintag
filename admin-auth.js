@@ -206,11 +206,41 @@
       msg('Enter the administrator email above first, then tap "Forgot password?".', true);
       return;
     }
+    // ── TEMPORARY DIAGNOSTIC INSTRUMENTATION ──────────────────────────────
+    // Exposes the exact Supabase Auth error to diagnose the failing recovery
+    // send. Auth logic is UNCHANGED: same email gate, same resetPasswordForEmail
+    // call, same redirectTo. REMOVE this block once the root cause is found.
+    var redirectTo = resetRedirectUrl();
+    console.log('[pintag reset] redirectTo =', redirectTo);
+    var r;
     try {
-      var r = await _client.auth.resetPasswordForEmail(email, { redirectTo: resetRedirectUrl() });
-      if (r.error) throw r.error;
+      r = await _client.auth.resetPasswordForEmail(email, { redirectTo: redirectTo });
     } catch (e) {
-      msg('Could not send the reset email right now. Please try again in a moment.', true);
+      r = { error: e };
+    }
+    var e2 = r && r.error;
+    if (e2) {
+      console.error('[pintag reset] error object:', e2);
+      console.error('[pintag reset] message:', e2.message,
+                    '| status:', e2.status, '| code:', e2.code,
+                    '| name:', e2.name, '| __isAuthError:', e2.__isAuthError);
+      try { console.error('[pintag reset] JSON:', JSON.stringify(e2, Object.getOwnPropertyNames(e2))); } catch (_) {}
+      var dump =
+        'RESET DEBUG (temporary — do not leave enabled)\n' +
+        'redirectTo:     ' + redirectTo + '\n' +
+        'error.message:  ' + (e2.message !== undefined ? e2.message : '(undefined)') + '\n' +
+        'error.status:   ' + (e2.status  !== undefined ? e2.status  : '(undefined)') + '\n' +
+        'error.code:     ' + (e2.code    !== undefined ? e2.code    : '(undefined)') + '\n' +
+        'error.name:     ' + (e2.name    !== undefined ? e2.name    : '(undefined)') + '\n' +
+        'error.__isAuthError: ' + (e2.__isAuthError !== undefined ? e2.__isAuthError : '(undefined)');
+      var box = document.getElementById('paa-err');
+      box.style.display = 'block';
+      box.style.whiteSpace = 'pre-wrap';
+      box.style.textAlign = 'left';
+      box.style.fontSize = '.72rem';
+      box.style.fontFamily = 'ui-monospace,monospace';
+      box.textContent = dump;
+      document.getElementById('paa-note').style.display = 'none';
       return;
     }
     msg('Password reset email sent to ' + email + '. Open it on this device and follow the link to set a new password.', false);
