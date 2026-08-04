@@ -22,6 +22,11 @@
 > function/worker deploys in **§9 (Mandatory pre-reopen steps)** are applied and
 > **`scripts/verify-single-admin-lockdown.sql` passes**. Do not reopen the public
 > site until §9 is complete and verified.
+>
+> **Also unconfirmed:** whether the site is currently in maintenance mode at all.
+> The Cloudflare Worker that serves the maintenance page has **not** deployed
+> through CI (missing secrets). See finding **F7 / "Maintenance mode deployment —
+> UNVERIFIED"** below; this must be verified before recovery continues.
 
 ---
 
@@ -194,8 +199,12 @@ uses the same single boundary as RLS and the edge functions.
 | A1 | Low (accepted) | `is_pintag_staff()` name retained as a single-admin alias across historical RLS policies | Accepted — §8 |
 | A2 | Low (out of scope) | `marketing-os.html` + `pintag-studio/`: separate Supabase project (`ninee@pintag.io`), password-only | Flagged — §10 |
 | A3 | Low (by design) | Agent self-service portal (`agent-login.html`, `dashboard.html`, `add-property.html`, `edit-listing.html`): agent-tier password login | By design — §10 |
+| F7 | High (operational) | Maintenance-mode Cloudflare Worker did **not** deploy through CI (missing `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`); maintenance mode cannot be confirmed active from repository state | ⚠ **OPEN** — verify before recovery continues (see "Maintenance mode deployment — UNVERIFIED") |
 
-**Unresolved Critical/High: none.**
+**Unresolved Critical/High _code_ findings: none.** One **operational** finding —
+**F7** — is open: it is a deployment-state issue (the maintenance worker never
+published through CI), not a code defect, and does not affect the code guarantees
+above. It **must be verified before recovery continues** (see the section below).
 
 ---
 
@@ -258,6 +267,45 @@ verified.** None can be done from this sandbox (no network to Supabase).
 
 ---
 
+## ⚠ Maintenance mode deployment — UNVERIFIED (required verification before recovery continues)
+
+**Finding F7 (operational, High).** The maintenance-mode implementation exists in
+the repository and is committed (`MAINTENANCE_MODE = true` in
+`cloudflare-worker/og-listing-preview.js`, commit `85d784c`), but the GitHub
+Actions `deploy-prod.yml` run shows the **Cloudflare Worker deployment failed** —
+the "Deploy via Wrangler" step errors because the required secrets
+(`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`) are not configured. This job
+has failed on **every** recent push, including the maintenance-mode commit itself.
+
+**Therefore maintenance mode cannot be considered active based on repository / CI
+state alone.** Explicitly:
+
+- ✅ **GitHub Pages deployed successfully** (the `build` and `deploy` jobs both
+  passed) — the hardened pages are live.
+- ❌ **Cloudflare Worker deployment did NOT complete through CI** — the maintenance
+  worker was never published by the pipeline.
+- ⚠ **Maintenance mode is active only if the Worker was deployed manually** (a
+  hand-run `wrangler deploy`) by some other means. This cannot be verified from
+  repository state.
+- 🚫 **This must be verified before recovery continues** — if maintenance mode is
+  not actually active, the post-breach production data is publicly reachable.
+
+**Required verification step (record the result in this audit):**
+
+1. Visit the production site (e.g. `https://pintag.io/listings.html`) and confirm
+   it returns the maintenance page — preferably **HTTP 503**.
+2. If it does **not**, either manually deploy the Worker with Wrangler
+   (`cd cloudflare-worker && wrangler deploy`) **or** configure the missing
+   `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` GitHub secrets so CI can deploy
+   it, then re-run `deploy-prod.yml`.
+3. Record the deployment timestamp and verification result here:
+
+   > **Maintenance-mode verification log:**
+   > - Verified returning 503 at: `________________` UTC — by: `________________`
+   > - Deployment method: ☐ CI (secrets configured)  ☐ manual `wrangler deploy`
+
+---
+
 ## 10. Out of scope, flagged (not reopen-blockers for pintag.io)
 
 - **`marketing-os.html` + `pintag-studio/`** — a **separate Supabase project**
@@ -298,6 +346,45 @@ verified.** None can be done from this sandbox (no network to Supabase).
   maintenance, not an application or security defect, and does not gate reopening.
 
 ---
+
+## Disaster Recovery Improvements (post-incident)
+
+This incident should become the basis for a permanent operational playbook so the
+same failure mode cannot recur. Recommended improvements to implement after
+recovery:
+
+- **Enable Point-in-Time Recovery (PITR) or scheduled backups** on the Supabase
+  project, so a destructive event is recoverable to the minute rather than
+  reconstructed after the fact. The 2026-08-03 breach was only partially
+  recoverable precisely because no PITR/backup existed — recovery leaned on the
+  `properties_removal_log` trigger and the Wayback Machine.
+- **Configure the Cloudflare deployment secrets** (`CLOUDFLARE_API_TOKEN`,
+  `CLOUDFLARE_ACCOUNT_ID`) so maintenance mode — and the OG worker — can always be
+  deployed from CI. This permanently closes finding F7.
+- **Add a documented emergency "kill switch"** to place the site into maintenance
+  mode within minutes (flip `MAINTENANCE_MODE = true` and deploy the worker), with
+  the exact commands written down so it can be executed under pressure.
+- **Document key-rotation procedures** for Supabase (anon **and** service-role),
+  Cloudflare, and GitHub tokens/secrets — what to rotate, where, and in what order
+  — so a suspected key compromise has a rehearsed, no-guesswork response.
+- **Create an incident-response runbook** for future security events: detect →
+  contain → preserve evidence → maintenance mode → root-cause → remediate →
+  verify → reopen (the exact sequence this incident followed).
+- **Schedule periodic security reviews** of RLS policies, authentication, Storage
+  policies, and Edge Functions — so drift (the root cause here: dashboard-created
+  policies that were never captured in migrations) is caught before it becomes an
+  exposure.
+
+## Staging environment (dev → staging → production)
+
+Recommended once recovered: stand up a **staging** environment, separate from both
+production and development, where security migrations and schema changes are tested
+before they ever reach the live site. A `dev → staging → production` pipeline —
+with tested migrations and verified backups at each step — would have caught the
+RLS drift that enabled this breach, and materially reduces operational risk for
+every future change. This complements the existing `pintag-dev` preview project:
+staging specifically mirrors production's schema and is the last gate a migration
+passes before going live.
 
 ## 12. Bottom line
 
