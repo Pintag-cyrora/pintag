@@ -11,11 +11,21 @@ listings than 91 inconsistent ones.* Recovery continues while the platform is li
 **Update rule:** as evidence arrives, **upgrade confidence and promote tiers**;
 **never downgrade a listing without evidence**; update rankings in place.
 
-**🎯 Highest-leverage action right now:** run the backbone evidence — **E7/E8**
-(per-listing engagement + agent/contact), **E3** (`listings` wildcard), **E9**
-(Wayback coverage). Until these land nothing can be ranked; these three unlock the
-launch-candidate list and the Balanced count. *(This line always names the single
-highest-impact next task, and is refreshed as evidence arrives.)*
+## 🚦 Launch Status — *are we closer to turning maintenance off than yesterday?*
+- **Production-ready listings:** **0 / ~30–40** (working target; refine on evidence)
+- **Largest remaining launch blocker:** no **verified backup** yet **and** **0 galleries attached** — backbone evidence (E7/E8, E3, E9) not yet gathered
+- **Highest-impact next action:** (1) complete the **first verified backup**; (2) run **E7/E8 + E3 + E9** to rank the candidate set
+
+**Reopening threshold — all five must be met (not perfect reconstruction):**
+- ⬜ **Premium-looking catalogue** — 0 production-ready today
+- ⬜ **Correct photos** — 0 galleries attached
+- ⬜ **Correct contacts** — coverage unmeasured (pending E8)
+- 🟩 **Stable platform** — security hardened (single-admin, RLS locked, edge fns fail-closed)
+- ⬜ **Verified backup** — DR system built; first run + restore drill pending
+
+**Closer than yesterday?** Not materially — no new production evidence has arrived.
+**Single blocker:** evidence gathering + the first backup have not yet been run
+(both require operator execution; this environment has no prod/network access).
 
 ---
 
