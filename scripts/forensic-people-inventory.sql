@@ -245,3 +245,52 @@ from (
     ) as credible
   from properties pr where pr.workflow_status='draft'
 ) x;
+
+-- ============================================================================
+-- REPORT 8 — OWNER RECOVERY (read-only)  [priority pivot: owners, not agents]
+-- The owner->listing link for the 91 was destroyed (owner_id was on the deleted
+-- rows; removal_log has no owner; leads cascaded). owners survives as a contact
+-- list only. 8b confirms how many of the 91 still carry an owner link (expect ~0).
+-- ============================================================================
+
+-- 8a: Every owner — contact info, Facebook via linked party, current links + notes
+select o.id as owner_id, o.name, o.phone, o.whatsapp, o.email, p.facebook_url,
+  (select count(*) from properties pr where pr.owner_id=o.id)                              as current_listings,
+  (select count(*) from properties pr where pr.owner_id=o.id
+     and (pr.status='draft' or pr.workflow_status='draft'))                                as draft_listings,
+  o.notes
+from owners o
+left join parties p on p.id=o.party_id
+order by current_listings desc, o.name;
+
+-- 8b: How many of the 91 still have a surviving owner link (expected ~0)
+select count(*) as drafts_with_owner_link
+from properties where workflow_status='draft' and owner_id is not null;
+
+-- 8c: Owner totals + reachability
+select count(*)                                                        as total_owners,
+       count(*) filter (where phone is not null or whatsapp is not null) as reachable,
+       count(*) filter (where email is not null)                        as with_email,
+       count(*) filter (where party_id is not null)                     as linked_to_party
+from owners;
+
+-- 8d: Same-person merge candidates across owners + contacts + parties
+with w as (
+  select 'owner' t, id::text, whatsapp v from owners   where whatsapp is not null
+  union all select 'contact', id::text, whatsapp from contacts where whatsapp is not null
+  union all select 'party',   id::text, whatsapp from parties  where whatsapp is not null)
+select 'whatsapp' kind, v, count(*) n, array_agg(t||':'||id) refs from w group by v having count(*)>1
+union all
+select 'phone', phone, count(*), array_agg(t||':'||id) from (
+  select 'owner' t, id::text, phone from owners where phone is not null
+  union all select 'contact', id::text, phone from contacts where phone is not null) z
+  group by phone having count(*)>1
+union all
+select 'name', nm, count(*), array_agg(t||':'||id) from (
+  select 'owner' t, id::text, lower(trim(name)) nm from owners
+  union all select 'contact', id::text, lower(trim(name)) from contacts
+  union all select 'party', id::text, lower(trim(coalesce(name_en,name_lo))) from parties) z
+  where nm<>'' group by nm having count(*)>1;
+
+-- 8e: Owner info that may be hidden/unlinked in free text
+select id, name, phone, whatsapp, notes from owners where notes is not null and notes<>'';
