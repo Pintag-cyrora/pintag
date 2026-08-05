@@ -49,6 +49,12 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
   **contact** per listing therefore has **no automatic source** (Facebook/manual only).
   `lead_events` (plain `listing_id`/`agent_id`, no FK) **survived** and yields the
   **agent** (`agent_id` → `parties.auth_user_id`) only. This corrects source #5.
+- **Owner recovery has no surviving DB link — it is a pure outreach campaign.**
+  `owner_id` was on the deleted rows; `properties_removal_log` has no owner column;
+  `leads` cascaded; and **owner-name-in-title matching returned 0** (after guarding
+  for name length + word boundaries) — that indirect path is **exhausted**. The
+  `owners` table survives only as a *contact list* (who to call). Recoverability is
+  quantifiable only via Report 8 (reachable owners) + owner responses on outreach.
 - **No surviving DB column links a photo to a listing.** The only photo↔listing
   links were `properties.images` (JSONB) and `unit_types.images` (`text[]`) — both
   lived *on the deleted rows*, so both are gone. Reconnection MUST come from source
