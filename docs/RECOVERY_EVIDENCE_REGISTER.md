@@ -69,6 +69,7 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
   for name length + word boundaries) — that indirect path is **exhausted**. The
   `owners` table survives only as a *contact list* (who to call). Recoverability is
   quantifiable only via Report 8 (reachable owners) + owner responses on outreach.
+- **Full-database scan (2026-08-05) — photo→listing search EXHAUSTED.** Scanned every table for `property-images`/`/storage/v1/`: only `properties` (5 survivors) and `parties` (5 agent profile photos) match; **zero references to the 91's photos**. **1,230 photo files survive** (~1,200 orphaned = the 91's galleries). Reconnection is external-only (Wayback / Facebook / owner-agent recognition).
 - **No surviving DB column links a photo to a listing.** The only photo↔listing
   links were `properties.images` (JSONB) and `unit_types.images` (`text[]`) — both
   lived *on the deleted rows*, so both are gone. Reconnection MUST come from source

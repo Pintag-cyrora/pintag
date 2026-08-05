@@ -30,7 +30,7 @@ Infrastructure ✅ *(one caveat: verified backup pending — DR built, first run
 ### Catalogue Readiness — 🔴 the bottleneck
 - **⭐ Listings with ≥1 viable recovery path:** **12 confirmed · 79 pending evidence · 0 exhausted** (of 91) — *primary launch-readiness metric*
 - **Production-ready listings:** **0 / ~30–40** target
-- **Photos:** 0 galleries attached (Storage pool intact but unlinked; sources: Wayback cover / Facebook gallery)
+- **Photos:** **1,230 edited files survive** (~1,200 orphaned = the 91's galleries, ~13 each); **DB photo→listing search EXHAUSTED — 0 references to the 91** (all tables scanned). Reconnection external only: Wayback cover / Facebook gallery / owner-agent recognition. 0 galleries attached yet.
 - **Agent:** **Keomany's 10 = the operator's own listings → self-restore** (strong Phase-1 contributors; excluded from outreach ranking). External agents **Tik 3** (Facebook), **Pee 2**, **Sivone 1** = 6 via outreach. Other **79 = agent relationship currently unknown (Pending Evidence)**.
 - **Owner (priority track):** **12 owner records, 100% WhatsApp-reachable** (0 email, 0 party-linked); only **1 of 91** retains an `owner_id`; Beta Xin is a duplicate. Link destroyed — recovery is **owner outreach** (owner identifies + re-supplies their listings). Identities survived; relationships lost.
 - **Contact:** `leads` CASCADED — manual / Facebook.
@@ -46,7 +46,7 @@ Platform ✅ **+** a premium Phase-1 catalogue ⬜. The **sole remaining gate is
 **Single highest-impact TECHNICAL action:** run **E9 Wayback CDX** — the only automatic photo→listing (cover) source; sets the recovery ceiling for the 79.
 **Single highest-impact BUSINESS action:** **contact the 12 reachable owners** (100% WhatsApp) to identify + re-supply their galleries — the largest recoverable-gallery pool.
 *In parallel:* operator self-restores own 10 (Keomany); external-agent outreach Tik (3, Facebook) / Pee (2) / Sivone (1); first verified backup.
-**Closer than yesterday? Yes** — owner forensics complete (**12 reachable owners** as an outreach lever; identities survived), and photo→listing is now confirmed as THE technical blocker. Confirmed credible path holds at **12/91 (~13%)**; owner outreach + Wayback are the levers to grow it.
+**Closer than yesterday? Yes** — **DB photo→listing search exhausted** (1,230 photos survive, **0 links to the 91**), so **E9 Wayback is now the confirmed #1 technical action**; owner forensics gave **12 reachable owners** as the business lever. Confirmed credible path holds at **12/91 (~13%)**; Wayback + owner/agent outreach are the levers to grow it.
 
 ---
 
