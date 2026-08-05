@@ -1,0 +1,115 @@
+# Pintag Launch Roadmap — LIVING DOCUMENT
+
+**The one question this document always answers:**
+> *If we had to reopen Pintag today, which listings would we publish first?*
+
+**Objective:** the **strongest possible launch catalogue** — complete, premium,
+trustworthy — not the largest count. *We would rather launch 30–40 flawless
+listings than 91 inconsistent ones.* Recovery continues while the platform is live.
+
+**Last updated:** 2026-08-05 · **Status:** evidence gathering (no data written).
+**Update rule:** as evidence arrives, **upgrade confidence and promote tiers**;
+**never downgrade a listing without evidence**; update rankings in place.
+
+---
+
+## Recovery philosophy — what actually blocks launch
+**Irreplaceable (recovery-critical, gates launch):**
+- Original **photo galleries**
+- **Agent / owner / contact** identity
+- **Core listing facts** (price, currency, beds/baths, sizes, district, village, type, transaction, coordinates)
+
+**Recreatable (NEVER a launch dependency — regenerate later):**
+- AI descriptions · translated titles · SEO fields · slugs
+
+A listing is *not* held back from launch by missing AI text. It is held back only
+by missing photos, missing contact, or missing core facts.
+
+## Launch scoring model (per-listing) + set assembly
+Weighted in the approved priority order (higher = more launch value):
+
+| Weight | Factor | How scored |
+|---|---|---|
+| 8 | **Photo recoverability** | full gallery = 3 · verified cover = 2 · orphan-review only = 1 · none = 0 |
+| 7 | **Agent/owner/phone recoverability** | agent+contact = 2 · one = 1 · none = 0 |
+| 6 | **Core property facts** | recoverable (Wayback/FB) = 2 · partial = 1 · none = 0 |
+| 5 | **Frontend presentation quality** | renders cleanly with what we can restore |
+| 4 | **Market appeal** | premium district / price tier *(proxy until price returns)* |
+| 3 | **Engagement** | views + leads (E7/E8) |
+
+`LaunchScore = 8·Photo + 7·Contact + 6·Facts + 5·Frontend + 4·Appeal + 3·Engagement`
+
+**Then the launch SET is assembled** from the top scores **subject to
+diversity constraints** so the catalogue reads as broad and premium:
+- **Geographic diversity** — spread across districts, no single-area monotony.
+- **Property-type diversity** — houses / apartments / land / commercial represented.
+
+## Launch classification (4 tiers)
+| Tier | Criteria |
+|---|---|
+| 🟢 **Production Ready** | full gallery (or verified cover) + correct agent/contact + core facts + QA-passed |
+| 🟡 **Recoverable Before Launch** | authoritative assets exist & high-confidence — Wayback cover and/or findable FB gallery + lead-linked agent + recoverable facts |
+| 🟠 **Recoverable After Launch** | needs manual reconstruction, likely recoverable (agent supplies photos, FB uncertain) |
+| 🔴 **Long-term Recovery** | insufficient evidence today |
+
+---
+
+## Current best answer ("reopen today")
+**Production Ready today: 0 of 91** — no listing has photos reattached yet. The
+site infrastructure and security *are* ready; **content is the gate.** The launch
+set, counts, and rankings populate from the evidence below — **Pending Evidence.**
+
+### Evidence status
+| ID | Source | Feeds | Status |
+|---|---|---|---|
+| E0 | Identity export (title/district/type) | roadmap rows, Wayback match | ⬜ pending |
+| E1 | Storage image count/size | photo pool size | ⬜ pending |
+| E2 | Orphaned photos | reconnection target | ⬜ pending |
+| E3 | `listings` table inspection | **wildcard legacy source** | ⬜ pending |
+| E4 | Image-path scan | any surviving photo link | ⬜ pending |
+| E5 | Time-correlation isolation | Needs-Review ceiling | ⬜ pending |
+| E6 | Identity inventory | contact completeness | ⬜ pending |
+| E7/E8 | Engagement + agent/contact per listing | ranking backbone | ⬜ pending |
+| E9 | Wayback CDX | cover-image / core-facts coverage | ⬜ pending |
+| — | Facebook post inventory | full-gallery coverage | ⬜ pending |
+
+## Per-listing roadmap (populate from E0/E7/E8/E9 — Pending Evidence)
+Ranked by `LaunchScore` once evidence lands. Columns:
+
+| UUID | Title | District | Type | Tier | Missing assets | Recovery source | Confidence | Est. effort | Blocking issue | Recommended next action |
+|---|---|---|---|---|---|---|---|---|---|---|
+| _pending E0/E8_ | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ | low/med/high | _pending_ | _pending_ |
+
+*Effort model:* Wayback cover attach = **low** (batch) · lead→agent relink = **low** (batch) · FB gallery recovery = **high** (manual, login-gated) · manual specs = **med** · agent re-supply = **high**.
+
+## Launch recommendation (framework now; counts Pending Evidence)
+| Scenario | Publish criteria | Count | Trade-off |
+|---|---|---|---|
+| **Conservative** | 🟢 only (full gallery + contact + facts + QA) | _pending_ | Safest; smallest — risk of looking sparse |
+| **Balanced (recommended)** | 🟢 + top 🟡 reaching production quality fast (cover/FB gallery + contact) | _pending_ | Best size-vs-quality; every visible listing solid |
+| **Aggressive** | 🟢 + all 🟡 + best 🟠, accepting cover-only for some | _pending_ | Largest; some listings thinner — risks the premium feel |
+
+**Minimum to reopen confidently:** ~25–40 flawless, district- and type-diverse
+listings (fills the grid, curated feel, nothing broken visible). Refined once E8/E9 land.
+
+## Launch blocker report (ranked by impact — populated from confirmed findings)
+| # | Blocker | Launch impact | Est. effort | Listings affected | Phase |
+|---|---|---|---|---|---|
+| 1 | **No galleries attached to any listing** | 🔴 Critical — every listing renders photo-less | Cover=low (batch), Gallery=high (manual) | all 91 | **Blocks Phase 1** |
+| 2 | **Full galleries only via manual Facebook** (login wall, ≤1 photo unauth) | 🟠 High — caps automatic photo quality | High / manual | majority (Pending E9/FB) | Phase 1 for premium feel; spills to Phase 2 |
+| 3 | **Wayback coverage unknown** (caps the auto tier) | 🟠 High — sets the 🟡 ceiling | Low (run E9) | Pending | **Blocks Phase 1 planning** |
+| 4 | **`listings` table unresolved** (possible legacy source) | 🟡 Wildcard — could shift everything | Low (run E3) | Pending | Resolve before Phase 1 planning |
+| 5 | **Core facts (price/beds/sizes) mostly manual** | 🟡 Medium — listings look incomplete without price/specs | Med / manual (Wayback gives price+district; specs manual) | all 91 | Phase 1 for launch set; tail waits |
+| 6 | **Agent/contact coverage partial** (leads-dependent) | 🟡 Medium — no-lead listings lack auto agent | Low (relink) for covered; manual otherwise | Pending E8 | Phase 1 for covered set |
+| 7 | **Owner identity no automatic path** | 🟢 Low — owner is internal, not visitor-facing | Manual / FB poster | most | Phase 2 |
+| — | AI descriptions / translations / SEO | ⚪ None — recreatable, not a blocker | n/a | n/a | Post-launch |
+
+---
+
+## Changelog
+- **2026-08-05** — Document created (living). Framework, scoring model, philosophy,
+  classification, and blocker report seeded from confirmed code findings. All
+  per-listing rows and launch counts **Pending Evidence** (E0–E9 + Facebook).
+
+*Next update: on receipt of E7/E8 (backbone) → populate rows, tiers, and the
+Balanced launch count; then E9 (Wayback) → promote cover-recoverable listings.*
