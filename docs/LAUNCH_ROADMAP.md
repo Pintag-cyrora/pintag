@@ -21,16 +21,16 @@ Infrastructure ✅ *(one caveat: verified backup pending — DR built, first run
 ### Catalogue Readiness — 🔴 the bottleneck
 - **Production-ready listings:** **0 / ~30–40** target
 - **Photos:** 0 galleries attached (Storage pool intact but unlinked; sources: Wayback cover / Facebook gallery)
-- **Agent:** re-linkable from surviving **`lead_events.agent_id`** (→ `parties.auth_user_id`), agent-only. **Owner / Contact:** `leads` CASCADED — **manual / Facebook** (pending E8)
+- **Agent:** **12 of 91** have a recoverable agent (79 orphans), concentrated in **4 agents** — **Keomany 10** (WhatsApp only), **Tik 3** (has Facebook), **Pee 2**, **Sivone 1**. **Owner / Contact:** `leads` CASCADED — manual/Facebook.
 - **Core property facts:** mostly missing (Wayback / Facebook / manual)
 - **AI-generated content:** ⚪ **not a blocker** — regenerated after launch
 
 ### Launch Readiness — 🔴 blocked by catalogue only
 Platform ✅ **+** a premium Phase-1 catalogue ⬜. The **sole remaining gate is content** (plus the verified backup).
 
-**Largest remaining launch blocker:** catalogue content — **0 galleries attached**; backbone evidence (E7/E8, E3, E9) not gathered.
-**Highest-impact next action:** (1) first **verified backup**; (2) **E7/E8 + E3 + E9** → rank candidates and re-link agents/contacts from leads.
-**Closer than yesterday?** Not materially — no new production evidence has arrived. **Single blocker:** the evidence run + first backup haven't executed (both operator-side; this environment has no prod/network access).
+**Largest remaining launch blocker:** **79 of 91 have no recoverable agent from production data** (orphans) — their identity + galleries need Wayback/manual. Fastest wins are the **12–16 agent-linked listings** via **4 agent contacts**. 0 galleries attached yet.
+**Highest-impact next action:** **Contact agent Keomany (WhatsApp +8562055546963)** — recoverable agent for **10 of the 91**; one conversation can restore those galleries + core facts. Then **Tik** (3, has Facebook), **Pee** (2), **Sivone** (1). In parallel: first verified backup; run **E9 (Wayback)** for the 79 orphans' cover images.
+**Closer than yesterday?** **Yes (measurement).** First hard evidence in: **agent-recoverability = 12/91**, and the single highest-ROI action is now concrete — one WhatsApp to Keomany recovers 10. Production-ready count is still 0, but the fastest path to the first ~12–16 is identified.
 
 ---
 
