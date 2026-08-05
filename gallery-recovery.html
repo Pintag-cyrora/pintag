@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; connect-src https://*.supabase.co; frame-src 'none'; object-src 'none';">
+<title>Pintag — Gallery Recovery</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0F1418;color:#E8EDF0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px;line-height:1.4}
+h1{font-size:1.2rem;color:#2D8C8C;margin-bottom:.2rem}
+.sub{color:#9AA7B0;font-size:.85rem;margin-bottom:1rem}
+.bar{position:sticky;top:0;background:#0F1418;padding:8px 0;border-bottom:1px solid rgba(232,237,240,.12);margin-bottom:12px;z-index:5}
+.card{background:#1A2428;border:1px solid rgba(232,237,240,.12);border-radius:12px;padding:14px;margin-bottom:16px}
+.chd{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.cover{width:120px;height:90px;object-fit:cover;border-radius:8px;background:#0F1418}
+.meta{font-size:.8rem;color:#9AA7B0}
+.why{font-size:.78rem;color:#7FB2B2;margin:.3rem 0}
+.gallery{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin:8px 0}
+.gallery img{width:72px;height:54px;object-fit:cover;border-radius:6px;flex:0 0 auto;background:#0F1418}
+.cand{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px;border:1px solid rgba(232,237,240,.1);border-radius:8px;margin-top:6px}
+.cand .t{font-size:.85rem}
+.cand .d{font-size:.75rem;color:#9AA7B0}
+.conf{font-weight:700;min-width:52px;text-align:right}
+.hi{color:#4CAF7D}.mid{color:#E0B15A}.lo{color:#B0778F}
+button{border:0;border-radius:8px;background:#2D8C8C;color:#fff;font-size:.85rem;font-weight:600;padding:.5rem .8rem;cursor:pointer}
+button.ghost{background:transparent;border:1px solid rgba(232,237,240,.2);color:#E8EDF0}
+button:disabled{opacity:.5;cursor:default}
+.done{color:#4CAF7D;font-weight:600}
+#log{position:fixed;bottom:0;left:0;right:0;background:#111a1e;border-top:1px solid rgba(232,237,240,.12);font-size:.72rem;color:#9AA7B0;padding:6px 10px;max-height:22vh;overflow:auto;font-family:ui-monospace,monospace}
+</style>
+</head>
+<body>
+<h1>Gallery Recovery</h1>
+<div class="sub">Read-only until you click <b>Assign</b>. Assign fills only empty galleries, never overwrites, and is one-click reversible.</div>
+<div class="bar" id="bar">Loading…</div>
+<div id="clusters"></div>
+<div id="log"></div>
+
+<script src="config.js?v=__ASSET_VERSION__"></script>
+<script src="admin-auth.js?v=__ASSET_VERSION__"></script>
+<script>
+(function () {
+  'use strict';
+  var sb = supabase.createClient(window.PINTAG.supabaseUrl, window.PINTAG.anonKey);
+  var BUCKET = 'property-images';
+  var PUB = window.PINTAG.supabaseUrl + '/storage/v1/object/public/' + BUCKET + '/';
+  var GAP_MS = 15 * 60 * 1000;             // burst gap for clustering
+  var log = function (m) { var l = document.getElementById('log'); l.innerHTML = '['+new Date().toLocaleTimeString()+'] '+m+'<br>'+l.innerHTML; };
+
+  PintagAdminAuth.protect(sb, boot);
+
+  async function listAllObjects() {
+    var out = [], page = 0;
+    while (true) {
+      var r = await sb.storage.from(BUCKET).list('', { limit: 100, offset: page*100, sortBy: { column: 'created_at', order: 'asc' } });
+      if (r.error) throw r.error;
+      out = out.concat(r.data || []);
+      if (!r.data || r.data.length < 100) break;
+      page++;
+    }
+    return out.filter(function (o) { return o.name && o.created_at; });
+  }
+
+  function clusterByTime(objs) {
+    objs.sort(function (a,b){ return new Date(a.created_at) - new Date(b.created_at); });
+    var clusters = [], cur = null, prev = null;
+    objs.forEach(function (o) {
+      var t = new Date(o.created_at).getTime();
+      if (!cur || (prev !== null && t - prev > GAP_MS)) { cur = { files: [], start: o.created_at }; clusters.push(cur); }
+      cur.files.push(o); cur.end = o.created_at; prev = t;
+    });
+    return clusters;
+  }
+
+  function confidenceFromGap(ms) {                 // |cluster start − listing listed_at|
+    var min = ms / 60000;
+    if (min <= 10) return 95; if (min <= 60) return 82; if (min <= 360) return 64;
+    if (min <= 1440) return 45; if (min <= 4320) return 28; return 12;
+  }
+  function cls(c){ return c>=80?'hi':c>=50?'mid':'lo'; }
+
+  async function boot() {
+    try {
+      document.getElementById('bar').textContent = 'Loading photos…';
+      var objs = await listAllObjects();
+
+      // draft listings + which filenames are already referenced (to skip survivors)
+      var props = (await sb.from('properties').select('id,title_lo,district_en,property_type,images,workflow_status')).data || [];
+      var referenced = new Set();
+      props.forEach(function (p){ if (p.images) { try { (Array.isArray(p.images)?p.images:JSON.parse(p.images)).forEach(function(u){ var m=(''+u).split('/').pop(); if(m) referenced.add(m); }); } catch(e){} } });
+      var drafts = props.filter(function (p){ return p.workflow_status === 'draft'; });
+
+      // original listed_at + metadata from the removal log (latest per property)
+      var rl = (await sb.from('properties_removal_log').select('property_id,listed_at,title_lo,district_en,property_type').order('removed_at',{ascending:false})).data || [];
+      var meta = {}; rl.forEach(function (r){ if (!meta[r.property_id]) meta[r.property_id] = r; });
+
+      var orphans = objs.filter(function (o){ return !referenced.has(o.name); });
+      var clusters = clusterByTime(orphans);
+
+      document.getElementById('bar').innerHTML =
+        '<b>'+clusters.length+'</b> clusters · <b>'+orphans.length+'</b> orphan photos · <b>'+drafts.length+'</b> draft listings to fill';
+      render(clusters, drafts, meta);
+      log('Loaded '+objs.length+' objects, '+orphans.length+' orphans → '+clusters.length+' clusters. Read-only until you Assign.');
+    } catch (e) { document.getElementById('bar').textContent = 'Error: ' + (e.message||e); log('ERROR '+(e.message||e)); }
+  }
+
+  function render(clusters, drafts, meta) {
+    var host = document.getElementById('clusters'); host.innerHTML = '';
+    clusters.forEach(function (c, i) {
+      var start = new Date(c.start).getTime();
+      var ranked = drafts.map(function (d) {
+        var la = meta[d.id] && meta[d.id].listed_at ? new Date(meta[d.id].listed_at).getTime() : null;
+        var conf = la !== null ? confidenceFromGap(Math.abs(start - la)) : 8;
+        return { d: d, conf: conf, la: la };
+      }).sort(function (a,b){ return b.conf - a.conf; }).slice(0, 3);
+
+      var card = document.createElement('div'); card.className = 'card'; card.id = 'c'+i;
+      var cover = PUB + c.files[0].name;
+      card.innerHTML =
+        '<div class="chd"><img class="cover" loading="lazy" src="'+cover+'">'+
+        '<div><div><b>Cluster #'+(i+1)+'</b> · '+c.files.length+' photos</div>'+
+        '<div class="meta">'+new Date(c.start).toLocaleString()+' → '+new Date(c.end).toLocaleTimeString()+'</div>'+
+        '<div class="why">Grouped by upload burst (≤15 min apart), '+c.files.length+' photos in one session</div></div></div>'+
+        '<div class="gallery">'+c.files.map(function(f){ return '<img loading="lazy" src="'+PUB+f.name+'">'; }).join('')+'</div>'+
+        '<div class="cands"></div>';
+      var cd = card.querySelector('.cands');
+      ranked.forEach(function (r) {
+        var row = document.createElement('div'); row.className = 'cand';
+        row.innerHTML = '<div><div class="t">'+(r.d.title_lo||'(untitled)')+'</div>'+
+          '<div class="d">'+(r.d.district_en||'?')+' · '+(r.d.property_type||'?')+
+          (r.la?(' · listed '+new Date(r.la).toLocaleDateString()):'')+'</div></div>'+
+          '<div class="conf '+cls(r.conf)+'">'+r.conf+'%</div>';
+        var btn = document.createElement('button'); btn.textContent = 'Assign';
+        btn.onclick = function () { assign(c, r.d, i, btn); };
+        row.appendChild(btn); cd.appendChild(row);
+      });
+      host.appendChild(card);
+    });
+  }
+
+  async function assign(cluster, draft, idx, btn) {
+    if (!confirm('Assign '+cluster.files.length+' photos to:\n'+(draft.title_lo||draft.id)+' ?\n\n(Fills only if this listing has no photos yet.)')) return;
+    btn.disabled = true;
+    var urls = cluster.files.map(function (f){ return PUB + f.name; });
+    // fill-only-if-empty: only update rows whose images is currently NULL
+    var r = await sb.from('properties').update({ images: urls }).eq('id', draft.id).is('images', null).select('id');
+    if (r.error) { btn.disabled = false; log('ERROR assign '+r.error.message); alert('Failed: '+r.error.message); return; }
+    if (!r.data || !r.data.length) { btn.disabled = false; log('SKIPPED — listing already has photos (not overwritten): '+draft.id); alert('Not assigned — that listing already has photos. Nothing was overwritten.'); return; }
+    log('ASSIGNED cluster #'+(idx+1)+' ('+urls.length+' photos) → '+draft.id);
+    var card = document.getElementById('c'+idx);
+    card.querySelector('.cands').innerHTML =
+      '<div class="done">✅ Assigned '+urls.length+' photos to '+(draft.title_lo||draft.id)+'</div>';
+    var undo = document.createElement('button'); undo.className='ghost'; undo.textContent='Undo';
+    undo.onclick = async function () {
+      if (!confirm('Undo — clear the photos just assigned to this listing?')) return;
+      var u = await sb.from('properties').update({ images: null }).eq('id', draft.id).select('id');
+      if (u.error) { alert('Undo failed: '+u.error.message); return; }
+      log('ROLLED BACK '+draft.id); location.reload();
+    };
+    card.querySelector('.cands').appendChild(undo);
+  }
+})();
+</script>
+</body>
+</html>
