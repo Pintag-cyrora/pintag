@@ -46,7 +46,7 @@ Platform ✅ **+** a premium Phase-1 catalogue ⬜. The **sole remaining gate is
 **Single highest-impact TECHNICAL action:** run **E9 Wayback CDX** — the only automatic photo→listing (cover) source; sets the recovery ceiling for the 79.
 **Single highest-impact BUSINESS action:** **contact the 12 reachable owners** (100% WhatsApp) to identify + re-supply their galleries — the largest recoverable-gallery pool.
 *In parallel:* operator self-restores own 10 (Keomany); external-agent outreach Tik (3, Facebook) / Pee (2) / Sivone (1); first verified backup.
-**Closer than yesterday? Yes** — **DB photo→listing search exhausted** (1,230 photos survive, **0 links to the 91**), so **E9 Wayback is now the confirmed #1 technical action**; owner forensics gave **12 reachable owners** as the business lever. Confirmed credible path holds at **12/91 (~13%)**; Wayback + owner/agent outreach are the levers to grow it.
+**Closer than yesterday? Yes** — **timestamp clustering validated:** the 1,188 orphan photos group into **114 clusters** with only **18 photos (1.5%) ambiguous** — ~98.5% already in coherent galleries, minimal Gemini needed. The photo→listing blocker now has a working **reconnection mechanism** (gallery-recovery review tool + Wayback covers). Owner forensics gave **12 reachable owners** as the business lever. Credible path 12/91 today, poised to jump once clusters are assigned.
 
 ---
 
