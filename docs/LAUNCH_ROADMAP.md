@@ -11,6 +11,12 @@ listings than 91 inconsistent ones.* Recovery continues while the platform is li
 **Update rule:** as evidence arrives, **upgrade confidence and promote tiers**;
 **never downgrade a listing without evidence**; update rankings in place.
 
+**🎯 Highest-leverage action right now:** run the backbone evidence — **E7/E8**
+(per-listing engagement + agent/contact), **E3** (`listings` wildcard), **E9**
+(Wayback coverage). Until these land nothing can be ranked; these three unlock the
+launch-candidate list and the Balanced count. *(This line always names the single
+highest-impact next task, and is refreshed as evidence arrives.)*
+
 ---
 
 ## Recovery philosophy — what actually blocks launch
