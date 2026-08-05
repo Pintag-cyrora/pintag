@@ -19,23 +19,34 @@ h1{font-size:1.2rem;color:#2D8C8C;margin-bottom:.2rem}
 .meta{font-size:.8rem;color:#9AA7B0}
 .why{font-size:.78rem;color:#7FB2B2;margin:.3rem 0}
 .gallery{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin:8px 0}
-.gallery img{width:72px;height:54px;object-fit:cover;border-radius:6px;flex:0 0 auto;background:#0F1418}
+.photo{position:relative;flex:0 0 auto}
+.photo input{position:absolute;top:3px;left:3px;width:16px;height:16px;cursor:pointer;z-index:2}
+.photo img{display:block;width:78px;height:58px;object-fit:cover;border-radius:6px;background:#0F1418}
+.photo input:not(:checked)+img{opacity:.32;outline:2px solid #B0778F}
+.ctrls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.cfl{color:#9AA7B0;font-size:.8rem;margin-left:6px}
+select{background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.25);border-radius:6px;padding:5px 6px;font-size:.82rem}
+.search,.usearch{width:100%;padding:8px;margin:8px 0 4px;box-sizing:border-box;background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.2);border-radius:8px}
 .cand{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px;border:1px solid rgba(232,237,240,.1);border-radius:8px;margin-top:6px}
 .cand .t{font-size:.85rem}
 .cand .d{font-size:.75rem;color:#9AA7B0}
-.conf{font-weight:700;min-width:52px;text-align:right}
-.hi{color:#4CAF7D}.mid{color:#E0B15A}.lo{color:#B0778F}
+.uphoto{position:relative;display:inline-block;margin:3px}
+.uphoto input{position:absolute;top:3px;left:3px;width:15px;height:15px;z-index:2}
+.uphoto img{width:74px;height:56px;object-fit:cover;border-radius:6px}
 button{border:0;border-radius:8px;background:#2D8C8C;color:#fff;font-size:.85rem;font-weight:600;padding:.5rem .8rem;cursor:pointer}
 button.ghost{background:transparent;border:1px solid rgba(232,237,240,.2);color:#E8EDF0}
+button.danger{background:#8C3A4A}
 button:disabled{opacity:.5;cursor:default}
 .done{color:#4CAF7D;font-weight:600}
+.tag{display:inline-block;font-size:.7rem;padding:1px 6px;border-radius:6px;border:1px solid rgba(232,237,240,.2);margin-left:6px;color:#9AA7B0}
 #log{position:fixed;bottom:0;left:0;right:0;background:#111a1e;border-top:1px solid rgba(232,237,240,.12);font-size:.72rem;color:#9AA7B0;padding:6px 10px;max-height:22vh;overflow:auto;font-family:ui-monospace,monospace}
 </style>
 </head>
 <body>
 <h1>Gallery Recovery</h1>
-<div class="sub">Read-only until you click <b>Assign</b>. Assign fills only empty galleries, never overwrites, and is one-click reversible.</div>
+<div class="sub">Read-only until you act. <b>Assign</b> only the photos you tick, to the listing you pick — it merges (never removes). Every assign &amp; unassign is logged to the Gallery Assignment Register.</div>
 <div class="bar" id="bar">Loading…</div>
+<div id="tools"></div>
 <div id="clusters"></div>
 <div id="log"></div>
 
@@ -47,8 +58,17 @@ button:disabled{opacity:.5;cursor:default}
   var sb = supabase.createClient(window.PINTAG.supabaseUrl, window.PINTAG.anonKey);
   var BUCKET = 'property-images';
   var PUB = window.PINTAG.supabaseUrl + '/storage/v1/object/public/' + BUCKET + '/';
-  var GAP_MS = 15 * 60 * 1000;             // burst gap for clustering
+  var GAP_MS = 15 * 60 * 1000;                       // burst gap for clustering
+  var OPERATOR = 'operator';
+  var ALL_PROPS = [];                                // every property (for unassign search)
+  var DRAFTS = [];                                   // draft listings (assign candidates)
+  var PARTY = {};                                    // party id -> agent name
+  var CLUSTERS = [];
   var log = function (m) { var l = document.getElementById('log'); l.innerHTML = '['+new Date().toLocaleTimeString()+'] '+m+'<br>'+l.innerHTML; };
+  function esc(s){ return (''+(s==null?'':s)).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function nameOf(u){ return (''+u).split('/').pop(); }
+  function imgsOf(p){ if(!p||!p.images) return []; try { return Array.isArray(p.images)?p.images:JSON.parse(p.images); } catch(e){ return []; } }
+  function label(d){ return d.title_en || d.title_lo || d.id; }
 
   PintagAdminAuth.protect(sb, boot);
 
@@ -75,102 +95,194 @@ button:disabled{opacity:.5;cursor:default}
     return clusters;
   }
 
-  function confidenceFromGap(ms) {                 // |cluster start − listing listed_at|
-    var min = ms / 60000;
-    if (min <= 10) return 95; if (min <= 60) return 82; if (min <= 360) return 64;
-    if (min <= 1440) return 45; if (min <= 4320) return 28; return 12;
-  }
-  function cls(c){ return c>=80?'hi':c>=50?'mid':'lo'; }
-
   async function boot() {
     try {
       document.getElementById('bar').textContent = 'Loading photos…';
+      try { var u = await sb.auth.getUser(); OPERATOR = (u.data && u.data.user && u.data.user.email) || OPERATOR; } catch(e){}
+      if (OPERATOR === 'operator' && window.PintagAdminAuth && PintagAdminAuth.ADMIN_EMAIL) OPERATOR = PintagAdminAuth.ADMIN_EMAIL;
+
       var objs = await listAllObjects();
+      ALL_PROPS = (await sb.from('properties').select('id,title_en,title_lo,district_en,property_type,managed_by_party_id,images,workflow_status')).data || [];
+      var parties = (await sb.from('parties').select('id,name_en,name_lo')).data || [];
+      parties.forEach(function (p){ PARTY[p.id] = p.name_en || p.name_lo || null; });
 
-      // draft listings + which filenames are already referenced (to skip survivors)
-      var props = (await sb.from('properties').select('id,title_en,title_lo,district_en,property_type,images,workflow_status')).data || [];
       var referenced = new Set();
-      props.forEach(function (p){ if (p.images) { try { (Array.isArray(p.images)?p.images:JSON.parse(p.images)).forEach(function(u){ var m=(''+u).split('/').pop(); if(m) referenced.add(m); }); } catch(e){} } });
-      var drafts = props.filter(function (p){ return p.workflow_status === 'draft'; });
-
-      // original listed_at + metadata from the removal log (latest per property)
-      var rl = (await sb.from('properties_removal_log').select('property_id,listed_at,title_lo,district_en,property_type').order('removed_at',{ascending:false})).data || [];
-      var meta = {}; rl.forEach(function (r){ if (!meta[r.property_id]) meta[r.property_id] = r; });
+      ALL_PROPS.forEach(function (p){ imgsOf(p).forEach(function(u){ var m=nameOf(u); if(m) referenced.add(m); }); });
+      DRAFTS = ALL_PROPS.filter(function (p){ return p.workflow_status === 'draft'; });
 
       var orphans = objs.filter(function (o){ return !referenced.has(o.name); });
-      var clusters = clusterByTime(orphans);
+      CLUSTERS = clusterByTime(orphans);
+      CLUSTERS.forEach(function (c, i){ c.id = c.files[0].name; c._n = i+1; c.remaining = c.files.slice(); });
 
-      document.getElementById('bar').innerHTML =
-        '<b>'+clusters.length+'</b> clusters · <b>'+orphans.length+'</b> orphan photos · <b>'+drafts.length+'</b> draft listings to fill';
-      render(clusters, drafts, meta);
-      log('Loaded '+objs.length+' objects, '+orphans.length+' orphans → '+clusters.length+' clusters. Read-only until you Assign.');
+      renderTools();
+      renderClusters();
+      refreshCounts(objs.length, orphans.length);
+      log('Loaded '+objs.length+' objects, '+orphans.length+' orphans → '+CLUSTERS.length+' clusters. Read-only until you Assign.');
     } catch (e) { document.getElementById('bar').textContent = 'Error: ' + (e.message||e); log('ERROR '+(e.message||e)); }
   }
 
-  // listed_at did not survive (null for all 91), so there is no time signal to
-  // auto-rank cluster→listing. The operator matches by the RECOVERED TITLE
-  // instead: each cluster has a search box over all draft listings (English
-  // title, Lao title, district, type). Read-only until Assign.
-  function render(clusters, drafts, meta) {
+  function refreshCounts(total, orphans) {
+    var remaining = CLUSTERS.filter(function(c){ return c.remaining.length; }).length;
+    document.getElementById('bar').innerHTML =
+      '<b>'+remaining+'</b> clusters left · <b>'+DRAFTS.length+'</b> draft listings · logged to Gallery Assignment Register';
+  }
+
+  // ───────────────────────── CLUSTERS (assign) ─────────────────────────
+  function renderClusters() {
     var host = document.getElementById('clusters'); host.innerHTML = '';
-    clusters.forEach(function (c, i) {
-      var card = document.createElement('div'); card.className = 'card'; card.id = 'c'+i;
-      card.innerHTML =
-        '<div class="chd"><img class="cover" loading="lazy" src="'+PUB+c.files[0].name+'">'+
-        '<div><div><b>Cluster #'+(i+1)+'</b> · '+c.files.length+' photos</div>'+
-        '<div class="meta">'+new Date(c.start).toLocaleString()+' → '+new Date(c.end).toLocaleTimeString()+'</div>'+
-        '<div class="why">Grouped by upload burst (≤15 min apart), '+c.files.length+' photos in one session</div></div></div>'+
-        '<div class="gallery">'+c.files.map(function(f){ return '<img loading="lazy" src="'+PUB+f.name+'">'; }).join('')+'</div>'+
-        '<input class="search" style="width:100%;padding:8px;margin:8px 0 4px;box-sizing:border-box" '+
-          'placeholder="Search the matching listing by recovered title (EN or Lao) or district…">'+
-        '<div class="cands"></div>';
-      host.appendChild(card);
-      var input = card.querySelector('.search');
-      var cd = card.querySelector('.cands');
-      function refresh() {
-        var q = (input.value || '').trim().toLowerCase();
-        cd.innerHTML = '';
-        if (!q) { cd.innerHTML = '<div class="why">Type part of the recovered title (English or Lao) or the district to find the listing these photos belong to.</div>'; return; }
-        var matches = drafts.filter(function (d) {
-          return ((d.title_en||'')+' '+(d.title_lo||'')+' '+(d.district_en||'')+' '+(d.property_type||'')).toLowerCase().indexOf(q) >= 0;
-        }).slice(0, 12);
-        if (!matches.length) { cd.innerHTML = '<div class="why">No match — try fewer words.</div>'; return; }
-        matches.forEach(function (d) {
-          var row = document.createElement('div'); row.className = 'cand';
-          row.innerHTML = '<div><div class="t">'+(d.title_en||d.title_lo||'(untitled)')+'</div>'+
-            '<div class="d">'+((d.title_en && d.title_lo) ? d.title_lo+' · ' : '')+(d.district_en||'?')+' · '+(d.property_type||'?')+
-            (d.images ? ' · ⚠ already has photos' : '')+'</div></div>';
-          var btn = document.createElement('button'); btn.textContent = 'Assign';
-          if (d.images) { btn.disabled = true; btn.title = 'already has photos — skipped'; }
-          btn.addEventListener('click', function () { assign(c, d, i, btn); });
-          row.appendChild(btn); cd.appendChild(row);
-        });
-      }
-      input.addEventListener('input', refresh);
-      refresh();
+    CLUSTERS.forEach(function (c) {
+      var card = document.createElement('div'); card.className = 'card'; host.appendChild(card);
+      c._card = card; fillCard(c);
     });
   }
 
-  async function assign(cluster, draft, idx, btn) {
-    if (!confirm('Assign '+cluster.files.length+' photos to:\n'+(draft.title_en||draft.title_lo||draft.id)+' ?\n\n(Fills only if this listing has no photos yet.)')) return;
+  function photoItem(f) {
+    return '<label class="photo"><input type="checkbox" data-name="'+esc(f.name)+'" checked>'+
+           '<img loading="lazy" src="'+PUB+esc(f.name)+'"></label>';
+  }
+
+  function fillCard(c) {
+    var card = c._card, files = c.remaining;
+    if (!files.length) { card.innerHTML = '<div class="done">✅ Cluster #'+c._n+' fully assigned.</div>'; return; }
+    card.innerHTML =
+      '<div class="chd"><img class="cover" loading="lazy" src="'+PUB+esc(files[0].name)+'">'+
+      '<div><div><b>Cluster #'+c._n+'</b> · '+files.length+' photo(s) remaining</div>'+
+      '<div class="meta">'+new Date(c.start).toLocaleString()+' → '+new Date(c.end).toLocaleTimeString()+'</div>'+
+      '<div class="why">Upload burst (≤15 min apart). Tick only the photos that belong, then pick the listing.</div></div></div>'+
+      '<div class="ctrls"><button class="ghost tsel">Select all</button><button class="ghost tnone">Select none</button>'+
+        '<span class="cfl">Confidence:</span><select class="confsel"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select></div>'+
+      '<div class="gallery">'+files.map(photoItem).join('')+'</div>'+
+      '<input class="search" placeholder="Search matching listing by recovered title (EN / Lao) or district…">'+
+      '<div class="cands"></div>';
+    var gal = card.querySelector('.gallery');
+    card.querySelector('.tsel').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=true; }); };
+    card.querySelector('.tnone').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=false; }); };
+    var input = card.querySelector('.search'), cd = card.querySelector('.cands'), conf = card.querySelector('.confsel');
+    input.oninput = function(){ renderCands(c, card, cd, input.value, conf); };
+    renderCands(c, card, cd, '', conf);
+  }
+
+  function hay(d){ return ((d.title_en||'')+' '+(d.title_lo||'')+' '+(d.district_en||'')+' '+(d.property_type||'')).toLowerCase(); }
+
+  function renderCands(c, card, cd, q, conf) {
+    q = (q||'').trim().toLowerCase(); cd.innerHTML = '';
+    if (!q) { cd.innerHTML = '<div class="why">Type part of the recovered title (English or Lao) or the district to find the listing these photos belong to.</div>'; return; }
+    var matches = DRAFTS.filter(function(d){ return hay(d).indexOf(q) >= 0; }).slice(0, 12);
+    if (!matches.length) { cd.innerHTML = '<div class="why">No match — try fewer words.</div>'; return; }
+    matches.forEach(function (d) {
+      var agent = d.managed_by_party_id && PARTY[d.managed_by_party_id];
+      var have = imgsOf(d).length;
+      var row = document.createElement('div'); row.className = 'cand';
+      row.innerHTML = '<div><div class="t">'+esc(d.title_en||d.title_lo||'(untitled)')+'</div>'+
+        '<div class="d">'+(d.title_en && d.title_lo ? esc(d.title_lo)+' · ' : '')+esc(d.district_en||'?')+' · '+esc(d.property_type||'?')+
+        (agent ? ' · 👤 '+esc(agent) : '')+
+        (have ? '<span class="tag">has '+have+' photo(s)</span>' : '')+'</div></div>';
+      var btn = document.createElement('button'); btn.textContent = 'Assign selected';
+      btn.onclick = function () {
+        var names = [].map.call(card.querySelectorAll('.gallery input:checked'), function(x){ return x.getAttribute('data-name'); });
+        assign(c, d, conf.value, names, btn);
+      };
+      row.appendChild(btn); cd.appendChild(row);
+    });
+  }
+
+  async function assign(c, draft, confidence, names, btn) {
+    if (!names.length) { alert('Tick at least one photo first.'); return; }
+    if (!confirm('Assign '+names.length+' photo(s) to:\n'+label(draft)+'\nConfidence: '+confidence.toUpperCase()+'\n\n(Merged into the gallery — never removes existing photos.)')) return;
     btn.disabled = true;
-    var urls = cluster.files.map(function (f){ return PUB + f.name; });
-    // fill-only-if-empty: only update rows whose images is currently NULL
-    var r = await sb.from('properties').update({ images: urls }).eq('id', draft.id).is('images', null).select('id');
+    var addUrls = names.map(function(n){ return PUB + n; });
+    // merge (append, dedup) — never removes existing photos
+    var cur = imgsOf(draft);
+    var have = new Set(cur.map(nameOf));
+    var merged = cur.concat(addUrls.filter(function(u){ return !have.has(nameOf(u)); }));
+    var r = await sb.from('properties').update({ images: merged }).eq('id', draft.id).select('id');
     if (r.error) { btn.disabled = false; log('ERROR assign '+r.error.message); alert('Failed: '+r.error.message); return; }
-    if (!r.data || !r.data.length) { btn.disabled = false; log('SKIPPED — listing already has photos (not overwritten): '+draft.id); alert('Not assigned — that listing already has photos. Nothing was overwritten.'); return; }
-    log('ASSIGNED cluster #'+(idx+1)+' ('+urls.length+' photos) → '+draft.id);
-    var card = document.getElementById('c'+idx);
-    card.querySelector('.cands').innerHTML =
-      '<div class="done">✅ Assigned '+urls.length+' photos to '+(draft.title_en||draft.title_lo||draft.id)+'</div>';
-    var undo = document.createElement('button'); undo.className='ghost'; undo.textContent='Undo';
-    undo.onclick = async function () {
-      if (!confirm('Undo — clear the photos just assigned to this listing?')) return;
-      var u = await sb.from('properties').update({ images: null }).eq('id', draft.id).select('id');
-      if (u.error) { alert('Undo failed: '+u.error.message); return; }
-      log('ROLLED BACK '+draft.id); location.reload();
+    // append-only Gallery Assignment Register
+    var reg = await sb.from('gallery_assignments').insert([{
+      op:'assign', listing_id:draft.id, cluster_id:c.id, photo_paths:names,
+      photo_count:names.length, confidence:confidence, method:'manual', operator:OPERATOR
+    }]);
+    if (reg.error) log('WARN register insert failed: '+reg.error.message);
+    draft.images = merged;                                   // keep local copy in sync
+    c.remaining = c.remaining.filter(function(f){ return names.indexOf(f.name) < 0; });
+    log('ASSIGNED '+names.length+' photo(s) → '+label(draft)+' ['+confidence+'] (cluster #'+c._n+')');
+    fillCard(c); refreshCounts();
+  }
+
+  // ───────────────────────── UNASSIGN + low-confidence ─────────────────────────
+  function renderTools() {
+    var host = document.getElementById('tools');
+    host.innerHTML =
+      '<div class="card"><b>Correct / un-assign a listing</b>'+
+      '<div class="why">Search any listing that already has photos, remove the wrong ones, and they return to the unassigned pool. Every removal is logged.</div>'+
+      '<input class="usearch" placeholder="Search a listing with photos by title / district…">'+
+      '<div class="uresults"></div>'+
+      '<div style="margin-top:10px"><button class="ghost lowbtn">Review LOW-confidence assignments</button><div class="lowlist"></div></div>'+
+      '</div>';
+    var us = host.querySelector('.usearch'), ur = host.querySelector('.uresults');
+    us.oninput = function(){ renderUResults(us.value, ur); };
+    host.querySelector('.lowbtn').onclick = function(){ loadLowConfidence(host.querySelector('.lowlist')); };
+  }
+
+  function renderUResults(q, ur) {
+    q = (q||'').trim().toLowerCase(); ur.innerHTML = '';
+    if (!q) return;
+    var matches = ALL_PROPS.filter(function(p){ return imgsOf(p).length && hay(p).indexOf(q) >= 0; }).slice(0, 12);
+    if (!matches.length) { ur.innerHTML = '<div class="why">No listing with photos matches.</div>'; return; }
+    matches.forEach(function(p){
+      var row = document.createElement('div'); row.className = 'cand';
+      row.innerHTML = '<div><div class="t">'+esc(label(p))+'</div><div class="d">'+esc(p.district_en||'?')+' · '+imgsOf(p).length+' photo(s)</div></div>';
+      var btn = document.createElement('button'); btn.className='ghost'; btn.textContent = 'Open';
+      btn.onclick = function(){ openUnassign(p, row); };
+      row.appendChild(btn); ur.appendChild(row);
+    });
+  }
+
+  function openUnassign(p, anchor) {
+    var box = document.createElement('div'); box.className = 'card';
+    var urls = imgsOf(p);
+    box.innerHTML = '<b>'+esc(label(p))+'</b> <span class="meta">'+urls.length+' photo(s)</span>'+
+      '<div class="gallery">'+urls.map(function(u){ return '<label class="uphoto"><input type="checkbox" data-name="'+esc(nameOf(u))+'"><img loading="lazy" src="'+esc(u)+'"></label>'; }).join('')+'</div>'+
+      '<div class="ctrls"><button class="danger rmsel">Remove selected → pool</button><button class="ghost rmall">Remove entire gallery</button></div>';
+    anchor.parentNode.insertBefore(box, anchor.nextSibling);
+    box.querySelector('.rmsel').onclick = function(){
+      var names = [].map.call(box.querySelectorAll('.gallery input:checked'), function(x){ return x.getAttribute('data-name'); });
+      if (!names.length) { alert('Tick the photos to remove.'); return; }
+      unassign(p, names, false);
     };
-    card.querySelector('.cands').appendChild(undo);
+    box.querySelector('.rmall').onclick = function(){ unassign(p, urls.map(nameOf), true); };
+  }
+
+  async function unassign(p, removeNames, all) {
+    if (!confirm('Remove '+removeNames.length+' photo(s) from:\n'+label(p)+'\n\nThey return to the unassigned pool. This is logged.')) return;
+    var cur = imgsOf(p);
+    var keep = all ? [] : cur.filter(function(u){ return removeNames.indexOf(nameOf(u)) < 0; });
+    var r = await sb.from('properties').update({ images: keep.length ? keep : null }).eq('id', p.id).select('id');
+    if (r.error) { alert('Failed: '+r.error.message); log('ERROR unassign '+r.error.message); return; }
+    var reg = await sb.from('gallery_assignments').insert([{
+      op:'unassign', listing_id:p.id, photo_paths:removeNames, photo_count:removeNames.length, method:'manual', operator:OPERATOR
+    }]);
+    if (reg.error) log('WARN register insert failed: '+reg.error.message);
+    log('UNASSIGNED '+removeNames.length+' photo(s) from '+label(p)+' → pool');
+    alert('Removed. Reloading so the photos return to the pool.');
+    location.reload();
+  }
+
+  async function loadLowConfidence(host) {
+    host.innerHTML = '<div class="why">Loading…</div>';
+    var r = await sb.from('gallery_assignments').select('listing_id,photo_count,created_at').eq('op','assign').eq('confidence','low').order('created_at',{ascending:false});
+    if (r.error) { host.innerHTML = '<div class="why">Error: '+esc(r.error.message)+'</div>'; return; }
+    var rows = r.data || [];
+    if (!rows.length) { host.innerHTML = '<div class="why">No low-confidence assignments.</div>'; return; }
+    var byId = {}; ALL_PROPS.forEach(function(p){ byId[p.id]=p; });
+    host.innerHTML = '<div class="why">'+rows.length+' low-confidence assignment(s) — revisit and re-confirm or correct via the search above.</div>';
+    rows.forEach(function(x){
+      var p = byId[x.listing_id];
+      var row = document.createElement('div'); row.className='cand';
+      row.innerHTML = '<div><div class="t">'+esc(p?label(p):x.listing_id)+'</div>'+
+        '<div class="d">'+x.photo_count+' photo(s) · '+new Date(x.created_at).toLocaleString()+'</div></div>';
+      host.appendChild(row);
+    });
   }
 })();
 </script>
