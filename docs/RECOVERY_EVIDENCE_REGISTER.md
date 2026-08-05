@@ -72,7 +72,7 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
 |---|--------|-----------------------|------------|---------------|---------------|-----------------------|--------|
 | 1 | **`properties_removal_log`** | `id`, `title_lo`, `property_type`, `district_en`, `transaction_type`; also `status_at_removal` (orig status), `listed_at` (orig `created_at`) | High | ✅ Yes (prod) | Auto | **91/91** (defines the recoverable set) | ✅ 5 fields applied (P8); `status_at_removal` + `listed_at` still available |
 | 2 | **Storage `property-images` (files)** | the edited photo **assets** themselves (cover + full galleries) — *files only, not the listing link* | High (files exist) | ✅ Yes (prod) | Auto (files) | **~100% of files physically exist** | ⬜ confirm count via storage query; **back up first (Priority Zero)** |
-| 3 | **OG-worker capture** via Wayback / OG / WhatsApp / FB link-preview | `slug`, `title`(per lang), `price`(formatted), `currency`, `district`, description **snippet**, `market_status`, **cover image (`images[0]`) only** | High (per captured listing) | ✅ Yes | Auto (parse OG tags) | **= W/91** (W = # slugs archived; unknown until CDX) | ⬜ pending Wayback CDX run |
+| 3 | ~~**OG-worker capture via Wayback**~~ | ~~cover + OG price/title/district~~ | — | — | — | **0/91** | ❌ **RULED OUT 2026-08-05 — Wayback has NO coverage.** CDX empty for `pintag.io*`, `pintag.io/listing*`, `www.pintag.io*`, `pintag-cyrora.github.io*` (availability API rate-limited, but CDX prefix enumeration is authoritative). 2026 site behind Cloudflare, never crawled. No cover, no OG price from Wayback. |
 | 4 | **Facebook source posts** | **full image gallery (≤10)**, title, description, `price_display`, **poster = owner/agent** | High (if post matched) | ✅ Yes | Manual/semi-auto (FB→listing link was not stored) | unknown subset (FB-originated + still live) | ⬜ pending; **only authoritative full-gallery source**. ⚠️ unauthenticated fetch exposes **≤1 photo** — the full gallery sits behind FB's login wall, so it needs authenticated access (more manual) |
 | 5 | **`lead_events`** (survived — `listing_id`/`agent_id` have **no FK**) | **agent only**, per listing via `lead_events.agent_id` → **`parties.id` OR `parties.auth_user_id`** (agent_id is **mixed** — always use an OR join) | Medium–High | ✅ Yes (prod) | Auto | **16/91** — Keomany 10 (operator/self), Tik 3 (**`facebook_url`**), Pee 2, Sivone 1; **only the 3 Tik listings have a FB source**. Other **75 = agent relationship Pending Evidence**, NOT orphans | ✅ measured 2026-08-05; **`leads` CASCADED — see below** |
 | 6 | **`parties` / `contacts` / `owners` tables** | agent/owner/contact **identities**: name, phone, WhatsApp, email, party relationship | High (identities intact) | ✅ Yes (prod) | Auto (identity) / Manual (per-listing link) | identities **100% present**; per-listing assignment partial | ✅ tables survived; link via #5/#4 |
@@ -135,10 +135,11 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
 ## External recovery queue (internal audit CLOSED 2026-08-05 — nothing left inside the DB)
 - **`listings` table = EMPTY (0 rows)** — inspected; created out-of-band, never populated. Ruled out.
 - **`unit_types` = EMPTY (0 rows)** — cascaded. Ruled out.
-- All internal sources exhausted. Remaining recovery is **external only**:
-  1. **Wayback CDX** — cover image (`og:image`) + OG-formatted **price**/title/district. The only automatic cover + price source.
-  2. **Facebook** — full galleries (≤10) + price + owner/agent. Start with the **3 Tik listings** (only ones with a `facebook_url`).
-  3. **Storage timestamp clustering** — Needs-Review gallery grouping (1,230 orphaned files).
+- **Wayback = NO coverage** (CDX empty across all hosts, 2026-08-05). **RULED OUT** — no cover, no OG price.
+- Remaining external recovery, in priority order:
+  1. **Storage gallery reconstruction — PRIMARY photo path.** ~1,230 image files physically survive in `property-images`. Reconnect clusters → listings via `gallery-recovery` (timestamp-burst clustering + operator assign). ⚠️ **Back up the 1,230 files first (Priority Zero) — they are the only surviving copy.**
+  2. **Facebook — price + photo cross-check.** Full galleries + price + owner/agent. Start with the **3 Tik listings** (`facebook_url`); others need locating posts by title (manual).
+  3. **Price has no automatic source left** — Facebook (manual) only.
 
 ## How this maps to the recovery priorities
 - **P1 Edited galleries:** source #4 (authoritative full set) → else #8 (Needs Review) → else #3 (cover only).
