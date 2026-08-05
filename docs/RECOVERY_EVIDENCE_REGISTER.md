@@ -4,9 +4,10 @@
 the 91 listings deleted in the 2026-08-03 incident. No recovery `UPDATE` is
 proposed except against a source recorded here with its confidence and coverage.
 
-**Last updated:** 2026-08-05 · **Status:** internal audit — **title recovery COMPLETE**;
-**final internal price audit pending**; then external recovery (Wayback → Facebook →
-Storage clustering). DR system built + applied to production. No `UPDATE`s written yet.
+**Last updated:** 2026-08-05 · **Status:** **INTERNAL AUDIT CLOSED** — titles COMPLETE
+(91/91 Lao, 73/91 English); price **0/91 internal → external-only**; photos/owner
+external-only. Now in **external recovery** (Wayback → Facebook → Storage clustering).
+DR system built + applied to production. No `UPDATE`s written yet.
 
 > **The 91 kept their ORIGINAL UUIDs.** The re-created draft rows share the same
 > `id` as their `properties_removal_log` entry (measured: **91/91 match**), so every
@@ -37,7 +38,12 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
 - **Owners:** **12 owner records, 100% WhatsApp-reachable**, 0 email, 0 party-linked; **0 of 91 drafts** retain `owner_id`; **Beta Xin is a duplicate**. Identities survived — owner→listing relationships lost (outreach only).
 - **Contacts / parties:** high-reference identities survived. What was lost is the **person↔property relationship**, not the people.
 - **Photos:** **0/91 galleries** attached; **no surviving DB link** photo→listing — the biggest remaining technical blocker.
-- **Price:** **0/91 internal so far** — final exhaustive internal price audit in progress; if it confirms none, price is external-only (Wayback OG / Facebook).
+- **Price:** **0/91 internal — CONFIRMED external-only (audit closed 2026-08-05).**
+  Exhaustive search (scalar price cols + every JSONB payload + schema-wide name scan)
+  found no per-listing price: the 91's `rental_terms` are all `{"version":1}`; every
+  price/deposit value (200 USD, 100 USD) belongs to **non-91 survivors**; JSONB hits
+  were aggregates (`asking_price: null`) or sort-values (`price_asc`); `listings` and
+  `unit_types` tables are **empty (0 rows)**. Price → **Wayback OG / Facebook only**.
 
 ### Internal metadata backbone (HIGH-confidence, UUID-joined, zero external/manual)
 | Field | Source | Coverage | Confidence |
@@ -126,10 +132,13 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
   out-of-band in production. It is therefore an unknown that must be inspected
   directly: it could hold legacy listing data (a real source) or be empty/unused.
 
-## Still to inspect (may add rows)
-- **`listings` table** — undefined in repo (see above); inspect for surviving rows (`Q-REF-2`). **High priority** — potential legacy source.
-- Any table that surfaces in the schema-wide `property-images` string scan (`I6`).
-- Wayback **CDX coverage** (fixes source #3's `W`) and any **Facebook** post inventory (fixes #4).
+## External recovery queue (internal audit CLOSED 2026-08-05 — nothing left inside the DB)
+- **`listings` table = EMPTY (0 rows)** — inspected; created out-of-band, never populated. Ruled out.
+- **`unit_types` = EMPTY (0 rows)** — cascaded. Ruled out.
+- All internal sources exhausted. Remaining recovery is **external only**:
+  1. **Wayback CDX** — cover image (`og:image`) + OG-formatted **price**/title/district. The only automatic cover + price source.
+  2. **Facebook** — full galleries (≤10) + price + owner/agent. Start with the **3 Tik listings** (only ones with a `facebook_url`).
+  3. **Storage timestamp clustering** — Needs-Review gallery grouping (1,230 orphaned files).
 
 ## How this maps to the recovery priorities
 - **P1 Edited galleries:** source #4 (authoritative full set) → else #8 (Needs Review) → else #3 (cover only).
