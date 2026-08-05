@@ -32,7 +32,7 @@ Infrastructure ✅ *(one caveat: verified backup pending — DR built, first run
 - **Production-ready listings:** **0 / ~30–40** target
 - **Photos:** 0 galleries attached (Storage pool intact but unlinked; sources: Wayback cover / Facebook gallery)
 - **Agent:** **Keomany's 10 = the operator's own listings → self-restore** (strong Phase-1 contributors; excluded from outreach ranking). External agents **Tik 3** (Facebook), **Pee 2**, **Sivone 1** = 6 via outreach. Other **79 = agent relationship currently unknown (Pending Evidence)**.
-- **Owner (now the priority track):** owner→listing link **destroyed** (owner_id was on the deleted rows; removal_log has no owner; leads cascaded). `owners` survives only as a **contact list** — recovery is **owner outreach** (owner identifies + re-supplies their listings). ~**0 of 91** carry an owner link today.
+- **Owner (priority track):** **12 owner records, 100% WhatsApp-reachable** (0 email, 0 party-linked); only **1 of 91** retains an `owner_id`; Beta Xin is a duplicate. Link destroyed — recovery is **owner outreach** (owner identifies + re-supplies their listings). Identities survived; relationships lost.
 - **Contact:** `leads` CASCADED — manual / Facebook.
 
 > **A listing becomes a *true orphan* only after ALL authoritative sources are exhausted:** Wayback · Facebook · Storage metadata · `properties_removal_log` · the `listings` table · every Recovery Evidence Register source. Until then it stays **Pending Evidence**, never "orphan."
@@ -42,13 +42,11 @@ Infrastructure ✅ *(one caveat: verified backup pending — DR built, first run
 ### Launch Readiness — 🔴 blocked by catalogue only
 Platform ✅ **+** a premium Phase-1 catalogue ⬜. The **sole remaining gate is content** (plus the verified backup).
 
-**Largest remaining launch blocker:** **79 of 91 have an unknown agent relationship (Pending Evidence)** — recovery path TBD until Wayback/Facebook/Storage are checked (not orphans yet). Fastest *confirmed* wins: the **12–16 agent-linked listings** via **4 agent contacts**. 0 galleries attached yet.
-**Highest-impact next action (run in PARALLEL — complementary):**
-  (a) **Operator self-restores own 10** (Keomany) — fastest Phase-1 fill, no outreach.
-  (b) **Owner recovery** — run forensic Report 8, then contact owners to identify + re-supply their listings among the 79 (owners hold their own photos + facts).
-  (c) **E9 Wayback CDX** for the 79 — covers + core presentation.
-  (d) Light agent outreach: Tik (3, Facebook), Pee (2), Sivone (1). (Plus: first verified backup, parallel.)
-**Closer than yesterday?** **Yes (measurement).** First hard evidence in: **agent-recoverability = 12/91**, and the single highest-ROI action is now concrete — one WhatsApp to Keomany recovers 10. Production-ready count is still 0, but the fastest path to the first ~12–16 is identified.
+**Largest remaining launch blocker (CONFIRMED):** the **photo→listing relationship** — 0 galleries attached and **no surviving DB link** (`properties.images`/`unit_types.images` were on the deleted rows; storage filenames carry no UUID; removal_log has no images). Reconnection only via **Wayback covers + owner/agent outreach**.
+**Single highest-impact TECHNICAL action:** run **E9 Wayback CDX** — the only automatic photo→listing (cover) source; sets the recovery ceiling for the 79.
+**Single highest-impact BUSINESS action:** **contact the 12 reachable owners** (100% WhatsApp) to identify + re-supply their galleries — the largest recoverable-gallery pool.
+*In parallel:* operator self-restores own 10 (Keomany); external-agent outreach Tik (3, Facebook) / Pee (2) / Sivone (1); first verified backup.
+**Closer than yesterday? Yes** — owner forensics complete (**12 reachable owners** as an outreach lever; identities survived), and photo→listing is now confirmed as THE technical blocker. Confirmed credible path holds at **12/91 (~13%)**; owner outreach + Wayback are the levers to grow it.
 
 ---
 

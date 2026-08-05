@@ -18,6 +18,20 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
 
 ---
 
+## Production measurements & current assessment (2026-08-05)
+- **Agents:** 12/91 listings have a recoverable agent — **10 = operator (Keomany) self-restore**, **6 external** (Tik 3, Pee 2, Sivone 1); 79 agent-unknown.
+- **Owners:** **12 owner records, 100% WhatsApp-reachable**, 0 email, 0 party-linked; only **1 draft** retains `owner_id`; **Beta Xin is a duplicate**. Identities survived — owner→listing relationships lost.
+- **Contacts / parties:** high-reference identities survived (Keomany, Pee Malaisone, Sivone, Daeng Xayalert, Mo Siliphong, Viengkhone Phomthavong). What was lost is the **person↔property relationship**, not the people.
+- **Photos:** **no surviving DB link** photo→listing — the biggest technical blocker.
+
+**Executive assessment**
+- **Listings with ≥1 credible recovery path:** **12 / 91 (~13%) confirmed**; **79 pending** (Wayback covers + owner/agent outreach); **0 exhausted**.
+- **Biggest blocker to reopening:** the **photo→listing relationship** (0 galleries attached; no surviving DB link).
+- **Highest-impact technical action:** run **E9 Wayback CDX** — the only automatic cover source.
+- **Highest-impact business action:** **contact the 12 reachable owners** to identify + re-supply galleries.
+
+---
+
 ## Register
 
 | # | Source | Fields it can recover | Confidence | Authoritative | Auto / Manual | Est. coverage (of 91) | Status |
