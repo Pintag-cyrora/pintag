@@ -88,7 +88,7 @@ button:disabled{opacity:.5;cursor:default}
       var objs = await listAllObjects();
 
       // draft listings + which filenames are already referenced (to skip survivors)
-      var props = (await sb.from('properties').select('id,title_lo,district_en,property_type,images,workflow_status')).data || [];
+      var props = (await sb.from('properties').select('id,title_en,title_lo,district_en,property_type,images,workflow_status')).data || [];
       var referenced = new Set();
       props.forEach(function (p){ if (p.images) { try { (Array.isArray(p.images)?p.images:JSON.parse(p.images)).forEach(function(u){ var m=(''+u).split('/').pop(); if(m) referenced.add(m); }); } catch(e){} } });
       var drafts = props.filter(function (p){ return p.workflow_status === 'draft'; });
@@ -107,42 +107,52 @@ button:disabled{opacity:.5;cursor:default}
     } catch (e) { document.getElementById('bar').textContent = 'Error: ' + (e.message||e); log('ERROR '+(e.message||e)); }
   }
 
+  // listed_at did not survive (null for all 91), so there is no time signal to
+  // auto-rank cluster→listing. The operator matches by the RECOVERED TITLE
+  // instead: each cluster has a search box over all draft listings (English
+  // title, Lao title, district, type). Read-only until Assign.
   function render(clusters, drafts, meta) {
     var host = document.getElementById('clusters'); host.innerHTML = '';
     clusters.forEach(function (c, i) {
-      var start = new Date(c.start).getTime();
-      var ranked = drafts.map(function (d) {
-        var la = meta[d.id] && meta[d.id].listed_at ? new Date(meta[d.id].listed_at).getTime() : null;
-        var conf = la !== null ? confidenceFromGap(Math.abs(start - la)) : 8;
-        return { d: d, conf: conf, la: la };
-      }).sort(function (a,b){ return b.conf - a.conf; }).slice(0, 3);
-
       var card = document.createElement('div'); card.className = 'card'; card.id = 'c'+i;
-      var cover = PUB + c.files[0].name;
       card.innerHTML =
-        '<div class="chd"><img class="cover" loading="lazy" src="'+cover+'">'+
+        '<div class="chd"><img class="cover" loading="lazy" src="'+PUB+c.files[0].name+'">'+
         '<div><div><b>Cluster #'+(i+1)+'</b> · '+c.files.length+' photos</div>'+
         '<div class="meta">'+new Date(c.start).toLocaleString()+' → '+new Date(c.end).toLocaleTimeString()+'</div>'+
         '<div class="why">Grouped by upload burst (≤15 min apart), '+c.files.length+' photos in one session</div></div></div>'+
         '<div class="gallery">'+c.files.map(function(f){ return '<img loading="lazy" src="'+PUB+f.name+'">'; }).join('')+'</div>'+
+        '<input class="search" style="width:100%;padding:8px;margin:8px 0 4px;box-sizing:border-box" '+
+          'placeholder="Search the matching listing by recovered title (EN or Lao) or district…">'+
         '<div class="cands"></div>';
-      var cd = card.querySelector('.cands');
-      ranked.forEach(function (r) {
-        var row = document.createElement('div'); row.className = 'cand';
-        row.innerHTML = '<div><div class="t">'+(r.d.title_lo||'(untitled)')+'</div>'+
-          '<div class="d">'+(r.d.district_en||'?')+' · '+(r.d.property_type||'?')+
-          (r.la?(' · listed '+new Date(r.la).toLocaleDateString()):'')+'</div></div>'+
-          '<div class="conf '+cls(r.conf)+'">'+r.conf+'%</div>';
-        var btn = document.createElement('button'); btn.textContent = 'Assign';
-        btn.onclick = function () { assign(c, r.d, i, btn); };
-        row.appendChild(btn); cd.appendChild(row);
-      });
       host.appendChild(card);
+      var input = card.querySelector('.search');
+      var cd = card.querySelector('.cands');
+      function refresh() {
+        var q = (input.value || '').trim().toLowerCase();
+        cd.innerHTML = '';
+        if (!q) { cd.innerHTML = '<div class="why">Type part of the recovered title (English or Lao) or the district to find the listing these photos belong to.</div>'; return; }
+        var matches = drafts.filter(function (d) {
+          return ((d.title_en||'')+' '+(d.title_lo||'')+' '+(d.district_en||'')+' '+(d.property_type||'')).toLowerCase().indexOf(q) >= 0;
+        }).slice(0, 12);
+        if (!matches.length) { cd.innerHTML = '<div class="why">No match — try fewer words.</div>'; return; }
+        matches.forEach(function (d) {
+          var row = document.createElement('div'); row.className = 'cand';
+          row.innerHTML = '<div><div class="t">'+(d.title_en||d.title_lo||'(untitled)')+'</div>'+
+            '<div class="d">'+((d.title_en && d.title_lo) ? d.title_lo+' · ' : '')+(d.district_en||'?')+' · '+(d.property_type||'?')+
+            (d.images ? ' · ⚠ already has photos' : '')+'</div></div>';
+          var btn = document.createElement('button'); btn.textContent = 'Assign';
+          if (d.images) { btn.disabled = true; btn.title = 'already has photos — skipped'; }
+          btn.addEventListener('click', function () { assign(c, d, i, btn); });
+          row.appendChild(btn); cd.appendChild(row);
+        });
+      }
+      input.addEventListener('input', refresh);
+      refresh();
     });
   }
 
   async function assign(cluster, draft, idx, btn) {
-    if (!confirm('Assign '+cluster.files.length+' photos to:\n'+(draft.title_lo||draft.id)+' ?\n\n(Fills only if this listing has no photos yet.)')) return;
+    if (!confirm('Assign '+cluster.files.length+' photos to:\n'+(draft.title_en||draft.title_lo||draft.id)+' ?\n\n(Fills only if this listing has no photos yet.)')) return;
     btn.disabled = true;
     var urls = cluster.files.map(function (f){ return PUB + f.name; });
     // fill-only-if-empty: only update rows whose images is currently NULL
@@ -152,7 +162,7 @@ button:disabled{opacity:.5;cursor:default}
     log('ASSIGNED cluster #'+(idx+1)+' ('+urls.length+' photos) → '+draft.id);
     var card = document.getElementById('c'+idx);
     card.querySelector('.cands').innerHTML =
-      '<div class="done">✅ Assigned '+urls.length+' photos to '+(draft.title_lo||draft.id)+'</div>';
+      '<div class="done">✅ Assigned '+urls.length+' photos to '+(draft.title_en||draft.title_lo||draft.id)+'</div>';
     var undo = document.createElement('button'); undo.className='ghost'; undo.textContent='Undo';
     undo.onclick = async function () {
       if (!confirm('Undo — clear the photos just assigned to this listing?')) return;
