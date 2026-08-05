@@ -123,8 +123,11 @@ begin
     raise exception 'admin only';
   end if;
 
-  -- Live listing row (may have been deleted).
-  select true, coalesce(cardinality(p.images), 0), p.contact_id, p.owner_id
+  -- Live listing row (may have been deleted). properties.images is jsonb, so
+  -- count array elements (guarding against a non-array/null value).
+  select true,
+         coalesce(case when jsonb_typeof(p.images) = 'array' then jsonb_array_length(p.images) else 0 end, 0),
+         p.contact_id, p.owner_id
     into v_exists, v_images_live, v_contact_id, v_owner_id
   from properties p where p.id = p_listing;
   v_exists := coalesce(v_exists, false);
