@@ -964,6 +964,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script src="import-provenance.js?v=__ASSET_VERSION__"></script>
+<script src="listing-provenance.js?v=__ASSET_VERSION__"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
@@ -3408,6 +3409,17 @@ async function saveListing(e) {
   };
 
   const editId = document.getElementById('edit-id').value;
+  const _provActor = (window.PintagAdminAuth && PintagAdminAuth.ADMIN_EMAIL) || null;
+  // Provenance: for an EDIT, capture field-level changes BEFORE the PATCH so
+  // the fetched values are the true "old" values. Append-only, best-effort —
+  // must never block the save.
+  if (editId && window.PintagProvenance) {
+    try {
+      await window.PintagProvenance.captureEdit(
+        (m, p, b) => sbApi(m, p, b), editId, body, _provActor
+      );
+    } catch (provErr) { console.error('[provenance]', provErr); }
+  }
   let result;
   try {
     if (editId) {
@@ -3440,24 +3452,41 @@ async function saveListing(e) {
       msg.style.display = 'block';
       return;
     }
-    // Provenance v2: for a NEW listing that came from Smart Import, persist a
-    // permanent, delete-safe recovery trail. Best-effort — never blocks a save.
-    if (!editId && window.PintagImportProvenance && window._lastImportContext) {
-      try {
-        const _ctx = window._lastImportContext;
-        const _imgs = (body.images || []).map((u, i) => ({
-          url: u, path: String(u).split('/').pop(),
-          original: (_ctx.imageMap || {})[u] || null, order: i
-        }));
-        await window.PintagImportProvenance.record(
-          (t, rows) => sbApi('POST', t, rows),
-          { listingId: propertyId, slug: body.slug || slug, status: workflowStatus,
-            sourcePlatform: _ctx.sourcePlatform, sourceUrl: _ctx.sourceUrl,
-            aiModel: _ctx.aiModel, promptVersion: _ctx.promptVersion, success: true,
-            rawPayload: _ctx.rawPayload, images: _imgs }
-        );
-      } catch (provErr) { console.error('[provenance]', provErr); }
-      window._lastImportContext = null;
+    // Provenance v2: for a NEW listing, persist a permanent, delete-safe
+    // recovery trail. Best-effort — never blocks a save.
+    if (!editId) {
+      let _importId = null;
+      // Import provenance (source URL + AI + full raw payload + image map)
+      // only when the listing came from Smart Import.
+      if (window.PintagImportProvenance && window._lastImportContext) {
+        try {
+          const _ctx = window._lastImportContext;
+          const _imgs = (body.images || []).map((u, i) => ({
+            url: u, path: String(u).split('/').pop(),
+            original: (_ctx.imageMap || {})[u] || null, order: i
+          }));
+          _importId = await window.PintagImportProvenance.record(
+            (t, rows) => sbApi('POST', t, rows),
+            { listingId: propertyId, slug: body.slug || slug, status: workflowStatus,
+              sourcePlatform: _ctx.sourcePlatform, sourceUrl: _ctx.sourceUrl,
+              aiModel: _ctx.aiModel, promptVersion: _ctx.promptVersion, success: true,
+              rawPayload: _ctx.rawPayload, images: _imgs }
+          );
+        } catch (provErr) { console.error('[provenance]', provErr); }
+        window._lastImportContext = null;
+      }
+      // Lifecycle event: smart_import (linked to the Import UUID) or a plain
+      // manual listing_created — one row that opens the listing's timeline.
+      if (window.PintagProvenance) {
+        try {
+          await window.PintagProvenance.logCreated(
+            (m, p, b) => sbApi(m, p, b),
+            { listingId: propertyId, actor: _provActor, importUuid: _importId,
+              source: _importId ? 'import' : 'manual',
+              details: { slug: body.slug || slug, status: workflowStatus } }
+          );
+        } catch (provErr) { console.error('[provenance]', provErr); }
+      }
     }
   }
   btn.disabled = false;
@@ -3482,6 +3511,18 @@ async function deleteListing(id, title) {
   // Re-verify the administrator session immediately before a destructive write.
   // (RLS also enforces is_pintag_admin server-side; this is the client guard.)
   try { await requireAdminSession(); } catch (_) { return; }
+  // Provenance: record the removal BEFORE the DELETE. listing_provenance has
+  // no FK to properties, so this row survives the delete — the removal itself
+  // stays on the permanent record. Best-effort, never blocks the delete.
+  if (window.PintagProvenance) {
+    try {
+      await window.PintagProvenance.logDeleted(
+        (m, p, b) => sbApi(m, p, b),
+        { listingId: id, actor: (window.PintagAdminAuth && PintagAdminAuth.ADMIN_EMAIL) || null,
+          details: { title: title || null } }
+      );
+    } catch (provErr) { console.error('[provenance]', provErr); }
+  }
   await sbApi('DELETE', `properties?id=eq.${id}`);
   loadListings();
 }
