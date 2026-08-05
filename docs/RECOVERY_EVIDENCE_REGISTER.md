@@ -4,8 +4,15 @@
 the 91 listings deleted in the 2026-08-03 incident. No recovery `UPDATE` is
 proposed except against a source recorded here with its confidence and coverage.
 
-**Last updated:** 2026-08-05 · **Status:** investigation (recovery paused until the
-DR restore drill passes).
+**Last updated:** 2026-08-05 · **Status:** internal audit — **title recovery COMPLETE**;
+**final internal price audit pending**; then external recovery (Wayback → Facebook →
+Storage clustering). DR system built + applied to production. No `UPDATE`s written yet.
+
+> **The 91 kept their ORIGINAL UUIDs.** The re-created draft rows share the same
+> `id` as their `properties_removal_log` entry (measured: **91/91 match**), so every
+> surviving database source joins the 91 **cleanly by `properties.id`** — no
+> title/slug bridging. This is what makes the internal metadata backbone below
+> directly applicable.
 
 ## Governing principles (apply to every entry)
 1. Never overwrite existing recovered data (fill-only-when-empty).
@@ -19,16 +26,37 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
 ---
 
 ## Production measurements & current assessment (2026-08-05)
-- **Agents:** 12/91 listings have a recoverable agent — **10 = operator (Keomany) self-restore**, **6 external** (Tik 3, Pee 2, Sivone 1); 79 agent-unknown.
-- **Owners:** **12 owner records, 100% WhatsApp-reachable**, 0 email, 0 party-linked; only **1 draft** retains `owner_id`; **Beta Xin is a duplicate**. Identities survived — owner→listing relationships lost.
-- **Contacts / parties:** high-reference identities survived (Keomany, Pee Malaisone, Sivone, Daeng Xayalert, Mo Siliphong, Viengkhone Phomthavong). What was lost is the **person↔property relationship**, not the people.
-- **Photos:** **no surviving DB link** photo→listing — the biggest technical blocker.
+- **Titles — COMPLETE.** `title_lo` **91/91** (removal_log) + `title_en` **73/91**
+  (analytics BI snapshots). The 18 without an English analytics title all carry a
+  rich descriptive `title_lo`. **100% of the 91 have at least a Lao title; 73 are bilingual.**
+- **Core facts — COMPLETE.** `property_type` **91/91**, `transaction_type` **91/91**
+  (removal_log); `district` **~90/91**. All HIGH, join-clean by `id`.
+- **Agents:** **16/91** listings have a recoverable agent via `lead_events` —
+  **Keomany 10 (operator/self)**, **Tik 3 (has `facebook_url`)**, **Pee 2**, **Sivone 1**.
+  Only the **3 Tik** listings have a Facebook source. 75 agent-unknown (Pending Evidence).
+- **Owners:** **12 owner records, 100% WhatsApp-reachable**, 0 email, 0 party-linked; **0 of 91 drafts** retain `owner_id`; **Beta Xin is a duplicate**. Identities survived — owner→listing relationships lost (outreach only).
+- **Contacts / parties:** high-reference identities survived. What was lost is the **person↔property relationship**, not the people.
+- **Photos:** **0/91 galleries** attached; **no surviving DB link** photo→listing — the biggest remaining technical blocker.
+- **Price:** **0/91 internal so far** — final exhaustive internal price audit in progress; if it confirms none, price is external-only (Wayback OG / Facebook).
+
+### Internal metadata backbone (HIGH-confidence, UUID-joined, zero external/manual)
+| Field | Source | Coverage | Confidence |
+|---|---|---|---|
+| `title_lo` | `properties_removal_log` | 91/91 | HIGH |
+| `title_en` | analytics (`intelligence_reports` + `daily_metrics_snapshot`) | 73/91 | HIGH |
+| `property_type` | `properties_removal_log` | 91/91 | HIGH |
+| `transaction_type` | `properties_removal_log` | 91/91 | HIGH |
+| `district` | removal_log / current draft | ~90/91 | HIGH |
+| agent identity | `lead_events` → `parties` | 16/91 (3 w/ FB) | HIGH |
+| beds / baths / village / landmarks | **parse the titles** | most | MEDIUM (semi-auto) |
+| price · owner · photos · EN description | — none internal — | 0/91 | External (Wayback / Facebook / outreach) |
 
 **Executive assessment**
-- **Listings with ≥1 credible recovery path:** **12 / 91 (~13%) confirmed**; **79 pending** (Wayback covers + owner/agent outreach); **0 exhausted**.
-- **Biggest blocker to reopening:** the **photo→listing relationship** (0 galleries attached; no surviving DB link).
-- **Highest-impact technical action:** run **E9 Wayback CDX** — the only automatic cover source.
-- **Highest-impact business action:** **contact the 12 reachable owners** to identify + re-supply galleries.
+- **~73/91 can reach a titled, typed, districted draft (16 also agented) with ZERO
+  external work and ZERO manual effort** — internal, HIGH-confidence, fill-only.
+- **Biggest remaining blocker:** the **photo→listing relationship** (0 galleries; no surviving DB link).
+- **Highest-impact next technical action:** **Wayback CDX** (covers) after the internal price audit closes.
+- **Highest-impact business action:** contact the reachable owners + the 3 Tik/FB listings for full-gallery reconstruction.
 
 ---
 
@@ -40,9 +68,9 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
 | 2 | **Storage `property-images` (files)** | the edited photo **assets** themselves (cover + full galleries) — *files only, not the listing link* | High (files exist) | ✅ Yes (prod) | Auto (files) | **~100% of files physically exist** | ⬜ confirm count via storage query; **back up first (Priority Zero)** |
 | 3 | **OG-worker capture** via Wayback / OG / WhatsApp / FB link-preview | `slug`, `title`(per lang), `price`(formatted), `currency`, `district`, description **snippet**, `market_status`, **cover image (`images[0]`) only** | High (per captured listing) | ✅ Yes | Auto (parse OG tags) | **= W/91** (W = # slugs archived; unknown until CDX) | ⬜ pending Wayback CDX run |
 | 4 | **Facebook source posts** | **full image gallery (≤10)**, title, description, `price_display`, **poster = owner/agent** | High (if post matched) | ✅ Yes | Manual/semi-auto (FB→listing link was not stored) | unknown subset (FB-originated + still live) | ⬜ pending; **only authoritative full-gallery source**. ⚠️ unauthenticated fetch exposes **≤1 photo** — the full gallery sits behind FB's login wall, so it needs authenticated access (more manual) |
-| 5 | **`lead_events`** (survived — `listing_id`/`agent_id` have **no FK**) | **agent only**, per listing via `lead_events.agent_id` → **`parties.id` OR `parties.auth_user_id`** (agent_id is **mixed**: 29 rows match party_id, 20 auth_user_id — always use an OR join) | Medium–High | ✅ Yes (prod) | Auto | **12/91** (16 links; 4 agents — Keomany 10, Tik 3, Pee 2, Sivone 1; **only Tik has `facebook_url`**). Other **79 = agent relationship currently unknown (Pending Evidence)**, NOT orphans | ✅ measured 2026-08-05; **`leads` CASCADED — see correction below** |
+| 5 | **`lead_events`** (survived — `listing_id`/`agent_id` have **no FK**) | **agent only**, per listing via `lead_events.agent_id` → **`parties.id` OR `parties.auth_user_id`** (agent_id is **mixed** — always use an OR join) | Medium–High | ✅ Yes (prod) | Auto | **16/91** — Keomany 10 (operator/self), Tik 3 (**`facebook_url`**), Pee 2, Sivone 1; **only the 3 Tik listings have a FB source**. Other **75 = agent relationship Pending Evidence**, NOT orphans | ✅ measured 2026-08-05; **`leads` CASCADED — see below** |
 | 6 | **`parties` / `contacts` / `owners` tables** | agent/owner/contact **identities**: name, phone, WhatsApp, email, party relationship | High (identities intact) | ✅ Yes (prod) | Auto (identity) / Manual (per-listing link) | identities **100% present**; per-listing assignment partial | ✅ tables survived; link via #5/#4 |
-| 7 | **`daily_metrics_snapshot.metrics`** (JSONB) | `{property_id, title}` for top-viewed / top-CTR listings → `title_en` for a few | Medium | ✅ Yes (prod) | Auto | small subset (popular listings) | ⬜ pending extract query |
+| 7 | **Analytics BI snapshots** — `intelligence_reports.metrics_snapshot` + `daily_metrics_snapshot.metrics` (JSONB) | **`title_en`** (English), keyed by `property_id`, from `top_listings_by_ctr` / `top_listings_by_views` / `impressions_no_leads` arrays `{property_id, title, impressions, ctr}` | **High** | ✅ Yes (prod) | Auto (UUID join) | **73/91** English titles (all currently empty → fills gaps). **No** price/photos/owner/agent in these payloads | ✅ **CONFIRMED authoritative internal title source 2026-08-05** — extracted, coverage measured |
 | 8 | **Storage filename epoch ↔ `removal_log.listed_at`** | probable **gallery grouping** (which photos ≈ which listing by upload time) | **Needs Review** | ❌ No (inference) | Flag-only (single unambiguous ⇒ Review; never auto-attach) | candidate clusters for many, low certainty | ⬜ supporting evidence only |
 | 9 | **Admin browser cache / localStorage** (the machine used for `admin.html`) | possibly cached listing pages / images / draft state | Needs Review | ❌ No | Manual | unknown, likely small | ⬜ opportunistic |
 
@@ -58,6 +86,24 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
 | **Smart Import artifacts** (FB URL / original image URLs / import payload / logs) | Pipeline is **stateless** — `facebook-listing-fetcher` + `smart-listing-importer` write **no DB table**; FB source URL + `originalUrl`s are returned to the browser and discarded; `properties.images` stores only storage-URL strings; **no import/staging/queue/cache table**; no `import_id`/`source_url`/payload column. *(Correction: `properties` DOES have listing-**media** URL columns — `video_url`, `video_embed_url`, `facebook_video_url`, `map_embed_url`, `download_url`, `agent_photo_url` — but these are listing content, not import provenance, were on the deleted rows. **Media check 2026-08-05: `facebook_video_url` = 0 (no FB lead), and only 1 stray `map_embed_url` survives** (coordinates for that one listing) — everything else NULL.)* Functions don't log the mapping; no import Worker. **0/91 recoverable via import metadata.** | ✅ code-proven 2026-08-05 |
 
 ## Confirmed from code (2026-08-05)
+- **Analytics = authoritative internal TITLE source (title recovery COMPLETE).**
+  A full forensic audit of every analytics table + every JSONB column found that
+  `intelligence_reports.metrics_snapshot` and `daily_metrics_snapshot.metrics`
+  embed per-listing `{property_id, title}` arrays. Extracted: **`title_en` for
+  73/91** (join-clean by UUID; all 73 currently empty, so pure gap-fill). Combined
+  with `removal_log.title_lo` (**91/91 Lao**), **every one of the 91 has a title;
+  73 are bilingual.** These payloads contain **no** price, image URL, storage path,
+  owner, agent, phone or WhatsApp — analytics recovers **title only** (plus
+  parseable beds/baths/type/district/village/landmarks *inside* the title string).
+  Analytics is therefore used **ahead of Wayback for titles**, but Wayback/Facebook
+  remain mandatory for photos + price.
+- **Analytics content sources EXHAUSTED besides titles.** `ui_events` (1,841 rows —
+  only `click`/`scroll` UI telemetry; **3** rows carry a `property_id`, **0** in the
+  91), `search_events` (search filters, no listing link), `listing_events.search_filters`
+  (`{tx,sort,type,avail}` search context), `intelligence_insights.evidence`
+  (`{z,mean,stddev}` anomaly stats), and `page_views` (`page` = `listing.html` /
+  `listings.html` pathname only — **no slug/query**, cannot identify a listing) —
+  **none carry listing content.**
 - **`leads` is NOT a recovery source for the 91.** `leads.property_id … ON DELETE
   CASCADE` (`20260715000000_leads_crm.sql`) deleted every lead — with its
   `customer_name`/`customer_phone` — when the properties were deleted. Buyer
