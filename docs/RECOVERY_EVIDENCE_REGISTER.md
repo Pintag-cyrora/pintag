@@ -26,7 +26,7 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
 | 2 | **Storage `property-images` (files)** | the edited photo **assets** themselves (cover + full galleries) — *files only, not the listing link* | High (files exist) | ✅ Yes (prod) | Auto (files) | **~100% of files physically exist** | ⬜ confirm count via storage query; **back up first (Priority Zero)** |
 | 3 | **OG-worker capture** via Wayback / OG / WhatsApp / FB link-preview | `slug`, `title`(per lang), `price`(formatted), `currency`, `district`, description **snippet**, `market_status`, **cover image (`images[0]`) only** | High (per captured listing) | ✅ Yes | Auto (parse OG tags) | **= W/91** (W = # slugs archived; unknown until CDX) | ⬜ pending Wayback CDX run |
 | 4 | **Facebook source posts** | **full image gallery (≤10)**, title, description, `price_display`, **poster = owner/agent** | High (if post matched) | ✅ Yes | Manual/semi-auto (FB→listing link was not stored) | unknown subset (FB-originated + still live) | ⬜ pending; **only authoritative full-gallery source**. ⚠️ unauthenticated fetch exposes **≤1 photo** — the full gallery sits behind FB's login wall, so it needs authenticated access (more manual) |
-| 5 | **`lead_events` / `leads`** | **agent** (`managed_by_party_id` via `lead_events.agent_id`/`leads.party_id`), **contact** (`contact_id` → phone/WhatsApp via `leads.contact_id`) | High (exact FK links survived) | ✅ Yes (prod) | Auto | partial — only listings with ≥1 lead | ⬜ pending coverage query |
+| 5 | **`lead_events`** (survived — `listing_id`/`agent_id` have **no FK**) | **agent only**, per listing via `lead_events.agent_id` → `parties.auth_user_id` (agent_id looks like an auth uid, per RLS) | Medium–High | ✅ Yes (prod) | Auto | listings with an agent-attributed click event (pending count) | ⬜ pending; **`leads` CASCADED — see correction below** |
 | 6 | **`parties` / `contacts` / `owners` tables** | agent/owner/contact **identities**: name, phone, WhatsApp, email, party relationship | High (identities intact) | ✅ Yes (prod) | Auto (identity) / Manual (per-listing link) | identities **100% present**; per-listing assignment partial | ✅ tables survived; link via #5/#4 |
 | 7 | **`daily_metrics_snapshot.metrics`** (JSONB) | `{property_id, title}` for top-viewed / top-CTR listings → `title_en` for a few | Medium | ✅ Yes (prod) | Auto | small subset (popular listings) | ⬜ pending extract query |
 | 8 | **Storage filename epoch ↔ `removal_log.listed_at`** | probable **gallery grouping** (which photos ≈ which listing by upload time) | **Needs Review** | ❌ No (inference) | Flag-only (single unambiguous ⇒ Review; never auto-attach) | candidate clusters for many, low certainty | ⬜ supporting evidence only |
@@ -43,6 +43,12 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
 | **Wayback `listings.html` grid** | OG worker sets only generic meta — no per-listing data | ✅ from `og-listing-preview.js` |
 
 ## Confirmed from code (2026-08-05)
+- **`leads` is NOT a recovery source for the 91.** `leads.property_id … ON DELETE
+  CASCADE` (`20260715000000_leads_crm.sql`) deleted every lead — with its
+  `customer_name`/`customer_phone` — when the properties were deleted. Buyer
+  **contact** per listing therefore has **no automatic source** (Facebook/manual only).
+  `lead_events` (plain `listing_id`/`agent_id`, no FK) **survived** and yields the
+  **agent** (`agent_id` → `parties.auth_user_id`) only. This corrects source #5.
 - **No surviving DB column links a photo to a listing.** The only photo↔listing
   links were `properties.images` (JSONB) and `unit_types.images` (`text[]`) — both
   lived *on the deleted rows*, so both are gone. Reconnection MUST come from source

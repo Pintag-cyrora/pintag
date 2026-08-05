@@ -21,7 +21,7 @@ Infrastructure ✅ *(one caveat: verified backup pending — DR built, first run
 ### Catalogue Readiness — 🔴 the bottleneck
 - **Production-ready listings:** **0 / ~30–40** target
 - **Photos:** 0 galleries attached (Storage pool intact but unlinked; sources: Wayback cover / Facebook gallery)
-- **Agent / Owner / Contact:** links destroyed, but **re-linkable from `leads` for many** (pending E8)
+- **Agent:** re-linkable from surviving **`lead_events.agent_id`** (→ `parties.auth_user_id`), agent-only. **Owner / Contact:** `leads` CASCADED — **manual / Facebook** (pending E8)
 - **Core property facts:** mostly missing (Wayback / Facebook / manual)
 - **AI-generated content:** ⚪ **not a blocker** — regenerated after launch
 
