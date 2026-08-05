@@ -184,3 +184,64 @@ select
  (select count(distinct le.listing_id) from lead_events le
     join parties p on (p.id=le.agent_id or p.auth_user_id=le.agent_id)
     where le.listing_id in (select id from properties where workflow_status='draft')) as drafts_with_agent_path;
+
+-- ============================================================================
+-- REPORT 7 — INDIRECT RECOVERY & PRIORITY MATRIX (read-only)
+-- "If I contact this person today, how many could realistically be restored?"
+-- = direct (hard link) + indirect (same district/type they operate in — soft,
+--   the agent confirms on contact). Facebook/photos widen it further.
+-- ============================================================================
+
+-- 7a: Per reachable agent — DIRECT recoverable + INDIRECT candidates among the 79
+with agent_scope as (
+  select p.id party_id, coalesce(p.name_en,p.name_lo,p.slug) name, p.whatsapp, p.facebook_url,
+         array_agg(distinct pr.district_en) filter (where pr.district_en is not null) districts,
+         array_agg(distinct pr.property_type) filter (where pr.property_type is not null) types,
+         count(distinct le.listing_id) direct_recoverable
+  from lead_events le
+  join parties p on (p.id=le.agent_id or p.auth_user_id=le.agent_id)
+  join properties pr on pr.id=le.listing_id
+  where le.listing_id in (select id from properties where workflow_status='draft')
+  group by p.id, name, p.whatsapp, p.facebook_url
+),
+unknowns as (
+  select pr.id, pr.district_en, pr.property_type from properties pr
+  where pr.workflow_status='draft'
+    and not exists (select 1 from lead_events le where le.listing_id=pr.id and le.agent_id is not null)
+)
+select s.name, s.whatsapp, s.facebook_url, s.direct_recoverable,
+  (select count(*) from unknowns u where u.district_en = any(s.districts)) as indirect_same_district,
+  (select count(*) from unknowns u where u.district_en = any(s.districts)
+                                      and u.property_type = any(s.types))   as indirect_same_district_and_type
+from agent_scope s
+order by s.direct_recoverable desc, indirect_same_district_and_type desc;
+
+-- 7b: Strongest recovery path per draft listing (DB sources; external layers on top)
+select pr.id, pr.title_lo, pr.district_en, pr.property_type,
+  case
+    when pr.managed_by_party_id is not null then 'Agent (direct link)'
+    when pr.owner_id  is not null then 'Owner'
+    when pr.contact_id is not null then 'Contact'
+    when exists(select 1 from lead_events le where le.listing_id=pr.id and le.agent_id is not null) then 'Agent (lead_events)'
+    when exists(select 1 from properties_removal_log rl where rl.property_id=pr.id and rl.title_lo is not null)
+         then 'Removal-log metadata only (needs Facebook/Wayback/Storage)'
+    else 'None in DB (external pending)'
+  end as strongest_db_path
+from properties pr where pr.workflow_status='draft'
+order by strongest_db_path, pr.district_en;
+
+-- 7c: Credible paths per listing (agent/owner/contact/lead-event = path to photos+identity;
+--     removal-log metadata is NOT counted as a credible identity/photo path)
+select
+  count(*)                                                            as recovered_drafts,
+  count(*) filter (where credible >= 1)                              as at_least_one_credible_path,
+  count(*) filter (where credible >= 2)                              as multiple_credible_paths
+from (
+  select pr.id,
+    (case when pr.managed_by_party_id is not null then 1 else 0 end
+    +case when pr.owner_id  is not null then 1 else 0 end
+    +case when pr.contact_id is not null then 1 else 0 end
+    +case when exists(select 1 from lead_events le where le.listing_id=pr.id and le.agent_id is not null) then 1 else 0 end
+    ) as credible
+  from properties pr where pr.workflow_status='draft'
+) x;
