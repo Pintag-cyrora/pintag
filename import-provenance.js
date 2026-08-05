@@ -38,7 +38,8 @@
 
   // post(table, rows) → the caller's PostgREST insert helper (admin-authed).
   // ctx: { listingId, slug, status, batchId?, sourcePlatform, sourceUrl,
-  //        aiModel, promptVersion, success, confidence?, rawPayload,
+  //        aiModel, promptVersion, parserVersion?, success, confidence?,
+  //        rawPayload, originalImageUrls?, extractedMetadata?,
   //        images: [{ url, path, original, order }] }
   async function record(post, ctx) {
     ctx = ctx || {};
@@ -59,9 +60,12 @@
       import_version: '2',
       ai_model: ctx.aiModel || null,
       prompt_version: ctx.promptVersion || null,
+      parser_version: ctx.parserVersion || null,
       success: ctx.success !== false,
       confidence: (ctx.confidence != null ? ctx.confidence : null),
-      raw_payload: ctx.rawPayload || null
+      raw_payload: ctx.rawPayload || null,               // exact-as-received blob
+      original_image_urls: Array.isArray(ctx.originalImageUrls) ? ctx.originalImageUrls : null,
+      extracted_metadata: (ctx.extractedMetadata != null ? ctx.extractedMetadata : null)
     }]);
 
     var images = Array.isArray(ctx.images) ? ctx.images : [];

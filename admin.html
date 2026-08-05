@@ -3412,10 +3412,11 @@ async function saveListing(e) {
   const _provActor = (window.PintagAdminAuth && PintagAdminAuth.ADMIN_EMAIL) || null;
   // Provenance: for an EDIT, capture field-level changes BEFORE the PATCH so
   // the fetched values are the true "old" values. Append-only, best-effort —
-  // must never block the save.
+  // must never block the save. Kept for the post-save storage snapshot.
+  let _editProvEvents = null;
   if (editId && window.PintagProvenance) {
     try {
-      await window.PintagProvenance.captureEdit(
+      _editProvEvents = await window.PintagProvenance.captureEdit(
         (m, p, b) => sbApi(m, p, b), editId, body, _provActor
       );
     } catch (provErr) { console.error('[provenance]', provErr); }
@@ -3469,7 +3470,9 @@ async function saveListing(e) {
             (t, rows) => sbApi('POST', t, rows),
             { listingId: propertyId, slug: body.slug || slug, status: workflowStatus,
               sourcePlatform: _ctx.sourcePlatform, sourceUrl: _ctx.sourceUrl,
-              aiModel: _ctx.aiModel, promptVersion: _ctx.promptVersion, success: true,
+              aiModel: _ctx.aiModel, promptVersion: _ctx.promptVersion,
+              parserVersion: _ctx.parserVersion, originalImageUrls: _ctx.originalImageUrls,
+              extractedMetadata: _ctx.extractedMetadata, success: true,
               rawPayload: _ctx.rawPayload, images: _imgs }
           );
         } catch (provErr) { console.error('[provenance]', provErr); }
@@ -3477,13 +3480,33 @@ async function saveListing(e) {
       }
       // Lifecycle event: smart_import (linked to the Import UUID) or a plain
       // manual listing_created — one row that opens the listing's timeline.
+      // Its id anchors the initial storage snapshot of the gallery.
       if (window.PintagProvenance) {
         try {
-          await window.PintagProvenance.logCreated(
+          const _createdEventId = await window.PintagProvenance.logCreated(
             (m, p, b) => sbApi(m, p, b),
             { listingId: propertyId, actor: _provActor, importUuid: _importId,
               source: _importId ? 'import' : 'manual',
               details: { slug: body.slug || slug, status: workflowStatus } }
+          );
+          await window.PintagProvenance.snapshotImages(
+            (m, p, b) => sbApi(m, p, b),
+            { listingId: propertyId, eventId: _createdEventId,
+              images: body.images || [], bucket: 'property-images' }
+          );
+        } catch (provErr) { console.error('[provenance]', provErr); }
+      }
+    } else if (window.PintagProvenance && Array.isArray(_editProvEvents)) {
+      // EDIT: snapshot the gallery only when it actually changed, anchored to
+      // the photos_changed event captured before the PATCH. Append-only; no
+      // snapshot (and no bloat) on saves that leave images untouched.
+      const _photosEv = _editProvEvents.find(ev => ev && ev.event_type === 'photos_changed');
+      if (_photosEv) {
+        try {
+          await window.PintagProvenance.snapshotImages(
+            (m, p, b) => sbApi(m, p, b),
+            { listingId: editId, eventId: _photosEv.id,
+              images: body.images || [], bucket: 'property-images' }
           );
         } catch (provErr) { console.error('[provenance]', provErr); }
       }
@@ -4102,13 +4125,25 @@ async function runSmartImport() {
     // payload manifest). saveListing() writes it after the listing is saved.
     (function () {
       const _fb = (importSource === 'facebook') ? (window._importFbData || {}) : {};
+      // Complete original source-image URL set as received (superset of the
+      // saved subset) — from the fetched adapter payload, else the FB image map.
+      let _origUrls = [];
+      const _fetchedImgs = (_fb.fetched && Array.isArray(_fb.fetched.images)) ? _fb.fetched.images : [];
+      if (_fetchedImgs.length) {
+        _origUrls = _fetchedImgs.map(im => (im && (im.originalUrl || im.original || im.url)) || null).filter(Boolean);
+      } else {
+        _origUrls = Object.values(_fb.imageMap || {}).filter(Boolean);
+      }
       window._lastImportContext = {
         sourcePlatform: importSource,
         sourceUrl: _fb.sourceUrl || null,
         imageMap: _fb.imageMap || {},
         aiModel: 'gemini-2.5-flash',
         promptVersion: 'smart-import-v1',
-        rawPayload: { fetched: _fb.fetched || null, aiResult: aiResult }
+        parserVersion: (_fb.fetched && _fb.fetched.adapterVersion) || 'facebook-listing-fetcher-v1',
+        originalImageUrls: _origUrls,
+        extractedMetadata: aiResult,                 // parser/AI structured output
+        rawPayload: { fetched: _fb.fetched || null, aiResult: aiResult }  // exact-as-received
       };
       window._importFbData = null;
     })();

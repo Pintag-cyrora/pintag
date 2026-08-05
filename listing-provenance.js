@@ -78,18 +78,21 @@
     };
   }
 
-  // Insert rows (append-only). Silently no-ops on an empty batch.
+  // Insert rows (append-only). Returns the inserted rows (with DB-assigned
+  // ids, via PostgREST return=representation). No-ops on an empty batch.
   async function insert(api, rows) {
-    if (!rows || !rows.length) return;
-    await api('POST', 'listing_provenance', rows);
+    if (!rows || !rows.length) return [];
+    var res = await api('POST', 'listing_provenance', rows);
+    return Array.isArray(res) ? res : (res ? [res] : []);
   }
 
   // A new listing was created. source = 'import' (from Smart Import, carries
-  // the Import UUID) or 'manual'. Emits one lifecycle event.
+  // the Import UUID) or 'manual'. Emits one lifecycle event and returns its
+  // DB id (used to anchor a storage snapshot), or null.
   async function logCreated(api, ctx) {
     ctx = ctx || {};
     var fromImport = !!ctx.importUuid || ctx.source === 'import';
-    await insert(api, [makeEvent({
+    var inserted = await insert(api, [makeEvent({
       listingId: ctx.listingId,
       eventType: fromImport ? 'smart_import' : 'listing_created',
       source: fromImport ? 'import' : 'manual',
@@ -97,6 +100,7 @@
       importUuid: ctx.importUuid || null,
       details: ctx.details || null
     })]);
+    return (inserted[0] && inserted[0].id) || null;
   }
 
   // An existing listing was edited. Fetch the current row's TRACKED fields,
@@ -128,8 +132,9 @@
         actor: actor
       }));
     }
-    await insert(api, events);
-    return events;
+    // Return the inserted rows (with DB ids) so the caller can find the
+    // photos_changed event id to anchor a storage snapshot.
+    return await insert(api, events);
   }
 
   // A listing is about to be deleted. Record it BEFORE the DELETE so the
@@ -145,11 +150,42 @@
     })]);
   }
 
+  // Storage Object Snapshot: record every image attached to the listing at
+  // this point in time, keyed to a provenance event. Append-only; lets us
+  // rebuild properties.images purely from provenance if it is ever lost again.
+  // images: the listing's image URL strings (properties.images). hashMap:
+  // optional { url: sha256 } from the import flow. bucket defaults to
+  // 'property-images'. Skips silently when there's nothing to record.
+  async function snapshotImages(api, ctx) {
+    ctx = ctx || {};
+    var images = Array.isArray(ctx.images) ? ctx.images : [];
+    if (!ctx.listingId || !ctx.eventId || !images.length) return;
+    var bucket = ctx.bucket || 'property-images';
+    var hashMap = ctx.hashMap || {};
+    var rows = [];
+    for (var i = 0; i < images.length; i++) {
+      var url = images[i];
+      if (!url) continue;
+      rows.push({
+        listing_id: ctx.listingId,
+        provenance_event_id: ctx.eventId,
+        storage_bucket: bucket,
+        storage_path: String(url).split('/').pop(),
+        storage_url: url,
+        storage_object_id: null,
+        image_order: i,
+        sha256: hashMap[url] || null
+      });
+    }
+    if (rows.length) await api('POST', 'listing_image_snapshots', rows);
+  }
+
   window.PintagProvenance = {
     TRACKED: TRACKED,
     eventTypeFor: eventTypeFor,
     logCreated: logCreated,
     captureEdit: captureEdit,
-    logDeleted: logDeleted
+    logDeleted: logDeleted,
+    snapshotImages: snapshotImages
   };
 })();
