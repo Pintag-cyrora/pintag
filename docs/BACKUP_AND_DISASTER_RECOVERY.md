@@ -151,6 +151,81 @@ the only copy on the same machine that talks to production.
 
 ---
 
+## 7. The complete-backup system (GitHub Actions → Cloudflare R2)
+Beyond the manual Storage backup above, the scheduled workflow
+`.github/workflows/backup.yml` produces a **full** production backup weekly and
+uploads it to **Cloudflare R2** (off-Supabase, zero egress). Layout:
+`backup-YYYY-MM-DD/{database,storage,verification,metadata}` with the photo pool
+stored once at `R2:<bucket>/storage/objects` (immutable, append-only) and
+referenced by each day's `storage/manifest.csv`.
+
+Components:
+- `scripts/backup-database.sh` — dump + schema + extensions + migrations + RLS +
+  functions + auto-discovered relationship CSVs + reference exports.
+- `scripts/verify-db-backup.py` — fail-closed row-count verification.
+- `scripts/restore-production.sh` + `scripts/restore-validation.sql` — restore + report.
+- `scripts/create-backup-ro-role.sql` — least-privilege read-only DB role.
+
+**One-time provisioning (setup):**
+1. Create the R2 bucket + a **scoped Object-Read+Write token** (no Delete; retention via lifecycle).
+2. Run `scripts/create-backup-ro-role.sql` in prod; put its URL in `PINTAG_PROD_DB_URL`.
+3. `age-keygen -o backup-age-key.txt` → keep the **private** key offline; commit the **public** key to `ops/backup.age.pub`.
+4. Create Supabase Storage S3 access keys (read) for the incremental pool sync.
+5. Add secrets to the `production-backup` GitHub Environment: `PINTAG_PROD_DB_URL`,
+   `R2_ENDPOINT/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET`,
+   `SUPABASE_S3_ENDPOINT/…_ACCESS_KEY_ID/…_SECRET_ACCESS_KEY`.
+
+## 8. Database scope — restorable vs reference vs recreated (NO AMBIGUITY)
+| Component | Classification | How |
+|---|---|---|
+| `public` schema: tables, data, functions, RLS policies, triggers, indexes | ✅ **Fully restorable** | `pg_restore database/full.dump` |
+| Extensions | ✅ Fully restorable (recreate) | `database/extensions.txt` → `CREATE EXTENSION` |
+| Applied migration head | ✅ Reference for alignment | `database/migrations.csv` |
+| **Photo files** (`property-images`) | ✅ **Fully restorable** | R2 pool → bucket, **names preserved** ⇒ image URLs resolve |
+| `storage.objects` metadata rows | ✅ Recreated on re-upload | re-uploading files recreates them; `manifest.csv` is the reference |
+| Relationship tables (CSV) | ✅ Fully restorable (table-level) | `\copy` each CSV back |
+| **`auth.users` (accounts)** | ⚠️ **Reference only** | GoTrue-managed; cannot `pg_restore` into a managed project; **re-provision admin manually** (`FIRST_ADMIN_ONBOARDING.md`) |
+| `auth` internals (sessions, identities, MFA factors) | ❌ **Not restored** | transient; recreated on login/enrollment |
+| Supabase project config (Site URL, redirect URLs, SMTP, MFA toggle, API keys) | 🔧 **Recreated manually** | dashboard settings — keep current values documented |
+| Edge Functions | 🔧 Recreated manually | deploy from `supabase/functions/` |
+| Cloudflare worker + DNS | 🔧 Recreated manually | `og-listing-preview.js` + CF config |
+
+## 9. Relationship tables — auto-discovered (evolves with the schema)
+`backup-database.sh` exports a CSV for **every** public table that (a) has a
+foreign key to `properties`/`parties`/`contacts`/`owners`, or (b) carries a
+`property_id`/`listing_id`/`party_id`/`contact_id`/`owner_id`/`managed_by_party_id`
+column — **plus** an explicit core set (`properties, properties_removal_log,
+parties, contacts, owners, leads, lead_events, unit_types, listing_events,
+admin_accounts, listings`). The exact set captured each run is recorded in
+`database/relationships/_INCLUDED_TABLES.txt`.
+**Maintenance:** a new relationship table is picked up automatically if it uses a
+FK or a standard `*_id` column. Only a table that references a listing via a
+**non-standard, non-FK** column needs a one-line addition to the `core` list in
+`backup-database.sh`. (The full `pg_dump` always contains every table regardless.)
+
+## 10. Restore validation report
+Every restore (drill or real) runs `restore-validation.sql` and prints:
+`property / party / owner / contact / lead / lead_events` counts, `storage
+object count`, `migration_head`, `rls_policies_present`, `functions_present`.
+`restore-production.sh` compares counts to `metadata/backup.json` and emits:
+```
+✓ Database restored   ✓ Storage restored   ✓ Relationships restored
+✓ Security restored   ✓ Ready for production
+```
+Any mismatch prints `✗` and exits non-zero — a failed restore can't be mistaken for success.
+
+## 11. Retention (GFS, via R2 lifecycle rules — server-side, no delete token)
+- Per-date DB+metadata snapshots: **12 weekly**, **12 monthly**, **2 yearly**.
+- Photo object pool: **permanent** (append-only; each photo is unique). Prune only objects unreferenced by any retained manifest.
+
+## 12. Roadmap — Backup Health Dashboard (Phase 2, not yet built)
+A simple read-only dashboard sourced from the R2 `metadata/backup.json` files:
+last successful backup, last verification result, backup size, DB size, storage
+size, photo count, listing count, and last DR-drill restore status. Deferred
+until the Phase-1 backup + a successful DR drill are complete.
+
+---
+
 ### Quick reference
 ```bash
 # full, verified, timestamped backup in one command:

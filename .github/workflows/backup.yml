@@ -1,0 +1,140 @@
+name: Production DR Backup
+
+# Weekly complete production backup → Cloudflare R2 (off-Supabase).
+# Fails the run (and thus alerts) if verification finds any missing/corrupt file.
+# Switch to nightly later by changing the cron below to '0 3 * * *'.
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'          # Sundays 03:00 UTC (weekly)
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Why this manual backup is being run'
+        required: false
+
+permissions:
+  contents: read                 # least privilege: no write access to the repo
+
+concurrency:
+  group: dr-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    environment: production-backup   # protected env holding the secrets
+    env:
+      # Storage source (Supabase S3-compatible endpoint) and R2 destination are
+      # configured as rclone remotes via these env vars — no rclone.conf on disk.
+      RCLONE_CONFIG_SB_TYPE: s3
+      RCLONE_CONFIG_SB_PROVIDER: Other
+      RCLONE_CONFIG_SB_ENDPOINT: ${{ secrets.SUPABASE_S3_ENDPOINT }}
+      RCLONE_CONFIG_SB_ACCESS_KEY_ID: ${{ secrets.SUPABASE_S3_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_SB_SECRET_ACCESS_KEY: ${{ secrets.SUPABASE_S3_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+      BUCKET: property-images
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools (pg client, rclone, age)
+        run: |
+          sudo apt-get update -qq
+          # match the production Postgres major version (Supabase = 15/16)
+          sudo apt-get install -y postgresql-client rclone age
+          rclone version && pg_dump --version && age --version
+
+      - name: Compute backup identity
+        id: id
+        run: |
+          echo "date=$(date -u +%Y-%m-%d)"      >> "$GITHUB_OUTPUT"
+          echo "ts=$(date -u +%Y%m%dT%H%M%SZ)"  >> "$GITHUB_OUTPUT"
+
+      - name: Database backup (dump + schema + relationships + reference)
+        run: |
+          bash scripts/backup-database.sh "backup-${{ steps.id.outputs.date }}"
+
+      - name: Storage manifest + incremental sync to R2 object pool
+        run: |
+          DEST="backup-${{ steps.id.outputs.date }}"
+          mkdir -p "$DEST/storage"
+          psql "$PINTAG_PROD_DB_URL" -v ON_ERROR_STOP=1 -X -c "\copy ( \
+            select name as object_path,(metadata->>'size')::bigint as file_size_bytes, \
+                   metadata->>'mimetype' as mimetype, \
+                   coalesce(metadata->>'eTag',metadata->>'etag') as etag_checksum, \
+                   created_at,updated_at from storage.objects where bucket_id='$BUCKET' order by name \
+          ) TO '$DEST/storage/manifest.csv' WITH (FORMAT csv, HEADER true)"
+          # Incremental, checksum-verified sync of the immutable photo pool.
+          rclone sync "SB:$BUCKET" "R2:$R2_BUCKET/storage/objects" --checksum --transfers 8 --fast-list
+
+      - name: Verify storage pool against manifest (fail-closed)
+        run: |
+          DEST="backup-${{ steps.id.outputs.date }}"
+          # rclone check: every file the manifest lists must exist in R2, hashes matching.
+          rclone check "SB:$BUCKET" "R2:$R2_BUCKET/storage/objects" --checksum --one-way \
+            2> "$DEST/storage/rclone-check.txt" || { cat "$DEST/storage/rclone-check.txt"; exit 1; }
+          rclone hashsum SHA256 "R2:$R2_BUCKET/storage/objects" > "$DEST/storage/checksums.sha256"
+
+      - name: Verify database dump is readable/complete (fail-closed)
+        run: |
+          DEST="backup-${{ steps.id.outputs.date }}"
+          mkdir -p "$DEST/verification"
+          pg_restore --list "$DEST/database/full.dump" > "$DEST/verification/pg_restore_list.txt"
+          test -s "$DEST/verification/pg_restore_list.txt"
+          # row-count delta check for the key tables (live vs dump)
+          python3 scripts/verify-db-backup.py "$DEST" "$PINTAG_PROD_DB_URL" \
+            | tee "$DEST/verification/report.txt"
+
+      - name: Encrypt PII artifacts (age; public key committed at ops/backup.age.pub)
+        run: |
+          DEST="backup-${{ steps.id.outputs.date }}"
+          test -f ops/backup.age.pub || { echo "Missing ops/backup.age.pub — add the age PUBLIC key (setup step)"; exit 1; }
+          age -R ops/backup.age.pub -o "$DEST/database/full.dump.age" "$DEST/database/full.dump" && rm "$DEST/database/full.dump"
+          for f in "$DEST"/database/relationships/*.csv "$DEST"/database/reference/*.csv; do
+            [ -e "$f" ] || continue
+            age -R ops/backup.age.pub -o "$f.age" "$f" && rm "$f"
+          done
+
+      - name: Write recovery metadata
+        run: |
+          DEST="backup-${{ steps.id.outputs.date }}"
+          mkdir -p "$DEST/metadata"
+          cp docs/EMERGENCY_RECOVERY_CHECKLIST.md "$DEST/metadata/RESTORE.md" || true
+          python3 - "$DEST" <<'PY'
+          import json,sys,os,subprocess,datetime
+          d=sys.argv[1]
+          def sh(c):
+            try: return subprocess.check_output(c,shell=True,text=True).strip()
+            except Exception: return None
+          meta={
+            "backup_version":"1",
+            "git_commit": os.environ.get("GITHUB_SHA"),
+            "workflow_run": f'{os.environ.get("GITHUB_SERVER_URL")}/{os.environ.get("GITHUB_REPOSITORY")}/actions/runs/{os.environ.get("GITHUB_RUN_ID")}',
+            "taken_at_utc": datetime.datetime.utcnow().isoformat()+"Z",
+            "pg_server_version": sh(f'psql "$PINTAG_PROD_DB_URL" -Atqc "show server_version"'),
+            "provider":"cloudflare-r2","bucket":os.environ.get("R2_BUCKET"),
+          }
+          # fold in the verification row counts if present
+          rep=os.path.join(d,"verification","counts.json")
+          if os.path.exists(rep): meta["counts"]=json.load(open(rep))
+          json.dump(meta,open(os.path.join(d,"metadata","backup.json"),"w"),indent=2)
+          print(json.dumps(meta,indent=2))
+          PY
+
+      - name: Upload snapshot (DB + manifests + metadata) to R2
+        run: |
+          DEST="backup-${{ steps.id.outputs.date }}"
+          # object pool already synced above; upload only the per-date snapshot.
+          rclone copy "$DEST" "R2:$R2_BUCKET/$DEST" --exclude 'storage/objects/**' --transfers 8
+
+      - name: Summary
+        run: |
+          echo "Backup backup-${{ steps.id.outputs.date }} uploaded to R2 bucket $R2_BUCKET."
+          echo "Verification passed (storage hashes + dump readable + row-count deltas)."
