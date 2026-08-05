@@ -11,6 +11,15 @@ listings than 91 inconsistent ones.* Recovery continues while the platform is li
 **Update rule:** as evidence arrives, **upgrade confidence and promote tiers**;
 **never downgrade a listing without evidence**; update rankings in place.
 
+## 🎯 Phase 1 Launch Catalogue Progress — PRIMARY BUSINESS KPI
+- **Target:** **30** premium listings
+- **Confirmed production-ready:** **0 / 30**
+- **Recoverable near-term:** ~**12–16** via agent outreach (pending) + Wayback covers (pending E9)
+- **Remaining gap:** **30**
+
+*Objective: reach 30 the fastest way. Every recovery decision optimizes for closing
+this gap; anything that doesn't strengthen the launch catalogue goes to Phase 2.*
+
 ## 🚦 Status — Platform · Catalogue · Launch
 > *The platform is no longer the bottleneck. **The catalogue is.***
 
@@ -71,6 +80,17 @@ Weighted in the approved priority order (higher = more launch value):
 diversity constraints** so the catalogue reads as broad and premium:
 - **Geographic diversity** — spread across districts, no single-area monotony.
 - **Property-type diversity** — houses / apartments / land / commercial represented.
+
+## Recovery promotion priority — which recovered listings to promote first
+When an agent gallery or Wayback evidence arrives, **do not promote every listing
+equally.** For each, ask: **"Does publishing this make Pintag's launch catalogue
+stronger?"** If yes → prioritize; if no → Phase 2 queue. Promotion order:
+1. Listings that **complete the Phase 1 catalogue** (fill a district/type gap in the launch set).
+2. **Premium** listings (highest-quality inventory).
+3. Listings in **important districts**.
+4. Listings that improve **property-type diversity**.
+5. **Highest-confidence** listings.
+6. Everything else → **Phase 2 queue**.
 
 ## Launch classification (4 tiers)
 | Tier | Criteria |
