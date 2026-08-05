@@ -963,6 +963,7 @@ body{font-family:'DM Sans',sans-serif;font-size:15px;background:var(--warm);colo
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
+<script src="import-provenance.js?v=__ASSET_VERSION__"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
@@ -3439,6 +3440,25 @@ async function saveListing(e) {
       msg.style.display = 'block';
       return;
     }
+    // Provenance v2: for a NEW listing that came from Smart Import, persist a
+    // permanent, delete-safe recovery trail. Best-effort — never blocks a save.
+    if (!editId && window.PintagImportProvenance && window._lastImportContext) {
+      try {
+        const _ctx = window._lastImportContext;
+        const _imgs = (body.images || []).map((u, i) => ({
+          url: u, path: String(u).split('/').pop(),
+          original: (_ctx.imageMap || {})[u] || null, order: i
+        }));
+        await window.PintagImportProvenance.record(
+          (t, rows) => sbApi('POST', t, rows),
+          { listingId: propertyId, slug: body.slug || slug, status: workflowStatus,
+            sourcePlatform: _ctx.sourcePlatform, sourceUrl: _ctx.sourceUrl,
+            aiModel: _ctx.aiModel, promptVersion: _ctx.promptVersion, success: true,
+            rawPayload: _ctx.rawPayload, images: _imgs }
+        );
+      } catch (provErr) { console.error('[provenance]', provErr); }
+      window._lastImportContext = null;
+    }
   }
   btn.disabled = false;
   btn.textContent = 'Save Listing';
@@ -3998,6 +4018,11 @@ async function runSmartImport() {
         });
         refreshImportImageGrid();
       }
+      // Provenance v2: stash the adapter's source URL + original→storage image
+      // map so saveListing() can persist a permanent recovery trail. Rebuilt
+      // fresh each import (consumed once in saveListing).
+      window._importFbData = { sourceUrl: (fetched.metadata || {}).sourceUrl || null, imageMap: {}, fetched: fetched };
+      (fetched.images || []).forEach(im => { if (im.storageUrl) window._importFbData.imageMap[im.storageUrl] = im.originalUrl || null; });
       // Facebook only exposes its full photo gallery behind a login wall —
       // a plain unauthenticated fetch (see facebook-listing-fetcher's own
       // header comment) realistically yields just the preview image most
@@ -4031,6 +4056,21 @@ async function runSmartImport() {
     const aiResult = await res.json();
     if (aiResult.error) throw new Error(aiResult.error);
     setImportStep('step-analyze', 'done');
+
+    // Provenance v2: assemble the import context (source + AI + full raw
+    // payload manifest). saveListing() writes it after the listing is saved.
+    (function () {
+      const _fb = (importSource === 'facebook') ? (window._importFbData || {}) : {};
+      window._lastImportContext = {
+        sourcePlatform: importSource,
+        sourceUrl: _fb.sourceUrl || null,
+        imageMap: _fb.imageMap || {},
+        aiModel: 'gemini-2.5-flash',
+        promptVersion: 'smart-import-v1',
+        rawPayload: { fetched: _fb.fetched || null, aiResult: aiResult }
+      };
+      window._importFbData = null;
+    })();
 
     // Stage 3: populate form fields — Smart Import's job ends here. No
     // database write of any kind happens as part of import: no property
