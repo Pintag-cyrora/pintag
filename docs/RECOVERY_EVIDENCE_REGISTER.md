@@ -4,10 +4,13 @@
 the 91 listings deleted in the 2026-08-03 incident. No recovery `UPDATE` is
 proposed except against a source recorded here with its confidence and coverage.
 
-**Last updated:** 2026-08-05 · **Status:** **INTERNAL AUDIT CLOSED** — titles COMPLETE
-(91/91 Lao, 73/91 English); price **0/91 internal → external-only**; photos/owner
-external-only. Now in **external recovery** (Wayback → Facebook → Storage clustering).
-DR system built + applied to production. No `UPDATE`s written yet.
+**Last updated:** 2026-08-05 · **Status:** **PHASE 1 COMPLETE** — internal metadata fill
+APPLIED to production (72 `title_en` from analytics + 16 agents from `lead_events`;
+fill-only-when-empty, verified 88/88, reversible via `recovery_fill_rollback`).
+All 91 now carry a title (91 Lao, 72 English) + type/transaction/district; 16 have an agent.
+Internal audit closed (price 0/91 internal). **Now in PHASE 2 — Storage gallery
+reconstruction** (Wayback ruled out; photos physically survive in the bucket).
+Priority Zero DONE — 1,230 files backed up + verified. DR system built + applied.
 
 > **The 91 kept their ORIGINAL UUIDs.** The re-created draft rows share the same
 > `id` as their `properties_removal_log` entry (measured: **91/91 match**), so every
