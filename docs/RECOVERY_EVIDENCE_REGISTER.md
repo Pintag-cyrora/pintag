@@ -55,6 +55,7 @@ Confidence: **High** = restorable without guessing · **Medium** = authoritative
 | **Google cache** | Google retired cached pages (2024) | ✅ (low/none) |
 | **Cloudflare cache** | edge TTL won't hold week-old pages | ✅ (low) |
 | **Wayback `listings.html` grid** | OG worker sets only generic meta — no per-listing data | ✅ from `og-listing-preview.js` |
+| **Smart Import artifacts** (FB URL / original image URLs / import payload / logs) | Pipeline is **stateless** — `facebook-listing-fetcher` + `smart-listing-importer` write **no DB table**; FB source URL + `originalUrl`s are returned to the browser and discarded; `properties.images` stores only storage-URL strings; **no import/staging/queue/cache table**; no `source_url`/`facebook_url`/`import_id` column; functions don't log the mapping; no import Worker. **0/91 recoverable.** | ✅ code-proven 2026-08-05 |
 
 ## Confirmed from code (2026-08-05)
 - **`leads` is NOT a recovery source for the 91.** `leads.property_id … ON DELETE
