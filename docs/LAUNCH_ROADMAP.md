@@ -19,17 +19,24 @@ Authentication ✅ · Security ✅ · Backend ✅ · Database ✅ · Search ✅ 
 Infrastructure ✅ *(one caveat: verified backup pending — DR built, first run + drill outstanding)*
 
 ### Catalogue Readiness — 🔴 the bottleneck
+- **⭐ Listings with ≥1 viable recovery path:** **12 confirmed · 79 pending evidence · 0 exhausted** (of 91) — *primary launch-readiness metric*
 - **Production-ready listings:** **0 / ~30–40** target
 - **Photos:** 0 galleries attached (Storage pool intact but unlinked; sources: Wayback cover / Facebook gallery)
-- **Agent:** **12 of 91** have a recoverable agent (79 orphans), concentrated in **4 agents** — **Keomany 10** (WhatsApp only), **Tik 3** (has Facebook), **Pee 2**, **Sivone 1**. **Owner / Contact:** `leads` CASCADED — manual/Facebook.
+- **Agent:** **12 of 91** have a recoverable agent — **Keomany 10** (WhatsApp), **Tik 3** (has Facebook), **Pee 2**, **Sivone 1**. The other **79 = agent relationship currently unknown (Pending Evidence)**.
+- **Owner / Contact:** `leads` CASCADED — manual / Facebook.
+
+> **A listing becomes a *true orphan* only after ALL authoritative sources are exhausted:** Wayback · Facebook · Storage metadata · `properties_removal_log` · the `listings` table · every Recovery Evidence Register source. Until then it stays **Pending Evidence**, never "orphan."
 - **Core property facts:** mostly missing (Wayback / Facebook / manual)
 - **AI-generated content:** ⚪ **not a blocker** — regenerated after launch
 
 ### Launch Readiness — 🔴 blocked by catalogue only
 Platform ✅ **+** a premium Phase-1 catalogue ⬜. The **sole remaining gate is content** (plus the verified backup).
 
-**Largest remaining launch blocker:** **79 of 91 have no recoverable agent from production data** (orphans) — their identity + galleries need Wayback/manual. Fastest wins are the **12–16 agent-linked listings** via **4 agent contacts**. 0 galleries attached yet.
-**Highest-impact next action:** **Contact agent Keomany (WhatsApp +8562055546963)** — recoverable agent for **10 of the 91**; one conversation can restore those galleries + core facts. Then **Tik** (3, has Facebook), **Pee** (2), **Sivone** (1). In parallel: first verified backup; run **E9 (Wayback)** for the 79 orphans' cover images.
+**Largest remaining launch blocker:** **79 of 91 have an unknown agent relationship (Pending Evidence)** — recovery path TBD until Wayback/Facebook/Storage are checked (not orphans yet). Fastest *confirmed* wins: the **12–16 agent-linked listings** via **4 agent contacts**. 0 galleries attached yet.
+**Highest-impact next action (run in PARALLEL — complementary):**
+  (a) **Agent outreach**, priority order: **Keomany (WhatsApp +8562055546963, 10) → Tik (3, Facebook) → Pee (2) → Sivone (1)** — restores full galleries + core facts.
+  (b) **E9 Wayback CDX** for the 79 agent-unknown — restores covers + core presentation.
+  (Plus: first verified backup, parallel.) Do not wait for one before the other.
 **Closer than yesterday?** **Yes (measurement).** First hard evidence in: **agent-recoverability = 12/91**, and the single highest-ROI action is now concrete — one WhatsApp to Keomany recovers 10. Production-ready count is still 0, but the fastest path to the first ~12–16 is identified.
 
 ---
