@@ -11,21 +11,26 @@ listings than 91 inconsistent ones.* Recovery continues while the platform is li
 **Update rule:** as evidence arrives, **upgrade confidence and promote tiers**;
 **never downgrade a listing without evidence**; update rankings in place.
 
-## 🚦 Launch Status — *are we closer to turning maintenance off than yesterday?*
-- **Production-ready listings:** **0 / ~30–40** (working target; refine on evidence)
-- **Largest remaining launch blocker:** no **verified backup** yet **and** **0 galleries attached** — backbone evidence (E7/E8, E3, E9) not yet gathered
-- **Highest-impact next action:** (1) complete the **first verified backup**; (2) run **E7/E8 + E3 + E9** to rank the candidate set
+## 🚦 Status — Platform · Catalogue · Launch
+> *The platform is no longer the bottleneck. **The catalogue is.***
 
-**Reopening threshold — all five must be met (not perfect reconstruction):**
-- ⬜ **Premium-looking catalogue** — 0 production-ready today
-- ⬜ **Correct photos** — 0 galleries attached
-- ⬜ **Correct contacts** — coverage unmeasured (pending E8)
-- 🟩 **Stable platform** — security hardened (single-admin, RLS locked, edge fns fail-closed)
-- ⬜ **Verified backup** — DR system built; first run + restore drill pending
+### Platform Readiness — ✅ substantially ready
+Authentication ✅ · Security ✅ · Backend ✅ · Database ✅ · Search ✅ · Frontend ✅ ·
+Infrastructure ✅ *(one caveat: verified backup pending — DR built, first run + drill outstanding)*
 
-**Closer than yesterday?** Not materially — no new production evidence has arrived.
-**Single blocker:** evidence gathering + the first backup have not yet been run
-(both require operator execution; this environment has no prod/network access).
+### Catalogue Readiness — 🔴 the bottleneck
+- **Production-ready listings:** **0 / ~30–40** target
+- **Photos:** 0 galleries attached (Storage pool intact but unlinked; sources: Wayback cover / Facebook gallery)
+- **Agent / Owner / Contact:** links destroyed, but **re-linkable from `leads` for many** (pending E8)
+- **Core property facts:** mostly missing (Wayback / Facebook / manual)
+- **AI-generated content:** ⚪ **not a blocker** — regenerated after launch
+
+### Launch Readiness — 🔴 blocked by catalogue only
+Platform ✅ **+** a premium Phase-1 catalogue ⬜. The **sole remaining gate is content** (plus the verified backup).
+
+**Largest remaining launch blocker:** catalogue content — **0 galleries attached**; backbone evidence (E7/E8, E3, E9) not gathered.
+**Highest-impact next action:** (1) first **verified backup**; (2) **E7/E8 + E3 + E9** → rank candidates and re-link agents/contacts from leads.
+**Closer than yesterday?** Not materially — no new production evidence has arrived. **Single blocker:** the evidence run + first backup haven't executed (both operator-side; this environment has no prod/network access).
 
 ---
 
@@ -63,7 +68,7 @@ diversity constraints** so the catalogue reads as broad and premium:
 ## Launch classification (4 tiers)
 | Tier | Criteria |
 |---|---|
-| 🟢 **Production Ready** | full gallery (or verified cover) + correct agent/contact + core facts + QA-passed |
+| 🟢 **Production Ready** | correct photos (full gallery, or verified cover) + correct agent/owner/contact + core property facts + QA-passed — **AI text NOT required** |
 | 🟡 **Recoverable Before Launch** | authoritative assets exist & high-confidence — Wayback cover and/or findable FB gallery + lead-linked agent + recoverable facts |
 | 🟠 **Recoverable After Launch** | needs manual reconstruction, likely recoverable (agent supplies photos, FB uncertain) |
 | 🔴 **Long-term Recovery** | insufficient evidence today |
