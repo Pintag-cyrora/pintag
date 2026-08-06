@@ -12,8 +12,13 @@
 body{background:#0F1418;color:#E8EDF0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px;line-height:1.4}
 h1{font-size:1.2rem;color:#2D8C8C;margin-bottom:.2rem}
 .sub{color:#9AA7B0;font-size:.85rem;margin-bottom:1rem}
-.bar{position:sticky;top:0;background:#0F1418;padding:8px 0;border-bottom:1px solid rgba(232,237,240,.12);margin-bottom:12px;z-index:5}
+.bar{position:sticky;top:0;background:#0F1418;padding:8px 0;border-bottom:1px solid rgba(232,237,240,.12);margin-bottom:12px;z-index:5;font-size:.8rem;color:#9AA7B0}
 .card{background:#1A2428;border:1px solid rgba(232,237,240,.12);border-radius:12px;padding:14px;margin-bottom:16px}
+.sumbar{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.kpi{display:flex;flex-direction:column;line-height:1.15}
+.kpi b{font-size:1.2rem;color:#2D8C8C}
+.kpi span{font-size:.68rem;color:#9AA7B0;text-transform:uppercase;letter-spacing:.02em}
+.hc{font-size:.8rem;display:flex;align-items:center;gap:6px;margin-left:auto}
 .chd{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .cover{width:120px;height:90px;object-fit:cover;border-radius:8px;background:#0F1418}
 .meta{font-size:.8rem;color:#9AA7B0}
@@ -26,7 +31,7 @@ h1{font-size:1.2rem;color:#2D8C8C;margin-bottom:.2rem}
 .ctrls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
 .cfl{color:#9AA7B0;font-size:.8rem;margin-left:6px}
 select{background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.25);border-radius:6px;padding:5px 6px;font-size:.82rem}
-.search,.usearch{width:100%;padding:8px;margin:8px 0 4px;box-sizing:border-box;background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.2);border-radius:8px}
+.search,.usearch,.rsearch{width:100%;padding:8px;margin:8px 0 4px;box-sizing:border-box;background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.2);border-radius:8px}
 .cand{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px;border:1px solid rgba(232,237,240,.1);border-radius:8px;margin-top:6px}
 .cand .t{font-size:.85rem}
 .cand .d{font-size:.75rem;color:#9AA7B0}
@@ -36,6 +41,8 @@ select{background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.25);b
 .cand2 .t{font-size:.85rem;font-weight:600;overflow:hidden;text-overflow:ellipsis}
 .cand2 .lo{font-size:.8rem;color:#C9D3D9}
 .cand2 .m{font-size:.74rem;color:#9AA7B0}
+.conf{font-weight:700}
+.hi{color:#4CAF7D}.mid{color:#E0B15A}.lo{color:#B0778F}
 .uphoto{position:relative;display:inline-block;margin:3px}
 .uphoto input{position:absolute;top:3px;left:3px;width:15px;height:15px;z-index:2}
 .uphoto img{width:74px;height:56px;object-fit:cover;border-radius:6px}
@@ -50,10 +57,12 @@ button:disabled{opacity:.5;cursor:default}
 </head>
 <body>
 <h1>Gallery Recovery</h1>
-<div class="sub">Read-only until you act. <b>Assign</b> only the photos you tick, to the listing you pick — it merges (never removes). Every assign &amp; unassign is logged to the Gallery Assignment Register.</div>
+<div class="sub">Work the queue: tick the photos that belong, pick the listing, Assign. Completed galleries move to <b>Recovered Galleries</b>. Every assign &amp; unassign is logged.</div>
 <div class="bar" id="bar">Loading…</div>
+<div id="summary"></div>
 <div id="tools"></div>
 <div id="clusters"></div>
+<div id="recovered" style="display:none"></div>
 <div id="log"></div>
 
 <script src="config.js?v=__ASSET_VERSION__"></script>
@@ -64,24 +73,44 @@ button:disabled{opacity:.5;cursor:default}
   var sb = supabase.createClient(window.PINTAG.supabaseUrl, window.PINTAG.anonKey);
   var BUCKET = 'property-images';
   var PUB = window.PINTAG.supabaseUrl + '/storage/v1/object/public/' + BUCKET + '/';
-  var GAP_MS = 15 * 60 * 1000;                       // burst gap for clustering
+  var GAP_MS = 15 * 60 * 1000;
   var OPERATOR = 'operator';
-  var ALL_PROPS = [];                                // every property (for unassign search)
-  var DRAFTS = [];                                   // draft listings (assign candidates)
-  var PARTY = {};                                    // party id -> agent name
-  var PARTIES = [];                                  // [{id,name}] for the agent picker
-  var CLUSTERS = [];
+  var ALL_PROPS = [], DRAFTS = [], PARTY = {}, PARTIES = [], CLUSTERS = [];
+  var SET91 = new Set();
+  var CONFMAP = {};                 // listing_id -> worst confidence among its assigns
+  var HIDE_COMPLETED = true;        // ☑ Hide completed (default ON)
+  var VIEW = 'queue';               // 'queue' | 'recovered'
+  var FILTERS = { agent:'', district:'', ptype:'' };
+  var RCONF = 'all';                // recovered-view confidence filter
+  var CONF_RANK = { low:0, medium:1, high:2 };
   var log = function (m) { var l = document.getElementById('log'); l.innerHTML = '['+new Date().toLocaleTimeString()+'] '+m+'<br>'+l.innerHTML; };
   function esc(s){ return (''+(s==null?'':s)).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function nameOf(u){ return (''+u).split('/').pop(); }
   function imgsOf(p){ if(!p||!p.images) return []; try { return Array.isArray(p.images)?p.images:JSON.parse(p.images); } catch(e){ return []; } }
   function label(d){ return d.title_en || d.title_lo || d.id; }
+  function nz(s){ return s!=null && (''+s).trim()!==''; }
+  function worseConf(a,b){ if(!a) return b; if(!b) return a; return CONF_RANK[a] <= CONF_RANK[b] ? a : b; }
   function agentName(d){ return (d.managed_by_party_id && PARTY[d.managed_by_party_id]) || ''; }
   function agentOptionsHtml(sel){
     var o = '<option value="">— no agent —</option>';
     PARTIES.forEach(function(p){ o += '<option value="'+esc(p.id)+'"'+(p.id===sel?' selected':'')+'>'+esc(p.name)+'</option>'; });
     return o;
   }
+
+  // Global quick-filters that narrow the candidate lists for every cluster.
+  function baseDrafts(){
+    return DRAFTS.filter(function(d){
+      var a = FILTERS.agent;
+      if (a === '__none__' && d.managed_by_party_id) return false;
+      if (a === '__any__'  && !d.managed_by_party_id) return false;
+      if (a && a !== '__none__' && a !== '__any__' && d.managed_by_party_id !== a) return false;
+      if (FILTERS.district && d.district_en !== FILTERS.district) return false;
+      if (FILTERS.ptype && d.property_type !== FILTERS.ptype) return false;
+      return true;
+    });
+  }
+  function refreshAllCands(){ CLUSTERS.forEach(function(c){ if (c._refreshCands) c._refreshCands(); }); }
+
   // Recognize the agent → recover the relationship. Fill-only unless you change
   // an existing one (confirmed). Logged to listing_provenance (agent_changed).
   async function setAgent(draft, partyId) {
@@ -99,23 +128,9 @@ button:disabled{opacity:.5;cursor:default}
     if (reg.error) log('WARN provenance insert failed: '+reg.error.message);
     draft.managed_by_party_id = partyId;
     log('AGENT '+(partyId ? ('set → '+(PARTY[partyId]||partyId)) : 'cleared')+' for '+label(draft));
-    refreshAllCands();
+    refreshAllCands(); updateSummary();
+    if (VIEW === 'recovered') renderRecovered();
   }
-
-  // Global quick-filters that narrow the candidate lists for every cluster.
-  var FILTERS = { agent:'', district:'', ptype:'' };
-  function baseDrafts(){
-    return DRAFTS.filter(function(d){
-      var a = FILTERS.agent;
-      if (a === '__none__' && d.managed_by_party_id) return false;
-      if (a === '__any__'  && !d.managed_by_party_id) return false;
-      if (a && a !== '__none__' && a !== '__any__' && d.managed_by_party_id !== a) return false;
-      if (FILTERS.district && d.district_en !== FILTERS.district) return false;
-      if (FILTERS.ptype && d.property_type !== FILTERS.ptype) return false;
-      return true;
-    });
-  }
-  function refreshAllCands(){ CLUSTERS.forEach(function(c){ if (c._refreshCands) c._refreshCands(); }); }
 
   PintagAdminAuth.protect(sb, boot);
 
@@ -149,11 +164,16 @@ button:disabled{opacity:.5;cursor:default}
       if (OPERATOR === 'operator' && window.PintagAdminAuth && PintagAdminAuth.ADMIN_EMAIL) OPERATOR = PintagAdminAuth.ADMIN_EMAIL;
 
       var objs = await listAllObjects();
-      ALL_PROPS = (await sb.from('properties').select('id,title_en,title_lo,district_en,property_type,managed_by_party_id,images,workflow_status')).data || [];
+      ALL_PROPS = (await sb.from('properties').select('id,title_en,title_lo,district_en,property_type,transaction_type,managed_by_party_id,contact_id,images,workflow_status')).data || [];
       var parties = (await sb.from('parties').select('id,name_en,name_lo')).data || [];
       parties.forEach(function (p){ PARTY[p.id] = p.name_en || p.name_lo || null; });
-      PARTIES = parties.map(function(p){ return { id:p.id, name: p.name_en||p.name_lo||p.id }; })
-                       .sort(function(a,b){ return a.name.localeCompare(b.name); });
+      PARTIES = parties.map(function(p){ return { id:p.id, name: p.name_en||p.name_lo||p.id }; }).sort(function(a,b){ return a.name.localeCompare(b.name); });
+
+      var rl = (await sb.from('properties_removal_log').select('property_id')).data || [];
+      SET91 = new Set(rl.map(function(r){ return r.property_id; }));
+
+      var reg = (await sb.from('gallery_assignments').select('listing_id,confidence').eq('op','assign')).data || [];
+      reg.forEach(function(r){ if (r.confidence) CONFMAP[r.listing_id] = worseConf(CONFMAP[r.listing_id], r.confidence); });
 
       var referenced = new Set();
       ALL_PROPS.forEach(function (p){ imgsOf(p).forEach(function(u){ var m=nameOf(u); if(m) referenced.add(m); }); });
@@ -163,33 +183,73 @@ button:disabled{opacity:.5;cursor:default}
       CLUSTERS = clusterByTime(orphans);
       CLUSTERS.forEach(function (c, i){ c.id = c.files[0].name; c._n = i+1; c.remaining = c.files.slice(); });
 
+      document.getElementById('bar').textContent = 'Loaded '+objs.length+' photos → '+CLUSTERS.length+' clusters. Read-only until you act.';
+      renderSummary();
       renderTools();
       renderClusters();
-      refreshCounts(objs.length, orphans.length);
-      log('Loaded '+objs.length+' objects, '+orphans.length+' orphans → '+CLUSTERS.length+' clusters. Read-only until you Assign.');
+      updateSummary();
+      log('Loaded '+objs.length+' objects, '+orphans.length+' orphans → '+CLUSTERS.length+' clusters.');
     } catch (e) { document.getElementById('bar').textContent = 'Error: ' + (e.message||e); log('ERROR '+(e.message||e)); }
   }
 
-  function refreshCounts(total, orphans) {
-    var remaining = CLUSTERS.filter(function(c){ return c.remaining.length; }).length;
-    document.getElementById('bar').innerHTML =
-      '<b>'+remaining+'</b> clusters left · <b>'+DRAFTS.length+'</b> draft listings · logged to Gallery Assignment Register';
+  // ───────────────────────── LIVE SUMMARY ─────────────────────────
+  function counts() {
+    var unassigned = CLUSTERS.filter(function(c){ return c.remaining.length; }).length;
+    var recovered = 0, low = 0, publishable = 0;
+    ALL_PROPS.forEach(function(p){
+      if (!SET91.has(p.id)) return;
+      var g = imgsOf(p).length > 0;
+      if (g) recovered++;
+      if (g && CONFMAP[p.id] === 'low') low++;
+      var core = (nz(p.title_en) || nz(p.title_lo)) && p.property_type && p.transaction_type && p.district_en;
+      var contact = p.managed_by_party_id || p.contact_id;
+      if (core && g && contact) publishable++;
+    });
+    return { unassigned:unassigned, recovered:recovered, low:low, publishable:publishable };
+  }
+  function renderSummary() {
+    document.getElementById('summary').innerHTML =
+      '<div class="card sumbar">'+
+        '<span class="kpi"><b id="k-unassigned">–</b><span>Unassigned clusters</span></span>'+
+        '<span class="kpi"><b id="k-recovered">–</b><span>Recovered galleries</span></span>'+
+        '<span class="kpi"><b id="k-low">–</b><span>Low-confidence</span></span>'+
+        '<span class="kpi"><b id="k-pub">–</b><span>Publishable / 91</span></span>'+
+        '<label class="hc"><input type="checkbox" id="hidecomp" checked> Hide completed</label>'+
+        '<button class="ghost" id="viewbtn">Recovered Galleries ▸</button>'+
+      '</div>';
+    document.getElementById('hidecomp').onchange = function(){ HIDE_COMPLETED = this.checked; renderClusters(); };
+    document.getElementById('viewbtn').onclick = function(){ switchView(VIEW === 'queue' ? 'recovered' : 'queue'); };
+  }
+  function updateSummary() {
+    var c = counts();
+    function set(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
+    set('k-unassigned', c.unassigned); set('k-recovered', c.recovered);
+    set('k-low', c.low); set('k-pub', c.publishable + ' / 91');
+  }
+  function switchView(v) {
+    VIEW = v; var q = (v === 'queue');
+    document.getElementById('tools').style.display = q ? '' : 'none';
+    document.getElementById('clusters').style.display = q ? '' : 'none';
+    document.getElementById('recovered').style.display = q ? 'none' : '';
+    document.getElementById('viewbtn').textContent = q ? 'Recovered Galleries ▸' : '◂ Back to recovery queue';
+    if (!q) renderRecovered();
   }
 
-  // ───────────────────────── CLUSTERS (assign) ─────────────────────────
+  // ───────────────────────── QUEUE (assign) ─────────────────────────
   function renderClusters() {
     var host = document.getElementById('clusters'); host.innerHTML = '';
+    var shown = 0;
     CLUSTERS.forEach(function (c) {
+      if (HIDE_COMPLETED && c.remaining.length === 0) return;
       var card = document.createElement('div'); card.className = 'card'; host.appendChild(card);
-      c._card = card; fillCard(c);
+      c._card = card; fillCard(c); shown++;
     });
+    if (!shown) host.innerHTML = '<div class="card done">✅ No clusters need attention. Toggle “Hide completed” off, or open Recovered Galleries to review.</div>';
   }
-
   function photoItem(f) {
     return '<label class="photo"><input type="checkbox" data-name="'+esc(f.name)+'" checked>'+
            '<img loading="lazy" src="'+PUB+esc(f.name)+'"></label>';
   }
-
   function fillCard(c) {
     var card = c._card, files = c.remaining;
     if (!files.length) { card.innerHTML = '<div class="done">✅ Cluster #'+c._n+' fully assigned.</div>'; return; }
@@ -201,7 +261,7 @@ button:disabled{opacity:.5;cursor:default}
       '<div class="ctrls"><button class="ghost tsel">Select all</button><button class="ghost tnone">Select none</button>'+
         '<span class="cfl">Confidence:</span><select class="confsel"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select></div>'+
       '<div class="gallery">'+files.map(photoItem).join('')+'</div>'+
-      '<input class="search" placeholder="Search matching listing by recovered title (EN / Lao) or district…">'+
+      '<input class="search" placeholder="Search matching listing by agent, district, type, or title…">'+
       '<div class="cands"></div>';
     var gal = card.querySelector('.gallery');
     card.querySelector('.tsel').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=true; }); };
@@ -211,23 +271,14 @@ button:disabled{opacity:.5;cursor:default}
     input.oninput = c._refreshCands;
     c._refreshCands();
   }
-
   // Search matches AGENT NAME (highest priority), district, type, EN + Lao title.
   function hay(d){ return (agentName(d)+' '+(d.title_en||'')+' '+(d.title_lo||'')+' '+(d.district_en||'')+' '+(d.property_type||'')).toLowerCase(); }
-
   function renderCands(c, card, cd, q, conf) {
     q = (q||'').trim().toLowerCase(); cd.innerHTML = '';
     var active = FILTERS.agent || FILTERS.district || FILTERS.ptype;
-    if (!q && !active) {
-      cd.innerHTML = '<div class="why">Search by <b>agent name</b>, district, type, or title — or use the quick filters above. Tip: type an agent (e.g. “Daeng”) to see only their listings.</div>';
-      return;
-    }
+    if (!q && !active) { cd.innerHTML = '<div class="why">Search by <b>agent name</b>, district, type, or title — or use the quick filters above. Tip: type an agent (e.g. “Daeng”) to see only their listings.</div>'; return; }
     var matches = baseDrafts().filter(function(d){ return !q || hay(d).indexOf(q) >= 0; });
-    if (q) {   // agent-name matches first
-      matches.sort(function(a,b){
-        return (agentName(a).toLowerCase().indexOf(q) >= 0 ? 0 : 1) - (agentName(b).toLowerCase().indexOf(q) >= 0 ? 0 : 1);
-      });
-    }
+    if (q) { matches.sort(function(a,b){ return (agentName(a).toLowerCase().indexOf(q)>=0?0:1) - (agentName(b).toLowerCase().indexOf(q)>=0?0:1); }); }
     matches = matches.slice(0, 20);
     if (!matches.length) { cd.innerHTML = '<div class="why">No match.</div>'; return; }
     matches.forEach(function (d) {
@@ -251,35 +302,74 @@ button:disabled{opacity:.5;cursor:default}
       if (asel) asel.onchange = function(){ setAgent(d, asel.value); };
     });
   }
-
   async function assign(c, draft, confidence, names, btn) {
     if (!names.length) { alert('Tick at least one photo first.'); return; }
     if (!confirm('Assign '+names.length+' photo(s) to:\n'+label(draft)+'\nConfidence: '+confidence.toUpperCase()+'\n\n(Merged into the gallery — never removes existing photos.)')) return;
     btn.disabled = true;
     var addUrls = names.map(function(n){ return PUB + n; });
-    // merge (append, dedup) — never removes existing photos
     var cur = imgsOf(draft);
     var have = new Set(cur.map(nameOf));
     var merged = cur.concat(addUrls.filter(function(u){ return !have.has(nameOf(u)); }));
     var r = await sb.from('properties').update({ images: merged }).eq('id', draft.id).select('id');
     if (r.error) { btn.disabled = false; log('ERROR assign '+r.error.message); alert('Failed: '+r.error.message); return; }
-    // append-only Gallery Assignment Register
     var reg = await sb.from('gallery_assignments').insert([{
       op:'assign', listing_id:draft.id, cluster_id:c.id, photo_paths:names,
       photo_count:names.length, confidence:confidence, method:'manual', operator:OPERATOR
     }]);
     if (reg.error) log('WARN register insert failed: '+reg.error.message);
-    draft.images = merged;                                   // keep local copy in sync
+    draft.images = merged;
+    CONFMAP[draft.id] = worseConf(CONFMAP[draft.id], confidence);
     c.remaining = c.remaining.filter(function(f){ return names.indexOf(f.name) < 0; });
     log('ASSIGNED '+names.length+' photo(s) → '+label(draft)+' ['+confidence+'] (cluster #'+c._n+')');
-    fillCard(c); refreshCounts();
+    afterClusterChange(c);
+  }
+  function afterClusterChange(c) {
+    if (HIDE_COMPLETED && c.remaining.length === 0) { if (c._card && c._card.parentNode) c._card.parentNode.removeChild(c._card); }
+    else if (c._card) fillCard(c);
+    updateSummary();
   }
 
-  // ───────────────────────── UNASSIGN + low-confidence ─────────────────────────
+  // ───────────────────────── RECOVERED GALLERIES view ─────────────────────────
+  function recoveredList() { return ALL_PROPS.filter(function(p){ return SET91.has(p.id) && imgsOf(p).length > 0; }); }
+  function renderRecovered() {
+    var host = document.getElementById('recovered');
+    host.innerHTML =
+      '<div class="card"><b>Recovered Galleries</b> <span class="meta">'+recoveredList().length+' listing(s) with photos</span>'+
+        '<div class="ctrls"><span class="cfl">Confidence</span>'+
+          ['all','high','medium','low'].map(function(x){ return '<button class="ghost rcf" data-c="'+x+'"'+(RCONF===x?' style="background:#2D8C8C;color:#fff"':'')+'>'+x.toUpperCase()+'</button>'; }).join('')+
+        '</div>'+
+        '<input class="rsearch" placeholder="Search recovered listings by agent, title, or district…">'+
+        '<div class="rlist"></div></div>';
+    var rs = host.querySelector('.rsearch'), rl = host.querySelector('.rlist');
+    [].forEach.call(host.querySelectorAll('.rcf'), function(b){ b.onclick = function(){ RCONF = b.getAttribute('data-c'); renderRecovered(); }; });
+    rs.oninput = function(){ drawRecovered(rl, rs.value); };
+    drawRecovered(rl, '');
+  }
+  function drawRecovered(rl, q) {
+    q = (q||'').trim().toLowerCase(); rl.innerHTML = '';
+    var list = recoveredList().filter(function(p){
+      if (RCONF !== 'all' && (CONFMAP[p.id]||'') !== RCONF) return false;
+      if (q && (agentName(p)+' '+(p.title_en||'')+' '+(p.title_lo||'')+' '+(p.district_en||'')).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+    if (!list.length) { rl.innerHTML = '<div class="why">Nothing matches.</div>'; return; }
+    list.forEach(function(p){
+      var conf = CONFMAP[p.id] || '—';
+      var ccls = conf==='low'?'lo':conf==='medium'?'mid':conf==='high'?'hi':'';
+      var row = document.createElement('div'); row.className = 'cand2';
+      row.innerHTML = '<div class="ph">🖼️</div><div class="info">'+
+        '<div class="t">'+esc(p.title_en||p.title_lo||'(untitled)')+'</div>'+
+        '<div class="lo">'+esc(p.title_lo||'')+'</div>'+
+        '<div class="m">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(p.district_en||'?')+' · 🖼️ '+imgsOf(p).length+' photo(s) · <span class="conf '+ccls+'">'+String(conf).toUpperCase()+'</span></div></div>';
+      var b = document.createElement('button'); b.className='ghost'; b.textContent = 'Review / edit';
+      b.onclick = function(){ openUnassign(p, row); };
+      row.appendChild(b); rl.appendChild(row);
+    });
+  }
+
+  // ───────────────────────── quick filters + correct/unassign ─────────────────────────
   function renderTools() {
     var host = document.getElementById('tools');
-
-    // distinct agents / districts / types across the draft set (for quick filters)
     var agents = {}; DRAFTS.forEach(function(d){ if (d.managed_by_party_id) agents[d.managed_by_party_id] = agentName(d) || d.managed_by_party_id; });
     var aOpt = Object.keys(agents).sort(function(x,y){ return (agents[x]||'').localeCompare(agents[y]||''); })
                  .map(function(id){ return '<option value="'+esc(id)+'">'+esc(agents[id])+'</option>'; }).join('');
@@ -299,25 +389,20 @@ button:disabled{opacity:.5;cursor:default}
       '<div class="card"><b>Correct / un-assign a listing</b>'+
         '<div class="why">Search any listing that already has photos, remove the wrong ones, and they return to the unassigned pool. Every removal is logged.</div>'+
         '<input class="usearch" placeholder="Search a listing with photos by title / district…">'+
-        '<div class="uresults"></div>'+
-        '<div style="margin-top:10px"><button class="ghost lowbtn">Review LOW-confidence assignments</button><div class="lowlist"></div></div>'+
-      '</div>';
+        '<div class="uresults"></div></div>';
 
     var fa=host.querySelector('.fagent'), fd=host.querySelector('.fdist'), ft=host.querySelector('.ftype');
     fa.onchange=function(){ FILTERS.agent=fa.value; refreshAllCands(); };
     fd.onchange=function(){ FILTERS.district=fd.value; refreshAllCands(); };
     ft.onchange=function(){ FILTERS.ptype=ft.value; refreshAllCands(); };
     host.querySelector('.fclear').onclick=function(){ FILTERS.agent=FILTERS.district=FILTERS.ptype=''; fa.value=fd.value=ft.value=''; refreshAllCands(); };
-
     var us = host.querySelector('.usearch'), ur = host.querySelector('.uresults');
     us.oninput = function(){ renderUResults(us.value, ur); };
-    host.querySelector('.lowbtn').onclick = function(){ loadLowConfidence(host.querySelector('.lowlist')); };
   }
-
   function renderUResults(q, ur) {
     q = (q||'').trim().toLowerCase(); ur.innerHTML = '';
     if (!q) return;
-    var matches = ALL_PROPS.filter(function(p){ return imgsOf(p).length && hay(p).indexOf(q) >= 0; }).slice(0, 12);
+    var matches = ALL_PROPS.filter(function(p){ return imgsOf(p).length && (agentName(p)+' '+(p.title_en||'')+' '+(p.title_lo||'')+' '+(p.district_en||'')).toLowerCase().indexOf(q) >= 0; }).slice(0, 12);
     if (!matches.length) { ur.innerHTML = '<div class="why">No listing with photos matches.</div>'; return; }
     matches.forEach(function(p){
       var row = document.createElement('div'); row.className = 'cand';
@@ -327,7 +412,6 @@ button:disabled{opacity:.5;cursor:default}
       row.appendChild(btn); ur.appendChild(row);
     });
   }
-
   function openUnassign(p, anchor) {
     var box = document.createElement('div'); box.className = 'card';
     var urls = imgsOf(p);
@@ -342,7 +426,6 @@ button:disabled{opacity:.5;cursor:default}
     };
     box.querySelector('.rmall').onclick = function(){ unassign(p, urls.map(nameOf), true); };
   }
-
   async function unassign(p, removeNames, all) {
     if (!confirm('Remove '+removeNames.length+' photo(s) from:\n'+label(p)+'\n\nThey return to the unassigned pool. This is logged.')) return;
     var cur = imgsOf(p);
@@ -356,23 +439,6 @@ button:disabled{opacity:.5;cursor:default}
     log('UNASSIGNED '+removeNames.length+' photo(s) from '+label(p)+' → pool');
     alert('Removed. Reloading so the photos return to the pool.');
     location.reload();
-  }
-
-  async function loadLowConfidence(host) {
-    host.innerHTML = '<div class="why">Loading…</div>';
-    var r = await sb.from('gallery_assignments').select('listing_id,photo_count,created_at').eq('op','assign').eq('confidence','low').order('created_at',{ascending:false});
-    if (r.error) { host.innerHTML = '<div class="why">Error: '+esc(r.error.message)+'</div>'; return; }
-    var rows = r.data || [];
-    if (!rows.length) { host.innerHTML = '<div class="why">No low-confidence assignments.</div>'; return; }
-    var byId = {}; ALL_PROPS.forEach(function(p){ byId[p.id]=p; });
-    host.innerHTML = '<div class="why">'+rows.length+' low-confidence assignment(s) — revisit and re-confirm or correct via the search above.</div>';
-    rows.forEach(function(x){
-      var p = byId[x.listing_id];
-      var row = document.createElement('div'); row.className='cand';
-      row.innerHTML = '<div><div class="t">'+esc(p?label(p):x.listing_id)+'</div>'+
-        '<div class="d">'+x.photo_count+' photo(s) · '+new Date(x.created_at).toLocaleString()+'</div></div>';
-      host.appendChild(row);
-    });
   }
 })();
 </script>
