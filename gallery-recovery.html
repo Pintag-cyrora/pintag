@@ -30,6 +30,12 @@ select{background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.25);b
 .cand{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px;border:1px solid rgba(232,237,240,.1);border-radius:8px;margin-top:6px}
 .cand .t{font-size:.85rem}
 .cand .d{font-size:.75rem;color:#9AA7B0}
+.cand2{display:flex;gap:10px;align-items:center;padding:8px;border:1px solid rgba(232,237,240,.1);border-radius:8px;margin-top:6px}
+.cand2 .ph{width:56px;height:44px;flex:0 0 auto;border-radius:6px;background:#0F1418;display:flex;align-items:center;justify-content:center;font-size:1.15rem;opacity:.55}
+.cand2 .info{flex:1;min-width:0}
+.cand2 .t{font-size:.85rem;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.cand2 .lo{font-size:.8rem;color:#C9D3D9}
+.cand2 .m{font-size:.74rem;color:#9AA7B0}
 .uphoto{position:relative;display:inline-block;margin:3px}
 .uphoto input{position:absolute;top:3px;left:3px;width:15px;height:15px;z-index:2}
 .uphoto img{width:74px;height:56px;object-fit:cover;border-radius:6px}
@@ -69,6 +75,22 @@ button:disabled{opacity:.5;cursor:default}
   function nameOf(u){ return (''+u).split('/').pop(); }
   function imgsOf(p){ if(!p||!p.images) return []; try { return Array.isArray(p.images)?p.images:JSON.parse(p.images); } catch(e){ return []; } }
   function label(d){ return d.title_en || d.title_lo || d.id; }
+  function agentName(d){ return (d.managed_by_party_id && PARTY[d.managed_by_party_id]) || ''; }
+
+  // Global quick-filters that narrow the candidate lists for every cluster.
+  var FILTERS = { agent:'', district:'', ptype:'' };
+  function baseDrafts(){
+    return DRAFTS.filter(function(d){
+      var a = FILTERS.agent;
+      if (a === '__none__' && d.managed_by_party_id) return false;
+      if (a === '__any__'  && !d.managed_by_party_id) return false;
+      if (a && a !== '__none__' && a !== '__any__' && d.managed_by_party_id !== a) return false;
+      if (FILTERS.district && d.district_en !== FILTERS.district) return false;
+      if (FILTERS.ptype && d.property_type !== FILTERS.ptype) return false;
+      return true;
+    });
+  }
+  function refreshAllCands(){ CLUSTERS.forEach(function(c){ if (c._refreshCands) c._refreshCands(); }); }
 
   PintagAdminAuth.protect(sb, boot);
 
@@ -158,25 +180,40 @@ button:disabled{opacity:.5;cursor:default}
     card.querySelector('.tsel').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=true; }); };
     card.querySelector('.tnone').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=false; }); };
     var input = card.querySelector('.search'), cd = card.querySelector('.cands'), conf = card.querySelector('.confsel');
-    input.oninput = function(){ renderCands(c, card, cd, input.value, conf); };
-    renderCands(c, card, cd, '', conf);
+    c._refreshCands = function(){ renderCands(c, card, cd, input.value, conf); };
+    input.oninput = c._refreshCands;
+    c._refreshCands();
   }
 
-  function hay(d){ return ((d.title_en||'')+' '+(d.title_lo||'')+' '+(d.district_en||'')+' '+(d.property_type||'')).toLowerCase(); }
+  // Search matches AGENT NAME (highest priority), district, type, EN + Lao title.
+  function hay(d){ return (agentName(d)+' '+(d.title_en||'')+' '+(d.title_lo||'')+' '+(d.district_en||'')+' '+(d.property_type||'')).toLowerCase(); }
 
   function renderCands(c, card, cd, q, conf) {
     q = (q||'').trim().toLowerCase(); cd.innerHTML = '';
-    if (!q) { cd.innerHTML = '<div class="why">Type part of the recovered title (English or Lao) or the district to find the listing these photos belong to.</div>'; return; }
-    var matches = DRAFTS.filter(function(d){ return hay(d).indexOf(q) >= 0; }).slice(0, 12);
-    if (!matches.length) { cd.innerHTML = '<div class="why">No match — try fewer words.</div>'; return; }
+    var active = FILTERS.agent || FILTERS.district || FILTERS.ptype;
+    if (!q && !active) {
+      cd.innerHTML = '<div class="why">Search by <b>agent name</b>, district, type, or title — or use the quick filters above. Tip: type an agent (e.g. “Daeng”) to see only their listings.</div>';
+      return;
+    }
+    var matches = baseDrafts().filter(function(d){ return !q || hay(d).indexOf(q) >= 0; });
+    if (q) {   // agent-name matches first
+      matches.sort(function(a,b){
+        return (agentName(a).toLowerCase().indexOf(q) >= 0 ? 0 : 1) - (agentName(b).toLowerCase().indexOf(q) >= 0 ? 0 : 1);
+      });
+    }
+    matches = matches.slice(0, 20);
+    if (!matches.length) { cd.innerHTML = '<div class="why">No match.</div>'; return; }
     matches.forEach(function (d) {
-      var agent = d.managed_by_party_id && PARTY[d.managed_by_party_id];
       var have = imgsOf(d).length;
-      var row = document.createElement('div'); row.className = 'cand';
-      row.innerHTML = '<div><div class="t">'+esc(d.title_en||d.title_lo||'(untitled)')+'</div>'+
-        '<div class="d">'+(d.title_en && d.title_lo ? esc(d.title_lo)+' · ' : '')+esc(d.district_en||'?')+' · '+esc(d.property_type||'?')+
-        (agent ? ' · 👤 '+esc(agent) : '')+
-        (have ? '<span class="tag">has '+have+' photo(s)</span>' : '')+'</div></div>';
+      var row = document.createElement('div'); row.className = 'cand2';
+      row.innerHTML =
+        '<div class="ph">🏠</div>'+
+        '<div class="info">'+
+          '<div class="t">'+esc(d.title_en||'—')+'</div>'+
+          '<div class="lo">'+esc(d.title_lo||'—')+'</div>'+
+          '<div class="m">👤 '+esc(agentName(d)||'no agent')+'</div>'+
+          '<div class="m">📍 '+esc(d.district_en||'?')+' · 🏷 '+esc(d.property_type||'?')+(have?' · <span class="tag">has '+have+'</span>':'')+'</div>'+
+        '</div>';
       var btn = document.createElement('button'); btn.textContent = 'Assign selected';
       btn.onclick = function () {
         var names = [].map.call(card.querySelectorAll('.gallery input:checked'), function(x){ return x.getAttribute('data-name'); });
@@ -212,13 +249,37 @@ button:disabled{opacity:.5;cursor:default}
   // ───────────────────────── UNASSIGN + low-confidence ─────────────────────────
   function renderTools() {
     var host = document.getElementById('tools');
+
+    // distinct agents / districts / types across the draft set (for quick filters)
+    var agents = {}; DRAFTS.forEach(function(d){ if (d.managed_by_party_id) agents[d.managed_by_party_id] = agentName(d) || d.managed_by_party_id; });
+    var aOpt = Object.keys(agents).sort(function(x,y){ return (agents[x]||'').localeCompare(agents[y]||''); })
+                 .map(function(id){ return '<option value="'+esc(id)+'">'+esc(agents[id])+'</option>'; }).join('');
+    var dset = {}; DRAFTS.forEach(function(d){ if (d.district_en) dset[d.district_en]=1; });
+    var dOpt = Object.keys(dset).sort().map(function(x){ return '<option value="'+esc(x)+'">'+esc(x)+'</option>'; }).join('');
+    var tset = {}; DRAFTS.forEach(function(d){ if (d.property_type) tset[d.property_type]=1; });
+    var tOpt = Object.keys(tset).sort().map(function(x){ return '<option value="'+esc(x)+'">'+esc(x)+'</option>'; }).join('');
+
     host.innerHTML =
+      '<div class="card"><b>Quick filters</b> <span class="why" style="display:inline">— narrow the candidate lists for every cluster</span>'+
+        '<div class="ctrls">'+
+          '<span class="cfl">Agent</span><select class="fagent"><option value="">any</option><option value="__any__">— has any agent —</option><option value="__none__">— no agent —</option>'+aOpt+'</select>'+
+          '<span class="cfl">District</span><select class="fdist"><option value="">any</option>'+dOpt+'</select>'+
+          '<span class="cfl">Type</span><select class="ftype"><option value="">any</option>'+tOpt+'</select>'+
+          '<button class="ghost fclear">Clear filters</button>'+
+        '</div></div>'+
       '<div class="card"><b>Correct / un-assign a listing</b>'+
-      '<div class="why">Search any listing that already has photos, remove the wrong ones, and they return to the unassigned pool. Every removal is logged.</div>'+
-      '<input class="usearch" placeholder="Search a listing with photos by title / district…">'+
-      '<div class="uresults"></div>'+
-      '<div style="margin-top:10px"><button class="ghost lowbtn">Review LOW-confidence assignments</button><div class="lowlist"></div></div>'+
+        '<div class="why">Search any listing that already has photos, remove the wrong ones, and they return to the unassigned pool. Every removal is logged.</div>'+
+        '<input class="usearch" placeholder="Search a listing with photos by title / district…">'+
+        '<div class="uresults"></div>'+
+        '<div style="margin-top:10px"><button class="ghost lowbtn">Review LOW-confidence assignments</button><div class="lowlist"></div></div>'+
       '</div>';
+
+    var fa=host.querySelector('.fagent'), fd=host.querySelector('.fdist'), ft=host.querySelector('.ftype');
+    fa.onchange=function(){ FILTERS.agent=fa.value; refreshAllCands(); };
+    fd.onchange=function(){ FILTERS.district=fd.value; refreshAllCands(); };
+    ft.onchange=function(){ FILTERS.ptype=ft.value; refreshAllCands(); };
+    host.querySelector('.fclear').onclick=function(){ FILTERS.agent=FILTERS.district=FILTERS.ptype=''; fa.value=fd.value=ft.value=''; refreshAllCands(); };
+
     var us = host.querySelector('.usearch'), ur = host.querySelector('.uresults');
     us.oninput = function(){ renderUResults(us.value, ur); };
     host.querySelector('.lowbtn').onclick = function(){ loadLowConfidence(host.querySelector('.lowlist')); };
