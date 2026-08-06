@@ -108,7 +108,7 @@ button:disabled{opacity:.5;cursor:default}
   var RCONF = 'all';                // recovered-view confidence filter
   var CONF_RANK = { low:0, medium:1, high:2 };
   var log = function (m) { var l = document.getElementById('log'); l.innerHTML = '['+new Date().toLocaleTimeString()+'] '+m+'<br>'+l.innerHTML; };
-  function esc(s){ return (''+(s==null?'':s)).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function esc(s){ return (''+(s==null?'':s)).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function nameOf(u){ return (''+u).split('/').pop(); }
   function imgsOf(p){ if(!p||!p.images) return []; try { return Array.isArray(p.images)?p.images:JSON.parse(p.images); } catch(e){ return []; } }
   function label(d){ return d.title_en || d.title_lo || d.id; }

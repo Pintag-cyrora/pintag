@@ -1,0 +1,97 @@
+name: Production Monitoring
+
+# L1 baseline monitoring (audit 2026-08-06: no monitoring of any kind existed).
+# Two layers:
+#   1. The in-database tripwires (20260806030000_mass_delete_alerting.sql)
+#      alert within SECONDS via webhook when a hard delete / mass delete
+#      happens. That is the primary "alert within minutes" path.
+#   2. This workflow is the scheduled BACKSTOP: uptime, listing-count floor,
+#      unseen critical alerts, and admin-activity anomalies. A failed run
+#      notifies the repo owner (GitHub Actions failure email) and, when
+#      ALERT_WEBHOOK_URL is set, POSTs to the same webhook channel.
+#
+# Secrets used (all optional except none — steps skip gracefully):
+#   PINTAG_PROD_DB_URL   read-only DB checks (same secret backup.yml uses)
+#   ALERT_WEBHOOK_URL    optional webhook for failure notifications
+# Repo variable:
+#   MIN_EXPECTED_LISTINGS  listing-count floor (defaults to 1)
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'        # every 30 minutes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monitoring
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+      ALERT_WEBHOOK_URL:  ${{ secrets.ALERT_WEBHOOK_URL }}
+      MIN_EXPECTED_LISTINGS: ${{ vars.MIN_EXPECTED_LISTINGS || 1 }}
+    steps:
+      - name: Uptime — public site
+        run: |
+          # Any 2xx/3xx counts as up (the maintenance page is a healthy 200).
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://pintag.io/)
+          echo "pintag.io → $code"
+          case "$code" in 2*|3*) ;; *) echo "::error::Public site returned $code"; exit 1;; esac
+
+      - name: Uptime — admin surface
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://pintag.io/admin.html)
+          echo "admin.html → $code"
+          case "$code" in 2*|3*) ;; *) echo "::error::Admin surface returned $code"; exit 1;; esac
+
+      - name: Database checks (listing floor, critical alerts, admin-activity anomaly)
+        if: env.PINTAG_PROD_DB_URL != ''
+        run: |
+          sudo apt-get install -y -qq postgresql-client >/dev/null
+          fail=0
+
+          # 1. Listing-count floor — a sudden drop below the floor is exactly
+          #    how the 2026-08-03 incident would have surfaced in minutes.
+          n=$(psql "$PINTAG_PROD_DB_URL" -Atqc \
+            "select count(*) from properties where coalesce(deleted_at, null) is null" 2>/dev/null \
+            || psql "$PINTAG_PROD_DB_URL" -Atqc "select count(*) from properties")
+          echo "listings (not soft-deleted): $n (floor: $MIN_EXPECTED_LISTINGS)"
+          if [ "$n" -lt "$MIN_EXPECTED_LISTINGS" ]; then
+            echo "::error::Listing count $n fell below floor $MIN_EXPECTED_LISTINGS"; fail=1
+          fi
+
+          # 2. Unseen critical/high ops alerts in the last 24h (belt for the
+          #    webhook braces — fires even if no webhook is configured).
+          a=$(psql "$PINTAG_PROD_DB_URL" -Atqc \
+            "select count(*) from ops_alerts where created_at > now() - interval '24 hours' and severity in ('high','critical')" 2>/dev/null || echo 0)
+          echo "high/critical ops_alerts in last 24h: $a"
+          if [ "$a" -gt 0 ]; then
+            psql "$PINTAG_PROD_DB_URL" -c \
+              "select created_at, kind, severity, message from ops_alerts where created_at > now() - interval '24 hours' and severity in ('high','critical') order by created_at desc limit 20" || true
+            echo "::error::$a high/critical ops alert(s) in the last 24h — review ops_alerts"; fail=1
+          fi
+
+          # 3. Abnormal admin activity: privileged write volume (provenance
+          #    events) far above the working norm suggests a compromised or
+          #    runaway session. Threshold is deliberately generous.
+          p=$(psql "$PINTAG_PROD_DB_URL" -Atqc \
+            "select count(*) from listing_provenance where created_at > now() - interval '24 hours'" 2>/dev/null || echo 0)
+          echo "provenance events in last 24h: $p"
+          if [ "$p" -gt 2000 ]; then
+            echo "::error::Abnormal admin write volume: $p provenance events in 24h"; fail=1
+          fi
+
+          exit $fail
+
+      - name: Webhook notification on failure
+        if: failure() && env.ALERT_WEBHOOK_URL != ''
+        run: |
+          curl -s -X POST "$ALERT_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{\"source\":\"pintag-monitoring\",\"severity\":\"critical\",\"message\":\"Monitoring run failed\",\"run\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" || true

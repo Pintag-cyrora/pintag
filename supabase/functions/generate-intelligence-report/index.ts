@@ -58,6 +58,7 @@ async function requireStaffOrService(req: Request): Promise<string | null> {
   // service-role key directly (stored in Supabase Vault, see the plan's
   // scheduling section). Recognize that up front rather than sending it
   // through the /auth/v1/user lookup, which is for real user JWTs only.
+  // (This path has no MFA concept and is exempt from the aal2 gate below.)
   if (token === serviceRoleKey) return null;
 
   const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
@@ -66,6 +67,22 @@ async function requireStaffOrService(req: Request): Promise<string | null> {
   if (!r.ok) return 'Invalid token';
   const user = await r.json();
   if (!user?.id) return 'Invalid token';
+  // AAL2 (MFA) enforcement — L1 baseline. The claim is read from the token
+  // /auth/v1/user just validated (same literal string), so decoding without
+  // re-verifying the signature is sound. Sessions that have not completed
+  // TOTP carry aal='aal1' and are refused; parse failure fails closed.
+  // Defense in depth: is_pintag_admin() below ALSO enforces aal2 in the
+  // database since migration 20260806010000.
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const aal = JSON.parse(atob(b64))?.aal;
+    if (aal !== 'aal2') {
+      console.error(JSON.stringify({ security_event: 'aal2_required', fn: 'generate-intelligence-report', user: user.id, at: new Date().toISOString() }));
+      return 'MFA required';
+    }
+  } catch {
+    return 'MFA required';
+  }
   // Authorization boundary: the is_pintag_admin() Postgres function (the single
   // admin allowlist, admin_accounts — cyrora.trading@gmail.com today). It is
   // SECURITY DEFINER and granted to authenticated, so the caller's own token

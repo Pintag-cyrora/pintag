@@ -53,6 +53,15 @@ from s;
 
 **Session-close ritual (no long reports):** (1) update this scoreboard, (2) one line on what changed, (3) the single next highest-impact task, (4) the delta vs last session (e.g. *+12 galleries, +8 publishable*).
 
+**2026-08-06 (security session — recovery numbers unchanged):** L1 Production
+Safe baseline implemented: server-side MFA (AAL2) enforcement, soft delete +
+row snapshots + de-cascade, mass-delete guard + alerting, SSRF hardening,
+debug removal, XSS pass, monitoring + restore-drill workflows. Operator steps
+before it's live: apply migrations `20260806010000/020000/030000`, redeploy 5
+edge functions, do `ops/README.md` key/secret setup, enable PITR — see
+`docs/L1_SECURITY_BASELINE_2026-08-06.md`. **Next highest-impact recovery
+task: unchanged — assign galleries (start with the 16 agented listings).**
+
 ---
 
 **The one question this document always answers:**

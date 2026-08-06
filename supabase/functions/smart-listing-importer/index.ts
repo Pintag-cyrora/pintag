@@ -57,19 +57,40 @@ const ALLOWED_IMAGE_HOSTS = /^[a-z0-9-]+\.supabase\.co$/i;
 
 const DISTRICTS = ['Sisattanak','Saysettha','Chanthabouly','Sikhottabong','Xaythany','Hadxaifong','Naxaithong'];
 
-async function requireAdmin(req: Request): Promise<string | null> {
+// AAL2 (MFA) enforcement — L1 baseline. The claim is read from a token that
+// /auth/v1/user has ALREADY validated server-side (same literal string), so
+// decoding without re-verifying the signature is sound here. A session that
+// has not completed TOTP carries aal='aal1'. Fail closed: parse failure = aal1.
+function tokenAal(token: string): string {
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(b64));
+    return typeof payload.aal === 'string' ? payload.aal : 'aal1';
+  } catch {
+    return 'aal1';
+  }
+}
+
+async function requireAdmin(req: Request): Promise<{ error: string; status: number } | null> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  if (!supabaseUrl || !supabaseAnonKey) return 'Server misconfigured';
+  if (!supabaseUrl || !supabaseAnonKey) return { error: 'Server misconfigured', status: 500 };
   const auth = req.headers.get('Authorization') || '';
-  if (!auth.startsWith('Bearer ')) return 'Missing auth token';
+  if (!auth.startsWith('Bearer ')) return { error: 'Missing auth token', status: 401 };
   const token = auth.slice(7);
   const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey },
   });
-  if (!r.ok) return 'Invalid token';
+  if (!r.ok) return { error: 'Invalid token', status: 401 };
   const user = await r.json();
-  if (!user?.id) return 'Invalid token';
+  if (!user?.id) return { error: 'Invalid token', status: 401 };
+  // MFA gate (defense in depth: is_pintag_admin() below ALSO enforces
+  // aal2 in the database since 20260806010000). 403 + structured security
+  // log, never perform the operation.
+  if (tokenAal(token) !== 'aal2') {
+    console.error(JSON.stringify({ security_event: 'aal2_required', fn: 'smart-listing-importer', user: user.id, at: new Date().toISOString() }));
+    return { error: 'MFA required', status: 403 };
+  }
   // Authorization boundary: the is_pintag_admin() Postgres function (the single
   // admin allowlist, admin_accounts — cyrora.trading@gmail.com today). It is
   // SECURITY DEFINER and granted to authenticated, so the caller's own token
@@ -81,22 +102,39 @@ async function requireAdmin(req: Request): Promise<string | null> {
     headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_uid: user.id }),
   });
-  if (!adminCheck.ok) return 'Server misconfigured';
-  if ((await adminCheck.json()) !== true) return 'Admin only';
+  if (!adminCheck.ok) return { error: 'Server misconfigured', status: 500 };
+  if ((await adminCheck.json()) !== true) {
+    console.error(JSON.stringify({ security_event: 'admin_denied', fn: 'smart-listing-importer', user: user.id, at: new Date().toISOString() }));
+    return { error: 'Admin only', status: 403 };
+  }
   return null;
 }
+
+// Cap what a single "image" fetch may pull into memory. Storage images are
+// a few MB; anything larger is not a listing photo.
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
 async function urlToBase64(url: string): Promise<{ mimeType: string; data: string } | null> {
   try {
     let parsed: URL;
     try { parsed = new URL(url); } catch { return null; }
+    if (parsed.protocol !== 'https:') return null;
     if (!ALLOWED_IMAGE_HOSTS.test(parsed.hostname)) return null;
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
+    // Re-validate the FINAL host after any redirect, and require an image
+    // content type + bounded size — the full SSRF checklist even though the
+    // input allowlist is already our own storage domain.
+    const finalUrl = new URL(res.url || url);
+    if (finalUrl.protocol !== 'https:' || !ALLOWED_IMAGE_HOSTS.test(finalUrl.hostname)) return null;
+    const mimeType = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+    if (!mimeType.startsWith('image/')) return null;
+    const declared = Number(res.headers.get('content-length') || '0');
+    if (declared > MAX_IMAGE_BYTES) return null;
     const buffer = await res.arrayBuffer();
+    if (buffer.byteLength > MAX_IMAGE_BYTES) return null;
     const bytes = new Uint8Array(buffer);
     const binary = bytes.reduce((acc, b) => acc + String.fromCharCode(b), '');
-    const mimeType = (res.headers.get('content-type') || 'image/jpeg').split(';')[0];
     return { mimeType, data: btoa(binary) };
   } catch {
     return null;
@@ -251,8 +289,8 @@ Deno.serve(async (req) => {
 
   const authErr = await requireAdmin(req);
   if (authErr) {
-    return new Response(JSON.stringify({ error: authErr }), {
-      status: 401,
+    return new Response(JSON.stringify({ error: authErr.error }), {
+      status: authErr.status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

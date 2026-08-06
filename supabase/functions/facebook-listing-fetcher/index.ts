@@ -61,19 +61,49 @@ const MAX_IMAGES = 10;
 // else, including redirect targets checked again after fetch (see below).
 const ALLOWED_FACEBOOK_HOSTS = /^([a-z0-9-]+\.)*(facebook\.com|fb\.watch)$/i;
 
-async function requireAdmin(req: Request): Promise<{ error: string | null; token: string }> {
+// og:image URLs are attacker-influencable content extracted from a fetched
+// page — they get their OWN allowlist (Facebook's CDN family), never a blind
+// fetch. This was the one server-side fetch without a guard (audit
+// 2026-08-06); it now has the same checklist as every other fetch here:
+// https-only, host allowlist, final-redirect-host re-check, content-type
+// must be an image, and a hard byte cap.
+const ALLOWED_OG_IMAGE_HOSTS = /^([a-z0-9-]+\.)*(fbcdn\.net|fbsbx\.com)$/i;
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+// AAL2 (MFA) enforcement — L1 baseline. The claim is read from a token that
+// /auth/v1/user has ALREADY validated server-side (same literal string), so
+// decoding without re-verifying the signature is sound here. A session that
+// has not completed TOTP carries aal='aal1'. Fail closed: parse failure = aal1.
+function tokenAal(token: string): string {
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(b64));
+    return typeof payload.aal === 'string' ? payload.aal : 'aal1';
+  } catch {
+    return 'aal1';
+  }
+}
+
+async function requireAdmin(req: Request): Promise<{ error: string | null; status: number; token: string }> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  if (!supabaseUrl || !supabaseAnonKey) return { error: 'Server misconfigured', token: '' };
+  if (!supabaseUrl || !supabaseAnonKey) return { error: 'Server misconfigured', status: 500, token: '' };
   const auth = req.headers.get('Authorization') || '';
-  if (!auth.startsWith('Bearer ')) return { error: 'Missing auth token', token: '' };
+  if (!auth.startsWith('Bearer ')) return { error: 'Missing auth token', status: 401, token: '' };
   const token = auth.slice(7);
   const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey },
   });
-  if (!r.ok) return { error: 'Invalid token', token: '' };
+  if (!r.ok) return { error: 'Invalid token', status: 401, token: '' };
   const user = await r.json();
-  if (!user?.id) return { error: 'Invalid token', token: '' };
+  if (!user?.id) return { error: 'Invalid token', status: 401, token: '' };
+  // MFA gate (defense in depth: is_pintag_admin() below ALSO enforces
+  // aal2 in the database since 20260806010000). 403 + structured security
+  // log, never perform the operation.
+  if (tokenAal(token) !== 'aal2') {
+    console.error(JSON.stringify({ security_event: 'aal2_required', fn: 'facebook-listing-fetcher', user: user.id, at: new Date().toISOString() }));
+    return { error: 'MFA required', status: 403, token: '' };
+  }
   // Authorization boundary: the is_pintag_admin() Postgres function (the single
   // admin allowlist, admin_accounts — cyrora.trading@gmail.com today). It is
   // SECURITY DEFINER and granted to authenticated, so the caller's own token
@@ -84,9 +114,12 @@ async function requireAdmin(req: Request): Promise<{ error: string | null; token
     headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_uid: user.id }),
   });
-  if (!adminCheck.ok) return { error: 'Server misconfigured', token: '' };
-  if ((await adminCheck.json()) !== true) return { error: 'Admin only', token: '' };
-  return { error: null, token };
+  if (!adminCheck.ok) return { error: 'Server misconfigured', status: 500, token: '' };
+  if ((await adminCheck.json()) !== true) {
+    console.error(JSON.stringify({ security_event: 'admin_denied', fn: 'facebook-listing-fetcher', user: user.id, at: new Date().toISOString() }));
+    return { error: 'Admin only', status: 403, token: '' };
+  }
+  return { error: null, status: 200, token };
 }
 
 function decodeHtmlEntities(s: string): string {
@@ -170,10 +203,23 @@ async function uploadImageToStorage(
   originalUrl: string, supabaseUrl: string, anonKey: string, callerToken: string,
 ): Promise<ImportImage | null> {
   try {
-    const res = await fetch(originalUrl, { signal: AbortSignal.timeout(15000) });
+    // SSRF guard on attacker-influencable og:image URLs: https-only + CDN
+    // host allowlist BEFORE the fetch, final-host re-check AFTER redirects,
+    // image content-type required, and a hard size cap (declared and actual).
+    let parsed: URL;
+    try { parsed = new URL(originalUrl); } catch { return null; }
+    if (parsed.protocol !== 'https:') return null;
+    if (!ALLOWED_OG_IMAGE_HOSTS.test(parsed.hostname)) return null;
+    const res = await fetch(parsed.toString(), { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
+    const finalUrl = new URL(res.url || parsed.toString());
+    if (finalUrl.protocol !== 'https:' || !ALLOWED_OG_IMAGE_HOSTS.test(finalUrl.hostname)) return null;
+    const declared = Number(res.headers.get('content-length') || '0');
+    if (declared > MAX_IMAGE_BYTES) return null;
     const buffer = await res.arrayBuffer();
-    const contentType = (res.headers.get('content-type') || 'image/jpeg').split(';')[0];
+    if (buffer.byteLength > MAX_IMAGE_BYTES) return null;
+    const contentType = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+    if (!contentType.startsWith('image/')) return null;
     const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const upload = await fetch(`${supabaseUrl}/storage/v1/object/property-images/${fileName}`, {
@@ -201,10 +247,10 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  const { error: authErr, token } = await requireAdmin(req);
+  const { error: authErr, status: authStatus, token } = await requireAdmin(req);
   if (authErr) {
     return new Response(JSON.stringify({ error: authErr }), {
-      status: 401,
+      status: authStatus,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

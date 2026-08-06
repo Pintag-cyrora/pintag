@@ -2863,18 +2863,26 @@ function renderOwnerPhoneCell(owner) {
 async function loadListings() {
   const container = document.getElementById('listings-container');
   container.innerHTML = '<div class="loading">Loading...</div>';
-  const [data, leads] = await Promise.all([
-    // owners(...) is an INTERNAL embed -- staff-only by RLS (no anon policy
-    // exists on that table at all). It is safe here because admin.html only
-    // ever queries with a staff JWT; it must never be copied into a public
-    // page's select. See 20260728000000_owners_internal_contacts.sql.
-    sbApi('GET','properties?order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,view_count,contacts(role,name,phone),owner_id,owners(id,name,phone,whatsapp)'),
-    // leads, not lead_events — the canonical Lead (Property Inquiry) entity,
-    // one row per inquiry across every contact channel (see
-    // 20260722000000_leads_recipient_model.sql), same source the Analytics
-    // tab now uses, so this column and Total Leads always agree.
-    sbApi('GET','leads?select=property_id').catch(() => [])
-  ]);
+  // owners(...) is an INTERNAL embed -- staff-only by RLS (no anon policy
+  // exists on that table at all). It is safe here because admin.html only
+  // ever queries with a staff JWT; it must never be copied into a public
+  // page's select. See 20260728000000_owners_internal_contacts.sql.
+  const LISTINGS_QS = 'order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,view_count,contacts(role,name,phone),owner_id,owners(id,name,phone,whatsapp)';
+  let data;
+  try {
+    // Soft-deleted listings (20260806020000) stay out of the working list.
+    data = await sbApi('GET', 'properties?deleted_at=is.null&' + LISTINGS_QS);
+  } catch (_) {
+    // Pre-migration fallback: deleted_at doesn't exist yet — same query
+    // without the filter, so the admin keeps working before the migration
+    // is applied. (Deletes are the one thing that fails closed instead.)
+    data = await sbApi('GET', 'properties?' + LISTINGS_QS);
+  }
+  // leads, not lead_events — the canonical Lead (Property Inquiry) entity,
+  // one row per inquiry across every contact channel (see
+  // 20260722000000_leads_recipient_model.sql), same source the Analytics
+  // tab now uses, so this column and Total Leads always agree.
+  const leads = await sbApi('GET','leads?select=property_id').catch(() => []);
   // Build lead count map
   const leadCounts = {};
   (leads || []).forEach(l => { if (l.property_id) leadCounts[l.property_id] = (leadCounts[l.property_id] || 0) + 1; });
@@ -3530,13 +3538,13 @@ async function saveListing(e) {
 
 // ── DELETE ────────────────────────────────────────────────────────
 async function deleteListing(id, title) {
-  if (!confirm(`Delete "${title}"?\n\nThis cannot be undone.`)) return;
+  if (!confirm(`Remove "${title}" from the site?\n\nThe listing is soft-deleted: hidden from every public surface but kept in the database (restorable by clearing deleted_at). Nothing is permanently destroyed.`)) return;
   // Re-verify the administrator session immediately before a destructive write.
   // (RLS also enforces is_pintag_admin server-side; this is the client guard.)
   try { await requireAdminSession(); } catch (_) { return; }
-  // Provenance: record the removal BEFORE the DELETE. listing_provenance has
-  // no FK to properties, so this row survives the delete — the removal itself
-  // stays on the permanent record. Best-effort, never blocks the delete.
+  // Provenance: record the removal BEFORE the write. listing_provenance has
+  // no FK to properties, so this row survives regardless — the removal itself
+  // stays on the permanent record. Best-effort, never blocks the removal.
   if (window.PintagProvenance) {
     try {
       await window.PintagProvenance.logDeleted(
@@ -3546,7 +3554,18 @@ async function deleteListing(id, title) {
       );
     } catch (provErr) { console.error('[provenance]', provErr); }
   }
-  await sbApi('DELETE', `properties?id=eq.${id}`);
+  // SOFT delete only (L1 baseline, migration 20260806020000): set deleted_at.
+  // A BEFORE UPDATE trigger snapshots the full row at this moment. There is
+  // deliberately NO fallback to hard DELETE — if the soft-delete migration
+  // is not applied yet, this fails closed and nothing is removed.
+  try {
+    const rows = await sbApi('PATCH', `properties?id=eq.${id}&deleted_at=is.null`,
+      { deleted_at: new Date().toISOString() });
+    if (!rows || rows.length === 0) throw new Error('no row soft-deleted');
+  } catch (err) {
+    alert('Listing was NOT removed.\n\nIf migration 20260806020000_soft_delete_and_snapshots has not been applied to the database yet, apply it first — the admin no longer performs hard deletes.');
+    return;
+  }
   loadListings();
 }
 
@@ -3704,7 +3723,7 @@ function refreshImageGrid() {
     const div = document.createElement('div');
     div.className = 'image-preview-item' + (isCover ? ' is-cover' : '');
     div.innerHTML = `
-      <img src="${url}" alt="Photo ${i+1}">
+      <img src="${esc(url)}" alt="Photo ${i+1}">
       <button class="img-cover-btn" onclick="setCoverImage('${safeUrl}')" type="button" title="Set as cover">&#9733;</button>
       <button class="img-remove" onclick="removeImage('${safeUrl}')" type="button">&#215;</button>
       <span class="img-order">${i+1}</span>
@@ -3971,7 +3990,7 @@ function refreshImportImageGrid() {
     const div = document.createElement('div');
     div.className = 'image-preview-item';
     div.innerHTML = `
-      <img src="${url}" alt="Photo ${i+1}">
+      <img src="${esc(url)}" alt="Photo ${i+1}">
       <button class="img-remove" onclick="removeImportImage('${safeUrl}')" type="button">&#215;</button>
       <span class="img-order">${i+1}</span>`;
     grid.appendChild(div);

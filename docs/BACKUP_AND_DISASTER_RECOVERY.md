@@ -135,6 +135,29 @@ scheduled run is cheap after the first full pull — only new/changed objects ar
 fetched. Wire `backup-production-assets.sh` into a scheduler (cron, a CI nightly
 job, or a Pintag scheduled task) and alert on any non-zero exit.
 
+## 5b. Recovery objectives (RPO / RTO) — committed, not aspirational
+*Defined 2026-08-06 as part of the L1 Production Safe baseline.*
+
+| Objective | Target | Provided by |
+|---|---|---|
+| **RPO — platform-level failure** (bad write, bad migration, accidental delete) | **≤ 5 minutes** | Supabase **PITR** — must be enabled in Dashboard → Database → Backups (operator step; verify it is ON before reopening) |
+| **RPO — catastrophic / account-level loss** (Supabase account or region gone) | **≤ 7 days** | The weekly off-platform backup to R2 (`backup.yml`); tighten to nightly by changing its cron once volume warrants |
+| **RTO — full restore, drilled** | **≤ 2 hours** | `scripts/restore-production.sh` + the runbook below; the automated drill's 60-minute job timeout proves substantial headroom every quarter |
+
+**These numbers only count while the drill stays green.** The quarterly
+**DR Restore Drill** (`.github/workflows/restore-drill.yml`, also runnable on
+demand) restores the latest R2 snapshot into a scratch database, runs
+`restore-validation.sql`, and compares row counts against the values recorded
+at backup time — any mismatch fails the run and notifies. A backup that has
+never been restored does not count as a backup; after the drill, every backup
+has been.
+
+Key model: dumps are age-encrypted to **two recipients** listed in
+`ops/backup.age.pub` — the offline **master** key (real disasters, human use
+only) and a **drill** key held solely as the `BACKUP_AGE_DRILL_KEY` secret so
+CI can prove restorability without ever touching the master key. Setup:
+`ops/README.md`.
+
 ## 6. Where backups are stored
 **At least one copy must live off Supabase.** Recommended layout:
 1. **Primary off-site copy** — a dedicated object store you control (e.g. a
