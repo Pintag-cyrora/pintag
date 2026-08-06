@@ -59,6 +59,15 @@ button:disabled{opacity:.5;cursor:default}
 .trow{border:1px solid rgba(232,237,240,.1);border-radius:8px;padding:8px;margin:6px 0}
 .trow .lg{font-size:.7rem;color:#9AA7B0;text-transform:uppercase}
 .trow .vv{font-size:.9rem}
+.nav{display:flex;gap:6px}
+.cols{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px}
+.col{flex:1;min-width:260px}
+.col h3{font-size:.85rem;color:#7FB2B2;margin-bottom:6px}
+.grid{display:flex;flex-wrap:wrap;gap:6px;max-height:60vh;overflow:auto;align-content:flex-start;padding:4px;border:1px solid rgba(232,237,240,.08);border-radius:8px}
+.pth{position:relative;cursor:pointer}
+.pth img{width:84px;height:64px;object-fit:cover;border-radius:6px;display:block;background:#0F1418}
+.pth.added img{outline:3px solid #4CAF7D}
+.pth .x{position:absolute;top:2px;right:2px;background:#8C3A4A;color:#fff;border-radius:4px;font-size:.62rem;padding:0 4px}
 </style>
 </head>
 <body>
@@ -68,6 +77,7 @@ button:disabled{opacity:.5;cursor:default}
 <div id="summary"></div>
 <div id="tools"></div>
 <div id="clusters"></div>
+<div id="bylisting" style="display:none"></div>
 <div id="recovered" style="display:none"></div>
 <div id="log"></div>
 
@@ -85,7 +95,8 @@ button:disabled{opacity:.5;cursor:default}
   var SET91 = new Set();
   var CONFMAP = {};                 // listing_id -> worst confidence among its assigns
   var HIDE_COMPLETED = true;        // ☑ Hide completed (default ON)
-  var VIEW = 'queue';               // 'queue' | 'recovered'
+  var VIEW = 'queue';               // 'queue' | 'bylisting' | 'recovered'
+  var BL_SEL = null;                // currently-open listing id in "Recover by Listing"
   var FILTERS = { agent:'', district:'', ptype:'' };
   var RCONF = 'all';                // recovered-view confidence filter
   var CONF_RANK = { low:0, medium:1, high:2 };
@@ -221,11 +232,17 @@ button:disabled{opacity:.5;cursor:default}
         '<span class="kpi"><b id="k-low">–</b><span>Low-confidence</span></span>'+
         '<span class="kpi"><b id="k-pub">–</b><span>Publishable / 91</span></span>'+
         '<label class="hc"><input type="checkbox" id="hidecomp" checked> Hide completed</label>'+
-        '<button class="ghost" id="viewbtn">Recovered Galleries ▸</button>'+
+        '<span class="nav">'+
+          '<button class="ghost navb" data-v="queue">Cluster → Listing</button>'+
+          '<button class="ghost navb" data-v="bylisting">Listing → Gallery</button>'+
+          '<button class="ghost navb" data-v="recovered">Recovered</button>'+
+        '</span>'+
       '</div>';
     document.getElementById('hidecomp').onchange = function(){ HIDE_COMPLETED = this.checked; renderClusters(); };
-    document.getElementById('viewbtn').onclick = function(){ switchView(VIEW === 'queue' ? 'recovered' : 'queue'); };
+    [].forEach.call(document.querySelectorAll('.navb'), function(b){ b.onclick = function(){ switchView(b.getAttribute('data-v')); }; });
+    highlightNav();
   }
+  function highlightNav(){ [].forEach.call(document.querySelectorAll('.navb'), function(b){ var on = b.getAttribute('data-v') === VIEW; b.style.background = on ? '#2D8C8C' : 'transparent'; b.style.color = on ? '#fff' : '#E8EDF0'; }); }
   function updateSummary() {
     var c = counts();
     function set(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
@@ -233,12 +250,15 @@ button:disabled{opacity:.5;cursor:default}
     set('k-low', c.low); set('k-pub', c.publishable + ' / 91');
   }
   function switchView(v) {
-    VIEW = v; var q = (v === 'queue');
-    document.getElementById('tools').style.display = q ? '' : 'none';
-    document.getElementById('clusters').style.display = q ? '' : 'none';
-    document.getElementById('recovered').style.display = q ? 'none' : '';
-    document.getElementById('viewbtn').textContent = q ? 'Recovered Galleries ▸' : '◂ Back to recovery queue';
-    if (!q) renderRecovered();
+    VIEW = v;
+    document.getElementById('tools').style.display     = v === 'queue' ? '' : 'none';
+    document.getElementById('clusters').style.display  = v === 'queue' ? '' : 'none';
+    document.getElementById('bylisting').style.display = v === 'bylisting' ? '' : 'none';
+    document.getElementById('recovered').style.display = v === 'recovered' ? '' : 'none';
+    highlightNav();
+    if (v === 'queue') renderClusters();
+    if (v === 'bylisting') renderByListing();
+    if (v === 'recovered') renderRecovered();
   }
 
   // ───────────────────────── QUEUE (assign) ─────────────────────────
@@ -385,6 +405,82 @@ button:disabled{opacity:.5;cursor:default}
       b.onclick = function(){ openUnassign(p, row); };
       row.appendChild(b); rl.appendChild(row);
     });
+  }
+
+  // ───────────────────────── MODE 2: Recover by Listing ─────────────────────────
+  // Start from a listing you recognize; the right pane shows every still-
+  // unassigned photo; click to add them to the listing's gallery; Save. The
+  // cluster queue (Mode 1) stays intact and shares the same pool.
+  function poolFiles(){ var out = []; CLUSTERS.forEach(function(c){ out = out.concat(c.remaining); }); return out; }
+  function removeFromPool(names){ var set = {}; names.forEach(function(n){ set[n]=1; }); CLUSTERS.forEach(function(c){ c.remaining = c.remaining.filter(function(f){ return !set[f.name]; }); }); }
+  function byId(id){ for (var i=0;i<ALL_PROPS.length;i++) if (ALL_PROPS[i].id === id) return ALL_PROPS[i]; return null; }
+
+  function renderByListing(){
+    var host = document.getElementById('bylisting');
+    host.innerHTML =
+      '<div class="card"><b>Recover by Listing</b> <span class="why" style="display:inline">— pick a listing you recognize, then click unassigned photos to add them to its gallery</span>'+
+      '<input class="blsearch" placeholder="Search a listing by agent, title, district, or type…">'+
+      '<div class="blresults"></div></div>'+
+      '<div id="bleditor"></div>';
+    var s = host.querySelector('.blsearch'), r = host.querySelector('.blresults');
+    s.oninput = function(){ blResults(r, s.value); };
+    blResults(r, '');
+    if (BL_SEL){ var p = byId(BL_SEL); if (p) openListingEditor(p); }
+  }
+  function blResults(r, q){
+    q = (q||'').trim().toLowerCase(); r.innerHTML = '';
+    var base = DRAFTS.filter(function(d){ return !q || hay(d).indexOf(q) >= 0; });
+    if (q) base.sort(function(a,b){ return (agentName(a).toLowerCase().indexOf(q)>=0?0:1) - (agentName(b).toLowerCase().indexOf(q)>=0?0:1); });
+    base = base.slice(0, 20);
+    if (!base.length) { r.innerHTML = '<div class="why">Type an agent name, title, or district to find the listing.</div>'; return; }
+    base.forEach(function(d){
+      var have = imgsOf(d).length;
+      var row = document.createElement('div'); row.className = 'cand2';
+      row.innerHTML = '<div class="ph">🏠</div><div class="info"><div class="t">'+esc(d.title_en||d.title_lo||'(untitled)')+'</div>'+
+        '<div class="m">👤 '+esc(agentName(d)||'no agent')+' · 📍 '+esc(d.district_en||'?')+' · 🏷 '+esc(d.property_type||'?')+(have?' · <span class="tag">'+have+' photo(s)</span>':'')+'</div></div>';
+      var b = document.createElement('button'); b.textContent = 'Open'; b.onclick = function(){ BL_SEL = d.id; openListingEditor(d); };
+      row.appendChild(b); r.appendChild(row);
+    });
+  }
+  function openListingEditor(p){
+    var host = document.getElementById('bleditor');
+    var added = [];   // names added this session (subset of the pool)
+    function draw(){
+      var pool = poolFiles().filter(function(f){ return added.indexOf(f.name) < 0; });
+      var orig = imgsOf(p);
+      host.innerHTML =
+        '<div class="card"><div class="chd"><div><b>'+esc(label(p))+'</b>'+
+          '<div class="meta">📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 👤 '+esc(agentName(p)||'no agent')+'</div></div>'+
+          '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
+          '<button class="blsave">Save gallery ('+added.length+' new)</button>'+
+          '<button class="ghost blclose">Close</button></div>'+
+        '<div class="cols">'+
+          '<div class="col"><h3>Current gallery ('+(orig.length+added.length)+')</h3><div class="grid" id="blgal"></div></div>'+
+          '<div class="col"><h3>Unassigned photos ('+pool.length+') — click to add</h3><div class="grid" id="blpool"></div></div>'+
+        '</div></div>';
+      var gal = host.querySelector('#blgal'), poolEl = host.querySelector('#blpool');
+      orig.forEach(function(u){ var d=document.createElement('div'); d.className='pth'; d.innerHTML='<img loading="lazy" src="'+esc(u)+'">'; gal.appendChild(d); });
+      added.forEach(function(nm){ var d=document.createElement('div'); d.className='pth added'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(nm)+'"><span class="x">remove</span>'; d.onclick=function(){ added=added.filter(function(n){return n!==nm;}); draw(); }; gal.appendChild(d); });
+      pool.forEach(function(f){ var d=document.createElement('div'); d.className='pth'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(f.name)+'">'; d.onclick=function(){ added.push(f.name); draw(); }; poolEl.appendChild(d); });
+      host.querySelector('.blclose').onclick = function(){ BL_SEL=null; host.innerHTML=''; };
+      host.querySelector('.blsave').onclick = function(){ saveListingGallery(p, added, host.querySelector('.blconf').value); };
+    }
+    draw();
+  }
+  async function saveListingGallery(p, added, confidence){
+    if (!added.length) { alert('Click some unassigned photos to add first.'); return; }
+    if (!confirm('Add '+added.length+' photo(s) to:\n'+label(p)+'  ['+confidence+'] ?')) return;
+    var cur = imgsOf(p); var have = new Set(cur.map(nameOf));
+    var merged = cur.concat(added.filter(function(n){ return !have.has(n); }).map(function(n){ return PUB + n; }));
+    var r = await sb.from('properties').update({ images: merged }).eq('id', p.id).select('id');
+    if (r.error) { alert('Failed: '+r.error.message); log('ERROR by-listing '+r.error.message); return; }
+    var reg = await sb.from('gallery_assignments').insert([{ op:'assign', listing_id:p.id, cluster_id:'by-listing', photo_paths:added, photo_count:added.length, confidence:confidence, method:'manual', operator:OPERATOR }]);
+    if (reg.error) log('WARN register insert failed: '+reg.error.message);
+    p.images = merged; CONFMAP[p.id] = worseConf(CONFMAP[p.id], confidence);
+    removeFromPool(added);
+    log('BY-LISTING assigned '+added.length+' photo(s) → '+label(p)+' ['+confidence+']');
+    updateSummary();
+    openListingEditor(p);   // fresh editor: gallery grew, pool shrank
   }
 
   // ───────────────────────── AI title recovery ─────────────────────────
