@@ -78,6 +78,11 @@ Deno.serve(async (req) => {
     // rule as deposit below.
     const rentalTermsLine = data.rental_terms_summary ? `\n- Other Rental Terms: ${data.rental_terms_summary}` : '';
 
+    // Recovery use: a surviving title (e.g. the Lao title from the removal log)
+    // to base the new Pintag-quality titles on — improve it, keep the meaning,
+    // do not copy verbatim. Optional; absent for normal Smart Import.
+    const existingTitleLine = data.existing_title ? `\n- Existing/source title (base the NEW titles on this — keep its meaning, upgrade it to Pintag quality, do not copy verbatim): ${data.existing_title}` : '';
+
     const prompt = `You are a professional real estate copywriter for Pintag, a premium real estate platform in Vientiane, Laos.
 
 Generate listing content in THREE languages: Lao (lo), English (en), and Chinese (zh).
@@ -95,7 +100,7 @@ PROPERTY DETAILS:
 - District: ${data.district || 'not specified'}, Vientiane, Laos
 - Features: ${featuresList || 'not specified'}
 - Furnished: ${data.furnished || 'not specified'}${depositLine}${rentalTermsLine}
-- Nearby Landmarks: ${nearbyNames.join(', ') || 'not specified'}
+- Nearby Landmarks: ${nearbyNames.join(', ') || 'not specified'}${existingTitleLine}
 
 CONTENT RULES:
 
@@ -103,6 +108,8 @@ TITLES (max 80 characters each):
 - Short and professional
 - No excessive marketing language
 - Mention the key selling point (location, style, or unique feature)
+- If an Existing/source title is provided above, produce polished Pintag-quality
+  titles consistent with its meaning in all three languages (do not copy it verbatim)
 
 PROPERTY HIGHLIGHTS (exactly 1 sentence each):
 - Emotional positioning

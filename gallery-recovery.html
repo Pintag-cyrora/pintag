@@ -53,6 +53,12 @@ button:disabled{opacity:.5;cursor:default}
 .done{color:#4CAF7D;font-weight:600}
 .tag{display:inline-block;font-size:.7rem;padding:1px 6px;border-radius:6px;border:1px solid rgba(232,237,240,.2);margin-left:6px;color:#9AA7B0}
 #log{position:fixed;bottom:0;left:0;right:0;background:#111a1e;border-top:1px solid rgba(232,237,240,.12);font-size:.72rem;color:#9AA7B0;padding:6px 10px;max-height:22vh;overflow:auto;font-family:ui-monospace,monospace}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
+.modal{background:#1A2428;border:1px solid rgba(232,237,240,.15);border-radius:12px;padding:16px;max-width:560px;width:100%;max-height:86vh;overflow:auto}
+.mtitle{font-weight:700;color:#2D8C8C;margin-bottom:8px}
+.trow{border:1px solid rgba(232,237,240,.1);border-radius:8px;padding:8px;margin:6px 0}
+.trow .lg{font-size:.7rem;color:#9AA7B0;text-transform:uppercase}
+.trow .vv{font-size:.9rem}
 </style>
 </head>
 <body>
@@ -164,7 +170,7 @@ button:disabled{opacity:.5;cursor:default}
       if (OPERATOR === 'operator' && window.PintagAdminAuth && PintagAdminAuth.ADMIN_EMAIL) OPERATOR = PintagAdminAuth.ADMIN_EMAIL;
 
       var objs = await listAllObjects();
-      ALL_PROPS = (await sb.from('properties').select('id,title_en,title_lo,district_en,property_type,transaction_type,managed_by_party_id,contact_id,images,workflow_status')).data || [];
+      ALL_PROPS = (await sb.from('properties').select('id,title_en,title_lo,title_zh,district_en,village_en,village,property_type,property_style,transaction_type,bedrooms,bathrooms,price_display,features,nearby_places,managed_by_party_id,contact_id,images,workflow_status')).data || [];
       var parties = (await sb.from('parties').select('id,name_en,name_lo')).data || [];
       parties.forEach(function (p){ PARTY[p.id] = p.name_en || p.name_lo || null; });
       PARTIES = parties.map(function(p){ return { id:p.id, name: p.name_en||p.name_lo||p.id }; }).sort(function(a,b){ return a.name.localeCompare(b.name); });
@@ -333,15 +339,24 @@ button:disabled{opacity:.5;cursor:default}
   function recoveredList() { return ALL_PROPS.filter(function(p){ return SET91.has(p.id) && imgsOf(p).length > 0; }); }
   function renderRecovered() {
     var host = document.getElementById('recovered');
+    var nt = recoveredList().filter(needsTitle).length;
     host.innerHTML =
       '<div class="card"><b>Recovered Galleries</b> <span class="meta">'+recoveredList().length+' listing(s) with photos</span>'+
         '<div class="ctrls"><span class="cfl">Confidence</span>'+
           ['all','high','medium','low'].map(function(x){ return '<button class="ghost rcf" data-c="'+x+'"'+(RCONF===x?' style="background:#2D8C8C;color:#fff"':'')+'>'+x.toUpperCase()+'</button>'; }).join('')+
+          '<button class="bulkai"'+(nt?'':' disabled')+'>Generate AI titles for all empty ('+nt+')</button>'+
         '</div>'+
         '<input class="rsearch" placeholder="Search recovered listings by agent, title, or district…">'+
         '<div class="rlist"></div></div>';
     var rs = host.querySelector('.rsearch'), rl = host.querySelector('.rlist');
     [].forEach.call(host.querySelectorAll('.rcf'), function(b){ b.onclick = function(){ RCONF = b.getAttribute('data-c'); renderRecovered(); }; });
+    var bai = host.querySelector('.bulkai');
+    bai.onclick = function(){
+      var targets = recoveredList().filter(needsTitle);
+      if (!targets.length) return;
+      if (!confirm('Generate AI titles for '+targets.length+' gallery-complete listing(s) with an empty title?\n\nFills only empty title fields; existing titles are never overwritten.')) return;
+      bulkTitles(targets);
+    };
     rs.oninput = function(){ drawRecovered(rl, rs.value); };
     drawRecovered(rl, '');
   }
@@ -361,10 +376,101 @@ button:disabled{opacity:.5;cursor:default}
         '<div class="t">'+esc(p.title_en||p.title_lo||'(untitled)')+'</div>'+
         '<div class="lo">'+esc(p.title_lo||'')+'</div>'+
         '<div class="m">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(p.district_en||'?')+' · 🖼️ '+imgsOf(p).length+' photo(s) · <span class="conf '+ccls+'">'+String(conf).toUpperCase()+'</span></div></div>';
+      if (needsTitle(p)) {
+        var gb = document.createElement('button'); gb.textContent = 'Generate AI Title';
+        gb.onclick = function(){ openTitlePreview(p); };
+        row.appendChild(gb);
+      }
       var b = document.createElement('button'); b.className='ghost'; b.textContent = 'Review / edit';
       b.onclick = function(){ openUnassign(p, row); };
       row.appendChild(b); rl.appendChild(row);
     });
+  }
+
+  // ───────────────────────── AI title recovery ─────────────────────────
+  // Reuse the Smart Import AI (generate-listing-content) to produce a NEW
+  // Pintag-quality title for gallery-complete listings whose title is missing.
+  // Not historical reconstruction — publishable content. Never overwrites an
+  // existing title; logged as source = recovery_ai_generated.
+  function needsTitle(p){ return !nz(p.title_en); }               // the recovery gap (English)
+  function aiBody(p){
+    return {
+      property_type: p.property_type||null, property_style: p.property_style||null,
+      transaction_type: p.transaction_type||null, bedrooms: p.bedrooms||null, bathrooms: p.bathrooms||null,
+      price_display: p.price_display||null, village: p.village_en||p.village||null, district: p.district_en||null,
+      features: Array.isArray(p.features)?p.features:null,
+      nearby_places: Array.isArray(p.nearby_places)?p.nearby_places:null,
+      existing_title: p.title_lo || p.title_en || null           // surviving Lao title = the base
+    };
+  }
+  async function generateTitles(p){
+    var res = await sb.functions.invoke('generate-listing-content', { body: aiBody(p) });
+    if (res.error) throw new Error(res.error.message || 'AI request failed');
+    var d = res.data || {};
+    if (d.error) throw new Error(d.error);
+    return { title_lo: d.title_lo||'', title_en: d.title_en||'', title_zh: d.title_zh||'' };
+  }
+  async function saveTitles(p, gen){
+    var patch = {}, filled = [];
+    ['title_lo','title_en','title_zh'].forEach(function(f){ if (!nz(p[f]) && nz(gen[f])) { patch[f] = gen[f]; filled.push(f); } });
+    if (!filled.length) return [];
+    var r = await sb.from('properties').update(patch).eq('id', p.id).select('id');
+    if (r.error) throw new Error(r.error.message);
+    var rows = filled.map(function(f){ return { listing_id:p.id, event_type:'ai_generation', field_name:f, old_value:null, new_value:patch[f], source:'recovery_ai_generated', actor:OPERATOR, details:{ model:'gemini-2.5-flash', via:'gallery-recovery' } }; });
+    var reg = await sb.from('listing_provenance').insert(rows);
+    if (reg.error) log('WARN provenance insert failed: '+reg.error.message);
+    filled.forEach(function(f){ p[f] = patch[f]; });
+    return filled;
+  }
+  function showModal(html){
+    var ov = document.createElement('div'); ov.className='overlay';
+    ov.innerHTML = '<div class="modal">'+html+'</div>';
+    document.body.appendChild(ov);
+    return { overlay: ov, body: ov.querySelector('.modal') };
+  }
+  function closeModal(m){ if (m && m.overlay && m.overlay.parentNode) m.overlay.parentNode.removeChild(m.overlay); }
+  function trow(lg, v){ return '<div class="trow"><div class="lg">'+lg+'</div><div class="vv">'+esc(v||'—')+'</div></div>'; }
+
+  async function openTitlePreview(p){
+    var m = showModal('<div class="mtitle">Generating title for “'+esc(label(p))+'”…</div>');
+    await regen(m, p);
+  }
+  async function regen(m, p){
+    m.body.innerHTML = '<div class="mtitle">Generating…</div>';
+    try {
+      var gen = await generateTitles(p);
+      m.body.innerHTML =
+        '<div class="mtitle">AI titles — '+esc(label(p))+'</div>'+
+        trow('Lao', gen.title_lo)+trow('English', gen.title_en)+trow('Chinese', gen.title_zh)+
+        '<div class="why">Only empty title fields are filled — existing titles are never overwritten. Editable afterward in the listing editor.</div>'+
+        '<div class="ctrls"><button class="acc">Accept</button><button class="ghost reg">Regenerate</button><button class="ghost cxl">Cancel</button></div>';
+      m.body.querySelector('.acc').onclick = async function(){
+        try { var f = await saveTitles(p, gen); log('AI TITLE saved ['+f.join(', ')+'] → '+label(p)); }
+        catch(e){ alert('Save failed: '+e.message); return; }
+        closeModal(m); updateSummary(); renderRecovered();
+      };
+      m.body.querySelector('.reg').onclick = function(){ regen(m, p); };
+      m.body.querySelector('.cxl').onclick = function(){ closeModal(m); };
+    } catch(e){
+      m.body.innerHTML = '<div class="why">AI error: '+esc(e.message)+'</div><div class="ctrls"><button class="ghost cxl">Close</button></div>';
+      m.body.querySelector('.cxl').onclick = function(){ closeModal(m); };
+    }
+  }
+  async function bulkTitles(targets){
+    var m = showModal('<div class="mtitle">Generating AI titles…</div><div class="why bulkprog">Starting…</div>');
+    var prog = m.body.querySelector('.bulkprog'), ok = 0, fail = [];
+    for (var i=0;i<targets.length;i++){
+      var p = targets[i];
+      prog.textContent = 'Processing '+(i+1)+' / '+targets.length+' — '+label(p)+'   (done '+ok+', failed '+fail.length+')';
+      try { var gen = await generateTitles(p); await saveTitles(p, gen); ok++; }
+      catch(e){ fail.push(p); log('AI TITLE FAIL '+label(p)+': '+e.message); }
+      updateSummary();
+    }
+    prog.textContent = 'Done — '+ok+' generated, '+fail.length+' failed.';
+    var ctr = document.createElement('div'); ctr.className='ctrls';
+    if (fail.length){ var rb=document.createElement('button'); rb.textContent='Retry '+fail.length+' failed'; rb.onclick=function(){ closeModal(m); bulkTitles(fail); }; ctr.appendChild(rb); }
+    var cb=document.createElement('button'); cb.className='ghost'; cb.textContent='Close'; cb.onclick=function(){ closeModal(m); renderRecovered(); }; ctr.appendChild(cb);
+    m.body.appendChild(ctr);
   }
 
   // ───────────────────────── quick filters + correct/unassign ─────────────────────────
