@@ -69,6 +69,7 @@ button:disabled{opacity:.5;cursor:default}
   var ALL_PROPS = [];                                // every property (for unassign search)
   var DRAFTS = [];                                   // draft listings (assign candidates)
   var PARTY = {};                                    // party id -> agent name
+  var PARTIES = [];                                  // [{id,name}] for the agent picker
   var CLUSTERS = [];
   var log = function (m) { var l = document.getElementById('log'); l.innerHTML = '['+new Date().toLocaleTimeString()+'] '+m+'<br>'+l.innerHTML; };
   function esc(s){ return (''+(s==null?'':s)).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -76,6 +77,30 @@ button:disabled{opacity:.5;cursor:default}
   function imgsOf(p){ if(!p||!p.images) return []; try { return Array.isArray(p.images)?p.images:JSON.parse(p.images); } catch(e){ return []; } }
   function label(d){ return d.title_en || d.title_lo || d.id; }
   function agentName(d){ return (d.managed_by_party_id && PARTY[d.managed_by_party_id]) || ''; }
+  function agentOptionsHtml(sel){
+    var o = '<option value="">— no agent —</option>';
+    PARTIES.forEach(function(p){ o += '<option value="'+esc(p.id)+'"'+(p.id===sel?' selected':'')+'>'+esc(p.name)+'</option>'; });
+    return o;
+  }
+  // Recognize the agent → recover the relationship. Fill-only unless you change
+  // an existing one (confirmed). Logged to listing_provenance (agent_changed).
+  async function setAgent(draft, partyId) {
+    var prev = draft.managed_by_party_id || null; partyId = partyId || null;
+    if (prev === partyId) return;
+    if (prev && partyId && prev !== partyId &&
+        !confirm('Change agent from '+(PARTY[prev]||prev)+' to '+(PARTY[partyId]||partyId)+' for:\n'+label(draft)+' ?')) { refreshAllCands(); return; }
+    var r = await sb.from('properties').update({ managed_by_party_id: partyId }).eq('id', draft.id).select('id');
+    if (r.error) { alert('Failed: '+r.error.message); log('ERROR set agent '+r.error.message); refreshAllCands(); return; }
+    var reg = await sb.from('listing_provenance').insert([{
+      listing_id: draft.id, event_type:'agent_changed', field_name:'managed_by_party_id',
+      old_value: prev, new_value: partyId, source:'manual', actor: OPERATOR,
+      details: { via:'gallery-recovery', agent_name: (partyId ? PARTY[partyId] : null) }
+    }]);
+    if (reg.error) log('WARN provenance insert failed: '+reg.error.message);
+    draft.managed_by_party_id = partyId;
+    log('AGENT '+(partyId ? ('set → '+(PARTY[partyId]||partyId)) : 'cleared')+' for '+label(draft));
+    refreshAllCands();
+  }
 
   // Global quick-filters that narrow the candidate lists for every cluster.
   var FILTERS = { agent:'', district:'', ptype:'' };
@@ -127,6 +152,8 @@ button:disabled{opacity:.5;cursor:default}
       ALL_PROPS = (await sb.from('properties').select('id,title_en,title_lo,district_en,property_type,managed_by_party_id,images,workflow_status')).data || [];
       var parties = (await sb.from('parties').select('id,name_en,name_lo')).data || [];
       parties.forEach(function (p){ PARTY[p.id] = p.name_en || p.name_lo || null; });
+      PARTIES = parties.map(function(p){ return { id:p.id, name: p.name_en||p.name_lo||p.id }; })
+                       .sort(function(a,b){ return a.name.localeCompare(b.name); });
 
       var referenced = new Set();
       ALL_PROPS.forEach(function (p){ imgsOf(p).forEach(function(u){ var m=nameOf(u); if(m) referenced.add(m); }); });
@@ -211,7 +238,7 @@ button:disabled{opacity:.5;cursor:default}
         '<div class="info">'+
           '<div class="t">'+esc(d.title_en||'—')+'</div>'+
           '<div class="lo">'+esc(d.title_lo||'—')+'</div>'+
-          '<div class="m">👤 '+esc(agentName(d)||'no agent')+'</div>'+
+          '<div class="m">👤 <select class="agentsel" style="max-width:190px">'+agentOptionsHtml(d.managed_by_party_id)+'</select></div>'+
           '<div class="m">📍 '+esc(d.district_en||'?')+' · 🏷 '+esc(d.property_type||'?')+(have?' · <span class="tag">has '+have+'</span>':'')+'</div>'+
         '</div>';
       var btn = document.createElement('button'); btn.textContent = 'Assign selected';
@@ -220,6 +247,8 @@ button:disabled{opacity:.5;cursor:default}
         assign(c, d, conf.value, names, btn);
       };
       row.appendChild(btn); cd.appendChild(row);
+      var asel = row.querySelector('.agentsel');
+      if (asel) asel.onchange = function(){ setAgent(d, asel.value); };
     });
   }
 

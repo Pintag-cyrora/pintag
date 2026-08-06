@@ -1,5 +1,53 @@
 # Pintag Launch Roadmap — LIVING DOCUMENT
 
+<!-- ============================================================= -->
+<!-- CANONICAL RECOVERY KPI — single source of truth for progress. -->
+<!-- Refresh at every session close (query at the bottom of this block). -->
+<!-- ============================================================= -->
+# 📊 Listing Recovery Scoreboard
+
+**Recovered listings:** 0 / 91 &nbsp; *(fully recovered = core facts + gallery + price + owner)*
+**Publishable:** 0 &nbsp; *(core facts + gallery — enough to show)*
+**Awaiting gallery:** 91
+**Awaiting price:** 91
+**Awaiting owner:** 91
+**Awaiting English title:** 19
+**Awaiting agent:** 75
+**Recovery progress:** 0% &nbsp; *(publishable ÷ 91)*
+**Last updated:** 2026-08-06
+
+<details><summary>Refresh query</summary>
+
+```sql
+with t as (
+  select p.id,
+    (coalesce(nullif(p.title_en,''),nullif(p.title_lo,'')) is not null
+      and p.property_type is not null and p.transaction_type is not null and p.district_en is not null) as has_core,
+    (jsonb_typeof(p.images)='array' and jsonb_array_length(p.images)>0) as has_gallery,
+    (p.price_amount is not null or p.rent_price_amount is not null or nullif(p.price_display,'') is not null) as has_price,
+    (p.owner_id is not null) as has_owner,
+    (nullif(p.title_en,'') is not null) as has_title_en,
+    (p.managed_by_party_id is not null) as has_agent
+  from public.properties p
+  where exists (select 1 from public.properties_removal_log r where r.property_id=p.id)
+)
+select
+  count(*) filter (where has_core and has_gallery and has_price and has_owner) as recovered,
+  count(*) filter (where has_core and has_gallery)                             as publishable,
+  count(*) filter (where not has_gallery)                                      as awaiting_gallery,
+  count(*) filter (where not has_price)                                        as awaiting_price,
+  count(*) filter (where not has_owner)                                        as awaiting_owner,
+  count(*) filter (where not has_title_en)                                     as awaiting_english_title,
+  count(*) filter (where not has_agent)                                        as awaiting_agent,
+  round(100.0*count(*) filter (where has_core and has_gallery)/count(*),1)      as recovery_pct
+from t;
+```
+</details>
+
+**Session-close ritual:** (1) update this scoreboard, (2) one line on what changed, (3) the single next highest-impact task. No long reports.
+
+---
+
 **The one question this document always answers:**
 > *If we had to reopen Pintag today, which listings would we publish first?*
 
