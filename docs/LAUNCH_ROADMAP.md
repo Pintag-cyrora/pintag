@@ -6,15 +6,20 @@
 <!-- ============================================================= -->
 # 📊 Listing Recovery Scoreboard
 
-**Recovered listings:** 0 / 91 &nbsp; *(fully recovered = core facts + gallery + price + owner)*
-**Publishable:** 0 &nbsp; *(core facts + gallery — enough to show)*
+**★ Business KPI — Publishable:** 0 / 91 (0%) &nbsp; ← *the number that matters*
+**Recovery KPI — Recovered:** 0 / 91 (0%)
+
 **Awaiting gallery:** 91
 **Awaiting price:** 91
 **Awaiting owner:** 91
 **Awaiting English title:** 19
 **Awaiting agent:** 75
-**Recovery progress:** 0% &nbsp; *(publishable ÷ 91)*
-**Last updated:** 2026-08-06
+
+**Last updated:** 2026-08-06 00:00
+
+> **Publishable** (publish-ready) = title (Lao *or* EN) + property type + transaction type + district + **gallery** + **valid contact** (agent or publish-ready contact).
+> **Recovered** (recovery-ready) = publishable **+ price + owner**.
+> Recovery readiness and publish readiness are tracked separately. **Prioritize increasing Publishable first**, not just recovering more fields.
 
 <details><summary>Refresh query</summary>
 
@@ -23,28 +28,30 @@ with t as (
   select p.id,
     (coalesce(nullif(p.title_en,''),nullif(p.title_lo,'')) is not null
       and p.property_type is not null and p.transaction_type is not null and p.district_en is not null) as has_core,
-    (jsonb_typeof(p.images)='array' and jsonb_array_length(p.images)>0) as has_gallery,
+    (jsonb_typeof(p.images)='array' and jsonb_array_length(p.images)>0)                                  as has_gallery,
+    (p.managed_by_party_id is not null or p.contact_id is not null)                                      as has_contact,
     (p.price_amount is not null or p.rent_price_amount is not null or nullif(p.price_display,'') is not null) as has_price,
-    (p.owner_id is not null) as has_owner,
-    (nullif(p.title_en,'') is not null) as has_title_en,
-    (p.managed_by_party_id is not null) as has_agent
+    (p.owner_id is not null)              as has_owner,
+    (nullif(p.title_en,'') is not null)   as has_title_en,
+    (p.managed_by_party_id is not null)   as has_agent
   from public.properties p
   where exists (select 1 from public.properties_removal_log r where r.property_id=p.id)
-)
+), s as (select *, (has_core and has_gallery and has_contact) as publishable from t)
 select
-  count(*) filter (where has_core and has_gallery and has_price and has_owner) as recovered,
-  count(*) filter (where has_core and has_gallery)                             as publishable,
+  count(*) filter (where publishable)                                          as publishable,
+  count(*) filter (where publishable and has_price and has_owner)              as recovered,
   count(*) filter (where not has_gallery)                                      as awaiting_gallery,
   count(*) filter (where not has_price)                                        as awaiting_price,
   count(*) filter (where not has_owner)                                        as awaiting_owner,
   count(*) filter (where not has_title_en)                                     as awaiting_english_title,
   count(*) filter (where not has_agent)                                        as awaiting_agent,
-  round(100.0*count(*) filter (where has_core and has_gallery)/count(*),1)      as recovery_pct
-from t;
+  round(100.0*count(*) filter (where publishable)/count(*),1)                  as publishable_pct,
+  round(100.0*count(*) filter (where publishable and has_price and has_owner)/count(*),1) as recovery_pct
+from s;
 ```
 </details>
 
-**Session-close ritual:** (1) update this scoreboard, (2) one line on what changed, (3) the single next highest-impact task. No long reports.
+**Session-close ritual (no long reports):** (1) update this scoreboard, (2) one line on what changed, (3) the single next highest-impact task, (4) the delta vs last session (e.g. *+12 galleries, +8 publishable*).
 
 ---
 
