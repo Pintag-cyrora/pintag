@@ -67,6 +67,8 @@ button:disabled{opacity:.5;cursor:default}
 .pth{position:relative;cursor:pointer}
 .pth img{width:84px;height:64px;object-fit:cover;border-radius:6px;display:block;background:#0F1418}
 .pth.added img{outline:3px solid #4CAF7D}
+.pth.sug img{outline:3px dashed #E0B15A}
+.pth.focus img{box-shadow:0 0 0 3px #2D8C8C,0 0 0 5px rgba(45,140,140,.35)}
 .pth .x{position:absolute;top:2px;right:2px;background:#8C3A4A;color:#fff;border-radius:4px;font-size:.62rem;padding:0 4px}
 </style>
 </head>
@@ -97,6 +99,11 @@ button:disabled{opacity:.5;cursor:default}
   var HIDE_COMPLETED = true;        // ☑ Hide completed (default ON)
   var VIEW = 'queue';               // 'queue' | 'bylisting' | 'recovered'
   var BL_SEL = null;                // currently-open listing id in "Recover by Listing"
+  var BL_AGENT = '';                // agent scope for Mode 2 ('' = all agents)
+  var AUTO_SELECT = true;           // click one photo → suggest its upload-burst mates
+  var AUTO_TITLE = true;            // after a Mode-2 gallery save, AI-title if untitled
+  var HIDE_DUPES = true;            // collapse duplicate photos within a cluster
+  var BL_KEY = null;                // active Mode-2 keydown handler
   var FILTERS = { agent:'', district:'', ptype:'' };
   var RCONF = 'all';                // recovered-view confidence filter
   var CONF_RANK = { low:0, medium:1, high:2 };
@@ -106,6 +113,25 @@ button:disabled{opacity:.5;cursor:default}
   function imgsOf(p){ if(!p||!p.images) return []; try { return Array.isArray(p.images)?p.images:JSON.parse(p.images); } catch(e){ return []; } }
   function label(d){ return d.title_en || d.title_lo || d.id; }
   function nz(s){ return s!=null && (''+s).trim()!==''; }
+  // Recognizable label for untitled listings: "Untitled House • Sisattanak • Agent: Daeng".
+  function displayTitle(p){
+    if (nz(p.title_en)) return p.title_en;
+    if (nz(p.title_lo)) return p.title_lo;
+    var t = p.property_type ? (p.property_type.charAt(0).toUpperCase()+p.property_type.slice(1)) : 'Listing';
+    var parts = ['Untitled '+t];
+    if (nz(p.district_en)) parts.push(p.district_en);
+    var ag = agentName(p); if (ag) parts.push('Agent: '+ag);
+    return parts.join(' • ');
+  }
+  function eTagOf(f){ var m=f&&f.metadata; return (m && (m.eTag||m.etag)) || (m && m.size!=null ? 'sz:'+m.size : null); }
+  // Collapse exact-duplicate photos (same content hash/size). Returns { files, dupes }.
+  function dedup(files){
+    if (!HIDE_DUPES) return { files: files, dupes: 0 };
+    var seen = {}, out = [], dupes = 0;
+    files.forEach(function(f){ var k = eTagOf(f); if (k && seen[k]) { dupes++; return; } if (k) seen[k]=1; out.push(f); });
+    return { files: out, dupes: dupes };
+  }
+  function detachKey(){ if (BL_KEY){ document.removeEventListener('keydown', BL_KEY); BL_KEY = null; } }
   function worseConf(a,b){ if(!a) return b; if(!b) return a; return CONF_RANK[a] <= CONF_RANK[b] ? a : b; }
   function agentName(d){ return (d.managed_by_party_id && PARTY[d.managed_by_party_id]) || ''; }
   function agentOptionsHtml(sel){
@@ -198,7 +224,7 @@ button:disabled{opacity:.5;cursor:default}
 
       var orphans = objs.filter(function (o){ return !referenced.has(o.name); });
       CLUSTERS = clusterByTime(orphans);
-      CLUSTERS.forEach(function (c, i){ c.id = c.files[0].name; c._n = i+1; c.remaining = c.files.slice(); });
+      CLUSTERS.forEach(function (c, i){ c.id = c.files[0].name; c._n = i+1; c.remaining = c.files.slice(); c.files.forEach(function(f){ f._cluster = c.id; }); });
 
       document.getElementById('bar').textContent = 'Loaded '+objs.length+' photos → '+CLUSTERS.length+' clusters. Read-only until you act.';
       renderSummary();
@@ -232,6 +258,7 @@ button:disabled{opacity:.5;cursor:default}
         '<span class="kpi"><b id="k-low">–</b><span>Low-confidence</span></span>'+
         '<span class="kpi"><b id="k-pub">–</b><span>Publishable / 91</span></span>'+
         '<label class="hc"><input type="checkbox" id="hidecomp" checked> Hide completed</label>'+
+        '<label class="hc" style="margin-left:0"><input type="checkbox" id="hidedupe" checked> Hide duplicates</label>'+
         '<span class="nav">'+
           '<button class="ghost navb" data-v="queue">Cluster → Listing</button>'+
           '<button class="ghost navb" data-v="bylisting">Listing → Gallery</button>'+
@@ -239,6 +266,7 @@ button:disabled{opacity:.5;cursor:default}
         '</span>'+
       '</div>';
     document.getElementById('hidecomp').onchange = function(){ HIDE_COMPLETED = this.checked; renderClusters(); };
+    document.getElementById('hidedupe').onchange = function(){ HIDE_DUPES = this.checked; if (VIEW==='queue') renderClusters(); if (VIEW==='bylisting') renderByListing(); };
     [].forEach.call(document.querySelectorAll('.navb'), function(b){ b.onclick = function(){ switchView(b.getAttribute('data-v')); }; });
     highlightNav();
   }
@@ -251,6 +279,7 @@ button:disabled{opacity:.5;cursor:default}
   }
   function switchView(v) {
     VIEW = v;
+    detachKey();
     document.getElementById('tools').style.display     = v === 'queue' ? '' : 'none';
     document.getElementById('clusters').style.display  = v === 'queue' ? '' : 'none';
     document.getElementById('bylisting').style.display = v === 'bylisting' ? '' : 'none';
@@ -279,14 +308,15 @@ button:disabled{opacity:.5;cursor:default}
   function fillCard(c) {
     var card = c._card, files = c.remaining;
     if (!files.length) { card.innerHTML = '<div class="done">✅ Cluster #'+c._n+' fully assigned.</div>'; return; }
+    var dd = dedup(files); var shown = dd.files;
     card.innerHTML =
-      '<div class="chd"><img class="cover" loading="lazy" src="'+PUB+esc(files[0].name)+'">'+
-      '<div><div><b>Cluster #'+c._n+'</b> · '+files.length+' photo(s) remaining</div>'+
+      '<div class="chd"><img class="cover" loading="lazy" src="'+PUB+esc(shown[0].name)+'">'+
+      '<div><div><b>Cluster #'+c._n+'</b> · '+shown.length+' photo(s)'+(dd.dupes?' <span class="tag" style="color:#E0B15A;border-color:#E0B15A">⚠ '+dd.dupes+' duplicate(s) hidden</span>':'')+'</div>'+
       '<div class="meta">'+new Date(c.start).toLocaleString()+' → '+new Date(c.end).toLocaleTimeString()+'</div>'+
       '<div class="why">Upload burst (≤15 min apart). Tick only the photos that belong, then pick the listing.</div></div></div>'+
       '<div class="ctrls"><button class="ghost tsel">Select all</button><button class="ghost tnone">Select none</button>'+
         '<span class="cfl">Confidence:</span><select class="confsel"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select></div>'+
-      '<div class="gallery">'+files.map(photoItem).join('')+'</div>'+
+      '<div class="gallery">'+shown.map(photoItem).join('')+'</div>'+
       '<input class="search" placeholder="Search matching listing by agent, district, type, or title…">'+
       '<div class="cands"></div>';
     var gal = card.querySelector('.gallery');
@@ -313,8 +343,8 @@ button:disabled{opacity:.5;cursor:default}
       row.innerHTML =
         '<div class="ph">🏠</div>'+
         '<div class="info">'+
-          '<div class="t">'+esc(d.title_en||'—')+'</div>'+
-          '<div class="lo">'+esc(d.title_lo||'—')+'</div>'+
+          '<div class="t">'+esc(displayTitle(d))+'</div>'+
+          '<div class="lo">'+esc(nz(d.title_en)&&nz(d.title_lo)?d.title_lo:'')+'</div>'+
           '<div class="m">👤 <select class="agentsel" style="max-width:190px">'+agentOptionsHtml(d.managed_by_party_id)+'</select></div>'+
           '<div class="m">📍 '+esc(d.district_en||'?')+' · 🏷 '+esc(d.property_type||'?')+(have?' · <span class="tag">has '+have+'</span>':'')+'</div>'+
         '</div>';
@@ -345,7 +375,14 @@ button:disabled{opacity:.5;cursor:default}
     if (reg.error) log('WARN register insert failed: '+reg.error.message);
     draft.images = merged;
     CONFMAP[draft.id] = worseConf(CONFMAP[draft.id], confidence);
-    c.remaining = c.remaining.filter(function(f){ return names.indexOf(f.name) < 0; });
+    // also consume exact-duplicate siblings (same content) so a de-duped cluster can complete
+    var sibs = {};
+    if (HIDE_DUPES) {
+      var chosen = {};
+      c.remaining.forEach(function(f){ if (names.indexOf(f.name) >= 0){ var k=eTagOf(f); if(k) chosen[k]=1; } });
+      c.remaining.forEach(function(f){ if (names.indexOf(f.name) < 0){ var k=eTagOf(f); if (k && chosen[k]) sibs[f.name]=1; } });
+    }
+    c.remaining = c.remaining.filter(function(f){ return names.indexOf(f.name) < 0 && !sibs[f.name]; });
     log('ASSIGNED '+names.length+' photo(s) → '+label(draft)+' ['+confidence+'] (cluster #'+c._n+')');
     afterClusterChange(c);
   }
@@ -393,8 +430,8 @@ button:disabled{opacity:.5;cursor:default}
       var ccls = conf==='low'?'lo':conf==='medium'?'mid':conf==='high'?'hi':'';
       var row = document.createElement('div'); row.className = 'cand2';
       row.innerHTML = '<div class="ph">🖼️</div><div class="info">'+
-        '<div class="t">'+esc(p.title_en||p.title_lo||'(untitled)')+'</div>'+
-        '<div class="lo">'+esc(p.title_lo||'')+'</div>'+
+        '<div class="t">'+esc(displayTitle(p))+'</div>'+
+        '<div class="lo">'+esc(nz(p.title_en)&&nz(p.title_lo)?p.title_lo:'')+'</div>'+
         '<div class="m">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(p.district_en||'?')+' · 🖼️ '+imgsOf(p).length+' photo(s) · <span class="conf '+ccls+'">'+String(conf).toUpperCase()+'</span></div></div>';
       if (needsTitle(p)) {
         var gb = document.createElement('button'); gb.textContent = 'Generate AI Title';
@@ -412,64 +449,136 @@ button:disabled{opacity:.5;cursor:default}
   // unassigned photo; click to add them to the listing's gallery; Save. The
   // cluster queue (Mode 1) stays intact and shares the same pool.
   function poolFiles(){ var out = []; CLUSTERS.forEach(function(c){ out = out.concat(c.remaining); }); return out; }
-  function removeFromPool(names){ var set = {}; names.forEach(function(n){ set[n]=1; }); CLUSTERS.forEach(function(c){ c.remaining = c.remaining.filter(function(f){ return !set[f.name]; }); }); }
+  function removeFromPool(names){
+    var set = {}; names.forEach(function(n){ set[n]=1; });
+    var tags = {};
+    if (HIDE_DUPES) CLUSTERS.forEach(function(c){ c.remaining.forEach(function(f){ if (set[f.name]){ var k=eTagOf(f); if(k) tags[k]=1; } }); });
+    CLUSTERS.forEach(function(c){ c.remaining = c.remaining.filter(function(f){ if (set[f.name]) return false; if (HIDE_DUPES){ var k=eTagOf(f); if (k && tags[k]) return false; } return true; }); });
+  }
   function byId(id){ for (var i=0;i<ALL_PROPS.length;i++) if (ALL_PROPS[i].id === id) return ALL_PROPS[i]; return null; }
+  function nextNeedingGallery(){
+    var list = ALL_PROPS.filter(function(x){ return SET91.has(x.id) && imgsOf(x).length === 0 && (!BL_AGENT || x.managed_by_party_id === BL_AGENT); });
+    list.sort(function(a,b){ return displayTitle(a).localeCompare(displayTitle(b)); });
+    return list[0] || null;
+  }
 
   function renderByListing(){
     var host = document.getElementById('bylisting');
+    var agents = {}; DRAFTS.forEach(function(d){ if (d.managed_by_party_id) agents[d.managed_by_party_id] = agentName(d) || d.managed_by_party_id; });
+    var aOpt = Object.keys(agents).sort(function(x,y){ return (agents[x]||'').localeCompare(agents[y]||''); })
+                 .map(function(id){ return '<option value="'+esc(id)+'"'+(BL_AGENT===id?' selected':'')+'>'+esc(agents[id])+'</option>'; }).join('');
     host.innerHTML =
-      '<div class="card"><b>Recover by Listing</b> <span class="why" style="display:inline">— pick a listing you recognize, then click unassigned photos to add them to its gallery</span>'+
-      '<input class="blsearch" placeholder="Search a listing by agent, title, district, or type…">'+
+      '<div class="card"><b>Recover by Agent / Listing</b> <span class="why" style="display:inline">— pick an agent (or search), open a listing, click unassigned photos to add. Save → jumps to the next gallery-less listing.</span>'+
+      '<div class="ctrls">'+
+        '<span class="cfl">Agent</span><select class="blagent"><option value="">— all agents —</option>'+aOpt+'</select>'+
+        '<label class="hc" style="margin:0"><input type="checkbox" class="blauto"'+(AUTO_SELECT?' checked':'')+'> Auto-select burst</label>'+
+        '<label class="hc" style="margin:0"><input type="checkbox" class="bltitle"'+(AUTO_TITLE?' checked':'')+'> Auto AI-title after save</label>'+
+      '</div>'+
+      '<input class="blsearch" placeholder="…or search a listing by title / district / type">'+
       '<div class="blresults"></div></div>'+
       '<div id="bleditor"></div>';
-    var s = host.querySelector('.blsearch'), r = host.querySelector('.blresults');
-    s.oninput = function(){ blResults(r, s.value); };
+    var ag=host.querySelector('.blagent'), s=host.querySelector('.blsearch'), r=host.querySelector('.blresults');
+    ag.onchange=function(){ BL_AGENT=ag.value; blResults(r, s.value); };
+    host.querySelector('.blauto').onchange=function(){ AUTO_SELECT=this.checked; };
+    host.querySelector('.bltitle').onchange=function(){ AUTO_TITLE=this.checked; };
+    s.oninput=function(){ blResults(r, s.value); };
     blResults(r, '');
     if (BL_SEL){ var p = byId(BL_SEL); if (p) openListingEditor(p); }
   }
   function blResults(r, q){
     q = (q||'').trim().toLowerCase(); r.innerHTML = '';
-    var base = DRAFTS.filter(function(d){ return !q || hay(d).indexOf(q) >= 0; });
-    if (q) base.sort(function(a,b){ return (agentName(a).toLowerCase().indexOf(q)>=0?0:1) - (agentName(b).toLowerCase().indexOf(q)>=0?0:1); });
-    base = base.slice(0, 20);
-    if (!base.length) { r.innerHTML = '<div class="why">Type an agent name, title, or district to find the listing.</div>'; return; }
+    var base = DRAFTS.filter(function(d){
+      if (BL_AGENT && d.managed_by_party_id !== BL_AGENT) return false;
+      return !q || hay(d).indexOf(q) >= 0;
+    });
+    base.sort(function(a,b){ return (imgsOf(a).length>0?1:0) - (imgsOf(b).length>0?1:0); });   // gallery-less first
+    base = base.slice(0, 30);
+    if (!base.length) { r.innerHTML = '<div class="why">No listings'+(BL_AGENT?' for this agent':'')+' match.</div>'; return; }
     base.forEach(function(d){
       var have = imgsOf(d).length;
       var row = document.createElement('div'); row.className = 'cand2';
-      row.innerHTML = '<div class="ph">🏠</div><div class="info"><div class="t">'+esc(d.title_en||d.title_lo||'(untitled)')+'</div>'+
-        '<div class="m">👤 '+esc(agentName(d)||'no agent')+' · 📍 '+esc(d.district_en||'?')+' · 🏷 '+esc(d.property_type||'?')+(have?' · <span class="tag">'+have+' photo(s)</span>':'')+'</div></div>';
+      row.innerHTML = '<div class="ph">🏠</div><div class="info"><div class="t">'+esc(displayTitle(d))+'</div>'+
+        '<div class="m">👤 '+esc(agentName(d)||'no agent')+' · 📍 '+esc(d.district_en||'?')+' · 🏷 '+esc(d.property_type||'?')+' · '+
+        (have?'<span class="tag">'+have+' photo(s)</span>':'<span class="tag" style="color:#E0B15A;border-color:#E0B15A">no gallery</span>')+'</div></div>';
       var b = document.createElement('button'); b.textContent = 'Open'; b.onclick = function(){ BL_SEL = d.id; openListingEditor(d); };
       row.appendChild(b); r.appendChild(row);
     });
   }
   function openListingEditor(p){
+    detachKey();
     var host = document.getElementById('bleditor');
-    var added = [];   // names added this session (subset of the pool)
+    var ddp = dedup(poolFiles());
+    var pool = ddp.files;               // stable, de-duplicated snapshot
+    var added = {}, suggested = {};
+    var focusIdx = pool.length ? 0 : -1, anchor = -1, curConf = 'high';
+
+    function addedNames(){ return Object.keys(added); }
+    function toggleOne(idx, allowAuto){
+      if (idx<0 || idx>=pool.length) return;
+      var n = pool[idx].name;
+      if (added[n]) { delete added[n]; delete suggested[n]; }
+      else {
+        added[n] = true; delete suggested[n];
+        if (allowAuto && AUTO_SELECT){ var cl = pool[idx]._cluster; pool.forEach(function(f){ if (f._cluster===cl && !added[f.name]){ added[f.name]=true; suggested[f.name]=true; } }); }
+      }
+    }
+    function selectRange(a,b){ var lo=Math.min(a,b), hi=Math.max(a,b); for (var i=lo;i<=hi;i++){ added[pool[i].name]=true; delete suggested[pool[i].name]; } }
+    function handleClick(idx, e){
+      if (e.shiftKey && anchor>=0) selectRange(anchor, idx);
+      else if (e.ctrlKey || e.metaKey){ toggleOne(idx, false); anchor=idx; }
+      else anchor = idx;               // plain click = focus (no add)
+      focusIdx = idx; draw();
+    }
+    function doSave(){ saveListingGallery(p, addedNames(), curConf); }
+
     function draw(){
-      var pool = poolFiles().filter(function(f){ return added.indexOf(f.name) < 0; });
-      var orig = imgsOf(p);
+      var orig = imgsOf(p), an = addedNames();
       host.innerHTML =
-        '<div class="card"><div class="chd"><div><b>'+esc(label(p))+'</b>'+
-          '<div class="meta">📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 👤 '+esc(agentName(p)||'no agent')+'</div></div>'+
+        '<div class="card"><div class="chd"><div><b>'+esc(displayTitle(p))+'</b>'+
+          '<div class="meta">📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 👤 '+esc(agentName(p)||'no agent')+'</div>'+
+          '<div class="why">click = focus · dbl-click / Space = add-remove · Shift-click = range · ⌘/Ctrl-click = pick · ←→↑↓ move · Enter = Save · Esc = Cancel</div></div>'+
           '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
-          '<button class="blsave">Save gallery ('+added.length+' new)</button>'+
+          '<button class="blsave">Save ('+an.length+') ↵</button>'+
+          (!nz(p.title_en) ? '<button class="ghost bltit">Generate AI title</button>' : '')+
           '<button class="ghost blclose">Close</button></div>'+
+        (ddp.dupes ? '<div class="why" style="color:#E0B15A">⚠ '+ddp.dupes+' duplicate photo(s) hidden from the pool.</div>' : '')+
         '<div class="cols">'+
-          '<div class="col"><h3>Current gallery ('+(orig.length+added.length)+')</h3><div class="grid" id="blgal"></div></div>'+
-          '<div class="col"><h3>Unassigned photos ('+pool.length+') — click to add</h3><div class="grid" id="blpool"></div></div>'+
+          '<div class="col"><h3>Current gallery ('+(orig.length+an.length)+')</h3><div class="grid" id="blgal"></div></div>'+
+          '<div class="col"><h3>Unassigned photos ('+pool.length+') — click a photo, then Space to add</h3><div class="grid" id="blpool"></div></div>'+
         '</div></div>';
       var gal = host.querySelector('#blgal'), poolEl = host.querySelector('#blpool');
       orig.forEach(function(u){ var d=document.createElement('div'); d.className='pth'; d.innerHTML='<img loading="lazy" src="'+esc(u)+'">'; gal.appendChild(d); });
-      added.forEach(function(nm){ var d=document.createElement('div'); d.className='pth added'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(nm)+'"><span class="x">remove</span>'; d.onclick=function(){ added=added.filter(function(n){return n!==nm;}); draw(); }; gal.appendChild(d); });
-      pool.forEach(function(f){ var d=document.createElement('div'); d.className='pth'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(f.name)+'">'; d.onclick=function(){ added.push(f.name); draw(); }; poolEl.appendChild(d); });
-      host.querySelector('.blclose').onclick = function(){ BL_SEL=null; host.innerHTML=''; };
-      host.querySelector('.blsave').onclick = function(){ saveListingGallery(p, added, host.querySelector('.blconf').value); };
+      an.forEach(function(nm){ var d=document.createElement('div'); d.className='pth added'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(nm)+'"><span class="x">×</span>'; d.onclick=function(){ delete added[nm]; delete suggested[nm]; draw(); }; gal.appendChild(d); });
+      pool.forEach(function(f, idx){
+        var d=document.createElement('div');
+        d.className='pth'+(added[f.name]?(suggested[f.name]?' sug':' added'):'')+(idx===focusIdx?' focus':'');
+        d.innerHTML='<img loading="lazy" src="'+PUB+esc(f.name)+'">';
+        d.onclick=function(e){ handleClick(idx, e); };
+        d.ondblclick=function(e){ e.preventDefault(); toggleOne(idx, true); anchor=idx; focusIdx=idx; draw(); };
+        poolEl.appendChild(d);
+      });
+      var fe = poolEl.children[focusIdx]; if (fe && fe.scrollIntoView) fe.scrollIntoView({ block:'nearest' });
+      var cs=host.querySelector('.blconf'); cs.value=curConf; cs.onchange=function(){ curConf=cs.value; };
+      host.querySelector('.blsave').onclick = doSave;
+      host.querySelector('.blclose').onclick = function(){ detachKey(); BL_SEL=null; host.innerHTML=''; };
+      var tit=host.querySelector('.bltit'); if (tit) tit.onclick=function(){ openTitlePreview(p); };
     }
+
+    BL_KEY = function(e){
+      if (VIEW!=='bylisting') return;
+      var tag=(e.target&&e.target.tagName)||'';
+      if ((tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA') && e.key!=='Escape') return;
+      if (e.key==='Enter'){ e.preventDefault(); doSave(); }
+      else if (e.key==='Escape'){ e.preventDefault(); detachKey(); BL_SEL=null; host.innerHTML=''; }
+      else if (e.key===' '){ e.preventDefault(); toggleOne(focusIdx, true); anchor=focusIdx; draw(); }
+      else if (e.key==='ArrowRight'||e.key==='ArrowDown'){ e.preventDefault(); if (focusIdx<pool.length-1){ focusIdx++; draw(); } }
+      else if (e.key==='ArrowLeft'||e.key==='ArrowUp'){ e.preventDefault(); if (focusIdx>0){ focusIdx--; draw(); } }
+    };
+    document.addEventListener('keydown', BL_KEY);
     draw();
   }
   async function saveListingGallery(p, added, confidence){
-    if (!added.length) { alert('Click some unassigned photos to add first.'); return; }
-    if (!confirm('Add '+added.length+' photo(s) to:\n'+label(p)+'  ['+confidence+'] ?')) return;
+    if (!added.length) { alert('Select photos first — click a photo then Space, dbl-click, or Shift-click a range.'); return; }
     var cur = imgsOf(p); var have = new Set(cur.map(nameOf));
     var merged = cur.concat(added.filter(function(n){ return !have.has(n); }).map(function(n){ return PUB + n; }));
     var r = await sb.from('properties').update({ images: merged }).eq('id', p.id).select('id');
@@ -479,8 +588,16 @@ button:disabled{opacity:.5;cursor:default}
     p.images = merged; CONFMAP[p.id] = worseConf(CONFMAP[p.id], confidence);
     removeFromPool(added);
     log('BY-LISTING assigned '+added.length+' photo(s) → '+label(p)+' ['+confidence+']');
+    // auto AI-title if this listing is still untitled
+    if (AUTO_TITLE && !nz(p.title_en)) {
+      try { var gen = await generateTitles(p); var f = await saveTitles(p, gen); log('AI TITLE auto ['+f.join(', ')+'] → '+label(p)); }
+      catch(e){ log('AI TITLE auto FAIL '+label(p)+': '+e.message); }
+    }
     updateSummary();
-    openListingEditor(p);   // fresh editor: gallery grew, pool shrank
+    // inbox: advance to the next gallery-less listing (respecting the agent scope)
+    var next = nextNeedingGallery();
+    if (next){ BL_SEL = next.id; openListingEditor(next); }
+    else { detachKey(); BL_SEL = null; document.getElementById('bleditor').innerHTML = '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Pick another agent or switch views.</div>'; }
   }
 
   // ───────────────────────── AI title recovery ─────────────────────────
