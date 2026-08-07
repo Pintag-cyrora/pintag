@@ -169,6 +169,7 @@ button:disabled{opacity:.5;cursor:default}
 <div class="sub">Forensic recovery: <b>every photo in the pool is always shown</b> — nothing is deduplicated, collapsed, or auto-hidden, and no photo is ever auto-selected. You decide what belongs. Tick the photos, pick the listing, Assign. Completed galleries move to <b>Recovered Galleries</b>; every assign &amp; unassign is logged.</div>
 <div class="bar" id="bar">Loading…</div>
 <div id="summary"></div>
+<div id="audit"></div>
 <div id="tools"></div>
 <div id="clusters"></div>
 <div id="bylisting" style="display:none"></div>
@@ -187,6 +188,7 @@ button:disabled{opacity:.5;cursor:default}
   var OPERATOR = 'operator';
   var ALL_PROPS = [], DRAFTS = [], PARTY = {}, PARTIES = [], CLUSTERS = [];
   var SET91 = new Set();
+  var AUDIT = null;                 // forensic photo-count breakdown (set in boot)
   var CONFMAP = {};                 // listing_id -> worst confidence among its assigns
   var HIDE_COMPLETED = true;        // ☑ Hide completed (default ON)
   var VIEW = 'queue';               // 'queue' | 'bylisting' | 'recovered'
@@ -325,8 +327,26 @@ button:disabled{opacity:.5;cursor:default}
       CLUSTERS = clusterByTime(orphans);
       CLUSTERS.forEach(function (c, i){ c.id = c.files[0].name; c._n = i+1; c.remaining = c.files.slice(); c.files.forEach(function(f){ f._cluster = c.id; }); });
 
+      // ── FORENSIC PHOTO AUDIT — count at every stage of the pipeline ──────────
+      // storageRoot: objects returned by listAllObjects() (bucket ROOT only —
+      //   sb.storage.list('') is NOT recursive; anything in a subfolder is not
+      //   counted here). assignedInStorage: of those, how many are already
+      //   referenced by a listing. orphans: unreferenced. The pool the editor
+      //   shows is orphans only — assigned photos are excluded (see report).
+      var assignedInStorage = objs.filter(function (o){ return referenced.has(o.name); }).length;
+      AUDIT = {
+        storageRoot: objs.length,
+        referencedNames: referenced.size,
+        assignedInStorage: assignedInStorage,
+        orphans: orphans.length,
+        clusters: CLUSTERS.length
+      };
+      log('AUDIT storageRoot='+AUDIT.storageRoot+' assignedInStorage='+AUDIT.assignedInStorage+' orphans='+AUDIT.orphans+' referencedNames='+AUDIT.referencedNames+' clusters='+AUDIT.clusters);
+      console.table(AUDIT);
+
       document.getElementById('bar').textContent = 'Loaded '+objs.length+' photos → '+CLUSTERS.length+' clusters. Read-only until you act.';
       renderSummary();
+      renderAudit();
       renderTools();
       renderClusters();
       updateSummary();
@@ -379,6 +399,26 @@ button:disabled{opacity:.5;cursor:default}
     highlightNav();
   }
   function highlightNav(){ [].forEach.call(document.querySelectorAll('.navb'), function(b){ var on = b.getAttribute('data-v') === VIEW; b.style.background = on ? '#2D8C8C' : 'transparent'; b.style.color = on ? '#fff' : '#E8EDF0'; }); }
+  // Forensic count readout — every stage of the pipeline, on screen. The
+  // "Available photos" pool the editor shows equals orphans (assigned photos are
+  // excluded at boot, line ~324). Duplicate filtering is OFF while Show all is on.
+  function renderAudit(){
+    var host = document.getElementById('audit'); if (!host || !AUDIT) return;
+    var row = function(lbl, val, note){ return '<tr><td style="padding:2px 14px 2px 0">'+lbl+'</td><td style="text-align:right;font-variant-numeric:tabular-nums;color:#2D8C8C;font-weight:700">'+val+'</td><td style="padding-left:12px;color:#9AA7B0">'+(note||'')+'</td></tr>'; };
+    var dupOff = !dupesHidden();
+    host.innerHTML =
+      '<div class="card"><b>📊 Photo audit</b> <span class="why" style="display:inline">— live count at every stage. The pool the editor shows is <b>orphans only</b>; assigned photos are currently excluded.</span>'+
+      '<table style="margin-top:8px;font-size:.86rem;border-collapse:collapse">'+
+        row('Total in storage (bucket root)', AUDIT.storageRoot, 'sb.storage.list(\'\') — NOT recursive; subfolders not counted')+
+        row('— referenced by a listing (assigned)', AUDIT.assignedInStorage, 'excluded from the pool')+
+        row('— orphans (unassigned)', AUDIT.orphans, 'assigned + orphans = total root')+
+        row('After duplicate filter', dupOff ? AUDIT.orphans+' (dedup OFF)' : '≤ '+AUDIT.orphans, dupOff ? 'Show all photos is ON' : 'Hide duplicates active')+
+        row('Grouped into clusters', AUDIT.clusters, 'grouping removes no photos')+
+        row('Editor “Available photos” pool', AUDIT.orphans, 'this is what you see = orphans')+
+      '</table>'+
+      '<div class="why" style="margin-top:6px">If this total is lower than the real number of files in the bucket, photos are stored in <b>subfolders</b> that <code>list(\'\')</code> never reads (line ~282). The assigned/orphan split is the count that shrinks as you recover — assigned photos leave the pool (line ~324).</div>'+
+      '</div>';
+  }
   function updateSummary() {
     var c = counts();
     function set(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
@@ -716,8 +756,10 @@ button:disabled{opacity:.5;cursor:default}
   function openListingEditor(p){
     detachKey();
     var host = document.getElementById('bleditor');
-    var ddp = dedup(poolFiles());
+    var rawPool = poolFiles();
+    var ddp = dedup(rawPool);
     var pool = ddp.files;               // 100% of the unassigned pool while Show all photos is on
+    log('EDITOR '+String(p.id).slice(0,8)+': poolFiles='+rawPool.length+' → afterDedup='+pool.length+(ddp.dupes?(' ('+ddp.dupes+' dupes hidden)'):'')+' · current gallery='+imgsOf(p).length+' · (assigned-to-other-listings NOT shown)');
     var added = {}, removed = {};       // removed: existing-gallery names staged out
     var focusIdx = pool.length ? 0 : -1, anchor = -1, curConf = 'high';
 
