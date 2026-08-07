@@ -291,7 +291,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
     <p class="admin-nav-logo">Pintag <span>Admin</span></p>
     <div class="admin-nav-right">
       <button class="admin-nav-btn btn-new" onclick="showForm(null)">+ New Listing</button>
-      <button class="admin-nav-btn btn-import" onclick="showImportPanel()">&#8659; Smart Import</button>
+      <button class="admin-nav-btn btn-import" onclick="showImportPanel()">&#43; Create Listing</button>
       <button class="admin-nav-btn btn-logout" onclick="logout()">Sign Out</button>
     </div>
   </nav>
@@ -898,8 +898,10 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
     <div id="import-panel" style="display:none;">
       <div class="form-header">
         <a class="form-back" onclick="showListings()">&#8592; Back</a>
-        <h2>Smart Import</h2>
+        <h2>Create Listing</h2>
       </div>
+
+      <p style="font-size:12px;color:var(--ink-muted);margin:0 0 4px;line-height:1.5;">One pipeline for every source — a Facebook link, recovered gallery photos, or a manual upload all become an AI draft you review and publish. Give it whatever you have below.</p>
 
       <div class="form-section">
         <p class="form-section-title">&#9312; Paste Facebook Marketplace Link</p>
@@ -2369,7 +2371,7 @@ function maybeIngestGalleryRecovery() {
   if (msg) {
     msg.style.display = 'block';
     msg.className = 'form-message success';
-    msg.textContent = importImages.length + ' photo(s) from Gallery Recovery attached. Add a description, then Generate.';
+    msg.textContent = importImages.length + ' photo(s) from Gallery Recovery attached. Add a description, then Generate — same as any other source.';
   }
   const d = document.getElementById('import-description');
   if (d) d.focus();

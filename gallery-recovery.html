@@ -567,25 +567,26 @@ button:disabled{opacity:.5;cursor:default}
       // Import → Admin, NOT here. Recovery's one job is the photos.
       document.getElementById('bleditor').innerHTML =
         '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Every one in scope has photos.</div>'+
-        '<div class="card"><b>Next stage · Complete in Smart Import</b><div class="why" style="margin-top:4px">Galleries are reconnected. Finish the listings in Smart Import (generate title, description, details) → Admin (polish &amp; publish). Use “→ Smart Import” on any listing to send its photos into that flow.</div></div>';
+        '<div class="card"><b>Next stage · Create Listing</b><div class="why" style="margin-top:4px">Galleries are reconnected. Finish the listings in Create Listing (write a description → AI drafts title, details, translations) → Admin (polish &amp; publish). Use “→ Create Listing” on any listing to send its photos into that flow.</div></div>';
     }
   }
-  // Recovery → Smart Import handoff. Gallery Recovery is just another input
-  // source (like a Facebook URL or a pasted description): it stages the chosen
-  // photos and opens the existing Smart Import page. One pipeline, one AI, one
-  // editor — the only difference is where the photos came from.
-  var SI_MAX = 15;   // Smart Import's photo cap
+  // Recovery → Create Listing handoff. Gallery Recovery is just one input
+  // source into the single Create Listing pipeline (like a Facebook URL or a
+  // manual upload): it stages the chosen photos and opens Create Listing.
+  // Recovery does not know how listings are generated — only how to organize
+  // photos. One pipeline, one AI, one editor, one publish flow.
+  var SI_MAX = 15;   // the pipeline's photo cap
   function sendToSmartImport(names, listingId){
     names = (names||[]).filter(Boolean);
     if (!names.length){ alert('Select the photos that belong together first.'); return; }
-    if (names.length > SI_MAX && !confirm(names.length+' photos selected. Smart Import takes up to '+SI_MAX+' — the first '+SI_MAX+' will be sent. Continue?')) return;
+    if (names.length > SI_MAX && !confirm(names.length+' photos selected. Create Listing takes up to '+SI_MAX+' — the first '+SI_MAX+' will be sent. Continue?')) return;
     var urls = names.slice(0, SI_MAX).map(function(n){ return PUB + n; });
     try {
       localStorage.setItem('pintag_gr_to_import', JSON.stringify({
         images: urls, source: 'gallery_recovery', listing_id: listingId || null, at: Date.now()
       }));
-    } catch(e){ alert('Could not stage photos for Smart Import: '+e.message); return; }
-    log('→ SMART IMPORT: staged '+urls.length+' photo(s)'+(listingId?' (from '+String(listingId).slice(0,8)+')':''));
+    } catch(e){ alert('Could not stage photos for Create Listing: '+e.message); return; }
+    log('→ CREATE LISTING: staged '+urls.length+' photo(s)'+(listingId?' (from '+String(listingId).slice(0,8)+')':''));
     window.location.href = 'admin.html';
   }
 
@@ -729,7 +730,7 @@ button:disabled{opacity:.5;cursor:default}
       // sticky action bar: reconnect photos to this listing (Save & Next), or
       // send the selected photos into Smart Import to create the listing there.
       var bar=document.createElement('div'); bar.className='mlebar';
-      bar.innerHTML='<span class="mc"></span><button class="ghost msi">→ Smart Import</button><button class="msave"></button>';
+      bar.innerHTML='<span class="mc"></span><button class="ghost msi">→ Create Listing</button><button class="msave"></button>';
       host.appendChild(bar);
       function syncBar(){ var n=addedNames().length;
         // Photo-first: no title in the recovery bar. Just save & advance.
@@ -750,7 +751,7 @@ button:disabled{opacity:.5;cursor:default}
           '<div class="why">click = focus · dbl-click / Space = add-remove · Shift-click = range · ⌘/Ctrl-click = pick · ←→↑↓ move · Enter = Save · Esc = Cancel</div></div>'+
           '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
           '<button class="blsave">Save ('+an.length+') ↵</button>'+
-          '<button class="ghost blsi">→ Smart Import</button>'+
+          '<button class="ghost blsi">→ Create Listing</button>'+
           '<button class="ghost blclose">Close</button></div>'+
         (ddp.dupes ? '<div class="why" style="color:#E0B15A">⚠ '+ddp.dupes+' duplicate photo(s) hidden from the pool.</div>' : '')+
         '<div class="cols">'+
