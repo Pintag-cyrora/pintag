@@ -156,6 +156,13 @@ button:disabled{opacity:.5;cursor:default}
 .pv .pvsel{flex:1;font-weight:700}
 .pv .pvsel.on{background:#2D8C8C}
 .pv .pvsel.off{background:transparent;border:1px solid #2D8C8C;color:#2D8C8C}
+/* Undo toast — optimistic actions instead of "are you sure?" confirmations */
+.gr-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:60;
+  display:flex;align-items:center;gap:14px;background:#0e1519;color:#E8EDF0;border:1px solid rgba(232,237,240,.22);
+  border-radius:11px;padding:11px 14px;box-shadow:0 10px 30px rgba(0,0,0,.55);max-width:92vw;font-size:.9rem;line-height:1.3}
+.gr-toast .gt-msg{white-space:normal}
+.gr-toast .gt-undo{background:transparent;border:0;color:#40AEAE;font-weight:700;padding:.15rem .3rem;cursor:pointer;font-size:.9rem;flex:0 0 auto}
+.gr-toast .gt-x{color:#9AA7B0;cursor:pointer;font-size:.8rem;flex:0 0 auto}
 </style>
 </head>
 <body>
@@ -560,6 +567,23 @@ button:disabled{opacity:.5;cursor:default}
     var total = SET91.size || 91;
     return { done: done, total: total, remaining: total - done };
   }
+  // Undo toast: an action already happened (optimistic); Undo reverses it, or
+  // onExpire runs when the window lapses without an undo (e.g. deferred nav).
+  // Lives on <body> so it survives editor re-renders. One at a time.
+  var _toastTimer=null;
+  function showUndoToast(msg, undoFn, secs, onExpire){
+    secs = secs || 12;
+    var ex=document.getElementById('gr-toast'); if(ex) ex.remove();
+    if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer=null; }
+    var t=document.createElement('div'); t.id='gr-toast'; t.className='gr-toast';
+    var m=document.createElement('span'); m.className='gt-msg'; m.textContent=msg; t.appendChild(m);
+    function cleanup(){ if(t.parentNode) t.remove(); if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer=null; } }
+    if(undoFn){ var u=document.createElement('button'); u.className='gt-undo'; u.textContent='Undo';
+      u.onclick=function(){ cleanup(); undoFn(); }; t.appendChild(u); }
+    var x=document.createElement('span'); x.className='gt-x'; x.textContent='✕'; x.onclick=function(){ cleanup(); if(onExpire) onExpire(); }; t.appendChild(x);
+    document.body.appendChild(t);
+    _toastTimer=setTimeout(function(){ cleanup(); if(onExpire) onExpire(); }, secs*1000);
+  }
   // Advance the recovery queue to the next gallery-less listing (shared by
   // Save & Next and Skip). Shows the completion card when none remain.
   // skipId: don't land back on a listing the operator just decided about (moved
@@ -595,17 +619,16 @@ button:disabled{opacity:.5;cursor:default}
     var urls = names.slice(0, SI_MAX).map(function(n){ return PUB + n; });
     // Detach from the current listing first (logged + reversible; images:null
     // returns the photos to the pool). Only if it actually has a gallery.
-    if (listingId){
-      var lp = byId(listingId);
-      if (lp && imgsOf(lp).length){
-        try {
-          var up = await sb.from('properties').update({ images: null }).eq('id', listingId).select('id');
-          if (up.error) throw up.error;
-          await sb.from('gallery_assignments').insert([{ op:'unassign', listing_id:listingId, cluster_id:'no-matching', photo_paths:names, photo_count:names.length, method:'manual', operator:OPERATOR }]);
-          lp.images = null; updateSummary();
-          log('NO MATCH: detached '+names.length+' photo(s) from '+String(listingId).slice(0,8)+' (now needs gallery)');
-        } catch(e){ alert('Could not detach from the current listing: '+(e.message||e)); return; }
-      }
+    var lp = listingId ? byId(listingId) : null;
+    var lpBefore = lp ? imgsOf(lp).slice() : [];
+    if (lp && lpBefore.length){
+      try {
+        var up = await sb.from('properties').update({ images: null }).eq('id', listingId).select('id');
+        if (up.error) throw up.error;
+        await sb.from('gallery_assignments').insert([{ op:'unassign', listing_id:listingId, cluster_id:'no-matching', photo_paths:names, photo_count:names.length, method:'manual', operator:OPERATOR }]);
+        lp.images = null; updateSummary();
+        log('NO MATCH: detached '+names.length+' photo(s) from '+String(listingId).slice(0,8)+' (now needs gallery)');
+      } catch(e){ alert('Could not detach from the current listing: '+(e.message||e)); return; }
     }
     try {
       localStorage.setItem('pintag_gr_to_import', JSON.stringify({
@@ -613,7 +636,20 @@ button:disabled{opacity:.5;cursor:default}
       }));
     } catch(e){ alert('Could not stage photos for Create Listing: '+e.message); return; }
     log('→ CREATE LISTING: staged '+urls.length+' photo(s)');
-    window.location.href = 'admin.html';
+    // Deferred navigation with an Undo window (the "Undo Send" pattern): the
+    // detach already happened optimistically; Undo restores it and cancels the
+    // trip to Create Listing. If untouched, it opens Create Listing.
+    function go(){ window.location.href = 'admin.html'; }
+    if (lp && lpBefore.length){
+      showUndoToast('Gallery detached & opening Create Listing…', function(){
+        localStorage.removeItem('pintag_gr_to_import');
+        sb.from('properties').update({ images: lpBefore }).eq('id', listingId).select('id').then(function(){
+          lp.images = lpBefore; updateSummary(); log('UNDO no-match'); openListingEditor(lp);
+        });
+      }, 6, go);
+    } else {
+      go();   // nothing was detached (build case) → just open Create Listing
+    }
   }
 
   function renderByListing(){
@@ -679,11 +715,12 @@ button:disabled{opacity:.5;cursor:default}
     function workingUrls(){ return keptOrigUrls().concat(addedNames().map(function(n){ return PUB+n; })); }
     function workingCount(){ return keptOrigUrls().length + addedNames().length; }
     function dirty(){ return addedNames().length || Object.keys(removed).length; }
-    // ✅ This Listing — persist the working gallery to p (adds + removes in one write).
+    // ✅ This Listing — persist the working gallery to p (adds + removes in one
+    // write). Optimistic + Undo instead of a confirmation dialog.
     async function doSaveGallery(){
       if (!dirty()) { blAdvance(); return; }                 // nothing changed → just move on
+      var before = imgsOf(p).slice();                        // for Undo
       var finalUrls = workingUrls(), addedN = addedNames(), removedN = Object.keys(removed);
-      if (!finalUrls.length && !confirm('This empties the gallery (every photo removed). Continue?')) return;
       var r = await sb.from('properties').update({ images: finalUrls.length ? finalUrls : null }).eq('id', p.id).select('id');
       if (r.error) { alert('Failed: '+r.error.message); log('ERROR save gallery '+r.error.message); return; }
       var logs = [];
@@ -695,9 +732,15 @@ button:disabled{opacity:.5;cursor:default}
       removeFromPool(addedN);
       log('GALLERY '+String(p.id).slice(0,8)+': +'+addedN.length+' / -'+removedN.length);
       updateSummary();
-      // Removed photos return to the pool; a reload rebuilds the pool + queues
-      // cleanly (same proven approach the old remove-photos flow used).
-      if (removedN.length) { alert('Saved. Reloading so removed photos return to the pool.'); location.reload(); return; }
+      // Only a REMOVAL is destructive → offer Undo. (Freed photos rejoin the
+      // pool on the next load; Undo restores the exact prior gallery.)
+      if (removedN.length) {
+        showUndoToast(removedN.length+' photo'+(removedN.length>1?'s':'')+' removed', function(){
+          sb.from('properties').update({ images: before.length?before:null }).eq('id', p.id).select('id').then(function(){
+            log('UNDO removal → '+String(p.id).slice(0,8)); location.reload();
+          });
+        }, 12);
+      }
       blAdvance();
     }
     function toggleOne(idx, allowAuto){
@@ -925,17 +968,24 @@ button:disabled{opacity:.5;cursor:default}
         var b=document.createElement('button'); b.textContent='Attach here';
         b.onclick=async function(){
           b.disabled=true;
+          var cpBefore = imgsOf(currentP).slice(), dBefore = imgsOf(d).slice();   // for Undo
           var ok=await saveListingGallery(d, names, confidence, false);   // attach the working gallery to d
           if(!ok){ b.disabled=false; return; }
           // MOVE, not copy: the gallery belongs to d, so clear it from the
           // listing we were on (logged + reversible — nothing is hard-deleted).
-          if (imgsOf(currentP).length > 0) {
+          if (cpBefore.length > 0) {
             await sb.from('properties').update({ images: null }).eq('id', currentP.id).select('id');
             await sb.from('gallery_assignments').insert([{ op:'unassign', listing_id:currentP.id, photo_paths:names, photo_count:names.length, method:'manual', operator:OPERATOR }]);
             currentP.images = null;
           }
           close(); updateSummary();
           log('MOVED '+names.length+' photo(s): '+String(currentP.id).slice(0,8)+' → '+String(d.id).slice(0,8));
+          showUndoToast('Gallery moved to '+displayTitle(d), function(){
+            Promise.all([
+              sb.from('properties').update({ images: cpBefore.length?cpBefore:null }).eq('id', currentP.id).select('id'),
+              sb.from('properties').update({ images: dBefore.length?dBefore:null }).eq('id', d.id).select('id')
+            ]).then(function(){ log('UNDO move'); location.reload(); });
+          }, 12);
           // Forward momentum: go to the NEXT queue item, not back to the listing
           // we just emptied. It re-enters the Needs-Gallery queue naturally later.
           blAdvance(currentP.id);
