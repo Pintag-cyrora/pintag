@@ -142,8 +142,9 @@ button:disabled{opacity:.5;cursor:default}
   .mlebar .msave{padding:.66rem .9rem}
   .mlebar .tsave{padding:.66rem .9rem}
   #bleditor{padding-bottom:64px}
-  /* title-pending: a calm status, never an alarm */
-  .lhead .tpend{margin-top:8px;font-size:.82rem;color:#E0B15A;background:rgba(224,177,90,.1);border:1px solid rgba(224,177,90,.3);border-radius:8px;padding:6px 10px}
+  /* photo-first recovery: minimal factual metadata, no title */
+  .idbar{display:flex;flex-wrap:wrap;gap:5px 12px;font-size:.78rem;color:#9AA7B0;margin:2px 0 12px;align-items:center}
+  .idbar .pid{font-family:ui-monospace,monospace;color:#7FB2B2;font-weight:700}
   /* Title Pending queue */
   .tstrip{display:flex;gap:6px;overflow-x:auto;margin:8px 0;-webkit-overflow-scrolling:touch}
   .tstrip img{width:96px;height:72px;object-fit:cover;border-radius:8px;flex:0 0 auto;background:#0F1418}
@@ -578,7 +579,7 @@ button:disabled{opacity:.5;cursor:default}
       var pend = titlePendingList().length;
       var host = document.getElementById('bleditor');
       host.innerHTML = '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Every one in scope has photos.</div>'+
-        (pend ? '<div class="card"><b>⏳ '+pend+' title'+(pend>1?'s':'')+' pending</b><div class="why" style="margin-top:4px">Galleries are recovered. Now write or generate the missing titles in one pass.</div><button class="tqstart" style="margin-top:8px">Start titling ('+pend+') →</button></div>' : '');
+        (pend ? '<div class="card"><b>⏳ '+pend+' title'+(pend>1?'s':'')+' pending</b><div class="why" style="margin-top:4px">Galleries are recovered — a separate job. Now review the missing titles in one pass.</div><button class="tqstart" style="margin-top:8px">Start Title Review ('+pend+') →</button></div>' : '');
       var b = host.querySelector('.tqstart'); if (b) b.onclick = openTitleQueue;
     }
   }
@@ -591,7 +592,7 @@ button:disabled{opacity:.5;cursor:default}
     var gal = imgsOf(p);
     var usedAI = false;
     host.innerHTML =
-      '<div class="mqhead"><div class="mqrow"><b>Titles</b><span class="mqn">'+total+' pending</span></div></div>'+
+      '<div class="mqhead"><div class="mqrow"><b>Title Review</b><span class="mqn">'+total+' pending</span></div></div>'+
       '<div class="lhead">'+(gal[0]?'<img class="cov" loading="lazy" src="'+esc(gal[0])+'">':'')+
         '<h2>'+esc(displayTitle(p))+'</h2>'+
         '<div class="lmeta">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 🖼️ '+gal.length+' photo(s)</div></div>'+
@@ -711,29 +712,27 @@ button:disabled{opacity:.5;cursor:default}
       var glist = Object.keys(groups).map(function(k){ return groups[k]; })
         .filter(function(g){ return !hiddenG[g.key]; })
         .sort(function(a,b){ return (b.files.length - a.files.length) || ((b.cl?new Date(b.cl.start):0) - (a.cl?new Date(a.cl.start):0)); });
-      var cover = (orig[0] ? esc(orig[0]) : (an[0] ? PUB+esc(an[0]) : (pool[0] ? PUB+esc(pool[0].name) : '')));
 
       var h = '';
       // sticky recovery-queue header
       h += '<div class="mqhead"><div class="mqrow"><b>Recovery</b><span class="mqn">'+prog.done+' / '+prog.total+' complete · '+prog.remaining+' left</span></div>'+
            '<div class="pbar"><i style="width:'+Math.round(prog.done/prog.total*100)+'%"></i></div></div>';
-      // listing header — dominant
-      h += '<div class="lhead">'+
-             (cover ? '<img class="cov" loading="lazy" src="'+cover+'">' : '<div class="cov" style="display:flex;align-items:center;justify-content:center;color:#5b6b73">no photo yet</div>')+
-             '<h2>'+esc(displayTitle(p))+'</h2>'+
-             (nz(p.title_en)&&nz(p.title_lo) ? '<div class="lsub">'+esc(p.title_lo)+'</div>' : '')+
-             '<div class="lmeta">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+'</div>'+
-             // No title? Not a blocker. A calm status, not a prompt — titling
-             // happens in one pass at the end (Recovery first, enrichment later).
-             (!nz(p.title_en) ? '<div class="tpend">⏳ Title pending · save the gallery now, title it later</div>' : '')+
+      // Photo-first: NO title anywhere in the recovery interface — a possibly-
+      // wrong title must not bias which photos you pick. Only minimal, factual
+      // metadata in small text. Titles live in the separate Title Review queue.
+      h += '<div class="idbar">'+
+             '<span class="pid">#'+esc(String(p.id).slice(0,8))+'</span>'+
+             '<span>📍 '+esc(p.district_en||'?')+'</span>'+
+             '<span>🏷 '+esc(p.property_type||'?')+'</span>'+
+             (agentName(p) ? '<span>👤 '+esc(agentName(p))+'</span>' : '')+
            '</div>';
-      // current gallery
-      h += '<div class="msec"><h3>In this gallery ('+(orig.length+an.length)+')</h3><div class="mgrid" id="mgal"></div></div>';
+      // current gallery — the photos dominate
+      h += '<div class="msec"><h3>Current gallery ('+(orig.length+an.length)+')</h3><div class="mgrid" id="mgal"></div></div>';
       // available photos, grouped by upload session
       if (!glist.length) h += '<div class="msec"><h3>Available photos</h3><div class="why">No unassigned photos left in the pool.</div></div>';
       else {
-        h += '<div class="msec"><h3>Suggested groups · same upload session</h3>'+
-             '<div class="why" style="margin-top:0">Photos taken and uploaded together usually belong to one property. Tap the ones that belong; hide a group that clearly doesn\'t.</div></div>';
+        h += '<div class="msec"><h3>Available photos</h3>'+
+             '<div class="why" style="margin-top:0">Grouped by upload session — photos uploaded together usually belong to one property. Tap the ones that belong; hide a group that clearly doesn\'t.</div></div>';
         glist.forEach(function(g){
           var when = g.cl ? new Date(g.cl.start).toLocaleString() : 'unknown time';
           h += '<div class="mgrp"><div class="gh"><b>Uploaded together</b> · '+g.files.length+' photo(s) · '+esc(when)+
@@ -766,13 +765,10 @@ button:disabled{opacity:.5;cursor:default}
       var bar=document.createElement('div'); bar.className='mlebar';
       bar.innerHTML='<span class="mc"></span><button class="ghost mskip">Skip</button><button class="msave"></button>';
       host.appendChild(bar);
-      function syncBar(){ var n=addedNames().length, untitled=!nz(p.title_en);
+      function syncBar(){ var n=addedNames().length;
+        // Photo-first: no title in the recovery bar. Just save & advance.
         bar.querySelector('.mc').textContent = n ? n+' selected' : 'Looks complete?';
-        // When the title's missing, name the deferral explicitly so it never
-        // feels like something's wrong or unfinished.
-        bar.querySelector('.msave').textContent = untitled
-          ? (n ? '📌 Save Gallery · Title Later' : '📌 Save · Title Later')
-          : (n ? ('Save '+n+' & Next →') : 'Save & Next →'); }
+        bar.querySelector('.msave').textContent = n ? ('Save '+n+' & Next →') : 'Save & Next →'; }
       bar.querySelector('.msave').onclick=function(){ if(addedNames().length) doSave(); else blAdvance(); };
       bar.querySelector('.mskip').onclick=function(){ blAdvance(); };
       syncBar();
