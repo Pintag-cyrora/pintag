@@ -130,12 +130,13 @@ button:disabled{opacity:.5;cursor:default}
   .mtile.sel img{outline:3px solid #2D8C8C;outline-offset:-2px}
   .mtile.sel::after{content:"✓";position:absolute;top:7px;left:7px;width:24px;height:24px;border-radius:50%;background:#2D8C8C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:.85rem}
   .mtile .rm{position:absolute;top:6px;right:6px;background:#8C3A4A;color:#fff;border-radius:6px;font-size:.7rem;padding:2px 7px}
-  .mlebar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;gap:8px;align-items:center;
+  .mlebar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
     padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#0e1519;
     border-top:1px solid rgba(232,237,240,.16);box-shadow:0 -6px 18px rgba(0,0,0,.35)}
-  .mlebar .mc{font-weight:700;color:#2D8C8C;font-size:.92rem;margin-right:auto;white-space:nowrap}
-  .mlebar .msave{padding:.66rem .9rem}
-  .mlebar .msi{padding:.66rem .7rem;font-size:.8rem}
+  .mlebar .mc{font-weight:700;color:#2D8C8C;font-size:.92rem;flex-basis:100%;white-space:nowrap}
+  .mlebar .msave{padding:.66rem .9rem;margin-left:auto}
+  .mlebar .mchange,.mlebar .msi{padding:.66rem .7rem;font-size:.8rem}
+  .mlebar button[hidden]{display:none}
   #bleditor{padding-bottom:64px}
   /* photo-first recovery: minimal factual metadata, no title */
   .idbar{display:flex;flex-wrap:wrap;gap:5px 12px;font-size:.78rem;color:#9AA7B0;margin:2px 0 12px;align-items:center}
@@ -567,7 +568,7 @@ button:disabled{opacity:.5;cursor:default}
       // Import → Admin, NOT here. Recovery's one job is the photos.
       document.getElementById('bleditor').innerHTML =
         '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Every one in scope has photos.</div>'+
-        '<div class="card"><b>Next stage · Create Listing</b><div class="why" style="margin-top:4px">Galleries are reconnected. Finish the listings in Create Listing (write a description → AI drafts title, details, translations) → Admin (polish &amp; publish). Use “Create Listing from Photos” on any listing to send its photos into that flow.</div></div>';
+        '<div class="card"><b>Next stage · Create Listing</b><div class="why" style="margin-top:4px">Galleries are reconnected. Finish the listings in Create Listing (write a description → AI drafts title, details, translations) → Admin (polish &amp; publish). Every gallery is one of three: it matches this listing (Save), a different existing listing (Change Listing), or none (Create New Listing → Create Listing).</div></div>';
     }
   }
   // Recovery → Create Listing handoff. Gallery Recovery is just one input
@@ -727,17 +728,24 @@ button:disabled{opacity:.5;cursor:default}
         gEl.querySelector('.ghide').onclick=function(){ hiddenG[g.key]=true; g.files.forEach(function(f){ delete added[f.name]; }); drawMobile(); };
       });
 
-      // sticky action bar: reconnect photos to this listing (Save & Next), or
-      // send the selected photos into Smart Import to create the listing there.
+      // Sticky bar — the only three decisions after grouping a gallery:
+      //   ✅ Save            → belongs to THIS listing (attach + next)
+      //   🔄 Change Listing  → belongs to a DIFFERENT existing listing
+      //   ➕ Create New Listing → no existing listing matches → Create Listing
       var bar=document.createElement('div'); bar.className='mlebar';
-      bar.innerHTML='<span class="mc"></span><button class="ghost msi">Create Listing from Photos</button><button class="msave"></button>';
+      bar.innerHTML='<span class="mc"></span>'+
+        '<button class="ghost mchange" hidden>🔄 Change Listing</button>'+
+        '<button class="ghost msi" hidden>➕ Create New Listing</button>'+
+        '<button class="msave"></button>';
       host.appendChild(bar);
       function syncBar(){ var n=addedNames().length;
-        // Photo-first: no title in the recovery bar. Just save & advance.
         bar.querySelector('.mc').textContent = n ? n+' selected' : 'Looks complete?';
-        bar.querySelector('.msave').textContent = n ? ('Save '+n+' & Next →') : 'Save & Next →';
-        bar.querySelector('.msi').disabled = !n; }
+        bar.querySelector('.msave').textContent = n ? '✅ Save & Next →' : 'Save & Next →';
+        bar.querySelector('.mchange').hidden = !n;   // the two alternatives only
+        bar.querySelector('.msi').hidden = !n;       // apply once photos are chosen
+      }
       bar.querySelector('.msave').onclick=function(){ if(addedNames().length) doSave(); else blAdvance(); };
+      bar.querySelector('.mchange').onclick=function(){ openChangeListing(addedNames(), p, curConf); };
       bar.querySelector('.msi').onclick=function(){ sendToSmartImport(addedNames(), p.id); };
       syncBar();
       window.scrollTo(0,0);
@@ -750,8 +758,9 @@ button:disabled{opacity:.5;cursor:default}
           '<div class="meta">📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 👤 '+esc(agentName(p)||'no agent')+'</div>'+
           '<div class="why">click = focus · dbl-click / Space = add-remove · Shift-click = range · ⌘/Ctrl-click = pick · ←→↑↓ move · Enter = Save · Esc = Cancel</div></div>'+
           '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
-          '<button class="blsave">Save ('+an.length+') ↵</button>'+
-          '<button class="ghost blsi">Create Listing from Photos</button>'+
+          '<button class="blsave">✅ Save ('+an.length+') ↵</button>'+
+          '<button class="ghost blchange">🔄 Change Listing</button>'+
+          '<button class="ghost blsi">➕ Create New Listing</button>'+
           '<button class="ghost blclose">Close</button></div>'+
         (ddp.dupes ? '<div class="why" style="color:#E0B15A">⚠ '+ddp.dupes+' duplicate photo(s) hidden from the pool.</div>' : '')+
         '<div class="cols">'+
@@ -773,6 +782,7 @@ button:disabled{opacity:.5;cursor:default}
       var cs=host.querySelector('.blconf'); cs.value=curConf; cs.onchange=function(){ curConf=cs.value; };
       host.querySelector('.blsave').onclick = doSave;
       host.querySelector('.blclose').onclick = function(){ detachKey(); BL_SEL=null; host.innerHTML=''; };
+      host.querySelector('.blchange').onclick = function(){ openChangeListing(addedNames(), p, curConf); };
       host.querySelector('.blsi').onclick = function(){ sendToSmartImport(addedNames(), p.id); };
     }
 
@@ -790,12 +800,15 @@ button:disabled{opacity:.5;cursor:default}
     document.addEventListener('keydown', BL_KEY);
     draw();
   }
-  async function saveListingGallery(p, added, confidence){
-    if (!added.length) { alert('Select photos first — click a photo then Space, dbl-click, or Shift-click a range.'); return; }
+  // advance defaults true (Save → next in the queue). "Change Listing" passes
+  // false: it attaches to a DIFFERENT existing listing, then returns to the
+  // listing the operator was on (which still needs its own photos).
+  async function saveListingGallery(p, added, confidence, advance){
+    if (!added.length) { alert('Select photos first — click a photo then Space, dbl-click, or Shift-click a range.'); return false; }
     var cur = imgsOf(p); var have = new Set(cur.map(nameOf));
     var merged = cur.concat(added.filter(function(n){ return !have.has(n); }).map(function(n){ return PUB + n; }));
     var r = await sb.from('properties').update({ images: merged }).eq('id', p.id).select('id');
-    if (r.error) { alert('Failed: '+r.error.message); log('ERROR by-listing '+r.error.message); return; }
+    if (r.error) { alert('Failed: '+r.error.message); log('ERROR by-listing '+r.error.message); return false; }
     var reg = await sb.from('gallery_assignments').insert([{ op:'assign', listing_id:p.id, cluster_id:'by-listing', photo_paths:added, photo_count:added.length, confidence:confidence, method:'manual', operator:OPERATOR }]);
     if (reg.error) log('WARN register insert failed: '+reg.error.message);
     p.images = merged; CONFMAP[p.id] = worseConf(CONFMAP[p.id], confidence);
@@ -805,13 +818,50 @@ button:disabled{opacity:.5;cursor:default}
     // save to make a title — the listing is gallery-recovered + title-pending
     // and handled in the Title Pending queue at the end. Desktop keeps its
     // explicit opt-in "Auto AI-title after save" checkbox.
-    if (!isPhone() && AUTO_TITLE && !nz(p.title_en)) {
+    if (advance !== false && !isPhone() && AUTO_TITLE && !nz(p.title_en)) {
       try { var gen = await generateTitles(p); var f = await saveTitles(p, gen); log('AI TITLE auto ['+f.join(', ')+'] → '+label(p)); }
       catch(e){ log('AI TITLE auto FAIL '+label(p)+': '+e.message); }
     }
     updateSummary();
     // inbox: advance to the next gallery-less listing (respecting the agent scope)
-    blAdvance();
+    if (advance !== false) blAdvance();
+    return true;
+  }
+  // Decision 2 · "Change Listing": the gallery is correct but belongs to a
+  // DIFFERENT existing listing. Search existing listings, pick one, attach the
+  // selected photos there — then return to the listing we were on.
+  function openChangeListing(names, currentP, confidence){
+    names = (names||[]).filter(Boolean);
+    if (!names.length){ alert('Select the photos first.'); return; }
+    var sheet=document.createElement('div'); sheet.className='overlay'; sheet.style.alignItems='flex-end'; sheet.style.padding='0';
+    sheet.innerHTML='<div class="modal" style="max-width:none;border-radius:14px 14px 0 0;max-height:82vh">'+
+      '<div class="mtitle">Attach '+names.length+' photo(s) to which listing?</div>'+
+      '<div class="ctrls" style="display:flex"><span class="why" style="margin:0">Reattaches to a different existing listing.</span><button class="ghost cl-x" style="margin-left:auto">Close</button></div>'+
+      '<input class="search cl-q" placeholder="Search existing listings by agent, district, type, or title…">'+
+      '<div class="cands cl-r" style="display:block"></div></div>';
+    document.body.appendChild(sheet);
+    function close(){ if(sheet.parentNode) sheet.parentNode.removeChild(sheet); }
+    sheet.addEventListener('click', function(e){ if(e.target===sheet) close(); });
+    sheet.querySelector('.cl-x').onclick=close;
+    var q=sheet.querySelector('.cl-q'), r=sheet.querySelector('.cl-r');
+    function draw(){
+      var s=(q.value||'').trim().toLowerCase(); r.innerHTML='';
+      var list=ALL_PROPS.filter(function(d){ return d.id!==currentP.id && (!s || hay(d).indexOf(s)>=0); });
+      list.sort(function(a,b){ return (imgsOf(a).length>0?1:0)-(imgsOf(b).length>0?1:0); });   // gallery-less first
+      list=list.slice(0,20);
+      if(!list.length){ r.innerHTML='<div class="why">'+(s?'No match.':'Type to search existing listings.')+'</div>'; return; }
+      list.forEach(function(d){
+        var have=imgsOf(d).length;
+        var row=document.createElement('div'); row.className='cand2';
+        row.innerHTML='<div class="ph">🏠</div><div class="info"><div class="t">'+esc(displayTitle(d))+'</div>'+
+          '<div class="m">👤 '+esc(agentName(d)||'no agent')+' · 📍 '+esc(d.district_en||'?')+' · '+
+          (have?'<span class="tag">'+have+' photo(s)</span>':'<span class="tag" style="color:#E0B15A;border-color:#E0B15A">no gallery</span>')+'</div></div>';
+        var b=document.createElement('button'); b.textContent='Attach here';
+        b.onclick=async function(){ b.disabled=true; var ok=await saveListingGallery(d, names, confidence, false); if(!ok){ b.disabled=false; return; } close(); openListingEditor(currentP); };
+        row.appendChild(b); r.appendChild(row);
+      });
+    }
+    q.oninput=draw; draw(); q.focus();
   }
 
   // ───────────────────────── AI title recovery ─────────────────────────
