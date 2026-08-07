@@ -86,6 +86,15 @@
 .pt-card-img.pt-loading{background:linear-gradient(90deg,var(--pt-off) 25%,#E4E0D8 50%,var(--pt-off) 75%);background-size:200% 100%;animation:pt-shimmer 1.4s infinite;}
 @keyframes pt-shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
 @media (prefers-reduced-motion: reduce){.pt-card-img.pt-loading{animation:none;}}
+/* Skeleton text lines for a whole placeholder card (pages seed these inside
+   the grid so the first paint is a composed page, not a "Loading" notice). */
+.pt-skel-line{height:12px;border-radius:3px;margin-bottom:10px;background:linear-gradient(90deg,var(--pt-off) 25%,#E4E0D8 50%,var(--pt-off) 75%);background-size:200% 100%;animation:pt-shimmer 1.4s infinite;}
+.pt-skel-line:last-child{margin-bottom:0;}
+@media (prefers-reduced-motion: reduce){.pt-skel-line{animation:none;background:var(--pt-off);}}
+/* Lao script needs taller leading than Latin-tuned titles allow (stacked
+   vowels/tone marks clip at 1.25-1.4). Applies only while Lao is active. */
+html[lang="lo"] .pt-card-title{line-height:1.55;}
+html[lang="lo"] .pt-card.pt-featured .pt-card-title{line-height:1.45;}
 
 .pt-ov-tl{position:absolute;top:12px;left:12px;z-index:2;}
 .pt-ov-tr{position:absolute;top:12px;right:12px;z-index:2;}

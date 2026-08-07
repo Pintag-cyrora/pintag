@@ -30,13 +30,13 @@
 <meta name="twitter:title" content="Pintag — ຄົ້ນຫາອະສັງຫາລິມະຊັບທົ່ວລາວ">
 <meta name="twitter:description" content="ຄົ້ນຫາອະສັງຫາລິມະຊັບສຳລັບຂາຍ ແລະ ເຊົ່າທົ່ວປະເທດລາວ. Pintag ເຊື່ອມຕໍ່ຜູ້ຊື້, ຜູ້ເຊົ່າ ແລະ ນາຍໜ້າ ໃນເວັບໄຊອະສັງຫາລິມະຊັບຊັ້ນນຳຂອງລາວ.">
 <meta name="twitter:image" content="https://pintag.io/og-preview.jpg">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Noto+Sans+Lao:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shared-components.css?v=__ASSET_VERSION__">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
 body{
-  font-family:"DM Sans",sans-serif;-webkit-font-smoothing:antialiased;
+  font-family:"DM Sans","Noto Sans Lao","Noto Sans SC",sans-serif;-webkit-font-smoothing:antialiased;
   background:#F7F3EC;color:#1A2024;
   overflow-x:hidden;
 }
@@ -65,7 +65,7 @@ nav{
 .nav-lang-item{
   font-size:12px;font-weight:400;color:#8C9598;
   cursor:pointer;border:none;background:none;
-  font-family:"DM Sans",sans-serif;
+  font-family:"DM Sans","Noto Sans Lao","Noto Sans SC",sans-serif;
   padding:0;letter-spacing:0.02em;
   transition:color 0.2s;
 }
@@ -247,6 +247,9 @@ nav{
   font-size:22px;font-weight:400;color:#1A2024;
   letter-spacing:-0.01em;line-height:1.2;
 }
+/* Lao stacked vowels/tone marks clip at Latin-tuned leading; active-language-scoped. */
+html[lang="lo"] .panel-label{line-height:1.3;}
+html[lang="lo"] .featured-title{line-height:1.5;}
 .featured-sub{
   font-size:12px;font-weight:300;color:#8C9598;margin-top:4px;
 }

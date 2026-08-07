@@ -31,7 +31,7 @@
 <meta name="twitter:title" content="ຊັບສິນໃຫ້ເຊົ່າ ແລະ ຂາຍ ໃນລາວ | Pintag">
 <meta name="twitter:description" content="ຄົ້ນຫາອາພາດເມັນ, ເຮືອນ, ຄອນໂດ, ທີ່ດິນ ແລະ ອາຄານທຸລະກິດທີ່ຢືນຢັນແລ້ວທົ່ວປະເທດລາວ. ອັບເດດທຸກມື້ພ້ອມຮູບພາບ, ລາຄາ ແລະ ແຜນທີ່.">
 <meta name="twitter:image" content="https://pintag.io/og-preview-listings.jpg">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Noto+Sans+Lao:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="shared-components.css?v=__ASSET_VERSION__">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -47,7 +47,7 @@
 
 /* ─── BODY — topographic atmosphere ─────────────────────────────────── */
 body{
-  font-family:'DM Sans',sans-serif;font-weight:400;font-size:14px;line-height:1.7;
+  font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-weight:400;font-size:14px;line-height:1.7;
   background-color:var(--warm);
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='500'%3E%3Cpath d='M0 40C200 30 600 50 800 40M0 110C200 100 600 120 800 110M0 180C200 170 600 190 800 180M0 250C200 240 600 260 800 250M0 320C200 310 600 330 800 320M0 390C200 380 600 400 800 390M0 460C200 450 600 470 800 460' fill='none' stroke='%231A2024' stroke-width='0.4' stroke-opacity='0.032'/%3E%3C/svg%3E");
   background-repeat:repeat;background-size:800px 500px;
@@ -75,7 +75,7 @@ nav{
 .nav-wordmark{font-size:16px;font-weight:500;color:var(--ink);letter-spacing:-0.01em;}
 .nav-right{display:flex;align-items:center;gap:10px;}
 .lang-switcher{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;}
-.lang-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans',sans-serif;letter-spacing:0.02em;}
+.lang-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;letter-spacing:0.02em;}
 .lang-btn.active{background:var(--ink);color:#fff;}
 .nav-home{font-size:12px;font-weight:400;color:var(--ink-muted);text-decoration:none;letter-spacing:0.03em;}
 .nav-home:hover{color:var(--teal);}
@@ -119,7 +119,7 @@ nav{
   flex:1;font-size:13px;font-weight:500;padding:11px 16px;
   border-radius:3px;
   border:1px solid var(--border-mid);background:var(--white);color:var(--ink-soft);
-  cursor:pointer;transition:all 0.2s;font-family:'DM Sans',sans-serif;
+  cursor:pointer;transition:all 0.2s;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;
   letter-spacing:0.01em;text-align:center;
 }
 .tx-btn.active{background:var(--teal);color:#fff;border-color:var(--teal);box-shadow:0 2px 10px rgba(45,140,140,0.25);}
@@ -145,16 +145,26 @@ nav{
   border-radius:2px;
   border:1px solid var(--border);background:transparent;color:var(--ink-muted);
   cursor:pointer;white-space:nowrap;transition:all 0.2s;
-  font-family:'DM Sans',sans-serif;flex-shrink:0;letter-spacing:0.02em;
+  font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;flex-shrink:0;letter-spacing:0.02em;
 }
 .filter-btn.active{background:var(--ink);color:#fff;border-color:var(--ink);}
 .filter-btn:hover:not(.active){background:rgba(26,32,36,0.04);border-color:rgba(26,32,36,0.15);}
 .filter-sep{width:1px;height:18px;background:var(--border);flex-shrink:0;}
+/* Touch devices get honest tap targets (~44px) without changing the
+   desktop's compact density — same controls, easier fingers. */
+@media (pointer:coarse){
+  .filter-btn{padding:11px 16px;font-size:13px;}
+  .lang-btn,.avail-btn{padding:10px 12px;font-size:12.5px;}
+}
+/* Lao script carries stacked vowels/tone marks above and below the line;
+   Latin-tuned tight leading clips them. Only applies when Lao is active. */
+html[lang="lo"] .page-title{line-height:1.4;}
+html[lang="lo"] .filter-btn{line-height:1.6;}
 
 /* All Listings / Available Only — a visible status toggle in its own
    control, not a pill buried inside .filters. */
 .avail-toggle{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;flex-shrink:0;}
-.avail-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans',sans-serif;white-space:nowrap;letter-spacing:0.02em;}
+.avail-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;white-space:nowrap;letter-spacing:0.02em;}
 .avail-btn.active{background:var(--ink);color:#fff;}
 .avail-btn:hover:not(.active){background:rgba(26,32,36,0.06);}
 
@@ -168,7 +178,7 @@ nav{
   border-radius:2px;display:inline-flex;align-items:center;gap:4px;
   border:1px solid var(--border);background:transparent;color:var(--ink-muted);
   cursor:pointer;white-space:nowrap;transition:all 0.2s;
-  font-family:'DM Sans',sans-serif;letter-spacing:0.02em;
+  font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;letter-spacing:0.02em;
 }
 .rf-btn.active{background:var(--teal);color:#fff;border-color:var(--teal);}
 .rf-btn:hover:not(.active){background:rgba(45,140,140,0.06);border-color:rgba(45,140,140,0.28);}
@@ -176,7 +186,7 @@ nav{
   font-size:11px;font-weight:400;padding:5px 24px 5px 10px;
   border-radius:2px;
   border:1px solid var(--border);background:transparent;color:var(--ink-muted);
-  cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0;
+  cursor:pointer;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;flex-shrink:0;
   appearance:none;-webkit-appearance:none;letter-spacing:0.02em;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238C9598' stroke-width='1.5'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:right 9px center;
@@ -280,20 +290,20 @@ nav{
 
 /* ── VIEW TOGGLE ──────────────────────────────────── */
 .view-toggle{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;flex-shrink:0;margin-left:8px;}
-.vt-btn{font-size:11px;font-weight:400;padding:4px 12px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:5px;letter-spacing:0.02em;}
+.vt-btn{font-size:11px;font-weight:400;padding:4px 12px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;display:flex;align-items:center;gap:5px;letter-spacing:0.02em;}
 .vt-btn.active{background:var(--ink);color:#fff;}
 .vt-btn:hover:not(.active){background:rgba(26,32,36,0.06);}
 
 /* ── MAP CONTAINER ────────────────────────────────── */
 #map-wrap{display:none;height:calc(100vh - 112px);min-height:500px;position:relative;}
 #map{width:100%;height:100%;}
-.leaflet-container{font-family:'DM Sans',sans-serif!important;}
+.leaflet-container{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif!important;}
 
 /* ── PRICE BUBBLES ────────────────────────────────── */
 .price-bubble{
   background:var(--white);border:1.5px solid rgba(26,32,36,0.18);border-radius:20px;
   padding:5px 10px;font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;
-  box-shadow:0 2px 8px rgba(0,0,0,0.10);cursor:pointer;font-family:'DM Sans',sans-serif;
+  box-shadow:0 2px 8px rgba(0,0,0,0.10);cursor:pointer;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;
   transition:background 0.15s,color 0.15s,box-shadow 0.15s,transform 0.15s;user-select:none;
 }
 .price-bubble:hover{background:var(--ink);color:#fff;border-color:transparent;box-shadow:0 4px 16px rgba(0,0,0,0.20);transform:scale(1.07);}
@@ -385,10 +395,12 @@ nav{
       <span class="zh-i">加载中...</span>
     </p>
     <div class="trust-strip">
-      <div class="trust-item"><span class="trust-dot"></span><span class="lo-i">ຕົວແທນຢັ້ງຢືນ</span><span class="en-i">Verified agents</span><span class="zh-i">认证经纪</span></div>
-      <div class="trust-item"><span class="trust-dot"></span><span class="lo-i">AI ພາຊົມຮອບ</span><span class="en-i">AI walkthroughs</span><span class="zh-i">AI带看</span></div>
-      <div class="trust-item"><span class="trust-dot"></span><span class="lo-i">ອັບເດດທຸກວັນ</span><span class="en-i">Updated daily</span><span class="zh-i">每日更新</span></div>
-      <div class="trust-item"><span class="trust-dot"></span><span class="lo-i">3 ພາສາ</span><span class="en-i">3 languages</span><span class="zh-i">3种语言</span></div>
+<!-- Trust strip rule (Blueprint, product philosophy): only claims that are
+     structurally true TODAY. "Verified agents" / "Updated daily" return here
+     the day their operational loops exist (Phase D) — never before. -->
+      <div class="trust-item"><span class="trust-dot"></span><span class="lo-i">ຕົວແທນທ້ອງຖິ່ນ</span><span class="en-i">Local agents</span><span class="zh-i">本地经纪</span></div>
+      <div class="trust-item"><span class="trust-dot"></span><span class="lo-i">ສາມພາສາ</span><span class="en-i">Trilingual listings</span><span class="zh-i">三语房源</span></div>
+      <div class="trust-item"><span class="trust-dot"></span><span class="lo-i">ລາຄາໂປ່ງໃສ</span><span class="en-i">Transparent prices</span><span class="zh-i">价格透明</span></div>
     </div>
   </div>
 </div>
@@ -539,16 +551,15 @@ nav{
 
 <div class="page-content" id="page-content-wrap">
   <div id="listings-container" class="listings-grid">
-    <div class="state-center">
-      <div class="loading-dots">
-        <div class="loading-dot"></div>
-        <div class="loading-dot"></div>
-        <div class="loading-dot"></div>
-      </div>
-      <p class="lo-i">ກຳລັງໂຫຼດ...</p>
-      <p class="en-i">Loading...</p>
-      <p class="zh-i">加载中...</p>
-    </div>
+    <!-- Skeleton cards (replaced by the first render). Same silhouette as a
+         real pt-card so the grid doesn't jump when data arrives -- the page
+         looks composed from the first frame instead of announcing "Loading". -->
+    <div class="pt-card" aria-hidden="true"><div class="pt-card-img pt-loading"></div><div class="pt-card-body"><div class="pt-skel-line" style="width:38%"></div><div class="pt-skel-line" style="width:86%"></div><div class="pt-skel-line" style="width:58%"></div></div></div>
+    <div class="pt-card" aria-hidden="true"><div class="pt-card-img pt-loading"></div><div class="pt-card-body"><div class="pt-skel-line" style="width:44%"></div><div class="pt-skel-line" style="width:78%"></div><div class="pt-skel-line" style="width:64%"></div></div></div>
+    <div class="pt-card" aria-hidden="true"><div class="pt-card-img pt-loading"></div><div class="pt-card-body"><div class="pt-skel-line" style="width:35%"></div><div class="pt-skel-line" style="width:82%"></div><div class="pt-skel-line" style="width:52%"></div></div></div>
+    <div class="pt-card" aria-hidden="true"><div class="pt-card-img pt-loading"></div><div class="pt-card-body"><div class="pt-skel-line" style="width:42%"></div><div class="pt-skel-line" style="width:88%"></div><div class="pt-skel-line" style="width:60%"></div></div></div>
+    <div class="pt-card" aria-hidden="true"><div class="pt-card-img pt-loading"></div><div class="pt-card-body"><div class="pt-skel-line" style="width:36%"></div><div class="pt-skel-line" style="width:80%"></div><div class="pt-skel-line" style="width:55%"></div></div></div>
+    <div class="pt-card" aria-hidden="true"><div class="pt-card-img pt-loading"></div><div class="pt-card-body"><div class="pt-skel-line" style="width:40%"></div><div class="pt-skel-line" style="width:84%"></div><div class="pt-skel-line" style="width:62%"></div></div></div>
   </div>
 </div>
 
