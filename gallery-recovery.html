@@ -27,7 +27,7 @@ h1{font-size:1.2rem;color:#2D8C8C;margin-bottom:.2rem}
 .photo{position:relative;flex:0 0 auto}
 .photo input{position:absolute;top:3px;left:3px;width:16px;height:16px;cursor:pointer;z-index:2}
 .photo img{display:block;width:78px;height:58px;object-fit:cover;border-radius:6px;background:#0F1418}
-.photo input:not(:checked)+img{opacity:.32;outline:2px solid #B0778F}
+.photo input:not(:checked)~img{opacity:.32;outline:2px solid #B0778F}
 .ctrls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
 .cfl{color:#9AA7B0;font-size:.8rem;margin-left:6px}
 select{background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.25);border-radius:6px;padding:5px 6px;font-size:.82rem}
@@ -70,6 +70,54 @@ button:disabled{opacity:.5;cursor:default}
 .pth.sug img{outline:3px dashed #E0B15A}
 .pth.focus img{box-shadow:0 0 0 3px #2D8C8C,0 0 0 5px rgba(45,140,140,.35)}
 .pth .x{position:absolute;top:2px;right:2px;background:#8C3A4A;color:#fff;border-radius:4px;font-size:.62rem;padding:0 4px}
+
+/* ───────── Mobile gallery assignment (Photos-style; desktop unaffected) ───────── */
+.selbadge{display:none}
+.mbar{display:none}
+.qfilters{display:none}
+.qfilters:empty{display:none}
+@media (max-width:640px){
+  /* 2-column large tiles: accuracy over density (rooms must be recognizable). */
+  .gallery{display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:visible;padding-bottom:0}
+  .photo{flex:none;width:100%}
+  .photo input{display:none}                         /* checkbox stays the source of truth, just hidden */
+  .photo img{width:100%;height:auto;aspect-ratio:4/3;border-radius:10px}
+  .photo input:not(:checked)~img{opacity:1;outline:none}   /* undo the desktop "deselected" dim */
+  .photo:has(input:checked) img{outline:3px solid #2D8C8C;outline-offset:-2px}
+  /* badge appears only on a selected tile (unselected tiles stay clean) */
+  .selbadge{display:none;position:absolute;top:7px;left:7px;width:24px;height:24px;border-radius:50%;
+    background:#2D8C8C;border:2px solid #2D8C8C;align-items:center;justify-content:center;
+    color:#fff;font-size:.85rem;line-height:1;z-index:2}
+  .photo:has(input:checked) .selbadge{display:flex}
+  .photo:has(input:checked) .selbadge::after{content:"✓"}
+  /* the inline desktop controls move to the sticky bar + picker sheet on mobile */
+  .card .ctrls,.card .search,.card .cands{display:none}
+  /* room quick-filters (dormant until photos carry a room classification) */
+  .qfilters{display:flex;gap:6px;overflow-x:auto;margin:8px 0 2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .qfilters::-webkit-scrollbar{display:none}
+  .qchip{flex:0 0 auto;font-size:.8rem;padding:.4rem .8rem;border-radius:999px;border:1px solid rgba(232,237,240,.22);color:#C9D3D9;background:transparent}
+  .qchip.on{background:#2D8C8C;border-color:#2D8C8C;color:#fff}
+  /* sticky, thumb-reachable action bar */
+  .mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:30;gap:8px;align-items:center;
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#0e1519;
+    border-top:1px solid rgba(232,237,240,.16);box-shadow:0 -6px 18px rgba(0,0,0,.35)}
+  .mbar.hide{display:none}
+  .mbar .mc{font-weight:700;color:#2D8C8C;font-size:.98rem;margin-right:auto;white-space:nowrap}
+  .mbar button{padding:.62rem .72rem;font-size:.82rem}
+  #log{display:none}                                  /* debug log would steal the thumb zone */
+  body{padding-bottom:64px}                            /* room so the bar never covers the last card */
+}
+/* Full-screen preview (used by long-press; inspect before selecting) */
+.pv{position:fixed;inset:0;background:#000;z-index:45;display:flex;flex-direction:column;touch-action:none}
+.pv .pvtop{display:flex;justify-content:space-between;align-items:center;padding:14px;color:#C9D3D9;font-size:.82rem}
+.pv .pvclose{background:transparent;color:#fff;font-size:1.1rem;padding:.3rem .6rem}
+.pv .pvwrap{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center}
+.pv .pvwrap img{max-width:100%;max-height:100%;object-fit:contain}
+.pv .pvbtns{display:flex;gap:10px;align-items:center;padding:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom));background:#0c0f11}
+.pv .pvbtns .nav2{background:transparent;border:1px solid rgba(232,237,240,.25);color:#E8EDF0;font-size:1.1rem;min-width:52px}
+.pv .pvsel{flex:1;font-weight:700}
+.pv .pvsel.on{background:#2D8C8C}
+.pv .pvsel.off{background:transparent;border:1px solid #2D8C8C;color:#2D8C8C}
 </style>
 </head>
 <body>
@@ -302,7 +350,8 @@ button:disabled{opacity:.5;cursor:default}
     if (!shown) host.innerHTML = '<div class="card done">✅ No clusters need attention. Toggle “Hide completed” off, or open Recovered Galleries to review.</div>';
   }
   function photoItem(f) {
-    return '<label class="photo"><input type="checkbox" data-name="'+esc(f.name)+'" checked>'+
+    return '<label class="photo" data-name="'+esc(f.name)+'"><input type="checkbox" data-name="'+esc(f.name)+'" checked>'+
+           '<span class="selbadge"></span>'+
            '<img loading="lazy" src="'+PUB+esc(f.name)+'"></label>';
   }
   function fillCard(c) {
@@ -316,16 +365,19 @@ button:disabled{opacity:.5;cursor:default}
       '<div class="why">Upload burst (≤15 min apart). Tick only the photos that belong, then pick the listing.</div></div></div>'+
       '<div class="ctrls"><button class="ghost tsel">Select all</button><button class="ghost tnone">Select none</button>'+
         '<span class="cfl">Confidence:</span><select class="confsel"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select></div>'+
+      '<div class="qfilters"></div>'+
       '<div class="gallery">'+shown.map(photoItem).join('')+'</div>'+
       '<input class="search" placeholder="Search matching listing by agent, district, type, or title…">'+
       '<div class="cands"></div>';
     var gal = card.querySelector('.gallery');
-    card.querySelector('.tsel').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=true; }); };
-    card.querySelector('.tnone').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=false; }); };
+    card._cluster = c;
+    card.querySelector('.tsel').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=true; }); if(window.MobileGallery) MobileGallery.sync(card); };
+    card.querySelector('.tnone').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=false; }); if(window.MobileGallery) MobileGallery.sync(card); };
     var input = card.querySelector('.search'), cd = card.querySelector('.cands'), conf = card.querySelector('.confsel');
     c._refreshCands = function(){ renderCands(c, card, cd, input.value, conf); };
     input.oninput = c._refreshCands;
     c._refreshCands();
+    if (window.MobileGallery) MobileGallery.wire(card);
   }
   // Search matches AGENT NAME (highest priority), district, type, EN + Lao title.
   function hay(d){ return (agentName(d)+' '+(d.title_en||'')+' '+(d.title_lo||'')+' '+(d.district_en||'')+' '+(d.property_type||'')).toLowerCase(); }
@@ -387,6 +439,7 @@ button:disabled{opacity:.5;cursor:default}
     afterClusterChange(c);
   }
   function afterClusterChange(c) {
+    if (window.MobileGallery) MobileGallery.afterChange(c);
     if (HIDE_COMPLETED && c.remaining.length === 0) { if (c._card && c._card.parentNode) c._card.parentNode.removeChild(c._card); }
     else if (c._card) fillCard(c);
     updateSummary();
@@ -759,6 +812,147 @@ button:disabled{opacity:.5;cursor:default}
     alert('Removed. Reloading so the photos return to the pool.');
     location.reload();
   }
+
+  // ───────────────────────── MOBILE gallery assignment ─────────────────────────
+  // Photos/Files-style: tap a big tile to toggle (✓ + teal border), long-press to
+  // preview, a sticky thumb bar to act, and a bottom-sheet listing picker. Desktop
+  // is untouched (everything below is gated on a phone-width media query). The
+  // native checkboxes remain the single source of truth, so assign()/renderCands()
+  // work unchanged — this only changes how those checkboxes are driven and shown.
+  var MobileGallery = (function(){
+    var mq = window.matchMedia('(max-width:640px)');
+    function isM(){ return mq.matches; }
+    var bar=null, sheet=null, pv=null, activeCard=null;
+
+    // Room classification is not present on recovery photos yet ("optional AI
+    // classification later"). roomOf() returns null today, so the quick-filter
+    // row stays empty and hidden; the moment photos carry a room type it lights up.
+    var ROOMS=[['bedroom','Bedroom'],['living_room','Living room'],['kitchen','Kitchen'],['bathroom','Bathroom'],['exterior','Exterior'],['pool','Pool']];
+    function roomOf(f){ return (f && (f.room_type||f.roomType)) || null; }
+
+    function ensureBar(){
+      if (bar) return;
+      bar=document.createElement('div'); bar.className='mbar hide';
+      bar.innerHTML='<span class="mc">0 selected</span>'+
+        '<button class="ghost b-all">Select all</button>'+
+        '<button class="ghost b-clr">Clear</button>'+
+        '<button class="b-add">Add to gallery</button>';
+      document.body.appendChild(bar);
+      bar.querySelector('.b-all').onclick=function(){ if(activeCard) setAll(activeCard,true); };
+      bar.querySelector('.b-clr').onclick=function(){ if(activeCard) setAll(activeCard,false); };
+      bar.querySelector('.b-add').onclick=function(){ if(activeCard) openPicker(activeCard); };
+    }
+    function inputs(card){ return [].slice.call(card.querySelectorAll('.gallery input')); }
+    function count(card){ return inputs(card).filter(function(x){return x.checked;}).length; }
+    function setAll(card,on){ inputs(card).forEach(function(x){ x.checked=on; }); sync(card); }
+    function sync(card){
+      if(!isM()||!card) return;
+      activeCard=card; ensureBar();
+      var n=count(card);
+      bar.querySelector('.mc').textContent=n+' selected';
+      bar.classList.toggle('hide', n===0);
+    }
+
+    // Wire one freshly-rendered card (called from fillCard).
+    function wire(card){
+      if(!isM()||!card) return;
+      inputs(card).forEach(function(x){ x.checked=false; });   // Photos-model: start empty, pick up
+      // quick-filter chips (only if any photo classifies)
+      var qf=card.querySelector('.qfilters');
+      if(qf){ qf.innerHTML='';
+        var present={}; card._cluster.remaining.forEach(function(f){ var r=roomOf(f); if(r) present[r]=1; });
+        if(Object.keys(present).length){
+          ROOMS.forEach(function(r){ if(!present[r[0]]) return;
+            var b=document.createElement('button'); b.className='qchip'; b.textContent=r[1]; b.dataset.room=r[0];
+            b.onclick=function(){ var on=b.classList.toggle('on'); filterRoom(card, on?r[0]:null, b); };
+            qf.appendChild(b);
+          });
+        }
+      }
+      // per-tile: tap toggles (native, via label); long-press previews
+      [].forEach.call(card.querySelectorAll('.photo'), function(lbl){
+        var t, longFired=false;
+        lbl.addEventListener('touchstart', function(){ longFired=false; t=setTimeout(function(){ longFired=true; openPreview(card, lbl); }, 460); }, {passive:true});
+        lbl.addEventListener('touchmove', function(){ clearTimeout(t); }, {passive:true});   // scrolling stays smooth
+        lbl.addEventListener('touchend', function(){ clearTimeout(t); }, {passive:true});
+        lbl.addEventListener('click', function(e){ if(longFired){ e.preventDefault(); e.stopPropagation(); longFired=false; } }, true);
+        var inp=lbl.querySelector('input');
+        if(inp) inp.addEventListener('change', function(){ sync(card); });
+      });
+      sync(card);
+    }
+    function filterRoom(card, room, chip){
+      // single-select chips
+      [].forEach.call(card.querySelectorAll('.qchip'), function(c){ if(c!==chip) c.classList.remove('on'); });
+      var files=card._cluster.remaining, tiles=card.querySelectorAll('.photo');
+      [].forEach.call(tiles, function(lbl){
+        var nm=lbl.getAttribute('data-name'); var f=null;
+        for(var i=0;i<files.length;i++){ if(files[i].name===nm){ f=files[i]; break; } }
+        lbl.style.display=(!room || roomOf(f)===room)?'':'none';
+      });
+    }
+
+    function openPicker(card){
+      var c=card._cluster; if(!c) return;
+      closeSheet();
+      sheet=document.createElement('div'); sheet.className='overlay'; sheet.style.alignItems='flex-end'; sheet.style.padding='0';
+      sheet.innerHTML='<div class="modal" style="max-width:none;border-radius:14px 14px 0 0;max-height:80vh">'+
+        '<div class="mtitle">Add '+count(card)+' photo(s) to…</div>'+
+        '<div class="ctrls" style="display:flex"><span class="cfl">Confidence:</span>'+
+          '<select class="confsel"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
+          '<button class="ghost s-close" style="margin-left:auto">Close</button></div>'+
+        '<input class="search s-search" placeholder="Search listing by agent, district, type, or title…">'+
+        '<div class="cands s-cands" style="display:block"></div></div>';
+      document.body.appendChild(sheet);
+      sheet.addEventListener('click', function(e){ if(e.target===sheet) closeSheet(); });
+      var input=sheet.querySelector('.s-search'), cd=sheet.querySelector('.s-cands'), conf=sheet.querySelector('.confsel');
+      sheet.querySelector('.s-close').onclick=closeSheet;
+      var refresh=function(){ renderCands(c, card, cd, input.value, conf); };  // reads card's checked inputs — unchanged
+      input.oninput=refresh; refresh(); input.focus();
+    }
+    function closeSheet(){ if(sheet&&sheet.parentNode){ sheet.parentNode.removeChild(sheet); } sheet=null; }
+
+    function openPreview(card, lbl){
+      var files=card._cluster.remaining.filter(function(f){ // honor an active room filter's visible set
+        var tile=card.querySelector('.photo[data-name="'+cssq(f.name)+'"]'); return !tile||tile.style.display!=='none'; });
+      var idx=0, want=lbl.getAttribute('data-name');
+      for(var i=0;i<files.length;i++){ if(files[i].name===want){ idx=i; break; } }
+      if(pv&&pv.parentNode) pv.parentNode.removeChild(pv);
+      pv=document.createElement('div'); pv.className='pv';
+      pv.innerHTML='<div class="pvtop"><span class="pvcount"></span><button class="pvclose">✕ Close</button></div>'+
+        '<div class="pvwrap"><img alt=""></div>'+
+        '<div class="pvbtns"><button class="nav2 pvprev">‹</button>'+
+          '<button class="pvsel"></button><button class="nav2 pvnext">›</button></div>';
+      document.body.appendChild(pv);
+      var img=pv.querySelector('img'), selBtn=pv.querySelector('.pvsel'), cnt=pv.querySelector('.pvcount');
+      function chkFor(name){ return card.querySelector('.gallery input[data-name="'+cssq(name)+'"]'); }
+      function draw(){
+        var f=files[idx]; img.src=PUB+f.name; cnt.textContent=(idx+1)+' / '+files.length;
+        var on=chkFor(f.name).checked; selBtn.textContent=on?'✓ Selected':'Select';
+        selBtn.className='pvsel '+(on?'on':'off');
+      }
+      function step(d){ idx=(idx+d+files.length)%files.length; draw(); }
+      pv.querySelector('.pvprev').onclick=function(){ step(-1); };
+      pv.querySelector('.pvnext').onclick=function(){ step(1); };
+      selBtn.onclick=function(){ var ch=chkFor(files[idx].name); ch.checked=!ch.checked; sync(card); draw(); };
+      pv.querySelector('.pvclose').onclick=closePreview;
+      // swipe to navigate (Photos convention)
+      var sx=null; pv.querySelector('.pvwrap').addEventListener('touchstart', function(e){ sx=e.touches[0].clientX; }, {passive:true});
+      pv.querySelector('.pvwrap').addEventListener('touchend', function(e){ if(sx==null) return; var dx=e.changedTouches[0].clientX-sx; if(Math.abs(dx)>45) step(dx<0?1:-1); sx=null; }, {passive:true});
+      draw();
+    }
+    function closePreview(){ if(pv&&pv.parentNode) pv.parentNode.removeChild(pv); pv=null; }
+    function cssq(s){ return String(s).replace(/["\\]/g,'\\$&'); }
+
+    function afterChange(c){
+      // the active cluster just changed (assigned/refilled) — drop the stale bar + sheet
+      if(sheet) closeSheet();
+      if(activeCard && (!c || activeCard._cluster===c)){ activeCard=null; if(bar) bar.classList.add('hide'); }
+    }
+
+    return { wire:wire, sync:sync, afterChange:afterChange };
+  })();
+  window.MobileGallery = MobileGallery;
 })();
 </script>
 </body>
