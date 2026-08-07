@@ -70,6 +70,7 @@ button:disabled{opacity:.5;cursor:default}
 .pth.sug img{outline:3px dashed #E0B15A}
 .pth.focus img{box-shadow:0 0 0 3px #2D8C8C,0 0 0 5px rgba(45,140,140,.35)}
 .pth .x{position:absolute;top:2px;right:2px;background:#8C3A4A;color:#fff;border-radius:4px;font-size:.62rem;padding:0 4px}
+.pth.rmd img{opacity:.32;outline:3px solid #8C3A4A}
 
 /* ───────── Mobile gallery assignment (Photos-style; desktop unaffected) ───────── */
 .selbadge{display:none}
@@ -130,6 +131,8 @@ button:disabled{opacity:.5;cursor:default}
   .mtile.sel img{outline:3px solid #2D8C8C;outline-offset:-2px}
   .mtile.sel::after{content:"✓";position:absolute;top:7px;left:7px;width:24px;height:24px;border-radius:50%;background:#2D8C8C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:.85rem}
   .mtile .rm{position:absolute;top:6px;right:6px;background:#8C3A4A;color:#fff;border-radius:6px;font-size:.7rem;padding:2px 7px}
+  .mtile.rmd img{opacity:.32;outline:2px solid #8C3A4A;outline-offset:-2px}
+  .mtile.rmd .rm{background:#3a5560}
   .mlebar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
     padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#0e1519;
     border-top:1px solid rgba(232,237,240,.16);box-shadow:0 -6px 18px rgba(0,0,0,.35)}
@@ -529,7 +532,7 @@ button:disabled{opacity:.5;cursor:default}
         row.appendChild(gb);
       }
       var b = document.createElement('button'); b.className='ghost'; b.textContent = 'Review / edit';
-      b.onclick = function(){ openUnassign(p, row); };
+      b.onclick = function(){ openGalleryFor(p); };   // the one Gallery Editor
       row.appendChild(b); rl.appendChild(row);
     });
   }
@@ -641,10 +644,40 @@ button:disabled{opacity:.5;cursor:default}
     var host = document.getElementById('bleditor');
     var ddp = dedup(poolFiles());
     var pool = ddp.files;               // stable, de-duplicated snapshot
-    var added = {}, suggested = {};
+    var added = {}, suggested = {}, removed = {};   // removed: existing-gallery names staged out
     var focusIdx = pool.length ? 0 : -1, anchor = -1, curConf = 'high';
 
     function addedNames(){ return Object.keys(added); }
+    // The WORKING gallery = existing photos still kept + newly added. The three
+    // decisions and Save all operate on this, so a recovered gallery (opened
+    // from Recovered → Review/edit) and a gallery being built (Listing → Gallery)
+    // use the exact same tools. Only the starting state differs.
+    function keptOrigUrls(){ return imgsOf(p).filter(function(u){ return !removed[nameOf(u)]; }); }
+    function workingNames(){ return keptOrigUrls().map(nameOf).concat(addedNames()); }
+    function workingUrls(){ return keptOrigUrls().concat(addedNames().map(function(n){ return PUB+n; })); }
+    function workingCount(){ return keptOrigUrls().length + addedNames().length; }
+    function dirty(){ return addedNames().length || Object.keys(removed).length; }
+    // ✅ This Listing — persist the working gallery to p (adds + removes in one write).
+    async function doSaveGallery(){
+      if (!dirty()) { blAdvance(); return; }                 // nothing changed → just move on
+      var finalUrls = workingUrls(), addedN = addedNames(), removedN = Object.keys(removed);
+      if (!finalUrls.length && !confirm('This empties the gallery (every photo removed). Continue?')) return;
+      var r = await sb.from('properties').update({ images: finalUrls.length ? finalUrls : null }).eq('id', p.id).select('id');
+      if (r.error) { alert('Failed: '+r.error.message); log('ERROR save gallery '+r.error.message); return; }
+      var logs = [];
+      if (addedN.length)   logs.push({ op:'assign',   listing_id:p.id, cluster_id:'gallery-editor', photo_paths:addedN,   photo_count:addedN.length,   confidence:curConf, method:'manual', operator:OPERATOR });
+      if (removedN.length) logs.push({ op:'unassign', listing_id:p.id,                                photo_paths:removedN, photo_count:removedN.length,                     method:'manual', operator:OPERATOR });
+      if (logs.length) { var reg = await sb.from('gallery_assignments').insert(logs); if (reg.error) log('WARN register '+reg.error.message); }
+      p.images = finalUrls.length ? finalUrls : null;
+      CONFMAP[p.id] = worseConf(CONFMAP[p.id], curConf);
+      removeFromPool(addedN);
+      log('GALLERY '+String(p.id).slice(0,8)+': +'+addedN.length+' / -'+removedN.length);
+      updateSummary();
+      // Removed photos return to the pool; a reload rebuilds the pool + queues
+      // cleanly (same proven approach the old remove-photos flow used).
+      if (removedN.length) { alert('Saved. Reloading so removed photos return to the pool.'); location.reload(); return; }
+      blAdvance();
+    }
     function toggleOne(idx, allowAuto){
       if (idx<0 || idx>=pool.length) return;
       var n = pool[idx].name;
@@ -661,7 +694,7 @@ button:disabled{opacity:.5;cursor:default}
       else anchor = idx;               // plain click = focus (no add)
       focusIdx = idx; draw();
     }
-    function doSave(){ saveListingGallery(p, addedNames(), curConf); }
+    function doSave(){ doSaveGallery(); }
 
     // ---- MOBILE: the recovery queue. Listing dominates; available photos are
     // grouped by upload session (the strongest "these belong together" signal
@@ -693,8 +726,11 @@ button:disabled{opacity:.5;cursor:default}
              '<span>🏷 '+esc(p.property_type||'?')+'</span>'+
              (agentName(p) ? '<span>👤 '+esc(agentName(p))+'</span>' : '')+
            '</div>';
-      // current gallery — the photos dominate
-      h += '<div class="msec"><h3>Current gallery ('+(orig.length+an.length)+')</h3><div class="mgrid" id="mgal"></div></div>';
+      // current gallery — the photos dominate. Existing photos are removable
+      // (tap Remove to stage), so an already-recovered gallery is fully editable.
+      h += '<div class="msec"><h3>Current gallery ('+workingCount()+')</h3>'+
+           (orig.length ? '<div class="why" style="margin-top:0">These are already in the gallery — tap Remove on any that don\'t belong.</div>' : '')+
+           '<div class="mgrid" id="mgal"></div></div>';
       // available photos, grouped by upload session
       if (!glist.length) h += '<div class="msec"><h3>Available photos</h3><div class="why">No unassigned photos left in the pool.</div></div>';
       else {
@@ -709,9 +745,13 @@ button:disabled{opacity:.5;cursor:default}
       }
       host.innerHTML = h;
 
-      // current gallery tiles (originals fixed; added removable)
+      // current gallery tiles: existing photos toggle Remove (staged); added toggle off
       var gal = host.querySelector('#mgal');
-      orig.forEach(function(u){ var d=document.createElement('div'); d.className='mtile'; d.innerHTML='<img loading="lazy" src="'+esc(u)+'">'; gal.appendChild(d); });
+      orig.forEach(function(u){ var nm=nameOf(u); var out=!!removed[nm];
+        var d=document.createElement('div'); d.className='mtile'+(out?' rmd':'');
+        d.innerHTML='<img loading="lazy" src="'+esc(u)+'"><span class="rm">'+(out?'Undo':'Remove')+'</span>';
+        d.querySelector('.rm').onclick=function(e){ e.stopPropagation(); if(out) delete removed[nm]; else removed[nm]=true; drawMobile(); };
+        gal.appendChild(d); });
       an.forEach(function(nm){ var d=document.createElement('div'); d.className='mtile sel'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(nm)+'"><span class="rm">Remove</span>';
         d.querySelector('.rm').onclick=function(e){ e.stopPropagation(); delete added[nm]; delete suggested[nm]; drawMobile(); }; gal.appendChild(d); });
 
@@ -739,16 +779,16 @@ button:disabled{opacity:.5;cursor:default}
         '<button class="msave"></button>';
       host.appendChild(bar);
       // The operator answers one question — where does this gallery belong? —
-      // with one of three answers. The software decides what each answer does.
-      function syncBar(){ var n=addedNames().length;
-        bar.querySelector('.mc').textContent = n ? 'Where does this gallery belong?' : 'Looks complete?';
-        bar.querySelector('.msave').textContent = n ? '✅ This Listing' : 'Skip →';
-        bar.querySelector('.mchange').hidden = !n;   // the two alternatives only
-        bar.querySelector('.msi').hidden = !n;       // apply once photos are chosen
+      // with one of three answers, operating on the WORKING gallery.
+      function syncBar(){ var w=workingCount();
+        bar.querySelector('.mc').textContent = w ? 'Where does this gallery belong?' : (dirty()?'Empty gallery':'Looks complete?');
+        bar.querySelector('.msave').textContent = w ? '✅ This Listing' : (dirty()?'✅ Save (empty)':'Skip →');
+        bar.querySelector('.mchange').hidden = !w;   // reattaching / no-match need a non-empty gallery
+        bar.querySelector('.msi').hidden = !w;
       }
-      bar.querySelector('.msave').onclick=function(){ if(addedNames().length) doSave(); else blAdvance(); };
-      bar.querySelector('.mchange').onclick=function(){ openChangeListing(addedNames(), p, curConf); };
-      bar.querySelector('.msi').onclick=function(){ sendToSmartImport(addedNames(), p.id); };
+      bar.querySelector('.msave').onclick=function(){ doSaveGallery(); };
+      bar.querySelector('.mchange').onclick=function(){ openChangeListing(workingNames(), p, curConf); };
+      bar.querySelector('.msi').onclick=function(){ sendToSmartImport(workingNames(), p.id); };
       syncBar();
       window.scrollTo(0,0);
     }
@@ -760,17 +800,19 @@ button:disabled{opacity:.5;cursor:default}
           '<div class="meta">📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 👤 '+esc(agentName(p)||'no agent')+'</div>'+
           '<div class="why">click = focus · dbl-click / Space = add-remove · Shift-click = range · ⌘/Ctrl-click = pick · ←→↑↓ move · Enter = Save · Esc = Cancel</div></div>'+
           '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
-          '<button class="blsave">✅ This Listing ('+an.length+') ↵</button>'+
+          '<button class="blsave">✅ This Listing ('+workingCount()+') ↵</button>'+
           '<button class="ghost blchange">🔄 Another Existing Listing</button>'+
           '<button class="ghost blsi">➕ No Matching Listing</button>'+
           '<button class="ghost blclose">Close</button></div>'+
         (ddp.dupes ? '<div class="why" style="color:#E0B15A">⚠ '+ddp.dupes+' duplicate photo(s) hidden from the pool.</div>' : '')+
         '<div class="cols">'+
-          '<div class="col"><h3>Current gallery ('+(orig.length+an.length)+')</h3><div class="grid" id="blgal"></div></div>'+
+          '<div class="col"><h3>Current gallery ('+workingCount()+') — click × to remove an existing photo</h3><div class="grid" id="blgal"></div></div>'+
           '<div class="col"><h3>Unassigned photos ('+pool.length+') — click a photo, then Space to add</h3><div class="grid" id="blpool"></div></div>'+
         '</div></div>';
       var gal = host.querySelector('#blgal'), poolEl = host.querySelector('#blpool');
-      orig.forEach(function(u){ var d=document.createElement('div'); d.className='pth'; d.innerHTML='<img loading="lazy" src="'+esc(u)+'">'; gal.appendChild(d); });
+      orig.forEach(function(u){ var nm=nameOf(u); var out=!!removed[nm];
+        var d=document.createElement('div'); d.className='pth'+(out?' rmd':''); d.innerHTML='<img loading="lazy" src="'+esc(u)+'"><span class="x">'+(out?'↺':'×')+'</span>';
+        d.onclick=function(){ if(out) delete removed[nm]; else removed[nm]=true; draw(); }; gal.appendChild(d); });
       an.forEach(function(nm){ var d=document.createElement('div'); d.className='pth added'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(nm)+'"><span class="x">×</span>'; d.onclick=function(){ delete added[nm]; delete suggested[nm]; draw(); }; gal.appendChild(d); });
       pool.forEach(function(f, idx){
         var d=document.createElement('div');
@@ -784,8 +826,8 @@ button:disabled{opacity:.5;cursor:default}
       var cs=host.querySelector('.blconf'); cs.value=curConf; cs.onchange=function(){ curConf=cs.value; };
       host.querySelector('.blsave').onclick = doSave;
       host.querySelector('.blclose').onclick = function(){ detachKey(); BL_SEL=null; host.innerHTML=''; };
-      host.querySelector('.blchange').onclick = function(){ openChangeListing(addedNames(), p, curConf); };
-      host.querySelector('.blsi').onclick = function(){ sendToSmartImport(addedNames(), p.id); };
+      host.querySelector('.blchange').onclick = function(){ openChangeListing(workingNames(), p, curConf); };
+      host.querySelector('.blsi').onclick = function(){ sendToSmartImport(workingNames(), p.id); };
     }
 
     BL_KEY = function(e){
@@ -859,7 +901,24 @@ button:disabled{opacity:.5;cursor:default}
           '<div class="m">👤 '+esc(agentName(d)||'no agent')+' · 📍 '+esc(d.district_en||'?')+' · '+
           (have?'<span class="tag">'+have+' photo(s)</span>':'<span class="tag" style="color:#E0B15A;border-color:#E0B15A">no gallery</span>')+'</div></div>';
         var b=document.createElement('button'); b.textContent='Attach here';
-        b.onclick=async function(){ b.disabled=true; var ok=await saveListingGallery(d, names, confidence, false); if(!ok){ b.disabled=false; return; } close(); openListingEditor(currentP); };
+        b.onclick=async function(){
+          b.disabled=true;
+          var ok=await saveListingGallery(d, names, confidence, false);   // attach the working gallery to d
+          if(!ok){ b.disabled=false; return; }
+          // MOVE, not copy: the gallery belongs to d, so clear it from the
+          // listing we were on (logged + reversible — images:null returns the
+          // photos to the pool; nothing is hard-deleted).
+          var hadGallery = imgsOf(currentP).length > 0;
+          if (hadGallery) {
+            await sb.from('properties').update({ images: null }).eq('id', currentP.id).select('id');
+            await sb.from('gallery_assignments').insert([{ op:'unassign', listing_id:currentP.id, photo_paths:names, photo_count:names.length, method:'manual', operator:OPERATOR }]);
+            currentP.images = null;
+          }
+          close(); updateSummary();
+          log('MOVED '+names.length+' photo(s): '+String(currentP.id).slice(0,8)+' → '+String(d.id).slice(0,8));
+          // A move changes two listings + the pool; reload rebuilds cleanly.
+          if (hadGallery) location.reload(); else openListingEditor(currentP);
+        };
         row.appendChild(b); r.appendChild(row);
       });
     }
@@ -995,38 +1054,16 @@ button:disabled{opacity:.5;cursor:default}
       var row = document.createElement('div'); row.className = 'cand';
       row.innerHTML = '<div><div class="t">'+esc(label(p))+'</div><div class="d">'+esc(p.district_en||'?')+' · '+imgsOf(p).length+' photo(s)</div></div>';
       var btn = document.createElement('button'); btn.className='ghost'; btn.textContent = 'Open';
-      btn.onclick = function(){ openUnassign(p, row); };
+      btn.onclick = function(){ openGalleryFor(p); };   // the one Gallery Editor
       row.appendChild(btn); ur.appendChild(row);
     });
   }
-  function openUnassign(p, anchor) {
-    var box = document.createElement('div'); box.className = 'card';
-    var urls = imgsOf(p);
-    box.innerHTML = '<b>'+esc(label(p))+'</b> <span class="meta">'+urls.length+' photo(s)</span>'+
-      '<div class="gallery">'+urls.map(function(u){ return '<label class="uphoto"><input type="checkbox" data-name="'+esc(nameOf(u))+'"><img loading="lazy" src="'+esc(u)+'"></label>'; }).join('')+'</div>'+
-      '<div class="ctrls"><button class="danger rmsel">Remove selected → pool</button><button class="ghost rmall">Remove entire gallery</button></div>';
-    anchor.parentNode.insertBefore(box, anchor.nextSibling);
-    box.querySelector('.rmsel').onclick = function(){
-      var names = [].map.call(box.querySelectorAll('.gallery input:checked'), function(x){ return x.getAttribute('data-name'); });
-      if (!names.length) { alert('Tick the photos to remove.'); return; }
-      unassign(p, names, false);
-    };
-    box.querySelector('.rmall').onclick = function(){ unassign(p, urls.map(nameOf), true); };
-  }
-  async function unassign(p, removeNames, all) {
-    if (!confirm('Remove '+removeNames.length+' photo(s) from:\n'+label(p)+'\n\nThey return to the unassigned pool. This is logged.')) return;
-    var cur = imgsOf(p);
-    var keep = all ? [] : cur.filter(function(u){ return removeNames.indexOf(nameOf(u)) < 0; });
-    var r = await sb.from('properties').update({ images: keep.length ? keep : null }).eq('id', p.id).select('id');
-    if (r.error) { alert('Failed: '+r.error.message); log('ERROR unassign '+r.error.message); return; }
-    var reg = await sb.from('gallery_assignments').insert([{
-      op:'unassign', listing_id:p.id, photo_paths:removeNames, photo_count:removeNames.length, method:'manual', operator:OPERATOR
-    }]);
-    if (reg.error) log('WARN register insert failed: '+reg.error.message);
-    log('UNASSIGNED '+removeNames.length+' photo(s) from '+label(p)+' → pool');
-    alert('Removed. Reloading so the photos return to the pool.');
-    location.reload();
-  }
+  // The ONE way to edit any gallery — building a new one or reviewing a
+  // recovered one. Both open the same editor (openListingEditor); the only
+  // difference is whether it starts empty or with existing photos. Removing
+  // photos now happens inside that editor (tap Remove on an existing photo,
+  // then Save), so the old separate remove-only screen (openUnassign) is gone.
+  function openGalleryFor(p){ BL_SEL = p.id; switchView('bylisting'); }
 
   // ───────────────────────── MOBILE gallery assignment ─────────────────────────
   // Photos/Files-style: tap a big tile to toggle (✓ + teal border), long-press to
