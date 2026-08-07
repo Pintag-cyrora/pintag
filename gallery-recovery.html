@@ -107,6 +107,42 @@ button:disabled{opacity:.5;cursor:default}
   #log{display:none}                                  /* debug log would steal the thumb zone */
   body{padding-bottom:64px}                            /* room so the bar never covers the last card */
 }
+/* Mobile recovery-queue editor (Listing → Gallery, the primary phone flow) */
+@media (max-width:640px){
+  #bylisting .card:first-child{display:none}   /* hide the agent/search card; the queue drives itself */
+  .mqhead{position:sticky;top:0;z-index:25;background:#0e1519;border-bottom:1px solid rgba(232,237,240,.14);margin:-4px -4px 8px;padding:8px 12px}
+  .mqrow{display:flex;align-items:baseline;gap:10px}
+  .mqrow b{color:#E8EDF0}
+  .mqrow .mqn{margin-left:auto;font-size:.82rem;color:#2D8C8C;font-weight:700}
+  .mqhead .pbar{height:6px;background:#22303a;border-radius:4px;overflow:hidden;margin-top:6px}
+  .mqhead .pbar i{display:block;height:100%;background:#2D8C8C}
+  .lhead{margin-bottom:10px}
+  .lhead .cov{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:#0F1418;font-size:.85rem}
+  .lhead h2{font-size:1.2rem;margin:10px 0 2px;line-height:1.35}
+  .lhead .lsub{color:#C9D3D9;font-size:.9rem}
+  .lhead .lmeta{color:#9AA7B0;font-size:.82rem;margin-top:4px}
+  .lhead .mtitle-btn{margin-top:8px}
+  .msec{margin:12px 0 4px}
+  .msec h3{font-size:.9rem;color:#7FB2B2;margin-bottom:6px}
+  .mgrp{margin:10px 0}
+  .mgrp .gh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.78rem;color:#9AA7B0;margin-bottom:6px}
+  .mgrp .gh b{color:#7FB2B2}
+  .mgrp .gh .gsel,.mgrp .gh .ghide{margin:0;padding:.3rem .6rem;font-size:.72rem}
+  .mgrp .gh .gsel{margin-left:auto}
+  .mgrp .gh .ghide{background:transparent;border:1px solid rgba(232,237,240,.2);color:#9AA7B0}
+  .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .mtile{position:relative;cursor:pointer}
+  .mtile img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;display:block;background:#0F1418}
+  .mtile.sel img{outline:3px solid #2D8C8C;outline-offset:-2px}
+  .mtile.sel::after{content:"✓";position:absolute;top:7px;left:7px;width:24px;height:24px;border-radius:50%;background:#2D8C8C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:.85rem}
+  .mtile .rm{position:absolute;top:6px;right:6px;background:#8C3A4A;color:#fff;border-radius:6px;font-size:.7rem;padding:2px 7px}
+  .mlebar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;gap:8px;align-items:center;
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#0e1519;
+    border-top:1px solid rgba(232,237,240,.16);box-shadow:0 -6px 18px rgba(0,0,0,.35)}
+  .mlebar .mc{font-weight:700;color:#2D8C8C;font-size:.92rem;margin-right:auto;white-space:nowrap}
+  .mlebar .msave{padding:.66rem .9rem}
+  #bleditor{padding-bottom:64px}
+}
 /* Full-screen preview (used by long-press; inspect before selecting) */
 .pv{position:fixed;inset:0;background:#000;z-index:45;display:flex;flex-direction:column;touch-action:none}
 .pv .pvtop{display:flex;justify-content:space-between;align-items:center;padding:14px;color:#C9D3D9;font-size:.82rem}
@@ -279,6 +315,8 @@ button:disabled{opacity:.5;cursor:default}
       renderTools();
       renderClusters();
       updateSummary();
+      // On a phone, Listing → Gallery is the primary flow: open the queue.
+      if (isPhone()) switchView('bylisting');
       log('Loaded '+objs.length+' objects, '+orphans.length+' orphans → '+CLUSTERS.length+' clusters.');
     } catch (e) { document.getElementById('bar').textContent = 'Error: ' + (e.message||e); log('ERROR '+(e.message||e)); }
   }
@@ -514,6 +552,20 @@ button:disabled{opacity:.5;cursor:default}
     list.sort(function(a,b){ return displayTitle(a).localeCompare(displayTitle(b)); });
     return list[0] || null;
   }
+  function isPhone(){ return window.matchMedia('(max-width:640px)').matches; }
+  function galleryProgress(){
+    var done = ALL_PROPS.filter(function(x){ return SET91.has(x.id) && imgsOf(x).length > 0; }).length;
+    var total = SET91.size || 91;
+    return { done: done, total: total, remaining: total - done };
+  }
+  // Advance the recovery queue to the next gallery-less listing (shared by
+  // Save & Next and Skip). Shows the completion card when none remain.
+  function blAdvance(){
+    var next = nextNeedingGallery();
+    if (next){ BL_SEL = next.id; openListingEditor(next); }
+    else { detachKey(); BL_SEL = null; document.getElementById('bleditor').innerHTML =
+      '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Every one in scope has photos.</div>'; }
+  }
 
   function renderByListing(){
     var host = document.getElementById('bylisting');
@@ -536,6 +588,9 @@ button:disabled{opacity:.5;cursor:default}
     host.querySelector('.bltitle').onchange=function(){ AUTO_TITLE=this.checked; };
     s.oninput=function(){ blResults(r, s.value); };
     blResults(r, '');
+    // On a phone this is the primary flow: jump straight into the recovery
+    // queue (the next gallery-less listing) instead of a search screen.
+    if (!BL_SEL && isPhone()){ var nx = nextNeedingGallery(); if (nx) BL_SEL = nx.id; }
     if (BL_SEL){ var p = byId(BL_SEL); if (p) openListingEditor(p); }
   }
   function blResults(r, q){
@@ -584,6 +639,86 @@ button:disabled{opacity:.5;cursor:default}
     }
     function doSave(){ saveListingGallery(p, addedNames(), curConf); }
 
+    // ---- MOBILE: the recovery queue. Listing dominates; available photos are
+    // grouped by upload session (the strongest "these belong together" signal
+    // we have today); tap to select like Photos; one tap saves and opens the
+    // next gallery-less listing. Desktop keeps the keyboard editor (draw()).
+    var hiddenG = {};   // upload-session groups the operator marked "not this listing" (session-only)
+    function drawMobile(){
+      var orig = imgsOf(p), an = addedNames();
+      var prog = galleryProgress();
+      // group the de-duped pool by upload burst; _cluster is the cluster ID
+      // string (set at load), so resolve it to the cluster for its time label.
+      var CBYID = {}; CLUSTERS.forEach(function(c){ CBYID[c.id] = c; });
+      var groups = {};
+      pool.forEach(function(f){ var k = f._cluster || '_'; if(!groups[k]) groups[k]={ key:k, cl:CBYID[k]||null, files:[] }; groups[k].files.push(f); });
+      var glist = Object.keys(groups).map(function(k){ return groups[k]; })
+        .filter(function(g){ return !hiddenG[g.key]; })
+        .sort(function(a,b){ return (b.files.length - a.files.length) || ((b.cl?new Date(b.cl.start):0) - (a.cl?new Date(a.cl.start):0)); });
+      var cover = (orig[0] ? esc(orig[0]) : (an[0] ? PUB+esc(an[0]) : (pool[0] ? PUB+esc(pool[0].name) : '')));
+
+      var h = '';
+      // sticky recovery-queue header
+      h += '<div class="mqhead"><div class="mqrow"><b>Recovery</b><span class="mqn">'+prog.done+' / '+prog.total+' complete · '+prog.remaining+' left</span></div>'+
+           '<div class="pbar"><i style="width:'+Math.round(prog.done/prog.total*100)+'%"></i></div></div>';
+      // listing header — dominant
+      h += '<div class="lhead">'+
+             (cover ? '<img class="cov" loading="lazy" src="'+cover+'">' : '<div class="cov" style="display:flex;align-items:center;justify-content:center;color:#5b6b73">no photo yet</div>')+
+             '<h2>'+esc(displayTitle(p))+'</h2>'+
+             (nz(p.title_en)&&nz(p.title_lo) ? '<div class="lsub">'+esc(p.title_lo)+'</div>' : '')+
+             '<div class="lmeta">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+'</div>'+
+             (!nz(p.title_en) ? '<button class="ghost mtitle-btn">✨ Generate AI title</button>' : '')+
+           '</div>';
+      // current gallery
+      h += '<div class="msec"><h3>In this gallery ('+(orig.length+an.length)+')</h3><div class="mgrid" id="mgal"></div></div>';
+      // available photos, grouped by upload session
+      if (!glist.length) h += '<div class="msec"><h3>Available photos</h3><div class="why">No unassigned photos left in the pool.</div></div>';
+      else {
+        h += '<div class="msec"><h3>Suggested groups · same upload session</h3>'+
+             '<div class="why" style="margin-top:0">Photos taken and uploaded together usually belong to one property. Tap the ones that belong; hide a group that clearly doesn\'t.</div></div>';
+        glist.forEach(function(g){
+          var when = g.cl ? new Date(g.cl.start).toLocaleString() : 'unknown time';
+          h += '<div class="mgrp"><div class="gh"><b>Uploaded together</b> · '+g.files.length+' photo(s) · '+esc(when)+
+               '<button class="gsel">Select all</button><button class="ghide">Hide</button></div>'+
+               '<div class="mgrid gpg"></div></div>';
+        });
+      }
+      host.innerHTML = h;
+
+      // current gallery tiles (originals fixed; added removable)
+      var gal = host.querySelector('#mgal');
+      orig.forEach(function(u){ var d=document.createElement('div'); d.className='mtile'; d.innerHTML='<img loading="lazy" src="'+esc(u)+'">'; gal.appendChild(d); });
+      an.forEach(function(nm){ var d=document.createElement('div'); d.className='mtile sel'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(nm)+'"><span class="rm">Remove</span>';
+        d.querySelector('.rm').onclick=function(e){ e.stopPropagation(); delete added[nm]; delete suggested[nm]; drawMobile(); }; gal.appendChild(d); });
+
+      // grouped available tiles
+      [].forEach.call(host.querySelectorAll('.mgrp'), function(gEl, gi){
+        var g = glist[gi], grid = gEl.querySelector('.gpg');
+        g.files.forEach(function(f){
+          var d=document.createElement('div'); d.className='mtile'+(added[f.name]?' sel':'');
+          d.innerHTML='<img loading="lazy" src="'+PUB+esc(f.name)+'">';
+          d.onclick=function(){ if(added[f.name]){ delete added[f.name]; delete suggested[f.name]; } else { added[f.name]=true; } d.classList.toggle('sel'); syncBar(); };
+          grid.appendChild(d);
+        });
+        gEl.querySelector('.gsel').onclick=function(){ g.files.forEach(function(f){ added[f.name]=true; }); drawMobile(); };
+        gEl.querySelector('.ghide').onclick=function(){ hiddenG[g.key]=true; g.files.forEach(function(f){ delete added[f.name]; }); drawMobile(); };
+      });
+
+      var tb=host.querySelector('.mtitle-btn'); if(tb) tb.onclick=function(){ openTitlePreview(p); };
+
+      // sticky Save & Next bar
+      var bar=document.createElement('div'); bar.className='mlebar';
+      bar.innerHTML='<span class="mc"></span><button class="ghost mskip">Skip</button><button class="msave"></button>';
+      host.appendChild(bar);
+      function syncBar(){ var n=addedNames().length;
+        bar.querySelector('.mc').textContent = n ? n+' selected' : 'Looks complete?';
+        bar.querySelector('.msave').textContent = n ? ('Save '+n+' & Next →') : 'Save & Next →'; }
+      bar.querySelector('.msave').onclick=function(){ if(addedNames().length) doSave(); else blAdvance(); };
+      bar.querySelector('.mskip').onclick=function(){ blAdvance(); };
+      syncBar();
+      window.scrollTo(0,0);
+    }
+
     function draw(){
       var orig = imgsOf(p), an = addedNames();
       host.innerHTML =
@@ -627,6 +762,7 @@ button:disabled{opacity:.5;cursor:default}
       else if (e.key==='ArrowRight'||e.key==='ArrowDown'){ e.preventDefault(); if (focusIdx<pool.length-1){ focusIdx++; draw(); } }
       else if (e.key==='ArrowLeft'||e.key==='ArrowUp'){ e.preventDefault(); if (focusIdx>0){ focusIdx--; draw(); } }
     };
+    if (isPhone()) { drawMobile(); return; }   // mobile: recovery-queue editor, no keyboard
     document.addEventListener('keydown', BL_KEY);
     draw();
   }
@@ -648,9 +784,7 @@ button:disabled{opacity:.5;cursor:default}
     }
     updateSummary();
     // inbox: advance to the next gallery-less listing (respecting the agent scope)
-    var next = nextNeedingGallery();
-    if (next){ BL_SEL = next.id; openListingEditor(next); }
-    else { detachKey(); BL_SEL = null; document.getElementById('bleditor').innerHTML = '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Pick another agent or switch views.</div>'; }
+    blAdvance();
   }
 
   // ───────────────────────── AI title recovery ─────────────────────────
