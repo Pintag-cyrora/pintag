@@ -549,8 +549,8 @@ button:disabled{opacity:.5;cursor:default}
     CLUSTERS.forEach(function(c){ c.remaining = c.remaining.filter(function(f){ if (set[f.name]) return false; if (HIDE_DUPES){ var k=eTagOf(f); if (k && tags[k]) return false; } return true; }); });
   }
   function byId(id){ for (var i=0;i<ALL_PROPS.length;i++) if (ALL_PROPS[i].id === id) return ALL_PROPS[i]; return null; }
-  function nextNeedingGallery(){
-    var list = ALL_PROPS.filter(function(x){ return SET91.has(x.id) && imgsOf(x).length === 0 && (!BL_AGENT || x.managed_by_party_id === BL_AGENT); });
+  function nextNeedingGallery(skipId){
+    var list = ALL_PROPS.filter(function(x){ return SET91.has(x.id) && imgsOf(x).length === 0 && x.id !== skipId && (!BL_AGENT || x.managed_by_party_id === BL_AGENT); });
     list.sort(function(a,b){ return displayTitle(a).localeCompare(displayTitle(b)); });
     return list[0] || null;
   }
@@ -562,8 +562,10 @@ button:disabled{opacity:.5;cursor:default}
   }
   // Advance the recovery queue to the next gallery-less listing (shared by
   // Save & Next and Skip). Shows the completion card when none remain.
-  function blAdvance(){
-    var next = nextNeedingGallery();
+  // skipId: don't land back on a listing the operator just decided about (moved
+  // its gallery away / marked no-match). It re-enters the queue naturally later.
+  function blAdvance(skipId){
+    var next = nextNeedingGallery(skipId);
     if (next){ BL_SEL = next.id; openListingEditor(next); }
     else {
       detachKey(); BL_SEL = null;
@@ -580,17 +582,37 @@ button:disabled{opacity:.5;cursor:default}
   // Recovery does not know how listings are generated — only how to organize
   // photos. One pipeline, one AI, one editor, one publish flow.
   var SI_MAX = 15;   // the pipeline's photo cap
-  function sendToSmartImport(names, listingId){
+  // ➕ No Matching Listing — a deliberate statement: these photos belong to NO
+  // existing listing. So we DETACH them from the current listing (it drops back
+  // to "needs gallery" and re-enters the queue), then hand them to Create
+  // Listing to become a new draft. If the operator cancels Create Listing, the
+  // draft is discarded but the listing stays flagged as needing a gallery — it
+  // is never silently restored. Keeping wrong photos out of fear is bad data.
+  async function sendToSmartImport(names, listingId){
     names = (names||[]).filter(Boolean);
     if (!names.length){ alert('Select the photos that belong together first.'); return; }
     if (names.length > SI_MAX && !confirm(names.length+' photos selected. Create Listing takes up to '+SI_MAX+' — the first '+SI_MAX+' will be sent. Continue?')) return;
     var urls = names.slice(0, SI_MAX).map(function(n){ return PUB + n; });
+    // Detach from the current listing first (logged + reversible; images:null
+    // returns the photos to the pool). Only if it actually has a gallery.
+    if (listingId){
+      var lp = byId(listingId);
+      if (lp && imgsOf(lp).length){
+        try {
+          var up = await sb.from('properties').update({ images: null }).eq('id', listingId).select('id');
+          if (up.error) throw up.error;
+          await sb.from('gallery_assignments').insert([{ op:'unassign', listing_id:listingId, cluster_id:'no-matching', photo_paths:names, photo_count:names.length, method:'manual', operator:OPERATOR }]);
+          lp.images = null; updateSummary();
+          log('NO MATCH: detached '+names.length+' photo(s) from '+String(listingId).slice(0,8)+' (now needs gallery)');
+        } catch(e){ alert('Could not detach from the current listing: '+(e.message||e)); return; }
+      }
+    }
     try {
       localStorage.setItem('pintag_gr_to_import', JSON.stringify({
         images: urls, source: 'gallery_recovery', listing_id: listingId || null, at: Date.now()
       }));
     } catch(e){ alert('Could not stage photos for Create Listing: '+e.message); return; }
-    log('→ CREATE LISTING: staged '+urls.length+' photo(s)'+(listingId?' (from '+String(listingId).slice(0,8)+')':''));
+    log('→ CREATE LISTING: staged '+urls.length+' photo(s)');
     window.location.href = 'admin.html';
   }
 
@@ -880,7 +902,7 @@ button:disabled{opacity:.5;cursor:default}
     var sheet=document.createElement('div'); sheet.className='overlay'; sheet.style.alignItems='flex-end'; sheet.style.padding='0';
     sheet.innerHTML='<div class="modal" style="max-width:none;border-radius:14px 14px 0 0;max-height:82vh">'+
       '<div class="mtitle">Attach '+names.length+' photo(s) to which listing?</div>'+
-      '<div class="ctrls" style="display:flex"><span class="why" style="margin:0">Reattaches to a different existing listing.</span><button class="ghost cl-x" style="margin-left:auto">Close</button></div>'+
+      '<div class="ctrls" style="display:flex"><span class="why" style="margin:0">Moves the gallery here; the current listing returns to the queue.</span><button class="ghost cl-x" style="margin-left:auto">Close</button></div>'+
       '<input class="search cl-q" placeholder="Search existing listings by agent, district, type, or title…">'+
       '<div class="cands cl-r" style="display:block"></div></div>';
     document.body.appendChild(sheet);
@@ -906,18 +928,17 @@ button:disabled{opacity:.5;cursor:default}
           var ok=await saveListingGallery(d, names, confidence, false);   // attach the working gallery to d
           if(!ok){ b.disabled=false; return; }
           // MOVE, not copy: the gallery belongs to d, so clear it from the
-          // listing we were on (logged + reversible — images:null returns the
-          // photos to the pool; nothing is hard-deleted).
-          var hadGallery = imgsOf(currentP).length > 0;
-          if (hadGallery) {
+          // listing we were on (logged + reversible — nothing is hard-deleted).
+          if (imgsOf(currentP).length > 0) {
             await sb.from('properties').update({ images: null }).eq('id', currentP.id).select('id');
             await sb.from('gallery_assignments').insert([{ op:'unassign', listing_id:currentP.id, photo_paths:names, photo_count:names.length, method:'manual', operator:OPERATOR }]);
             currentP.images = null;
           }
           close(); updateSummary();
           log('MOVED '+names.length+' photo(s): '+String(currentP.id).slice(0,8)+' → '+String(d.id).slice(0,8));
-          // A move changes two listings + the pool; reload rebuilds cleanly.
-          if (hadGallery) location.reload(); else openListingEditor(currentP);
+          // Forward momentum: go to the NEXT queue item, not back to the listing
+          // we just emptied. It re-enters the Needs-Gallery queue naturally later.
+          blAdvance(currentP.id);
         };
         row.appendChild(b); r.appendChild(row);
       });
