@@ -67,7 +67,6 @@ button:disabled{opacity:.5;cursor:default}
 .pth{position:relative;cursor:pointer}
 .pth img{width:84px;height:64px;object-fit:cover;border-radius:6px;display:block;background:#0F1418}
 .pth.added img{outline:3px solid #4CAF7D}
-.pth.sug img{outline:3px dashed #E0B15A}
 .pth.focus img{box-shadow:0 0 0 3px #2D8C8C,0 0 0 5px rgba(45,140,140,.35)}
 .pth .x{position:absolute;top:2px;right:2px;background:#8C3A4A;color:#fff;border-radius:4px;font-size:.62rem;padding:0 4px}
 .pth.rmd img{opacity:.32;outline:3px solid #8C3A4A}
@@ -122,9 +121,9 @@ button:disabled{opacity:.5;cursor:default}
   .mgrp{margin:10px 0}
   .mgrp .gh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.78rem;color:#9AA7B0;margin-bottom:6px}
   .mgrp .gh b{color:#7FB2B2}
-  .mgrp .gh .gsel,.mgrp .gh .ghide{margin:0;padding:.3rem .6rem;font-size:.72rem}
+  .mgrp .gh .gsel,.mgrp .gh .gfold{margin:0;padding:.3rem .6rem;font-size:.72rem}
   .mgrp .gh .gsel{margin-left:auto}
-  .mgrp .gh .ghide{background:transparent;border:1px solid rgba(232,237,240,.2);color:#9AA7B0}
+  .mgrp .gh .gfold{background:transparent;border:1px solid rgba(232,237,240,.2);color:#9AA7B0;min-width:34px}
   .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .mtile{position:relative;cursor:pointer}
   .mtile img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;display:block;background:#0F1418}
@@ -167,7 +166,7 @@ button:disabled{opacity:.5;cursor:default}
 </head>
 <body>
 <h1>Gallery Recovery</h1>
-<div class="sub">Work the queue: tick the photos that belong, pick the listing, Assign. Completed galleries move to <b>Recovered Galleries</b>. Every assign &amp; unassign is logged.</div>
+<div class="sub">Forensic recovery: <b>every photo in the pool is always shown</b> — nothing is deduplicated, collapsed, or auto-hidden, and no photo is ever auto-selected. You decide what belongs. Tick the photos, pick the listing, Assign. Completed galleries move to <b>Recovered Galleries</b>; every assign &amp; unassign is logged.</div>
 <div class="bar" id="bar">Loading…</div>
 <div id="summary"></div>
 <div id="tools"></div>
@@ -193,9 +192,15 @@ button:disabled{opacity:.5;cursor:default}
   var VIEW = 'queue';               // 'queue' | 'bylisting' | 'recovered'
   var BL_SEL = null;                // currently-open listing id in "Recover by Listing"
   var BL_AGENT = '';                // agent scope for Mode 2 ('' = all agents)
-  var AUTO_SELECT = true;           // click one photo → suggest its upload-burst mates
+  var AUTO_SELECT = false;          // retired — no AI pre-selection; every photo is chosen by hand
   var AUTO_TITLE = true;            // after a Mode-2 gallery save, AI-title if untitled
-  var HIDE_DUPES = true;            // collapse duplicate photos within a cluster
+  var HIDE_DUPES = false;           // opt-in only, and forced OFF whenever SHOW_ALL is on
+  // FORENSIC RULE: Gallery Recovery shows 100% of the photo pool. SHOW_ALL is ON
+  // by default; while on, nothing is deduplicated, cluster-collapsed, or auto-
+  // hidden and no photo is ever auto-selected — the operator sees every photo and
+  // decides. AI never determines what is or isn't visible. Only sorting and
+  // optional (non-destructive, expandable) grouping are allowed.
+  var SHOW_ALL = true;
   var BL_KEY = null;                // active Mode-2 keydown handler
   var FILTERS = { agent:'', district:'', ptype:'' };
   var RCONF = 'all';                // recovered-view confidence filter
@@ -218,8 +223,9 @@ button:disabled{opacity:.5;cursor:default}
   }
   function eTagOf(f){ var m=f&&f.metadata; return (m && (m.eTag||m.etag)) || (m && m.size!=null ? 'sz:'+m.size : null); }
   // Collapse exact-duplicate photos (same content hash/size). Returns { files, dupes }.
+  function dupesHidden(){ return HIDE_DUPES && !SHOW_ALL; }
   function dedup(files){
-    if (!HIDE_DUPES) return { files: files, dupes: 0 };
+    if (!dupesHidden()) return { files: files, dupes: 0 };
     var seen = {}, out = [], dupes = 0;
     files.forEach(function(f){ var k = eTagOf(f); if (k && seen[k]) { dupes++; return; } if (k) seen[k]=1; out.push(f); });
     return { files: out, dupes: dupes };
@@ -352,16 +358,23 @@ button:disabled{opacity:.5;cursor:default}
         '<span class="kpi"><b id="k-recovered">–</b><span>Recovered galleries</span></span>'+
         '<span class="kpi"><b id="k-low">–</b><span>Low-confidence</span></span>'+
         '<span class="kpi"><b id="k-pub">–</b><span>Publishable / 91</span></span>'+
-        '<label class="hc"><input type="checkbox" id="hidecomp" checked> Hide completed</label>'+
-        '<label class="hc" style="margin-left:0"><input type="checkbox" id="hidedupe" checked> Hide duplicates</label>'+
+        '<label class="hc" title="Forensic mode: every photo in the pool is visible and selectable. Nothing is deduped, collapsed, or auto-hidden."><input type="checkbox" id="showall" checked> Show all photos</label>'+
+        '<label class="hc" style="margin-left:0"><input type="checkbox" id="hidecomp" checked> Hide completed</label>'+
+        '<label class="hc" style="margin-left:0" title="Only available when Show all photos is off."><input type="checkbox" id="hidedupe"'+(SHOW_ALL?' disabled':(HIDE_DUPES?' checked':''))+'> Hide duplicates</label>'+
         '<span class="nav">'+
           '<button class="ghost navb" data-v="queue">Cluster → Listing</button>'+
           '<button class="ghost navb" data-v="bylisting">Listing → Gallery</button>'+
           '<button class="ghost navb" data-v="recovered">Recovered</button>'+
         '</span>'+
       '</div>';
+    document.getElementById('showall').onchange = function(){
+      SHOW_ALL = this.checked;
+      var hd = document.getElementById('hidedupe');
+      hd.disabled = SHOW_ALL; if (SHOW_ALL) { hd.checked = false; HIDE_DUPES = false; }
+      rerenderCurrent();
+    };
     document.getElementById('hidecomp').onchange = function(){ HIDE_COMPLETED = this.checked; renderClusters(); };
-    document.getElementById('hidedupe').onchange = function(){ HIDE_DUPES = this.checked; if (VIEW==='queue') renderClusters(); if (VIEW==='bylisting') renderByListing(); };
+    document.getElementById('hidedupe').onchange = function(){ HIDE_DUPES = this.checked && !SHOW_ALL; rerenderCurrent(); };
     [].forEach.call(document.querySelectorAll('.navb'), function(b){ b.onclick = function(){ switchView(b.getAttribute('data-v')); }; });
     highlightNav();
   }
@@ -371,6 +384,11 @@ button:disabled{opacity:.5;cursor:default}
     function set(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
     set('k-unassigned', c.unassigned); set('k-recovered', c.recovered);
     set('k-low', c.low); set('k-pub', c.publishable + ' / 91');
+  }
+  function rerenderCurrent(){
+    if (VIEW === 'queue') renderClusters();
+    else if (VIEW === 'bylisting') renderByListing();
+    else if (VIEW === 'recovered') renderRecovered();
   }
   function switchView(v) {
     VIEW = v;
@@ -476,7 +494,7 @@ button:disabled{opacity:.5;cursor:default}
     CONFMAP[draft.id] = worseConf(CONFMAP[draft.id], confidence);
     // also consume exact-duplicate siblings (same content) so a de-duped cluster can complete
     var sibs = {};
-    if (HIDE_DUPES) {
+    if (dupesHidden()) {
       var chosen = {};
       c.remaining.forEach(function(f){ if (names.indexOf(f.name) >= 0){ var k=eTagOf(f); if(k) chosen[k]=1; } });
       c.remaining.forEach(function(f){ if (names.indexOf(f.name) < 0){ var k=eTagOf(f); if (k && chosen[k]) sibs[f.name]=1; } });
@@ -552,8 +570,8 @@ button:disabled{opacity:.5;cursor:default}
   function removeFromPool(names){
     var set = {}; names.forEach(function(n){ set[n]=1; });
     var tags = {};
-    if (HIDE_DUPES) CLUSTERS.forEach(function(c){ c.remaining.forEach(function(f){ if (set[f.name]){ var k=eTagOf(f); if(k) tags[k]=1; } }); });
-    CLUSTERS.forEach(function(c){ c.remaining = c.remaining.filter(function(f){ if (set[f.name]) return false; if (HIDE_DUPES){ var k=eTagOf(f); if (k && tags[k]) return false; } return true; }); });
+    if (dupesHidden()) CLUSTERS.forEach(function(c){ c.remaining.forEach(function(f){ if (set[f.name]){ var k=eTagOf(f); if(k) tags[k]=1; } }); });
+    CLUSTERS.forEach(function(c){ c.remaining = c.remaining.filter(function(f){ if (set[f.name]) return false; if (dupesHidden()){ var k=eTagOf(f); if (k && tags[k]) return false; } return true; }); });
   }
   function byId(id){ for (var i=0;i<ALL_PROPS.length;i++) if (ALL_PROPS[i].id === id) return ALL_PROPS[i]; return null; }
   function nextNeedingGallery(skipId){
@@ -661,7 +679,6 @@ button:disabled{opacity:.5;cursor:default}
       '<div class="card"><b>Recover by Agent / Listing</b> <span class="why" style="display:inline">— pick an agent (or search), open a listing, click unassigned photos to add. Save → jumps to the next gallery-less listing.</span>'+
       '<div class="ctrls">'+
         '<span class="cfl">Agent</span><select class="blagent"><option value="">— all agents —</option>'+aOpt+'</select>'+
-        '<label class="hc" style="margin:0"><input type="checkbox" class="blauto"'+(AUTO_SELECT?' checked':'')+'> Auto-select burst</label>'+
         '<label class="hc" style="margin:0"><input type="checkbox" class="bltitle"'+(AUTO_TITLE?' checked':'')+'> Auto AI-title after save</label>'+
       '</div>'+
       '<input class="blsearch" placeholder="…or search a listing by title / district / type">'+
@@ -669,7 +686,6 @@ button:disabled{opacity:.5;cursor:default}
       '<div id="bleditor"></div>';
     var ag=host.querySelector('.blagent'), s=host.querySelector('.blsearch'), r=host.querySelector('.blresults');
     ag.onchange=function(){ BL_AGENT=ag.value; blResults(r, s.value); };
-    host.querySelector('.blauto').onchange=function(){ AUTO_SELECT=this.checked; };
     host.querySelector('.bltitle').onchange=function(){ AUTO_TITLE=this.checked; };
     s.oninput=function(){ blResults(r, s.value); };
     blResults(r, '');
@@ -701,8 +717,8 @@ button:disabled{opacity:.5;cursor:default}
     detachKey();
     var host = document.getElementById('bleditor');
     var ddp = dedup(poolFiles());
-    var pool = ddp.files;               // stable, de-duplicated snapshot
-    var added = {}, suggested = {}, removed = {};   // removed: existing-gallery names staged out
+    var pool = ddp.files;               // 100% of the unassigned pool while Show all photos is on
+    var added = {}, removed = {};       // removed: existing-gallery names staged out
     var focusIdx = pool.length ? 0 : -1, anchor = -1, curConf = 'high';
 
     function addedNames(){ return Object.keys(added); }
@@ -743,19 +759,17 @@ button:disabled{opacity:.5;cursor:default}
       }
       blAdvance();
     }
-    function toggleOne(idx, allowAuto){
+    // One photo, one tap. No auto-selection, no "suggested" mates — the operator
+    // chooses every photo explicitly (forensic recovery, not an AI assistant).
+    function toggleOne(idx){
       if (idx<0 || idx>=pool.length) return;
       var n = pool[idx].name;
-      if (added[n]) { delete added[n]; delete suggested[n]; }
-      else {
-        added[n] = true; delete suggested[n];
-        if (allowAuto && AUTO_SELECT){ var cl = pool[idx]._cluster; pool.forEach(function(f){ if (f._cluster===cl && !added[f.name]){ added[f.name]=true; suggested[f.name]=true; } }); }
-      }
+      if (added[n]) delete added[n]; else added[n] = true;
     }
-    function selectRange(a,b){ var lo=Math.min(a,b), hi=Math.max(a,b); for (var i=lo;i<=hi;i++){ added[pool[i].name]=true; delete suggested[pool[i].name]; } }
+    function selectRange(a,b){ var lo=Math.min(a,b), hi=Math.max(a,b); for (var i=lo;i<=hi;i++){ added[pool[i].name]=true; } }
     function handleClick(idx, e){
       if (e.shiftKey && anchor>=0) selectRange(anchor, idx);
-      else if (e.ctrlKey || e.metaKey){ toggleOne(idx, false); anchor=idx; }
+      else if (e.ctrlKey || e.metaKey){ toggleOne(idx); anchor=idx; }
       else anchor = idx;               // plain click = focus (no add)
       focusIdx = idx; draw();
     }
@@ -765,17 +779,17 @@ button:disabled{opacity:.5;cursor:default}
     // grouped by upload session (the strongest "these belong together" signal
     // we have today); tap to select like Photos; one tap saves and opens the
     // next gallery-less listing. Desktop keeps the keyboard editor (draw()).
-    var hiddenG = {};   // upload-session groups the operator marked "not this listing" (session-only)
+    var collapsedG = {};   // groups the operator folded — photos STAY in the pool, never hidden
     function drawMobile(){
       var orig = imgsOf(p), an = addedNames();
       var prog = galleryProgress();
-      // group the de-duped pool by upload burst; _cluster is the cluster ID
-      // string (set at load), so resolve it to the cluster for its time label.
+      // group the full pool by upload burst; _cluster is the cluster ID string
+      // (set at load), so resolve it to the cluster for its time label. Grouping
+      // is only optional organization — every photo stays visible/selectable.
       var CBYID = {}; CLUSTERS.forEach(function(c){ CBYID[c.id] = c; });
       var groups = {};
       pool.forEach(function(f){ var k = f._cluster || '_'; if(!groups[k]) groups[k]={ key:k, cl:CBYID[k]||null, files:[] }; groups[k].files.push(f); });
       var glist = Object.keys(groups).map(function(k){ return groups[k]; })
-        .filter(function(g){ return !hiddenG[g.key]; })
         .sort(function(a,b){ return (b.files.length - a.files.length) || ((b.cl?new Date(b.cl.start):0) - (a.cl?new Date(a.cl.start):0)); });
 
       var h = '';
@@ -799,13 +813,15 @@ button:disabled{opacity:.5;cursor:default}
       // available photos, grouped by upload session
       if (!glist.length) h += '<div class="msec"><h3>Available photos</h3><div class="why">No unassigned photos left in the pool.</div></div>';
       else {
-        h += '<div class="msec"><h3>Available photos</h3>'+
-             '<div class="why" style="margin-top:0">Grouped by upload session — photos uploaded together usually belong to one property. Tap the ones that belong; hide a group that clearly doesn\'t.</div></div>';
+        h += '<div class="msec"><h3>Available photos ('+pool.length+')</h3>'+
+             '<div class="why" style="margin-top:0">Every unassigned photo is shown — nothing is hidden or deduplicated. Grouped by upload session only as a hint; fold a group with ▾ to tidy the view (photos stay in the pool). Tap the ones that belong.</div></div>';
         glist.forEach(function(g){
           var when = g.cl ? new Date(g.cl.start).toLocaleString() : 'unknown time';
-          h += '<div class="mgrp"><div class="gh"><b>Uploaded together</b> · '+g.files.length+' photo(s) · '+esc(when)+
-               '<button class="gsel">Select all</button><button class="ghide">Hide</button></div>'+
-               '<div class="mgrid gpg"></div></div>';
+          var folded = !!collapsedG[g.key];
+          h += '<div class="mgrp"><div class="gh"><button class="gfold">'+(folded?'▸':'▾')+'</button>'+
+               '<b>Uploaded together</b> · '+g.files.length+' photo(s) · '+esc(when)+
+               '<button class="gsel">Select all</button></div>'+
+               '<div class="mgrid gpg"'+(folded?' style="display:none"':'')+'></div></div>';
         });
       }
       host.innerHTML = h;
@@ -818,19 +834,20 @@ button:disabled{opacity:.5;cursor:default}
         d.querySelector('.rm').onclick=function(e){ e.stopPropagation(); if(out) delete removed[nm]; else removed[nm]=true; drawMobile(); };
         gal.appendChild(d); });
       an.forEach(function(nm){ var d=document.createElement('div'); d.className='mtile sel'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(nm)+'"><span class="rm">Remove</span>';
-        d.querySelector('.rm').onclick=function(e){ e.stopPropagation(); delete added[nm]; delete suggested[nm]; drawMobile(); }; gal.appendChild(d); });
+        d.querySelector('.rm').onclick=function(e){ e.stopPropagation(); delete added[nm]; drawMobile(); }; gal.appendChild(d); });
 
-      // grouped available tiles
+      // grouped available tiles — every group is always present; folding only
+      // hides the tiles visually (they remain selectable once expanded).
       [].forEach.call(host.querySelectorAll('.mgrp'), function(gEl, gi){
         var g = glist[gi], grid = gEl.querySelector('.gpg');
         g.files.forEach(function(f){
           var d=document.createElement('div'); d.className='mtile'+(added[f.name]?' sel':'');
           d.innerHTML='<img loading="lazy" src="'+PUB+esc(f.name)+'">';
-          d.onclick=function(){ if(added[f.name]){ delete added[f.name]; delete suggested[f.name]; } else { added[f.name]=true; } d.classList.toggle('sel'); syncBar(); };
+          d.onclick=function(){ if(added[f.name]){ delete added[f.name]; } else { added[f.name]=true; } d.classList.toggle('sel'); syncBar(); };
           grid.appendChild(d);
         });
+        var fold = gEl.querySelector('.gfold'); if (fold) fold.onclick=function(){ collapsedG[g.key]=!collapsedG[g.key]; drawMobile(); };
         gEl.querySelector('.gsel').onclick=function(){ g.files.forEach(function(f){ added[f.name]=true; }); drawMobile(); };
-        gEl.querySelector('.ghide').onclick=function(){ hiddenG[g.key]=true; g.files.forEach(function(f){ delete added[f.name]; }); drawMobile(); };
       });
 
       // Sticky bar — the only three decisions after grouping a gallery:
@@ -878,13 +895,13 @@ button:disabled{opacity:.5;cursor:default}
       orig.forEach(function(u){ var nm=nameOf(u); var out=!!removed[nm];
         var d=document.createElement('div'); d.className='pth'+(out?' rmd':''); d.innerHTML='<img loading="lazy" src="'+esc(u)+'"><span class="x">'+(out?'↺':'×')+'</span>';
         d.onclick=function(){ if(out) delete removed[nm]; else removed[nm]=true; draw(); }; gal.appendChild(d); });
-      an.forEach(function(nm){ var d=document.createElement('div'); d.className='pth added'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(nm)+'"><span class="x">×</span>'; d.onclick=function(){ delete added[nm]; delete suggested[nm]; draw(); }; gal.appendChild(d); });
+      an.forEach(function(nm){ var d=document.createElement('div'); d.className='pth added'; d.innerHTML='<img loading="lazy" src="'+PUB+esc(nm)+'"><span class="x">×</span>'; d.onclick=function(){ delete added[nm]; draw(); }; gal.appendChild(d); });
       pool.forEach(function(f, idx){
         var d=document.createElement('div');
-        d.className='pth'+(added[f.name]?(suggested[f.name]?' sug':' added'):'')+(idx===focusIdx?' focus':'');
+        d.className='pth'+(added[f.name]?' added':'')+(idx===focusIdx?' focus':'');
         d.innerHTML='<img loading="lazy" src="'+PUB+esc(f.name)+'">';
         d.onclick=function(e){ handleClick(idx, e); };
-        d.ondblclick=function(e){ e.preventDefault(); toggleOne(idx, true); anchor=idx; focusIdx=idx; draw(); };
+        d.ondblclick=function(e){ e.preventDefault(); toggleOne(idx); anchor=idx; focusIdx=idx; draw(); };
         poolEl.appendChild(d);
       });
       var fe = poolEl.children[focusIdx]; if (fe && fe.scrollIntoView) fe.scrollIntoView({ block:'nearest' });
@@ -901,7 +918,7 @@ button:disabled{opacity:.5;cursor:default}
       if ((tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA') && e.key!=='Escape') return;
       if (e.key==='Enter'){ e.preventDefault(); doSave(); }
       else if (e.key==='Escape'){ e.preventDefault(); detachKey(); BL_SEL=null; host.innerHTML=''; }
-      else if (e.key===' '){ e.preventDefault(); toggleOne(focusIdx, true); anchor=focusIdx; draw(); }
+      else if (e.key===' '){ e.preventDefault(); toggleOne(focusIdx); anchor=focusIdx; draw(); }
       else if (e.key==='ArrowRight'||e.key==='ArrowDown'){ e.preventDefault(); if (focusIdx<pool.length-1){ focusIdx++; draw(); } }
       else if (e.key==='ArrowLeft'||e.key==='ArrowUp'){ e.preventDefault(); if (focusIdx>0){ focusIdx--; draw(); } }
     };
