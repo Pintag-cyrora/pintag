@@ -1,0 +1,163 @@
+name: Deploy Edge Functions
+
+# Deploys Supabase Edge Functions to production WITHOUT a laptop.
+#
+# Why this exists: deploy-prod.yml publishes only the website (GitHub Pages)
+# and the Cloudflare Worker — it does NOT deploy Supabase Edge Functions, and
+# no other workflow did either. So function code on `main` could silently
+# drift from what production actually runs (this is exactly what caused the
+# "401: Admin only" incident: production kept running an old build that
+# authorized admins via the retired parties.type='staff' lookup instead of
+# is_pintag_admin). This workflow closes that gap.
+#
+# Two ways to run:
+#   1. Manually  (workflow_dispatch) — tap "Run workflow" in the Actions tab,
+#      optionally naming which functions to deploy. Use this for the one-time
+#      fix and any ad-hoc redeploy.
+#   2. Automatically (push to main touching supabase/functions/**) — only the
+#      functions whose files changed in that push are deployed.
+#
+# Safety / scope:
+#   * Deploys ONLY the selected functions — never the whole project, never
+#     migrations, never secrets, never anything else.
+#   * Never deletes a function; `functions deploy` is idempotent (re-running
+#     with identical code is a no-op in effect).
+#   * Changes NO function logic. `--no-verify-jwt` matches how these functions
+#     already operate: each one handles its own CORS preflight and enforces
+#     is_pintag_admin()/AAL itself, so the API gateway must pass requests
+#     through to the function's own auth (it fails closed on bad tokens).
+#   * The production project ref is read from config.prod.js (single source of
+#     truth), so this can never target the wrong project and needs no extra
+#     secret for the ref.
+#
+# One-time setup — add a single repository secret:
+#   SUPABASE_ACCESS_TOKEN
+#     Supabase Dashboard → (top-right avatar) Account → Access Tokens →
+#     Generate new token → copy it. Then in GitHub:
+#     Settings → Secrets and variables → Actions → New repository secret →
+#     Name: SUPABASE_ACCESS_TOKEN, Value: <the token>.
+
+on:
+  workflow_dispatch:
+    inputs:
+      functions:
+        description: 'Functions to deploy: "all", or a space/comma-separated list (e.g. "smart-listing-importer generate-listing-content")'
+        required: false
+        default: 'all'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+
+# Never let two deploys run at once; queue them so production is only ever
+# touched by one run at a time (do not cancel a deploy already in progress).
+concurrency:
+  group: deploy-edge-functions
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the push-triggered diff (before..after) always
+          # resolves, even for multi-commit pushes.
+          fetch-depth: 0
+
+      - name: Verify SUPABASE_ACCESS_TOKEN secret is present
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::Missing repository secret SUPABASE_ACCESS_TOKEN. Add it under Settings → Secrets and variables → Actions → New repository secret (see this file's header for how to generate it)."
+            exit 1
+          fi
+          echo "SUPABASE_ACCESS_TOKEN is set."
+
+      - name: Resolve production project ref from config.prod.js
+        id: ref
+        run: |
+          set -euo pipefail
+          REF="$(grep -oE 'https://[a-z0-9]+\.supabase\.co' config.prod.js | head -1 | sed -E 's#https://([a-z0-9]+)\.supabase\.co#\1#')"
+          if [ -z "$REF" ]; then
+            echo "::error::Could not resolve the Supabase project ref from config.prod.js (expected a https://<ref>.supabase.co URL)."
+            exit 1
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Production project ref: $REF"
+
+      - name: Determine which functions to deploy
+        id: pick
+        run: |
+          set -euo pipefail
+          # A directory is a deployable function iff it has an index.ts.
+          all_functions() { for d in supabase/functions/*/; do [ -f "${d}index.ts" ] && basename "$d"; done; }
+          ALL="$(all_functions | sort -u | tr '\n' ' ')"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            INPUT="${{ github.event.inputs.functions }}"
+            if [ -z "$INPUT" ] || [ "$INPUT" = "all" ]; then
+              SELECTED="$ALL"
+            else
+              SELECTED="$(echo "$INPUT" | tr ',' ' ')"
+            fi
+          else
+            # push: deploy only functions whose files changed in this push.
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || echo "$BEFORE" | grep -qE '^0+$'; then
+              RANGE="HEAD^ HEAD"   # new branch / unknown parent: just this commit
+            else
+              RANGE="$BEFORE ${{ github.sha }}"
+            fi
+            SELECTED="$(git diff --name-only $RANGE -- 'supabase/functions/' \
+              | awk -F/ 'NF>=3 && $2=="functions"{print $3}' | sort -u | tr '\n' ' ')"
+          fi
+
+          # Validate every selected name against real, deployable directories.
+          FINAL=""
+          for f in $SELECTED; do
+            if [ -d "supabase/functions/$f" ] && [ -f "supabase/functions/$f/index.ts" ]; then
+              FINAL="$FINAL $f"
+            else
+              echo "::warning::Skipping '$f' — not a deployable function directory."
+            fi
+          done
+          FINAL="$(echo $FINAL | xargs || true)"
+          echo "functions=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "Selected for deploy: '${FINAL:-<none>}'"
+
+      - name: Install Supabase CLI
+        if: steps.pick.outputs.functions != ''
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy selected functions
+        if: steps.pick.outputs.functions != ''
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          REF="${{ steps.ref.outputs.ref }}"
+          {
+            echo "## Edge function deploy"
+            echo ""
+            echo "Project ref: \`$REF\`"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          for f in ${{ steps.pick.outputs.functions }}; do
+            echo "::group::Deploy $f"
+            supabase functions deploy "$f" --project-ref "$REF" --no-verify-jwt
+            echo "::endgroup::"
+            echo "- ✅ deployed \`$f\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Nothing to deploy
+        if: steps.pick.outputs.functions == ''
+        run: |
+          echo "No matching edge functions to deploy for this event."
+          echo "No edge functions matched this run." >> "$GITHUB_STEP_SUMMARY"
