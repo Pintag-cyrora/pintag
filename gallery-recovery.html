@@ -121,7 +121,6 @@ button:disabled{opacity:.5;cursor:default}
   .lhead h2{font-size:1.2rem;margin:10px 0 2px;line-height:1.35}
   .lhead .lsub{color:#C9D3D9;font-size:.9rem}
   .lhead .lmeta{color:#9AA7B0;font-size:.82rem;margin-top:4px}
-  .lhead .mtitle-btn{margin-top:8px}
   .msec{margin:12px 0 4px}
   .msec h3{font-size:.9rem;color:#7FB2B2;margin-bottom:6px}
   .mgrp{margin:10px 0}
@@ -141,7 +140,18 @@ button:disabled{opacity:.5;cursor:default}
     border-top:1px solid rgba(232,237,240,.16);box-shadow:0 -6px 18px rgba(0,0,0,.35)}
   .mlebar .mc{font-weight:700;color:#2D8C8C;font-size:.92rem;margin-right:auto;white-space:nowrap}
   .mlebar .msave{padding:.66rem .9rem}
+  .mlebar .tsave{padding:.66rem .9rem}
   #bleditor{padding-bottom:64px}
+  /* title-pending: a calm status, never an alarm */
+  .lhead .tpend{margin-top:8px;font-size:.82rem;color:#E0B15A;background:rgba(224,177,90,.1);border:1px solid rgba(224,177,90,.3);border-radius:8px;padding:6px 10px}
+  /* Title Pending queue */
+  .tstrip{display:flex;gap:6px;overflow-x:auto;margin:8px 0;-webkit-overflow-scrolling:touch}
+  .tstrip img{width:96px;height:72px;object-fit:cover;border-radius:8px;flex:0 0 auto;background:#0F1418}
+  .tform{margin:6px 0}
+  .tform .ti{width:100%;padding:12px;margin:6px 0;box-sizing:border-box;background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.2);border-radius:8px;font-size:1rem}
+  .tform .tlo{font-size:.85rem;color:#C9D3D9;margin:6px 0}
+  .tform .tlo b{color:#E8EDF0}
+  .tform .tgen{margin-top:4px}
 }
 /* Full-screen preview (used by long-press; inspect before selecting) */
 .pv{position:fixed;inset:0;background:#000;z-index:45;display:flex;flex-direction:column;touch-action:none}
@@ -563,8 +573,54 @@ button:disabled{opacity:.5;cursor:default}
   function blAdvance(){
     var next = nextNeedingGallery();
     if (next){ BL_SEL = next.id; openListingEditor(next); }
-    else { detachKey(); BL_SEL = null; document.getElementById('bleditor').innerHTML =
-      '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Every one in scope has photos.</div>'; }
+    else {
+      detachKey(); BL_SEL = null;
+      var pend = titlePendingList().length;
+      var host = document.getElementById('bleditor');
+      host.innerHTML = '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Every one in scope has photos.</div>'+
+        (pend ? '<div class="card"><b>⏳ '+pend+' title'+(pend>1?'s':'')+' pending</b><div class="why" style="margin-top:4px">Galleries are recovered. Now write or generate the missing titles in one pass.</div><button class="tqstart" style="margin-top:8px">Start titling ('+pend+') →</button></div>' : '');
+      var b = host.querySelector('.tqstart'); if (b) b.onclick = openTitleQueue;
+    }
+  }
+  // ── Title Pending queue (recovery first, enrichment later) ──────────────────
+  function titlePendingList(){ return ALL_PROPS.filter(function(p){ return SET91.has(p.id) && imgsOf(p).length > 0 && needsTitle(p) && (!BL_AGENT || p.managed_by_party_id === BL_AGENT); }); }
+  function openTitleQueue(){ var list = titlePendingList(); if (list.length) openTitleCard(list[0]); else document.getElementById('bleditor').innerHTML = '<div class="card done">✅ Every recovered listing has a title.</div>'; }
+  function openTitleCard(p){
+    var host = document.getElementById('bleditor');
+    var total = titlePendingList().length;
+    var gal = imgsOf(p);
+    var usedAI = false;
+    host.innerHTML =
+      '<div class="mqhead"><div class="mqrow"><b>Titles</b><span class="mqn">'+total+' pending</span></div></div>'+
+      '<div class="lhead">'+(gal[0]?'<img class="cov" loading="lazy" src="'+esc(gal[0])+'">':'')+
+        '<h2>'+esc(displayTitle(p))+'</h2>'+
+        '<div class="lmeta">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 🖼️ '+gal.length+' photo(s)</div></div>'+
+      (gal.length>1?'<div class="tstrip">'+gal.slice(0,6).map(function(u){return '<img loading="lazy" src="'+esc(u)+'">';}).join('')+'</div>':'')+
+      '<div class="tform">'+
+        (nz(p.title_lo)?'<div class="tlo">Lao title (kept): <b>'+esc(p.title_lo)+'</b></div>':'<input class="ti tloin" placeholder="ຫົວຂໍ້ພາສາລາວ · Lao title (optional)">')+
+        '<input class="ti tenin" placeholder="English title" autocomplete="off">'+
+        '<button class="ghost tgen">✨ Suggest with AI</button>'+
+      '</div>';
+    var enIn = host.querySelector('.tenin'), loIn = host.querySelector('.tloin');
+    host.querySelector('.tgen').onclick = async function(){
+      var btn=this; btn.disabled=true; btn.textContent='Generating…';
+      try { var gen = await generateTitles(p); usedAI=true; if(nz(gen.title_en)) enIn.value=gen.title_en; if(loIn && nz(gen.title_lo)) loIn.value=gen.title_lo; btn.textContent='✨ Regenerate'; }
+      catch(e){ alert('AI failed: '+e.message); btn.textContent='✨ Suggest with AI'; }
+      btn.disabled=false; enIn.focus();
+    };
+    var bar=document.createElement('div'); bar.className='mlebar';
+    bar.innerHTML='<span class="mc">'+total+' pending</span><button class="ghost tskip">Skip</button><button class="tsave">Save & Next →</button>';
+    host.appendChild(bar);
+    bar.querySelector('.tskip').onclick=function(){ var l=titlePendingList().filter(function(x){return x.id!==p.id;}); if(l.length) openTitleCard(l[0]); else openTitleQueue(); };
+    bar.querySelector('.tsave').onclick=async function(){
+      var en=(enIn.value||'').trim(); if(!en){ alert('Type an English title (or tap Skip).'); return; }
+      var gen={ title_en:en }; if(loIn && (loIn.value||'').trim()) gen.title_lo=(loIn.value||'').trim();
+      this.disabled=true;
+      try { var f=await saveTitles(p, gen, usedAI?'recovery_ai_generated':'manual'); log('TITLE '+(usedAI?'ai':'manual')+' ['+f.join(', ')+'] → '+label(p)); }
+      catch(e){ this.disabled=false; alert('Save failed: '+e.message); return; }
+      updateSummary();
+      openTitleQueue();   // the just-titled listing drops out; opens the next pending
+    };
   }
 
   function renderByListing(){
@@ -667,7 +723,9 @@ button:disabled{opacity:.5;cursor:default}
              '<h2>'+esc(displayTitle(p))+'</h2>'+
              (nz(p.title_en)&&nz(p.title_lo) ? '<div class="lsub">'+esc(p.title_lo)+'</div>' : '')+
              '<div class="lmeta">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+'</div>'+
-             (!nz(p.title_en) ? '<button class="ghost mtitle-btn">✨ Generate AI title</button>' : '')+
+             // No title? Not a blocker. A calm status, not a prompt — titling
+             // happens in one pass at the end (Recovery first, enrichment later).
+             (!nz(p.title_en) ? '<div class="tpend">⏳ Title pending · save the gallery now, title it later</div>' : '')+
            '</div>';
       // current gallery
       h += '<div class="msec"><h3>In this gallery ('+(orig.length+an.length)+')</h3><div class="mgrid" id="mgal"></div></div>';
@@ -704,15 +762,17 @@ button:disabled{opacity:.5;cursor:default}
         gEl.querySelector('.ghide').onclick=function(){ hiddenG[g.key]=true; g.files.forEach(function(f){ delete added[f.name]; }); drawMobile(); };
       });
 
-      var tb=host.querySelector('.mtitle-btn'); if(tb) tb.onclick=function(){ openTitlePreview(p); };
-
       // sticky Save & Next bar
       var bar=document.createElement('div'); bar.className='mlebar';
       bar.innerHTML='<span class="mc"></span><button class="ghost mskip">Skip</button><button class="msave"></button>';
       host.appendChild(bar);
-      function syncBar(){ var n=addedNames().length;
+      function syncBar(){ var n=addedNames().length, untitled=!nz(p.title_en);
         bar.querySelector('.mc').textContent = n ? n+' selected' : 'Looks complete?';
-        bar.querySelector('.msave').textContent = n ? ('Save '+n+' & Next →') : 'Save & Next →'; }
+        // When the title's missing, name the deferral explicitly so it never
+        // feels like something's wrong or unfinished.
+        bar.querySelector('.msave').textContent = untitled
+          ? (n ? '📌 Save Gallery · Title Later' : '📌 Save · Title Later')
+          : (n ? ('Save '+n+' & Next →') : 'Save & Next →'); }
       bar.querySelector('.msave').onclick=function(){ if(addedNames().length) doSave(); else blAdvance(); };
       bar.querySelector('.mskip').onclick=function(){ blAdvance(); };
       syncBar();
@@ -777,8 +837,11 @@ button:disabled{opacity:.5;cursor:default}
     p.images = merged; CONFMAP[p.id] = worseConf(CONFMAP[p.id], confidence);
     removeFromPool(added);
     log('BY-LISTING assigned '+added.length+' photo(s) → '+label(p)+' ['+confidence+']');
-    // auto AI-title if this listing is still untitled
-    if (AUTO_TITLE && !nz(p.title_en)) {
+    // Recovery first, enrichment later: the mobile queue NEVER interrupts a
+    // save to make a title — the listing is gallery-recovered + title-pending
+    // and handled in the Title Pending queue at the end. Desktop keeps its
+    // explicit opt-in "Auto AI-title after save" checkbox.
+    if (!isPhone() && AUTO_TITLE && !nz(p.title_en)) {
       try { var gen = await generateTitles(p); var f = await saveTitles(p, gen); log('AI TITLE auto ['+f.join(', ')+'] → '+label(p)); }
       catch(e){ log('AI TITLE auto FAIL '+label(p)+': '+e.message); }
     }
@@ -810,13 +873,15 @@ button:disabled{opacity:.5;cursor:default}
     if (d.error) throw new Error(d.error);
     return { title_lo: d.title_lo||'', title_en: d.title_en||'', title_zh: d.title_zh||'' };
   }
-  async function saveTitles(p, gen){
+  async function saveTitles(p, gen, source){
+    source = source || 'recovery_ai_generated';
     var patch = {}, filled = [];
     ['title_lo','title_en','title_zh'].forEach(function(f){ if (!nz(p[f]) && nz(gen[f])) { patch[f] = gen[f]; filled.push(f); } });
     if (!filled.length) return [];
     var r = await sb.from('properties').update(patch).eq('id', p.id).select('id');
     if (r.error) throw new Error(r.error.message);
-    var rows = filled.map(function(f){ return { listing_id:p.id, event_type:'ai_generation', field_name:f, old_value:null, new_value:patch[f], source:'recovery_ai_generated', actor:OPERATOR, details:{ model:'gemini-2.5-flash', via:'gallery-recovery' } }; });
+    var evt = source === 'manual' ? 'manual_entry' : 'ai_generation';
+    var rows = filled.map(function(f){ return { listing_id:p.id, event_type:evt, field_name:f, old_value:null, new_value:patch[f], source:source, actor:OPERATOR, details:{ via:'gallery-recovery', model: source==='manual'?null:'gemini-2.5-flash' } }; });
     var reg = await sb.from('listing_provenance').insert(rows);
     if (reg.error) log('WARN provenance insert failed: '+reg.error.message);
     filled.forEach(function(f){ p[f] = patch[f]; });
