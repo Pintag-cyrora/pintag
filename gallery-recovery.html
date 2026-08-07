@@ -116,11 +116,6 @@ button:disabled{opacity:.5;cursor:default}
   .mqrow .mqn{margin-left:auto;font-size:.82rem;color:#2D8C8C;font-weight:700}
   .mqhead .pbar{height:6px;background:#22303a;border-radius:4px;overflow:hidden;margin-top:6px}
   .mqhead .pbar i{display:block;height:100%;background:#2D8C8C}
-  .lhead{margin-bottom:10px}
-  .lhead .cov{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:#0F1418;font-size:.85rem}
-  .lhead h2{font-size:1.2rem;margin:10px 0 2px;line-height:1.35}
-  .lhead .lsub{color:#C9D3D9;font-size:.9rem}
-  .lhead .lmeta{color:#9AA7B0;font-size:.82rem;margin-top:4px}
   .msec{margin:12px 0 4px}
   .msec h3{font-size:.9rem;color:#7FB2B2;margin-bottom:6px}
   .mgrp{margin:10px 0}
@@ -140,19 +135,11 @@ button:disabled{opacity:.5;cursor:default}
     border-top:1px solid rgba(232,237,240,.16);box-shadow:0 -6px 18px rgba(0,0,0,.35)}
   .mlebar .mc{font-weight:700;color:#2D8C8C;font-size:.92rem;margin-right:auto;white-space:nowrap}
   .mlebar .msave{padding:.66rem .9rem}
-  .mlebar .tsave{padding:.66rem .9rem}
+  .mlebar .msi{padding:.66rem .7rem;font-size:.8rem}
   #bleditor{padding-bottom:64px}
   /* photo-first recovery: minimal factual metadata, no title */
   .idbar{display:flex;flex-wrap:wrap;gap:5px 12px;font-size:.78rem;color:#9AA7B0;margin:2px 0 12px;align-items:center}
   .idbar .pid{font-family:ui-monospace,monospace;color:#7FB2B2;font-weight:700}
-  /* Title Pending queue */
-  .tstrip{display:flex;gap:6px;overflow-x:auto;margin:8px 0;-webkit-overflow-scrolling:touch}
-  .tstrip img{width:96px;height:72px;object-fit:cover;border-radius:8px;flex:0 0 auto;background:#0F1418}
-  .tform{margin:6px 0}
-  .tform .ti{width:100%;padding:12px;margin:6px 0;box-sizing:border-box;background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.2);border-radius:8px;font-size:1rem}
-  .tform .tlo{font-size:.85rem;color:#C9D3D9;margin:6px 0}
-  .tform .tlo b{color:#E8EDF0}
-  .tform .tgen{margin-top:4px}
 }
 /* Full-screen preview (used by long-press; inspect before selecting) */
 .pv{position:fixed;inset:0;background:#000;z-index:45;display:flex;flex-direction:column;touch-action:none}
@@ -576,52 +563,30 @@ button:disabled{opacity:.5;cursor:default}
     if (next){ BL_SEL = next.id; openListingEditor(next); }
     else {
       detachKey(); BL_SEL = null;
-      var pend = titlePendingList().length;
-      var host = document.getElementById('bleditor');
-      host.innerHTML = '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Every one in scope has photos.</div>'+
-        (pend ? '<div class="card"><b>⏳ '+pend+' title'+(pend>1?'s':'')+' pending</b><div class="why" style="margin-top:4px">Galleries are recovered — a separate job. Now review the missing titles in one pass.</div><button class="tqstart" style="margin-top:8px">Start Title Review ('+pend+') →</button></div>' : '');
-      var b = host.querySelector('.tqstart'); if (b) b.onclick = openTitleQueue;
+      // Enrichment (titles, description, details, publish) happens in Smart
+      // Import → Admin, NOT here. Recovery's one job is the photos.
+      document.getElementById('bleditor').innerHTML =
+        '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Every one in scope has photos.</div>'+
+        '<div class="card"><b>Next stage · Complete in Smart Import</b><div class="why" style="margin-top:4px">Galleries are reconnected. Finish the listings in Smart Import (generate title, description, details) → Admin (polish &amp; publish). Use “→ Smart Import” on any listing to send its photos into that flow.</div></div>';
     }
   }
-  // ── Title Pending queue (recovery first, enrichment later) ──────────────────
-  function titlePendingList(){ return ALL_PROPS.filter(function(p){ return SET91.has(p.id) && imgsOf(p).length > 0 && needsTitle(p) && (!BL_AGENT || p.managed_by_party_id === BL_AGENT); }); }
-  function openTitleQueue(){ var list = titlePendingList(); if (list.length) openTitleCard(list[0]); else document.getElementById('bleditor').innerHTML = '<div class="card done">✅ Every recovered listing has a title.</div>'; }
-  function openTitleCard(p){
-    var host = document.getElementById('bleditor');
-    var total = titlePendingList().length;
-    var gal = imgsOf(p);
-    var usedAI = false;
-    host.innerHTML =
-      '<div class="mqhead"><div class="mqrow"><b>Title Review</b><span class="mqn">'+total+' pending</span></div></div>'+
-      '<div class="lhead">'+(gal[0]?'<img class="cov" loading="lazy" src="'+esc(gal[0])+'">':'')+
-        '<h2>'+esc(displayTitle(p))+'</h2>'+
-        '<div class="lmeta">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 🖼️ '+gal.length+' photo(s)</div></div>'+
-      (gal.length>1?'<div class="tstrip">'+gal.slice(0,6).map(function(u){return '<img loading="lazy" src="'+esc(u)+'">';}).join('')+'</div>':'')+
-      '<div class="tform">'+
-        (nz(p.title_lo)?'<div class="tlo">Lao title (kept): <b>'+esc(p.title_lo)+'</b></div>':'<input class="ti tloin" placeholder="ຫົວຂໍ້ພາສາລາວ · Lao title (optional)">')+
-        '<input class="ti tenin" placeholder="English title" autocomplete="off">'+
-        '<button class="ghost tgen">✨ Suggest with AI</button>'+
-      '</div>';
-    var enIn = host.querySelector('.tenin'), loIn = host.querySelector('.tloin');
-    host.querySelector('.tgen').onclick = async function(){
-      var btn=this; btn.disabled=true; btn.textContent='Generating…';
-      try { var gen = await generateTitles(p); usedAI=true; if(nz(gen.title_en)) enIn.value=gen.title_en; if(loIn && nz(gen.title_lo)) loIn.value=gen.title_lo; btn.textContent='✨ Regenerate'; }
-      catch(e){ alert('AI failed: '+e.message); btn.textContent='✨ Suggest with AI'; }
-      btn.disabled=false; enIn.focus();
-    };
-    var bar=document.createElement('div'); bar.className='mlebar';
-    bar.innerHTML='<span class="mc">'+total+' pending</span><button class="ghost tskip">Skip</button><button class="tsave">Save & Next →</button>';
-    host.appendChild(bar);
-    bar.querySelector('.tskip').onclick=function(){ var l=titlePendingList().filter(function(x){return x.id!==p.id;}); if(l.length) openTitleCard(l[0]); else openTitleQueue(); };
-    bar.querySelector('.tsave').onclick=async function(){
-      var en=(enIn.value||'').trim(); if(!en){ alert('Type an English title (or tap Skip).'); return; }
-      var gen={ title_en:en }; if(loIn && (loIn.value||'').trim()) gen.title_lo=(loIn.value||'').trim();
-      this.disabled=true;
-      try { var f=await saveTitles(p, gen, usedAI?'recovery_ai_generated':'manual'); log('TITLE '+(usedAI?'ai':'manual')+' ['+f.join(', ')+'] → '+label(p)); }
-      catch(e){ this.disabled=false; alert('Save failed: '+e.message); return; }
-      updateSummary();
-      openTitleQueue();   // the just-titled listing drops out; opens the next pending
-    };
+  // Recovery → Smart Import handoff. Gallery Recovery is just another input
+  // source (like a Facebook URL or a pasted description): it stages the chosen
+  // photos and opens the existing Smart Import page. One pipeline, one AI, one
+  // editor — the only difference is where the photos came from.
+  var SI_MAX = 15;   // Smart Import's photo cap
+  function sendToSmartImport(names, listingId){
+    names = (names||[]).filter(Boolean);
+    if (!names.length){ alert('Select the photos that belong together first.'); return; }
+    if (names.length > SI_MAX && !confirm(names.length+' photos selected. Smart Import takes up to '+SI_MAX+' — the first '+SI_MAX+' will be sent. Continue?')) return;
+    var urls = names.slice(0, SI_MAX).map(function(n){ return PUB + n; });
+    try {
+      localStorage.setItem('pintag_gr_to_import', JSON.stringify({
+        images: urls, source: 'gallery_recovery', listing_id: listingId || null, at: Date.now()
+      }));
+    } catch(e){ alert('Could not stage photos for Smart Import: '+e.message); return; }
+    log('→ SMART IMPORT: staged '+urls.length+' photo(s)'+(listingId?' (from '+String(listingId).slice(0,8)+')':''));
+    window.location.href = 'admin.html';
   }
 
   function renderByListing(){
@@ -761,16 +726,18 @@ button:disabled{opacity:.5;cursor:default}
         gEl.querySelector('.ghide').onclick=function(){ hiddenG[g.key]=true; g.files.forEach(function(f){ delete added[f.name]; }); drawMobile(); };
       });
 
-      // sticky Save & Next bar
+      // sticky action bar: reconnect photos to this listing (Save & Next), or
+      // send the selected photos into Smart Import to create the listing there.
       var bar=document.createElement('div'); bar.className='mlebar';
-      bar.innerHTML='<span class="mc"></span><button class="ghost mskip">Skip</button><button class="msave"></button>';
+      bar.innerHTML='<span class="mc"></span><button class="ghost msi">→ Smart Import</button><button class="msave"></button>';
       host.appendChild(bar);
       function syncBar(){ var n=addedNames().length;
         // Photo-first: no title in the recovery bar. Just save & advance.
         bar.querySelector('.mc').textContent = n ? n+' selected' : 'Looks complete?';
-        bar.querySelector('.msave').textContent = n ? ('Save '+n+' & Next →') : 'Save & Next →'; }
+        bar.querySelector('.msave').textContent = n ? ('Save '+n+' & Next →') : 'Save & Next →';
+        bar.querySelector('.msi').disabled = !n; }
       bar.querySelector('.msave').onclick=function(){ if(addedNames().length) doSave(); else blAdvance(); };
-      bar.querySelector('.mskip').onclick=function(){ blAdvance(); };
+      bar.querySelector('.msi').onclick=function(){ sendToSmartImport(addedNames(), p.id); };
       syncBar();
       window.scrollTo(0,0);
     }
@@ -783,7 +750,7 @@ button:disabled{opacity:.5;cursor:default}
           '<div class="why">click = focus · dbl-click / Space = add-remove · Shift-click = range · ⌘/Ctrl-click = pick · ←→↑↓ move · Enter = Save · Esc = Cancel</div></div>'+
           '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
           '<button class="blsave">Save ('+an.length+') ↵</button>'+
-          (!nz(p.title_en) ? '<button class="ghost bltit">Generate AI title</button>' : '')+
+          '<button class="ghost blsi">→ Smart Import</button>'+
           '<button class="ghost blclose">Close</button></div>'+
         (ddp.dupes ? '<div class="why" style="color:#E0B15A">⚠ '+ddp.dupes+' duplicate photo(s) hidden from the pool.</div>' : '')+
         '<div class="cols">'+
@@ -805,7 +772,7 @@ button:disabled{opacity:.5;cursor:default}
       var cs=host.querySelector('.blconf'); cs.value=curConf; cs.onchange=function(){ curConf=cs.value; };
       host.querySelector('.blsave').onclick = doSave;
       host.querySelector('.blclose').onclick = function(){ detachKey(); BL_SEL=null; host.innerHTML=''; };
-      var tit=host.querySelector('.bltit'); if (tit) tit.onclick=function(){ openTitlePreview(p); };
+      host.querySelector('.blsi').onclick = function(){ sendToSmartImport(addedNames(), p.id); };
     }
 
     BL_KEY = function(e){

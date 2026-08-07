@@ -2350,6 +2350,29 @@ function showAdminScreen() {
 async function bootAdmin() {
   _adminToken = await PintagAdminAuth.token();
   showAdminScreen();
+  maybeIngestGalleryRecovery();
+}
+
+// Gallery Recovery is another input source for Smart Import (like a Facebook
+// URL or a pasted description). It stages the chosen photo URLs in
+// localStorage and navigates here; we drop them straight into the existing
+// Smart Import panel — same pipeline, same AI, same review, same editor.
+function maybeIngestGalleryRecovery() {
+  let h = null;
+  try { h = JSON.parse(localStorage.getItem('pintag_gr_to_import') || 'null'); } catch (_) {}
+  if (!h || !Array.isArray(h.images) || !h.images.length) return;
+  localStorage.removeItem('pintag_gr_to_import');   // one-shot; never re-fires on refresh
+  showImportPanel();
+  importImages = h.images.slice(0, 15);             // the panel's photo array
+  refreshImportImageGrid();
+  const msg = document.getElementById('import-message');
+  if (msg) {
+    msg.style.display = 'block';
+    msg.className = 'form-message success';
+    msg.textContent = importImages.length + ' photo(s) from Gallery Recovery attached. Add a description, then Generate.';
+  }
+  const d = document.getElementById('import-description');
+  if (d) d.focus();
 }
 PintagAdminAuth.protect(sbClient, bootAdmin);
 
