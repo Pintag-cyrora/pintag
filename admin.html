@@ -2351,8 +2351,62 @@ function showAdminScreen() {
 // entry, no test account, no dev shortcut.
 async function bootAdmin() {
   _adminToken = await PintagAdminAuth.token();
+  // TEMPORARY diagnostic (?diag=auth) — read-only auth check for the
+  // "401: Admin only" investigation. Runs ONLY inside bootAdmin, i.e. after
+  // admin-auth.js has verified an AAL2 cyrora session server-side, so it is
+  // inherently admin-only. It writes nothing. REMOVE once the issue is found.
+  if (new URLSearchParams(location.search).get('diag') === 'auth') { runAuthDiag(); return; }
   showAdminScreen();
   maybeIngestGalleryRecovery();
+}
+
+// TEMPORARY — see bootAdmin(). Renders the exact values that decide the
+// "Admin only" question, on-screen, with a Copy button. Read-only: it calls
+// getUser / getSession / getAuthenticatorAssuranceLevel and the is_pintag_admin
+// RPC (a SELECT), decodes the JWT locally, and mutates no data.
+async function runAuthDiag() {
+  var lines = [];
+  function add(k, v) { lines.push(k + ': ' + v); }
+  try {
+    var u = (await sbClient.auth.getUser()).data.user || {};
+    var s = (await sbClient.auth.getSession()).data.session;
+    var a = await sbClient.auth.mfa.getAuthenticatorAssuranceLevel();
+    var adm = await sbClient.rpc('is_pintag_admin', { p_uid: u.id });
+    var claims = {};
+    try { claims = JSON.parse(atob((s.access_token.split('.')[1]).replace(/-/g, '+').replace(/_/g, '/'))); } catch (_) {}
+    add('uid', u.id);
+    add('email', u.email);
+    add('currentLevel', a.data ? a.data.currentLevel : '(err ' + (a.error && a.error.message) + ')');
+    add('nextLevel', a.data ? a.data.nextLevel : '');
+    add('token.aal', claims.aal);
+    add('token.role', claims.role);
+    add('token.exp', claims.exp ? new Date(claims.exp * 1000).toISOString() : '');
+    add('is_pintag_admin', JSON.stringify(adm.data));
+    add('is_pintag_admin.error', adm.error ? adm.error.message : 'none');
+    add('_adminToken===session', String((_adminToken || null) === (s ? s.access_token : null)));
+  } catch (e) {
+    add('FATAL', e && e.message);
+  }
+  var text = lines.join('\n');
+  var box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0F1418;color:#E8EDF0;padding:20px;font:14px/1.6 ui-monospace,monospace;overflow:auto';
+  var pre = document.createElement('pre');
+  pre.style.cssText = 'white-space:pre-wrap;word-break:break-all;margin:0 0 16px';
+  pre.textContent = text;
+  var copy = document.createElement('button');
+  copy.textContent = 'Copy';
+  copy.style.cssText = 'padding:12px 18px;margin-right:10px;border:0;border-radius:8px;background:#2D8C8C;color:#fff;font-size:16px;font-weight:600';
+  copy.onclick = function () {
+    (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(
+      function () { copy.textContent = 'Copied ✓'; },
+      function () { var r = document.createRange(); r.selectNode(pre); getSelection().removeAllRanges(); getSelection().addRange(r); copy.textContent = 'Select the text above & copy'; }
+    );
+  };
+  var heading = document.createElement('div');
+  heading.textContent = 'Pintag auth diagnostic (temporary) — screenshot or Copy, then send it over.';
+  heading.style.cssText = 'font:600 15px/1.5 system-ui,sans-serif;margin-bottom:14px;color:#9AA7B0';
+  box.appendChild(heading); box.appendChild(pre); box.appendChild(copy);
+  document.body.appendChild(box);
 }
 
 // Gallery Recovery is another input source for Smart Import (like a Facebook
