@@ -568,7 +568,7 @@ button:disabled{opacity:.5;cursor:default}
       // Import → Admin, NOT here. Recovery's one job is the photos.
       document.getElementById('bleditor').innerHTML =
         '<div class="card done">🎉 No more gallery-less listings'+(BL_AGENT?' for this agent':'')+'. Every one in scope has photos.</div>'+
-        '<div class="card"><b>Next stage · Create Listing</b><div class="why" style="margin-top:4px">Galleries are reconnected. Finish the listings in Create Listing (write a description → AI drafts title, details, translations) → Admin (polish &amp; publish). Every gallery is one of three: it matches this listing (Save), a different existing listing (Change Listing), or none (Create New Listing → Create Listing).</div></div>';
+        '<div class="card"><b>Next stage · Create Listing</b><div class="why" style="margin-top:4px">Galleries are reconnected. Finish the listings in Create Listing (write a description → AI drafts title, details, translations) → Admin (polish &amp; publish). One question per gallery — where does it belong? This listing, another existing listing, or no matching listing (which the software sends into Create Listing → AI Draft → Admin → Publish).</div></div>';
     }
   }
   // Recovery → Create Listing handoff. Gallery Recovery is just one input
@@ -734,13 +734,15 @@ button:disabled{opacity:.5;cursor:default}
       //   ➕ Create New Listing → no existing listing matches → Create Listing
       var bar=document.createElement('div'); bar.className='mlebar';
       bar.innerHTML='<span class="mc"></span>'+
-        '<button class="ghost mchange" hidden>🔄 Change Listing</button>'+
-        '<button class="ghost msi" hidden>➕ Create New Listing</button>'+
+        '<button class="ghost mchange" hidden>🔄 Another Existing Listing</button>'+
+        '<button class="ghost msi" hidden>➕ No Matching Listing</button>'+
         '<button class="msave"></button>';
       host.appendChild(bar);
+      // The operator answers one question — where does this gallery belong? —
+      // with one of three answers. The software decides what each answer does.
       function syncBar(){ var n=addedNames().length;
-        bar.querySelector('.mc').textContent = n ? n+' selected' : 'Looks complete?';
-        bar.querySelector('.msave').textContent = n ? '✅ Save & Next →' : 'Save & Next →';
+        bar.querySelector('.mc').textContent = n ? 'Where does this gallery belong?' : 'Looks complete?';
+        bar.querySelector('.msave').textContent = n ? '✅ This Listing' : 'Skip →';
         bar.querySelector('.mchange').hidden = !n;   // the two alternatives only
         bar.querySelector('.msi').hidden = !n;       // apply once photos are chosen
       }
@@ -758,9 +760,9 @@ button:disabled{opacity:.5;cursor:default}
           '<div class="meta">📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 👤 '+esc(agentName(p)||'no agent')+'</div>'+
           '<div class="why">click = focus · dbl-click / Space = add-remove · Shift-click = range · ⌘/Ctrl-click = pick · ←→↑↓ move · Enter = Save · Esc = Cancel</div></div>'+
           '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
-          '<button class="blsave">✅ Save ('+an.length+') ↵</button>'+
-          '<button class="ghost blchange">🔄 Change Listing</button>'+
-          '<button class="ghost blsi">➕ Create New Listing</button>'+
+          '<button class="blsave">✅ This Listing ('+an.length+') ↵</button>'+
+          '<button class="ghost blchange">🔄 Another Existing Listing</button>'+
+          '<button class="ghost blsi">➕ No Matching Listing</button>'+
           '<button class="ghost blclose">Close</button></div>'+
         (ddp.dupes ? '<div class="why" style="color:#E0B15A">⚠ '+ddp.dupes+' duplicate photo(s) hidden from the pool.</div>' : '')+
         '<div class="cols">'+
