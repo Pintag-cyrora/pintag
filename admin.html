@@ -2384,6 +2384,25 @@ async function runAuthDiag() {
     add('is_pintag_admin', JSON.stringify(adm.data));
     add('is_pintag_admin.error', adm.error ? adm.error.message : 'none');
     add('_adminToken===session', String((_adminToken || null) === (s ? s.access_token : null)));
+    // Live probe: hit smart-listing-importer with the EXACT headers
+    // runSmartImport uses, minimal body. The auth gate runs before any
+    // Gemini call, so a denial returns immediately. The HTTP STATUS is the
+    // tell: 401 = old staff-lookup build still deployed; 403 = current build
+    // (is_pintag_admin/AAL) denying; 200/500 = auth passed (reached Gemini).
+    add('', '');
+    add('--- live importer probe ---', '');
+    try {
+      var probe = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON) },
+        body: JSON.stringify({ description: 'diagnostic probe', image_urls: [], source: 'diag' })
+      });
+      var body = await probe.text();
+      add('importer.status', probe.status);
+      add('importer.body', body.slice(0, 400));
+    } catch (pe) {
+      add('importer.fetch_error', pe && pe.message);
+    }
   } catch (e) {
     add('FATAL', e && e.message);
   }
