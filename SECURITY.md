@@ -1,15 +1,48 @@
 # Pintag Security Posture
 
-Last updated: 2026-06-25 (deep audit pass + final verification pass)
+**This is the single owning document for Pintag's security posture.**
+Last updated: 2026-08-06 (L1 Production Safe baseline). The dated audit
+reports are point-in-time historical records and are never updated; this
+document always describes NOW.
 
-> ## ⚠ SUPERSEDED IN PART — read this first (2026-08-04)
+## Current posture (2026-08-06)
+
+- **One administrator** (`cyrora.trading@gmail.com`), allowlisted in
+  `admin_accounts`; `is_pintag_admin()` is the single authorization boundary
+  for RLS, storage, and every admin edge function.
+- **MFA enforced at the data layer** — `is_pintag_admin()` requires the
+  session's `aal = 'aal2'` claim (migration `20260806010000`), and every
+  admin edge function independently refuses non-MFA tokens with 403.
+  State: **Built · verification pending** (`docs/L1_PRODUCTION_SAFE_CERTIFICATION.md`).
+- **No hard deletes** — properties soft-delete (`deleted_at`) with a
+  full-row snapshot trigger; all cascades from `properties` converted to
+  `SET NULL`; statements hard-deleting ≥10 rows are blocked in the database
+  (migration `20260806020000` / `030000`). State: **Built · verification pending**.
+- **Mass-delete + anomaly alerting** — `ops_alerts` + webhook via database
+  triggers; uptime/floor monitoring workflow as backstop.
+- **SSRF-hardened fetches** — allowlist + size cap + content-type +
+  final-redirect-host re-check on every server-side fetch.
+- **DR** — weekly encrypted off-platform backup + quarterly restore drill
+  workflows; RPO/RTO committed in `docs/BACKUP_AND_DISASTER_RECOVERY.md` §5b.
+  State: **Built · first green run pending** (`ops/README.md` setup).
+
+**The security document set (one owner per responsibility):**
+
+| Document | Owns |
+|---|---|
+| `SECURITY.md` (this file) | Current posture; XSS/CSP/rate-limiting reference; test suite |
+| `docs/L1_SECURITY_BASELINE_2026-08-06.md` | What the L1 baseline changed, verification, rollback |
+| `docs/L1_VERIFICATION_PACK.md` + `scripts/verify-l1-baseline.sql` | How to verify it |
+| `docs/L1_PRODUCTION_SAFE_CERTIFICATION.md` | Whether it is verified (evidence record) |
+| `SECURITY_AUDIT_2026-08-04.md`, `docs/FINAL_SECURITY_REPORT_2026-08-04.md`, `docs/XSS_AUDIT_2026-08-06.md` | **Historical** — point-in-time records, never updated |
+
+> ## Historical context (2026-08-04)
 >
-> This document is the **pre-incident June 2026 audit**. On **2026-08-03** Pintag
+> The body of this document below is the **pre-incident June 2026 audit**,
+> kept for its still-valid reference sections. On **2026-08-03** Pintag
 > suffered a production breach (a weak-password `testadmin@pintag.io` account +
 > permissive `USING(true)` write policies that dashboard drift had reintroduced).
-> The response replaced the entire authorization model. The current, authoritative
-> posture is **`SECURITY_AUDIT_2026-08-04.md`** — read it for anything about
-> administrators, authentication, RLS, storage, or edge-function auth.
+> The response replaced the entire authorization model (summarized above).
 >
 > What changed, and what is now **stale below**:
 >

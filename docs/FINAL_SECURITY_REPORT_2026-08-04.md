@@ -1,5 +1,9 @@
 # Pintag — Final Technical Security Report (repository-wide sweep)
 
+> **📜 HISTORICAL RECORD — never updated.** Point-in-time report of 2026-08-04,
+> partly superseded by the L1 baseline (2026-08-06). Current posture:
+> **`SECURITY.md`**. Do not amend this file.
+
 **Date:** 2026-08-04 · **Project:** `pintag-cyrora/pintag` (production Supabase `eoladhcljbpbhnrmmpev`)
 **Scope:** final repository-wide audit for residual privileged paths and secrets, per the nine
 requested checks. **Result: 0 Critical, 0 High** → report issued. Maintenance mode remains ON;

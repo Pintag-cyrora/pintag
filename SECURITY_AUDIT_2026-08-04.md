@@ -1,5 +1,9 @@
 # Pintag Security Audit — Unified Administrator Authentication
 
+> **📜 HISTORICAL RECORD — never updated.** This is the point-in-time audit of
+> 2026-08-04. Parts are superseded by the L1 baseline (2026-08-06). The
+> current posture always lives in **`SECURITY.md`**; do not amend this file.
+
 **Date:** 2026-08-04
 **Scope:** Repository-wide administrator authentication, authorization, and storage lockdown, following the 2026-08-03 production breach.
 **Author:** Security hardening pass (single-administrator consolidation).

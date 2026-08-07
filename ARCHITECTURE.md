@@ -1,16 +1,39 @@
-# Pintag Architecture
+# Pintag Architecture (code-level reference)
 
-> **Status: Baseline established.** Rental Terms v2, Unit Availability, the
-> Shared UI Component System, Lead/Inquiry Analytics, Similar Properties,
-> shared design tokens, shared formatters, and the canonical resolvers
-> below are all considered stable. Pintag is now in an **architecture
-> freeze**: new work should extend these systems (see §2 Canonical APIs
-> and §5 Extension Guide) rather than introduce a new pattern for a
-> problem one of them already solves, unless there is a compelling
-> technical reason to do otherwise. The next phase prioritizes
-> user-facing features built on this foundation over further core
-> refactoring. §6 Known Debt remains the authoritative cleanup backlog —
-> avoid growing it unless new debt is genuinely introduced.
+> **Scope (reconciled 2026-08-07).** Two documents are canonical, at two
+> altitudes, and they do not overlap:
+>
+> - **The Architecture & Company Blueprint** (`docs/BLUEPRINT.md` for the
+>   pointer) — company level: Constitution, North Star, moats, the L1–L5 /
+>   P1–P5 ladders, AI architecture, governance. Strategy lives THERE.
+> - **This file** — repository level: which module owns which concept,
+>   the canonical APIs/resolvers/formatters, and how to extend them
+>   without recoupling what was deliberately kept separate. Code patterns
+>   live HERE.
+>
+> The "extend, don't parallel-implement" rule below stands. §6 Known Debt
+> remains the code-level debt list; system-level keep/merge/archive
+> decisions live in `docs/OVER_ENGINEERING_REGISTER.md`.
+
+> **Post-incident architecture (2026-08, not yet reflected in the body
+> below — treat this note as authoritative where they conflict):**
+>
+> - **Authorization** is a single primitive: `is_pintag_admin(uid)`
+>   (allowlist `admin_accounts` **+ MFA `aal2` claim**) gates every write —
+>   RLS, storage, and all admin edge functions
+>   (`supabase/migrations/20260804130000`, `20260806010000`).
+> - **Deletion is a state**: `properties.deleted_at` soft delete, full-row
+>   snapshot triggers, no cascades from `properties`, statement-level
+>   mass-delete guard (`20260806020000`, `20260806030000`). The
+>   application never hard-deletes.
+> - **Provenance** is append-only and delete-safe (plain-uuid links, no
+>   FKs): `listing_provenance`, `import_records`/`import_images`,
+>   `listing_image_snapshots`, `gallery_assignments`
+>   (`20260805000000`–`20260805040000`).
+> - **The legacy agent portal and staff model are retired** — pages pruned
+>   at deploy, `is_pintag_staff()` aliases the admin check. Anything below
+>   describing agent self-service auth is historical.
+> - Security posture: `SECURITY.md`. Doc ownership: `docs/DOCUMENTATION_MAP.md`.
 
 This is the canonical architectural reference for Pintag. It exists because
 this codebase has, on more than one occasion, let concepts that were
