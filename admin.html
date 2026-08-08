@@ -3864,7 +3864,15 @@ async function generateAIContent() {
     if (rentalTermsSummary)      known.push(rentalTermsSummary);
     const knownLine = known.length ? ('Known details: ' + known.join('; ') + '.') : '';
 
-    const description = [humanDesc, knownLine].filter(Boolean).join('\n\n');
+    // Edit Listing is an EXISTING listing that already has a title but often no
+    // description. Pass the current English title as a CLUE (not truth) so the
+    // AI can improve it from the photos, or preserve it if already specific.
+    const existingTitle = (document.getElementById('f-title-en').value || '').trim();
+    const titleClue = existingTitle
+      ? 'Current listing title (a CLUE only — it may be generic or inaccurate; improve it if the photos reveal stronger, specific characteristics, but preserve it if it is already specific and accurate): "' + existingTitle + '"'
+      : '';
+
+    const description = [humanDesc, titleClue, knownLine].filter(Boolean).join('\n\n');
 
     const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
       method: 'POST',

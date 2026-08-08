@@ -235,6 +235,21 @@ CONFLICT DETECTION (flag, never silently "correct"):
   * add an entry to "photo_conflicts" describing the discrepancy.
 - Only flag a conflict when the photo evidence is CLEAR and positive — never on mere absence. "photo_conflicts" is an empty array [] when there is no clear contradiction.
 
+TITLE — the single most important field. Make THIS property recognizable, not a template.
+- The PHOTOS are your PRIMARY source for what makes this property distinctive. From the photos + any description + supplied fields, pick the 1–3 STRONGEST property-specific characteristics that are actually supported (e.g. modern furnished interior, private garden, swimming pool, 3 bedrooms, large living room, brand-new finish, river view).
+- A "Current listing title" may be provided in the text above — treat it as a CLUE, not as truth:
+  * If the photos reveal stronger, more specific characteristics, IMPROVE the title to reflect them.
+  * If the current title is already specific and clearly accurate, PRESERVE its useful information — do NOT rewrite a good title just for variation.
+  * Do NOT assume the current title is accurate beyond what it says, and do NOT invent anything to "beat" it.
+  * Do NOT return it unchanged if it is generic (e.g. "House for Rent in <District>") — rebuild it from real, supported features.
+- Location (district) is SUPPORTING context at most — never the whole title. A title that only names type + transaction + district is a FAILURE.
+- Use only features the evidence supports. Never invent. Keep it natural (about 5–10 words); do NOT keyword-stuff — two well-chosen differentiators beat five.
+- Two different properties must produce two different titles.
+- Only if the photos show nothing distinctive AND the text is sparse: fall back to the clearest supported detail (type + one real field), still avoiding the bare district template.
+Example — Current listing title "House for Rent in Sisattanak"; photos show a modern furnished interior, large living room, private garden, and 3 bedrooms → a strong title is "Modern 3-Bedroom Home with Private Garden" (the district moves into the description as supporting context, not the title).
+
+DESCRIPTIONS — generate from the ACTUAL photos plus the available data (the current-title clue, the structured fields, and any description text). When there is little or no description, WRITE the description from what the photos genuinely show plus the supported fields — never leave it thin, and never invent. Lead with the genuinely notable, verifiable features; weave in location and supported details naturally; state only what the evidence supports.
+
 Return ONLY valid JSON with no extra text or markdown.
 title_lo and title_zh must always be non-null strings (translate from the English title if needed).
 Example of correct title format:
