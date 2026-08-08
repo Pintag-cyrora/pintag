@@ -651,9 +651,13 @@ button:disabled{opacity:.5;cursor:default}
         gb.onclick = function(){ openTitlePreview(p); };
         row.appendChild(gb);
       }
-      var b = document.createElement('button'); b.className='ghost'; b.textContent = 'Review / edit';
+      var b = document.createElement('button'); b.className='ghost'; b.textContent = 'Review / edit photos';
       b.onclick = function(){ openGalleryFor(p); };   // the one Gallery Editor
-      row.appendChild(b); rl.appendChild(row);
+      row.appendChild(b);
+      // Forward: finish the listing in Admin (description → AI Generate → publish).
+      var cb = document.createElement('button'); cb.textContent = 'Complete in Admin →';
+      cb.onclick = function(){ goComplete(p.id); };
+      row.appendChild(cb); rl.appendChild(row);
     });
   }
 
@@ -719,6 +723,15 @@ button:disabled{opacity:.5;cursor:default}
   // Save & Next and Skip). Shows the completion card when none remain.
   // skipId: don't land back on a listing the operator just decided about (moved
   // its gallery away / marked no-match). It re-enters the queue naturally later.
+  // Forward momentum: a listing whose gallery is correct LEAVES the recovery
+  // queue and goes to Admin to be finished (description → AI Generate → review →
+  // Publish). The listing's photos remain in the forensic pool — this navigation
+  // is about the QUEUE, not the pool. admin.html?edit=<id> deep-links straight
+  // into that listing's editor (which has "✨ Generate AI Content").
+  function goComplete(id){
+    if (!id) return;
+    window.location.href = 'admin.html?edit=' + encodeURIComponent(id);
+  }
   function blAdvance(skipId){
     var next = nextNeedingGallery(skipId);
     if (next){ BL_SEL = next.id; openListingEditor(next); }
@@ -850,11 +863,17 @@ button:disabled{opacity:.5;cursor:default}
     function workingUrls(){ return keptOrigUrls().concat(addedNames().map(function(n){ return PUB+n; })); }
     function workingCount(){ return keptOrigUrls().length + addedNames().length; }
     function dirty(){ return addedNames().length || Object.keys(removed).length; }
-    // ✅ This Listing — persist the working gallery to p (adds + removes in one
-    // write). Optimistic + Undo instead of a confirmation dialog.
+    // ✅ Finish — persist the working gallery to p (adds + removes + moves in one
+    // pass), then send this COMPLETED listing forward to Admin. It leaves the
+    // recovery queue (it now has a gallery) but its photos stay in the forensic
+    // pool. Photo pool ≠ recovery queue.
     async function doSaveGallery(){
-      if (!dirty()) { blAdvance(); return; }                 // nothing changed → just move on
-      var before = imgsOf(p).slice();                        // for Undo
+      if (!dirty()) {
+        if (workingCount() > 0) goComplete(p.id);   // gallery already correct → forward to Admin
+        else blAdvance();                           // nothing to finish here → next queue item
+        return;
+      }
+      var before = imgsOf(p).slice();                        // for Undo (empty-out case)
       var addedN = addedNames(), removedN = Object.keys(removed);
       // MOVE, never copy: any added photo owned by another listing is detached
       // from it first (logged + reversible), then attached here.
@@ -872,16 +891,19 @@ button:disabled{opacity:.5;cursor:default}
       removedN.forEach(function(nm){ delete OWNER[nm]; });   // back to unassigned (still in the pool)
       log('GALLERY '+String(p.id).slice(0,8)+': +'+addedN.length+' / -'+removedN.length+(moved?(' ('+moved+' moved off other listings)'):''));
       updateSummary(); renderAudit();
-      // Only a REMOVAL is destructive → offer Undo. (Freed photos rejoin the
-      // pool on the next load; Undo restores the exact prior gallery.)
-      if (removedN.length) {
-        showUndoToast(removedN.length+' photo'+(removedN.length>1?'s':'')+' removed', function(){
-          sb.from('properties').update({ images: before.length?before:null }).eq('id', p.id).select('id').then(function(){
-            log('UNDO removal → '+String(p.id).slice(0,8)); location.reload();
-          });
-        }, 12);
+      if (workingCount() > 0) {
+        goComplete(p.id);   // completed → forward to Admin (description → AI → publish)
+      } else {
+        // The operator emptied the gallery → it stays in the recovery queue.
+        if (removedN.length) {
+          showUndoToast(removedN.length+' photo'+(removedN.length>1?'s':'')+' removed', function(){
+            sb.from('properties').update({ images: before.length?before:null }).eq('id', p.id).select('id').then(function(){
+              log('UNDO removal → '+String(p.id).slice(0,8)); location.reload();
+            });
+          }, 12);
+        }
+        blAdvance();
       }
-      blAdvance();
     }
     // One photo, one tap. No auto-selection, no "suggested" mates — the operator
     // chooses every photo explicitly (forensic recovery, not an AI assistant).
@@ -967,7 +989,7 @@ button:disabled{opacity:.5;cursor:default}
         g.files.forEach(function(f){
           var badge = ownerBadge(f.name, p.id);
           var d=document.createElement('div'); d.className='mtile'+(added[f.name]?' sel':'')+(badge?' owned':'');
-          d.innerHTML='<img loading="lazy" src="'+PUB+esc(f.name)+'">'+(badge?'<span class="obadge">→ '+esc(badge)+'</span>':'');
+          d.innerHTML='<img loading="lazy" src="'+PUB+esc(f.name)+'">'+(badge?'<span class="obadge">Assigned to: '+esc(badge)+'</span>':'');
           d.onclick=function(){ if(added[f.name]){ delete added[f.name]; } else { added[f.name]=true; } d.classList.toggle('sel'); syncBar(); };
           grid.appendChild(d);
         });
@@ -976,9 +998,9 @@ button:disabled{opacity:.5;cursor:default}
       });
 
       // Sticky bar — the only three decisions after grouping a gallery:
-      //   ✅ Save            → belongs to THIS listing (attach + next)
-      //   🔄 Change Listing  → belongs to a DIFFERENT existing listing
-      //   ➕ Create New Listing → no existing listing matches → Create Listing
+      //   ✅ Finish          → belongs to THIS listing → save + go to Admin
+      //   🔄 Another Listing → belongs to a DIFFERENT existing listing → move + Admin
+      //   ➕ No Matching     → no existing listing → Create Listing (new draft)
       var bar=document.createElement('div'); bar.className='mlebar';
       bar.innerHTML='<span class="mc"></span>'+
         '<button class="ghost mchange" hidden>🔄 Another Existing Listing</button>'+
@@ -988,8 +1010,8 @@ button:disabled{opacity:.5;cursor:default}
       // The operator answers one question — where does this gallery belong? —
       // with one of three answers, operating on the WORKING gallery.
       function syncBar(){ var w=workingCount();
-        bar.querySelector('.mc').textContent = w ? 'Where does this gallery belong?' : (dirty()?'Empty gallery':'Looks complete?');
-        bar.querySelector('.msave').textContent = w ? '✅ This Listing' : (dirty()?'✅ Save (empty)':'Skip →');
+        bar.querySelector('.mc').textContent = w ? 'Where does this gallery belong?' : (dirty()?'Empty gallery':'No photos selected yet');
+        bar.querySelector('.msave').textContent = w ? '✅ Finish → Admin' : (dirty()?'✅ Save (empty)':'Skip →');
         bar.querySelector('.mchange').hidden = !w;   // reattaching / no-match need a non-empty gallery
         bar.querySelector('.msi').hidden = !w;
       }
@@ -1007,7 +1029,7 @@ button:disabled{opacity:.5;cursor:default}
           '<div class="meta">📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 👤 '+esc(agentName(p)||'no agent')+'</div>'+
           '<div class="why">click = focus · dbl-click / Space = add-remove · Shift-click = range · ⌘/Ctrl-click = pick · ←→↑↓ move · Enter = Save · Esc = Cancel</div></div>'+
           '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
-          '<button class="blsave">✅ This Listing ('+workingCount()+') ↵</button>'+
+          '<button class="blsave">✅ Finish → Complete in Admin ('+workingCount()+') ↵</button>'+
           '<button class="ghost blchange">🔄 Another Existing Listing</button>'+
           '<button class="ghost blsi">➕ No Matching Listing</button>'+
           '<button class="ghost blclose">Close</button></div>'+
@@ -1025,7 +1047,7 @@ button:disabled{opacity:.5;cursor:default}
         var badge = ownerBadge(f.name, p.id);
         var d=document.createElement('div');
         d.className='pth'+(added[f.name]?' added':'')+(badge?' owned':'')+(idx===focusIdx?' focus':'');
-        d.innerHTML='<img loading="lazy" src="'+PUB+esc(f.name)+'">'+(badge?'<span class="obadge">→ '+esc(badge)+'</span>':'');
+        d.innerHTML='<img loading="lazy" src="'+PUB+esc(f.name)+'">'+(badge?'<span class="obadge">Assigned to: '+esc(badge)+'</span>':'');
         d.onclick=function(e){ handleClick(idx, e); };
         d.ondblclick=function(e){ e.preventDefault(); toggleOne(idx); anchor=idx; focusIdx=idx; draw(); };
         poolEl.appendChild(d);
@@ -1089,7 +1111,7 @@ button:disabled{opacity:.5;cursor:default}
     var sheet=document.createElement('div'); sheet.className='overlay'; sheet.style.alignItems='flex-end'; sheet.style.padding='0';
     sheet.innerHTML='<div class="modal" style="max-width:none;border-radius:14px 14px 0 0;max-height:82vh">'+
       '<div class="mtitle">Attach '+names.length+' photo(s) to which listing?</div>'+
-      '<div class="ctrls" style="display:flex"><span class="why" style="margin:0">Moves the gallery here; the current listing returns to the queue.</span><button class="ghost cl-x" style="margin-left:auto">Close</button></div>'+
+      '<div class="ctrls" style="display:flex"><span class="why" style="margin:0">Moves the gallery here and opens Admin to finish this listing; the one you came from returns to the recovery queue.</span><button class="ghost cl-x" style="margin-left:auto">Close</button></div>'+
       '<input class="search cl-q" placeholder="Search existing listings by agent, district, type, or title…">'+
       '<div class="cands cl-r" style="display:block"></div></div>';
     document.body.appendChild(sheet);
@@ -1123,16 +1145,12 @@ button:disabled{opacity:.5;cursor:default}
             currentP.images = null;
           }
           close(); updateSummary();
-          log('MOVED '+names.length+' photo(s): '+String(currentP.id).slice(0,8)+' → '+String(d.id).slice(0,8));
-          showUndoToast('Gallery moved to '+displayTitle(d), function(){
-            Promise.all([
-              sb.from('properties').update({ images: cpBefore.length?cpBefore:null }).eq('id', currentP.id).select('id'),
-              sb.from('properties').update({ images: dBefore.length?dBefore:null }).eq('id', d.id).select('id')
-            ]).then(function(){ log('UNDO move'); location.reload(); });
-          }, 12);
-          // Forward momentum: go to the NEXT queue item, not back to the listing
-          // we just emptied. It re-enters the Needs-Gallery queue naturally later.
-          blAdvance(currentP.id);
+          log('MOVED '+names.length+' photo(s): '+String(currentP.id).slice(0,8)+' → '+String(d.id).slice(0,8)+' (reassignment logged)');
+          // Forward momentum: the TARGET listing now has its gallery → send IT
+          // forward to Admin to finish. The listing we came from returns to the
+          // recovery queue (it still needs its own photos). The move is logged in
+          // gallery_assignments and reversible from the listing's timeline.
+          goComplete(d.id);
         };
         row.appendChild(b); r.appendChild(row);
       });
