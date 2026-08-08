@@ -236,6 +236,14 @@ CONFLICT DETECTION (flag, never silently "correct"):
   * add an entry to "photo_conflicts" describing the discrepancy.
 - Only flag a conflict when the photo evidence is CLEAR and positive — never on mere absence. "photo_conflicts" is an empty array [] when there is no clear contradiction.
 
+DIFFERENTIATION & DISTINCT PURPOSES (read this BEFORE writing the title, highlight, and neighbourhood insight):
+- FIRST, identify the strongest property-specific evidence actually supported by the photos or supplied data — e.g. high ceilings, a private pool, a large garden, multiple living areas, a modern kitchen, a panoramic view, distinctive architecture, fully furnished, newly renovated, unusually large bedrooms. Use ONLY features the evidence genuinely supports; never invent.
+- The title, the property highlight, and the neighbourhood insight each have a DIFFERENT job and must NOT repeat the same sentence or concept:
+  * TITLE = the property's recognizable identity (its 1–3 strongest differentiators).
+  * PROPERTY HIGHLIGHT = a DISTINCT visual/functional selling strength or benefit — NOT a restatement of the title.
+  * NEIGHBORHOOD INSIGHT = location ONLY (village, district, and verified nearby places) — never property features.
+- Do NOT repeat the same concept across the title and the highlight. Do NOT put property features into the neighbourhood insight. Do NOT use the photos to invent neighbourhood facts.
+
 TITLE — the single most important field. Make THIS property recognizable, not a template.
 - The PHOTOS are your PRIMARY source for what makes this property distinctive. From the photos + any description + supplied fields, pick the 1–3 STRONGEST property-specific characteristics that are actually supported (e.g. modern furnished interior, private garden, swimming pool, 3 bedrooms, large living room, brand-new finish, river view).
 - A "Current listing title" may be provided in the text above — treat it as a CLUE, not as truth:
@@ -248,6 +256,13 @@ TITLE — the single most important field. Make THIS property recognizable, not 
 - Two different properties must produce two different titles.
 - Only if the photos show nothing distinctive AND the text is sparse: fall back to the clearest supported detail (type + one real field), still avoiding the bare district template.
 Example — Current listing title "House for Rent in Sisattanak"; photos show a modern furnished interior, large living room, private garden, and 3 bedrooms → a strong title is "Modern 3-Bedroom Home with Private Garden" (the district moves into the description as supporting context, not the title).
+
+PROPERTY HIGHLIGHT — sell ONE strong quality; do not echo the title.
+- Its job is to sell the property's strongest VISUAL or FUNCTIONAL quality, or the concrete benefit it gives the resident, grounded ONLY in evidence from the photos or supplied data.
+- It must NOT simply restate the title. If the title already uses the single strongest differentiator, the highlight leads with a DIFFERENT supported strength, or explains the benefit of that feature rather than naming it again.
+- Maximum 160 characters. NEVER pad to reach the limit — prefer roughly 90–140 characters when that is enough; a shorter honest sentence beats a padded one.
+- Only features the evidence supports; no filler, no invented qualities.
+- Example — title "Modern 3-Bedroom Home with Private Garden" → a good highlight leads elsewhere, e.g. "Sunlit open-plan living flows onto a covered terrace, with a fully fitted kitchen and secure off-street parking." (it does NOT repeat "modern 3-bedroom home with private garden").
 
 DESCRIPTIONS — generate from the ACTUAL photos plus the available data (the current-title clue, the structured fields, and any description text). When there is little or no description, WRITE the description from what the photos genuinely show plus the supported fields — never leave it thin, and never invent. Lead with the genuinely notable, verifiable features; weave in location and supported details naturally; state only what the evidence supports.
 
