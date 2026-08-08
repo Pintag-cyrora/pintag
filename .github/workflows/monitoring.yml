@@ -39,10 +39,34 @@ jobs:
     steps:
       - name: Uptime — public site
         run: |
-          # Any 2xx/3xx counts as up (the maintenance page is a healthy 200).
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://pintag.io/)
+          # pintag.io is fronted by a Cloudflare Worker (cloudflare-worker/
+          # og-listing-preview.js). While MAINTENANCE_MODE is on, the public
+          # browsing pages ("/", /index.html, /listings.html, /listing.html) are
+          # served an "Under Maintenance" page as HTTP 503 + Retry-After — an
+          # INTENTIONAL, healthy state (so crawlers treat the downtime as
+          # temporary and never index the placeholder). admin.html and every
+          # asset pass through untouched. Classify accordingly:
+          #   2xx/3xx                         → live
+          #   503 + Pintag maintenance page   → intentional maintenance, NOT an incident
+          #   503 WITHOUT the maintenance page, or any other 4xx/5xx → genuine failure
+          # Logic mirrored by tests/monitoring/uptime-classify.test.sh (kept in
+          # sync by hand — this workflow has no checkout to share a script).
+          resp=$(curl -s --max-time 20 -w '\n%{http_code}' https://pintag.io/)
+          code=$(printf '%s' "$resp" | tail -n1)
+          body=$(printf '%s' "$resp" | sed '$d')
           echo "pintag.io → $code"
-          case "$code" in 2*|3*) ;; *) echo "::error::Public site returned $code"; exit 1;; esac
+          case "$code" in
+            2*|3*)
+              echo "Public site is live." ;;
+            503)
+              if printf '%s' "$body" | grep -qi 'maintenance'; then
+                echo "Public site is in INTENTIONAL maintenance (503 + maintenance page). Not an incident."
+              else
+                echo "::error::Public site returned 503 without the maintenance page — unexpected outage"; exit 1
+              fi ;;
+            *)
+              echo "::error::Public site returned $code"; exit 1 ;;
+          esac
 
       - name: Uptime — admin surface
         run: |
