@@ -55,6 +55,16 @@ button:disabled{opacity:.5;cursor:default}
 #log{position:fixed;bottom:0;left:0;right:0;background:#111a1e;border-top:1px solid rgba(232,237,240,.12);font-size:.72rem;color:#9AA7B0;padding:6px 10px;max-height:22vh;overflow:auto;font-family:ui-monospace,monospace}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
 .modal{background:#1A2428;border:1px solid rgba(232,237,240,.15);border-radius:12px;padding:16px;max-width:560px;width:100%;max-height:86vh;overflow:auto}
+/* Bottom-sheet listing picker (openChangeListing / "Another Existing Listing"):
+   a fixed-height flex column so the head (title + search) STAYS PUT and only the
+   results list scrolls. min-height:0 lets the flex child actually overflow;
+   85dvh tracks the iOS Safari toolbar (vh fallback first); -webkit-overflow-
+   scrolling gives native momentum; overscroll-behavior:contain stops the swipe
+   from chaining to the page. Body/page scroll is NOT disabled. */
+.modal.grsheet{display:flex;flex-direction:column;padding:0;overflow:hidden;max-height:85vh;max-height:85dvh}
+.grsheet-head{flex:0 0 auto;padding:16px 16px 8px}
+.grsheet-head .search{margin:8px 0 0}
+.grsheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:4px 16px 16px}
 .mtitle{font-weight:700;color:#2D8C8C;margin-bottom:8px}
 .trow{border:1px solid rgba(232,237,240,.1);border-radius:8px;padding:8px;margin:6px 0}
 .trow .lg{font-size:.7rem;color:#9AA7B0;text-transform:uppercase}
@@ -1109,11 +1119,14 @@ button:disabled{opacity:.5;cursor:default}
     names = (names||[]).filter(Boolean);
     if (!names.length){ alert('Select the photos first.'); return; }
     var sheet=document.createElement('div'); sheet.className='overlay'; sheet.style.alignItems='flex-end'; sheet.style.padding='0';
-    sheet.innerHTML='<div class="modal" style="max-width:none;border-radius:14px 14px 0 0;max-height:82vh">'+
-      '<div class="mtitle">Attach '+names.length+' photo(s) to which listing?</div>'+
-      '<div class="ctrls" style="display:flex"><span class="why" style="margin:0">Moves the gallery here and opens Admin to finish this listing; the one you came from returns to the recovery queue.</span><button class="ghost cl-x" style="margin-left:auto">Close</button></div>'+
-      '<input class="search cl-q" placeholder="Search existing listings by agent, district, type, or title…">'+
-      '<div class="cands cl-r" style="display:block"></div></div>';
+    sheet.innerHTML='<div class="modal grsheet" style="max-width:none;border-radius:14px 14px 0 0">'+
+      '<div class="grsheet-head">'+
+        '<div class="mtitle">Attach '+names.length+' photo(s) to which listing?</div>'+
+        '<div class="ctrls" style="display:flex"><span class="why" style="margin:0">Moves the gallery here and opens Admin to finish this listing; the one you came from returns to the recovery queue.</span><button class="ghost cl-x" style="margin-left:auto">Close</button></div>'+
+        '<input class="search cl-q" placeholder="Search existing listings by agent, district, type, or title…">'+
+      '</div>'+
+      '<div class="cands cl-r grsheet-body"></div>'+
+    '</div>';
     document.body.appendChild(sheet);
     function close(){ if(sheet.parentNode) sheet.parentNode.removeChild(sheet); }
     sheet.addEventListener('click', function(e){ if(e.target===sheet) close(); });
