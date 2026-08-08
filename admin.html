@@ -3922,12 +3922,30 @@ async function generateAIContent() {
     if (result.description_lo) document.getElementById('f-desc-lo').value = result.description_lo;
     if (result.description_zh) document.getElementById('f-desc-zh').value = result.description_zh;
 
+    // Photo-vs-supplied-data conflicts the AI flagged (it did NOT silently
+    // change your fields). Surfaced for review; nothing is auto-corrected.
+    const conflicts = Array.isArray(result.photo_conflicts) ? result.photo_conflicts : [];
     if (statusEl) {
-      statusEl.className = 'form-message success';
-      statusEl.style = '';
-      statusEl.textContent = '✓ Content generated in Lao, English, and Chinese. Review and save when ready.';
+      if (conflicts.length) {
+        const lines = conflicts.map(c => {
+          const field = (c && c.field) ? c.field : 'field';
+          const claimed = (c && c.claimed != null) ? c.claimed : '—';
+          const observed = (c && c.observed != null) ? c.observed : '—';
+          const note = (c && c.note) ? (' — ' + c.note) : '';
+          return '• ' + field + ': you have "' + claimed + '", photos suggest "' + observed + '"' + note;
+        });
+        statusEl.className = 'form-message';
+        statusEl.style = '';
+        statusEl.style.whiteSpace = 'pre-line';
+        statusEl.textContent = '✓ Content generated. ⚠ The photos may conflict with these fields — review (nothing was auto-changed):\n' + lines.join('\n');
+        // Persist the warning (do not auto-hide a conflict notice).
+      } else {
+        statusEl.className = 'form-message success';
+        statusEl.style = '';
+        statusEl.textContent = '✓ Content generated from the listing’s photos + description in Lao, English, and Chinese. Review and save when ready.';
+        setTimeout(() => { if (statusEl) { statusEl.style.display = 'none'; } }, 5000);
+      }
     }
-    setTimeout(() => { if (statusEl) { statusEl.style.display = 'none'; } }, 5000);
 
   } catch (err) {
     console.error('[AI Gen]', err);
@@ -4245,6 +4263,17 @@ async function runSmartImport() {
 
     revealFormPanel('New Listing (from Smart Import)', '');
     renderImportSummary(aiResult, importImages, fbWarnings);
+
+    // Photo-vs-supplied-data conflicts flagged by the shared pipeline — surface
+    // for review; nothing was auto-corrected.
+    const _conflicts = Array.isArray(aiResult.photo_conflicts) ? aiResult.photo_conflicts : [];
+    if (_conflicts.length) {
+      msgEl.className = 'form-message';
+      msgEl.style.whiteSpace = 'pre-line';
+      msgEl.textContent = '⚠ The photos may conflict with the described details — review before saving:\n' +
+        _conflicts.map(c => '• ' + ((c && c.field) || 'field') + ': "' + ((c && c.claimed) != null ? c.claimed : '—') + '" vs photos "' + ((c && c.observed) != null ? c.observed : '—') + '"' + ((c && c.note) ? (' — ' + c.note) : '')).join('\n');
+      msgEl.style.display = 'block';
+    }
 
   } catch (err) {
     console.error('[Smart Import]', err);

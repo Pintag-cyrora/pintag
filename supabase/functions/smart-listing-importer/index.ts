@@ -148,8 +148,18 @@ function buildPrompt(description: string, imageCount: number): string {
 
   const photoTaskSection = imageCount > 0
     ? `
-TASK B — ANALYZE PHOTOS:
-For each photo (index 0 through ${imageCount - 1}), determine:
+TASK B — ANALYZE THE PHOTOS (you can see them; describe only what is actually visible).
+First, OBSERVE the property across ALL photos and let it inform TASK A and the title/description — note what you can genuinely see:
+- property-type cues (villa, house, apartment, townhouse, land, commercial)
+- rooms visibly present, and how many of each (living, dining, kitchen, bedrooms, bathrooms) — count only what is actually shown
+- kitchen and living areas, and built-in fixtures
+- furniture and appliances actually pictured (e.g. sofa, dining set, bed, wardrobe, refrigerator, air-conditioning unit, water heater, stove)
+- amenities and outdoor features (swimming pool, garden, parking/carport, balcony, gate, fence, rooftop)
+- visible condition and finish (newly built, renovated, tiled/wood/polished floors, freshly painted, or bare/unfinished/needs work)
+- any notable feature a buyer would care about (view, natural light, high ceilings, land plot)
+Use these observations as evidence for the fields, title, highlight, and description. Do NOT list furniture/appliances mechanically — weave the genuinely notable ones in naturally.
+
+Then, for each photo (index 0 through ${imageCount - 1}), determine:
 - room_type: one of exactly: exterior, living_room, kitchen, dining_room, bedroom, bathroom, pool, garden, balcony, other
 - quality_score: 1–5 (5 = best composition, lighting, and clarity)
 
@@ -159,7 +169,7 @@ Then determine:
   Rule: hero first, then remaining exteriors, living/dining areas, kitchen, bedrooms, bathrooms, pool/garden/balcony, other`
     : `
 TASK B — PHOTOS:
-No photos provided. Return empty arrays.`;
+No photos provided. Base everything on the description text only; do not describe any visual detail. Return empty arrays.`;
 
   const photoJsonSection = imageCount > 0
     ? `  "photo_analysis": [{ "index": 0, "room_type": "exterior", "quality_score": 4 }],
@@ -169,10 +179,14 @@ No photos provided. Return empty arrays.`;
   "hero_index": 0,
   "recommended_order": []`;
 
-  return `You are a real estate data extraction AI for Pintag, a premium real estate platform in Vientiane, Laos.${photoSection}
+  return `You are a real estate analyst for Pintag, a premium real estate platform in Vientiane, Laos. You can SEE the property photos included in this request — look at them and analyze what they actually show.${photoSection}
 
-TASK A — EXTRACT from the property description below.
-The description may be in Lao (ລາວ script), English, Thai, or a mix. Extract structured fields.
+METHOD (applies to every field, title, and description you produce):
+  photos + description + supplied structured data  →  visual analysis  →  evidence-grounded draft
+Ground everything in ACTUAL EVIDENCE — what is visible in the photos, what the description states, and any values supplied in a "Known details:" line. Prefer concrete, verifiable detail over generic marketing language, and never assert anything the evidence does not support.
+
+TASK A — DETERMINE the structured fields from ALL the evidence (the photos AND the description text below).
+The description may be in Lao (ລາວ script), English, Thai, a mix, or empty. When the text is sparse or empty, rely on what is CLEARLY VISIBLE in the photos. Extract structured fields.
 
 CONFIDENCE-TAGGED FIELDS — every field listed below under "CONFIDENCE-TAGGED SCHEMA" must be
 returned as an object {"value": <the value, or null>, "confidence": <number 0.0-1.0>}, not a bare value.
@@ -209,6 +223,17 @@ PROPERTY DESCRIPTION:
 ${description || '(no description provided)'}
 """
 ${photoTaskSection}
+
+EVIDENCE & HONESTY RULES (do not violate):
+- State ONLY what is supported by a photo or by the description text. NEVER invent rooms, bedrooms/bathrooms, amenities, a pool, a finish, sizes, or a price that are not visibly shown and not stated.
+- A field MAY be filled from clearly-visible photo evidence when the text does not state it — set a confidence that reflects how certain the visual evidence is. If neither the photos nor the text support a value, return null with confidence 0. Do not guess numbers (bedrooms, bathrooms, sizes, price) beyond what the evidence supports.
+- Absence is not evidence: if something simply is not photographed, that is NOT proof it is missing — do not claim its absence.
+
+CONFLICT DETECTION (flag, never silently "correct"):
+- The description may include a "Known details:" line — values SUPPLIED by staff. If the photos CLEARLY contradict a supplied value (e.g. it says "5 bedroom" but the photos show a single studio room; or "with pool" but the photos positively show there is no pool where one would be), then:
+  * KEEP the supplied value in the field (do NOT overwrite it from the photos), and
+  * add an entry to "photo_conflicts" describing the discrepancy.
+- Only flag a conflict when the photo evidence is CLEAR and positive — never on mere absence. "photo_conflicts" is an empty array [] when there is no clear contradiction.
 
 Return ONLY valid JSON with no extra text or markdown.
 title_lo and title_zh must always be non-null strings (translate from the English title if needed).
@@ -253,6 +278,8 @@ fields above them are plain strings, not confidence-tagged.
   "contact_name": {"value": null, "confidence": 0},
   "contact_phone": {"value": null, "confidence": 0},
   "contact_role": {"value": null, "confidence": 0},
+
+  "photo_conflicts": [{"field": "bedrooms", "claimed": "5", "observed": "1 open-plan studio", "note": "Photos show a single studio space; supplied details claim 5 bedrooms."}],
 
   ${photoJsonSection}
 }`;
@@ -439,6 +466,11 @@ Deno.serve(async (req) => {
       : rawImages.map((_, i) => i);
     enriched.images = orderedIndexes.map(i => rawImages[i]).filter(Boolean);
     enriched.recommended_order = recommendedOrder;
+    // Photo-vs-supplied-data conflicts the model flagged (never silent corrections).
+    // Pass through as-is; consumers (Edit/Create) surface them for human review.
+    enriched.photo_conflicts = Array.isArray(result.photo_conflicts)
+      ? result.photo_conflicts.filter((c: unknown) => c && typeof c === 'object')
+      : [];
     enriched.metadata = { source: importSource, enrichedAt: new Date().toISOString() };
 
     return new Response(JSON.stringify(enriched), {
