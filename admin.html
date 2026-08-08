@@ -3872,7 +3872,37 @@ async function generateAIContent() {
       ? 'Current listing title (a CLUE only — it may be generic or inaccurate; improve it if the photos reveal stronger, specific characteristics, but preserve it if it is already specific and accurate): "' + existingTitle + '"'
       : '';
 
-    const description = [humanDesc, titleClue, knownLine].filter(Boolean).join('\n\n');
+    // ── Neighbourhood facts (village-first) ──────────────────────
+    // Village + District + City + operator-entered nearby landmarks (with the
+    // distances the operator actually typed) are the ONLY local facts the AI
+    // may use for the Neighborhood Insight. The prompt's NEIGHBORHOOD INSIGHT
+    // section anchors on the village and is forbidden from inventing schools,
+    // markets, roads, distances or travel-times beyond what appears here — so a
+    // Xieng Ngeun listing and a Dong Palane listing get genuinely different,
+    // evidence-grounded insights instead of the same generic real-estate prose.
+    const nbLoc = [];
+    if (village)    nbLoc.push('Village: ' + village);
+    if (districtEn) nbLoc.push('District: ' + districtEn);
+    nbLoc.push('City: Vientiane, Laos');
+
+    const nbPlaces = (getNearbyPlaces() || [])
+      .map(function (p) {
+        var nm = (p && (p.name_en || p.name) || '').trim();
+        if (!nm) return '';
+        var d = (p && p.distance || '').toString().trim();
+        return d ? (nm + ' (' + d + ')') : nm;
+      })
+      .filter(Boolean);
+
+    const neighbourhoodBlock =
+      'Neighbourhood — ANCHOR the neighborhood insight on this location, village first:\n'
+      + nbLoc.join('\n')
+      + (nbPlaces.length
+          ? ('\nOperator-provided nearby landmarks (these are the ONLY local facts you may use — do not invent any others, and use only the distances shown here): '
+             + nbPlaces.join('; '))
+          : '\n(No nearby landmarks were provided — do not invent any; keep the neighborhood insight short and honest.)');
+
+    const description = [humanDesc, titleClue, knownLine, neighbourhoodBlock].filter(Boolean).join('\n\n');
 
     const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
       method: 'POST',

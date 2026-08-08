@@ -250,6 +250,16 @@ Example — Current listing title "House for Rent in Sisattanak"; photos show a 
 
 DESCRIPTIONS — generate from the ACTUAL photos plus the available data (the current-title clue, the structured fields, and any description text). When there is little or no description, WRITE the description from what the photos genuinely show plus the supported fields — never leave it thin, and never invent. Lead with the genuinely notable, verifiable features; weave in location and supported details naturally; state only what the evidence supports.
 
+NEIGHBORHOOD INSIGHT — anchor on the VILLAGE, and ground it in facts, not filler.
+- The VILLAGE is the primary geographic anchor; the district and city are only supporting context. If a "Neighbourhood" block with a village is provided in the text, build the insight around THAT village — never write something that could apply to any village in Vientiane.
+- Use ONLY the location facts actually provided: the village, the district, the city, and the operator-provided nearby landmarks (and only the distances given). Do NOT manufacture schools, markets, hospitals, roads, cafes, businesses, landmarks, distances, or travel times that were not provided.
+- SEPARATE property from neighbourhood: the PHOTOS describe the PROPERTY; the neighbourhood insight is driven by the VILLAGE / district / provided landmarks, NOT by the photos.
+- Write what a real renter/buyer would actually want to know about THIS location — practical convenience, what is genuinely nearby (from the provided landmarks), residential-vs-commercial character IF supported. This is not SEO writing.
+- Do NOT use generic filler such as "convenient location", "peaceful neighbourhood", "close to amenities", or "ideal for families" UNLESS a provided fact specifically supports it.
+- Two listings in DIFFERENT villages MUST produce meaningfully DIFFERENT neighbourhood insights.
+- If there are no reliable facts for the village (no landmarks provided and nothing else supported), keep it SHORT and honest — name the village and district and state only what is supported — rather than padding with generic claims.
+- Trilingual: write the English insight from the facts, then TRANSLATE THE SAME FACTS into Lao and Chinese. Do NOT invent different local claims per language — the underlying facts must match across en/lo/zh.
+
 Return ONLY valid JSON with no extra text or markdown.
 title_lo and title_zh must always be non-null strings (translate from the English title if needed).
 Example of correct title format:
