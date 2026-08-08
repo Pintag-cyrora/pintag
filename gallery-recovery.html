@@ -645,6 +645,13 @@ button:disabled{opacity:.5;cursor:default}
       btn.onclick = function () {
         var names = [].map.call(card.querySelectorAll('.gallery input:checked'), function(x){ return x.getAttribute('data-name'); });
         if (!names.length) { alert('Tick at least one photo in the cluster first.'); return; }
+        // On mobile these candidates render inside the openPicker bottom-sheet
+        // (.overlay). Dismiss it first, otherwise the full-screen sheet stays on
+        // top and covers the editor we're about to open (looks like nothing
+        // happened). On desktop the candidates are inline — no .overlay ancestor,
+        // so this is a no-op and behavior is unchanged.
+        var ov = btn.closest && btn.closest('.overlay');
+        if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
         // The cluster is only an INPUT SOURCE: open the ONE unified Gallery Editor
         // for the chosen listing with the ticked photos carried in pre-selected.
         // From there — add/remove photos, 🔄 Another Existing Listing (move),
