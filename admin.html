@@ -538,6 +538,29 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
             </div>
           </div>
 
+          <!-- LEASE-DURATION PRICING — optional tiered rental rates for longer
+               commitments. Flat columns (lease_price_basis / rent_price_3mo /
+               rent_price_6mo / rent_price_12mo, 20260808000000_lease_duration_pricing),
+               NOT rental_terms JSONB. The base 1-month/monthly price is the Rent
+               Price above; each tier is optional (blank = not offered). One
+               listing-level basis toggle (Monthly vs Total) governs all tiers.
+               Shown only for a single-price rental (hidden for sale-only and for
+               multi-unit range mode — per-unit-type lease pricing is out of scope). -->
+          <div class="form-group form-full" id="lease-duration-block" style="display:none;">
+            <label class="form-label">Lease-duration pricing <span style="color:var(--ink-muted);font-weight:400;">— optional. Longer commitments can have a lower rate; leave a duration blank if it isn't offered.</span></label>
+            <div id="lease-basis-row" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:4px 0 12px;font-size:13px;">
+              <span style="color:var(--ink-muted);">These prices are:</span>
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="lease-basis" id="lease-basis-monthly" value="monthly" checked> Monthly (per month)</label>
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="lease-basis" id="lease-basis-total" value="total"> Total for the lease</label>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-group"><label class="form-label">3 months</label><input class="form-input" id="f-rent-3mo" type="number" min="0" placeholder="e.g. 380"></div>
+              <div class="form-group"><label class="form-label">6 months</label><input class="form-input" id="f-rent-6mo" type="number" min="0" placeholder="e.g. 350"></div>
+              <div class="form-group"><label class="form-label">1 year</label><input class="form-input" id="f-rent-12mo" type="number" min="0" placeholder="e.g. 320"></div>
+            </div>
+            <div class="form-hint" id="lease-duration-preview" style="margin-top:10px;"></div>
+          </div>
+
           <!-- RENTAL TERMS — building-level defaults (deposit, utilities,
                service frequency, policies, fees). Completely independent
                of Unit Types' pricing/description overrides -- see
@@ -1469,6 +1492,93 @@ function computeStructuredPrice() {
     rent_period: isSor ? (FREQUENCY_TO_LEGACY_PERIOD[rentPriceFrequency] || 'month') : null
   };
 }
+
+// ── LEASE-DURATION PRICING ────────────────────────────────────────────
+// Optional tiered rental rates (3/6/12-month) with one listing-level basis
+// (Monthly vs Total). Flat columns, not rental_terms JSONB. The base 1-month
+// price is the existing Rent Price. Shown only for a single-price rental.
+function leaseHasUnitTypes() { return document.querySelectorAll('.ut-card').length > 0; }
+function leaseIsRental() {
+  return typeof isRentalTransactionType === 'function'
+    && isRentalTransactionType(document.getElementById('f-transaction').value);
+}
+function leaseBasis() {
+  const t = document.getElementById('lease-basis-total');
+  return (t && t.checked) ? 'total' : 'monthly';
+}
+// The rent leg's currency + base monthly amount: price_* for a pure for_rent
+// listing, rent_price_* for a sale_or_rent listing. Base is always a per-month
+// figure (the primary rent) regardless of the tier basis.
+function leaseRentContext() {
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  const curEl  = document.getElementById(isSor ? 'f-rent-currency' : 'f-price-currency');
+  const amtEl  = document.getElementById(isSor ? 'f-rent-amount'   : 'f-price-amount');
+  const currency = (curEl && curEl.value) || (typeof DEFAULT_CURRENCY !== 'undefined' ? DEFAULT_CURRENCY : 'USD');
+  const baseRaw = amtEl ? amtEl.value.trim() : '';
+  const base = baseRaw === '' ? null : Number(baseRaw);
+  return { currency, base };
+}
+function leaseTier(id) {
+  const el = document.getElementById(id);
+  const raw = el ? el.value.trim() : '';
+  return raw === '' ? null : Number(raw);
+}
+// The value written to the property record. Only meaningful for a single-price
+// rental; null everything otherwise (sale-only, or multi-unit range mode) so a
+// stale value never leaks into a non-rental listing. Basis is stored only when
+// at least one tier is entered — no tiers ⇒ all NULL ⇒ today's behavior.
+function computeLeaseDurationPricing() {
+  const out = { lease_price_basis: null, rent_price_3mo: null, rent_price_6mo: null, rent_price_12mo: null };
+  if (!leaseIsRental() || leaseHasUnitTypes()) return out;
+  const t3 = leaseTier('f-rent-3mo'), t6 = leaseTier('f-rent-6mo'), t12 = leaseTier('f-rent-12mo');
+  out.rent_price_3mo = t3; out.rent_price_6mo = t6; out.rent_price_12mo = t12;
+  if (t3 != null || t6 != null || t12 != null) out.lease_price_basis = leaseBasis();
+  return out;
+}
+// Extremely explicit preview so whoever edits the listing can never mistake a
+// monthly rate for a lease total. Monthly → "$380/month"; Total → "$1,100 total".
+function renderLeasePreview() {
+  const host = document.getElementById('lease-duration-preview');
+  if (!host) return;
+  const ctx = leaseRentContext();
+  const basis = leaseBasis();
+  const money = (n) => (typeof formatMoney === 'function' ? formatMoney(n, ctx.currency) : (ctx.currency + ' ' + n));
+  const suffix = basis === 'total' ? ' total' : '/month';
+  const lines = [];
+  if (ctx.base != null) lines.push('1 month — ' + money(ctx.base) + '/month');
+  const tiers = [['3 months', leaseTier('f-rent-3mo')], ['6 months', leaseTier('f-rent-6mo')], ['1 year', leaseTier('f-rent-12mo')]];
+  tiers.forEach(([label, val]) => { if (val != null) lines.push(label + ' — ' + money(val) + suffix); });
+  if (lines.length <= (ctx.base != null ? 1 : 0)) {
+    host.textContent = basis === 'total'
+      ? 'Enter a rate to see it here (shown as a whole-lease total, e.g. “6 months — ' + money(2000) + ' total”).'
+      : 'Enter a rate to see it here (shown per month, e.g. “6 months — ' + money(350) + '/month”).';
+    host.style.opacity = '0.7';
+    return;
+  }
+  host.style.opacity = '1';
+  host.innerHTML = lines.map(l => '<div>' + esc(l) + '</div>').join('');
+}
+// Visibility + preview: single-price rental only. Called from onTransactionChange,
+// syncPricingMode (unit-type changes), and the field/basis/currency listeners.
+function syncLeaseDurationPricing() {
+  const block = document.getElementById('lease-duration-block');
+  if (!block) return;
+  block.style.display = (leaseIsRental() && !leaseHasUnitTypes()) ? '' : 'none';
+  renderLeasePreview();
+}
+function initLeaseDurationPricing() {
+  ['f-rent-3mo', 'f-rent-6mo', 'f-rent-12mo'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.addEventListener('input', renderLeasePreview);
+  });
+  ['lease-basis-monthly', 'lease-basis-total'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.addEventListener('change', renderLeasePreview);
+  });
+  // The rent currency drives the preview's money formatting.
+  ['f-price-currency', 'f-rent-currency', 'f-price-amount', 'f-rent-amount'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.addEventListener('input', renderLeasePreview);
+  });
+}
+
 // Smart Import still returns a free-text price string until the importer
 // itself is upgraded to emit structured amount/currency (a separate,
 // later pass). Best-effort parse into the new Price fields so imports
@@ -2068,6 +2178,10 @@ function syncPricingMode() {
     document.getElementById('sale-range-hint').style.display = 'none';
     document.getElementById('rent-range-hint').style.display = 'none';
   }
+  // Lease-duration pricing is building-level single-price only — hide it the
+  // moment unit types make pricing a range (per-unit-type lease pricing is out
+  // of scope), and re-show it when they're removed.
+  syncLeaseDurationPricing();
 }
 
 // Native HTML5 drag-and-drop reordering — no library. sort_order itself is
@@ -2362,6 +2476,7 @@ function showAdminScreen() {
 async function bootAdmin() {
   _adminToken = await PintagAdminAuth.token();
   showAdminScreen();
+  initLeaseDurationPricing();
   maybeIngestGalleryRecovery();
 }
 
@@ -3025,6 +3140,7 @@ function onTransactionChange() {
   }
   syncUnitTypePriceFields();
   syncPricingMode();
+  syncLeaseDurationPricing();
 }
 
 // ── FORM SHOW/HIDE ────────────────────────────────────────────────
@@ -3139,6 +3255,13 @@ async function editListing(id, from) {
   document.getElementById('f-rent-amount').value      = p.rent_price_amount != null ? p.rent_price_amount : '';
   document.getElementById('f-rent-currency').value    = p.rent_price_currency || DEFAULT_CURRENCY;
   document.getElementById('f-rent-frequency').value   = p.rent_price_frequency || 'monthly';
+  // Lease-duration pricing (optional tiers + basis). Null columns → blank inputs
+  // + Monthly default, i.e. an existing single-price listing is unchanged.
+  document.getElementById('f-rent-3mo').value  = p.rent_price_3mo  != null ? p.rent_price_3mo  : '';
+  document.getElementById('f-rent-6mo').value  = p.rent_price_6mo  != null ? p.rent_price_6mo  : '';
+  document.getElementById('f-rent-12mo').value = p.rent_price_12mo != null ? p.rent_price_12mo : '';
+  document.getElementById('lease-basis-total').checked   = (p.lease_price_basis === 'total');
+  document.getElementById('lease-basis-monthly').checked = (p.lease_price_basis !== 'total');
   document.getElementById('f-price-previous').value = p.price_previous || '';
   document.getElementById('f-land-title').value  = p.land_title_type || '';
   document.getElementById('f-featured').value    = String(p.is_featured || false);
@@ -3409,6 +3532,7 @@ async function saveListing(e) {
     rent_price_amount:    priceFields.rent_price_amount,
     rent_price_currency:   priceFields.rent_price_currency,
     rent_price_frequency:  priceFields.rent_price_frequency,
+    ...computeLeaseDurationPricing(),   // lease_price_basis + rent_price_3mo/6mo/12mo
     price_display:     priceFields.price_display,
     sale_price:        priceFields.sale_price,
     rent_price:        priceFields.rent_price,
@@ -3949,7 +4073,34 @@ async function generateAIContent() {
              + nbPlaces.join('; '))
           : '\n(No nearby landmarks were provided — do not invent any; keep the neighborhood insight short and honest.)');
 
-    const description = [humanDesc, titleClue, knownLine, neighbourhoodBlock].filter(Boolean).join('\n\n');
+    // ── Lease-duration pricing → AI as explicit facts (never invented) ──
+    // Only the rates the operator actually entered are handed over, each stated
+    // in full (per-month vs whole-lease total per the listing basis). The AI may
+    // repeat these exact figures but must never calculate, interpolate, or
+    // invent a rate for a duration that isn't listed (enforced in the prompt).
+    let leaseBlock = '';
+    {
+      const lp = computeLeaseDurationPricing();
+      if (lp.lease_price_basis) {
+        const ctx = leaseRentContext();
+        const money = (n) => (typeof formatMoney === 'function' ? formatMoney(n, ctx.currency) : (ctx.currency + ' ' + n));
+        const suffix = lp.lease_price_basis === 'total' ? ' total (for the whole lease)' : '/month';
+        const items = [];
+        if (ctx.base != null) items.push('1 month: ' + money(ctx.base) + '/month');
+        if (lp.rent_price_3mo  != null) items.push('3 months: ' + money(lp.rent_price_3mo)  + suffix);
+        if (lp.rent_price_6mo  != null) items.push('6 months: ' + money(lp.rent_price_6mo)  + suffix);
+        if (lp.rent_price_12mo != null) items.push('12 months: ' + money(lp.rent_price_12mo) + suffix);
+        if (items.length) {
+          leaseBlock =
+            'Lease-duration pricing — these are the ONLY lease rates for this listing. '
+            + 'Use them EXACTLY as written and NEVER invent, calculate, interpolate, or estimate a rate for any '
+            + 'duration not listed here, and never convert between monthly and total yourself:\n'
+            + items.join('; ') + '.';
+        }
+      }
+    }
+
+    const description = [humanDesc, titleClue, knownLine, neighbourhoodBlock, leaseBlock].filter(Boolean).join('\n\n');
 
     const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
       method: 'POST',
