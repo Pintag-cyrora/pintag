@@ -205,6 +205,9 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 .upload-progress-fill{height:100%;background:var(--teal);border-radius:2px;transition:width 0.3s;width:0%;}
 .upload-status{font-size:12px;color:var(--ink-muted);margin-top:6px;}
 .image-preview-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin-top:12px;}
+.gallery-linkage{margin-top:10px;font-size:12px;font-weight:600;color:var(--teal);background:rgba(45,140,140,0.06);border:1px solid var(--teal-border);border-radius:4px;padding:8px 10px;line-height:1.5;}
+.gallery-linkage.recovered-flash{background:rgba(45,140,140,0.16);border-color:var(--teal);animation:linkageFlash 1s ease-in-out 0s 2;}
+@keyframes linkageFlash{0%,100%{background:rgba(45,140,140,0.16);}50%{background:rgba(45,140,140,0.32);}}
 .image-preview-item{position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:2px solid var(--border);background:var(--warm);transition:border-color 0.2s;}
 .image-preview-item.is-cover{border-color:var(--gold);}
 .image-preview-item img{width:100%;height:100%;object-fit:cover;display:block;}
@@ -745,6 +748,10 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
               <p class="upload-status" id="upload-status">Uploading...</p>
             </div>
             <div id="image-preview-grid" class="image-preview-grid"></div>
+            <!-- Linkage affirmation: keeps the listing identity attached to its
+                 gallery. Populated by refreshImageGrid() when editing an existing
+                 listing (the same photos Gallery Recovery attached to THIS record). -->
+            <p id="gallery-linkage" class="gallery-linkage" style="display:none;"></p>
             <p class="cover-hint">&#9733; Click the star on any photo to set it as the hero/cover image.</p>
             <input type="hidden" id="f-images" value="[]">
           </div>
@@ -2341,8 +2348,11 @@ function showAdminScreen() {
   // listing's edit form, e.g. from an Intelligence Alert's one-click
   // action ("Fix now"). editListing() fetches the property itself, so
   // this doesn't need to wait on loadListings() to finish.
-  const editId = new URLSearchParams(location.search).get('edit');
-  if (editId) editListing(editId);
+  const _dl = new URLSearchParams(location.search);
+  const editId = _dl.get('edit');
+  // from=recovery (set by Gallery Recovery's goComplete) → affirm the handoff:
+  // scroll to the gallery and confirm the photos are now attached to this listing.
+  if (editId) editListing(editId, _dl.get('from'));
 }
 
 // admin-auth.js injects its own full-screen login overlay, validates the session
@@ -3096,7 +3106,7 @@ async function showForm(id) {
 }
 
 // ── EDIT ──────────────────────────────────────────────────────────
-async function editListing(id) {
+async function editListing(id, from) {
   // Awaited: showForm() now waits for loadAgentsForDropdown() to finish
   // populating #f-agent-id's <option>s before returning. Previously this
   // call wasn't awaited, so the properties fetch below could resolve
@@ -3182,6 +3192,7 @@ async function editListing(id) {
   });
 
   populateExistingImages(p.images || []);
+  if (from === 'recovery') flashGalleryLinkage();
   document.getElementById('f-video').value          = p.video_embed_url || p.video_url || '';
   document.getElementById('f-facebook-video').value = p.facebook_video_url || '';
   document.getElementById('f-download-url').value   = p.download_url || '';
@@ -3756,6 +3767,42 @@ function refreshImageGrid() {
     grid.appendChild(div);
   });
   document.getElementById('f-images').value = JSON.stringify(uploadedImages);
+  updateGalleryLinkage();
+}
+// Linkage affirmation — WHO ↔ gallery. When editing an existing listing, state
+// plainly that these exact photos are attached to THIS listing (title + short
+// ID). Continuity from Gallery Recovery: the operator finishes a gallery there,
+// lands here via ?edit=<id>, and immediately sees the same photos on the same
+// record. Hidden entirely on the New Listing path (no listing identity yet).
+function updateGalleryLinkage() {
+  const lk = document.getElementById('gallery-linkage');
+  if (!lk) return;
+  const eid = (document.getElementById('edit-id') || {}).value || '';
+  if (!eid) { lk.style.display = 'none'; return; }
+  const ttl = ((document.getElementById('f-title-en') || {}).value || '').trim();
+  const idPart = ' (ID ' + eid.slice(0, 8) + ')';
+  const ttlPart = ttl ? ' — ' + ttl : '';
+  const n = uploadedImages.length;
+  lk.style.display = 'block';
+  lk.textContent = n
+    ? ('📎 ' + n + ' photo' + (n === 1 ? '' : 's') + ' attached to this listing' + ttlPart + idPart)
+    : ('No photos attached to this listing yet' + ttlPart + idPart);
+}
+// Arrival from Gallery Recovery (?from=recovery): scroll the Photos section into
+// view and briefly emphasize the linkage line so the operator sees the gallery
+// they just finished is now attached to THIS listing. Purely a visual affirmation
+// — the next refreshImageGrid() reverts the text to the standard attached-count.
+function flashGalleryLinkage() {
+  const lk = document.getElementById('gallery-linkage');
+  if (!lk) return;
+  updateGalleryLinkage();
+  const n = uploadedImages.length;
+  if (n) lk.textContent = '✓ Gallery recovered — ' + n + ' photo' + (n === 1 ? '' : 's') + ' now attached to this listing.';
+  lk.style.display = 'block';
+  lk.classList.add('recovered-flash');
+  const sec = lk.closest('.form-section') || lk;
+  try { sec.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+  setTimeout(function () { lk.classList.remove('recovered-flash'); }, 4200);
 }
 function populateExistingImages(images) {
   importImageModel = (images || []).map((url, i) => ({ storageUrl: url, source: 'existing', primary: i === 0 }));

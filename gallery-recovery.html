@@ -176,6 +176,15 @@ button:disabled{opacity:.5;cursor:default}
 .gr-toast .gt-msg{white-space:normal}
 .gr-toast .gt-undo{background:transparent;border:0;color:#40AEAE;font-weight:700;padding:.15rem .3rem;cursor:pointer;font-size:.9rem;flex:0 0 auto}
 .gr-toast .gt-x{color:#9AA7B0;cursor:pointer;font-size:.8rem;flex:0 0 auto}
+/* WHO header — listing identity that always accompanies the photos in the editor */
+.whohead{background:#0e1519;border:1px solid rgba(232,237,240,.14);border-radius:11px;padding:10px 12px;margin-bottom:10px}
+.whohead .wt{font-weight:700;font-size:1rem;line-height:1.25;color:#E8EDF0;word-break:break-word}
+.whohead .wm{display:flex;flex-wrap:wrap;gap:5px 12px;margin-top:5px;font-size:.78rem;color:#9AA7B0;align-items:center}
+.wsbadge{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.7rem;font-weight:700;white-space:nowrap}
+/* Recovered-row thumbnails — title + gallery co-visible before opening */
+.rthumbs{display:flex;gap:3px;flex:0 0 auto;align-items:center}
+.rthumb{width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid rgba(232,237,240,.15)}
+.rmore{font-size:.72rem;color:#9AA7B0;padding-left:2px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -247,6 +256,17 @@ button:disabled{opacity:.5;cursor:default}
   function isComplete(p){ return (p.workflow_status || 'active') !== 'draft'; }   // active / archived / null
   function needsGallery(p){ return p.workflow_status === 'draft' && !hasGallery(p); }         // active recovery queue
   function needsAdminCompletion(p){ return p.workflow_status === 'draft' && hasGallery(p); }  // gallery done, publish pending
+  // WHO — the listing identity that must ALWAYS accompany the photos. Shared by
+  // the desktop and mobile editors and the Recovered list so a gallery is never
+  // shown without the title/listing it belongs to. Admin workflow status is the
+  // same source of truth Admin uses (draft / active / archived).
+  function statusBadge(p){
+    var ws = p.workflow_status || 'active';
+    var txt = ws === 'draft' ? 'Draft — needs Admin' : ws === 'archived' ? 'Archived' : 'Published';
+    var col = ws === 'draft' ? '#E0B15A' : ws === 'archived' ? '#9AA7B0' : '#40AEAE';
+    return '<span class="wsbadge" style="border:1px solid '+col+';color:'+col+'">'+txt+'</span>';
+  }
+  function whoLoc(p){ return [p.district_en, (p.village_en||p.village)].filter(nz).join(' · ') || '?'; }
   function label(d){ return d.title_en || d.title_lo || d.id; }
   function nz(s){ return s!=null && (''+s).trim()!==''; }
   // Recognizable label for untitled listings: "Untitled House • Sisattanak • Agent: Daeng".
@@ -573,7 +593,8 @@ button:disabled{opacity:.5;cursor:default}
       '<div class="meta">'+new Date(c.start).toLocaleString()+' → '+new Date(c.end).toLocaleTimeString()+'</div>'+
       '<div class="why">Upload burst (≤15 min apart). Tick only the photos that belong, then pick the listing.</div></div></div>'+
       '<div class="ctrls"><button class="ghost tsel">Select all</button><button class="ghost tnone">Select none</button>'+
-        '<span class="cfl">Confidence:</span><select class="confsel"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select></div>'+
+        '<span class="cfl">Confidence:</span><select class="confsel"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
+        '<button class="ghost tnomatch">➕ No Matching Listing</button></div>'+
       '<div class="qfilters"></div>'+
       '<div class="gallery">'+shown.map(photoItem).join('')+'</div>'+
       '<input class="search" placeholder="Search matching listing by agent, district, type, or title…">'+
@@ -582,6 +603,15 @@ button:disabled{opacity:.5;cursor:default}
     card._cluster = c;
     card.querySelector('.tsel').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=true; }); if(window.MobileGallery) MobileGallery.sync(card); };
     card.querySelector('.tnone').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=false; }); if(window.MobileGallery) MobileGallery.sync(card); };
+    // ➕ No Matching Listing — these ticked photos belong to NO existing title.
+    // Same unified path the editor's button uses: stage them into Create Listing
+    // (sendToSmartImport with no listing) so the cluster gets a direct exit even
+    // before a listing is chosen. No new screen, no separate assignment model.
+    card.querySelector('.tnomatch').onclick = function(){
+      var names = [].map.call(gal.querySelectorAll('input:checked'), function(x){ return x.getAttribute('data-name'); });
+      if (!names.length) { alert('Tick the photos that belong together first.'); return; }
+      sendToSmartImport(names, null);
+    };
     var input = card.querySelector('.search'), cd = card.querySelector('.cands'), conf = card.querySelector('.confsel');
     c._refreshCands = function(){ renderCands(c, card, cd, input.value, conf); };
     input.oninput = c._refreshCands;
@@ -624,44 +654,11 @@ button:disabled{opacity:.5;cursor:default}
       if (asel) asel.onchange = function(){ setAgent(d, asel.value); };
     });
   }
-  async function assign(c, draft, confidence, names, btn) {
-    if (!names.length) { alert('Tick at least one photo first.'); return; }
-    var ownedElsewhere = names.filter(function(nm){ return OWNER[nm] && OWNER[nm] !== draft.id; }).length;
-    if (!confirm('Assign '+names.length+' photo(s) to:\n'+label(draft)+'\nConfidence: '+confidence.toUpperCase()+
-        (ownedElsewhere ? '\n\n'+ownedElsewhere+' of these are currently on another listing and will be MOVED here (removed from the other listing).' : '\n\n(Merged into the gallery — never removes existing photos.)'))) return;
-    btn.disabled = true;
-    var moved = await detachFromOwners(names, draft.id);   // MOVE, never copy
-    var addUrls = names.map(function(n){ return PUB + n; });
-    var cur = imgsOf(draft);
-    var have = new Set(cur.map(nameOf));
-    var merged = cur.concat(addUrls.filter(function(u){ return !have.has(nameOf(u)); }));
-    var r = await sb.from('properties').update({ images: merged }).eq('id', draft.id).select('id');
-    if (r.error) { btn.disabled = false; log('ERROR assign '+r.error.message); alert('Failed: '+r.error.message); return; }
-    var reg = await sb.from('gallery_assignments').insert([{
-      op:'assign', listing_id:draft.id, cluster_id:c.id, photo_paths:names,
-      photo_count:names.length, confidence:confidence, method:'manual', operator:OPERATOR
-    }]);
-    if (reg.error) log('WARN register insert failed: '+reg.error.message);
-    draft.images = merged;
-    names.forEach(function(nm){ OWNER[nm] = draft.id; });
-    CONFMAP[draft.id] = worseConf(CONFMAP[draft.id], confidence);
-    // also consume exact-duplicate siblings (same content) so a de-duped cluster can complete
-    var sibs = {};
-    if (dupesHidden()) {
-      var chosen = {};
-      c.remaining.forEach(function(f){ if (names.indexOf(f.name) >= 0){ var k=eTagOf(f); if(k) chosen[k]=1; } });
-      c.remaining.forEach(function(f){ if (names.indexOf(f.name) < 0){ var k=eTagOf(f); if (k && chosen[k]) sibs[f.name]=1; } });
-    }
-    c.remaining = c.remaining.filter(function(f){ return names.indexOf(f.name) < 0 && !sibs[f.name]; });
-    log('ASSIGNED '+names.length+' photo(s) → '+label(draft)+' ['+confidence+'] (cluster #'+c._n+')');
-    afterClusterChange(c);
-  }
-  function afterClusterChange(c) {
-    if (window.MobileGallery) MobileGallery.afterChange(c);
-    if (HIDE_COMPLETED && c.remaining.length === 0) { if (c._card && c._card.parentNode) c._card.parentNode.removeChild(c._card); }
-    else if (c._card) fillCard(c);
-    updateSummary();
-  }
+  // (Removed: the legacy assign() / afterClusterChange() direct-attach path.
+  // Cluster → Listing now routes every selection through the ONE unified editor
+  // — renderCands() "Open in editor →" carries the ticked photos into
+  // openListingEditor(), and the cluster card's ➕ No Matching Listing hands
+  // them to Create Listing. There is no second assignment model.)
 
   // ───────────────────────── RECOVERED GALLERIES view ─────────────────────────
   function recoveredList() { return ALL_PROPS.filter(function(p){ return SET91.has(p.id) && imgsOf(p).length > 0; }); }
@@ -699,11 +696,17 @@ button:disabled{opacity:.5;cursor:default}
     list.forEach(function(p){
       var conf = CONFMAP[p.id] || '—';
       var ccls = conf==='low'?'lo':conf==='medium'?'mid':conf==='high'?'hi':'';
+      // WHO + WHAT together: the title and a strip of its actual photos are
+      // co-visible before opening, plus the Admin/workflow status badge — so the
+      // gallery is never abstracted to a bare count divorced from its listing.
+      var imgs = imgsOf(p);
+      var thumbs = imgs.slice(0,4).map(function(u){ return '<img class="rthumb" loading="lazy" src="'+esc(u)+'">'; }).join('');
+      var more = imgs.length > 4 ? '<span class="rmore">+'+(imgs.length-4)+'</span>' : '';
       var row = document.createElement('div'); row.className = 'cand2';
-      row.innerHTML = '<div class="ph">🖼️</div><div class="info">'+
-        '<div class="t">'+esc(displayTitle(p))+'</div>'+
+      row.innerHTML = '<div class="rthumbs">'+(thumbs || '<div class="ph">🖼️</div>')+more+'</div><div class="info">'+
+        '<div class="t">'+esc(displayTitle(p))+' '+statusBadge(p)+'</div>'+
         '<div class="lo">'+esc(nz(p.title_en)&&nz(p.title_lo)?p.title_lo:'')+'</div>'+
-        '<div class="m">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(p.district_en||'?')+' · 🖼️ '+imgsOf(p).length+' photo(s) · <span class="conf '+ccls+'">'+String(conf).toUpperCase()+'</span></div></div>';
+        '<div class="m">👤 '+esc(agentName(p)||'no agent')+' · 📍 '+esc(whoLoc(p))+' · 🖼️ '+imgs.length+' photo(s) · <span class="conf '+ccls+'">'+String(conf).toUpperCase()+'</span></div></div>';
       if (needsTitle(p)) {
         var gb = document.createElement('button'); gb.textContent = 'Generate AI Title';
         gb.onclick = function(){ openTitlePreview(p); };
@@ -794,7 +797,11 @@ button:disabled{opacity:.5;cursor:default}
   // into that listing's editor (which has "✨ Generate AI Content").
   function goComplete(id){
     if (!id) return;
-    window.location.href = 'admin.html?edit=' + encodeURIComponent(id);
+    // &from=recovery lets Admin affirm the linkage on arrival (scroll to the
+    // gallery + confirm "N photos now attached to this listing"). The gallery
+    // itself is already the same images on the same record — this only makes the
+    // title↔gallery↔listing continuity visible at the handoff.
+    window.location.href = 'admin.html?edit=' + encodeURIComponent(id) + '&from=recovery';
   }
   function blAdvance(skipId){
     var next = nextNeedingGallery(skipId);
@@ -1009,14 +1016,18 @@ button:disabled{opacity:.5;cursor:default}
       // sticky recovery-queue header
       h += '<div class="mqhead"><div class="mqrow"><b>Recovery</b><span class="mqn">'+prog.done+' / '+prog.total+' complete · '+prog.remaining+' left</span></div>'+
            '<div class="pbar"><i style="width:'+Math.round(prog.done/prog.total*100)+'%"></i></div></div>';
-      // Photo-first: NO title anywhere in the recovery interface — a possibly-
-      // wrong title must not bias which photos you pick. Only minimal, factual
-      // metadata in small text. Titles live in the separate Title Review queue.
-      h += '<div class="idbar">'+
-             '<span class="pid">#'+esc(String(p.id).slice(0,8))+'</span>'+
-             '<span>📍 '+esc(p.district_en||'?')+'</span>'+
-             '<span>🏷 '+esc(p.property_type||'?')+'</span>'+
-             (agentName(p) ? '<span>👤 '+esc(agentName(p))+'</span>' : '')+
+      // WHO — the listing this gallery belongs to is ALWAYS visible above its
+      // photos: title + short ID + district/village + agent + Admin/workflow
+      // status. Identity and gallery must never be separated in the UI, so
+      // whenever you look at photos you know exactly which listing they are for.
+      h += '<div class="whohead">'+
+             '<div class="wt">'+esc(displayTitle(p))+'</div>'+
+             '<div class="wm"><span>#'+esc(String(p.id).slice(0,8))+'</span>'+
+               '<span>📍 '+esc(whoLoc(p))+'</span>'+
+               '<span>🏷 '+esc(p.property_type||'?')+'</span>'+
+               (agentName(p) ? '<span>👤 '+esc(agentName(p))+'</span>' : '')+
+               statusBadge(p)+
+             '</div>'+
            '</div>';
       // current gallery — the photos dominate. Existing photos are removable
       // (tap Remove to stage), so an already-recovered gallery is fully editable.
@@ -1070,21 +1081,29 @@ button:disabled{opacity:.5;cursor:default}
       //   ➕ No Matching     → no existing listing → Create Listing (new draft)
       var bar=document.createElement('div'); bar.className='mlebar';
       bar.innerHTML='<span class="mc"></span>'+
-        '<button class="ghost mchange" hidden>🔄 Another Existing Listing</button>'+
-        '<button class="ghost msi" hidden>➕ No Matching Listing</button>'+
-        '<button class="msave"></button>';
+        '<button class="ghost mchange">🔄 Another Existing Listing</button>'+
+        '<button class="ghost msi">➕ No Matching Listing</button>'+
+        '<button class="msave">✅ This Listing → Finish → Admin</button>'+
+        '<button class="ghost mskip">Skip for now →</button>';
       host.appendChild(bar);
-      // The operator answers one question — where does this gallery belong? —
-      // with one of three answers, operating on the WORKING gallery.
+      // WHAT NEXT — the same three answers are ALWAYS present (never swapped for
+      // "Skip"), so the vocabulary is identical everywhere: This Listing / Another
+      // Existing Listing / No Matching Listing. They act on the WORKING gallery,
+      // so they disable (not disappear) until at least one photo is selected. A
+      // separate low-key "Skip for now" only appears when there is nothing to act
+      // on, preserving queue navigation without hiding the three-way choice.
       function syncBar(){ var w=workingCount();
-        bar.querySelector('.mc').textContent = w ? 'Where does this gallery belong?' : (dirty()?'Empty gallery':'No photos selected yet');
-        bar.querySelector('.msave').textContent = w ? '✅ Finish → Admin' : (dirty()?'✅ Save (empty)':'Skip →');
-        bar.querySelector('.mchange').hidden = !w;   // reattaching / no-match need a non-empty gallery
-        bar.querySelector('.msi').hidden = !w;
+        var save=bar.querySelector('.msave'), ch=bar.querySelector('.mchange'), si=bar.querySelector('.msi'), sk=bar.querySelector('.mskip');
+        bar.querySelector('.mc').textContent = w ? 'Where does this gallery belong?' : (dirty()?'Gallery emptied — Save to confirm, or add photos':'Select the photos that belong to this listing');
+        save.disabled = !w && !dirty();
+        save.textContent = (!w && dirty()) ? '✅ Save (empty gallery)' : '✅ This Listing → Finish → Admin';
+        ch.disabled = !w; si.disabled = !w;
+        sk.hidden = !!w || dirty();   // Skip only when there is nothing to act on
       }
       bar.querySelector('.msave').onclick=function(){ doSaveGallery(); };
-      bar.querySelector('.mchange').onclick=function(){ openChangeListing(workingNames(), p, curConf); };
-      bar.querySelector('.msi').onclick=function(){ sendToSmartImport(workingNames(), p.id); };
+      bar.querySelector('.mchange').onclick=function(){ if(this.disabled) return; openChangeListing(workingNames(), p, curConf); };
+      bar.querySelector('.msi').onclick=function(){ if(this.disabled) return; sendToSmartImport(workingNames(), p.id); };
+      bar.querySelector('.mskip').onclick=function(){ blAdvance(p.id); };
       syncBar();
       window.scrollTo(0,0);
     }
@@ -1092,11 +1111,11 @@ button:disabled{opacity:.5;cursor:default}
     function draw(){
       var orig = imgsOf(p), an = addedNames();
       host.innerHTML =
-        '<div class="card"><div class="chd"><div><b>'+esc(displayTitle(p))+'</b>'+
-          '<div class="meta">📍 '+esc(p.district_en||'?')+' · 🏷 '+esc(p.property_type||'?')+' · 👤 '+esc(agentName(p)||'no agent')+'</div>'+
+        '<div class="card"><div class="chd"><div><b>'+esc(displayTitle(p))+'</b> '+statusBadge(p)+
+          '<div class="meta">#'+esc(String(p.id).slice(0,8))+' · 📍 '+esc(whoLoc(p))+' · 🏷 '+esc(p.property_type||'?')+' · 👤 '+esc(agentName(p)||'no agent')+'</div>'+
           '<div class="why">click = focus · dbl-click / Space = add-remove · Shift-click = range · ⌘/Ctrl-click = pick · ←→↑↓ move · Enter = Save · Esc = Cancel</div></div>'+
           '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
-          '<button class="blsave">✅ Finish → Complete in Admin ('+workingCount()+') ↵</button>'+
+          '<button class="blsave">✅ This Listing → Finish → Admin ('+workingCount()+') ↵</button>'+
           '<button class="ghost blchange">🔄 Another Existing Listing</button>'+
           '<button class="ghost blsi">➕ No Matching Listing</button>'+
           '<button class="ghost blclose">Close</button></div>'+
@@ -1372,8 +1391,9 @@ button:disabled{opacity:.5;cursor:default}
   // Photos/Files-style: tap a big tile to toggle (✓ + teal border), long-press to
   // preview, a sticky thumb bar to act, and a bottom-sheet listing picker. Desktop
   // is untouched (everything below is gated on a phone-width media query). The
-  // native checkboxes remain the single source of truth, so assign()/renderCands()
-  // work unchanged — this only changes how those checkboxes are driven and shown.
+  // native cluster checkboxes remain the single source of truth, so renderCands()
+  // (which reads them to open the unified editor) works unchanged — this only
+  // changes how those checkboxes are driven and shown.
   var MobileGallery = (function(){
     var mq = window.matchMedia('(max-width:640px)');
     function isM(){ return mq.matches; }
