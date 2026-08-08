@@ -112,9 +112,10 @@ button:disabled{opacity:.5;cursor:default}
   .qchip{flex:0 0 auto;font-size:.8rem;padding:.4rem .8rem;border-radius:999px;border:1px solid rgba(232,237,240,.22);color:#C9D3D9;background:transparent}
   .qchip.on{background:#2D8C8C;border-color:#2D8C8C;color:#fff}
   /* sticky, thumb-reachable action bar */
-  .mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:30;gap:8px;align-items:center;
+  .mbar{display:flex;flex-wrap:wrap;position:fixed;left:0;right:0;bottom:0;z-index:30;gap:8px;align-items:center;
     padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#0e1519;
     border-top:1px solid rgba(232,237,240,.16);box-shadow:0 -6px 18px rgba(0,0,0,.35)}
+  .mbar .b-new{flex-basis:100%;order:5}
   .mbar.hide{display:none}
   .mbar .mc{font-weight:700;color:#2D8C8C;font-size:.98rem;margin-right:auto;white-space:nowrap}
   .mbar button{padding:.62rem .72rem;font-size:.82rem}
@@ -594,7 +595,7 @@ button:disabled{opacity:.5;cursor:default}
       '<div class="why">Upload burst (≤15 min apart). Tick only the photos that belong, then pick the listing.</div></div></div>'+
       '<div class="ctrls"><button class="ghost tsel">Select all</button><button class="ghost tnone">Select none</button>'+
         '<span class="cfl">Confidence:</span><select class="confsel"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
-        '<button class="ghost tnomatch">➕ No Matching Listing</button></div>'+
+        '<button class="tnomatch">➕ Create New Listing</button></div>'+
       '<div class="qfilters"></div>'+
       '<div class="gallery">'+shown.map(photoItem).join('')+'</div>'+
       '<input class="search" placeholder="Search matching listing by agent, district, type, or title…">'+
@@ -603,10 +604,11 @@ button:disabled{opacity:.5;cursor:default}
     card._cluster = c;
     card.querySelector('.tsel').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=true; }); if(window.MobileGallery) MobileGallery.sync(card); };
     card.querySelector('.tnone').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=false; }); if(window.MobileGallery) MobileGallery.sync(card); };
-    // ➕ No Matching Listing — these ticked photos belong to NO existing title.
-    // Same unified path the editor's button uses: stage them into Create Listing
-    // (sendToSmartImport with no listing) so the cluster gets a direct exit even
-    // before a listing is chosen. No new screen, no separate assignment model.
+    // ➕ Create New Listing — the ticked photos belong to a property with NO
+    // existing listing yet. A primary alternative to picking an existing listing:
+    // stage them straight into the Create Listing pipeline (sendToSmartImport with
+    // no listing id) → photos pre-attached → description → AI → title → publish.
+    // No existing listing or title required first; no new screen or second model.
     card.querySelector('.tnomatch').onclick = function(){
       var names = [].map.call(gal.querySelectorAll('input:checked'), function(x){ return x.getAttribute('data-name'); });
       if (!names.length) { alert('Tick the photos that belong together first.'); return; }
@@ -1411,11 +1413,22 @@ button:disabled{opacity:.5;cursor:default}
       bar.innerHTML='<span class="mc">0 selected</span>'+
         '<button class="ghost b-all">Select all</button>'+
         '<button class="ghost b-clr">Clear</button>'+
-        '<button class="b-add">Add to gallery</button>';
+        '<button class="b-add">Add to gallery</button>'+
+        '<button class="b-new">➕ Create New Listing</button>';
       document.body.appendChild(bar);
       bar.querySelector('.b-all').onclick=function(){ if(activeCard) setAll(activeCard,true); };
       bar.querySelector('.b-clr').onclick=function(){ if(activeCard) setAll(activeCard,false); };
       bar.querySelector('.b-add').onclick=function(){ if(activeCard) openPicker(activeCard); };
+      // ➕ Create New Listing — mobile parity with the desktop cluster button
+      // (the .card .ctrls row is display:none on phones). Sends the SELECTED
+      // cluster photos straight into the Create Listing pipeline with no listing
+      // id — same sendToSmartImport path, photos pre-attached, no new flow.
+      bar.querySelector('.b-new').onclick=function(){
+        if(!activeCard) return;
+        var names=inputs(activeCard).filter(function(x){return x.checked;}).map(function(x){return x.getAttribute('data-name');});
+        if(!names.length){ alert('Select the photos that belong together first.'); return; }
+        sendToSmartImport(names, null);
+      };
     }
     function inputs(card){ return [].slice.call(card.querySelectorAll('.gallery input')); }
     function count(card){ return inputs(card).filter(function(x){return x.checked;}).length; }
