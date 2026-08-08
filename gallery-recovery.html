@@ -183,6 +183,7 @@ button:disabled{opacity:.5;cursor:default}
 <div class="sub">Forensic recovery: <b>every photo in the pool is always shown</b> — nothing is deduplicated, collapsed, or auto-hidden, and no photo is ever auto-selected. You decide what belongs. Tick the photos, pick the listing, Assign. Completed galleries move to <b>Recovered Galleries</b>; every assign &amp; unassign is logged.</div>
 <div class="bar" id="bar">Loading…</div>
 <div id="summary"></div>
+<div id="completion"></div>
 <div id="audit"></div>
 <div id="tools"></div>
 <div id="clusters"></div>
@@ -235,6 +236,16 @@ button:disabled{opacity:.5;cursor:default}
   // Compact label for the "owned by another listing" badge on a pool photo.
   function ownerBadge(name, exceptId){ var o = OWNER[name]; if (!o || o === exceptId) return ''; var op = byId(o); return op ? displayTitle(op) : String(o).slice(0,8); }
   function imgsOf(p){ if(!p||!p.images) return []; try { return Array.isArray(p.images)?p.images:JSON.parse(p.images); } catch(e){ return []; } }
+  // ── Completion: ONE source of truth = Admin's workflow_status ──────────────
+  // A listing is COMPLETE (out of recovery) once Admin marks it published
+  // ('active') or 'archived' — publish wins over any recovery-side flag, and an
+  // archived listing is intentionally removed, not recovery's job. NULL defaults
+  // to 'active' (same convention Admin uses). Only a DRAFT still counts as
+  // recovery work. Valid gallery = at least one image.
+  function hasGallery(p){ return imgsOf(p).length >= 1; }
+  function isComplete(p){ return (p.workflow_status || 'active') !== 'draft'; }   // active / archived / null
+  function needsGallery(p){ return p.workflow_status === 'draft' && !hasGallery(p); }         // active recovery queue
+  function needsAdminCompletion(p){ return p.workflow_status === 'draft' && hasGallery(p); }  // gallery done, publish pending
   function label(d){ return d.title_en || d.title_lo || d.id; }
   function nz(s){ return s!=null && (''+s).trim()!==''; }
   // Recognizable label for untitled listings: "Untitled House • Sisattanak • Agent: Daeng".
@@ -479,8 +490,39 @@ button:disabled{opacity:.5;cursor:default}
       (AUDIT.dangling ? '<div class="why" style="margin-top:4px;color:#E0B15A">⚠ '+AUDIT.dangling+' photo(s) are referenced by a listing but NOT present in storage (deleted, or a folder that failed to load). These are surfaced, not hidden.</div>' : '')+
       '</div>';
   }
+  // Completion audit — cross-checked against Admin's workflow_status. Every
+  // tracked (removal-log) listing lands in exactly one bucket. Invariant:
+  // queue + needs-completion + completed = total.
+  function completionCounts(){
+    var q=0, m=0, y=0, z=0;
+    ALL_PROPS.forEach(function(p){
+      if (!SET91.has(p.id)) return;
+      z++;
+      if (isComplete(p)) y++;                 // published (active) / archived / null
+      else if (hasGallery(p)) m++;            // draft with a valid gallery — publish pending
+      else q++;                               // draft, no gallery — the active queue
+    });
+    return { queue:q, needsCompletion:m, completed:y, total:z };
+  }
+  function renderCompletionAudit(){
+    var host = document.getElementById('completion'); if (!host) return;
+    var c = completionCounts();
+    var ok = (c.queue + c.needsCompletion + c.completed === c.total);
+    var row = function(lbl, val, note){ return '<tr><td style="padding:2px 14px 2px 0">'+lbl+'</td><td style="text-align:right;font-variant-numeric:tabular-nums;color:#2D8C8C;font-weight:700">'+val+'</td><td style="padding-left:12px;color:#9AA7B0">'+(note||'')+'</td></tr>'; };
+    host.innerHTML =
+      '<div class="card"><b>📋 Recovery status</b> <span class="why" style="display:inline">— cross-checked against Admin (workflow_status). Published or archived = complete.</span>'+
+      '<table style="margin-top:8px;font-size:.9rem;border-collapse:collapse">'+
+        row('Recovery queue (needs gallery)', c.queue, 'draft, no gallery yet')+
+        row('Recovered — needs Admin completion', c.needsCompletion, 'draft, gallery assigned; finish + publish in Admin')+
+        row('Already completed / published', c.completed, 'published (active) or archived — out of recovery')+
+        row('Total tracked', c.total, 'listings in the removal log')+
+      '</table>'+
+      (ok ? '' : '<div class="why" style="margin-top:6px;color:#F2837B;font-weight:700">✗ Buckets do not sum to total — investigate.</div>')+
+      '</div>';
+  }
   function updateSummary() {
     renderAudit();                       // recompute totals first (counts() reads AUDIT)
+    renderCompletionAudit();
     var c = counts();
     function set(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
     set('k-unassigned', c.unassigned); set('k-recovered', c.recovered);
@@ -702,15 +744,21 @@ button:disabled{opacity:.5;cursor:default}
     return moved;
   }
   function nextNeedingGallery(skipId){
-    var list = ALL_PROPS.filter(function(x){ return SET91.has(x.id) && imgsOf(x).length === 0 && x.id !== skipId && (!BL_AGENT || x.managed_by_party_id === BL_AGENT); });
+    // Cross-check Admin: only a tracked DRAFT with no valid gallery is still
+    // recovery work. Published/archived (isComplete) never appear here, even if
+    // an old flag or an empty images field would otherwise have queued them.
+    var list = ALL_PROPS.filter(function(x){ return SET91.has(x.id) && needsGallery(x) && x.id !== skipId && (!BL_AGENT || x.managed_by_party_id === BL_AGENT); });
     list.sort(function(a,b){ return displayTitle(a).localeCompare(displayTitle(b)); });
     return list[0] || null;
   }
   function isPhone(){ return window.matchMedia('(max-width:640px)').matches; }
   function galleryProgress(){
-    var done = ALL_PROPS.filter(function(x){ return SET91.has(x.id) && imgsOf(x).length > 0; }).length;
+    // Progress tracks the active queue: "remaining" = tracked drafts still
+    // needing a gallery; everything else (published, archived, or gallery-done)
+    // counts as done — consistent with nextNeedingGallery().
+    var remaining = ALL_PROPS.filter(function(x){ return SET91.has(x.id) && needsGallery(x); }).length;
     var total = SET91.size || 91;
-    return { done: done, total: total, remaining: total - done };
+    return { done: total - remaining, total: total, remaining: remaining };
   }
   // Undo toast: an action already happened (optimistic); Undo reverses it, or
   // onExpire runs when the window lapses without an undo (e.g. deferred nav).
