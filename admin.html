@@ -3934,6 +3934,45 @@ function populateExistingImages(images) {
 }
 
 // ── AI CONTENT GENERATION ─────────────────────────────────────────
+// ── Edit-payload alignment helpers ────────────────────────────────────
+// Smart Import produces good titles because it feeds Gemini rich descriptive
+// prose + photos. Edit produced generic titles because, when the human
+// description was empty, its payload collapsed to a structured field-dump that
+// spoon-fed the "[type] for [transaction] in [district]" template, plus it
+// always anchored on the (often generic) existing title. These helpers reshape
+// ONLY the Edit request to match Smart Import's proven shape. Nothing else
+// changes (same function, prompt, model, temperature, retry).
+
+// A title is "generic" when it is essentially "<type> [for rent/sale] in <place>"
+// with no distinctive feature — the kind that should NOT anchor the new title.
+// Conservative: only clear templates are flagged; anything with a real
+// differentiator is treated as specific and preserved.
+function isGenericEditTitle(t) {
+  const s = (t || '').toLowerCase().trim();
+  if (!s) return true;
+  const types = 'house|home|villa|apartment|apartments|condo|condominium|flat|studio|townhouse|town house|shophouse|shop house|land|property|building|room|duplex|penthouse|office|warehouse';
+  // "<opt prefix> <type> ... [for rent/sale] ... in <place>"
+  const template = new RegExp('^(a |the |new |modern )?(' + types + ')\\b[\\w\\s-]*\\bin\\s+\\S+', 'i');
+  const differentiator = /(pool|garden|view|river|mountain|lake|pond|furnished|renovated|balcony|terrace|rooftop|garage|high ceiling|panoramic|luxury|courtyard|corner|loft|open[- ]plan|ensuite|en-suite)/i;
+  return template.test(s) && !differentiator.test(s);
+}
+
+// Edit image budget: cover (index 0) + an even spread across the gallery,
+// capped at `budget`. Substitutes for the human curation Smart Import gets and
+// keeps Edit no heavier than Smart Import (whose effective ceiling is 10).
+function selectEditImages(list, budget) {
+  const g = (Array.isArray(list) ? list : []).filter(u => typeof u === 'string' && u);
+  if (g.length <= budget) return g.slice();
+  const out = [], seen = {};
+  for (let k = 0; k < budget; k++) {
+    let idx = k === 0 ? 0 : Math.round(k * (g.length - 1) / (budget - 1));
+    if (idx > g.length - 1) idx = g.length - 1;
+    while (seen[idx] && idx < g.length - 1) idx++;
+    if (!seen[idx]) { seen[idx] = true; out.push(g[idx]); }
+  }
+  return out;
+}
+
 async function generateAIContent() {
   const btn = document.getElementById('ai-gen-btn');
   const statusEl = document.getElementById('ai-gen-status');
@@ -4018,6 +4057,11 @@ async function generateAIContent() {
                     || document.getElementById('f-desc-lo').value
                     || document.getElementById('f-desc-zh').value || '').trim();
 
+    // Property facts ONLY (physical property — no location, no pricing). Kept
+    // under the literal "Known details:" label so the shared prompt's
+    // conflict-detection rule still binds. Location lives once in the
+    // Neighbourhood block; pricing has its own line — no duplication, and this
+    // line no longer feeds the "[type] for [transaction] in [district]" template.
     const known = [];
     if (propertyData.property_type)    known.push(propertyData.property_type);
     if (propertyData.property_style)   known.push(propertyData.property_style);
@@ -4026,21 +4070,25 @@ async function generateAIContent() {
     if (propertyData.bathrooms != null && propertyData.bathrooms !== '') known.push(propertyData.bathrooms + ' bathroom');
     if (propertyData.sqm)          known.push(propertyData.sqm + ' sqm building');
     if (propertyData.sqm_land)     known.push(propertyData.sqm_land + ' sqm land');
-    if (propertyData.price_display) known.push('price ' + propertyData.price_display);
-    if (districtEn) known.push(districtEn + ' district');
-    if (village)    known.push(village + ' village');
     if (Array.isArray(propertyData.features) && propertyData.features.length) known.push('features: ' + propertyData.features.join(', '));
     if (propertyData.furnished)  known.push('furnished: ' + propertyData.furnished);
-    if (depositText)             known.push('deposit ' + depositText);
-    if (rentalTermsSummary)      known.push(rentalTermsSummary);
     const knownLine = known.length ? ('Known details: ' + known.join('; ') + '.') : '';
 
-    // Edit Listing is an EXISTING listing that already has a title but often no
-    // description. Pass the current English title as a CLUE (not truth) so the
-    // AI can improve it from the photos, or preserve it if already specific.
+    // Pricing & rental terms — separated from property facts and from the
+    // lease-duration block below (no duplication).
+    const pricingParts = [];
+    if (propertyData.price_display) pricingParts.push(propertyData.price_display);
+    if (depositText)                pricingParts.push('deposit ' + depositText);
+    if (rentalTermsSummary)         pricingParts.push(rentalTermsSummary);
+    const pricingLine = pricingParts.length ? ('Pricing & rental terms: ' + pricingParts.join('; ') + '.') : '';
+
+    // Existing title — CONDITIONAL context (Smart Import parity: it never anchors
+    // on a pre-existing title). A specific, useful title is offered to
+    // preserve/improve; a clearly generic "[type] for rent/sale in <place>" title
+    // is OMITTED so it cannot become the template for the new one.
     const existingTitle = (document.getElementById('f-title-en').value || '').trim();
-    const titleClue = existingTitle
-      ? 'Current listing title (a CLUE only — it may be generic or inaccurate; improve it if the photos reveal stronger, specific characteristics, but preserve it if it is already specific and accurate): "' + existingTitle + '"'
+    const titleContext = (existingTitle && !isGenericEditTitle(existingTitle))
+      ? 'Existing title (appears specific — preserve its useful specifics; improve only if the photos show stronger ones): "' + existingTitle + '"'
       : '';
 
     // ── Neighbourhood facts (village-first) ──────────────────────
@@ -4100,7 +4148,13 @@ async function generateAIContent() {
       }
     }
 
-    const description = [humanDesc, titleClue, knownLine, neighbourhoodBlock, leaseBlock].filter(Boolean).join('\n\n');
+    // Smart Import parity: the human description is the PRIMARY prose signal;
+    // everything else is concise, clearly-labelled support. When humanDesc is
+    // empty we do NOT synthesize pseudo-prose — the photos carry the visual
+    // evidence and the labelled facts stay secondary.
+    const description = [humanDesc, knownLine, neighbourhoodBlock, pricingLine, leaseBlock, titleContext].filter(Boolean).join('\n\n');
+    // Cover + even spread across the gallery, capped at 8 (≤ Smart Import's ceiling).
+    const editImages = selectEditImages(gallery, 8);
 
     const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
       method: 'POST',
@@ -4109,7 +4163,7 @@ async function generateAIContent() {
         'apikey':        SUPABASE_ANON,
         'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
       },
-      body: JSON.stringify({ description, image_urls: gallery, source: 'edit_regen' })
+      body: JSON.stringify({ description, image_urls: editImages, source: 'edit_regen' })
     });
 
     if (!res.ok) {
