@@ -3826,14 +3826,54 @@ async function generateAIContent() {
   }
 
   try {
-    const res = await fetch(SUPABASE_URL + '/functions/v1/generate-listing-content', {
+    // Which listing are we generating for? Captured now so a slow response can
+    // never be applied to a DIFFERENT listing if the operator switches mid-run.
+    const editId = document.getElementById('edit-id').value;
+
+    // ── Build THIS listing's OWN context ─────────────────────────
+    // One source of truth: Edit Listing now uses the SAME photo-aware pipeline
+    // as Create Listing (smart-listing-importer), fed with this listing's real
+    // content. Photos are the strongest differentiator — recovered listings
+    // share empty structured fields but have distinct galleries, which is why
+    // the old fields-only path (generate-listing-content) produced identical
+    // titles. The human-written description is the primary prose context; the
+    // existing structured fields are folded in as a "Known details" line so the
+    // AI sees them without changing the shared pipeline's request contract.
+    let gallery = [];
+    try { gallery = JSON.parse(document.getElementById('f-images').value || '[]'); } catch (_) { gallery = []; }
+    gallery = (Array.isArray(gallery) ? gallery : []).filter(u => typeof u === 'string' && u);
+
+    const humanDesc = (document.getElementById('f-desc-en').value
+                    || document.getElementById('f-desc-lo').value
+                    || document.getElementById('f-desc-zh').value || '').trim();
+
+    const known = [];
+    if (propertyData.property_type)    known.push(propertyData.property_type);
+    if (propertyData.property_style)   known.push(propertyData.property_style);
+    if (propertyData.transaction_type) known.push(propertyData.transaction_type === 'for_rent' ? 'for rent' : 'for sale');
+    if (propertyData.bedrooms  != null && propertyData.bedrooms  !== '') known.push(propertyData.bedrooms  + ' bedroom');
+    if (propertyData.bathrooms != null && propertyData.bathrooms !== '') known.push(propertyData.bathrooms + ' bathroom');
+    if (propertyData.sqm)          known.push(propertyData.sqm + ' sqm building');
+    if (propertyData.sqm_land)     known.push(propertyData.sqm_land + ' sqm land');
+    if (propertyData.price_display) known.push('price ' + propertyData.price_display);
+    if (districtEn) known.push(districtEn + ' district');
+    if (village)    known.push(village + ' village');
+    if (Array.isArray(propertyData.features) && propertyData.features.length) known.push('features: ' + propertyData.features.join(', '));
+    if (propertyData.furnished)  known.push('furnished: ' + propertyData.furnished);
+    if (depositText)             known.push('deposit ' + depositText);
+    if (rentalTermsSummary)      known.push(rentalTermsSummary);
+    const knownLine = known.length ? ('Known details: ' + known.join('; ') + '.') : '';
+
+    const description = [humanDesc, knownLine].filter(Boolean).join('\n\n');
+
+    const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
         'apikey':        SUPABASE_ANON,
         'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
       },
-      body: JSON.stringify(propertyData)
+      body: JSON.stringify({ description, image_urls: gallery, source: 'edit_regen' })
     });
 
     if (!res.ok) {
@@ -3844,8 +3884,22 @@ async function generateAIContent() {
     const result = await res.json();
     if (result.error) throw new Error(result.error);
 
-    // ── Fill titles ──────────────────────────────────────────────
-    if (result.title_en) document.getElementById('f-title-en').value = result.title_en;
+    // Guard: only apply if we're STILL editing the listing this was generated
+    // for. Prevents Listing A's slow result overwriting Listing B's form.
+    if (document.getElementById('edit-id').value !== editId) {
+      if (statusEl) {
+        statusEl.className = 'form-message';
+        statusEl.style = '';
+        statusEl.textContent = 'Generation finished for the previous listing and was discarded (you switched listings).';
+      }
+      return;
+    }
+
+    // ── Write back PROSE ONLY — the exact fields the previous Edit-Generate
+    // wrote. Structured fields, the gallery, and workflow status are left
+    // untouched, so nothing the operator set is overwritten. Note:
+    // smart-listing-importer returns the English title as `title` (not title_en).
+    if (result.title)    document.getElementById('f-title-en').value = result.title;
     if (result.title_lo) document.getElementById('f-title-lo').value = result.title_lo;
     if (result.title_zh) document.getElementById('f-title-zh').value = result.title_zh;
 
@@ -3867,20 +3921,6 @@ async function generateAIContent() {
     if (result.description_en) document.getElementById('f-desc-en').value = result.description_en;
     if (result.description_lo) document.getElementById('f-desc-lo').value = result.description_lo;
     if (result.description_zh) document.getElementById('f-desc-zh').value = result.description_zh;
-
-    // ── Update nearby places with translated names ───────────────
-    const nearbyRows = document.querySelectorAll('.nearby-row');
-    const nearbyEn = Array.isArray(result.nearby_en) ? result.nearby_en : [];
-    const nearbyLo = Array.isArray(result.nearby_lo) ? result.nearby_lo : [];
-    const nearbyZh = Array.isArray(result.nearby_zh) ? result.nearby_zh : [];
-    nearbyRows.forEach((row, i) => {
-      const enEl = row.querySelector('.np-name-en');
-      const loEl = row.querySelector('.np-name-lo');
-      const zhEl = row.querySelector('.np-name-zh');
-      if (enEl && nearbyEn[i]) enEl.value = nearbyEn[i];
-      if (loEl && nearbyLo[i]) loEl.value = nearbyLo[i];
-      if (zhEl && nearbyZh[i]) zhEl.value = nearbyZh[i];
-    });
 
     if (statusEl) {
       statusEl.className = 'form-message success';
