@@ -210,6 +210,7 @@ button:disabled{opacity:.5;cursor:default}
   var HIDE_COMPLETED = true;        // ☑ Hide completed (default ON)
   var VIEW = 'queue';               // 'queue' | 'bylisting' | 'recovered'
   var BL_SEL = null;                // currently-open listing id in "Recover by Listing"
+  var _preAddNext = null;           // photos to pre-select when the unified editor next opens (Cluster → Listing handoff)
   var BL_AGENT = '';                // agent scope for Mode 2 ('' = all agents)
   var AUTO_SELECT = false;          // retired — no AI pre-selection; every photo is chosen by hand
   var AUTO_TITLE = true;            // after a Mode-2 gallery save, AI-title if untitled
@@ -608,10 +609,15 @@ button:disabled{opacity:.5;cursor:default}
           '<div class="m">👤 <select class="agentsel" style="max-width:190px">'+agentOptionsHtml(d.managed_by_party_id)+'</select></div>'+
           '<div class="m">📍 '+esc(d.district_en||'?')+' · 🏷 '+esc(d.property_type||'?')+(have?' · <span class="tag">has '+have+'</span>':'')+'</div>'+
         '</div>';
-      var btn = document.createElement('button'); btn.textContent = 'Assign selected';
+      var btn = document.createElement('button'); btn.textContent = 'Open in editor →';
       btn.onclick = function () {
         var names = [].map.call(card.querySelectorAll('.gallery input:checked'), function(x){ return x.getAttribute('data-name'); });
-        assign(c, d, conf.value, names, btn);
+        if (!names.length) { alert('Tick at least one photo in the cluster first.'); return; }
+        // The cluster is only an INPUT SOURCE: open the ONE unified Gallery Editor
+        // for the chosen listing with the ticked photos carried in pre-selected.
+        // From there — add/remove photos, 🔄 Another Existing Listing (move),
+        // ➕ No Matching Listing (Create Listing), ✅ Finish → Admin — same model.
+        BL_SEL = d.id; _preAddNext = names; switchView('bylisting');
       };
       row.appendChild(btn); cd.appendChild(row);
       var asel = row.querySelector('.agentsel');
@@ -876,7 +882,7 @@ button:disabled{opacity:.5;cursor:default}
     // On a phone this is the primary flow: jump straight into the recovery
     // queue (the next gallery-less listing) instead of a search screen.
     if (!BL_SEL && isPhone()){ var nx = nextNeedingGallery(); if (nx) BL_SEL = nx.id; }
-    if (BL_SEL){ var p = byId(BL_SEL); if (p) openListingEditor(p); }
+    if (BL_SEL){ var p = byId(BL_SEL); if (p) { var _pa = _preAddNext; _preAddNext = null; openListingEditor(p, _pa); } }
   }
   function blResults(r, q){
     q = (q||'').trim().toLowerCase(); r.innerHTML = '';
@@ -897,7 +903,9 @@ button:disabled{opacity:.5;cursor:default}
       row.appendChild(b); r.appendChild(row);
     });
   }
-  function openListingEditor(p){
+  // preAdd (optional): photo names to start pre-selected — the Cluster → Listing
+  // entry uses this to carry the ticked cluster photos into the SAME editor.
+  function openListingEditor(p, preAdd){
     detachKey();
     var host = document.getElementById('bleditor');
     // The pool is EVERY storage photo except this listing's own (those show in
@@ -909,6 +917,7 @@ button:disabled{opacity:.5;cursor:default}
     var pool = ddp.files;
     log('EDITOR '+String(p.id).slice(0,8)+': available='+pool.length+' + current='+imgsOf(p).length+' = '+(pool.length+imgsOf(p).length)+' (total storage='+ALL_OBJS.length+')');
     var added = {}, removed = {};       // removed: existing-gallery names staged out
+    if (Array.isArray(preAdd)) preAdd.forEach(function(n){ if (n) added[n] = true; });   // Cluster → Listing pre-selection
     var focusIdx = pool.length ? 0 : -1, anchor = -1, curConf = 'high';
 
     function addedNames(){ return Object.keys(added); }
