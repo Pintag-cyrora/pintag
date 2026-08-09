@@ -74,6 +74,17 @@ function _ptEsc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Canonical listing-detail URL for a property. Prefers the human-readable
+// ?slug= (the shareable, OG-friendly form), but falls back to ?id=<uuid>
+// when a listing has no slug yet -- some listings finished via the admin
+// edit path were saved without a slug, and a bare "listing.html?slug="
+// lands on the "No property selected" error. listing.html accepts either.
+function _ptListingHref(p) {
+  if (p && p.slug) return 'listing.html?slug=' + encodeURIComponent(p.slug);
+  if (p && p.id) return 'listing.html?id=' + encodeURIComponent(p.id);
+  return 'listing.html';
+}
+
 // Card-chrome a11y strings (heart button / no-photo placeholder) -- were
 // hardcoded English regardless of `lang`, invisible to sighted users but
 // still part of "the site's language" for a screen-reader visitor.
@@ -291,7 +302,7 @@ function renderPropertyCard(property, opts) {
   var p = property;
 
   var card = document.createElement(opts.tag === 'div' ? 'div' : 'a');
-  if (opts.tag !== 'div') card.href = 'listing.html?slug=' + encodeURIComponent(p.slug || '');
+  if (opts.tag !== 'div') card.href = _ptListingHref(p);
   card.className = 'pt-card' + (opts.isFeatured ? ' pt-featured' : '');
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
   if (opts.onClick) card.addEventListener('click', opts.onClick);
@@ -445,7 +456,7 @@ function renderPropertyPreview(property, opts) {
   var p = property;
 
   var card = document.createElement('a');
-  card.href = 'listing.html?slug=' + encodeURIComponent(p.slug || '');
+  card.href = _ptListingHref(p);
   card.className = 'pt-preview';
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
   if (opts.onClick) card.addEventListener('click', opts.onClick);

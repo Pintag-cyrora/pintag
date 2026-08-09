@@ -148,6 +148,22 @@ test('rows with legacy/NULL/unknown values still render, and no listing throws',
   expect(errors, 'no listing may throw during render').toEqual([]);
 });
 
+test('a card links by ?slug= when the listing has a slug', async ({ page }) => {
+  // The canonical, shareable form. Nothing here changes it.
+  await mount(page, [listing(1, { slug: 'riverside-villa' })]);
+  await expect(cards(page).first()).toHaveAttribute('href', 'listing.html?slug=riverside-villa');
+});
+
+test('a slugless card falls back to ?id= instead of a dead ?slug=', async ({ page }) => {
+  // THE FIX. Listings finished via the admin edit path can be saved without
+  // a slug. Before the fix these cards linked to a bare "listing.html?slug="
+  // (empty), and listing.html answered "No property selected." -- a public
+  // dead end. The card must now carry the row id so the detail page can
+  // still resolve the listing.
+  await mount(page, [listing(1, { slug: null, id: 'abc-123' })]);
+  await expect(cards(page).first()).toHaveAttribute('href', 'listing.html?id=abc-123');
+});
+
 test('a corrupted range price still renders its card rather than breaking the grid', async ({ page }) => {
   // "$280-300" was turned into 280300 by the old digit-stripping backfill
   // (see scripts/README.md, "Legacy Price Range Repair"). That is a DATA

@@ -378,7 +378,7 @@ function renderStrip(listings){
     var imgs=Array.isArray(p.images)?p.images:[];
     var thumb=imgs[0]||'';
     var card=document.createElement('a');
-    card.href='listing.html?slug='+encodeURIComponent(p.slug||'');
+    card.href=_ptListingHref(p);
     card.className='strip-card';
     var imgDiv=document.createElement('div');imgDiv.className='strip-img';
     if(thumb){var si=document.createElement('img');si.src=thumb;si.alt='';si.loading='lazy';si.decoding='async';imgDiv.appendChild(si);}

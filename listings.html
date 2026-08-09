@@ -1013,7 +1013,7 @@ function showMapPreview(p) {
   var actLine = getActivityLine(p, lang);
   document.getElementById('mp-activity-line').textContent = actLine;
 
-  document.getElementById('mp-view-btn').href = 'listing.html?slug=' + encodeURIComponent(p.slug || '');
+  document.getElementById('mp-view-btn').href = _ptListingHref(p);
   document.getElementById('map-preview').style.display = 'block';
 }
 

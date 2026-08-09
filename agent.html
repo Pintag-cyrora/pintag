@@ -541,7 +541,7 @@ function render(a,listings){
     var imgs=Array.isArray(p.images)?p.images:[];
     var thumb=pickWarmImg(imgs)||imgs[0]||null;
     var card=document.createElement('a');
-    card.href='listing.html?slug='+encodeURIComponent(p.slug||'');
+    card.href=_ptListingHref(p);
     card.className='p-card';
     if(p.id){
       card.setAttribute('data-track','agent-listing-card');

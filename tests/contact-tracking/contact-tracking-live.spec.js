@@ -161,6 +161,47 @@ test.describe('listing.html contact CTAs (mocked Supabase)', () => {
   });
 });
 
+test.describe('listing.html slugless ?id= fallback (mocked Supabase)', () => {
+  // Listings finished via the admin edit path can be saved without a slug.
+  // Their cards link with ?id=<uuid>, so the detail page must resolve a
+  // property by id -- not answer "No property selected." (the public dead
+  // end this fixed).
+  test('a listing with no slug loads by ?id= and does NOT show the error state', async ({ page }) => {
+    await stubNavigator(page);
+    const prop = activeProp({ id: 'no-slug-1', slug: null, title_en: 'Slugless Villa' });
+    await page.route('**/rest/v1/**', (route) => {
+      const req = route.request();
+      const url = req.url();
+      // The fallback query the init guard now issues for a slugless listing.
+      if (url.indexOf('/properties?id=eq.no-slug-1') !== -1) {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([prop]) });
+      }
+      if (url.indexOf('/rpc/') !== -1) {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      }
+      if (req.method() === 'POST') {
+        return route.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+    await page.goto('/listing.html?id=no-slug-1&lang=en');
+    await page.waitForTimeout(600);
+    const bodyText = await page.locator('body').innerText();
+    expect(bodyText).not.toContain('No property selected');
+    expect(bodyText).not.toContain('Property not found');
+    await expect(page).toHaveTitle(/Slugless Villa/);
+  });
+
+  test('opening listing.html with neither slug nor id still shows the guard message', async ({ page }) => {
+    await stubNavigator(page);
+    await page.route('**/rest/v1/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+    await page.goto('/listing.html?lang=en');
+    await page.waitForTimeout(400);
+    await expect(page.locator('body')).toContainText('No property selected');
+  });
+});
+
 test.describe('agents.html / agent.html contact CTAs (mocked Supabase, agent profile -- no listing_id)', () => {
   test('agents.html WhatsApp button: 1 ui_events + 1 lead_events, listing_id null (the other original regression)', async ({ page }) => {
     await stubNavigator(page);

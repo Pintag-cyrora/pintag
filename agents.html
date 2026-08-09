@@ -390,7 +390,7 @@ function render(a,listings){
   listings.forEach(function(p,i){
     var imgs=Array.isArray(p.images)?p.images:[];
     var card=document.createElement('a');
-    card.href='listing.html?slug='+encodeURIComponent(p.slug||'');
+    card.href=_ptListingHref(p);
     card.className='p-card';
     var imgDiv=document.createElement('div');imgDiv.className='p-img';
     if(imgs[0]){

@@ -1199,9 +1199,12 @@ window.addEventListener('DOMContentLoaded',function(){
   document.documentElement.setAttribute('lang',resolvedLang);
   reflectLangInUrl(resolvedLang);
   var slug=getParam('slug');
-  if(!slug){showErrorState('No property selected. Please navigate from the listings page.');return;}
-  PT.log('Loading',{slug:slug});
-  fetchProperty(slug);
+  // ?id=<uuid> is an accepted fallback: listings finished via the admin
+  // edit path can lack a slug, and their cards link with ?id= instead.
+  var id=slug?null:getParam('id');
+  if(!slug&&!id){showErrorState('No property selected. Please navigate from the listings page.');return;}
+  PT.log('Loading',{slug:slug,id:id});
+  fetchProperty(slug,id);
 });
 
 // Single source of truth for "the canonical public Pintag listing URL" —
@@ -1338,12 +1341,14 @@ function updateOGTags(data){
   document.title=title;
 }
 
-async function fetchProperty(slug){
+async function fetchProperty(slug,id){
   if(_fetchInFlight){PT.warn('already in flight');return;}
   _fetchInFlight=true;
   PT.time('fetchProperty');
   try{
-    var data=await sbFetch('/rest/v1/properties?slug=eq.'+encodeURIComponent(slug)+'&select=*,contacts(id,role,name,phone,whatsapp,is_verified),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified),unit_types(*)&limit=1');
+    // Prefer slug (canonical/shareable); fall back to id for slugless listings.
+    var filter=slug?('slug=eq.'+encodeURIComponent(slug)):('id=eq.'+encodeURIComponent(id));
+    var data=await sbFetch('/rest/v1/properties?'+filter+'&select=*,contacts(id,role,name,phone,whatsapp,is_verified),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified),unit_types(*)&limit=1');
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
