@@ -383,7 +383,7 @@ function withNoStore(response) {
 // image assets) passes straight through untouched, so administration and
 // listing recovery are unaffected. Fully reversible: set MAINTENANCE_MODE to
 // false (or `git revert` the commit that introduced this block) and redeploy.
-const MAINTENANCE_MODE = true;
+const MAINTENANCE_MODE = false;
 const MAINTENANCE_HTML = '<!doctype html><html lang="lo"><head>' +
   '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<meta name="robots" content="noindex,nofollow"><title>Pintag — ບຳລຸງຮັກສາລະບົບ / Under Maintenance</title>' +
