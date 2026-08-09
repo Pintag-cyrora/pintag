@@ -259,7 +259,7 @@ async function load(){
   var ctrl=new AbortController();
   var t=setTimeout(function(){ctrl.abort();},8000);
   try{
-    var r=await fetch(SB+'/rest/v1/parties?type=eq.agent&slug=eq.'+encodeURIComponent(slug)+'&limit=1',
+    var r=await fetch(SB+'/rest/v1/parties?type=eq.agent&is_active=eq.true&slug=eq.'+encodeURIComponent(slug)+'&limit=1',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY},signal:ctrl.signal});
     clearTimeout(t);
     if(!r.ok) throw new Error('HTTP '+r.status);

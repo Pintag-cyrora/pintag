@@ -135,8 +135,13 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
               <div id="agent-summary-name" style="font-size:15px;font-weight:600;"></div>
               <div id="agent-summary-meta" style="font-size:12px;color:var(--muted);margin-top:3px;"></div>
             </div>
-            <button class="edit-toggle" onclick="toggleEditProfile()">Edit Profile</button>
+            <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;flex-shrink:0;">
+              <button class="edit-toggle" onclick="toggleEditProfile()">Edit Profile</button>
+              <button class="btn btn-ghost btn-sm" id="visibility-toggle" onclick="toggleSelectedAgentActive()">Hide agent</button>
+            </div>
           </div>
+          <!-- Explains what hiding does; text set by renderAgentSummary(). -->
+          <div id="visibility-note" style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;"></div>
 
           <!-- Inline Edit Profile (hidden by default) -->
           <div id="edit-profile-wrap" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
@@ -592,7 +597,7 @@ function switchMode(mode) {
 // ── Load agents + listings ────────────────────────────────────────────
 async function loadAgentsAndListings() {
   try {
-    _agents = await sbApi('GET', 'parties?type=eq.agent&select=id,name_en,name_lo,slug,photo_url,whatsapp,agency_name,is_verified,bio_en,bio_lo&order=name_en.asc', null);
+    _agents = await sbApi('GET', 'parties?type=eq.agent&select=id,name_en,name_lo,slug,photo_url,whatsapp,agency_name,is_verified,bio_en,bio_lo,is_active&order=name_en.asc', null);
     _agentMap = {};
     _agents.forEach(function(a) { _agentMap[a.id] = a; });
 
@@ -601,7 +606,7 @@ async function loadAgentsAndListings() {
     _agents.forEach(function(a) {
       var opt = document.createElement('option');
       opt.value = a.id;
-      opt.textContent = a.name_en + (a.agency_name ? ' · ' + a.agency_name : '');
+      opt.textContent = a.name_en + (a.agency_name ? ' · ' + a.agency_name : '') + (a.is_active === false ? ' · (hidden)' : '');
       sel.appendChild(opt);
     });
 
@@ -660,8 +665,18 @@ function renderAgentSummary() {
   }
 
   document.getElementById('agent-summary-name').textContent = a.name_en + (a.name_lo ? ' · ' + a.name_lo : '');
-  document.getElementById('agent-summary-meta').textContent =
-    (a.agency_name || 'Pintag') + ' · ' + assigned.length + ' listing' + (assigned.length !== 1 ? 's' : '') + ' assigned';
+  var hidden = a.is_active === false;
+  document.getElementById('agent-summary-meta').innerHTML =
+    esc((a.agency_name || 'Pintag') + ' · ' + assigned.length + ' listing' + (assigned.length !== 1 ? 's' : '') + ' assigned')
+    + (hidden ? ' <span style="color:#7a6010;background:rgba(184,134,11,0.12);padding:1px 7px;border-radius:9px;font-weight:600;">Hidden</span>' : '');
+  // Visibility toggle reflects the current state.
+  var visBtn = document.getElementById('visibility-toggle');
+  visBtn.textContent = hidden ? 'Show agent' : 'Hide agent';
+  visBtn.className = 'btn btn-ghost btn-sm' + (hidden ? '' : ' btn-danger');
+  visBtn.disabled = false;
+  document.getElementById('visibility-note').textContent = hidden
+    ? 'This agent is hidden: removed from the assignment picker and their public profile page. Listings they already manage still show them. Click “Show agent” to make them visible again.'
+    : 'Hiding removes this agent from the assignment picker and their public profile page. Listings they already manage keep showing them, and nothing is deleted — you can show them again anytime.';
 
   // Pre-fill edit form
   document.getElementById('ep-name-en').value  = a.name_en  || '';
@@ -913,6 +928,45 @@ async function saveAgentProfile() {
   } catch(err) {
     statEl.className = 'status-box error';
     statEl.textContent = '✗ ' + err.message;
+  }
+}
+
+// ── Agent visibility (hide / show) ────────────────────────────────────
+// Soft, reversible deactivation via parties.is_active. Hiding removes the
+// agent from the assignment picker and their public profile page WITHOUT
+// deleting the row or touching any listing — managed_by_party_id links and
+// listing URLs are untouched, so listings they already manage keep showing
+// them. Fully reversible (Show sets is_active back to true).
+async function toggleSelectedAgentActive() {
+  if (!_selectedAgent) return;
+  var a = _selectedAgent;
+  var makeActive = a.is_active === false;   // currently hidden → show; else hide
+  if (!makeActive && !confirm('Hide ' + (a.name_en || 'this agent') + '?\n\nThey will be removed from the assignment picker and their public profile page. Listings they already manage keep showing them, and nothing is deleted — you can Show them again anytime.')) return;
+  var btn = document.getElementById('visibility-toggle');
+  btn.disabled = true;
+  btn.textContent = makeActive ? 'Showing…' : 'Hiding…';
+  try {
+    // Writes ONLY is_active — no listing, contact, or relationship is modified.
+    await sbApi('PATCH', 'parties?id=eq.' + encodeURIComponent(a.id), { is_active: makeActive });
+    a.is_active = makeActive;
+    _agentMap[a.id] = a;
+    refreshAgentOptionLabel(a);
+    renderAgentSummary();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = makeActive ? 'Show agent' : 'Hide agent';
+    alert('Could not update visibility: ' + err.message);
+  }
+}
+
+// Keep the picker's option label in step with the hidden state.
+function refreshAgentOptionLabel(a) {
+  var sel = document.getElementById('f-agent-select');
+  for (var i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === a.id) {
+      sel.options[i].textContent = a.name_en + (a.agency_name ? ' · ' + a.agency_name : '') + (a.is_active === false ? ' · (hidden)' : '');
+      break;
+    }
   }
 }
 

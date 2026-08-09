@@ -1,0 +1,11 @@
+{
+  "name": "pintag-agent-visibility-tests",
+  "private": true,
+  "description": "Covers the agent soft-hide (parties.is_active) mechanism: hidden agents are filtered from the public standalone profile pages (agents.html/agent.html) and the admin assignment picker (admin.html), the agent-setup.html Hide/Show control writes is_active without touching listings, and listings already managed by a hidden agent keep displaying that agent (attribution + links preserved).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

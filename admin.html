@@ -2566,7 +2566,7 @@ async function loadAgentsForDropdown() {
   const sel = document.getElementById('f-agent-id');
   if (sel) sel.innerHTML = '<option value="">Loading agents…</option>';
   try {
-    const data = await sbApi('GET', 'parties?type=eq.agent&select=id,name_en,name_lo,slug,photo_url,whatsapp,agency_name,bio_en&order=name_en.asc');
+    const data = await sbApi('GET', 'parties?type=eq.agent&select=id,name_en,name_lo,slug,photo_url,whatsapp,agency_name,bio_en,is_active&order=name_en.asc');
     _agentsAll = Array.isArray(data) ? data : [];
     buildAgentOptions('');
     if (_agentsAll.length === 0 && sel) {
@@ -2578,20 +2578,24 @@ async function loadAgentsForDropdown() {
   }
 }
 
-function buildAgentOptions(search) {
+function buildAgentOptions(search, ensureId) {
   const sel = document.getElementById('f-agent-id');
   if (!sel) return;
-  const currentVal = sel.value;
+  const currentVal = ensureId || sel.value;
   const s = (search || '').toLowerCase();
+  // Hidden agents (is_active === false) are not offered for assignment, EXCEPT
+  // the one already assigned to the listing being edited — dropping that option
+  // would blank the dropdown and silently wipe managed_by_party_id on save.
+  const visible = _agentsAll.filter(a => a.is_active !== false || a.id === currentVal);
   const filtered = s
-    ? _agentsAll.filter(a =>
+    ? visible.filter(a =>
         (a.name_en    || '').toLowerCase().includes(s) ||
         (a.agency_name|| '').toLowerCase().includes(s) ||
         (a.name_lo    || '').toLowerCase().includes(s))
-    : _agentsAll;
+    : visible;
   sel.innerHTML = '<option value="">— No agent assigned —</option>'
     + filtered.map(a =>
-        `<option value="${esc(a.id)}">${esc(a.name_en)}${a.agency_name ? ' · ' + esc(a.agency_name) : ''}</option>`
+        `<option value="${esc(a.id)}">${esc(a.name_en)}${a.agency_name ? ' · ' + esc(a.agency_name) : ''}${a.is_active === false ? ' · (hidden)' : ''}</option>`
       ).join('');
   if (currentVal && filtered.some(a => a.id === currentVal)) sel.value = currentVal;
 }
@@ -3328,7 +3332,9 @@ async function editListing(id, from) {
   // loadAgentsForDropdown() has finished. buildAgentOptions('') here is a
   // cheap no-op re-render (clears any stale search-filter view from a
   // previously-open card), not what makes the value stick.
-  buildAgentOptions('');
+  // Pass the assigned id so a hidden agent stays in the list and selected
+  // (buildAgentOptions otherwise omits hidden agents from the picker).
+  buildAgentOptions('', p.managed_by_party_id || '');
   document.getElementById('f-agent-search').value = '';
   if (p.managed_by_party_id) {
     const agentSel = document.getElementById('f-agent-id');
