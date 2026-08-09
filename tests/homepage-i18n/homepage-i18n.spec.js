@@ -68,7 +68,7 @@ test.describe('default load (no language switch) is Lao', () => {
   test('hero labels and footer render in Lao, no CJK characters visible', async ({ page }) => {
     await mount(page);
     expect(await visibleText(page.locator('.panel-buyer .panel-label'))).toBe('ຜູ້ຊື້ / ຜູ້ເຊົ່າ');
-    expect(await visibleText(page.locator('.panel-agent .panel-label'))).toBe('ເຈົ້າຂອງ');
+    expect(await visibleText(page.locator('.panel-agent .panel-label'))).toBe('ຜູ້ຂາຍ/ນາຍຫນ້າ');
     const bodyText = await contentText(page);
     expect(CJK_SCRIPT.test(bodyText)).toBe(false);
   });
@@ -159,7 +159,7 @@ test('switching back to Lao restores the entire page to Lao, no leftover English
   await page.locator('.nav-lang-item[data-lang="lo"]').click();
 
   expect(await visibleText(page.locator('.panel-buyer .panel-label'))).toBe('ຜູ້ຊື້ / ຜູ້ເຊົ່າ');
-  expect(await visibleText(page.locator('.panel-agent .panel-label'))).toBe('ເຈົ້າຂອງ');
+  expect(await visibleText(page.locator('.panel-agent .panel-label'))).toBe('ຜູ້ຂາຍ/ນາຍຫນ້າ');
   const bodyText = await contentText(page);
   expect(CJK_SCRIPT.test(bodyText)).toBe(false);
 });
