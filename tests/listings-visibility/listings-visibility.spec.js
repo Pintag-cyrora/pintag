@@ -164,6 +164,46 @@ test('a slugless card falls back to ?id= instead of a dead ?slug=', async ({ pag
   await expect(cards(page).first()).toHaveAttribute('href', 'listing.html?id=abc-123');
 });
 
+test('full flow: a slugless active listing is reachable from the grid to its detail page', async ({ page }) => {
+  // The end-to-end proof of the public fix. An active listing with no slug
+  // (a recovered listing published without one) must be clickable on
+  // listings.html AND resolve on listing.html -- never a "?slug=" dead end.
+  const row = listing(1, { slug: null, id: 'flow-uuid-1', title_en: 'Riverside Flow Villa' });
+
+  await page.route('**/rest/v1/**', (route) => {
+    const req = route.request();
+    const url = req.url();
+    if (url.indexOf('/properties') !== -1 && url.indexOf('id=eq.flow-uuid-1') !== -1) {
+      // listing.html's detail fetch (?id= fallback).
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([row]) });
+    }
+    if (url.indexOf('/properties') !== -1) {
+      // listings.html's grid fetch.
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([row]) });
+    }
+    if (url.indexOf('/rpc/') !== -1) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    }
+    if (req.method() === 'POST') {
+      return route.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/listings.html');
+  const card = page.locator('#listings-container > .pt-card').first();
+  await expect(card).toBeVisible();
+  await expect(card).toHaveAttribute('href', 'listing.html?id=flow-uuid-1');
+
+  // Follow the real link, exactly as a visitor would.
+  await card.click();
+  await page.waitForURL('**/listing.html?id=flow-uuid-1');
+  await page.waitForTimeout(500);
+  const bodyText = await page.locator('body').innerText();
+  expect(bodyText).not.toContain('No property selected');
+  await expect(page).toHaveTitle(/Riverside Flow Villa/);
+});
+
 test('a corrupted range price still renders its card rather than breaking the grid', async ({ page }) => {
   // "$280-300" was turned into 280300 by the old digit-stripping backfill
   // (see scripts/README.md, "Legacy Price Range Repair"). That is a DATA

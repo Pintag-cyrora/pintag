@@ -3076,7 +3076,7 @@ async function loadListings() {
       <td style="white-space:nowrap;font-size:12px;color:var(--ink-muted);"><span style="color:var(--ink);">${v}</span> views · <span style="color:var(--teal);font-weight:600;">${l}</span> leads${v > 0 ? ` <span style="opacity:0.6;">(${conv}%)</span>` : ''}</td>
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="action-btn btn-edit" onclick="editListing('${esc(p.id)}')">Edit</button>
-        <a class="action-btn btn-view" href="listing.html?slug=${encodeURIComponent(p.slug||'')}" target="_blank">View</a>
+        <a class="action-btn btn-view" href="listing.html?${p.slug ? 'slug='+encodeURIComponent(p.slug) : 'id='+encodeURIComponent(p.id)}" target="_blank">View</a>
         <button class="action-btn btn-delete" onclick="deleteListing('${esc(p.id)}','${esc(p.title_en||'')}')">Delete</button>
       </td>
     </tr>`;
