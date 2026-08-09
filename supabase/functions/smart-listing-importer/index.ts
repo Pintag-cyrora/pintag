@@ -110,11 +110,82 @@ async function requireAdmin(req: Request): Promise<{ error: string; status: numb
   return null;
 }
 
+// ── Memory-safe vision input ────────────────────────────────────────────────
+// The previous path fetched every image at full resolution in parallel
+// (Promise.all) and base64-encoded each with a per-byte string concat — an
+// O(n²) build that, across a full gallery, exhausted the Edge isolate
+// (546 WORKER_RESOURCE_LIMIT) and could also exceed Gemini's ~20MB inline cap.
+// This replacement: (1) asks Supabase Storage for a downscaled rendition so the
+// bytes are small before they ever enter the isolate, (2) processes images with
+// bounded concurrency instead of all at once, (3) encodes with a chunked base64
+// (no per-byte concat), and (4) stops accumulating at a total-inline budget so
+// the isolate never holds the whole gallery — failing gracefully, never crashing.
+// Shared by Smart Import and Edit alike; no prompt/model/temperature change.
+
 // Cap what a single "image" fetch may pull into memory. Storage images are
 // a few MB; anything larger is not a listing photo.
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+// At most 2 images resident at once (bounded pool, not Promise.all).
+const IMAGE_CONCURRENCY = 2;
+// Total base64 budget across the request, under Gemini's ~20MB inline limit.
+// Accumulation stops here — extra images are skipped (and logged), never held.
+const MAX_TOTAL_INLINE_BYTES = 18 * 1024 * 1024;
+// Storage render-endpoint downscale target: longest edge ≤ RENDER_MAX_EDGE
+// (contain-fit into a square box), JPEG quality RENDER_QUALITY. 1536px preserves
+// room layout, finishes, and distinctive features for vision analysis while
+// cutting a multi-MB photo to a few hundred KB (also relieves Gemini token use).
+const RENDER_MAX_EDGE = 1536;
+const RENDER_QUALITY = 80;
 
-async function urlToBase64(url: string): Promise<{ mimeType: string; data: string } | null> {
+// Chunked base64 — O(n), no per-byte concatenation and no ~2× intermediate.
+// Walks the array in bounded chunks (fromCharCode.apply per chunk), a handful of
+// string joins for a multi-MB image instead of millions of concatenations.
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const CHUNK = 0x8000; // 32 KB — safely under fromCharCode.apply arg limits
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
+// Bounded, order-preserving concurrency pool — at most `limit` workers run at
+// once, so at most `limit` images' bytes are resident. Replaces Promise.all.
+async function mapWithConcurrency<T, R>(
+  items: T[], limit: number, worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  async function run(): Promise<void> {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await worker(items[i], i);
+    }
+  }
+  const runners: Promise<void>[] = [];
+  for (let k = 0; k < Math.min(Math.max(1, limit), items.length); k++) runners.push(run());
+  await Promise.all(runners);
+  return results;
+}
+
+// Rewrite a Storage object URL to the on-the-fly image-transform (render)
+// endpoint so Storage returns a small, controlled-size rendition. Returns null
+// if the URL is not a recognizable Storage object URL (caller uses the original).
+function buildRenderUrl(objectUrl: string): string | null {
+  const marker = '/storage/v1/object/public/';
+  const i = objectUrl.indexOf(marker);
+  if (i < 0) return null;
+  const base = objectUrl.slice(0, i);
+  const rest = objectUrl.split('?')[0].slice(i + marker.length); // bucket/path
+  if (!rest) return null;
+  return `${base}/storage/v1/render/image/public/${rest}` +
+    `?width=${RENDER_MAX_EDGE}&height=${RENDER_MAX_EDGE}&resize=contain&quality=${RENDER_QUALITY}`;
+}
+
+// Fetch image bytes with the full SSRF + size guards. Returns null on any
+// rejection (bad host, non-image, oversized, network error).
+async function fetchImageBytes(url: string): Promise<{ mimeType: string; bytes: Uint8Array } | null> {
   try {
     let parsed: URL;
     try { parsed = new URL(url); } catch { return null; }
@@ -133,12 +204,22 @@ async function urlToBase64(url: string): Promise<{ mimeType: string; data: strin
     if (declared > MAX_IMAGE_BYTES) return null;
     const buffer = await res.arrayBuffer();
     if (buffer.byteLength > MAX_IMAGE_BYTES) return null;
-    const bytes = new Uint8Array(buffer);
-    const binary = bytes.reduce((acc, b) => acc + String.fromCharCode(b), '');
-    return { mimeType, data: btoa(binary) };
+    return { mimeType, bytes: new Uint8Array(buffer) };
   } catch {
     return null;
   }
+}
+
+// Load one listing image: prefer the downscaled render rendition; if that is
+// unavailable (Image Transformations disabled, 400, or a non-image response),
+// fall back to the original object. Same size/SSRF guards apply to both.
+async function loadImageBytes(objectUrl: string): Promise<{ mimeType: string; bytes: Uint8Array } | null> {
+  const renderUrl = buildRenderUrl(objectUrl);
+  if (renderUrl) {
+    const r = await fetchImageBytes(renderUrl);
+    if (r) return r;
+  }
+  return await fetchImageBytes(objectUrl);
 }
 
 function buildPrompt(description: string, imageCount: number): string {
@@ -376,13 +457,38 @@ Deno.serve(async (req) => {
     }
 
     const urlsToFetch: string[] = Array.isArray(image_urls) ? image_urls.slice(0, MAX_IMAGES) : [];
-    const imageResults = await Promise.all(urlsToFetch.map(url => urlToBase64(url)));
-    const validImages = imageResults.filter((r): r is NonNullable<typeof r> => r !== null);
 
-    const imageParts = validImages.map(img => ({
-      inlineData: { mimeType: img.mimeType, data: img.data }
+    // Bounded + budget-gated: each image is fetched as a downscaled rendition
+    // (fallback to original), encoded with the chunked base64, and admitted only
+    // while the running total stays under MAX_TOTAL_INLINE_BYTES. Raw bytes are
+    // dropped as soon as they are encoded, and at most IMAGE_CONCURRENCY images
+    // are resident — so the isolate never holds the whole gallery at once. Images
+    // that don't fit the budget are skipped and logged (cover-first order is
+    // preserved), never silently accumulated into a WORKER_RESOURCE_LIMIT.
+    let accumulatedB64 = 0;
+    let skippedBudget = 0;
+    const loaded = await mapWithConcurrency(urlsToFetch, IMAGE_CONCURRENCY, async (url) => {
+      const img = await loadImageBytes(url);
+      if (!img) return null;
+      const estB64 = Math.ceil(img.bytes.length / 3) * 4;
+      if (accumulatedB64 + estB64 > MAX_TOTAL_INLINE_BYTES) { skippedBudget++; return null; }
+      const data = toBase64(img.bytes);   // raw bytes become GC-eligible here
+      accumulatedB64 += data.length;
+      return { mimeType: img.mimeType, data };
+    });
+
+    const imageParts = loaded
+      .filter((p): p is { mimeType: string; data: string } => p !== null)
+      .map(p => ({ inlineData: { mimeType: p.mimeType, data: p.data } }));
+    const failedToLoad = urlsToFetch.length - imageParts.length - skippedBudget;
+    console.log(JSON.stringify({
+      fn: 'smart-listing-importer', source: importSource,
+      images_in: urlsToFetch.length, images_used: imageParts.length,
+      images_skipped_budget: skippedBudget, images_failed: failedToLoad,
+      inline_bytes: accumulatedB64,
     }));
-    const textPart = { text: buildPrompt(description || '', validImages.length) };
+
+    const textPart = { text: buildPrompt(description || '', imageParts.length) };
 
     const RETRY_DELAYS = [2000, 5000, 10000];
 
