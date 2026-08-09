@@ -3387,6 +3387,12 @@ async function saveListing(e) {
   btn.disabled = true;
   btn.textContent = 'Saving...';
 
+  // Fail-safe: no matter what throws below — a helper on an unusual (e.g.
+  // recovered) listing's data, a null lookup, anything — the button must
+  // never be left stuck on "Saving..." with no explanation. The inner
+  // try/catch blocks still handle their specific cases with tailored
+  // messages; this outer guard is the backstop for everything else.
+  try {
   const districtEn = document.getElementById('f-district').value;
   const districtMap = DISTRICT_MAP[districtEn] || {};
   const village = document.getElementById('f-village').value.trim();
@@ -3473,7 +3479,14 @@ async function saveListing(e) {
   try {
     resolvedOwnerId = await resolveOwnerId();
   } catch (e) {
-    const msg = document.getElementById('form-msg');
+    // Was silently freezing the Save button: the wrong element id ('form-msg')
+    // returned null, so `null.textContent` threw inside this catch and the
+    // button was never re-enabled — a dead "Saving..." with no message. Match
+    // the other catch blocks: real id, error styling, button restored.
+    btn.disabled = false;
+    btn.textContent = 'Save Listing';
+    const msg = document.getElementById('form-message');
+    msg.className = 'form-message error';
     msg.textContent = '✗ ' + e.message;
     msg.style.display = 'block';
     return;
@@ -3693,6 +3706,19 @@ async function saveListing(e) {
       ? '✗ Save failed — not authorised to edit this listing. Check Supabase RLS policies.'
       : '✗ Error creating listing. Please try again.';
     msg.style.display = 'block';
+  }
+  } catch (err) {
+    // Any unexpected throw not handled by an inner catch above.
+    console.error('[saveListing]', err);
+    const msg = document.getElementById('form-message');
+    if (msg) {
+      msg.className = 'form-message error';
+      msg.textContent = '✗ Error saving: ' + ((err && err.message) ? err.message : err);
+      msg.style.display = 'block';
+    }
+  } finally {
+    // Whatever path we exited through, never leave the button frozen.
+    if (btn.textContent === 'Saving...') { btn.disabled = false; btn.textContent = 'Save Listing'; }
   }
 }
 
