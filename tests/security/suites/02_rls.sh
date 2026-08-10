@@ -297,10 +297,11 @@ run_rls_tests() {
       "{\"property_id\":\"${active_id}\",\"event_type\":\"view\",\"session_id\":\"${ev_session}\"}")
     check_status "anon INSERT listing_events (active listing) → 201" 201 "$(resp_status "$r")"
 
-    # Second identical event within 30 min should be blocked by dedup policy
+    # Second identical event within 30 min should be blocked by dedup policy.
+    # Denial surfaces as 401 or 403 on this project (see Group A convention).
     r=$(api_post "listing_events" \
       "{\"property_id\":\"${active_id}\",\"event_type\":\"view\",\"session_id\":\"${ev_session}\"}")
-    check_status "anon INSERT listing_events (duplicate within window) → 403" 403 "$(resp_status "$r")"
+    check "anon INSERT listing_events (duplicate within window) → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
     # Anon CAN read listing_events by design: prod policy "anon dedup read
     # listing_events" (single-admin lockdown) is FOR SELECT TO anon USING (true),

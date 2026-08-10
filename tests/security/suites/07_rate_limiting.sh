@@ -35,10 +35,13 @@ run_rate_limiting_tests() {
     "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp_click\",\"session_id\":\"${session}\"}")
   check_status "first lead_event insert → 201" 201 "$(resp_status "$r")"
 
-  # Immediate repeat — same listing + event_type = blocked
+  # Immediate repeat — same listing + event_type = blocked.
+  # Accept 401 or 403: this Supabase project surfaces an RLS WITH CHECK denial
+  # (the per-session dedup in check_lead_rate_limit) as 401, same convention as
+  # the Group A anon-write assertions. Either status means the write was denied.
   r=$(api_post "lead_events" \
     "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp_click\",\"session_id\":\"${session}\"}")
-  check_status "duplicate lead_event within 30s → 403" 403 "$(resp_status "$r")"
+  check "duplicate lead_event within 30s → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   # Different event_type on same listing — allowed
   r=$(api_post "lead_events" \
@@ -59,7 +62,8 @@ run_rate_limiting_tests() {
   for i in 1 2 3 4 5; do
     r=$(api_post "lead_events" \
       "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp_click\",\"session_id\":\"${session}\"}")
-    [[ "$(resp_status "$r")" == "403" ]] && blocked=$((blocked+1))
+    # 401 or 403 both mean the dedup/rate-limit denied the write (see above).
+    [[ "$(resp_status "$r")" =~ ^(401|403)$ ]] && blocked=$((blocked+1))
   done
   check "flood: all 5 rapid repeats blocked (rate limit holds)" "^5$" "$blocked"
 
@@ -74,9 +78,11 @@ run_rate_limiting_tests() {
     "{\"property_id\":\"${active_id}\",\"event_type\":\"view\",\"session_id\":\"${ev_session}\"}")
   check_status "first listing_event insert → 201" 201 "$(resp_status "$r")"
 
+  # Accept 401 or 403: the per-session dedup (check_listing_event_dedup) denial
+  # surfaces as 401 on this project, same as Group A.
   r=$(api_post "listing_events" \
     "{\"property_id\":\"${active_id}\",\"event_type\":\"view\",\"session_id\":\"${ev_session}\"}")
-  check_status "duplicate listing_event (same session+property+event) → 403" 403 "$(resp_status "$r")"
+  check "duplicate listing_event (same session+property+event) → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   # Different event_type — allowed
   r=$(api_post "listing_events" \
