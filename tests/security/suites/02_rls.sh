@@ -266,7 +266,7 @@ run_rls_tests() {
 
     # Anon INSERT on active listing — allowed (rate limited, tested in suite 05)
     r=$(api_post "lead_events" \
-      "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp\",\"session_id\":\"${lead_session}\"}")
+      "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp_click\",\"session_id\":\"${lead_session}\"}")
     check_status "anon INSERT lead_events (active listing) → 201" 201 "$(resp_status "$r")"
 
     # Anon cannot SELECT lead_events
@@ -279,8 +279,11 @@ run_rls_tests() {
 
   # Anon cannot INSERT lead_events for a non-existent listing
   r=$(api_post "lead_events" \
-    '{"listing_id":"00000000-0000-0000-0000-000000000000","event_type":"whatsapp","session_id":"pentest-fake"}')
-  check_status "anon INSERT lead_events (non-existent listing) → 403 (RLS)" 403 "$(resp_status "$r")"
+    '{"listing_id":"00000000-0000-0000-0000-000000000000","event_type":"whatsapp_click","session_id":"pentest-fake"}')
+  # Valid event_type (passes the column CHECK) so the RLS active-listing check is
+  # what rejects it. On production (anon has the INSERT grant) that is a 403; in a
+  # staging project missing the grant it surfaces as 401 — see ENVIRONMENT-DRIFT.md.
+  check "anon INSERT lead_events (non-existent listing) → denied (403 RLS, or 401 if staging lacks the grant)" '^(401|403)$' "$(resp_status "$r")"
 
   # ════════════════════════════════
   # TABLE: listing_events

@@ -32,23 +32,25 @@ run_rate_limiting_tests() {
 
   # First request — should succeed
   r=$(api_post "lead_events" \
-    "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp\",\"session_id\":\"${session}\"}")
+    "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp_click\",\"session_id\":\"${session}\"}")
   check_status "first lead_event insert → 201" 201 "$(resp_status "$r")"
 
   # Immediate repeat — same listing + event_type = blocked
   r=$(api_post "lead_events" \
-    "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp\",\"session_id\":\"${session}\"}")
+    "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp_click\",\"session_id\":\"${session}\"}")
   check_status "duplicate lead_event within 30s → 403" 403 "$(resp_status "$r")"
 
   # Different event_type on same listing — allowed
   r=$(api_post "lead_events" \
-    "{\"listing_id\":\"${active_id}\",\"event_type\":\"phone\",\"session_id\":\"${session}\"}")
+    "{\"listing_id\":\"${active_id}\",\"event_type\":\"call_click\",\"session_id\":\"${session}\"}")
   check_status "different event_type same session → 201 (not rate-limited)" 201 "$(resp_status "$r")"
 
-  # Different session ID — allowed (rate limit is per listing+event_type, not global)
+  # Different session ID — allowed. The lead limit is scoped PER SESSION
+  # (check_lead_rate_limit(listing_id, event_type, session_id) in migration
+  # 20260811000000), so one visitor's clicks never block another visitor's.
   local session2="pentest-rl2-${RUN_ID_SHORT}"
   r=$(api_post "lead_events" \
-    "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp\",\"session_id\":\"${session2}\"}")
+    "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp_click\",\"session_id\":\"${session2}\"}")
   check_status "different session, same listing+event → 201 (independent limit)" 201 "$(resp_status "$r")"
 
   # Flood: 5 rapid requests from same session — all should be blocked
@@ -56,7 +58,7 @@ run_rate_limiting_tests() {
   local blocked=0
   for i in 1 2 3 4 5; do
     r=$(api_post "lead_events" \
-      "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp\",\"session_id\":\"${session}\"}")
+      "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp_click\",\"session_id\":\"${session}\"}")
     [[ "$(resp_status "$r")" == "403" ]] && blocked=$((blocked+1))
   done
   check "flood: all 5 rapid repeats blocked (rate limit holds)" "^5$" "$blocked"
