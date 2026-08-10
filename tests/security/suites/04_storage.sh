@@ -18,9 +18,12 @@ run_storage_tests() {
 
     # ── Anonymous upload ────────────────────────────────────────────────
     r=$(storage_upload "$bucket" "pentest-anon-${ts}.jpg" "image/jpeg" "FAKEJPEG")
-    check_status "anon upload to ${bucket} → 4xx" "" "$(resp_status "$r")"
-    # More specific: expect 400 (policy violation) or 403
-    check "anon upload → 4xx" "^4[0-9][0-9]$" "$(resp_status "$r")"
+    # Anonymous upload must be denied (400 policy violation or 401/403). This
+    # replaces an earlier malformed assertion that passed an EMPTY expected
+    # status (check_status "" → pattern "^$"), which could never match a real
+    # HTTP status and so always failed even though the upload was correctly
+    # rejected. Denial is what matters — never a 2xx.
+    check "anon upload to ${bucket} → denied (4xx)" "^4[0-9][0-9]$" "$(resp_status "$r")"
 
     # ── Anonymous delete ────────────────────────────────────────────────
     r=$(storage_delete "$bucket" "does-not-exist-${ts}.jpg")

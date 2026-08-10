@@ -43,13 +43,17 @@ run_rls_tests() {
   # Anon writes — all must be blocked
   r=$(api_post "properties" \
     '{"title_en":"PENTEST_INSERT","status":"active","slug":"pentest-rls-insert","transaction_type":"for_sale"}')
-  check_status "anon INSERT properties → 403" 403 "$(resp_status "$r")"
+  # A denied anon write shows up as 401 or 403 depending on whether the block
+  # is at the role-grant level (401) or the RLS-policy level (403). Either way
+  # it is DENIED — the write must never succeed (2xx). See the same 401/403
+  # nuance already documented for the intelligence tables in suite 13.
+  check "anon INSERT properties → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   r=$(api_patch "properties?status=eq.active" '{"title_en":"HACKED"}')
-  check_status "anon UPDATE properties → 403" 403 "$(resp_status "$r")"
+  check "anon UPDATE properties → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   r=$(api_delete "properties?status=eq.active")
-  check_status "anon DELETE properties → 403" 403 "$(resp_status "$r")"
+  check "anon DELETE properties → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   # Authenticated non-admin
   if [[ -n "${TEST_USER_JWT:-}" ]]; then
@@ -163,13 +167,13 @@ run_rls_tests() {
 
   # Anon writes — all blocked
   r=$(api_post "parties" '{"name_en":"PENTEST_AGENT","name_lo":"ທົດສອບ"}')
-  check_status "anon INSERT parties → 403" 403 "$(resp_status "$r")"
+  check "anon INSERT parties → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   r=$(api_patch "parties?id=eq.00000000-0000-0000-0000-000000000000" '{"name_en":"HACKED"}')
-  check_status "anon UPDATE parties → 403" 403 "$(resp_status "$r")"
+  check "anon UPDATE parties → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   r=$(api_delete "parties?id=eq.00000000-0000-0000-0000-000000000000")
-  check_status "anon DELETE parties → 403" 403 "$(resp_status "$r")"
+  check "anon DELETE parties → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   # Non-admin authenticated: type/role reassignment stays staff-only, but a
   # party may now update its OWN profile row (auth_user_id = auth.uid()) —
@@ -215,10 +219,10 @@ run_rls_tests() {
 
   # Anon writes — all blocked
   r=$(api_post "contacts" '{"role":"owner","phone":"02099999999"}')
-  check_status "anon INSERT contacts → 403" 403 "$(resp_status "$r")"
+  check "anon INSERT contacts → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   r=$(api_patch "contacts?id=eq.00000000-0000-0000-0000-000000000000" '{"phone":"HACKED"}')
-  check_status "anon UPDATE contacts → 403" 403 "$(resp_status "$r")"
+  check "anon UPDATE contacts → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   # Non-admin authenticated: can insert/update their own contact (created_by
   # = self), but not someone else's.
