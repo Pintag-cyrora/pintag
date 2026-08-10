@@ -15,36 +15,49 @@ const ALLOWED_HOSTS = new Set(['maps.app.goo.gl', 'goo.gl', 'maps.google.com']);
 // Legitimate resolutions land on the google.* maps family.
 const ALLOWED_FINAL_HOSTS = /^([a-z0-9-]+\.)*google(\.[a-z]{2,3}){1,2}$/i;
 
+const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+function errResponse(status: number, error: string): Response {
+  return new Response(JSON.stringify({ error }), { status, headers: jsonHeaders });
+}
+
+// Raw control characters (CR/LF/NUL and the rest of C0, plus DEL) must never
+// appear in a URL string. Rejecting them up front turns malformed input into a
+// clean 400 instead of (a) a 200 for a CRLF-bearing allowlisted host or (b) a
+// 500 when the parser chokes on a NUL byte.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // ── Parse + validate the request. Every failure here is the CALLER's
+  //    fault, so it is a 4xx — never a 500. ────────────────────────────────
+  let url: unknown;
   try {
-    const { url } = await req.json();
-    if (!url || typeof url !== 'string') throw new Error('No URL provided');
+    const body = await req.json();
+    url = body?.url;
+  } catch {
+    return errResponse(400, 'Invalid JSON body');
+  }
+  if (!url || typeof url !== 'string') return errResponse(400, 'No URL provided');
+  if (CONTROL_CHARS.test(url)) return errResponse(400, 'URL contains control characters');
 
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      throw new Error('Invalid URL');
-    }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return errResponse(400, 'Invalid URL');
+  }
 
-    if (!ALLOWED_HOSTS.has(parsed.hostname)) {
-      return new Response(JSON.stringify({ error: 'URL not allowed' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+  if (!ALLOWED_HOSTS.has(parsed.hostname)) return errResponse(403, 'URL not allowed');
+  if (parsed.protocol !== 'https:') return errResponse(403, 'URL not allowed');
 
-    if (parsed.protocol !== 'https:') {
-      return new Response(JSON.stringify({ error: 'URL not allowed' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
+  // ── Fetch + validate the final host. A failure here is an UPSTREAM/gateway
+  //    problem (goo.gl unreachable, timeout), so it is a 502 — still not a
+  //    crash, and never a 2xx. ─────────────────────────────────────────────
+  try {
     const response = await fetch(url, {
       redirect: 'follow',
       signal: AbortSignal.timeout(10000),
@@ -54,20 +67,12 @@ Deno.serve(async (req) => {
     const resolved = response.url;
     const finalHost = new URL(resolved).hostname;
     if (!ALLOWED_FINAL_HOSTS.test(finalHost) && !ALLOWED_HOSTS.has(finalHost)) {
-      return new Response(JSON.stringify({ error: 'Resolved outside Google Maps — refusing' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return errResponse(403, 'Resolved outside Google Maps — refusing');
     }
 
-    return new Response(JSON.stringify({ resolved_url: resolved }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(JSON.stringify({ resolved_url: resolved }), { headers: jsonHeaders });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return errResponse(502, 'Upstream fetch failed: ' + message);
   }
 });
