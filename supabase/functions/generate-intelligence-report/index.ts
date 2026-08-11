@@ -30,6 +30,7 @@ import { callGemini } from './gemini-client.js';
 import { computeAllTrends, dataConfidenceLabel, pctChange } from './trend-calculator.js';
 import { validateReportContent, buildValidationFallbackReport } from './report-validator.js';
 import { SNAPSHOT_SCHEMA_VERSION, REPORT_FORMAT_VERSION, PROMPT_VERSION, VALIDATOR_VERSION } from './versions.js';
+import { parseRpcBody } from './rest-body.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -153,7 +154,9 @@ class Db {
       body: JSON.stringify(args),
     });
     if (!r.ok) throw new Error(`RPC ${fn} failed: ${r.status} ${await r.text()}`);
-    return r.json();
+    // A RETURNS void RPC (e.g. ensure_daily_metrics_snapshot) replies 204/empty;
+    // r.json() would throw "Unexpected end of JSON input". Parse only real bodies.
+    return parseRpcBody(r.status, await r.text());
   }
 
   async select(table: string, query: string): Promise<any[]> {
