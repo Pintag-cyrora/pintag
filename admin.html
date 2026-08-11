@@ -305,8 +305,12 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
   <nav class="admin-nav">
     <p class="admin-nav-logo">Pintag <span>Admin</span></p>
     <div class="admin-nav-right">
-      <button class="admin-nav-btn btn-new" onclick="showForm(null)">+ New Listing</button>
-      <button class="admin-nav-btn btn-import" onclick="showImportPanel()">&#43; Create Listing</button>
+      <!-- Single creation entry point: New Listing opens the Smart Import panel
+           (photos → description → Generate → AI → review → publish). The same
+           panel receives Gallery Recovery photos via maybeIngestGalleryRecovery().
+           The blank manual editor is no longer a separate entry — it remains the
+           post-Generate review step and the edit-existing surface. -->
+      <button class="admin-nav-btn btn-import" onclick="showImportPanel()">+ New Listing</button>
       <button class="admin-nav-btn btn-logout" onclick="logout()">Sign Out</button>
     </div>
   </nav>
