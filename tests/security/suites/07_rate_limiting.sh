@@ -28,6 +28,12 @@ run_rate_limiting_tests() {
   # ════════════════════════════════
   info "--- lead_events (per-session rate limit) ---"
 
+  # TODO(staging): once CI targets a staging project (not production), restore the
+  # real insert + duplicate/flood path with api_post_minimal (return=minimal):
+  # first insert → 201, immediate repeat → dedup-denied, different event_type /
+  # session → 201, flood → all blocked. See ENVIRONMENT-DRIFT.md for the full
+  # before/after. It is skipped here only to avoid writing test leads to the
+  # production CRM while CI still targets prod.
   local session="pentest-rl-${RUN_ID_SHORT}"
 
   # lead_events intentionally has NO anon SELECT policy (only admins read leads),

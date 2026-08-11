@@ -264,6 +264,10 @@ run_rls_tests() {
   if [[ -n "$active_id" ]]; then
     local lead_session="pentest-lead-$(date +%s)"
 
+    # TODO(staging): once CI targets a staging project (not production), revert
+    # this to the real success path — api_post_minimal (return=minimal) asserting
+    # 201 — so it exercises the actual app insert shape. See ENVIRONMENT-DRIFT.md.
+    #
     # lead_events has NO anon SELECT policy (admin-read only). A
     # return=representation POST appends RETURNING *, whose read-back the SELECT
     # policy filters out — so even though the INSERT WITH CHECK passes, anon gets
