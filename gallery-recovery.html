@@ -49,6 +49,12 @@ select{background:#0F1418;color:#E8EDF0;border:1px solid rgba(232,237,240,.25);b
 button{border:0;border-radius:8px;background:#2D8C8C;color:#fff;font-size:.85rem;font-weight:600;padding:.5rem .8rem;cursor:pointer}
 button.ghost{background:transparent;border:1px solid rgba(232,237,240,.2);color:#E8EDF0}
 button.danger{background:#8C3A4A}
+/* ⚡ Smart Import = create a NEW listing from the selected photos. A distinct
+   indigo accent so it never reads as "edit the existing listing" (teal solid,
+   e.g. Finish → Admin) or "move to another listing" (ghost). One identity on
+   every surface — cluster card, mobile bar, and the gallery editor bars. */
+button.si{background:#5B53D6;color:#fff;border:0}
+button.si:hover{background:#6B63E6}
 button:disabled{opacity:.5;cursor:default}
 .done{color:#4CAF7D;font-weight:600}
 .tag{display:inline-block;font-size:.7rem;padding:1px 6px;border-radius:6px;border:1px solid rgba(232,237,240,.2);margin-left:6px;color:#9AA7B0}
@@ -595,7 +601,7 @@ button:disabled{opacity:.5;cursor:default}
       '<div class="why">Upload burst (≤15 min apart). Tick only the photos that belong, then pick the listing.</div></div></div>'+
       '<div class="ctrls"><button class="ghost tsel">Select all</button><button class="ghost tnone">Select none</button>'+
         '<span class="cfl">Confidence:</span><select class="confsel"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
-        '<button class="tnomatch">⚡ Smart Import</button></div>'+
+        '<button class="tnomatch si">⚡ Smart Import</button></div>'+
       '<div class="qfilters"></div>'+
       '<div class="gallery">'+shown.map(photoItem).join('')+'</div>'+
       '<input class="search" placeholder="Search matching listing by agent, district, type, or title…">'+
@@ -1091,7 +1097,7 @@ button:disabled{opacity:.5;cursor:default}
       var bar=document.createElement('div'); bar.className='mlebar';
       bar.innerHTML='<span class="mc"></span>'+
         '<button class="ghost mchange">🔄 Another Existing Listing</button>'+
-        '<button class="ghost msi">⚡ Smart Import</button>'+
+        '<button class="si msi">⚡ Smart Import</button>'+
         '<button class="msave">✅ This Listing → Finish → Admin</button>'+
         '<button class="ghost mskip">Skip for now →</button>';
       host.appendChild(bar);
@@ -1126,7 +1132,7 @@ button:disabled{opacity:.5;cursor:default}
           '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
           '<button class="blsave">✅ This Listing → Finish → Admin ('+workingCount()+') ↵</button>'+
           '<button class="ghost blchange">🔄 Another Existing Listing</button>'+
-          '<button class="ghost blsi">⚡ Smart Import</button>'+
+          '<button class="si blsi">⚡ Smart Import</button>'+
           '<button class="ghost blclose">Close</button></div>'+
         (ddp.dupes ? '<div class="why" style="color:#E0B15A">⚠ '+ddp.dupes+' duplicate photo(s) hidden from the pool.</div>' : '')+
         '<div class="cols">'+
@@ -1421,7 +1427,7 @@ button:disabled{opacity:.5;cursor:default}
         '<button class="ghost b-all">Select all</button>'+
         '<button class="ghost b-clr">Clear</button>'+
         '<button class="b-add">Add to gallery</button>'+
-        '<button class="b-new">⚡ Smart Import</button>';
+        '<button class="b-new si">⚡ Smart Import</button>';
       document.body.appendChild(bar);
       bar.querySelector('.b-all').onclick=function(){ if(activeCard) setAll(activeCard,true); };
       bar.querySelector('.b-clr').onclick=function(){ if(activeCard) setAll(activeCard,false); };
