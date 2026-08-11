@@ -263,6 +263,21 @@ button:disabled{opacity:.5;cursor:default}
   function isComplete(p){ return (p.workflow_status || 'active') !== 'draft'; }   // active / archived / null
   function needsGallery(p){ return p.workflow_status === 'draft' && !hasGallery(p); }         // active recovery queue
   function needsAdminCompletion(p){ return p.workflow_status === 'draft' && hasGallery(p); }  // gallery done, publish pending
+
+  // ── "Finished" — a recovery-only worklist mark (NOT a status change) ────────
+  // Lets the operator cross a listing off their Recovery worklist WITHOUT
+  // touching workflow_status or public visibility — that stays Admin's job (the
+  // single source of truth above). Purely local to this browser (localStorage),
+  // fully reversible. Finished listings are hidden from the Recovered worklist
+  // by default; "Show finished" reveals them (dimmed) with an Undo.
+  var GR_DONE_KEY = 'pintag_gr_done';
+  var GR_DONE = (function(){ try { return new Set(JSON.parse(localStorage.getItem(GR_DONE_KEY) || '[]')); } catch(e){ return new Set(); } })();
+  var SHOW_DONE = false;
+  function isDoneMark(id){ return GR_DONE.has(id); }
+  function setDoneMark(id, on){
+    if (on) GR_DONE.add(id); else GR_DONE.delete(id);
+    try { localStorage.setItem(GR_DONE_KEY, JSON.stringify(Array.from(GR_DONE))); } catch(e){}
+  }
   // WHO — the listing identity that must ALWAYS accompany the photos. Shared by
   // the desktop and mobile editors and the Recovered list so a gallery is never
   // shown without the title/listing it belongs to. Admin workflow status is the
@@ -680,16 +695,19 @@ button:disabled{opacity:.5;cursor:default}
   function renderRecovered() {
     var host = document.getElementById('recovered');
     var nt = recoveredList().filter(needsTitle).length;
+    var doneCount = recoveredList().filter(function(p){ return isDoneMark(p.id); }).length;
     host.innerHTML =
-      '<div class="card"><b>Recovered Galleries</b> <span class="meta">'+recoveredList().length+' listing(s) with photos</span>'+
+      '<div class="card"><b>Recovered Galleries</b> <span class="meta">'+recoveredList().length+' listing(s) with photos'+(doneCount?' · '+doneCount+' finished':'')+'</span>'+
         '<div class="ctrls"><span class="cfl">Confidence</span>'+
           ['all','high','medium','low'].map(function(x){ return '<button class="ghost rcf" data-c="'+x+'"'+(RCONF===x?' style="background:#2D8C8C;color:#fff"':'')+'>'+x.toUpperCase()+'</button>'; }).join('')+
+          '<button class="ghost showdone"'+(SHOW_DONE?' style="background:#2D8C8C;color:#fff"':'')+'>'+(SHOW_DONE?'Hide finished':'Show finished'+(doneCount?' ('+doneCount+')':''))+'</button>'+
           '<button class="bulkai"'+(nt?'':' disabled')+'>Generate AI titles for all empty ('+nt+')</button>'+
         '</div>'+
         '<input class="rsearch" placeholder="Search recovered listings by agent, title, or district…">'+
         '<div class="rlist"></div></div>';
     var rs = host.querySelector('.rsearch'), rl = host.querySelector('.rlist');
     [].forEach.call(host.querySelectorAll('.rcf'), function(b){ b.onclick = function(){ RCONF = b.getAttribute('data-c'); renderRecovered(); }; });
+    var sd = host.querySelector('.showdone'); if (sd) sd.onclick = function(){ SHOW_DONE = !SHOW_DONE; renderRecovered(); };
     var bai = host.querySelector('.bulkai');
     bai.onclick = function(){
       var targets = recoveredList().filter(needsTitle);
@@ -703,6 +721,7 @@ button:disabled{opacity:.5;cursor:default}
   function drawRecovered(rl, q) {
     q = (q||'').trim().toLowerCase(); rl.innerHTML = '';
     var list = recoveredList().filter(function(p){
+      if (!SHOW_DONE && isDoneMark(p.id)) return false;   // hide finished from the worklist
       if (RCONF !== 'all' && (CONFMAP[p.id]||'') !== RCONF) return false;
       if (q && (agentName(p)+' '+(p.title_en||'')+' '+(p.title_lo||'')+' '+(p.district_en||'')).toLowerCase().indexOf(q) < 0) return false;
       return true;
@@ -733,7 +752,16 @@ button:disabled{opacity:.5;cursor:default}
       // Forward: finish the listing in Admin (description → AI Generate → publish).
       var cb = document.createElement('button'); cb.textContent = 'Complete in Admin →';
       cb.onclick = function(){ goComplete(p.id); };
-      row.appendChild(cb); rl.appendChild(row);
+      row.appendChild(cb);
+      // ✓ Finished — recovery-only worklist mark (localStorage), reversible; does
+      // NOT change workflow_status or public visibility.
+      var done = isDoneMark(p.id);
+      var fb = document.createElement('button'); fb.className = 'ghost';
+      fb.textContent = done ? '↺ Undo finished' : '✓ Finished';
+      fb.onclick = function(){ setDoneMark(p.id, !done); renderRecovered(); };
+      row.appendChild(fb);
+      if (done) row.style.opacity = '0.55';
+      rl.appendChild(row);
     });
   }
 
