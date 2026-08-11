@@ -1,55 +1,76 @@
-# Security suite — known staging/CI environment drift
+# Security suite — CI target and the `lead_events` insert shape
 
 The Security Regression workflow (`.github/workflows/security-regression.yml`)
-runs `tests/security/run.sh` against the **staging** Supabase project
-(`SUPABASE_URL` / `SUPABASE_ANON_KEY` secrets, `APP_ENV=staging`). Some
-failures come from the staging project not being a faithful mirror of
-production, **not** from a production security gap or a wrong test. Those are
-recorded here so they are not "fixed" by weakening production or the tests.
+runs `tests/security/run.sh` against the Supabase project named by the
+`SUPABASE_URL` / `SUPABASE_ANON_KEY` secrets (labelled `APP_ENV=staging`, but the
+label is cosmetic — see below). This note records two facts that were the source
+of a long, misleading investigation, so they are not re-diagnosed as a
+production security gap or "fixed" by weakening production.
 
-## Anonymous `lead_events` INSERT returns 401 in staging (Group B)
+## 1. CI currently runs against **production**
 
-**Symptom (CI, staging):**
+The `SUPABASE_URL` / `SUPABASE_ANON_KEY` secrets point at the **production**
+project (`eoladhcljbpbhnrmmpev`), not a separate staging database. This was
+confirmed by the fact that the active listing CI picked up
+(`properties?status=eq.active`) only exists in the production project.
 
-- `anon INSERT lead_events (active listing)` → **401** (test expects `201`)
-- every downstream Rate-Limiting `lead_events` case → `401` (cannot get a first
-  successful insert), and the flood counter reads `0`
+Consequences:
 
-**This is NOT how production behaves.** The live single-admin lockdown
-(`supabase/migrations/20260804130000_single_admin_cyrora_lockdown.sql`) grants
-anon the INSERT it needs and adds the matching policy:
+- The suite's analytics inserts (`listing_events`, `search_events`, …) persist
+  into the live database.
+- **`lead_events` is deliberately handled so the suite never materialises leads
+  in the production CRM** (a successful `lead_events` insert fires the
+  `create_lead_from_event` trigger, which writes a row into `leads`). See §2.
 
-```sql
--- line 125
-CREATE POLICY "anon insert lead_events" ON lead_events FOR INSERT TO anon WITH CHECK (true);
--- line 174
-GRANT INSERT ON lead_events, listing_events, search_events, ui_events, page_views TO anon;
-```
+The clean long-term fix is to repoint these secrets at a real staging project
+kept in sync with production migrations. Until then, treat any test that would
+*write* business-visible rows (leads) as something to assert-without-persisting.
 
-So in production anon **can** insert `lead_events` (`201`) — which is exactly
-how the live site records leads (the admin dashboard's lead counts prove it).
+## 2. Anon `lead_events` insert via `return=representation` is *correctly* denied
 
-**Root cause of the staging 401:** the staging `lead_events` table is missing
-the `GRANT INSERT ... TO anon` above.
+Earlier this was misdiagnosed as a missing `GRANT INSERT ... TO anon` on
+`lead_events` in "staging". That was wrong. The real mechanism:
 
-- `401` (role lacks the table privilege) rather than `403` (RLS policy denial)
-  is the tell that the block is at the **grant** level, not the policy level.
-- Proof it is partial drift, not a global anon-key problem: in the **same**
-  staging run, `anon INSERT listing_events` **succeeds (201)** — staging has the
-  grant for `listing_events` but not for `lead_events`, even though production
-  grants both identically on the same line.
+- The test helper `api_post` sends `Prefer: return=representation`, so PostgREST
+  appends `RETURNING *` to the insert.
+- `lead_events` intentionally has **no anon `SELECT` policy** — only
+  `admin read lead_events` (authenticated + `is_pintag_admin`). Anonymous
+  visitors may record a lead but must not be able to read leads back.
+- So the `RETURNING` read-back is filtered out by RLS, and the whole statement
+  fails with `new row violates row-level security policy for table
+  "lead_events"` — **even though the INSERT `WITH CHECK` passed**. Nothing is
+  persisted (the failed statement rolls back).
 
-**Correct remediation (staging/CI only — do NOT change production or the tests):**
+This is not a bug and not a grant problem — the anon `INSERT` grant and the
+`anon insert lead_events` policy (active-listing + `check_lead_rate_limit`) are
+both present and correct in production. It is purely a consequence of asking
+PostgREST to read the row back on a write-only-for-anon table.
 
-1. Apply the production lockdown grants to the staging project:
-   ```sql
-   GRANT INSERT ON lead_events, listing_events, search_events, ui_events, page_views TO anon;
-   ```
-   and confirm the `anon insert *` policies from `20260804130000` exist there, **or**
-2. Point the CI `SUPABASE_URL` / `SUPABASE_ANON_KEY` secrets at a project that
-   is kept in sync with production migrations.
+**Why `listing_events` behaves differently in the same run:** it *does* have an
+anon `SELECT` policy (the dedup-read policy), so its `RETURNING` read-back
+succeeds and its insert returns `201`.
 
-Until staging is synced, the `lead_events` INSERT and its dependent
-Rate-Limiting assertions will remain red **in CI only**. The tests are left
-asserting the correct production behavior (`201`) on purpose — accepting `401`
-would falsely encode "production rejects lead logging."
+**How the live site avoids this entirely:** the app never uses
+`return=representation` for these events. `postEvent()` in `listing.html` (and
+the shared `ptContactClick()` in `components.js`) always send
+`Prefer: return=minimal`, which performs a plain INSERT with no read-back — so
+real lead capture works fine.
+
+### What the suite asserts (and why)
+
+Because CI targets production (§1), the suite must not drive a *successful*
+anon `lead_events` insert (it would write a fake lead into a real agent's CRM).
+So the tests assert the property we *can* verify over the anon HTTP path
+without persisting anything:
+
+- `02_rls.sh` / `07_rate_limiting.sh`: an anon `lead_events` insert sent with
+  `return=representation` is **denied (401/403)** — proving anon cannot read a
+  lead back.
+- The per-session dedup / rate-limit behaviour of `check_lead_rate_limit` is
+  **skipped** over HTTP (it can only be exercised by a persisting insert) and is
+  instead enforced and verified at the database level (migration
+  `20260811000000`).
+
+If the CI secrets are ever repointed at a throwaway staging project, these can
+be upgraded to exercise the real success + dedup path with `return=minimal`
+(the helper is trivial to add back), since writing test leads there is harmless.

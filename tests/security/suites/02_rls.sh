@@ -264,10 +264,18 @@ run_rls_tests() {
   if [[ -n "$active_id" ]]; then
     local lead_session="pentest-lead-$(date +%s)"
 
-    # Anon INSERT on active listing — allowed (rate limited, tested in suite 05)
+    # lead_events has NO anon SELECT policy (admin-read only). A
+    # return=representation POST appends RETURNING *, whose read-back the SELECT
+    # policy filters out — so even though the INSERT WITH CHECK passes, anon gets
+    # an RLS denial. That inability to read a lead back is the property asserted
+    # here. This does NOT mean anon can't record leads: the live app inserts with
+    # Prefer: return=minimal (listing.html postEvent), which needs no read-back
+    # and succeeds. Exercising that success path here would fire the
+    # create_lead_from_event trigger and persist test leads to the production
+    # leads CRM (this suite targets production), which we deliberately avoid.
     r=$(api_post "lead_events" \
       "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp_click\",\"session_id\":\"${lead_session}\"}")
-    check_status "anon INSERT lead_events (active listing) → 201" 201 "$(resp_status "$r")"
+    check "anon INSERT lead_events (active listing, return=representation) → denied read-back (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
     # Anon cannot SELECT lead_events
     r=$(api_get "lead_events?limit=5")
@@ -281,9 +289,9 @@ run_rls_tests() {
   r=$(api_post "lead_events" \
     '{"listing_id":"00000000-0000-0000-0000-000000000000","event_type":"whatsapp_click","session_id":"pentest-fake"}')
   # Valid event_type (passes the column CHECK) so the RLS active-listing check is
-  # what rejects it. On production (anon has the INSERT grant) that is a 403; in a
-  # staging project missing the grant it surfaces as 401 — see ENVIRONMENT-DRIFT.md.
-  check "anon INSERT lead_events (non-existent listing) → denied (403 RLS, or 401 if staging lacks the grant)" '^(401|403)$' "$(resp_status "$r")"
+  # what rejects it: the WITH CHECK's `listing_id IN (active properties)` half is
+  # false, so the row never inserts. PostgREST surfaces the RLS denial as 401/403.
+  check "anon INSERT lead_events (non-existent listing) → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   # ════════════════════════════════
   # TABLE: listing_events
