@@ -595,7 +595,7 @@ button:disabled{opacity:.5;cursor:default}
       '<div class="why">Upload burst (≤15 min apart). Tick only the photos that belong, then pick the listing.</div></div></div>'+
       '<div class="ctrls"><button class="ghost tsel">Select all</button><button class="ghost tnone">Select none</button>'+
         '<span class="cfl">Confidence:</span><select class="confsel"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
-        '<button class="tnomatch">➕ Create New Listing</button></div>'+
+        '<button class="tnomatch">⚡ Smart Import</button></div>'+
       '<div class="qfilters"></div>'+
       '<div class="gallery">'+shown.map(photoItem).join('')+'</div>'+
       '<input class="search" placeholder="Search matching listing by agent, district, type, or title…">'+
@@ -604,11 +604,11 @@ button:disabled{opacity:.5;cursor:default}
     card._cluster = c;
     card.querySelector('.tsel').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=true; }); if(window.MobileGallery) MobileGallery.sync(card); };
     card.querySelector('.tnone').onclick = function(){ [].forEach.call(gal.querySelectorAll('input'), function(x){ x.checked=false; }); if(window.MobileGallery) MobileGallery.sync(card); };
-    // ➕ Create New Listing — the ticked photos belong to a property with NO
-    // existing listing yet. A primary alternative to picking an existing listing:
-    // stage them straight into the Create Listing pipeline (sendToSmartImport with
-    // no listing id) → photos pre-attached → description → AI → title → publish.
-    // No existing listing or title required first; no new screen or second model.
+    // ⚡ Smart Import — the ticked photos belong to a property with NO existing
+    // listing yet. Hand them straight to the SAME Smart Import panel Admin uses
+    // (sendToSmartImport with no listing id) → photos pre-attached → write a
+    // description → Generate → AI title/details → Admin review → publish. This
+    // opens Smart Import, NOT the existing listing editor; no new screen or model.
     card.querySelector('.tnomatch').onclick = function(){
       var names = [].map.call(gal.querySelectorAll('input:checked'), function(x){ return x.getAttribute('data-name'); });
       if (!names.length) { alert('Tick the photos that belong together first.'); return; }
@@ -655,7 +655,7 @@ button:disabled{opacity:.5;cursor:default}
         // The cluster is only an INPUT SOURCE: open the ONE unified Gallery Editor
         // for the chosen listing with the ticked photos carried in pre-selected.
         // From there — add/remove photos, 🔄 Another Existing Listing (move),
-        // ➕ No Matching Listing (Create Listing), ✅ Finish → Admin — same model.
+        // ⚡ Smart Import (new listing), ✅ Finish → Admin — same model.
         BL_SEL = d.id; _preAddNext = names; switchView('bylisting');
       };
       row.appendChild(btn); cd.appendChild(row);
@@ -666,7 +666,7 @@ button:disabled{opacity:.5;cursor:default}
   // (Removed: the legacy assign() / afterClusterChange() direct-attach path.
   // Cluster → Listing now routes every selection through the ONE unified editor
   // — renderCands() "Open in editor →" carries the ticked photos into
-  // openListingEditor(), and the cluster card's ➕ No Matching Listing hands
+  // openListingEditor(), and the cluster card's ⚡ Smart Import hands
   // them to Create Listing. There is no second assignment model.)
 
   // ───────────────────────── RECOVERED GALLERIES view ─────────────────────────
@@ -830,7 +830,7 @@ button:disabled{opacity:.5;cursor:default}
   // Recovery does not know how listings are generated — only how to organize
   // photos. One pipeline, one AI, one editor, one publish flow.
   var SI_MAX = 15;   // the pipeline's photo cap
-  // ➕ No Matching Listing — a deliberate statement: these photos belong to NO
+  // ⚡ Smart Import (editor) — a deliberate statement: these photos belong to NO
   // existing listing. So we DETACH them from the current listing (it drops back
   // to "needs gallery" and re-enters the queue), then hand them to Create
   // Listing to become a new draft. If the operator cancels Create Listing, the
@@ -1087,17 +1087,17 @@ button:disabled{opacity:.5;cursor:default}
       // Sticky bar — the only three decisions after grouping a gallery:
       //   ✅ Finish          → belongs to THIS listing → save + go to Admin
       //   🔄 Another Listing → belongs to a DIFFERENT existing listing → move + Admin
-      //   ➕ No Matching     → no existing listing → Create Listing (new draft)
+      //   ⚡ Smart Import    → no existing listing → hand photos to Smart Import (new draft)
       var bar=document.createElement('div'); bar.className='mlebar';
       bar.innerHTML='<span class="mc"></span>'+
         '<button class="ghost mchange">🔄 Another Existing Listing</button>'+
-        '<button class="ghost msi">➕ No Matching Listing</button>'+
+        '<button class="ghost msi">⚡ Smart Import</button>'+
         '<button class="msave">✅ This Listing → Finish → Admin</button>'+
         '<button class="ghost mskip">Skip for now →</button>';
       host.appendChild(bar);
       // WHAT NEXT — the same three answers are ALWAYS present (never swapped for
       // "Skip"), so the vocabulary is identical everywhere: This Listing / Another
-      // Existing Listing / No Matching Listing. They act on the WORKING gallery,
+      // Existing Listing / Smart Import. They act on the WORKING gallery,
       // so they disable (not disappear) until at least one photo is selected. A
       // separate low-key "Skip for now" only appears when there is nothing to act
       // on, preserving queue navigation without hiding the three-way choice.
@@ -1126,7 +1126,7 @@ button:disabled{opacity:.5;cursor:default}
           '<span class="cfl">Confidence</span><select class="blconf"><option value="high">HIGH</option><option value="medium">MEDIUM</option><option value="low">LOW</option></select>'+
           '<button class="blsave">✅ This Listing → Finish → Admin ('+workingCount()+') ↵</button>'+
           '<button class="ghost blchange">🔄 Another Existing Listing</button>'+
-          '<button class="ghost blsi">➕ No Matching Listing</button>'+
+          '<button class="ghost blsi">⚡ Smart Import</button>'+
           '<button class="ghost blclose">Close</button></div>'+
         (ddp.dupes ? '<div class="why" style="color:#E0B15A">⚠ '+ddp.dupes+' duplicate photo(s) hidden from the pool.</div>' : '')+
         '<div class="cols">'+
@@ -1421,15 +1421,15 @@ button:disabled{opacity:.5;cursor:default}
         '<button class="ghost b-all">Select all</button>'+
         '<button class="ghost b-clr">Clear</button>'+
         '<button class="b-add">Add to gallery</button>'+
-        '<button class="b-new">➕ Create New Listing</button>';
+        '<button class="b-new">⚡ Smart Import</button>';
       document.body.appendChild(bar);
       bar.querySelector('.b-all').onclick=function(){ if(activeCard) setAll(activeCard,true); };
       bar.querySelector('.b-clr').onclick=function(){ if(activeCard) setAll(activeCard,false); };
       bar.querySelector('.b-add').onclick=function(){ if(activeCard) openPicker(activeCard); };
-      // ➕ Create New Listing — mobile parity with the desktop cluster button
+      // ⚡ Smart Import — mobile parity with the desktop cluster button
       // (the .card .ctrls row is display:none on phones). Sends the SELECTED
-      // cluster photos straight into the Create Listing pipeline with no listing
-      // id — same sendToSmartImport path, photos pre-attached, no new flow.
+      // cluster photos straight into the same Smart Import panel Admin uses, with
+      // no listing id — same sendToSmartImport path, photos pre-attached, no new flow.
       bar.querySelector('.b-new').onclick=function(){
         if(!activeCard) return;
         var names=inputs(activeCard).filter(function(x){return x.checked;}).map(function(x){return x.getAttribute('data-name');});
