@@ -1786,7 +1786,30 @@ function buildUnitPriceText(property, resolved, lang){
 
 function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone){
   var rawUnits=Array.isArray(property.unit_types)?property.unit_types:[];
-  if(rawUnits.length<2) return ''; // single (or zero) unit types keep the existing single-listing layout
+  if(rawUnits.length===0) return '';
+
+  // A lone unit type normally folds into the main single-listing layout (no
+  // units section). The one exception: a project modeled as ONE unit type
+  // that tracks a multi-unit inventory (total_units set) -- e.g. a townhouse
+  // or villa project of 24 units, 7 available. Then we surface just the
+  // compact "7 of 24 units available" line (no duplicate price/specs/CTA --
+  // those already render in the main panel). Self-suppressing: a single unit
+  // type WITHOUT total_units (the common apartment/condo case) still returns
+  // '' via formatUnitInventory()==null, so that layout is byte-for-byte
+  // unchanged. property_type is irrelevant here -- inventory is a function of
+  // total_units being tracked, not what kind of property it is.
+  if(rawUnits.length===1){
+    var lone=resolveUnitAvailability(rawUnits[0]);
+    var loneInv=(typeof formatUnitInventory==='function')?formatUnitInventory(lone,lang):null;
+    if(loneInv==null) return '';
+    var loneEmoji=(typeof getUnitAvailabilityEmoji==='function')?getUnitAvailabilityEmoji(lone.status):'';
+    return (
+      '<div class="units-section" id="units-section" data-track="available-units-section" data-track-type="section" data-track-label="Available Units">'+
+      '<div class="units-header"><span class="units-title">'+esc(L.availableUnits[lang])+'</span></div>'+
+      '<div class="unit-status unit-status-'+esc(lone.status)+'" style="display:inline-block;margin-top:4px;">'+(loneEmoji?esc(loneEmoji)+' ':'')+esc(loneInv)+'</div>'+
+      '</div>'
+    );
+  }
 
   var pairs=rawUnits.map(function(u){
     return { raw:u, resolved: resolveUnitAvailability(u), sort_order: u.sort_order||0 };
@@ -1801,6 +1824,11 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
     var availText=formatAvailabilityDisplay(p.resolved,lang);
     var availEmoji=(typeof getUnitAvailabilityEmoji==='function')?getUnitAvailabilityEmoji(p.resolved.status):'';
     var unitCount=formatAvailableUnitCount(p.resolved);
+    // "7 of 24 units available" when this unit type tracks a total inventory
+    // (total_units set) -- the richer inventory line replaces the bare count
+    // above when present, and self-suppresses to null for single/standalone
+    // units, in which case the existing bare-count behavior is unchanged.
+    var invText=(typeof formatUnitInventory==='function')?formatUnitInventory(p.resolved,lang):null;
     var noteText=getAvailabilityNoteLine(p.resolved);
     var moveInText=formatMoveInDate(p.resolved,lang);
     // Deposit is secondary to (never a replacement for) the unit's own
@@ -1858,7 +1886,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
       coverHtml+
       '<div class="unit-card-head">'+
         '<span class="unit-name">'+esc(unitName)+'</span>'+
-        '<span class="unit-status unit-status-'+esc(p.resolved.status)+'">'+(availEmoji?esc(availEmoji)+' ':'')+esc(availText)+(unitCount?' · '+esc(String(unitCount)):'')+'</span>'+
+        '<span class="unit-status unit-status-'+esc(p.resolved.status)+'">'+(availEmoji?esc(availEmoji)+' ':'')+esc(availText)+(invText?' · '+esc(invText):(unitCount?' · '+esc(String(unitCount)):''))+'</span>'+
       '</div>'+
       (factsHtml?'<div class="unit-facts">'+factsHtml+'</div>':'')+
       (priceText?'<div class="unit-price">'+esc(priceText)+'</div>':'')+
@@ -2097,10 +2125,11 @@ function buildMockupLayout(){
       return '<div class="spec-item"><span class="spec-icon">'+esc(f.icon)+'</span><span class="spec-val">'+esc(String(f.val))+'</span><span class="spec-lbl">'+esc(String(f.lbl).toUpperCase())+'</span></div>';
     }).join('');
     var selAvailText=formatAvailabilityDisplay(selectedUnit.availability,lang);
+    var selInvText=(typeof formatUnitInventory==='function')?formatUnitInventory(selectedUnit.availability,lang):null;
     viewingUnitBannerHtml=(
       '<div class="viewing-unit-banner">'+
       '<span class="viewing-unit-label">'+esc(L.viewingUnit[lang])+': <strong>'+esc(selUnitName)+'</strong></span>'+
-      '<span class="viewing-unit-status unit-status-'+esc(selectedUnit.availability.status)+'">'+esc(selAvailText)+'</span>'+
+      '<span class="viewing-unit-status unit-status-'+esc(selectedUnit.availability.status)+'">'+esc(selAvailText)+(selInvText?' · '+esc(selInvText):'')+'</span>'+
       '<button type="button" class="viewing-unit-reset" onclick="selectUnitType(\''+esc(selectedUnitTypeId)+'\')">'+esc(L.showOverview[lang])+'</button>'+
       '</div>'
     );

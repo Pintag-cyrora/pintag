@@ -12,7 +12,7 @@ vm.runInThisContext(src, { filename: 'unit-availability.js' });
 const {
   resolveUnitAvailability, formatAvailabilityDisplay, formatAvailableUnitCount,
   getAvailabilityNoteLine, compareUnitTypesForDisplay, formatAvailabilityAdminSummary,
-  formatMoveInDate
+  formatMoveInDate, formatUnitInventory
 } = globalThis;
 
 function unitType(overrides) {
@@ -94,6 +94,50 @@ test('formatAvailableUnitCount: only plural, per the frozen contract', () => {
   assert.equal(formatAvailableUnitCount(resolveUnitAvailability(unitType({ available_count: 1 }))), null);
   assert.equal(formatAvailableUnitCount(resolveUnitAvailability(unitType({ available_count: 3 }))), 3);
   assert.equal(formatAvailableUnitCount(resolveUnitAvailability(unitType({ available_count: 0 }))), null);
+});
+
+// ── formatUnitInventory: "7 of 24 units available" (multi-unit projects) ──
+// Reused across every rental property type -- these cases stand in for
+// townhouse/villa/apartment projects alike (the resolver/formatter never
+// sees property_type). See the "property-type-agnostic" block in
+// rental-terms.test.js for the terms half of the same guarantee.
+test('formatUnitInventory: "7 of 24 units available" when total_units is tracked', () => {
+  const resolved = resolveUnitAvailability(unitType({ available_count: 7, total_units: 24 }));
+  assert.equal(formatUnitInventory(resolved, 'en'), '7 of 24 units available');
+});
+
+test('formatUnitInventory: singular unit reads "1 unit available"', () => {
+  const resolved = resolveUnitAvailability(unitType({ available_count: 1, total_units: 1 }));
+  assert.equal(formatUnitInventory(resolved, 'en'), '1 of 1 unit available');
+});
+
+test('formatUnitInventory: null when total_units is not tracked (standalone/single-unit)', () => {
+  const resolved = resolveUnitAvailability(unitType({ available_count: 3, total_units: null }));
+  assert.equal(formatUnitInventory(resolved, 'en'), null);
+});
+
+test('formatUnitInventory: null when the unit is not currently available', () => {
+  // Fully occupied (0 available, a date known) and temporarily unavailable
+  // are both already described by formatAvailabilityDisplay() -- inventory
+  // self-suppresses rather than printing "0 of 24 units available".
+  const occupied = resolveUnitAvailability(unitType({ available_count: 0, total_units: 24, next_available_date: '2026-09-01' }));
+  assert.equal(formatUnitInventory(occupied, 'en'), null);
+  const unavailable = resolveUnitAvailability(unitType({ available_count: 0, total_units: 24 }));
+  assert.equal(formatUnitInventory(unavailable, 'en'), null);
+});
+
+test('formatUnitInventory: localized (lo/zh) and defaults to en', () => {
+  const resolved = resolveUnitAvailability(unitType({ available_count: 7, total_units: 24 }));
+  assert.equal(formatUnitInventory(resolved, 'lo'), 'ວ່າງ 7 ຈາກ 24 ໜ່ວຍ');
+  assert.equal(formatUnitInventory(resolved, 'zh'), '7/24 套可租');
+  assert.equal(formatUnitInventory(resolved), '7 of 24 units available'); // no lang -> en
+});
+
+test('formatUnitInventory: never mutates the resolved input', () => {
+  const resolved = resolveUnitAvailability(unitType({ available_count: 7, total_units: 24 }));
+  const snapshot = JSON.stringify(resolved);
+  formatUnitInventory(resolved, 'en');
+  assert.equal(JSON.stringify(resolved), snapshot);
 });
 
 // ── Note is always supplementary ─────────────────────────────────────────

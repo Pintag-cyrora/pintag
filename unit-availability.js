@@ -119,6 +119,31 @@ function formatAvailableUnitCount(resolved) {
   return (resolved.status === 'available' && resolved.availableCount > 1) ? resolved.availableCount : null;
 }
 
+// formatUnitInventory(resolved, lang) -- the "7 of 24 units available"
+// inventory line for a unit TYPE that spans many physical units
+// (total_units set). Especially relevant to townhouse/villa/apartment
+// PROJECTS where one type ("3-Bedroom Townhouse") holds N rentable units --
+// property_type is irrelevant here, only whether total_units is tracked, so
+// it works identically for every rental property type. Optional/self-
+// suppressing: returns null when total_units is not tracked (a standalone
+// or single-unit property shows nothing, never a wrong "1 of 1" default) or
+// when the unit is not currently 'available' (a fully-occupied or
+// unavailable unit is already fully described by formatAvailabilityDisplay()).
+// Composes with, never replaces, that frozen 3-message contract (rule 5) --
+// same rule as formatAvailableUnitCount()/formatMoveInDate() above.
+function formatUnitInventory(resolved, lang) {
+  lang = lang || 'en';
+  if (!resolved || resolved.totalUnits == null || resolved.status !== 'available') return null;
+  var available = resolved.availableCount;
+  if (available == null) return null;
+  var T = {
+    en: function(a, t) { return a + ' of ' + t + (t === 1 ? ' unit available' : ' units available'); },
+    lo: function(a, t) { return 'ວ່າງ ' + a + ' ຈາກ ' + t + ' ໜ່ວຍ'; },
+    zh: function(a, t) { return a + '/' + t + ' 套可租'; }
+  };
+  return (T[lang] || T.en)(available, resolved.totalUnits);
+}
+
 // Availability Note is always supplementary -- a separate line, never
 // merged into formatAvailabilityDisplay()'s output.
 function getAvailabilityNoteLine(resolved) {

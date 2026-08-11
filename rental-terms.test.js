@@ -42,6 +42,32 @@ test('resolveRentalTerms: version key never leaks into values', () => {
   assert.equal('version' in r.values, false);
 });
 
+// ── Property-type coverage (regression: NOT apartment/condo-only) ─────────
+// Rental Terms are gated on transaction_type (isRentalTransactionType), never
+// property_type -- resolveRentalTerms() doesn't even take property_type as an
+// input. These tests pin that guarantee for the property types the extension
+// explicitly calls out (townhouse + house + villa), so a future change that
+// tries to restrict terms to apartment/condo would fail here. Every rental
+// property type must resolve lease_length and security deposit identically.
+function typedProperty(propertyType, rental_terms) {
+  return { id: 'p1', property_type: propertyType, rental_terms };
+}
+['townhouse', 'house', 'villa', 'apartment', 'condo'].forEach(function (ptype) {
+  test('resolveRentalTerms: full lease_length + deposit for ' + ptype + ' (no property-type gate)', () => {
+    const prop = typedProperty(ptype, {
+      version: 1,
+      lease_length: '12_months',
+      deposit: { type: 'months_of_rent', value: 2 }
+    });
+    const r = resolveRentalTerms(prop, null);
+    assert.equal(r.values.lease_length, '12_months');
+    assert.deepEqual(r.values.deposit, { type: 'months_of_rent', value: 2 });
+    // The resolved facts format identically regardless of property type.
+    assert.equal(formatRentalTermValue('lease_length', r.values.lease_length, 'en'), 'Lease Length: 12 Months');
+    assert.equal(formatRentalTermValue('deposit', r.values.deposit, 'en'), "Security Deposit: 2 months' rent");
+  });
+});
+
 // ── Inheritance / merge ─────────────────────────────────────────────────
 test('resolveRentalTerms: building-only, no unit type (single-unit property)', () => {
   const r = resolveRentalTerms(property({ version: 1, electricity: { type: 'included' } }), null);
