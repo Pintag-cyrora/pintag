@@ -61,7 +61,19 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
    with the number without widening the table. */
 .owner-mini-btn{font-size:11px;line-height:1;padding:3px 6px;border-radius:3px;border:1px solid var(--border-mid,rgba(26,36,40,0.13));background:#fff;color:var(--ink-soft,#3D5058);cursor:pointer;text-decoration:none;display:inline-block;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;}
 .owner-mini-btn:hover{background:var(--warm,#F7F3EC);}
-.listings-search{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:13px;padding:8px 12px;border:1px solid var(--border-mid,rgba(26,36,40,0.13));border-radius:4px;width:100%;max-width:340px;}
+.listings-search{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:13px;padding:8px 12px;border:1px solid var(--border-mid,rgba(26,36,40,0.13));border-radius:4px;flex:1 1 220px;min-width:0;max-width:340px;}
+/* Admin listings retrieval controls: search + status filter. Sticky so both
+   stay reachable while scrolling a long list on mobile; wraps to stacked
+   full-width controls on narrow screens. */
+.listings-controls{position:sticky;top:52px;z-index:6;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding:10px 0;background:var(--warm,#F7F3EC);}
+.listings-status-filter{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:13px;padding:8px 12px;border:1px solid var(--border-mid,rgba(26,36,40,0.13));border-radius:4px;background:var(--white,#fff);color:var(--ink);flex:0 0 auto;}
+/* Subtle "why did this row match" chip (agent / location / owner / phone). */
+.match-why{display:none;}
+.match-why:not(:empty){display:inline-block;margin-left:8px;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-muted);border:1px solid var(--border-mid,rgba(26,36,40,0.13));border-radius:2px;padding:1px 5px;vertical-align:middle;}
+@media (max-width:640px){
+  .listings-search{flex:1 1 100%;max-width:none;}
+  .listings-status-filter{flex:1 1 100%;}
+}
 .btn-edit{background:var(--warm);color:var(--ink);border:1px solid var(--border);}
 .btn-edit:hover{background:var(--warm-deep);}
 .btn-delete{background:rgba(192,57,43,0.08);color:var(--red);border:1px solid rgba(192,57,43,0.2);}
@@ -3021,7 +3033,7 @@ async function loadListings() {
   // exists on that table at all). It is safe here because admin.html only
   // ever queries with a staff JWT; it must never be copied into a public
   // page's select. See 20260728000000_owners_internal_contacts.sql.
-  const LISTINGS_QS = 'order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,view_count,contacts(role,name,phone),owner_id,owners(id,name,phone,whatsapp)';
+  const LISTINGS_QS = 'order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,village_en,view_count,contacts(role,name,phone),owner_id,owners(id,name,phone,whatsapp)';
   let data;
   try {
     // Soft-deleted listings (20260806020000) stay out of the working list.
@@ -3048,8 +3060,14 @@ async function loadListings() {
   // aren't rendered as plain text in the table (owner phone/whatsapp live
   // inside link hrefs, and are normalized before comparison).
   _listingsAll = data;
-  let html = `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-      <input id="listings-search" class="listings-search" type="search" placeholder="Search title, district, owner name or owner phone…" oninput="filterListings()">
+  let html = `<div class="listings-controls">
+      <input id="listings-search" class="listings-search" type="search" placeholder="Search by location, agent, or listing…" oninput="filterListings()" autocomplete="off">
+      <select id="listings-status-filter" class="listings-status-filter" onchange="filterListings()" aria-label="Filter by status">
+        <option value="all">All statuses</option>
+        <option value="draft">Draft</option>
+        <option value="active">Published</option>
+        <option value="archived">Archived</option>
+      </select>
       <span id="listings-search-count" style="font-size:12px;color:var(--ink-muted);"></span>
     </div>`;
   html += '<table class="listings-table"><thead><tr><th>Title</th><th>Location</th><th>Price</th><th>Agent</th><th>Owner Phone</th><th>Status</th><th style="white-space:nowrap;">👁 Views · 📞 Leads</th><th>Actions</th></tr></thead><tbody>';
@@ -3071,7 +3089,7 @@ async function loadListings() {
     const l = Number(leadCounts[p.id] || 0);
     const conv = v > 0 ? ((l/v)*100).toFixed(1) : '—';
     html += `<tr data-property-id="${esc(p.id)}">
-      <td><strong style="color:var(--ink);font-weight:500;">${esc(p.title_en||'—')}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}</td>
+      <td><strong style="color:var(--ink);font-weight:500;">${esc(p.title_en||'—')}</strong>${p.is_featured?' <span style="font-size:9px;background:rgba(45,140,140,0.1);color:var(--teal);padding:2px 6px;border-radius:2px;letter-spacing:0.1em;text-transform:uppercase;">Featured</span>':''}<span class="match-why" aria-hidden="true"></span></td>
       <td style="color:var(--ink-muted)">${esc(p.district_en||'—')}</td>
       <td>${p.price_display ? esc(p.price_display) : '<em style="color:var(--ink-muted)">On request</em>'}</td>
       <td>${agentDisplay}</td>
@@ -3103,26 +3121,64 @@ function filterListings() {
   const raw = (document.getElementById('listings-search') || {}).value || '';
   const s = raw.trim().toLowerCase();
   const sDigits = _digitsOnly(raw);
+  // Status filter uses the canonical workflow_status axis (draft|active|
+  // archived) from 20260729000000_listing_status_model.sql — the same field
+  // the row render already reads. 'all' disables it. It composes with the
+  // text search below (both must pass), so "Sisattanak + Draft" etc. work.
+  const statusFilter = (document.getElementById('listings-status-filter') || {}).value || 'all';
   const rows = document.querySelectorAll('.listings-table tbody tr');
   let shown = 0;
   rows.forEach(tr => {
-    if (!s) { tr.style.display = ''; shown++; return; }
     const p = _listingsAll.find(x => x.id === tr.dataset.propertyId);
+    const why = tr.querySelector('.match-why');
+    if (why) why.textContent = '';
+
+    // Status axis first — a non-matching status hides the row regardless of text.
+    const statusOk = statusFilter === 'all' || (p && (p.workflow_status || 'active') === statusFilter);
+    if (!statusOk) { tr.style.display = 'none'; return; }
+
+    // No text query: show every status-matching row.
+    if (!s) { tr.style.display = ''; shown++; return; }
+
+    // Resolve the managing agent's names from the already-loaded roster
+    // (same source the Agent column renders from) so a search can match agent
+    // name / Lao name / agency without another query.
+    const agent = p && p.managed_by_party_id ? _agentsAll.find(a => a.id === p.managed_by_party_id) : null;
     const owner = p && p.owners;
-    const hay = [
-      p && p.title_en, p && p.district_en, p && p.price_display,
-      owner && owner.name
-    ].map(x => String(x || '').toLowerCase()).join(' ');
-    // A search that is purely digits is treated as a phone lookup; anything
-    // else also still matches the text fields above.
+    // Labelled fields, checked in priority order, so we can surface WHY a row
+    // matched. Location = district OR village; agent = any of the agent names.
+    const fields = [
+      ['title',    p && p.title_en],
+      ['location', p && p.district_en],
+      ['location', p && p.village_en],
+      ['agent',    agent && agent.name_en],
+      ['agent',    agent && agent.name_lo],
+      ['agent',    agent && agent.agency_name],
+      ['owner',    owner && owner.name],
+      ['price',    p && p.price_display],
+    ];
+    let reason = '';
+    for (let i = 0; i < fields.length; i++) {
+      const val = fields[i][1];
+      if (val && String(val).toLowerCase().includes(s)) { reason = fields[i][0]; break; }
+    }
+    // A ≥3-digit query also matches an owner's phone/whatsapp (digits-only on
+    // both sides), preserving the original phone-lookup behavior.
     const phoneHit = sDigits.length >= 3 && owner &&
       (_digitsOnly(owner.phone).includes(sDigits) || _digitsOnly(owner.whatsapp).includes(sDigits));
-    const match = hay.includes(s) || phoneHit;
+    if (!reason && phoneHit) reason = 'phone';
+
+    const match = !!reason;
     tr.style.display = match ? '' : 'none';
-    if (match) shown++;
+    if (match) {
+      shown++;
+      // Show the reason subtly, but not for 'title' (the title is right there).
+      if (why && reason !== 'title') why.textContent = reason;
+    }
   });
   const note = document.getElementById('listings-search-count');
-  if (note) note.textContent = s ? `${shown} of ${rows.length} listings` : '';
+  const active = !!s || statusFilter !== 'all';
+  if (note) note.textContent = active ? `${shown} of ${rows.length} listings` : '';
 }
 
 // ── TRANSACTION TYPE TOGGLE ───────────────────────────────────────
