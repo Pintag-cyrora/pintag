@@ -114,6 +114,7 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
    actionable. See the "Rented Listings UX" requirement: prices are market
    history, never hidden. */
 .price-status-note{font-size:13px;font-weight:500;color:#B45309;margin-top:6px;}
+.price-available-from{font-size:13px;font-weight:600;color:#1E6B45;margin-top:4px;}
 .spec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 8px;margin:26px 0 0;}
 .spec-item{display:flex;flex-direction:column;gap:4px;}
 .spec-icon{color:var(--ink-muted);display:block;line-height:1;}
@@ -2198,6 +2199,13 @@ function buildMockupLayout(){
     // quick-scan color indicator only (🟢/🟡/🔴, listing-status.js) -- the
     // underlying message text is unchanged.
     resolvedPriceHtml+='<p class="price-status-note">'+(statusEmoji?esc(statusEmoji)+' ':'')+esc(unavailMsg||getMarketStatusLabel(listingStatusResolved.market,lang))+'</p>';
+    // Per-listing "Available from {date}" — the plain-listing complement to
+    // unit_types.next_available_date, so an unavailable rental of ANY property
+    // type (incl. a single apartment with no unit types) can state when it
+    // frees up. Self-suppressing: renders nothing when available_from is unset,
+    // in which case the price above still shows on its own.
+    var availFromLine=(typeof formatAvailableFromLine==='function')?formatAvailableFromLine(data.available_from,lang):null;
+    if(availFromLine) resolvedPriceHtml+='<p class="price-available-from">'+esc(availFromLine)+'</p>';
   }
 
   // ── Persistent Building Photos / Shared Amenities strip ──────────────

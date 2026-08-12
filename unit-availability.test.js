@@ -12,7 +12,7 @@ vm.runInThisContext(src, { filename: 'unit-availability.js' });
 const {
   resolveUnitAvailability, formatAvailabilityDisplay, formatAvailableUnitCount,
   getAvailabilityNoteLine, compareUnitTypesForDisplay, formatAvailabilityAdminSummary,
-  formatMoveInDate, formatUnitInventory
+  formatMoveInDate, formatUnitInventory, formatAvailableFromLine
 } = globalThis;
 
 function unitType(overrides) {
@@ -138,6 +138,35 @@ test('formatUnitInventory: never mutates the resolved input', () => {
   const snapshot = JSON.stringify(resolved);
   formatUnitInventory(resolved, 'en');
   assert.equal(JSON.stringify(resolved), snapshot);
+});
+
+// ── formatAvailableFromLine: per-listing properties.available_from ────────
+// Plain-listing complement to unit_types.next_available_date; must read
+// identically to the unit-level "Available from {date}" wording and format,
+// and self-suppress when no date is set (so the listing just shows its price).
+test('formatAvailableFromLine: "Available from {date}" for a set date', () => {
+  assert.equal(formatAvailableFromLine('2026-09-01', 'en'), 'Available from 1 Sep 2026');
+});
+
+test('formatAvailableFromLine: null when no date set (listing shows price only)', () => {
+  assert.equal(formatAvailableFromLine(null, 'en'), null);
+  assert.equal(formatAvailableFromLine('', 'en'), null);
+  assert.equal(formatAvailableFromLine(undefined, 'en'), null);
+});
+
+test('formatAvailableFromLine: localized (lo/zh) and defaults to en', () => {
+  assert.equal(formatAvailableFromLine('2026-09-01', 'lo'), 'ວ່າງຕັ້ງແຕ່ 1 ກ.ຍ 2026');
+  assert.equal(formatAvailableFromLine('2026-09-01', 'zh'), '可入住时间 1 9月 2026');
+  assert.equal(formatAvailableFromLine('2026-09-01'), 'Available from 1 Sep 2026'); // no lang -> en
+});
+
+test('formatAvailableFromLine: date wording matches the unit-level fully_occupied message', () => {
+  // Both paths must render the same "Available from {date}" so a plain
+  // apartment and a multi-unit building read identically.
+  const unitMsg = formatAvailabilityDisplay(
+    resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-09-01' })), 'en');
+  assert.equal(unitMsg, 'Fully Occupied — Available from 1 Sep 2026');
+  assert.ok(unitMsg.endsWith(formatAvailableFromLine('2026-09-01', 'en')));
 });
 
 // ── Note is always supplementary ─────────────────────────────────────────

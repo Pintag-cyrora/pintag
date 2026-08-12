@@ -504,6 +504,11 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
               </select>
               <p style="font-size:10.5px;color:var(--ink-muted);margin-top:4px;">Public — drives the status badge, price area, and CTA on the listing page. A Sold/Rented listing stays browsable, it just stops looking available.</p>
             </div>
+            <div class="form-group">
+              <label class="form-label">Available From <span style="color:var(--ink-muted);font-weight:400;">— optional</span></label>
+              <input class="form-input" id="f-available-from" type="date">
+              <p style="font-size:10.5px;color:var(--ink-muted);margin-top:4px;">Optional. When set, an unavailable listing shows “Available from {date}”. Leave blank if unknown — the price still shows. For a listing with Unit Types, set the date on each Unit Type below instead.</p>
+            </div>
           </div>
 
           <!-- PRICING — structured (price_amount/price_currency/price_frequency,
@@ -3305,6 +3310,7 @@ async function editListing(id, from) {
   onTransactionChange();
   document.getElementById('f-workflow-status').value = p.workflow_status || 'active';
   document.getElementById('f-market-status').value   = p.market_status || 'available';
+  document.getElementById('f-available-from').value  = p.available_from || '';
   document.getElementById('publish-btn').style.display = ((p.workflow_status || 'active') === 'draft') ? 'inline-block' : 'none';
   // Structured fields are the source of truth; price_display/sale_price/
   // rent_price/rent_period are legacy-derived and never read back here.
@@ -3482,6 +3488,7 @@ async function saveListing(e) {
 
   const workflowStatus = document.getElementById('f-workflow-status').value || 'active';
   const marketStatus = document.getElementById('f-market-status').value || 'available';
+  const availableFrom = document.getElementById('f-available-from').value || null;
   const contactPhone = document.getElementById('f-contact-phone').value.trim();
   // A draft may be saved with any of these still blank — straight out of
   // Smart Import, before staff has reviewed/filled them in. Any other
@@ -3605,6 +3612,7 @@ async function saveListing(e) {
     transaction_type:  document.getElementById('f-transaction').value || null,
     workflow_status:   workflowStatus,
     market_status:     marketStatus,
+    available_from:    availableFrom,
     price_amount:         priceFields.price_amount,
     price_currency:        priceFields.price_currency,
     price_frequency:       priceFields.price_frequency,
@@ -4803,6 +4811,7 @@ function populateFormFromImport(data) {
   onTransactionChange();
   document.getElementById('f-workflow-status').value = 'draft';
   document.getElementById('f-market-status').value   = 'available';
+  document.getElementById('f-available-from').value  = '';
   // Smart Import still returns a free-text price string until the
   // importer itself emits structured amount/currency (a later pass) --
   // best-effort parsed here so the new Price fields stay usable meanwhile.

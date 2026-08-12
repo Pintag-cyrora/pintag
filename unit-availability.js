@@ -163,6 +163,23 @@ function formatMoveInDate(resolved, lang) {
   return resolved.nextAvailableDate ? _formatAvailabilityDate(resolved.nextAvailableDate, lang) : null;
 }
 
+// formatAvailableFromLine(isoDate, lang) -- "Available from {date}" for a
+// PER-LISTING available_from date (properties.available_from), the plain-
+// listing complement to unit_types.next_available_date. Reuses the exact same
+// date formatter and the same "Available from" wording as the unit-level
+// fully_occupied message, so a plain apartment (no unit_types) and a
+// multi-unit building read identically. Returns null when no date is set --
+// the listing then just shows its price, which is a valid state. Pure/
+// portable; composes with the frozen contract, never replaces it.
+var _AVAILABLE_FROM_LABEL = { en: 'Available from', lo: 'ວ່າງຕັ້ງແຕ່', zh: '可入住时间' };
+function formatAvailableFromLine(isoDate, lang) {
+  lang = lang || 'en';
+  if (!isoDate) return null;
+  var d = _formatAvailabilityDate(isoDate, lang);
+  if (!d) return null;
+  return (_AVAILABLE_FROM_LABEL[lang] || _AVAILABLE_FROM_LABEL.en) + ' ' + d;
+}
+
 // getUnitAvailabilityEmoji(status) -- a quick-scan color indicator to pair
 // with formatAvailabilityDisplay()'s text, mirroring
 // _AVAILABILITY_BUCKET_RANK's existing 3 buckets rather than inventing a
