@@ -1785,6 +1785,37 @@ function buildUnitPriceText(property, resolved, lang){
   return resolved.priceDisplay || null;
 }
 
+// resolveUnitTypesPriceText(property, lang) -- the price to show when the
+// property-level price is absent but the listing is priced under its unit
+// type(s). Reuses the SAME canonical resolver the unit cards use
+// (resolveUnitType + buildUnitPriceText), so no price data is duplicated and
+// the unit-type pricing model is untouched.
+//
+// Why it's needed: admin derives properties.price_amount from AVAILABLE unit
+// types only (syncPricingMode -> _utActiveAmounts filters is_available), so a
+// FULLY-OCCUPIED rental loses its property-level price and formatPropertyPrice()
+// returns "price on request" -- yet the unit type still holds the rent price.
+// This resolves it back for display without changing any stored data.
+//
+// Picks the cheapest resolvable unit (the same "starting from min" convention
+// admin uses for the building-level price). Returns a price string, or null
+// when nothing resolves (caller then keeps "Inquire for price").
+function resolveUnitTypesPriceText(property, lang){
+  var units = Array.isArray(property.unit_types) ? property.unit_types : [];
+  if(!units.length || typeof resolveUnitType!=='function') return null;
+  var best=null;
+  for(var i=0;i<units.length;i++){
+    var resolved = resolveUnitType(property, units[i]);
+    var text = buildUnitPriceText(property, resolved, lang);
+    if(!text) continue;
+    var amt = (resolved.priceAmount!=null) ? resolved.priceAmount
+            : (resolved.rentPriceAmount!=null) ? resolved.rentPriceAmount
+            : null;
+    if(best===null || (amt!=null && (best.amt==null || amt<best.amt))) best={amt:amt, text:text};
+  }
+  return best ? best.text : null;
+}
+
 function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone){
   var rawUnits=Array.isArray(property.unit_types)?property.unit_types:[];
   if(rawUnits.length===0) return '';
@@ -2084,6 +2115,18 @@ function buildMockupLayout(){
     if(data.price_lak)resolvedPriceHtml+='<p class="price-lak">'+esc(data.price_lak)+'</p>';
   }else{
     resolvedPriceHtml='<p class="price-inquire">'+L.inquire[lang]+'</p>';
+  }
+  // Unit-type price fallback: when the property-level price is absent (price on
+  // request) but the listing is priced under its unit type(s), show that price
+  // instead of "Inquire for price". This is what keeps a FULLY-OCCUPIED rental
+  // showing its price — admin derives the property price from AVAILABLE units
+  // only, so an occupied listing has none, yet the unit type still holds it.
+  // Reuses the canonical unit resolver; triggers ONLY when there is no
+  // property-level price, so a listing that has its own price is unchanged
+  // (available listings keep their existing display).
+  if(priceInfo.isPriceOnRequest){
+    var _utPriceText=resolveUnitTypesPriceText(data,lang);
+    if(_utPriceText) resolvedPriceHtml='<p class="price-value">'+esc(_utPriceText)+'</p>';
   }
 
   // ── Specs ── driven by PROPERTY_TYPE_DISPLAY (terminology.js): which
