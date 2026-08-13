@@ -100,13 +100,30 @@ CI or on an operator machine.
 - **Backup credentials** live in the protected **`production-backup`** GitHub
   environment (separate S3/R2 keys, distinct from app/prod DB app creds). No
   secrets in the repo.
-- **Immutability**: enable **R2 object versioning + a retention/immutability
-  policy** on the backup bucket so a compromised app/DB **cannot destroy the only
-  copy**. Backups are **age-encrypted** to an offline master key that CI never
-  holds (a drill-only key decrypts in CI).
-- **Attacker deleting the backup**: with versioning/immutability + separate
-  credentials + offline decryption key, an application/database compromise
-  cannot silently erase or read the off-site backup.
+- **Immutability — do NOT lock the existing working bucket.** The current
+  `$R2_BUCKET` holds two different kinds of data with incompatible needs:
+  - `storage/objects/**` is written by **`rclone sync`**, which **deletes and
+    overwrites** — it is a *mirror* (a prod-side deletion propagates here within
+    a week), NOT an archive. Object-lock here **breaks the sync**.
+  - `backup-YYYY-MM-DD/**` are append-only per-date snapshots, likely governed by
+    a lifecycle/expiry rule configured in the Cloudflare dashboard (not in this
+    repo — **verify it before touching retention**).
+
+  So immutability must go on a **dedicated, separate Object-Lock bucket**
+  (R2 Object Lock can only be enabled **at bucket creation** — it cannot be
+  retro-fitted to `$R2_BUCKET` anyway) with a **bounded retention** (e.g. 90–180
+  days, Compliance mode) matched to the recovery window. **Never set indefinite
+  retention:** object-lock overrides lifecycle deletion until it expires, so an
+  indefinite lock means nothing can ever be pruned (unbounded growth, no cleanup
+  path). The weekly job writes an append-only (`rclone copy`, never `sync`) copy
+  of the age-encrypted snapshot — and, for deleted-image protection, of the
+  object pool — into that locked bucket, with **separate credentials**. Backups
+  are **age-encrypted** to an offline master key CI never holds (a drill-only key
+  decrypts in CI).
+- **Attacker deleting the backup**: with the separate locked bucket (bounded
+  retention) + separate credentials + offline decryption key, an
+  application/database compromise cannot silently erase or read the off-site
+  copy — and, unlike the mirror pool, a prod deletion cannot propagate into it.
 
 ## 6. Remaining risks / follow-ups
 
@@ -115,4 +132,10 @@ CI or on an operator machine.
 - `unit_types.images` galleries are not yet in the registry (second pass — same
   trigger pattern on `unit_types`).
 - Orphaned-object **cleanup** is intentionally out of scope (we record, never
-  delete). Enable R2 immutability before considering any cleanup.
+  delete). Stand up the dedicated locked backup bucket (above) before considering
+  any cleanup.
+- The image byte pool in `$R2_BUCKET/storage/objects` is a **`rclone sync`
+  mirror**, so a production deletion propagates to it within a week — it is not
+  by itself a defence against deletion. The dedicated bounded-retention
+  Object-Lock bucket is what provides that defence; provision it before relying
+  on R2 as the last copy of the images.
