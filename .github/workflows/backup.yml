@@ -74,6 +74,25 @@ jobs:
           # Incremental, checksum-verified sync of the immutable photo pool.
           rclone sync "SB:$BUCKET" "R2:$R2_BUCKET/storage/objects" --checksum --transfers 8 --fast-list
 
+      - name: Export image registry manifest (independent image->listing map)
+        run: |
+          DEST="backup-${{ steps.id.outputs.date }}"
+          mkdir -p "$DEST/registry"
+          # The authoritative image -> listing -> order -> cover map, exported
+          # independently of properties.images. Machine-readable (CSV + JSON) so
+          # recovery tooling can rebuild galleries from the backup alone.
+          psql "$PINTAG_PROD_DB_URL" -v ON_ERROR_STOP=1 -X -c "\copy ( \
+            select id, property_id, storage_bucket, storage_path, storage_url, \
+                   original_filename, display_order, is_cover, uploaded_at, uploaded_by, \
+                   sha256, file_size, mime_type, width, height, status, created_at, updated_at \
+            from property_images order by property_id, display_order \
+          ) TO '$DEST/registry/property_images.csv' WITH (FORMAT csv, HEADER true)"
+          psql "$PINTAG_PROD_DB_URL" -Atqc \
+            "select coalesce(json_agg(t order by t.property_id, t.display_order),'[]'::json) \
+             from (select * from property_images) t" \
+            > "$DEST/registry/property_images.json"
+          echo "Registry rows exported: $(psql "$PINTAG_PROD_DB_URL" -Atqc 'select count(*) from property_images')"
+
       - name: Verify storage pool against manifest (fail-closed)
         run: |
           DEST="backup-${{ steps.id.outputs.date }}"
@@ -97,7 +116,7 @@ jobs:
           DEST="backup-${{ steps.id.outputs.date }}"
           test -f ops/backup.age.pub || { echo "Missing ops/backup.age.pub — add the age PUBLIC key (setup step)"; exit 1; }
           age -R ops/backup.age.pub -o "$DEST/database/full.dump.age" "$DEST/database/full.dump" && rm "$DEST/database/full.dump"
-          for f in "$DEST"/database/relationships/*.csv "$DEST"/database/reference/*.csv; do
+          for f in "$DEST"/database/relationships/*.csv "$DEST"/database/reference/*.csv "$DEST"/registry/*.csv "$DEST"/registry/*.json; do
             [ -e "$f" ] || continue
             age -R ops/backup.age.pub -o "$f.age" "$f" && rm "$f"
           done

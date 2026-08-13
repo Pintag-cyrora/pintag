@@ -1,0 +1,54 @@
+name: Image Integrity Check
+
+# Read-only verification that the image registry (property_images), the listings
+# (properties.images) and Supabase Storage all agree. Fails LOUDLY (non-zero) on
+# any anomaly — missing files, unmappable orphaned objects, images pointing at no
+# listing, or cover/order inconsistency. Touches nothing (SELECT only).
+#
+# Runs in the protected `production-backup` environment, reusing the same
+# read-only DB URL the DR backup already uses — no new secret, no app creds.
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'          # Mondays 05:00 UTC (weekly)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-integrity
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    environment: production-backup
+    env:
+      PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify DB URL secret is present
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL (read-only connection) in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Run image integrity check (read-only, fail-closed)
+        run: |
+          set -euo pipefail
+          python3 scripts/image-integrity.py | tee integrity-report.txt
+          {
+            echo "## Image Integrity"
+            echo ""
+            echo '```'
+            cat integrity-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
