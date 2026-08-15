@@ -60,6 +60,10 @@ test.describe('Gallery Recovery → ⚡ Smart Import (mobile width)', () => {
       document.body.innerHTML = panelDom;
       window.esc = (s) => (s == null ? '' : String(s));
       window.importImages = [];
+      // showImportPanel() now calls resetListingForm() (the shared blank-form
+      // reset). This test isolates the photo-handoff behavior, so stub it — the
+      // full form reset is covered by admin-new-listing-reset.spec.js.
+      window.resetListingForm = () => {};
       // Define admin.html's real functions in this page's scope.
       (0, eval)(refreshGrid);
       (0, eval)(showImport);

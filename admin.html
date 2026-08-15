@@ -3236,47 +3236,60 @@ function revealFormPanel(titleText, id) {
   document.getElementById('import-summary-banner').style.display = 'none';
 }
 
+// resetListingForm() -- the SINGLE authoritative "blank listing form" reset.
+// Both the New Listing entry (showImportPanel(), which then lets Smart Import
+// repopulate) and showForm(null) call this, so a fresh listing always starts
+// from an identical clean slate and the two paths cannot drift (the drift is
+// exactly what let the previously-edited listing's Unit Types, Building Rental
+// Terms, Owner, and lease-duration tiers leak into a New Listing).
+//
+// Intentional defaults are preserved exactly: listing-form.reset() restores the
+// HTML-declared defaults (market_status='available', workflow_status default,
+// transaction default, lease-basis=monthly, featured=false, ...); this function
+// only clears the JS/DOM state that native reset() doesn't reach.
+function resetListingForm() {
+  document.getElementById('listing-form').reset();
+  document.getElementById('nearby-list').innerHTML = '';
+  addNearby();
+  _buildingRentalTermsValues = {};
+  renderBuildingRentalTerms();
+  loadUnitTypes([]);
+  // form.reset() does not fire f-type's/f-transaction's onchange, so
+  // Property Details and the Rental Terms section's visibility must be
+  // re-rendered explicitly for the blank state (also clears
+  // features/amenities, which form.reset() likewise doesn't touch).
+  // onTransactionChange() -> syncPricingMode() now also sees zero Unit Type
+  // cards, so a fresh listing can never inherit calculated/range pricing.
+  renderPropertyTypeFields('');
+  onTransactionChange();
+  setHighlights([]);
+  customTags = [];
+  populateExistingImages([]);
+  ['highlight-count-en','highlight-count-lo','highlight-count-zh'].forEach(cid => {
+    const el = document.getElementById(cid); if (el) el.textContent = '0 / 160';
+  });
+  ['neighborhood-count-en','neighborhood-count-lo','neighborhood-count-zh'].forEach(cid => {
+    const el = document.getElementById(cid); if (el) el.textContent = '0 / 220';
+  });
+  // Reset the internal owner picker + Buyer Contact -- a fresh listing must
+  // never silently inherit the previously-edited listing's owner/contact.
+  populateOwnerSelect('');
+  onOwnerSelectChange();
+  document.getElementById('f-contact-role').value = 'agent';
+  document.getElementById('f-contact-name').value = '';
+  document.getElementById('f-contact-phone').value = '';
+  document.getElementById('f-contact-whatsapp').value = '';
+  _editingContactId = null;
+  updateOwnerSectionVisibility();
+}
+
 async function showForm(id) {
   revealFormPanel(id ? 'Edit Listing' : 'New Listing', id);
-  if (!id) {
-    document.getElementById('listing-form').reset();
-    document.getElementById('nearby-list').innerHTML = '';
-    addNearby();
-    _buildingRentalTermsValues = {};
-    renderBuildingRentalTerms();
-    loadUnitTypes([]);
-    // form.reset() does not fire f-type's/f-transaction's onchange, so
-    // Property Details and the Rental Terms section's visibility must be
-    // re-rendered explicitly for the blank state (also clears
-    // features/amenities, which form.reset() likewise doesn't touch).
-    renderPropertyTypeFields('');
-    onTransactionChange();
-    setHighlights([]);
-    customTags = [];
-    populateExistingImages([]);
-    ['highlight-count-en','highlight-count-lo','highlight-count-zh'].forEach(cid => {
-      const el = document.getElementById(cid); if (el) el.textContent = '0 / 160';
-    });
-    ['neighborhood-count-en','neighborhood-count-lo','neighborhood-count-zh'].forEach(cid => {
-      const el = document.getElementById(cid); if (el) el.textContent = '0 / 220';
-    });
-  }
-  // Always reset agent selection UI
+  if (!id) resetListingForm();
+  // Always reset agent selection UI (both New Listing and Edit)
   document.getElementById('f-agent-search').value = '';
   document.getElementById('agent-preview').style.display = 'none';
   document.getElementById('contact-shared-note').style.display = 'none';
-  if (!id) {
-    // Reset the internal owner picker too -- a fresh listing must never
-    // silently inherit the previously-edited listing's owner.
-    populateOwnerSelect('');
-    onOwnerSelectChange();
-    document.getElementById('f-contact-role').value = 'agent';
-    document.getElementById('f-contact-name').value = '';
-    document.getElementById('f-contact-phone').value = '';
-    document.getElementById('f-contact-whatsapp').value = '';
-    _editingContactId = null;
-    updateOwnerSectionVisibility();
-  }
   buildAgentOptions('');
   // Reload agents every time form opens (handles timing + RLS token
   // readiness) -- awaited so callers (editListing()) can rely on the
@@ -4353,6 +4366,12 @@ async function generateAIContent() {
 // ── SMART IMPORT ─────────────────────────────────────────────────
 
 function showImportPanel() {
+  // New Listing entry point. Reset the listing form to a genuine blank slate
+  // BEFORE Smart Import repopulates it, so a previously-edited listing's Unit
+  // Types / Rental Terms / Owner / lease-duration tiers can never leak in (and
+  // leaked Unit Types can never flip pricing into calculated/range mode). This
+  // is the same authoritative reset showForm(null) uses -- one path, no drift.
+  resetListingForm();
   document.getElementById('listings-panel').style.display = 'none';
   document.getElementById('form-panel').style.display    = 'none';
   document.getElementById('import-panel').style.display  = 'block';
