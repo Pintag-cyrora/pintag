@@ -110,6 +110,14 @@ nav{
 .filter-bar-inner{max-width:1200px;margin:0 auto;}
 .filter-bar-row{display:flex;align-items:center;gap:10px;}
 .filter-bar-row + .filter-bar-row{margin-top:10px;}
+/* District + Price selects (Priority 3) — large, high-contrast, labeled
+   dropdowns, deliberately simple for older/non-technical users. */
+.filter-bar-row3{gap:18px;flex-wrap:wrap;}
+.fc-field{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-muted);}
+.fc-label{font-weight:600;white-space:nowrap;}
+.fc-select{font-family:inherit;font-size:14px;padding:9px 12px;min-height:42px;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--white);color:var(--ink);cursor:pointer;max-width:230px;}
+.fc-select:focus-visible{outline:2px solid var(--teal);outline-offset:1px;}
+@media(max-width:640px){.filter-bar-row3{gap:10px;}.fc-field{flex:1 1 46%;min-width:0;}.fc-select{flex:1;max-width:none;}}
 
 /* Rent/Sale — the primary, highest-priority control on this page. Visually
    dominant (larger buttons, teal fill on active) so it reads as the first
@@ -518,6 +526,16 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
         </button>
       </div>
     </div>
+    <div class="filter-bar-row filter-bar-row3">
+      <label class="fc-field">
+        <span class="fc-label lo-i">ເມືອງ</span><span class="fc-label en-i">District</span><span class="fc-label zh-i">城区</span>
+        <select class="fc-select" id="district-select" onchange="setDistrictFilter(this.value)" data-track="filter-district" data-track-type="select" data-track-label="Filter: District"><option value="all">All districts</option></select>
+      </label>
+      <label class="fc-field">
+        <span class="fc-label lo-i">ລາຄາ</span><span class="fc-label en-i">Price</span><span class="fc-label zh-i">价格</span>
+        <select class="fc-select" id="price-select" onchange="setPriceFilter(this.value)" data-track="filter-price" data-track-type="select" data-track-label="Filter: Price"><option value="all">Any price</option></select>
+      </label>
+    </div>
   </div>
 </div>
 
@@ -618,6 +636,11 @@ let currentSort = 'newest';
 let currentAvailOnly = false;
 let currentPetFriendly = false;
 let currentSmokingAllowed = false;
+// District + price-range dimensions (Priority 3). District is a plain dropdown
+// of the districts actually present in the data; price is a small set of
+// transaction-aware bands (rent $/month vs sale totals) -- see PRICE_BANDS.
+let currentDistrictFilter = 'all';
+let currentPriceBand = 'all';
 
 // "Available Only" excludes sold/rented/reserved/off_market/fully_occupied —
 // must read market_status via the canonical resolveListingStatus()
@@ -912,13 +935,7 @@ function renderMap() {
   _markers = [];
   _activeSlug = null;
 
-  var filtered = allProperties.filter(function(p){
-    var matchesTx = currentTxFilter === 'all' || p.transaction_type === currentTxFilter;
-    var matchesType = currentTypeFilter === 'all' || p.property_type === currentTypeFilter;
-    var matchesAvail = !currentAvailOnly || isAvailableStatus(p);
-    var matchesRental = matchesRentalFilters(p);
-    return matchesTx && matchesType && matchesAvail && matchesRental;
-  });
+  var filtered = allProperties.filter(matchesActiveFilters);
 
   filtered.forEach(function(p) {
     var latlng = getLatLng(p);
@@ -1030,6 +1047,8 @@ async function loadListings() {
       headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
     });
     allProperties = await res.json();
+    populateDistrictOptions();
+    renderPriceOptions();
     renderListings();
   } catch(e) {
     var container = document.getElementById('listings-container');
@@ -1042,6 +1061,8 @@ function setTxFilter(filter, btn) {
   document.querySelectorAll('.tx-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
   updateRentalFiltersVisibility();
+  currentPriceBand = 'all';   // rent vs sale price scales differ -> reset the band
+  renderPriceOptions();
   closeMapPreview();
   if (_viewMode === 'map') renderMap();
   else renderListings();
@@ -1097,6 +1118,95 @@ function matchesRentalFilters(p) {
   return true;
 }
 
+// ── District + Price-range filters (Priority 3) ───────────────────────────
+// Transaction-aware price bands: rent is $/month, sale is a total, so the two
+// use different band sets and the band resets when Rent/Sale changes. Currency:
+// bands are USD; a non-USD listing is never hidden by a price band (mixing
+// currencies without conversion is the same pre-existing limitation the sort
+// already accepts), so the filter narrows the USD majority and never wrongly
+// drops a LAK/THB listing.
+var PRICE_BANDS = {
+  all: [ {key:'all', min:null, max:null, label:{lo:'ທຸກລາຄາ', en:'Any price', zh:'不限价格'}} ],
+  for_rent: [
+    {key:'all', min:null, max:null,  label:{lo:'ທຸກລາຄາ',        en:'Any price',    zh:'不限价格'}},
+    {key:'r1',  min:null, max:300,   label:{lo:'ຕ່ຳກວ່າ $300',    en:'Under $300',   zh:'$300 以下'}},
+    {key:'r2',  min:300,  max:600,   label:{lo:'$300–600',        en:'$300–600',     zh:'$300–600'}},
+    {key:'r3',  min:600,  max:1000,  label:{lo:'$600–1,000',      en:'$600–1,000',   zh:'$600–1,000'}},
+    {key:'r4',  min:1000, max:null,  label:{lo:'ຫຼາຍກວ່າ $1,000', en:'Over $1,000',  zh:'$1,000 以上'}}
+  ],
+  for_sale: [
+    {key:'all', min:null,   max:null,   label:{lo:'ທຸກລາຄາ',           en:'Any price',  zh:'不限价格'}},
+    {key:'s1',  min:null,   max:50000,  label:{lo:'ຕ່ຳກວ່າ $50,000',   en:'Under $50k', zh:'$5万以下'}},
+    {key:'s2',  min:50000,  max:150000, label:{lo:'$50k–150k',         en:'$50k–150k',  zh:'$5万–15万'}},
+    {key:'s3',  min:150000, max:300000, label:{lo:'$150k–300k',        en:'$150k–300k', zh:'$15万–30万'}},
+    {key:'s4',  min:300000, max:null,   label:{lo:'ຫຼາຍກວ່າ $300,000', en:'Over $300k', zh:'$30万以上'}}
+  ]
+};
+function currentPriceBands() { return PRICE_BANDS[currentTxFilter] || PRICE_BANDS.all; }
+function currentPriceBandDef() {
+  var bands = currentPriceBands();
+  for (var i = 0; i < bands.length; i++) { if (bands[i].key === currentPriceBand) return bands[i]; }
+  return bands[0];
+}
+function matchesPriceBand(p) {
+  var band = currentPriceBandDef();
+  if (band.min == null && band.max == null) return true;    // Any price
+  var cur = p.price_currency || 'USD';
+  if (cur !== 'USD') return true;                           // never drop non-USD (no conversion)
+  var v = _numericPrice(p);
+  if (!v) return true;                                      // no price on file -> don't hide
+  if (band.min != null && v < band.min) return false;
+  if (band.max != null && v > band.max) return false;
+  return true;
+}
+// The ONE predicate BOTH views (grid + map) filter through, so a dimension can
+// never apply to one view but not the other.
+function matchesActiveFilters(p) {
+  if (!(currentTxFilter === 'all' || p.transaction_type === currentTxFilter)) return false;
+  if (!(currentTypeFilter === 'all' || p.property_type === currentTypeFilter)) return false;
+  if (currentAvailOnly && !isAvailableStatus(p)) return false;
+  if (!matchesRentalFilters(p)) return false;
+  if (currentDistrictFilter !== 'all' && (p.district_en || p.district || '') !== currentDistrictFilter) return false;
+  if (!matchesPriceBand(p)) return false;
+  return true;
+}
+function setDistrictFilter(val) {
+  currentDistrictFilter = val;
+  closeMapPreview();
+  if (_viewMode === 'map') renderMap(); else renderListings();
+}
+function setPriceFilter(val) {
+  currentPriceBand = val;
+  closeMapPreview();
+  if (_viewMode === 'map') renderMap(); else renderListings();
+}
+// Rebuild the Price dropdown for the current Rent/Sale bands, in the current
+// language, preserving the selected band when it still exists.
+function renderPriceOptions() {
+  var sel = document.getElementById('price-select');
+  if (!sel) return;
+  var lang = getCurrentLang();
+  var bands = currentPriceBands();
+  if (!bands.some(function(b){ return b.key === currentPriceBand; })) currentPriceBand = 'all';
+  sel.innerHTML = bands.map(function(b){ return '<option value="' + b.key + '">' + esc(b.label[lang] || b.label.en) + '</option>'; }).join('');
+  sel.value = currentPriceBand;
+}
+// Populate the District dropdown from the districts actually present in the
+// data, in the current language, preserving the current selection.
+function populateDistrictOptions() {
+  var sel = document.getElementById('district-select');
+  if (!sel) return;
+  var lang = getCurrentLang();
+  var seen = {};
+  allProperties.forEach(function(p){ var d = p.district_en || p.district; if (d) seen[d] = true; });
+  var districts = Object.keys(seen).sort();
+  var anyLabel = ({lo:'ທຸກເມືອງ', en:'All districts', zh:'所有城区'})[lang] || 'All districts';
+  if (currentDistrictFilter !== 'all' && districts.indexOf(currentDistrictFilter) === -1) currentDistrictFilter = 'all';
+  sel.innerHTML = '<option value="all">' + esc(anyLabel) + '</option>' +
+    districts.map(function(d){ return '<option value="' + esc(d) + '">' + esc(d) + '</option>'; }).join('');
+  sel.value = currentDistrictFilter;
+}
+
 function setTypeFilter(filter, btn) {
   currentTypeFilter = filter;
   document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
@@ -1131,14 +1241,18 @@ function scheduleBehavioralEvents(sorted) {
   clearTimeout(_searchEventTimer);
   _searchEventTimer = setTimeout(function() {
     var sessionId = getOrCreateSessionId();
+    var _band = currentPriceBandDef();
     postEvent('search_events', {
       session_id: sessionId,
+      district: currentDistrictFilter === 'all' ? null : currentDistrictFilter,
       property_type: currentTypeFilter === 'all' ? null : currentTypeFilter,
       transaction_type: currentTxFilter === 'all' ? null : currentTxFilter,
+      price_min: _band.min,
+      price_max: _band.max,
       result_count: sorted.length
     });
     if (!sorted.length) return;
-    var filtersSnapshot = { tx: currentTxFilter, type: currentTypeFilter, avail: currentAvailOnly, sort: currentSort };
+    var filtersSnapshot = { tx: currentTxFilter, type: currentTypeFilter, district: currentDistrictFilter, price: currentPriceBand, avail: currentAvailOnly, sort: currentSort };
     var rows = sorted.filter(function(p){ return p.id; }).map(function(p, idx){
       return {
         property_id: p.id,
@@ -1259,13 +1373,7 @@ function updateListingsMetaForFilters() {
 }
 
 function renderListings() {
-  var filtered = allProperties.filter(function(p){
-    var matchesTx = currentTxFilter === 'all' || p.transaction_type === currentTxFilter;
-    var matchesType = currentTypeFilter === 'all' || p.property_type === currentTypeFilter;
-    var matchesAvail = !currentAvailOnly || isAvailableStatus(p);
-    var matchesRental = matchesRentalFilters(p);
-    return matchesTx && matchesType && matchesAvail && matchesRental;
-  });
+  var filtered = allProperties.filter(matchesActiveFilters);
   var sorted = sortProperties(filtered);
   updateListingsMetaForFilters();
 
@@ -1406,6 +1514,8 @@ function setLang(lang, btn) {
   persistPintagLang(lang);
   applyPintagLang(lang, btn);
   updateSortLabels();
+  populateDistrictOptions();
+  renderPriceOptions();
   renderListings();
 }
 

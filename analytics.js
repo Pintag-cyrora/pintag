@@ -421,14 +421,14 @@ async function loadSearchTab() {
       '<div class="chart-card">' +
         (hasDistrictData
           ? '<div id="se-district-chart"></div>'
-          : '<div class="disclosure">No district data yet — listings.html doesn\'t currently have a district filter for buyers to search by (only Property Type and Buy/Rent). The <code>district</code> column exists in this table and will populate automatically the moment that filter ships; nothing here is faked in the meantime.</div>') +
+          : '<div class="an-empty">No district searches recorded in this period yet. The District filter is live on the search page — this chart fills in as buyers use it.</div>') +
       '</div>' +
     '</div>' +
     '<div class="section-block">' + sectionHeader('Popular Search Terms') +
       '<div class="chart-card"><div class="disclosure">Pintag\'s search doesn\'t currently have a free-text keyword box (only structured Property Type / Buy‑Rent filters) — there is no search-term data to show. This section will populate automatically if/when a keyword search is added.</div></div>' +
     '</div>' +
     '<div class="section-block">' + sectionHeader('Price Range Searches') +
-      '<div class="chart-card"><div class="disclosure">No price-range filter exists in the search UI yet, so <code>price_min</code>/<code>price_max</code> have no data to report. Same as Districts above — the schema is ready, the filter UI isn\'t built.</div></div>' +
+      '<div class="chart-card"><div class="an-empty">The Price filter is live on the search page, and every search now records the chosen price range. A price-range demand summary will appear here as buyers use it.</div></div>' +
     '</div>';
 
   PT_CHART.renderBarChart(document.getElementById('se-type-chart'), { rows: typeRows, labelWidth: 110, emptyLabel: 'No searches yet.' });
