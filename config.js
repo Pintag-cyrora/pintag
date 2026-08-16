@@ -73,9 +73,13 @@
     // Image CDN feature flag (P1). When true, ptCdnImage() (components.js)
     // rewrites public property-images URLs to img.pintag.io at render time so
     // repeat views are served from Cloudflare cache instead of Supabase egress.
-    // Default TRUE in production, FALSE elsewhere (dev has no image CDN). Setting
-    // this to false is the instant, code-only rollback: images fall straight back
-    // to their direct Supabase URLs (no DB change, no Cloudflare change needed).
-    imageCdn: ENV === 'production'
+    //
+    // DEFAULT FALSE for now: the img.pintag.io Cloudflare Worker + DNS are not
+    // deployed yet, so the CDN code stays completely INERT — every image renders
+    // from its original direct Supabase URL, exactly as before. Once img.pintag.io
+    // is stood up and verified independently, flip this to true (e.g.
+    // `ENV === 'production'`) to activate the CDN. This flag is the only switch
+    // needed; no DB or code-path change is required to enable/disable it.
+    imageCdn: false
   };
 })();
