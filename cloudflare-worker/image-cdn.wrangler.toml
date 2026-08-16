@@ -1,0 +1,20 @@
+# Wrangler config for the SEPARATE Pintag Image CDN Worker (P1).
+# This is a second Worker service, distinct from pintag-og-listing-preview
+# (wrangler.toml in this dir). Deploy explicitly with:
+#
+#   wrangler deploy -c image-cdn.wrangler.toml
+#
+# account_id is intentionally unset (read from CLOUDFLARE_ACCOUNT_ID / your
+# wrangler login), same convention as wrangler.toml. NOT wired into CI yet —
+# deploy is a manual, reviewed step (do not auto-deploy).
+
+name = "pintag-image-cdn"
+main = "image-cdn-worker.js"
+compatibility_date = "2024-09-23"
+
+# Serve everything under img.pintag.io through the Worker. The Worker itself
+# allowlists ONLY /storage/v1/object/public/property-images/* and 404s the rest,
+# so this broad route is safe.
+[[routes]]
+pattern = "img.pintag.io/*"
+zone_name = "pintag.io"

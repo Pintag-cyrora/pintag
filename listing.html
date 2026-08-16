@@ -1353,6 +1353,15 @@ async function fetchProperty(slug,id){
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
+    // Route property images through the Cloudflare image CDN at render time
+    // (ptCdnImage, components.js) — P1. In-memory ONLY; the DB values are never
+    // changed. Non-property-images URLs (agent photos, external, data:) pass
+    // through untouched. This one point covers the hero, thumbnails, lightbox,
+    // unit cards, and the building strip, which all read these arrays.
+    if(typeof ptCdnImage==='function'){
+      if(Array.isArray(propertyContext.images)) propertyContext.images=propertyContext.images.map(ptCdnImage);
+      if(Array.isArray(propertyContext.unit_types)) propertyContext.unit_types.forEach(function(u){ if(u&&Array.isArray(u.images)) u.images=u.images.map(ptCdnImage); });
+    }
     // Single-property page — every data-track element here implicitly
     // refers to this listing; tracking.js falls back to this when an
     // element has no explicit data-track-property-id of its own.

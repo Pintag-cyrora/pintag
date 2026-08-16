@@ -74,6 +74,79 @@ function _ptEsc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// ptCdnImage(url) -- render-time ONLY rewrite of a PUBLIC property-images URL to
+// the Cloudflare image CDN (img.pintag.io), so repeat views are served from
+// Cloudflare cache instead of Supabase egress (P1). It NEVER mutates a database
+// value: callers pass the stored URL and use the returned string solely for an
+// <img src>. Pure and side-effect-free.
+//
+// Gated by window.PINTAG.imageCdn (default true in production, false in dev; set
+// false for an instant, deploy-free rollback -> images fall back to the direct
+// Supabase URL). It rewrites ONLY the current project's public property-images
+// objects. Everything else is returned UNCHANGED:
+//   * agent-photos (different bucket/path)
+//   * external / Facebook CDN URLs
+//   * data: URIs
+//   * other Supabase paths (rest/auth/authenticated storage)
+//   * anything already pointing at the CDN, or any non-string
+// The query string is stripped so the CDN cache key stays stable (public
+// property images never carry a meaningful query today).
+var PT_IMAGE_CDN_ORIGIN = 'https://img.pintag.io';
+var PT_PROPERTY_IMAGES_PATH = '/storage/v1/object/public/property-images/';
+function ptCdnImage(url) {
+  if (!url || typeof url !== 'string') return url;
+  var P = (typeof window !== 'undefined') ? window.PINTAG : null;
+  if (!P || !P.imageCdn || !P.supabaseUrl) return url;   // flag off / dev / no config
+  var base = P.supabaseUrl + PT_PROPERTY_IMAGES_PATH;
+  if (url.indexOf(base) !== 0) return url;                // only THIS project's public property-images
+  return PT_IMAGE_CDN_ORIGIN + PT_PROPERTY_IMAGES_PATH + url.slice(base.length).split('?')[0];
+}
+
+// ptCdnImageFallback(el) -- belt-and-suspenders for the new CDN dependency. If
+// an <img> we routed through img.pintag.io FAILS to load, retry it ONCE from
+// its original direct Supabase URL, then stop. Returns true iff it performed a
+// fallback (used by the tests + the installer).
+//
+// Guarantees the requirements: acts ONLY on our CDN property-images URLs (agent
+// photos, external/Facebook, data:, already-direct Supabase, and non-images are
+// ignored); marks the element (dataset.cdnFallback) so it can NEVER loop; only
+// runs from an actual 'error' (never mid-load); never changes the stored DB URL
+// (only the live el.src); preserves every other attribute (dimensions, lazy,
+// lightbox). Observable so a broken Worker can't hide: it warns, increments
+// window.__ptCdnFallbacks, and dispatches a 'pintag:cdn-fallback' event (wire it
+// to analytics for fleet-wide visibility). window.PINTAG.imageCdn = false
+// remains the immediate global rollback (then nothing renders CDN URLs at all).
+function ptCdnImageFallback(el) {
+  if (!el || el.tagName !== 'IMG') return false;
+  var src = el.currentSrc || (el.getAttribute && el.getAttribute('src')) || el.src || '';
+  var cdnBase = PT_IMAGE_CDN_ORIGIN + PT_PROPERTY_IMAGES_PATH;
+  if (src.indexOf(cdnBase) !== 0) return false;               // only OUR CDN property-images
+  if (el.dataset && el.dataset.cdnFallback) return false;     // already retried once -> never loop
+  var P = (typeof window !== 'undefined') ? window.PINTAG : null;
+  if (!P || !P.supabaseUrl) return false;
+  if (el.dataset) el.dataset.cdnFallback = '1';
+  var direct = P.supabaseUrl + PT_PROPERTY_IMAGES_PATH + src.slice(cdnBase.length);
+  if (typeof window !== 'undefined') {
+    window.__ptCdnFallbacks = (window.__ptCdnFallbacks || 0) + 1;
+    try { console.warn('[pintag] image CDN fallback -> direct Supabase (#' + window.__ptCdnFallbacks + '): ' + src); } catch (_e) {}
+    try { window.dispatchEvent(new CustomEvent('pintag:cdn-fallback', { detail: { cdn: src, direct: direct, count: window.__ptCdnFallbacks } })); } catch (_e2) {}
+  }
+  el.src = direct;   // retry once from origin; all other attributes untouched
+  return true;
+}
+
+// Install ONE global, capturing 'error' listener (image error events do not
+// bubble, so capture=true is required to catch them at the document). No
+// per-<img> wiring -> every current and future property image is covered
+// without changing any render markup. It runs before an element's own inline
+// onerror (capture precedes target), and defers to it for non-CDN images.
+(function () {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+  if (window.__ptCdnFallbackInstalled) return;
+  window.__ptCdnFallbackInstalled = true;
+  document.addEventListener('error', function (e) { ptCdnImageFallback(e.target); }, true);
+})();
+
 // Canonical listing-detail URL for a property. Prefers the human-readable
 // ?slug= (the shareable, OG-friendly form), but falls back to ?id=<uuid>
 // when a listing has no slug yet -- some listings finished via the admin
@@ -309,7 +382,7 @@ function renderPropertyCard(property, opts) {
 
   var title = _ptEsc(p['title_' + lang] || p.title_en || '');
   var district = _ptEsc(p['district_' + lang] || p.district_en || '');
-  var images = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
+  var images = (Array.isArray(p.images) ? p.images.filter(Boolean) : []).map(ptCdnImage);
   var imgHtml = images.length
     ? '<img src="' + _ptEsc(images[0]) + '" alt="' + title + '" loading="lazy">'
     : '<div class="pt-card-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';
@@ -463,7 +536,7 @@ function renderPropertyPreview(property, opts) {
 
   var title = _ptEsc(p['title_' + lang] || p.title_en || '');
   var district = _ptEsc(p['district_' + lang] || p.district_en || '');
-  var images = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
+  var images = (Array.isArray(p.images) ? p.images.filter(Boolean) : []).map(ptCdnImage);
   var imgHtml = images.length
     ? '<img src="' + _ptEsc(images[0]) + '" alt="' + title + '" loading="lazy" decoding="async">'
     : '<div class="pt-preview-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';

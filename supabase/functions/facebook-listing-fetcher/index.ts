@@ -228,6 +228,8 @@ async function uploadImageToStorage(
         'apikey': anonKey,
         'Authorization': `Bearer ${callerToken}`,
         'Content-Type': contentType,
+        // P2: long immutable cache (new uploads only; content-unique names).
+        'Cache-Control': 'public, max-age=31536000, immutable',
       },
       body: buffer,
     });

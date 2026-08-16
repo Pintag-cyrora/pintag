@@ -69,6 +69,13 @@
     supabaseUrl: active.url,
     anonKey: active.anonKey,
     tag: active.tag,
-    label: active.label
+    label: active.label,
+    // Image CDN feature flag (P1). When true, ptCdnImage() (components.js)
+    // rewrites public property-images URLs to img.pintag.io at render time so
+    // repeat views are served from Cloudflare cache instead of Supabase egress.
+    // Default TRUE in production, FALSE elsewhere (dev has no image CDN). Setting
+    // this to false is the instant, code-only rollback: images fall straight back
+    // to their direct Supabase URLs (no DB change, no Cloudflare change needed).
+    imageCdn: ENV === 'production'
   };
 })();

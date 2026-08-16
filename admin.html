@@ -3900,7 +3900,10 @@ async function uploadImageFileToStorage(file) {
         headers: {
           'apikey':        SUPABASE_ANON,
           'Authorization': 'Bearer ' + _adminToken,
-          'Content-Type':  uploadType
+          'Content-Type':  uploadType,
+          // P2: long immutable cache — safe because filenames are content-unique
+          // and never overwritten. New uploads only; existing objects untouched.
+          'Cache-Control': 'public, max-age=31536000, immutable'
         },
         body: uploadBlob
       }
@@ -4439,7 +4442,9 @@ async function handleImportImageUpload(files) {
           headers: {
             'apikey':        SUPABASE_ANON,
             'Authorization': 'Bearer ' + _adminToken,
-            'Content-Type':  uploadType
+            'Content-Type':  uploadType,
+            // P2: long immutable cache (new uploads only; content-unique names).
+            'Cache-Control': 'public, max-age=31536000, immutable'
           },
           body: uploadBlob
         }

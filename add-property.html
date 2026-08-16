@@ -974,7 +974,10 @@ async function uploadImages(){
       await supabaseClient
         .storage
         .from('property-images')
-        .upload(fileName,file);
+        // P2: long cache (new uploads only). The SDK sets max-age; the `immutable`
+        // directive is added on delivery by the image CDN Worker. Safe: names are
+        // content-unique and never overwritten.
+        .upload(fileName, file, { cacheControl: '31536000' });
 
     if(error){
       console.error(error);
