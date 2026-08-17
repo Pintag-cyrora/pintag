@@ -69,6 +69,24 @@ function esc(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+// escJs(s) -- for a value interpolated into a JS string literal that lives
+// inside an HTML event attribute (onclick="f('VALUE')" / onerror="...'VALUE'").
+// The HTML parser decodes entities BEFORE the JS parser reads the attribute, so
+// the HTML escaper above is unsafe there: its &#39; decodes back into a live
+// apostrophe that closes the JS string. Escape for both parsers, in the order
+// they run. See the 2026-08-17 audit and xss-inline-handlers.test.js.
+function escJs(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r').replace(/\n/g, '\\n')
+    .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -566,7 +584,7 @@ async function viewReportById(id) {
   if (isLatest) renderHighlights(deriveHighlights(groups));
 
   const chipHtml = (arr, cls, dot) => arr.map((i) =>
-    '<span class="chip ' + cls + '" onclick="openInsightTimelineById(\'' + i.id + '\')" title="' + esc(i.summary || '') + '">' +
+    '<span class="chip ' + cls + '" onclick="openInsightTimelineById(\'' + escJs(i.id) + '\')" title="' + esc(i.summary || '') + '">' +
     '<span class="dot">' + dot + '</span>' + esc(i.title) + '</span>'
   ).join('');
 
@@ -817,7 +835,7 @@ function renderArchiveTable(rows) {
     rows.map((i) => {
       const dims = [i.dimension_district, i.dimension_property_type].filter(Boolean).join(' / ') || '—';
       const isOpen = !i.resolved_at;
-      return '<tr class="clickable" onclick="openInsightTimelineById(\'' + i.id + '\')">' +
+      return '<tr class="clickable" onclick="openInsightTimelineById(\'' + escJs(i.id) + '\')">' +
         '<td>' + esc(i.title) + '</td>' +
         '<td>' + esc(i.type.replace(/_/g, ' ')) + '</td>' +
         '<td>' + esc(dims) + '</td>' +

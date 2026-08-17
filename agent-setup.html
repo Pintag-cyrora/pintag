@@ -658,10 +658,34 @@ function renderAgentSummary() {
   // Avatar
   var avatarWrap = document.getElementById('agent-avatar-wrap');
   if (a.photo_url) {
-    var initial = esc((a.name_en[0]||'?').toUpperCase());
-    avatarWrap.innerHTML = '<img class="agent-avatar" src="' + esc(a.photo_url) + '" onerror="this.parentElement.innerHTML=\'<div class=agent-avatar-placeholder>' + initial + '</div>\'" alt="">';
+    // Built with DOM APIs rather than an inline onerror="…innerHTML='…'"
+    // attribute. That attribute form runs the agent's own name through the
+    // HTML parser and then the JS parser, and HTML entity decoding happens
+    // first — so the usual esc() is the wrong escaper there and a quote in the
+    // data would break out of the handler's string (audit 2026-08-17). Setting
+    // .textContent has no second parser and therefore no escaping question at
+    // all. Same idiom agent.html already uses for its hero portrait.
+    var initial = (a.name_en[0] || '?').toUpperCase();
+    var img = document.createElement('img');
+    img.className = 'agent-avatar';
+    img.alt = '';
+    img.onerror = function () {
+      this.onerror = null;
+      var ph = document.createElement('div');
+      ph.className = 'agent-avatar-placeholder';
+      ph.textContent = initial;
+      avatarWrap.innerHTML = '';
+      avatarWrap.appendChild(ph);
+    };
+    img.src = a.photo_url;
+    avatarWrap.innerHTML = '';
+    avatarWrap.appendChild(img);
   } else {
-    avatarWrap.innerHTML = '<div class="agent-avatar-placeholder">' + esc(a.name_en[0]||'?') + '</div>';
+    var placeholder = document.createElement('div');
+    placeholder.className = 'agent-avatar-placeholder';
+    placeholder.textContent = (a.name_en[0] || '?');
+    avatarWrap.innerHTML = '';
+    avatarWrap.appendChild(placeholder);
   }
 
   document.getElementById('agent-summary-name').textContent = a.name_en + (a.name_lo ? ' · ' + a.name_lo : '');

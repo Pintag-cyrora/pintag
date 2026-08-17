@@ -73,6 +73,24 @@ function _ptEsc(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+// escJs(s) -- for a value interpolated into a JS string literal that lives
+// inside an HTML event attribute (onclick="f('VALUE')" / onerror="...'VALUE'").
+// The HTML parser decodes entities BEFORE the JS parser reads the attribute, so
+// the HTML escaper above is unsafe there: its &#39; decodes back into a live
+// apostrophe that closes the JS string. Escape for both parsers, in the order
+// they run. See the 2026-08-17 audit and xss-inline-handlers.test.js.
+function _ptEscJs(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r').replace(/\n/g, '\\n')
+    .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 
 // ptCdnImage(url) -- render-time ONLY rewrite of a PUBLIC property-images URL to
 // the Cloudflare image CDN (img.pintag.io), so repeat views are served from
@@ -613,7 +631,7 @@ function renderAgentCard(party, opts) {
   if (opts.layout === 'row') {
     card.className = 'pt-agent-row';
     var rowPortraitInner = d.photo
-      ? '<img src="' + _ptEsc(d.photo) + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'' + _ptEsc(d.initial) + '\'">'
+      ? '<img src="' + _ptEsc(d.photo) + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'' + _ptEscJs(d.initial) + '\'">'
       : _ptEsc(d.initial);
     var listingsLabel = { lo: 'ລາຍການ', en: 'listings', zh: '房源' };
     card.innerHTML =
@@ -632,7 +650,7 @@ function renderAgentCard(party, opts) {
 
   card.className = 'pt-agent-card';
   var portraitInner = d.photo
-    ? '<img src="' + _ptEsc(d.photo) + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'' + _ptEsc(d.initial) + '\'">'
+    ? '<img src="' + _ptEsc(d.photo) + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'' + _ptEscJs(d.initial) + '\'">'
     : _ptEsc(d.initial);
 
   card.innerHTML =
@@ -670,7 +688,7 @@ function renderAgentPreview(party, opts) {
   wrap.className = 'pt-agent-card'; // same visual language as the full card, compact via opts.showButtons=false contexts styling narrower via caller's own layout
 
   var portraitInner = d.photo
-    ? '<img src="' + _ptEsc(d.photo) + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'' + _ptEsc(d.initial) + '\'">'
+    ? '<img src="' + _ptEsc(d.photo) + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'' + _ptEscJs(d.initial) + '\'">'
     : _ptEsc(d.initial);
   var bioText = d.bio || (PT_BIO_FALLBACK[lang] || PT_BIO_FALLBACK.en);
 

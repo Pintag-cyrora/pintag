@@ -23,6 +23,37 @@ Run before every production deployment, on every PR to `main`, and weekly on Mon
 
 ---
 
+## Two suites, two threat models
+
+This directory now holds **two** independent suites. They answer different
+questions and have opposite credential requirements — run both.
+
+| Suite | Location | Needs credentials? | Answers |
+|---|---|---|---|
+| **Live probe** (the rest of this document) | `tests/security/run.sh` | Yes — a Supabase project, and optionally admin/test-user logins | *Is the deployed system configured correctly right now?* Catches drift a dashboard edit introduced, which no amount of repository inspection can see. |
+| **Local regression** | `tests/security/regression/run-local-pg.sh` | **No** — spins up a throwaway PostgreSQL cluster | *Did anyone reopen a bug we already fixed?* Runs the real policies and function bodies against real Postgres, so it can gate every pull request without exposing a single secret. |
+
+```bash
+# Local regression — no credentials, never touches production
+bash tests/security/regression/run-local-pg.sh
+
+# The inline-handler XSS escaping regressions (pure Node, no database)
+node --test xss-inline-handlers.test.js
+```
+
+The local suite covers the confirmed findings from the 2026-08-17 audit: the
+`property_engagement` view bypassing RLS on `properties`, the missing admin
+gates on `rebuild_images_from_registry()` and `reset_weekly_views()`,
+`public_listing_stats()` reporting on unpublished listings, and the
+JS-string-in-HTML-attribute escaping that let listing prose execute as script.
+Each assertion checks **both** that the attack fails *and* that the legitimate
+path still works, so a "fix" that simply denies everyone cannot pass either.
+
+Both suites run in CI from `.github/workflows/security-regression.yml`: the
+local one on every push and pull request, the live one only on push/schedule/
+dispatch — never on a pull request, because that job puts the administrator's
+credentials into the environment of a script read from the checked-out tree.
+
 ## Quick Start
 
 ```bash

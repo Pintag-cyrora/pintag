@@ -19,6 +19,12 @@ on:
       - '.github/workflows/intelligence-tests.yml'
   workflow_dispatch:
 
+# Least privilege: this workflow only reads code and runs tests. Without an
+# explicit block it inherits the repository's DEFAULT token permissions,
+# which on older repositories is read/write on every scope. (Audit 2026-08-17.)
+permissions:
+  contents: read
+
 jobs:
   unit-tests:
     name: Insight Engine / Report Composer / Gemini Client (node --test)
