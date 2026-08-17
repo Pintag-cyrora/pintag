@@ -21,9 +21,14 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-MIGRATION="$ROOT/supabase/migrations/20260817000000_security_audit_hardening.sql"
-
-[[ -f "$MIGRATION" ]] || { echo "FATAL: hardening migration not found: $MIGRATION"; exit 1; }
+# Every security migration this suite exercises, applied in order.
+MIGRATIONS=(
+  "$ROOT/supabase/migrations/20260817000000_security_audit_hardening.sql"
+  "$ROOT/supabase/migrations/20260817010000_authz_identity_and_abuse_bounds.sql"
+)
+for m in "${MIGRATIONS[@]}"; do
+  [[ -f "$m" ]] || { echo "FATAL: security migration not found: $m"; exit 1; }
+done
 
 # Locate the server binaries (they are not on PATH in Debian/Ubuntu packaging).
 PGBIN="${PGBIN:-}"
@@ -72,8 +77,10 @@ PSQL=(psql -h "$PGSOCK" -U postgres -d postgres -v ON_ERROR_STOP=1 -X)
 echo "Loading fixture (production-shaped schema, policies, PRE-FIX functions)…"
 "${PSQL[@]}" -q -f "$HERE/schema.sql"
 
-echo "Applying supabase/migrations/$(basename "$MIGRATION")…"
-"${PSQL[@]}" -q -f "$MIGRATION"
+for m in "${MIGRATIONS[@]}"; do
+  echo "Applying supabase/migrations/$(basename "$m")…"
+  "${PSQL[@]}" -q -f "$m"
+done
 
 echo "Running assertions…"
 if "${PSQL[@]}" -f "$HERE/rls_regression.sql" 2>&1 | sed 's/^psql:.*NOTICE: *//'; then

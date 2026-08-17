@@ -279,4 +279,169 @@ BEGIN
 END $$;
 
 \echo ''
+\echo '=== G. is_pintag_admin() answers only about the CALLER (identity binding) ='
+
+-- G1: an MFA-verified NON-admin must not be able to ask about the administrator.
+-- Pre-fix this returned true and acted as an "is this uuid an admin?" oracle;
+-- worse, any future policy forwarding a client-supplied id into this check
+-- would have become a straight privilege escalation.
+DO $$
+DECLARE about_admin boolean; about_self boolean;
+BEGIN
+  PERFORM become_user('bbbbbbbb-0000-0000-0000-000000000002', 'signed-up-attacker@example.com', 'aal2');
+  SELECT is_pintag_admin('aaaaaaaa-0000-0000-0000-000000000001') INTO about_admin;
+  SELECT is_pintag_admin(auth.uid()) INTO about_self;
+  RESET ROLE;
+  PERFORM assert(about_admin IS FALSE,
+    'a non-admin asking is_pintag_admin(<the administrator''s uuid>) gets false, not an oracle');
+  PERFORM assert(about_self IS FALSE, 'a non-admin asking about themselves gets false');
+END $$;
+
+-- G2: the administrator still authorizes normally, both explicitly and via NULL.
+DO $$
+DECLARE self boolean; implicit boolean; other boolean;
+BEGIN
+  PERFORM become_user('aaaaaaaa-0000-0000-0000-000000000001', 'cyrora.trading@gmail.com', 'aal2');
+  SELECT is_pintag_admin(auth.uid()) INTO self;
+  SELECT is_pintag_admin(NULL)       INTO implicit;
+  SELECT is_pintag_admin('bbbbbbbb-0000-0000-0000-000000000002') INTO other;
+  RESET ROLE;
+  PERFORM assert(self,     'the MFA-verified administrator still authorizes via is_pintag_admin(auth.uid())');
+  PERFORM assert(implicit, 'a NULL argument means "me" and still authorizes the administrator');
+  PERFORM assert(other IS FALSE,
+    'even the administrator cannot use the function to ask about somebody else');
+END $$;
+
+-- G3: anonymous callers get false, never an error (policies must fail closed).
+DO $$
+DECLARE r boolean;
+BEGIN
+  PERFORM become_anon();
+  SELECT is_pintag_admin('aaaaaaaa-0000-0000-0000-000000000001') INTO r;
+  RESET ROLE;
+  PERFORM assert(r IS FALSE, 'anon gets false from is_pintag_admin()');
+END $$;
+
+\echo ''
+\echo '=== H. Analytics ceilings survive session-id rotation (F-08) ==========='
+
+-- H1: THE headline case. Rotating session_id defeats every per-session limit,
+-- so the ceiling must be keyed on the TARGET instead. 30/min per
+-- (listing, event_type) for lead_events.
+DO $$
+DECLARE accepted int := 0; i int;
+BEGIN
+  PERFORM become_anon();
+  FOR i IN 1..80 LOOP
+    BEGIN
+      -- A brand-new session id every single time: exactly what an attacker does.
+      INSERT INTO lead_events (listing_id, event_type, session_id)
+      VALUES ('11111111-0000-0000-0000-000000000001', 'whatsapp_click',
+              'rotated-' || i::text);
+      accepted := accepted + 1;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+  END LOOP;
+  RESET ROLE;
+  PERFORM assert(accepted <= 30,
+    format('rotating session ids is bounded by the per-listing ceiling (accepted %s, cap 30)', accepted));
+  PERFORM assert(accepted > 0, 'the ceiling did not block everything outright');
+END $$;
+
+-- H2: the ceiling is per TARGET — a different listing is unaffected, so one
+-- attacker cannot deny analytics for the rest of the catalogue.
+DO $$
+DECLARE ok boolean := false;
+BEGIN
+  PERFORM become_anon();
+  BEGIN
+    INSERT INTO lead_events (listing_id, event_type, session_id)
+    VALUES ('11111111-0000-0000-0000-000000000001', 'call_click', 'other-type-session');
+    ok := true;
+  EXCEPTION WHEN OTHERS THEN ok := false;
+  END;
+  RESET ROLE;
+  PERFORM assert(ok,
+    'a DIFFERENT event type on the same listing is still recorded (ceiling is per target+type)');
+END $$;
+
+-- H3: a normal visitor is never affected. One genuine contact click on a quiet
+-- listing must always be recorded.
+DO $$
+DECLARE ok boolean := false;
+BEGIN
+  DELETE FROM lead_events WHERE listing_id = '11111111-0000-0000-0000-000000000001';
+  PERFORM become_anon();
+  BEGIN
+    INSERT INTO lead_events (listing_id, event_type, session_id)
+    VALUES ('11111111-0000-0000-0000-000000000001', 'whatsapp_click', 'a-real-visitor');
+    ok := true;
+  EXCEPTION WHEN OTHERS THEN ok := false;
+  END;
+  RESET ROLE;
+  PERFORM assert(ok, 'a genuine single contact click from a real visitor is still recorded');
+END $$;
+
+-- H4: the active-listing requirement from 20260811000000 still holds — the
+-- ceiling was added ALONGSIDE it, not instead of it.
+DO $$
+DECLARE ok boolean := true;
+BEGIN
+  PERFORM become_anon();
+  BEGIN
+    INSERT INTO lead_events (listing_id, event_type, session_id)
+    VALUES ('22222222-0000-0000-0000-000000000002', 'whatsapp_click', 'draft-probe');
+    ok := true;
+  EXCEPTION WHEN OTHERS THEN ok := false;
+  END;
+  RESET ROLE;
+  PERFORM assert(NOT ok, 'anon still cannot record an event against a DRAFT listing');
+END $$;
+
+\echo ''
+\echo '=== I. View-count inflation is bounded (F-09) =========================='
+
+-- I1: an unbounded loop must not produce an unbounded counter.
+DO $$
+DECLARE before_v int; after_v int; gained int; i int;
+BEGIN
+  SELECT view_count INTO before_v FROM properties WHERE slug = 'published-villa';
+  PERFORM become_anon();
+  FOR i IN 1..400 LOOP
+    PERFORM increment_listing_view('11111111-0000-0000-0000-000000000001');
+  END LOOP;
+  RESET ROLE;
+  SELECT view_count INTO after_v FROM properties WHERE slug = 'published-villa';
+  gained := after_v - before_v;
+  PERFORM assert(gained <= 120,
+    format('400 anonymous calls yielded at most the 120/minute ceiling (gained %s)', gained));
+  PERFORM assert(gained > 0, 'genuine views are still counted');
+END $$;
+
+-- I2: a normal visitor on a quiet listing is counted immediately — the ceiling
+-- must be invisible to real traffic.
+DO $$
+DECLARE before_v int; after_v int;
+BEGIN
+  DELETE FROM listing_view_throttle;
+  UPDATE properties SET status='active', deleted_at=NULL WHERE slug='published-villa';
+  SELECT view_count INTO before_v FROM properties WHERE slug = 'published-villa';
+  PERFORM become_anon();
+  PERFORM increment_listing_view('11111111-0000-0000-0000-000000000001');
+  RESET ROLE;
+  SELECT view_count INTO after_v FROM properties WHERE slug = 'published-villa';
+  PERFORM assert(after_v = before_v + 1, 'a single genuine view still increments by exactly one');
+END $$;
+
+-- I3: the throttle bookkeeping is not readable by anyone but the administrator.
+DO $$
+DECLARE n int;
+BEGIN
+  PERFORM become_user('bbbbbbbb-0000-0000-0000-000000000002', 'signed-up-attacker@example.com', 'aal2');
+  SELECT count(*) INTO n FROM listing_view_throttle;
+  RESET ROLE;
+  PERFORM assert(n = 0, 'a non-admin reads zero rows from listing_view_throttle');
+END $$;
+
+\echo ''
 \echo 'ALL DATA-LAYER SECURITY REGRESSION ASSERTIONS PASSED'

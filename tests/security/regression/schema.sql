@@ -74,7 +74,10 @@ CREATE POLICY "public read active properties" ON properties
 -- (the administrator's own FOR ALL policy is created below, once
 --  is_pintag_admin() exists — a policy body cannot reference it before then.)
 
--- ── lead_events (anon may INSERT, never SELECT) ─────────────────────────────
+-- ── Analytics event tables: anon may INSERT, never SELECT (except the one
+--    dedup self-check listing_events needs). Shapes and policies VERBATIM from
+--    20260811000000_restore_analytics_insert_protections.sql — the PRE-FIX
+--    state, where every limit keys on the client-supplied session_id.
 CREATE TABLE lead_events (
   id         bigserial PRIMARY KEY,
   listing_id uuid,
@@ -83,6 +86,60 @@ CREATE TABLE lead_events (
   created_at timestamptz DEFAULT now()
 );
 ALTER TABLE lead_events ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE listing_events (
+  id          bigserial PRIMARY KEY,
+  property_id uuid,
+  event_type  text,
+  session_id  text,
+  created_at  timestamptz DEFAULT now()
+);
+ALTER TABLE listing_events ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION check_lead_rate_limit(p_listing_id uuid, p_event_type text, p_session_id text)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF p_session_id IS NULL THEN RETURN true; END IF;
+  RETURN NOT EXISTS (
+    SELECT 1 FROM lead_events
+    WHERE session_id = p_session_id AND listing_id = p_listing_id
+      AND event_type = p_event_type AND created_at > now() - interval '30 seconds');
+END $$;
+GRANT EXECUTE ON FUNCTION check_lead_rate_limit(uuid, text, text) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION check_listing_event_dedup(p_session_id text, p_property_id uuid, p_event_type text)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF p_session_id IS NULL THEN RETURN true; END IF;
+  RETURN NOT EXISTS (
+    SELECT 1 FROM listing_events
+    WHERE session_id = p_session_id AND property_id = p_property_id
+      AND event_type = p_event_type AND created_at > now() - interval '30 minutes');
+END $$;
+GRANT EXECUTE ON FUNCTION check_listing_event_dedup(text, uuid, text) TO anon, authenticated;
+
+CREATE POLICY "anon insert lead_events" ON lead_events FOR INSERT TO anon
+  WITH CHECK (
+    listing_id IN (SELECT id FROM properties WHERE status IN ('active','available'))
+    AND check_lead_rate_limit(listing_id, event_type, session_id));
+
+CREATE POLICY "anon insert listing_events" ON listing_events FOR INSERT TO anon
+  WITH CHECK (
+    property_id IN (SELECT id FROM properties WHERE status IN ('active','available'))
+    AND check_listing_event_dedup(session_id, property_id, event_type));
+
+GRANT INSERT ON lead_events, listing_events TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon;
+
+-- The PRIVILEGE-LAYER FLOOR beneath RLS, VERBATIM from
+-- 20260804130000_single_admin_cyrora_lockdown.sql §6. Supabase's default
+-- privileges grant ALL on public tables to anon, so without this REVOKE the
+-- anon role holds table-level write privileges and RLS is the ONLY thing
+-- standing in the way. The lockdown deliberately removes them so that a
+-- permissive policy re-introduced by accident still cannot write.
+-- (Omitted from an earlier draft of this fixture; caught by
+-- scripts/verify-production-security.sql, which is exactly its job.)
+REVOKE INSERT, UPDATE, DELETE ON properties FROM anon;
 
 -- ── admin allowlist + the single authorization primitive ────────────────────
 -- VERBATIM from 20260804130000 as amended by 20260806010000 (AAL2 required).

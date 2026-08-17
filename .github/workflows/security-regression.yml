@@ -48,6 +48,16 @@ jobs:
       - name: Data-layer RLS / authorization regressions
         run: bash tests/security/regression/run-local-pg.sh
 
+      - name: CSP is stamped on every published page and is current
+        run: node scripts/apply-csp.mjs --check
+
+      - name: CSP is enforced in a real browser with no violations
+        run: |
+          cd tests/csp
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          npx playwright test
+
   # ── Live suite — probes a real Supabase project, so it needs credentials ───
   # Deliberately NOT run on `pull_request`. This job puts ADMIN_EMAIL/
   # ADMIN_PASSWORD and the project keys into the environment of a step that

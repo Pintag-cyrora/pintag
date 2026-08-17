@@ -1,0 +1,145 @@
+name: Verify Production Security
+
+# Answers the one question repository inspection cannot: does the PRODUCTION
+# system actually enforce the security model this repository describes?
+#
+# The 2026-08-03 breach happened because production carried dashboard-created
+# policies no migration file described, and the first storage lockdown was a
+# silent no-op because it dropped policies BY NAME. "The migration is in Git"
+# has already proven not to be evidence. This workflow is the evidence.
+#
+# ENTIRELY READ-ONLY. Two independent probes:
+#
+#   1. scripts/verify-production-security.sql — catalog inspection over a
+#      read-only DB connection: RLS coverage, every policy, view execution
+#      mode, SECURITY DEFINER gating, function grants, migration ledger.
+#      Reads no customer data and prints no identities — counts and object
+#      names only.
+#   2. scripts/verify-production-http.sh — probes the deployed surface as an
+#      unauthenticated attacker with nothing but the public anon key: sign-up
+#      state, internal tables, privileged RPCs, the write boundary, storage,
+#      Edge Function auth, security headers, and whether the XSS fix is
+#      actually deployed.
+#
+# Neither writes, deletes, or modifies anything. The sign-up check reads
+# /auth/v1/settings rather than attempting a registration, so it cannot leave a
+# real account behind on a project where sign-up turns out to be open.
+#
+# NOT run on pull_request — it consumes secrets, and a PR can edit the scripts
+# it executes (the lesson from the audit's F-07 finding).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'      # Mondays 06:00 UTC — catch drift within a week
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-production-security
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Production security drift check (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Same read-only connection secret monitoring.yml and image-integrity.yml
+      # already use. If it is scoped to a read-only role, this workflow is
+      # incapable of writing even by accident.
+      PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+      SITE_URL: ${{ secrets.SITE_URL || 'https://pintag.io' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client curl
+
+      # The production project ref and anon key come from config.prod.js, the
+      # same single source of truth apply-migration.yml and deploy-functions.yml
+      # read. The anon key is public by design, so this needs no extra secret.
+      - name: Resolve production project from config.prod.js
+        id: cfg
+        run: |
+          set -euo pipefail
+          URL="$(grep -oE 'https://[a-z0-9]+\.supabase\.co' config.prod.js | head -1)"
+          KEY="$(grep -oE 'eyJ[A-Za-z0-9._-]+' config.prod.js | head -1)"
+          [ -n "$URL" ] || { echo "::error::could not resolve the production Supabase URL"; exit 1; }
+          [ -n "$KEY" ] || { echo "::error::could not resolve the production anon key"; exit 1; }
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Target::$URL"
+
+      - name: HTTP surface — probe as an unauthenticated attacker
+        id: http
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ steps.cfg.outputs.url }}
+          SUPABASE_ANON_KEY: ${{ steps.cfg.outputs.key }}
+        run: |
+          set -o pipefail
+          bash scripts/verify-production-http.sh 2>&1 | tee http-report.txt
+
+      - name: Database catalog — drift against the repository security model
+        id: db
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "SKIPPED: secret PINTAG_PROD_DB_URL is not set." | tee db-report.txt
+            echo "The HTTP probe still ran, but policy//view/function drift cannot be" >> db-report.txt
+            echo "checked without a read-only database connection." >> db-report.txt
+            exit 1
+          fi
+          psql "$PINTAG_PROD_DB_URL" -v ON_ERROR_STOP=1 \
+            -f scripts/verify-production-security.sql 2>&1 | tee db-report.txt
+
+      - name: Publish report
+        if: always()
+        run: |
+          {
+            echo "# Production security verification"
+            echo ""
+            echo "Target: \`${{ steps.cfg.outputs.url }}\` · Site: \`$SITE_URL\`"
+            echo "Commit: \`${GITHUB_SHA::8}\`"
+            echo ""
+            echo "## HTTP surface (unauthenticated attacker's view)"
+            echo '```'
+            cat http-report.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+            echo ""
+            echo "## Database catalog (drift vs the repository)"
+            echo '```'
+            cat db-report.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-security-verification
+          path: |
+            http-report.txt
+            db-report.txt
+          retention-days: 90
+
+      # Fail the run if EITHER probe found drift, so this shows up as a red
+      # check rather than a report nobody opens.
+      - name: Fail on drift
+        if: always()
+        run: |
+          http='${{ steps.http.outcome }}'
+          db='${{ steps.db.outcome }}'
+          echo "http probe: $http"
+          echo "db probe:   $db"
+          if [ "$http" != "success" ] || [ "$db" != "success" ]; then
+            echo "::error::Production does NOT match the repository security model — see the job summary."
+            exit 1
+          fi
+          echo "Production matches the repository security model."
