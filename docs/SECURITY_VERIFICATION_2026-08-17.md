@@ -156,6 +156,20 @@ that the administrator still authorizes normally.
 
 Full detail in **`docs/CSP.md`**. Summary:
 
+**Pintag already had a CSP** — all 22 pages carried a meta tag; the first pass
+missed it by grepping for headers. It was not adequate, and that is measured,
+not asserted (Chromium, real policies):
+
+| Exfiltration attempt | Old policy (`main`) | New policy |
+|---|---|---|
+| `fetch` → arbitrary attacker host | blocked | blocked |
+| `fetch` → `attackerproject.supabase.co` | **ALLOWED** | blocked |
+| image beacon → arbitrary host | **ALLOWED** (`img-src *`) | blocked |
+
+`img-src *` is a complete exfiltration channel by itself, and the
+`*.supabase.co` wildcard let an attacker exfiltrate to a project they create in
+a minute. The replacement closes both.
+
 - Single source of truth: `scripts/csp-policy.mjs`; stamped into all **17
   published pages** by `scripts/apply-csp.mjs` (idempotent, `--check` mode
   for CI).

