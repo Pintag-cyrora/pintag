@@ -218,6 +218,27 @@ else
   fi
 fi
 
+# Header COVERAGE matters as much as presence. The Cloudflare Worker fronts only
+# "/", /index.html, /listings.html and /listing.html. admin.html — the highest-
+# value page on the site — is NOT on a Worker route, so it only gets these
+# headers if a zone-wide Transform Rule exists (docs/CSP.md). Check it directly
+# rather than assuming the listing.html result generalises.
+ahdrs="$(curl -sSI --max-time 25 "${SITE_URL}/admin.html" 2>/dev/null || true)"
+if [ -z "$ahdrs" ]; then
+  warn "could not fetch headers for admin.html" "cannot confirm zone-wide header coverage"
+else
+  missing=""
+  for h in strict-transport-security x-content-type-options referrer-policy; do
+    grep -qi "^$h:" <<< "$ahdrs" || missing="$missing $h"
+  done
+  if [ -z "$missing" ]; then
+    ok "admin.html also carries the security headers (coverage is zone-wide, not just the Worker routes)"
+  else
+    bad "admin.html is MISSING security headers:$missing" \
+        "the Worker fronts only 4 public routes; add the zone-wide Transform Rule in docs/CSP.md"
+  fi
+fi
+
 # The page-level CSP is delivered as a meta tag (GitHub Pages cannot set headers).
 page="$(curl -sS --max-time 25 "${SITE_URL}/listing.html" 2>/dev/null || true)"
 if grep -qi 'http-equiv="Content-Security-Policy"' <<< "$page"; then
