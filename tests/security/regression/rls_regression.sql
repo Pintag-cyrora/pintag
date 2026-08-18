@@ -444,4 +444,60 @@ BEGIN
 END $$;
 
 \echo ''
+\echo '=== J. anon cannot even REACH privileged functions (PUBLIC grant) ======'
+
+-- J1: PostgreSQL grants EXECUTE to PUBLIC by default, and
+-- 20260625000005 never revoked it — so `GRANT ... TO authenticated` did NOT
+-- mean "only authenticated". Confirmed in production on 2026-08-18:
+-- has_function_privilege('anon','reset_weekly_views()','EXECUTE') was true.
+DO $$
+DECLARE bad text;
+BEGIN
+  SELECT string_agg(p.proname, ', ') INTO bad
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname IN ('reset_weekly_views','rebuild_images_from_registry',
+                      'pintag_client_network_probe')
+    AND has_function_privilege('anon', p.oid, 'EXECUTE');
+  PERFORM assert(bad IS NULL,
+    format('anon holds no EXECUTE on admin-only functions (offenders: %s)', coalesce(bad,'none')));
+END $$;
+
+-- J2: the administrator must still be able to call them.
+DO $$
+DECLARE n int;
+BEGIN
+  SELECT count(*) INTO n
+  FROM pg_proc p JOIN pg_namespace n2 ON n2.oid = p.pronamespace
+  WHERE n2.nspname = 'public'
+    AND p.proname IN ('reset_weekly_views','rebuild_images_from_registry')
+    AND has_function_privilege('authenticated', p.oid, 'EXECUTE');
+  PERFORM assert(n = 2, 'authenticated retains EXECUTE on the admin functions (the gate does the rest)');
+END $$;
+
+-- J3: THE REGRESSION THAT MATTERS. The old guard was
+--     IF auth.email() != 'admin@pintag.io' THEN RAISE
+-- For an anonymous caller auth.email() is NULL and `NULL != 'x'` is NULL, not
+-- TRUE — so the IF never fired and the UPDATE ran. Reproduced on PG16 and
+-- observed for real in production. Assert the *behaviour*, not the text: an
+-- anonymous caller must be refused and must change nothing.
+DO $$
+DECLARE denied boolean := false; before_sum bigint; after_sum bigint;
+BEGIN
+  UPDATE properties SET views_week = 9;
+  SELECT sum(views_week) INTO before_sum FROM properties;
+  PERFORM become_anon();
+  BEGIN
+    PERFORM reset_weekly_views();
+  EXCEPTION WHEN OTHERS THEN denied := true;
+  END;
+  RESET ROLE;
+  SELECT sum(views_week) INTO after_sum FROM properties;
+  PERFORM assert(denied,
+    'an ANONYMOUS caller is refused by reset_weekly_views() (NULL-comparison bypass closed)');
+  PERFORM assert(before_sum = after_sum,
+    'an anonymous call to reset_weekly_views() modified no weekly counter');
+END $$;
+
+\echo ''
 \echo 'ALL DATA-LAYER SECURITY REGRESSION ASSERTIONS PASSED'

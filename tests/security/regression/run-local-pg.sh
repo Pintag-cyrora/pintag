@@ -25,6 +25,7 @@ ROOT="$(cd "$HERE/../../.." && pwd)"
 MIGRATIONS=(
   "$ROOT/supabase/migrations/20260817000000_security_audit_hardening.sql"
   "$ROOT/supabase/migrations/20260817010000_authz_identity_and_abuse_bounds.sql"
+  "$ROOT/supabase/migrations/20260818000000_revoke_public_execute.sql"
 )
 for m in "${MIGRATIONS[@]}"; do
   [[ -f "$m" ]] || { echo "FATAL: security migration not found: $m"; exit 1; }

@@ -82,21 +82,25 @@ probe() {
         -H 'Content-Type: application/json' -H 'Prefer: return=representation' \
         -d '{"title_en":"lockdown-probe"}' 2>/dev/null || true)"
   # "[]" means the policy matched zero rows => the write was refused by RLS.
-  if [ "$r" = "[]" ] || printf '%s' "$r" | grep -qiE 'permission denied|row-level security|denied|JWT'; then
+  if [ "$r" = "[]" ] || grep -qiE 'permission denied|row-level security|denied|JWT' <<< "$r"; then
     echo "property_write DENIED"; else echo "property_write ALLOWED"; fi
 
   # 2. internal PII reads
   for t in owners leads; do
     r="$("${C[@]}" "${SUPABASE_URL}/rest/v1/${t}?select=id&limit=1" 2>/dev/null || true)"
-    if [ "$r" = "[]" ] || printf '%s' "$r" | grep -qiE 'permission denied|denied|JWT|does not exist'; then
+    if [ "$r" = "[]" ] || grep -qiE 'permission denied|denied|JWT|does not exist' <<< "$r"; then
       echo "read_${t} DENIED"; else echo "read_${t} ALLOWED"; fi
   done
 
-  # 3. privileged RPC
-  r="$("${C[@]}" -X POST "${SUPABASE_URL}/rest/v1/rpc/reset_weekly_views" \
+  # 3. privileged RPC — a READ-ONLY one behind the same is_pintag_admin() gate.
+  #    reset_weekly_views() is deliberately not used: it mutates, so probing it
+  #    performs the damage it is meant to detect whenever the guard is broken
+  #    (which is exactly what happened on 2026-08-18). Its authorization is
+  #    asserted read-only by scripts/verify-production-security.sql instead.
+  r="$("${C[@]}" -X POST "${SUPABASE_URL}/rest/v1/rpc/pintag_client_network_probe" \
         -H 'Content-Type: application/json' -d '{}' 2>/dev/null || true)"
-  if printf '%s' "$r" | grep -qiE 'admin only|access denied|permission denied|denied|does not exist'; then
-    echo "rpc_reset_weekly_views DENIED"; else echo "rpc_reset_weekly_views ALLOWED"; fi
+  if grep -qiE 'admin only|access denied|permission denied|denied|does not exist|not find the function' <<< "$r"; then
+    echo "rpc_admin_gated DENIED"; else echo "rpc_admin_gated ALLOWED"; fi
 
   # 4. admin edge function (no Gemini spend unless it authorizes)
   local code
@@ -110,7 +114,7 @@ probe() {
   # 5. storage write
   r="$("${C[@]}" -X POST "${SUPABASE_URL}/storage/v1/object/property-images/__lockdown_probe__.jpg" \
         -H 'Content-Type: image/jpeg' --data-binary 'probe' 2>/dev/null || true)"
-  if printf '%s' "$r" | grep -qiE 'row-level security|Unauthorized|not authorized|denied|Invalid|JWT'; then
+  if grep -qiE "row-level security|Unauthorized|not authorized|denied|Invalid|JWT|InvalidRequest|required property 'authorization'" <<< "$r"; then
     echo "storage_write DENIED"; else echo "storage_write ALLOWED"; fi
 }
 
@@ -118,7 +122,7 @@ assert_all_denied() {
   local label="$1"; shift
   local results="$1"
   local allowed
-  allowed="$(printf '%s\n' "$results" | grep -v ' DENIED$' || true)"
+  allowed="$(grep -v ' DENIED$' <<< "$results" || true)"
   if [ -z "$allowed" ]; then
     ok "$label → every privileged operation DENIED"
   else

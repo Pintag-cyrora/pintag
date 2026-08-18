@@ -94,12 +94,24 @@ fi
 echo
 echo "4. RPCs — privileged functions refuse anonymous callers"
 rpc() { "${CURL[@]}" -X POST "${SUPABASE_URL}/rest/v1/rpc/$1" \
-        -H 'Content-Type: application/json' -d "${2:-\{\}}" || true; }
+        -H 'Content-Type: application/json' -d "${2:-{}}" || true; }
 
-for fn in reset_weekly_views pintag_client_network_probe; do
+# NOTE — reset_weekly_views() is deliberately NOT probed here.
+# It MUTATES (UPDATE properties SET views_week = 0). Probing an authorization
+# boundary by invoking the thing it guards is only safe when the guard holds;
+# if it does not, the probe performs the very damage it is testing for. That is
+# not hypothetical: the 2026-08-18 verification run called it and, because the
+# pre-fix guard `auth.email() != 'admin@pintag.io'` evaluates to NULL (not TRUE)
+# for an anonymous caller, the exception never fired and the UPDATE ran.
+# Its authorization is verified read-only instead, two ways:
+#   * scripts/verify-production-security.sql asserts the body calls
+#     is_pintag_admin() and that EXECUTE is not held by anon/public;
+#   * pintag_client_network_probe() below exercises the identical
+#     is_pintag_admin() gate and is STABLE — it cannot write anything.
+for fn in pintag_client_network_probe; do
   body="$(rpc "$fn")"
   if printf '%s' "$body" | grep -qiE 'admin only|permission denied|access denied|does not exist|not find the function'; then
-    ok "$fn → denied"
+    ok "$fn → denied (read-only probe of the same admin gate)"
   else
     bad "$fn did NOT deny an anonymous caller" "$(printf '%s' "$body" | head -c 160)"
   fi
@@ -155,7 +167,7 @@ else
   bad "anonymous upload to property-images was NOT refused" "$(printf '%s' "$body" | head -c 200)"
 fi
 body="$("${CURL[@]}" -X DELETE "${SUPABASE_URL}/storage/v1/object/property-images/__probe__.jpg" || true)"
-if printf '%s' "$body" | grep -qiE 'row-level security|Unauthorized|not authorized|denied|not_found|Object not found|JWT'; then
+if printf '%s' "$body" | grep -qiE "row-level security|Unauthorized|not authorized|denied|not_found|Object not found|JWT|InvalidRequest|required property 'authorization'"; then
   ok "anonymous delete from property-images → refused"
 else
   bad "anonymous delete from property-images was NOT refused" "$(printf '%s' "$body" | head -c 200)"
@@ -180,7 +192,7 @@ done
 echo
 echo "8. HEADERS — transport and framing protections on ${SITE_URL}"
 hdrs="$(curl -sSI --max-time 25 "${SITE_URL}/listing.html" 2>/dev/null || true)"
-has() { printf '%s' "$hdrs" | grep -qi "^$1:"; }
+has() { grep -qi "^$1:" <<< "$hdrs"; }
 if [ -z "$hdrs" ]; then
   warn "could not fetch headers from ${SITE_URL}" "site unreachable from this runner"
 else
@@ -190,7 +202,7 @@ else
     || bad "X-Content-Type-Options missing" "add via the Cloudflare Transform Rule in docs/CSP.md"
   has 'referrer-policy'           && ok "Referrer-Policy present" \
     || bad "Referrer-Policy missing" "add via the Cloudflare Transform Rule in docs/CSP.md"
-  if printf '%s' "$hdrs" | grep -qiE '^(content-security-policy|x-frame-options):'; then
+  if grep -qiE '^(content-security-policy|x-frame-options):' <<< "$hdrs"; then
     ok "framing protection present (CSP frame-ancestors or X-Frame-Options)"
   else
     bad "no framing protection header" "clickjacking is possible; see docs/CSP.md"
@@ -199,8 +211,8 @@ fi
 
 # The page-level CSP is delivered as a meta tag (GitHub Pages cannot set headers).
 page="$(curl -sS --max-time 25 "${SITE_URL}/listing.html" 2>/dev/null || true)"
-if printf '%s' "$page" | grep -qi 'http-equiv="Content-Security-Policy"'; then
-  if printf '%s' "$page" | grep -qi 'connect-src'; then
+if grep -qi 'http-equiv="Content-Security-Policy"' <<< "$page"; then
+  if grep -qi 'connect-src' <<< "$page"; then
     ok "deployed listing.html carries the CSP meta tag (connect-src present)"
   else
     warn "CSP meta tag present but has no connect-src" "exfiltration is not contained"
@@ -212,14 +224,14 @@ fi
 # ── 9. Is the XSS fix actually deployed? (F-01 / F-02) ──────────────────────
 echo
 echo "9. XSS FIX — is the corrected escaping actually live?"
-if printf '%s' "$page" | grep -q 'function escJs'; then
+if grep -q 'function escJs' <<< "$page"; then
   ok "listing.html on ${SITE_URL} contains escJs() (F-02 fix deployed)"
 else
   bad "listing.html on ${SITE_URL} has NO escJs()" \
       "the deployed build predates the XSS fix — F-02 is still live"
 fi
 admin_page="$(curl -sS --max-time 25 "${SITE_URL}/admin.html" 2>/dev/null || true)"
-if printf '%s' "$admin_page" | grep -q 'escJs(p.title_en'; then
+if grep -q 'escJs(p.title_en' <<< "$admin_page"; then
   ok "admin.html on ${SITE_URL} escapes the listing title for the JS context (F-01 fix deployed)"
 elif [ -z "$admin_page" ]; then
   warn "admin.html not fetchable" "cannot confirm the F-01 fix is deployed"

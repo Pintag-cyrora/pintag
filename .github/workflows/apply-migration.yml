@@ -73,7 +73,8 @@ env:
   EXPECTED_MIGRATIONS: |
     20260817000000
     20260817010000
-  EXPECTED_MIGRATION_FILE: '20260817000000_security_audit_hardening.sql + 20260817010000_authz_identity_and_abuse_bounds.sql'
+    20260818000000
+  EXPECTED_MIGRATION_FILE: '20260817000000_security_audit_hardening.sql + 20260817010000_authz_identity_and_abuse_bounds.sql + 20260818000000_revoke_public_execute.sql'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
