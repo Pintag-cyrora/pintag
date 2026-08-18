@@ -85,6 +85,20 @@ jobs:
           set -o pipefail
           bash scripts/verify-production-http.sh 2>&1 | tee http-report.txt
 
+      # Phase 9 — prove the XSS fix is not merely PRESENT but EFFECTIVE on the
+      # live pages: download listing.html/admin.html from production, extract
+      # the escJs() actually shipped there, and run the full attack-payload
+      # suite against that copy through a real HTML attribute decode. Read-only
+      # (two GETs); no payload is ever written to the database.
+      - name: XSS fix proven against the live pages
+        id: xss
+        continue-on-error: true
+        env:
+          SITE_URL: ${{ env.SITE_URL }}
+        run: |
+          set -o pipefail
+          node scripts/verify-production-xss.mjs 2>&1 | tee xss-report.txt
+
       # The admin-lockdown matrix. Optional: runs only if the credentials are
       # configured. The critical case (allowlisted admin, password-only session,
       # no TOTP -> DENIED) needs no TOTP secret, because a password-only sign-in
@@ -137,6 +151,11 @@ jobs:
             cat db-report.txt 2>/dev/null || echo "(did not run)"
             echo '```'
             echo ""
+            echo "## XSS fix — live payload proof"
+            echo '```'
+            cat xss-report.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+            echo ""
             echo "## Admin lockdown matrix"
             echo '```'
             cat matrix-report.txt 2>/dev/null || echo "(did not run)"
@@ -152,6 +171,7 @@ jobs:
             http-report.txt
             db-report.txt
             matrix-report.txt
+            xss-report.txt
           retention-days: 90
 
       # Fail the run if EITHER probe found drift, so this shows up as a red
@@ -162,10 +182,12 @@ jobs:
           http='${{ steps.http.outcome }}'
           db='${{ steps.db.outcome }}'
           matrix='${{ steps.matrix.outcome }}'
+          xss='${{ steps.xss.outcome }}'
           echo "http probe:   $http"
           echo "db probe:     $db"
           echo "admin matrix: $matrix"
-          if [ "$http" != "success" ] || [ "$db" != "success" ] || [ "$matrix" != "success" ]; then
+          echo "xss proof:    $xss"
+          if [ "$http" != "success" ] || [ "$db" != "success" ] || [ "$matrix" != "success" ] || [ "$xss" != "success" ]; then
             echo "::error::Production does NOT match the repository security model — see the job summary."
             exit 1
           fi
