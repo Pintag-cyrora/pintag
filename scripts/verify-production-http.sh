@@ -93,8 +93,17 @@ fi
 # ── 4. Privileged RPCs must refuse an anonymous caller ──────────────────────
 echo
 echo "4. RPCs — privileged functions refuse anonymous callers"
-rpc() { "${CURL[@]}" -X POST "${SUPABASE_URL}/rest/v1/rpc/$1" \
-        -H 'Content-Type: application/json' -d "${2:-{}}" || true; }
+# NOTE: the body must be built in a plain variable. `"${2:-{}}"` looks right
+# but bash parses it as ${2:-{ } followed by a literal }, so an explicit
+# argument comes out with a stray trailing brace and PostgREST rejects it with
+# PGRST102 "Empty or invalid json" — BEFORE authorization runs, which silently
+# turns every such check into a meaningless pass/fail.
+rpc() {
+  local body="${2-}"
+  [ -z "$body" ] && body='{}'
+  "${CURL[@]}" -X POST "${SUPABASE_URL}/rest/v1/rpc/$1" \
+    -H 'Content-Type: application/json' -d "$body" || true
+}
 
 # NOTE — reset_weekly_views() is deliberately NOT probed here.
 # It MUTATES (UPDATE properties SET views_week = 0). Probing an authorization
