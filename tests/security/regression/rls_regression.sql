@@ -500,4 +500,49 @@ BEGIN
 END $$;
 
 \echo ''
+\echo '=== K. schema the security functions depend on actually exists ========='
+
+-- Production verification (2026-08-18) found properties.views_week MISSING,
+-- even though 20260623000004 declares it and two shipped pages consume it. The
+-- effect was a silent one: increment_listing_view() raised 42703 on every
+-- anonymous call, so the view counter had simply stopped working, and nothing
+-- alerted because listing.html ignores the result.
+--
+-- A security function that cannot run is not a security control. Assert the
+-- column exists AND that the functions depending on it actually execute.
+DO $$
+DECLARE has_col boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='properties' AND column_name='views_week'
+  ) INTO has_col;
+  PERFORM assert(has_col, 'properties.views_week exists (increment_listing_view and the FOMO lines need it)');
+END $$;
+
+-- K2: the anonymous view counter runs without raising.
+DO $$
+DECLARE errored boolean := false;
+BEGIN
+  DELETE FROM listing_view_throttle;
+  PERFORM become_anon();
+  BEGIN
+    PERFORM increment_listing_view('11111111-0000-0000-0000-000000000001');
+  EXCEPTION WHEN OTHERS THEN errored := true;
+  END;
+  RESET ROLE;
+  PERFORM assert(NOT errored, 'increment_listing_view() runs for an anonymous visitor without a schema error');
+END $$;
+
+-- K3: public_listing_stats returns the full shape, views_week included.
+DO $$
+DECLARE r json;
+BEGIN
+  PERFORM become_anon();
+  SELECT public_listing_stats('11111111-0000-0000-0000-000000000001') INTO r;
+  RESET ROLE;
+  PERFORM assert((r::jsonb) ? 'views_week', 'public_listing_stats() returns a views_week key (the shape listing.html expects)');
+END $$;
+
+\echo ''
 \echo 'ALL DATA-LAYER SECURITY REGRESSION ASSERTIONS PASSED'

@@ -93,7 +93,8 @@ env:
     20260817000000
     20260817010000
     20260818000000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the three 2026-08-17/18 security migrations'
+    20260818010000
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
