@@ -136,10 +136,31 @@ fi
 # public_listing_stats is deliberately public, but must report nothing about a
 # listing the caller cannot see. Feed it a uuid that certainly is not published.
 body="$(rpc public_listing_stats '{"p_listing_id":"00000000-0000-0000-0000-000000000000"}')"
-if printf '%s' "$body" | grep -q '"district":null' && printf '%s' "$body" | grep -q '"view_count":0'; then
+# Postgres renders json_build_object with spaces around the colon
+# ("view_count" : 0), so compare against a whitespace-stripped copy rather than
+# the raw body — otherwise a perfectly correct response reads as a mismatch.
+compact="$(printf '%s' "$body" | tr -d ' \t\n')"
+if grep -q '"district":null' <<<"$compact" && grep -q '"view_count":0' <<<"$compact"; then
   ok "public_listing_stats → zeroed stats for a non-visible listing (F-06 fix live)"
 else
   warn "public_listing_stats response not in the expected zeroed shape" "$(printf '%s' "$body" | head -c 160)"
+fi
+
+# increment_listing_view() is the one public write path, and it depends on the
+# properties.views_week column. That column was found MISSING in production on
+# 2026-08-18 (repository/production schema drift), which made every anonymous
+# call raise 42703 — the counter had been silently dead. Migration
+# 20260818010000 restored it; this asserts the repair holds. The uuid below
+# matches no row, so a working function updates exactly zero rows: the probe
+# proves the code path executes without changing any listing's counts.
+body="$(rpc increment_listing_view '{"p_listing_id":"00000000-0000-0000-0000-000000000000"}')"
+if grep -qi '42703\|views_week.*does not exist\|column .* does not exist' <<<"$body"; then
+  bad "increment_listing_view still fails on a missing column" \
+      "properties.views_week is absent again — the anonymous view counter is dead. $(printf '%s' "$body" | head -c 160)"
+elif grep -qiE 'permission denied|access denied|not find the function' <<<"$body"; then
+  bad "increment_listing_view is unreachable for an anonymous visitor" "$(printf '%s' "$body" | head -c 160)"
+else
+  ok "increment_listing_view → executes for anonymous callers (schema drift repaired, 0 rows touched)"
 fi
 
 # ── 5. Core tables must reject an anonymous write ───────────────────────────
