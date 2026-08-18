@@ -61,20 +61,39 @@ env:
   # view's execution mode and a handful of function authorization gates.
   # See docs/SECURITY_AUDIT_2026-08-17.md and docs/SECURITY_VERIFICATION_2026-08-17.md.
   #
-  # ⚠ KNOWN SEQUENCING ISSUE — read before running.
-  # The apply-migration run of 2026-08-13 recorded production at 20260812000000,
-  # and this workflow has not run since. 20260813000000_property_images_registry
-  # was authored AFTER that run, so it is probably ALSO pending — and it is not
-  # on this list, which means this workflow will (correctly) REFUSE until you
-  # decide about it. That refusal is the gate working, not a bug.
-  # Run "Verify Production Security" first: it reports whether 20260813000000 is
-  # in the production migration ledger. Then either add it to this list once
-  # reviewed, or apply it separately.
+  # SEQUENCING — RESOLVED 2026-08-18, and here is the evidence.
+  # Run 32142751692 dispatched with APPLY, and the gate REFUSED before applying
+  # anything. Its dry-run is the authoritative answer to "is 20260813000000
+  # pending?":
+  #
+  #   Would push these migrations:
+  #    • 20260813000000_property_images_registry.sql
+  #    • 20260817000000_security_audit_hardening.sql
+  #    • 20260817010000_authz_identity_and_abuse_bounds.sql
+  #    • 20260818000000_revoke_public_execute.sql
+  #   Refusing to push. Pending migration(s) NOT on the authorized list: 20260813000000
+  #
+  # So 20260813000000 is GENUINELY pending — not applied-but-unrecorded. It is
+  # now authorized after review:
+  #   * Every write it performs targets ONLY property_images, the table it
+  #     creates. No pre-existing table's data is modified (checked statement by
+  #     statement: 1 INSERT and 4 UPDATEs, all against property_images).
+  #   * The one object it attaches to `properties` is an AFTER trigger that
+  #     writes only to property_images and is wrapped in an exception handler,
+  #     so a registry failure can never roll back a listing save.
+  #   * Its backfill derives registry rows from data already in the database;
+  #     it is idempotent (upsert-based) and additive.
+  #   * It must go FIRST: 20260817000000 and 20260818000000 both reference
+  #     rebuild_images_from_registry / property_images. `supabase db push`
+  #     applies in timestamp order, so this ordering is automatic.
+  #   * backup.yml and image-integrity.yml have referenced property_images
+  #     since 2026-08-13 and have been degraded without it.
   EXPECTED_MIGRATIONS: |
+    20260813000000
     20260817000000
     20260817010000
     20260818000000
-  EXPECTED_MIGRATION_FILE: '20260817000000_security_audit_hardening.sql + 20260817010000_authz_identity_and_abuse_bounds.sql + 20260818000000_revoke_public_execute.sql'
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the three 2026-08-17/18 security migrations'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
