@@ -10,9 +10,69 @@ on:
     - cron: '0 2 * * 1'   # Mondays at 02:00 UTC
   workflow_dispatch:        # Manual trigger from GitHub Actions UI
 
+# Least privilege: neither job writes to the repository. Without this block a
+# workflow inherits the repository's DEFAULT token permissions, which on older
+# repositories is read/write for every scope — an unnecessarily powerful token
+# to hand to a job that only reads code and runs tests. (Audit 2026-08-17.)
+permissions:
+  contents: read
+
 jobs:
+  # ── Credential-free suite — safe to run on ANY event, including a PR ───────
+  # These tests need no Supabase project, no admin account and no secrets, so
+  # they can gate every pull request without exposing anything. They cover the
+  # findings that are provable from code alone: the inline-handler XSS escaping
+  # and the data-layer RLS/authorization boundaries (run against a throwaway
+  # local PostgreSQL, never production).
+  local:
+    name: Local security regressions (no credentials)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: XSS / inline-handler escaping regressions
+        run: node --test xss-inline-handlers.test.js
+
+      - name: Install PostgreSQL server binaries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql
+
+      - name: Data-layer RLS / authorization regressions
+        run: bash tests/security/regression/run-local-pg.sh
+
+      - name: CSP is stamped on every published page and is current
+        run: node scripts/apply-csp.mjs --check
+
+      - name: CSP is enforced in a real browser with no violations
+        run: |
+          cd tests/csp
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          npx playwright test
+
+  # ── Live suite — probes a real Supabase project, so it needs credentials ───
+  # Deliberately NOT run on `pull_request`. This job puts ADMIN_EMAIL/
+  # ADMIN_PASSWORD and the project keys into the environment of a step that
+  # executes `tests/security/run.sh` FROM THE CHECKED-OUT TREE. On a
+  # pull_request from a branch in this repository, secrets ARE available, so
+  # anyone able to open such a PR could edit that script to print or exfiltrate
+  # the administrator's credentials. Restricting the job to push/schedule/
+  # dispatch means the script that runs with the credentials is always one that
+  # is already on main. (Audit 2026-08-17.)
+  #
+  # Coverage is not lost: PRs still run the `local` job above, and this suite
+  # runs on every push to main, weekly, and on demand.
   security:
-    name: Security Regression Suite
+    name: Security Regression Suite (live project)
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

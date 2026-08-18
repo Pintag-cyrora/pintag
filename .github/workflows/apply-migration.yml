@@ -16,7 +16,7 @@ name: Apply DB Migration (production)
 #   * Requires you to type "APPLY" at dispatch time (guards against a stray click).
 #   * Runs `supabase db push --dry-run` FIRST and prints the full plan to the log.
 #   * SAFETY GATE: refuses to push unless the ONLY pending migration is the one
-#     this workflow is authorized to apply (EXPECTED_MIGRATION below). If the
+#     this workflow is authorized to apply (EXPECTED_MIGRATIONS below). If the
 #     remote is behind on any other migration, it ABORTS without applying, so
 #     it can never silently apply unrelated migrations.
 #   * Applies with `supabase db push` (additive migration only).
@@ -50,11 +50,30 @@ permissions:
   contents: read
 
 env:
-  # The single migration this workflow is authorized to apply. Bump both values
-  # together only when intentionally repurposing the workflow for a new,
-  # reviewed migration — never widen it to "any pending migration".
-  EXPECTED_MIGRATION: '20260812000000'
-  EXPECTED_MIGRATION_FILE: '20260812000000_property_available_from.sql'
+  # The migrations this workflow is authorized to apply — an EXPLICIT, REVIEWED
+  # allowlist, one version per line. The safety property is "only what is named
+  # here", never "however many are pending", so listing two reviewed migrations
+  # is exactly as safe as listing one. Anything pending that is NOT on this list
+  # aborts the run before a single statement is applied.
+  #
+  # Currently authorized: the two migrations from the 2026-08-17 security audit.
+  # Both are additive, idempotent and touch NO row of data — they redefine one
+  # view's execution mode and a handful of function authorization gates.
+  # See docs/SECURITY_AUDIT_2026-08-17.md and docs/SECURITY_VERIFICATION_2026-08-17.md.
+  #
+  # ⚠ KNOWN SEQUENCING ISSUE — read before running.
+  # The apply-migration run of 2026-08-13 recorded production at 20260812000000,
+  # and this workflow has not run since. 20260813000000_property_images_registry
+  # was authored AFTER that run, so it is probably ALSO pending — and it is not
+  # on this list, which means this workflow will (correctly) REFUSE until you
+  # decide about it. That refusal is the gate working, not a bug.
+  # Run "Verify Production Security" first: it reports whether 20260813000000 is
+  # in the production migration ledger. Then either add it to this list once
+  # reviewed, or apply it separately.
+  EXPECTED_MIGRATIONS: |
+    20260817000000
+    20260817010000
+  EXPECTED_MIGRATION_FILE: '20260817000000_security_audit_hardening.sql + 20260817010000_authz_identity_and_abuse_bounds.sql'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
@@ -167,15 +186,17 @@ jobs:
             exit 0
           fi
 
-          # Refuse if ANYTHING other than the authorized migration is pending.
-          UNEXPECTED="$(echo "$PENDING" | grep -v -x "${EXPECTED_MIGRATION}" || true)"
+          # Refuse if ANYTHING outside the authorized allowlist is pending.
+          AUTHORIZED="$(echo "${EXPECTED_MIGRATIONS}" | tr -d ' ' | grep -E '^[0-9]{14}$' | sort -u)"
+          echo "Authorized versions: $(echo $AUTHORIZED | tr '\n' ' ')"
+          UNEXPECTED="$(comm -23 <(echo "$PENDING" | sort -u) <(echo "$AUTHORIZED"))"
           if [ -n "$UNEXPECTED" ]; then
-            echo "::error::Refusing to push. Unexpected pending migration(s): $(echo $UNEXPECTED | tr '\n' ' '). This workflow only applies ${EXPECTED_MIGRATION_FILE}. Investigate the divergence before applying anything."
+            echo "::error::Refusing to push. Pending migration(s) NOT on the authorized list: $(echo $UNEXPECTED | tr '\n' ' '). This workflow only applies ${EXPECTED_MIGRATION_FILE}. Investigate the divergence — and if the extra migration is legitimate, review it and add its version to EXPECTED_MIGRATIONS deliberately."
             exit 1
           fi
 
           echo "already_applied=false" >> "$GITHUB_OUTPUT"
-          echo "Safety gate passed: the only pending migration is ${EXPECTED_MIGRATION}."
+          echo "Safety gate passed: every pending migration is on the authorized list."
 
       - name: Apply migration (supabase db push)
         if: steps.plan.outputs.already_applied == 'false'
@@ -204,10 +225,11 @@ jobs:
           supabase db push --dry-run 2>&1 | tee dryrun_after.txt
           echo "::endgroup::"
 
-          STILL_PENDING="$(grep -oE '[0-9]{14}' dryrun_after.txt | grep -x "${EXPECTED_MIGRATION}" || true)"
+          AUTHORIZED="$(echo "${EXPECTED_MIGRATIONS}" | tr -d ' ' | grep -E '^[0-9]{14}$' | sort -u)"
+          STILL_PENDING="$(grep -oE '[0-9]{14}' dryrun_after.txt | sort -u | comm -12 - <(echo "$AUTHORIZED") || true)"
           if [ -n "$STILL_PENDING" ]; then
-            echo "::error::Verification failed — ${EXPECTED_MIGRATION} is still reported as pending after push."
+            echo "::error::Verification failed — $(echo $STILL_PENDING | tr '\n' ' ') still reported as pending after push."
             exit 1
           fi
-          echo "Verified: ${EXPECTED_MIGRATION} is applied (no longer pending on production)."
+          echo "Verified: every authorized migration is applied (no longer pending on production)."
           echo "- ✅ verified applied on production" >> "$GITHUB_STEP_SUMMARY"

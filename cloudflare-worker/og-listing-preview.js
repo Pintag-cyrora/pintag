@@ -374,6 +374,48 @@ function withNoStore(response) {
   return out;
 }
 
+
+// ── SECURITY HEADERS ────────────────────────────────────────────────────────
+// GitHub Pages cannot set response headers, so the pages carry their CSP in a
+// <meta> tag (scripts/csp-policy.mjs is the source of truth; scripts/apply-csp.mjs
+// stamps it). Two useful controls have NO meta equivalent and can only arrive
+// as real headers:
+//
+//   * frame-ancestors / X-Frame-Options — clickjacking. `frame-ancestors` is
+//     explicitly ignored inside a meta tag by every browser.
+//   * HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy — all
+//     header-only by specification.
+//
+// This Worker already sits in front of "/", /index.html, /listings.html and
+// /listing.html, so it can supply them for the pages that matter most to a
+// public visitor. It CANNOT cover admin.html or the other tools — those are on
+// routes this Worker does not front, and they need a Cloudflare Transform Rule
+// for full coverage. See docs/CSP.md for that rule; it is the one piece of this
+// that must be configured in the Cloudflare dashboard.
+//
+// Deliberately NOT set here: Content-Security-Policy. The pages already carry
+// their own via meta, and emitting a second policy would mean the browser
+// enforces the INTERSECTION of the two — so any future drift between this file
+// and scripts/csp-policy.mjs would silently start blocking legitimate content.
+// One source of truth; this Worker only adds what meta cannot express.
+const SECURITY_HEADERS = {
+  'Content-Security-Policy': "frame-ancestors 'none'",
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()',
+};
+
+// Apply to any response this Worker returns. Header-only, never touches the
+// body, and safe on a pass-through response (it re-wraps rather than mutating a
+// possibly-immutable header set).
+function withSecurityHeaders(response) {
+  const out = new Response(response.body, response);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
+  return out;
+}
+
 // ── MAINTENANCE MODE ────────────────────────────────────────────────────────
 // While MAINTENANCE_MODE is true, the public browsing surface this Worker
 // fronts — home ("/", /index.html), search (/listings.html), and listing
@@ -423,14 +465,14 @@ export default {
         path === '/listings.html' || path.endsWith('/listings.html') ||
         path === '/listing.html' || path.endsWith('/listing.html');
       if (isPublicBrowsing) {
-        return new Response(MAINTENANCE_HTML, {
+        return withSecurityHeaders(new Response(MAINTENANCE_HTML, {
           status: 503,
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': 'no-store',
             'Retry-After': '3600',
           },
-        });
+        }));
       }
     }
 
@@ -439,7 +481,7 @@ export default {
     if (path === '/listing.html' || path.endsWith('/listing.html')) {
       const slug = url.searchParams.get('slug');
       const origin = await fetch(request);
-      if (!slug) return origin;
+      if (!slug) return withSecurityHeaders(origin);
 
       const lang = resolveLang(url.searchParams.get('lang'));
 
@@ -449,16 +491,16 @@ export default {
       } catch (err) {
         // Network/parse failure talking to Supabase — degrade to the
         // unmodified origin response rather than showing a broken preview.
-        return origin;
+        return withSecurityHeaders(origin);
       }
-      if (!row) return origin;
+      if (!row) return withSecurityHeaders(origin);
 
       try {
-        return withNoStore(await rewriteListingHead(origin, row, lang, slug));
+        return withSecurityHeaders(withNoStore(await rewriteListingHead(origin, row, lang, slug)));
       } catch (err) {
         // HTMLRewriter failure of any kind — never let a preview-generation
         // bug break the actual page for a real visitor.
-        return origin;
+        return withSecurityHeaders(origin);
       }
     }
 
@@ -472,15 +514,16 @@ export default {
       const origin = await fetch(request);
       const lang = resolveLang(url.searchParams.get('lang'));
       try {
-        return withNoStore(await rewriteGenericHead(origin, lang, isHome ? HOME_META_I18N : LISTINGS_META_I18N));
+        return withSecurityHeaders(withNoStore(await rewriteGenericHead(origin, lang, isHome ? HOME_META_I18N : LISTINGS_META_I18N)));
       } catch (err) {
-        return origin;
+        return withSecurityHeaders(origin);
       }
     }
 
     // Everything else (static assets, other pages) passes straight through
-    // with no Supabase call and no rewriting.
-    return fetch(request);
+    // with no Supabase call and no rewriting — but still gets the security
+    // headers, so an asset on a fronted route is covered too.
+    return withSecurityHeaders(await fetch(request));
   },
 };
 
@@ -501,4 +544,6 @@ export {
   rewriteListingHead,
   rewriteGenericHead,
   withNoStore,
+  withSecurityHeaders,
+  SECURITY_HEADERS,
 };

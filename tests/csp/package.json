@@ -1,0 +1,7 @@
+{
+  "name": "pintag-csp-tests",
+  "private": true,
+  "description": "Loads every page published to pintag.io in a real Chromium with the shipped Content Security Policy in force, and fails on any CSP violation or blocked subresource. This is what makes the CSP safe to enforce: a policy nobody exercised in a browser is a production outage waiting to happen. Also asserts the policy itself keeps its teeth (no wildcard/blanket sources) and that XSS exfiltration channels are actually refused at runtime.",
+  "scripts": { "test": "playwright test" },
+  "devDependencies": { "@playwright/test": "1.56.1" }
+}
