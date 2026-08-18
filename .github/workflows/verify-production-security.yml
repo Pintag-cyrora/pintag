@@ -85,6 +85,25 @@ jobs:
           set -o pipefail
           bash scripts/verify-production-http.sh 2>&1 | tee http-report.txt
 
+      # The admin-lockdown matrix. Optional: runs only if the credentials are
+      # configured. The critical case (allowlisted admin, password-only session,
+      # no TOTP -> DENIED) needs no TOTP secret, because a password-only sign-in
+      # yields exactly an aal1 session. Never runs on pull_request (see the
+      # header), so the F-07 concern about PR-controlled scripts does not apply.
+      - name: Admin lockdown matrix (optional — needs ADMIN_EMAIL/ADMIN_PASSWORD)
+        id: matrix
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ steps.cfg.outputs.url }}
+          SUPABASE_ANON_KEY: ${{ steps.cfg.outputs.key }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+        run: |
+          set -o pipefail
+          bash scripts/verify-admin-lockdown.sh 2>&1 | tee matrix-report.txt
+
       - name: Database catalog — drift against the repository security model
         id: db
         continue-on-error: true
@@ -117,6 +136,11 @@ jobs:
             echo '```'
             cat db-report.txt 2>/dev/null || echo "(did not run)"
             echo '```'
+            echo ""
+            echo "## Admin lockdown matrix"
+            echo '```'
+            cat matrix-report.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload reports
@@ -127,6 +151,7 @@ jobs:
           path: |
             http-report.txt
             db-report.txt
+            matrix-report.txt
           retention-days: 90
 
       # Fail the run if EITHER probe found drift, so this shows up as a red
@@ -136,9 +161,11 @@ jobs:
         run: |
           http='${{ steps.http.outcome }}'
           db='${{ steps.db.outcome }}'
-          echo "http probe: $http"
-          echo "db probe:   $db"
-          if [ "$http" != "success" ] || [ "$db" != "success" ]; then
+          matrix='${{ steps.matrix.outcome }}'
+          echo "http probe:   $http"
+          echo "db probe:     $db"
+          echo "admin matrix: $matrix"
+          if [ "$http" != "success" ] || [ "$db" != "success" ] || [ "$matrix" != "success" ]; then
             echo "::error::Production does NOT match the repository security model — see the job summary."
             exit 1
           fi
