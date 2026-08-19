@@ -59,7 +59,7 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // email is fixed, same convention as admin.html's ADMIN_EMAIL.
 const FOUNDER_EMAIL = 'ninee@pintag.io';
 
-const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { storageKey: window.PINTAG.authStorageKey } });
 
 function showStatus(text) {
   const el = document.getElementById('loading-screen');

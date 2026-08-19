@@ -18,6 +18,11 @@ function extractFn(file, name) {
   return src.slice(start, i);
 }
 const fallbackFn = extractFn('components.js', 'ptCdnImageFallback');
+// ptCdnImageFallback() resolves the direct origin through _ptStorageOrigin(),
+// which reads window.PINTAG.storagePublicOrigin — the STORED image host, which
+// deliberately stays on Supabase when the API host moves to api.pintag.io.
+// The helper has to be injected alongside it or the fallback throws.
+const storageOriginFn = extractFn('components.js', '_ptStorageOrigin');
 
 const PROD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const CDN  = 'https://img.pintag.io/storage/v1/object/public/property-images/';
@@ -28,11 +33,12 @@ test('global capture listener swaps a failed CDN <img> to direct Supabase, once'
     route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body></body></html>' }));
   await page.goto('http://localhost:8956/blank-harness');
 
-  const r = await page.evaluate(({ fallbackFn, PROD, CDN, PUB }) => {
-    window.PINTAG = { supabaseUrl: PROD, imageCdn: true };
+  const r = await page.evaluate(({ fallbackFn, storageOriginFn, PROD, CDN, PUB }) => {
+    window.PINTAG = { supabaseUrl: PROD, storagePublicOrigin: PROD, imageCdn: true };
     // Define the module constants GLOBALLY (indirect eval below runs in global
     // scope, so the extracted function must find them there — not as locals).
     (0, eval)("var PT_IMAGE_CDN_ORIGIN='https://img.pintag.io'; var PT_PROPERTY_IMAGES_PATH='/storage/v1/object/public/property-images/';");
+    (0, eval)(storageOriginFn);                  // real _ptStorageOrigin
     (0, eval)(fallbackFn);                       // real ptCdnImageFallback
     // Install the SAME global capturing listener production uses.
     document.addEventListener('error', function (e) { ptCdnImageFallback(e.target); }, true);
@@ -58,7 +64,7 @@ test('global capture listener swaps a failed CDN <img> to direct Supabase, once'
     var agentAfter = { src: agent.src, flag: agent.dataset.cdnFallback, count: window.__ptCdnFallbacks };
 
     return { afterFirst, afterSecond, agentAfter, events };
-  }, { fallbackFn, PROD, CDN, PUB });
+  }, { fallbackFn, storageOriginFn, PROD, CDN, PUB });
 
   // First error -> swapped once to the direct Supabase URL, marked, observable.
   expect(r.afterFirst.src).toBe(PUB + 'a.jpg');

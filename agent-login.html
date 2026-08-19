@@ -165,7 +165,8 @@ const SUPABASE_KEY = window.PINTAG.anonKey;
 
 const supabaseClient = supabase.createClient(
   SUPABASE_URL,
-  SUPABASE_KEY
+  SUPABASE_KEY,
+  { auth: { storageKey: window.PINTAG.authStorageKey } }
 );
 
 const authBtn = document.getElementById('auth-btn');

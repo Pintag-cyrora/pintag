@@ -40,6 +40,23 @@ jobs:
       - name: XSS / inline-handler escaping regressions
         run: node --test xss-inline-handlers.test.js
 
+      # The api.pintag.io proxy (docs/API_PROXY.md). Each of these guards a
+      # change that fails SILENTLY rather than loudly: a Worker allowlist that
+      # widens into an open proxy, a createClient() that derives a different
+      # auth storage key and signs everyone out, a CSP missing the proxy host,
+      # or a stored image URL that follows the API host into the database.
+      - name: API proxy Worker — allowlist, traversal, header/body forwarding
+        run: node --test cloudflare-worker/api-proxy-worker.test.js
+
+      - name: API proxy Worker — local integration over real HTTP
+        run: node --test cloudflare-worker/api-proxy-integration.test.js
+
+      - name: Supabase origin / auth-storage-key invariants
+        run: node --test supabase-origins.test.js
+
+      - name: Image CDN rewrite (pre- and post-cutover)
+        run: node --test image-cdn.test.js
+
       - name: Install PostgreSQL server binaries
         run: |
           sudo apt-get update -qq

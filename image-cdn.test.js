@@ -21,9 +21,10 @@ function extractFn(file, name) {
 
 // The two module-level constants the helpers read, then the real functions.
 vm.runInThisContext("var PT_IMAGE_CDN_ORIGIN='https://img.pintag.io'; var PT_PROPERTY_IMAGES_PATH='/storage/v1/object/public/property-images/';");
+vm.runInThisContext(extractFn('components.js', '_ptStorageOrigin'));
 vm.runInThisContext(extractFn('components.js', 'ptCdnImage'));
 vm.runInThisContext(extractFn('components.js', 'ptCdnImageFallback'));
-const { ptCdnImage, ptCdnImageFallback } = globalThis;
+const { ptCdnImage, ptCdnImageFallback, _ptStorageOrigin } = globalThis;
 
 // CustomEvent shim for the fallback's observability dispatch (node has no DOM).
 globalThis.CustomEvent = globalThis.CustomEvent || function (type, opts) { this.type = type; this.detail = opts && opts.detail; };
@@ -32,8 +33,18 @@ const PROD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const DEV  = 'https://ebtgoqrywdywuqrvudcp.supabase.co';
 const CDN  = 'https://img.pintag.io/storage/v1/object/public/property-images/';
 const PUB  = PROD + '/storage/v1/object/public/property-images/';
+const API_PROXY = 'https://api.pintag.io';
 
-function setCdn(on, supabaseUrl) { globalThis.window = { PINTAG: { imageCdn: on, supabaseUrl: supabaseUrl || PROD } }; }
+// Pre-cutover shape: storagePublicOrigin and supabaseUrl are the same host.
+function setCdn(on, supabaseUrl) {
+  const u = supabaseUrl || PROD;
+  globalThis.window = { PINTAG: { imageCdn: on, supabaseUrl: u, storagePublicOrigin: u } };
+}
+// Post-cutover shape: the API host moved to the Cloudflare proxy while stored
+// image URLs stayed on the direct Supabase origin.
+function setCdnAfterCutover(on) {
+  globalThis.window = { PINTAG: { imageCdn: on, supabaseUrl: API_PROXY, storagePublicOrigin: PROD } };
+}
 
 // ── Rewrites (flag ON, production) ────────────────────────────────────────
 test('rewrites a public property-image URL to the CDN host', () => {
@@ -175,4 +186,63 @@ test('fallback: ignores non-IMG elements and missing config', () => {
   assert.equal(ptCdnImageFallback(null), false);
   globalThis.window.PINTAG = { imageCdn: true };    // no supabaseUrl
   assert.equal(ptCdnImageFallback(fakeImg(CDN + 'a.jpg')), false);
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// api.pintag.io CUTOVER — the image CDN must survive the API host moving
+// ═══════════════════════════════════════════════════════════════════════
+// ptCdnImage() used to match on window.PINTAG.supabaseUrl. Once that value
+// becomes the Cloudflare API proxy, every image URL ALREADY in the database
+// still points at the direct Supabase origin -- so matching on supabaseUrl
+// would return them all unchanged, silently routing every existing listing
+// photo around img.pintag.io and straight at Supabase egress. No broken image,
+// no console error, no alert: just the CDN quietly ceasing to do anything.
+//
+// These pin the fix: the match is against storagePublicOrigin, which stays on
+// the Supabase origin because it describes STORED DATA, not delivery.
+
+test('cutover: an EXISTING stored image URL is still rewritten to the CDN', () => {
+  setCdnAfterCutover(true);
+  assert.equal(ptCdnImage(PUB + 'a/b.jpg'), CDN + 'a/b.jpg');
+});
+
+test('cutover: a URL on the API proxy host is NOT treated as a stored image', () => {
+  // Nothing should ever persist an api.pintag.io image URL (admin.html builds
+  // the stored URL from storagePublicOrigin). If one appears, it is not one of
+  // ours to rewrite -- returning it untouched is the safe direction.
+  setCdnAfterCutover(true);
+  const stray = API_PROXY + '/storage/v1/object/public/property-images/a/b.jpg';
+  assert.equal(ptCdnImage(stray), stray);
+});
+
+test('cutover: the CDN fallback retries against the STORED origin, not the proxy', () => {
+  // The object only exists at the Supabase origin. Falling back to the API
+  // proxy would 404 and leave a permanently broken image.
+  setCdnAfterCutover(true);
+  const el = { tagName: 'IMG', src: CDN + 'a/b.jpg', dataset: {}, getAttribute: () => CDN + 'a/b.jpg' };
+  assert.equal(ptCdnImageFallback(el), true);
+  assert.equal(el.src, PUB + 'a/b.jpg');
+});
+
+test('cutover: rollback (imageCdn=false) still returns the stored URL untouched', () => {
+  setCdnAfterCutover(false);
+  assert.equal(ptCdnImage(PUB + 'a/b.jpg'), PUB + 'a/b.jpg');
+});
+
+test('_ptStorageOrigin: prefers storagePublicOrigin over supabaseUrl', () => {
+  globalThis.window = { PINTAG: { supabaseUrl: API_PROXY, storagePublicOrigin: PROD } };
+  assert.equal(_ptStorageOrigin(), PROD);
+});
+
+test('_ptStorageOrigin: falls back to supabaseUrl for a config predating the key', () => {
+  globalThis.window = { PINTAG: { supabaseUrl: PROD } };
+  assert.equal(_ptStorageOrigin(), PROD);
+});
+
+test('_ptStorageOrigin: null when there is no config at all', () => {
+  globalThis.window = undefined;
+  assert.equal(_ptStorageOrigin(), null);
+  globalThis.window = { PINTAG: {} };
+  assert.equal(_ptStorageOrigin(), null);
 });

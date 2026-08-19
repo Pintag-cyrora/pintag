@@ -20,10 +20,21 @@
 //   <script src="…/@supabase/supabase-js@2"></script> <!-- page provides -->
 //   <script src="admin-auth.js"></script>
 //   <script>
-//     const sb = supabase.createClient(window.PINTAG.supabaseUrl, window.PINTAG.anonKey);
+//     const sb = supabase.createClient(window.PINTAG.supabaseUrl, window.PINTAG.anonKey,
+//       { auth: { storageKey: window.PINTAG.authStorageKey } });
 //     PintagAdminAuth.protect(sb, function () { /* boot the page here */ });
 //     // before a destructive action: await PintagAdminAuth.requireAdminSession();
 //   </script>
+//
+// The explicit storageKey above is REQUIRED, not decorative. supabase-js
+// derives its session key from the first DNS label of the URL, so a client
+// created without it keys the session to whatever host is serving the API that
+// day — and the moment window.PINTAG.supabaseUrl moves to the Cloudflare proxy
+// (api.pintag.io), every existing administrator and agent session becomes
+// invisible and everyone is silently signed out mid-session. Pinning it to the
+// project ref decouples session identity from the delivery hostname.
+// supabase-origins.test.js asserts every call site in the repo does this,
+// including this example.
 // The module injects its own full-screen login overlay, so pages need no login
 // markup of their own. The page's own content should live in the DOM and simply
 // be initialised by the onReady callback (the overlay covers the page until an

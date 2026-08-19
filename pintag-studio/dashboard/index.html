@@ -217,7 +217,7 @@ const AGENT_LABELS = {
 const HEALTH_DOT = { healthy: '🟢', degraded: '🟡', down: '🔴', idle: '⚪' };
 const HEALTH_DEFAULT_MESSAGE = { healthy: 'Healthy', degraded: 'Degraded', down: 'Down', idle: 'Not yet run' };
 
-const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { storageKey: window.PINTAG.authStorageKey } });
 
 const loginScreen = document.getElementById('login-screen');
 const dashScreen  = document.getElementById('dash-screen');

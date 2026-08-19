@@ -111,11 +111,29 @@ function _ptEscJs(s) {
 // property images never carry a meaningful query today).
 var PT_IMAGE_CDN_ORIGIN = 'https://img.pintag.io';
 var PT_PROPERTY_IMAGES_PATH = '/storage/v1/object/public/property-images/';
+// _ptStorageOrigin() -- the origin a PUBLIC property-image URL is stored under.
+//
+// Reads window.PINTAG.storagePublicOrigin, falling back to supabaseUrl for a
+// config that predates that key. The two are the same value today and diverge
+// at the api.pintag.io cutover: supabaseUrl becomes the API delivery host while
+// stored image URLs stay on the direct Supabase origin.
+//
+// This distinction is load-bearing. Matching on supabaseUrl (as this file used
+// to) would mean that the moment supabaseUrl changed, EVERY image URL already
+// in the database stopped matching -- so ptCdnImage() would return them
+// unchanged, silently routing every existing listing photo around img.pintag.io
+// and straight at Supabase egress. No broken images, no error, just a bill.
+function _ptStorageOrigin() {
+  var P = (typeof window !== 'undefined') ? window.PINTAG : null;
+  if (!P) return null;
+  return P.storagePublicOrigin || P.supabaseUrl || null;
+}
 function ptCdnImage(url) {
   if (!url || typeof url !== 'string') return url;
   var P = (typeof window !== 'undefined') ? window.PINTAG : null;
-  if (!P || !P.imageCdn || !P.supabaseUrl) return url;   // flag off / dev / no config
-  var base = P.supabaseUrl + PT_PROPERTY_IMAGES_PATH;
+  var origin = _ptStorageOrigin();
+  if (!P || !P.imageCdn || !origin) return url;          // flag off / dev / no config
+  var base = origin + PT_PROPERTY_IMAGES_PATH;
   if (url.indexOf(base) !== 0) return url;                // only THIS project's public property-images
   return PT_IMAGE_CDN_ORIGIN + PT_PROPERTY_IMAGES_PATH + url.slice(base.length).split('?')[0];
 }
@@ -140,10 +158,12 @@ function ptCdnImageFallback(el) {
   var cdnBase = PT_IMAGE_CDN_ORIGIN + PT_PROPERTY_IMAGES_PATH;
   if (src.indexOf(cdnBase) !== 0) return false;               // only OUR CDN property-images
   if (el.dataset && el.dataset.cdnFallback) return false;     // already retried once -> never loop
-  var P = (typeof window !== 'undefined') ? window.PINTAG : null;
-  if (!P || !P.supabaseUrl) return false;
+  // The fallback must land on the STORED origin, not the API delivery host --
+  // the object only exists at the former (see _ptStorageOrigin above).
+  var origin = _ptStorageOrigin();
+  if (!origin) return false;
   if (el.dataset) el.dataset.cdnFallback = '1';
-  var direct = P.supabaseUrl + PT_PROPERTY_IMAGES_PATH + src.slice(cdnBase.length);
+  var direct = origin + PT_PROPERTY_IMAGES_PATH + src.slice(cdnBase.length);
   if (typeof window !== 'undefined') {
     window.__ptCdnFallbacks = (window.__ptCdnFallbacks || 0) + 1;
     try { console.warn('[pintag] image CDN fallback -> direct Supabase (#' + window.__ptCdnFallbacks + '): ' + src); } catch (_e) {}

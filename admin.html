@@ -9,7 +9,7 @@
      Do not hand-edit: run `node scripts/apply-csp.mjs` after changing the policy.
      Delivered as a meta tag because GitHub Pages cannot set headers; the
      header-only directives (frame-ancestors) come from Cloudflare. See docs/CSP.md. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://eoladhcljbpbhnrmmpev.supabase.co https://ebtgoqrywdywuqrvudcp.supabase.co https://img.pintag.io https://pintag-cyrora.github.io https://unpkg.com https://*.tile.openstreetmap.org https://images.unsplash.com; connect-src 'self' https://eoladhcljbpbhnrmmpev.supabase.co https://ebtgoqrywdywuqrvudcp.supabase.co wss://eoladhcljbpbhnrmmpev.supabase.co wss://ebtgoqrywdywuqrvudcp.supabase.co; frame-src https://maps.google.com https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' blob: https://eoladhcljbpbhnrmmpev.supabase.co https://ebtgoqrywdywuqrvudcp.supabase.co; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://eoladhcljbpbhnrmmpev.supabase.co https://ebtgoqrywdywuqrvudcp.supabase.co https://api.pintag.io https://img.pintag.io https://pintag-cyrora.github.io https://unpkg.com https://*.tile.openstreetmap.org https://images.unsplash.com; connect-src 'self' https://eoladhcljbpbhnrmmpev.supabase.co https://ebtgoqrywdywuqrvudcp.supabase.co https://api.pintag.io wss://eoladhcljbpbhnrmmpev.supabase.co wss://ebtgoqrywdywuqrvudcp.supabase.co; frame-src https://maps.google.com https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' blob: https://eoladhcljbpbhnrmmpev.supabase.co https://ebtgoqrywdywuqrvudcp.supabase.co https://api.pintag.io; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pintag Admin</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1043,6 +1043,16 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
+// The origin that goes INTO the database for a public property image.
+//
+// Deliberately NOT SUPABASE_URL. An uploaded object's public URL is persisted
+// in properties.images, so its host is part of the stored data format, not a
+// delivery choice. Pinning it to window.PINTAG.storagePublicOrigin keeps every
+// row — written before or after the api.pintag.io cutover — in one shape, which
+// is what lets ptCdnImage() (components.js) keep rewriting them all to
+// img.pintag.io with no data migration. The UPLOAD itself still goes through
+// SUPABASE_URL, and therefore through Cloudflare. See config.prod.js.
+const SUPABASE_PUBLIC_STORAGE = window.PINTAG.storagePublicOrigin || window.PINTAG.supabaseUrl;
 const SUPABASE_ANON = window.PINTAG.anonKey;
 
 function esc(s) {
@@ -1088,7 +1098,7 @@ function escJs(s) {
     .replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 const ADMIN_EMAIL   = 'cyrora.trading@gmail.com';  // the ONLY account authorized for admin access
-const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { storageKey: window.PINTAG.authStorageKey } });
 
 // ══════════════════════════════════════════════════════════════════
 // PINTAG TAXONOMY — single source of truth (mirrored in listing.html)
@@ -4140,7 +4150,7 @@ async function uploadImageFileToStorage(file) {
   }
 
   if (res.ok) {
-    return `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
+    return `${SUPABASE_PUBLIC_STORAGE}/storage/v1/object/public/property-images/${fileName}`;
   }
 
   // Read the full Supabase error body so we can display the exact reason
@@ -4709,7 +4719,7 @@ async function handleImportImageUpload(files) {
       );
 
       if (res.ok) {
-        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
+        const publicUrl = `${SUPABASE_PUBLIC_STORAGE}/storage/v1/object/public/property-images/${fileName}`;
         importImages.push(publicUrl);
         completed++;
         fill.style.width = `${(completed / fileArr.length) * 100}%`;

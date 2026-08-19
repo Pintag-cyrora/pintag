@@ -21,7 +21,7 @@
 
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
 const SUPABASE_ANON = window.PINTAG.anonKey;
-const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { storageKey: window.PINTAG.authStorageKey } });
 
 // Unified administrator authentication — the SAME shared module every
 // privileged Pintag page uses (admin-auth.js): only cyrora.trading@gmail.com,

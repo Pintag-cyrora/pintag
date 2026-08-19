@@ -1,85 +1,44 @@
-// Pintag environment config — auto-detects production vs. development by
-// hostname so the same codebase can point at different Supabase projects
-// without editing source files per deploy. Anon keys are public/embeddable
-// by design (RLS is the real security boundary), so having both
-// environments' keys here is not a secret-exposure concern.
-//
-// detectEnvironment() is the ONE place hostname logic lives. If Pintag ever
-// changes hosting (new domain, different host entirely), this is the only
-// function that needs to change.
-//
-// Defaults to DEVELOPMENT unless the hostname matches a known production
-// domain. This is deliberate: an unrecognized preview host landing safely
-// in development (a confusing blank dev DB) is a far cheaper mistake than
-// an unrecognized host landing in production (real test data written to
-// the live site real customers see). Only add to PRODUCTION_HOSTS when
-// Pintag genuinely adds a new production domain — do not add preview/dev
-// hosts here; they're supposed to fall through to the default.
-//
-// Configuration only — no DOM/UI code. See dev-banner.js for the visible
-// environment indicator.
-(function () {
-  var PRODUCTION_HOSTS = ['pintag.io', 'www.pintag.io', 'pintag-cyrora.github.io'];
+// config.prod.js — production Supabase config. Copied to config.js by the
+// prod deploy workflow (.github/workflows/deploy-prod.yml). Never referenced
+// directly from HTML — only config.js is (<script src="config.js"></script>).
+// Committed identically on every branch — this file never needs to differ
+// per branch, so it merges cleanly with no conflicts. Anon keys are meant to
+// be public/embeddable (RLS is the real security boundary), so having this
+// value committed is not a secret-exposure concern.
+window.PINTAG = {
+  env: 'production',
+  isProduction: true,
+  // API DELIVERY origin — where the browser sends /rest/v1, /auth/v1,
+  // /functions/v1 and /storage/v1 requests. This is the ONLY value that moves
+  // to https://api.pintag.io at cutover (see docs/API_PROXY.md); every call
+  // site in the app reads it from here, so the cutover is this one line.
+  // NOT flipped yet: the Worker and DNS must exist and be verified first.
+  supabaseUrl: 'https://eoladhcljbpbhnrmmpev.supabase.co',
 
-  function detectEnvironment(hostname) {
-    return PRODUCTION_HOSTS.indexOf(hostname) !== -1 ? 'production' : 'development';
-  }
+  // STORED/PUBLIC STORAGE origin — deliberately NOT the same knob.
+  //
+  // Public property-image URLs are PERSISTED in properties.images, so their
+  // host is a data format, not a delivery choice. It must stay pinned to the
+  // direct Supabase origin whatever supabaseUrl becomes: every existing row
+  // already uses it, ptCdnImage() (components.js) matches on it to rewrite to
+  // img.pintag.io, and the image CDN Worker fetches it. Letting the delivery
+  // host leak into stored values would split the database into two URL shapes
+  // and silently disable the image CDN for every listing photo taken before
+  // the cutover.
+  //
+  // Uploads still POST through supabaseUrl (and therefore through Cloudflare);
+  // only the URL written to the database is built from this constant.
+  storagePublicOrigin: 'https://eoladhcljbpbhnrmmpev.supabase.co',
 
-  var ENV = detectEnvironment(window.location.hostname);
-
-  // Each environment carries its own short `tag` (banner badge) and
-  // `label` (which project it points at) alongside its Supabase settings.
-  // Adding a future environment (staging/QA/UAT) is just a new entry here
-  // plus a hostname mapping in detectEnvironment() — dev-banner.js needs
-  // no changes, since it reads tag/label generically.
-  var CONFIGS = {
-    production: {
-      url: 'https://eoladhcljbpbhnrmmpev.supabase.co',
-      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0',
-      tag: 'PROD',
-      label: 'production'
-    },
-    development: {
-      url: 'https://ebtgoqrywdywuqrvudcp.supabase.co',
-      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVidGdvcXJ5d2R5d3VxcnZ1ZGNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNTg1MjcsImV4cCI6MjA5ODgzNDUyN30.FbM5Az9bxUflHabIqVLWFyb3BqfLWfCu1ZP5xwowUb8',
-      tag: 'DEV',
-      label: 'pintag-dev'
-    }
-  };
-
-  // Fail fast if the environment about to be used is still unconfigured,
-  // rather than letting a preview silently make broken requests against a
-  // placeholder hostname (a much harder failure to debug than an explicit
-  // error naming the fix). Scoped to ENV specifically — this must never
-  // fire when serving production, even before pintag-dev exists, since
-  // production's own config is separately validated below.
-  var active = CONFIGS[ENV];
-  if (active.url.indexOf('PINTAG_DEV_PROJECT_REF') !== -1 ||
-      active.anonKey.indexOf('PINTAG_DEV_ANON_KEY') !== -1) {
-    throw new Error(
-      'Pintag ' + ENV + ' environment has not been configured. See PREVIEW.md.'
-    );
-  }
-
-  // Single namespaced global — everything Pintag-specific hangs off this
-  // one object, not scattered window.* properties.
-  window.PINTAG = {
-    env: ENV,
-    isProduction: ENV === 'production',
-    supabaseUrl: active.url,
-    anonKey: active.anonKey,
-    tag: active.tag,
-    label: active.label,
-    // Image CDN feature flag (P1). When true, ptCdnImage() (components.js)
-    // rewrites public property-images URLs to img.pintag.io at render time so
-    // repeat views are served from Cloudflare cache instead of Supabase egress.
-    //
-    // DEFAULT FALSE for now: the img.pintag.io Cloudflare Worker + DNS are not
-    // deployed yet, so the CDN code stays completely INERT — every image renders
-    // from its original direct Supabase URL, exactly as before. Once img.pintag.io
-    // is stood up and verified independently, flip this to true (e.g.
-    // `ENV === 'production'`) to activate the CDN. This flag is the only switch
-    // needed; no DB or code-path change is required to enable/disable it.
-    imageCdn: false
-  };
-})();
+  // Supabase auth session key, pinned to the PROJECT REF rather than derived
+  // from the hostname. supabase-js defaults storageKey to
+  // `sb-<first DNS label of supabaseUrl>-auth-token`, so moving the API host to
+  // api.pintag.io would silently change the key to `sb-api-auth-token` and log
+  // every administrator and agent out mid-session (for the admin, that means
+  // re-doing TOTP). Passing this explicitly at every createClient() call
+  // decouples session identity from the delivery hostname permanently.
+  authStorageKey: 'sb-eoladhcljbpbhnrmmpev-auth-token',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0',
+  tag: 'PROD',
+  label: 'production'
+};

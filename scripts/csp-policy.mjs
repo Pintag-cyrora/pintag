@@ -54,6 +54,26 @@
 export const SUPABASE_PROD = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 export const SUPABASE_DEV  = 'https://ebtgoqrywdywuqrvudcp.supabase.co';
 
+// The Cloudflare API proxy (cloudflare-worker/api-proxy-worker.js). Once
+// window.PINTAG.supabaseUrl is cut over, every /rest/v1, /auth/v1,
+// /functions/v1 and /storage/v1 request the browser makes goes here instead of
+// straight to Supabase — so without this entry the cutover would be blocked by
+// the page's own CSP, not by anything on the network.
+//
+// It is listed ALONGSIDE the two Supabase origins, never instead of them:
+//   * every property-image URL already stored in the database still points at
+//     SUPABASE_PROD, and those must keep loading (img-src);
+//   * the image CDN Worker and the direct-Supabase fallback path in
+//     ptCdnImageFallback() both resolve to SUPABASE_PROD;
+//   * keeping both listed is what makes the cutover reversible by editing one
+//     line of config.prod.js, with no CSP change needed to roll back.
+//
+// This is a first-party host we control, so it does not weaken the "exact
+// hosts, never wildcards" rule the Supabase entries exist to enforce — the
+// concern there is an attacker registering their own *.supabase.co project,
+// which has no analogue under pintag.io.
+export const PINTAG_API_PROXY = 'https://api.pintag.io';
+
 // Directive order is fixed so the emitted string is byte-stable and a drifted
 // page is trivially diffable.
 export const CSP_DIRECTIVES = [
@@ -88,6 +108,7 @@ export const CSP_DIRECTIVES = [
   ["img-src", [
     "'self'", "data:", "blob:",
     SUPABASE_PROD, SUPABASE_DEV,
+    PINTAG_API_PROXY,
     "https://img.pintag.io",
     "https://pintag-cyrora.github.io",
     "https://unpkg.com",
@@ -106,6 +127,7 @@ export const CSP_DIRECTIVES = [
   ["connect-src", [
     "'self'",
     SUPABASE_PROD, SUPABASE_DEV,
+    PINTAG_API_PROXY,
     SUPABASE_PROD.replace('https://', 'wss://'),
     SUPABASE_DEV.replace('https://', 'wss://'),
   ]],
@@ -116,7 +138,7 @@ export const CSP_DIRECTIVES = [
     "https://www.youtube.com", "https://www.youtube-nocookie.com",
   ]],
 
-  ["media-src", ["'self'", "blob:", SUPABASE_PROD, SUPABASE_DEV]],
+  ["media-src", ["'self'", "blob:", SUPABASE_PROD, SUPABASE_DEV, PINTAG_API_PROXY]],
   ["worker-src", ["'self'", "blob:"]],
   ["manifest-src", ["'self'"]],
 

@@ -603,7 +603,8 @@ const SUPABASE_KEY = window.PINTAG.anonKey;
 const supabaseClient =
   supabase.createClient(
     SUPABASE_URL,
-    SUPABASE_KEY
+    SUPABASE_KEY,
+    { auth: { storageKey: window.PINTAG.authStorageKey } }
   );
 let deleteId = null;
 

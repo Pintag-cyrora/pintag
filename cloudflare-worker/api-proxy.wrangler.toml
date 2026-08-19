@@ -1,0 +1,33 @@
+# Wrangler config for the Pintag API Proxy Worker.
+#
+# This is a THIRD, separate Worker service in this directory:
+#   wrangler.toml            -> pintag-og-listing-preview  (4 pintag.io routes)
+#   image-cdn.wrangler.toml  -> pintag-image-cdn           (img.pintag.io/*)
+#   api-proxy.wrangler.toml  -> pintag-api-proxy           (api.pintag.io/*)   <- this file
+#
+# Deploy explicitly with:
+#
+#   wrangler deploy -c api-proxy.wrangler.toml
+#
+# account_id is intentionally unset (read from CLOUDFLARE_ACCOUNT_ID / your
+# wrangler login), the same convention as the other two configs — an explicit
+# account_id here would take PRECEDENCE over the env var and break CI.
+#
+# NOT wired into CI. Deploy is a manual, reviewed step, matching the image CDN
+# Worker. Automatic deployment of a Worker that sits in front of every API call
+# the site makes is not something to enable casually.
+#
+# PREREQUISITE: an `api` DNS record must exist in the pintag.io zone and be
+# PROXIED (orange cloud). The route below only binds once the hostname resolves
+# inside the zone. See docs/API_PROXY.md for the exact record.
+
+name = "pintag-api-proxy"
+main = "api-proxy-worker.js"
+compatibility_date = "2024-09-23"
+
+# Everything under api.pintag.io goes through the Worker. The Worker itself
+# allowlists only the five Supabase API prefixes and 404s the rest, so this
+# broad route is safe — same reasoning as the image CDN's img.pintag.io/* route.
+[[routes]]
+pattern = "api.pintag.io/*"
+zone_name = "pintag.io"
