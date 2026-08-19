@@ -45,6 +45,14 @@ jobs:
     name: Production security drift check (read-only)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Required for PINTAG_PROD_DB_URL to resolve at all: it is an Environment
+    # secret on production-backup, not a repository secret. Without this the
+    # value arrives empty and the "Database catalog" step reports
+    # "SKIPPED: secret PINTAG_PROD_DB_URL is not set" — which is exactly what
+    # this workflow has been doing, and why the catalog drift check has never
+    # run. Scoping it to the environment rather than the repository keeps the
+    # credential out of every other workflow's reach.
+    environment: production-backup
     env:
       # Same read-only connection secret monitoring.yml and image-integrity.yml
       # already use. If it is scoped to a read-only role, this workflow is
