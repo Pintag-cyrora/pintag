@@ -492,25 +492,89 @@ Deno.serve(async (req) => {
 
     const RETRY_DELAYS = [2000, 5000, 10000];
 
+    // ── Bounded Gemini call — the fix for "Generation failed: Load failed" ──
+    //
+    // This request used to have NO timeout and NO overall budget, unlike the
+    // image fetches above (which correctly use AbortSignal.timeout(15000)).
+    // Worst case was 4 attempts of an unbounded vision request plus 17s of
+    // retry sleeps — comfortably past the Edge Function wall-clock limit.
+    //
+    // That mattered far more than a slow request normally would, because of HOW
+    // it fails. When the platform kills the isolate, no JavaScript in this file
+    // runs: the catch below never executes, no response is produced, and the
+    // connection closes WITHOUT the CORS headers every other path here sets.
+    // The browser therefore cannot read the failure at all — fetch() rejects
+    // with a bare TypeError, which WebKit renders as the entirely
+    // uninformative "Load failed". Every genuine error inside this function
+    // (bad key, 401, Gemini 4xx) already returns readable JSON; only a platform
+    // kill is invisible, so the fix is to never BE killed: stay inside the
+    // budget and return a real error instead.
+    //
+    // A 429 is the common trigger in practice: quota exhaustion sends every
+    // attempt down the full retry ladder, which is what pushes a normally-fine
+    // request past the limit.
+    const GEMINI_ATTEMPT_TIMEOUT_MS = 45_000;
+    // Total budget for this phase. Deliberately well under the platform
+    // wall-clock limit (150s on the default tier) because image fetching and
+    // base64 encoding have already spent part of the request's life before we
+    // get here.
+    const GEMINI_TOTAL_BUDGET_MS = 105_000;
+    const phaseStart = Date.now();
+    const remainingMs = () => GEMINI_TOTAL_BUDGET_MS - (Date.now() - phaseStart);
+
     let response!: Response;
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
-      response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [...imageParts, textPart] }],
-            generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
-          }),
+      // Per-attempt timeout, clamped so a late attempt can never overrun the
+      // phase budget. Below ~5s left there is no point starting at all.
+      const attemptBudget = Math.min(GEMINI_ATTEMPT_TIMEOUT_MS, remainingMs());
+      if (attemptBudget < 5_000) {
+        throw new Error(
+          'Gemini did not respond within the time this function is allowed to run. ' +
+          'This is usually quota exhaustion (HTTP 429) forcing every retry, or an unusually ' +
+          'large gallery. Try again in a minute, or generate with fewer photos.'
+        );
+      }
+
+      try {
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [...imageParts, textPart] }],
+              generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
+            }),
+            signal: AbortSignal.timeout(attemptBudget),
+          }
+        );
+      } catch (e) {
+        // A timed-out or aborted attempt is retryable in exactly the same way a
+        // 503 is — but only if the budget can still fund another one. Rethrown
+        // as a normal Error so the outer catch turns it into readable JSON WITH
+        // cors headers, which is the whole point.
+        const timedOut = e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError');
+        if (!timedOut) throw e;
+        console.log(`Gemini attempt ${attempt + 1} timed out after ${attemptBudget}ms`);
+        if (attempt < RETRY_DELAYS.length && remainingMs() > RETRY_DELAYS[attempt] + 10_000) {
+          await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+          continue;
         }
-      );
+        throw new Error(
+          `Gemini did not respond within ${Math.round(attemptBudget / 1000)}s. ` +
+          'Try again in a minute, or generate with fewer photos.'
+        );
+      }
 
       if (response.ok) break;
 
       if (
         (response.status === 429 || response.status === 503) &&
-        attempt < RETRY_DELAYS.length
+        attempt < RETRY_DELAYS.length &&
+        // Only sleep-and-retry if there is budget left for the delay AND a
+        // meaningful attempt afterwards. Without this the ladder itself is what
+        // runs the function out of time.
+        remainingMs() > RETRY_DELAYS[attempt] + 10_000
       ) {
         console.log(`Gemini ${response.status}, retry ${attempt + 1}/${RETRY_DELAYS.length}`);
         await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
@@ -518,6 +582,12 @@ Deno.serve(async (req) => {
       }
 
       const errText = await response.text();
+      if (response.status === 429) {
+        throw new Error(
+          `Gemini API 429: quota exceeded. The key is rate-limited right now — ` +
+          `wait a minute and retry, or raise the quota tier. ${errText.slice(0, 160)}`
+        );
+      }
       throw new Error(`Gemini API ${response.status}: ${errText.slice(0, 200)}`);
     }
 
