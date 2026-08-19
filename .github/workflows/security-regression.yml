@@ -40,6 +40,12 @@ jobs:
       - name: XSS / inline-handler escaping regressions
         run: node --test xss-inline-handlers.test.js
 
+      # "Generation failed: Load failed" — an unbounded Gemini call outliving the
+      # Edge Function wall clock, killed by the platform before it could emit its
+      # CORS headers. Guards the time budget and the failure classifier.
+      - name: AI generation failure handling (bounded Gemini call)
+        run: node --test ai-generation-failure.test.js
+
       - name: Install PostgreSQL server binaries
         run: |
           sudo apt-get update -qq

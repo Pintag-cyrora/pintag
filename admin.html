@@ -4370,6 +4370,53 @@ function selectEditImages(list, budget) {
   return out;
 }
 
+// describeAiGenFailure(err) -- turn a fetch rejection into something a human can act on.
+//
+// The old message pasted err.message straight through, which for the most
+// confusing failure mode produced exactly one word of signal: "Load failed".
+// That string is WebKit's text for a fetch() TypeError (Chrome says "Failed to
+// fetch"); it means the request produced NO RESPONSE AT ALL, so it is
+// specifically NOT any of the things the old hint told the operator to check —
+// a missing GEMINI_API_KEY, an undeployed function or a bad token all return a
+// real HTTP status with a readable JSON body, and would have shown that status.
+//
+// A response-less failure has only a few possible causes, and they are worth
+// naming separately instead of listing every possibility every time:
+//   * the edge function was killed by the platform mid-request (wall-clock or
+//     memory limit) — it dies before it can emit its CORS headers, so the
+//     browser refuses to surface anything;
+//   * the browser genuinely could not reach Supabase (offline, VPN, DNS);
+//   * a CSP connect-src violation (also logs "Refused to connect" in console).
+function describeAiGenFailure(err) {
+  const raw = (err && err.message) ? String(err.message) : String(err);
+
+  // AbortSignal.timeout() on our own fetch.
+  if (err && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+    return 'the request timed out after 3 minutes with no reply from the Edge Function. '
+         + 'That usually means the function was killed by Supabase before it could answer — '
+         + 'check Supabase Dashboard → Edge Functions → smart-listing-importer → Logs for a '
+         + 'WORKER_LIMIT / wall-clock entry, and retry with fewer photos.';
+  }
+
+  // A fetch that never produced a Response. WebKit: "Load failed".
+  // Chrome: "Failed to fetch". Firefox: "NetworkError when attempting to fetch resource".
+  if (err instanceof TypeError || /^(Load failed|Failed to fetch|NetworkError)/i.test(raw)) {
+    return 'the browser got NO response from the Edge Function ("' + raw + '"). '
+         + 'This is a network-level failure, not an application error — an unset GEMINI_API_KEY '
+         + 'or an undeployed function would have returned a numbered HTTP error instead. '
+         + 'Most likely the function was killed mid-request by Supabase (wall-clock or memory limit), '
+         + 'so it never sent its CORS headers. Check Supabase Dashboard → Edge Functions → '
+         + 'smart-listing-importer → Logs for the matching invocation; if the log shows a 429 from '
+         + 'Gemini, the API key is out of quota. Also verify you are online and that no CSP '
+         + '"Refused to connect" error appears in the console.';
+  }
+
+  // Everything else already carries a real status and body from the function.
+  return raw + '. If this names a status code, the Edge Function answered and the detail above is '
+             + 'from it directly (check GEMINI_API_KEY in Supabase Dashboard → Edge Functions → '
+             + 'Manage secrets for a 500 about the key).';
+}
+
 async function generateAIContent() {
   const btn = document.getElementById('ai-gen-btn');
   const statusEl = document.getElementById('ai-gen-status');
@@ -4584,6 +4631,10 @@ async function generateAIContent() {
     // Cover + even spread across the gallery, capped at 8 (≤ Smart Import's ceiling).
     const editImages = selectEditImages(gallery, 8);
 
+    // Client-side ceiling, deliberately ABOVE the edge function's own 105s
+    // Gemini budget so the function's readable JSON error always wins the race.
+    // This only catches the case where the platform killed the function outright
+    // (no response, no CORS headers) — see the classifier in the catch below.
     const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
       method: 'POST',
       headers: {
@@ -4591,7 +4642,8 @@ async function generateAIContent() {
         'apikey':        SUPABASE_ANON,
         'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
       },
-      body: JSON.stringify({ description, image_urls: editImages, source: 'edit_regen' })
+      body: JSON.stringify({ description, image_urls: editImages, source: 'edit_regen' }),
+      signal: AbortSignal.timeout(180000)
     });
 
     if (!res.ok) {
@@ -4670,7 +4722,7 @@ async function generateAIContent() {
     if (statusEl) {
       statusEl.className = 'form-message error';
       statusEl.style = '';
-      statusEl.textContent = '✗ Generation failed: ' + err.message + '. Check: (1) Edge Function is deployed in Supabase, (2) GEMINI_API_KEY secret is set in Supabase Dashboard → Edge Functions → Manage secrets.';
+      statusEl.textContent = '✗ Generation failed: ' + describeAiGenFailure(err);
     }
   } finally {
     btn.disabled = false;
