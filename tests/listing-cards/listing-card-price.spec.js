@@ -43,6 +43,21 @@ const FIXTURES = [
              unit_types: [unit({ id: 'b1', price_amount: 380, price_currency: 'USD', price_frequency: 'monthly',
                                  is_available: false, available_count: 0 })] }),
   property({ slug: 'no-price', market_status: 'available', price_amount: null, price_display: null }),
+  // Next Available — unavailable, price present, future date on the property.
+  property({ slug: 'next-avail-prop', market_status: 'rented',
+             price_amount: 450, price_currency: 'USD', price_frequency: 'monthly', price_display: '$450 / month',
+             available_from: '2099-09-15' }),
+  // Next Available — multi-unit, EARLIEST of three future dates.
+  property({ slug: 'next-avail-earliest', market_status: 'fully_occupied',
+             price_amount: null, price_display: null,
+             unit_types: [
+               unit({ id: 'e1', price_amount: 300, price_currency: 'USD', price_frequency: 'monthly',
+                      is_available: false, available_count: 0, next_available_date: '2099-12-01' }),
+               unit({ id: 'e2', price_amount: 320, price_currency: 'USD', price_frequency: 'monthly',
+                      is_available: false, available_count: 0, next_available_date: '2099-09-15' }),
+               unit({ id: 'e3', price_amount: 340, price_currency: 'USD', price_frequency: 'monthly',
+                      is_available: false, available_count: 0, next_available_date: '2099-10-20' })
+             ] }),
   // Real scarcity, for the FOMO axis.
   property({ slug: 'one-left', market_status: 'available',
              price_amount: 600, price_currency: 'USD', price_frequency: 'monthly',
@@ -149,4 +164,53 @@ test('on a mobile viewport the price is actually rendered, not clipped away', as
     expect(box.width, slug + ' has zero width').toBeGreaterThan(0);
     expect(box.height, slug + ' has zero height').toBeGreaterThan(0);
   }
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// 7 — "NEXT AVAILABLE" beside the price
+// ═══════════════════════════════════════════════════════════════════════
+
+test('unavailable + future date → "· Available 15 Sep 2099" inline with the price', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'next-avail-prop');
+  await expect(card.locator('.pt-card-price')).toContainText('$450');
+  await expect(card.locator('.pt-card-next-available')).toContainText('Available 15 Sep 2099');
+  // Inline: the suffix lives INSIDE the price paragraph, not as a sibling block.
+  const insidePrice = await card.locator('.pt-card-price .pt-card-next-available').count();
+  expect(insidePrice, 'the date must sit inside the price line').toBe(1);
+});
+
+test('multi-unit → the EARLIEST future date is the one shown', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'next-avail-earliest');
+  await expect(card.locator('.pt-card-price')).toContainText('$300');   // cheapest unit
+  await expect(card.locator('.pt-card-next-available')).toContainText('Available 15 Sep 2099');
+  await expect(card.locator('.pt-card-next-available')).not.toContainText('Dec');
+  await expect(card.locator('.pt-card-next-available')).not.toContainText('Oct');
+});
+
+test('an AVAILABLE listing shows no future date', async ({ page }) => {
+  await openListings(page);
+  await expect(cardFor(page, 'avail-prop-price').locator('.pt-card-next-available')).toHaveCount(0);
+});
+
+test('unavailable with NO date on file → no fabricated date', async ({ page }) => {
+  await openListings(page);
+  // unavail-prop-price is rented with no available_from and no unit dates.
+  await expect(cardFor(page, 'unavail-prop-price').locator('.pt-card-next-available')).toHaveCount(0);
+  await expect(cardFor(page, 'unavail-prop-price').locator('.pt-card-price')).toContainText('$500');
+});
+
+test('the date sits on ONE line with the price — the card does not grow a row', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'next-avail-prop');
+  const price = card.locator('.pt-card-price');
+  const suffix = card.locator('.pt-card-next-available');
+  const [pb, sb] = [await price.boundingBox(), await suffix.boundingBox()];
+  expect(pb).not.toBeNull(); expect(sb).not.toBeNull();
+  // Same visual row: the suffix's vertical centre falls within the price block.
+  const suffixMid = sb.y + sb.height / 2;
+  expect(suffixMid, 'suffix should share the price row').toBeGreaterThanOrEqual(pb.y - 1);
+  expect(suffixMid).toBeLessThanOrEqual(pb.y + pb.height + 1);
 });

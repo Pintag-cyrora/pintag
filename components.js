@@ -241,6 +241,73 @@ function _ptFrequencySuffix(frequency, lang) {
   var entry = PT_FREQUENCY_SUFFIX[frequency] || PT_FREQUENCY_SUFFIX.monthly;
   return entry[lang] || entry.en;
 }
+// ptResolveNextAvailable(property, lang, nowIso) -- the FOURTH axis: when an
+// unavailable listing frees up. Shared by the listing card and the detail page
+// so there is exactly one implementation of "which date, and is it real".
+//
+// SOURCE OF TRUTH -- two existing columns, no new field:
+//   unit_types.next_available_date   per unit type. Read ONLY through
+//                                    resolveUnitAvailability(), as that
+//                                    column's own comment requires.
+//   properties.available_from        per listing; the plain-listing complement
+//                                    for a property with no unit_types rows.
+// Both are documented as never fabricated or estimated: NULL means "no date on
+// file", and this function returns null for that rather than guessing.
+//
+// INDEPENDENT OF PRICE AND FOMO. It reads no price field, and nothing here can
+// suppress a price -- an occupied listing shows its price AND its next-available
+// date. It is also not scarcity messaging: a date is a fact, not persuasion.
+//
+// GATED ON THE LISTING BEING UNAVAILABLE. A listing you can rent today does not
+// need a future date; resolveListingStatus().isPubliclyAvailable is the single
+// gate, the same one every other consumer branches on.
+//
+// MULTI-UNIT: takes the EARLIEST qualifying date across all unit types, so a
+// building where one unit frees up sooner advertises that unit's date. The
+// property-level available_from is considered alongside them, so a building
+// that also carries a listing-level date cannot be missed.
+//
+// "Genuine future" is >= today, compared as ISO date strings (both are `date`
+// columns, so this is timezone-robust and needs no Date arithmetic). A date in
+// the PAST is stale data and is discarded -- "Available 3 Jan 2020" would be
+// worse than showing nothing.
+function ptResolveNextAvailable(property, lang, nowIso) {
+  lang = lang || 'en';
+  if (!property) return null;
+
+  var status = (typeof resolveListingStatus === 'function') ? resolveListingStatus(property) : null;
+  if (!status || status.isPubliclyAvailable) return null;   // available now -> no future date
+
+  var today = nowIso || new Date().toISOString().slice(0, 10);
+  var candidates = [];
+
+  var units = Array.isArray(property.unit_types) ? property.unit_types : [];
+  if (units.length && typeof resolveUnitAvailability === 'function') {
+    for (var i = 0; i < units.length; i++) {
+      var d = resolveUnitAvailability(units[i]).nextAvailableDate;
+      if (d) candidates.push(d);
+    }
+  }
+  if (property.available_from) candidates.push(property.available_from);
+
+  var earliest = null;
+  for (var j = 0; j < candidates.length; j++) {
+    var c = candidates[j];
+    if (typeof c !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(c)) continue;  // malformed -> ignore
+    if (c < today) continue;                                                 // stale -> ignore
+    if (earliest === null || c < earliest) earliest = c;
+  }
+  if (!earliest) return null;
+
+  // Existing trilingual date convention (unit-availability.js), not a new one.
+  var dateText = (typeof _formatAvailabilityDate === 'function')
+    ? _formatAvailabilityDate(earliest, lang) : earliest;
+  if (!dateText) return null;
+
+  var label = { en: 'Available', lo: 'ວ່າງ', zh: '可入住' };
+  return { isoDate: earliest, dateText: dateText, text: (label[lang] || label.en) + ' ' + dateText };
+}
+
 // ptResolveListingFomo(property, lang) -- the THIRD axis, kept strictly apart
 // from price and from raw availability.
 //
@@ -629,6 +696,16 @@ function renderPropertyCard(property, opts) {
   } else {
     priceHtml = '<p class="pt-card-price">' + _ptEsc(price.singleText) + (price.unitText ? ' <span class="pt-card-price-unit">' + _ptEsc(price.unitText) + '</span>' : '') + '</p>';
   }
+  // "$450 / month · Available 15 Sep 2026" -- a compact inline suffix on the
+  // PRICE paragraph itself, not another block, so the card does not grow a line.
+  // Appended before dailyExtraHtml so it attaches to the price rather than to
+  // the secondary daily-rate line.
+  var nextAvail = (typeof ptResolveNextAvailable === 'function') ? ptResolveNextAvailable(p, lang) : null;
+  if (nextAvail) {
+    priceHtml = priceHtml.replace(/<\/p>\s*$/,
+      ' <span class="pt-card-next-available">\u00b7 ' + _ptEsc(nextAvail.text) + '</span></p>');
+  }
+
   priceHtml += dailyExtraHtml;
 
   // ── AVAILABILITY and FOMO — separate lines, rendered AFTER the price and

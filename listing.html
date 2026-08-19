@@ -2350,13 +2350,18 @@ function buildMockupLayout(){
     // quick-scan color indicator only (🟢/🟡/🔴, listing-status.js) -- the
     // underlying message text is unchanged.
     resolvedPriceHtml+='<p class="price-status-note">'+(statusEmoji?esc(statusEmoji)+' ':'')+esc(unavailMsg||getMarketStatusLabel(listingStatusResolved.market,lang))+'</p>';
-    // Per-listing "Available from {date}" — the plain-listing complement to
-    // unit_types.next_available_date, so an unavailable rental of ANY property
-    // type (incl. a single apartment with no unit types) can state when it
-    // frees up. Self-suppressing: renders nothing when available_from is unset,
-    // in which case the price above still shows on its own.
-    var availFromLine=(typeof formatAvailableFromLine==='function')?formatAvailableFromLine(data.available_from,lang):null;
-    if(availFromLine) resolvedPriceHtml+='<p class="price-available-from">'+esc(availFromLine)+'</p>';
+    // "Available {date}" — the SAME resolver the listing card uses
+    // (ptResolveNextAvailable, components.js), so the two surfaces can never
+    // disagree about which date is shown. It considers BOTH sources of truth:
+    // every unit type's next_available_date (via resolveUnitAvailability) and
+    // the listing's own available_from, taking the earliest genuine future
+    // date. This page previously read available_from alone, so a multi-unit
+    // building whose units carried dates showed nothing here.
+    //
+    // Self-suppressing: renders nothing when no date is on file, in which case
+    // the price above still shows on its own. Never fabricates a date.
+    var nextAvail=(typeof ptResolveNextAvailable==='function')?ptResolveNextAvailable(data,lang):null;
+    if(nextAvail) resolvedPriceHtml+='<p class="price-available-from">'+esc(nextAvail.text)+'</p>';
   }
 
   // ── Persistent Building Photos / Shared Amenities strip ──────────────
