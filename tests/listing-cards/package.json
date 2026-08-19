@@ -1,0 +1,7 @@
+{
+  "name": "pintag-listing-card-tests",
+  "private": true,
+  "description": "Public listing card: PRICE, AVAILABILITY and FOMO as three independent axes, driven through the real listings.html on a MOBILE viewport. Guards the reported bug where an unavailable multi-unit listing lost its price entirely.",
+  "scripts": { "test": "playwright test" },
+  "devDependencies": { "@playwright/test": "1.56.1" }
+}
