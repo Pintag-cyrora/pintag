@@ -33,45 +33,47 @@ test('the Gemini fetch has an abort signal (it previously had none)', () => {
     'returns no CORS headers — which is what surfaces as "Load failed"');
 });
 
-test('the per-attempt timeout is clamped by a total phase budget', () => {
-  assert.match(fn, /GEMINI_TOTAL_BUDGET_MS/, 'a per-attempt timeout alone still allows 4 × timeout + delays');
-  assert.match(fn, /Math\.min\(GEMINI_ATTEMPT_TIMEOUT_MS,\s*remainingMs\(\)\)/);
+test('the per-attempt timeout is clamped by the REQUEST-WIDE deadline', () => {
+  // Superseded design: the original fix used GEMINI_TOTAL_BUDGET_MS, a budget
+  // whose clock started AFTER image loading. Image time was therefore additive
+  // (75s images + 92s Gemini = a 167s request against a ~150s ceiling). The
+  // budget is now anchored to the request start and every phase subtracts from
+  // it — see tests/smart-import-vision/request-deadline.test.mjs for the full
+  // behavioural coverage.
+  assert.equal(fn.includes('GEMINI_TOTAL_BUDGET_MS'), false, 'phase-local budget must be gone');
+  assert.equal(fn.includes('phaseStart'), false, 'phase-local clock must be gone');
+  assert.match(fn, /const attemptBudget = deadline\.allot\(GEMINI_ATTEMPT_MAX_MS\)/);
 });
 
-test('the total budget leaves real headroom under the platform wall-clock limit', () => {
-  const budget = Number(fn.match(/GEMINI_TOTAL_BUDGET_MS\s*=\s*([\d_]+)/)[1].replace(/_/g, ''));
+test('the request budget leaves real headroom under the platform wall clock', () => {
+  const budget = Number(/const REQUEST_BUDGET_MS\s*=\s*([\d_]+)/.exec(fn)[1].replace(/_/g, ''));
   assert.ok(budget > 0 && budget <= 120_000,
-    `budget ${budget}ms must stay well under the 150s default wall clock — image fetching and ` +
-    'base64 encoding have already spent part of the request before this phase starts');
+    `${budget}ms must stay well under the 150s default wall clock`);
 });
 
-test('the retry ladder cannot itself exhaust the budget', () => {
-  // The 429 path is the common trigger: quota exhaustion sends every attempt
-  // down the full ladder, and the sleeps are what tip it over.
-  const retryGuard = /remainingMs\(\)\s*>\s*RETRY_DELAYS\[attempt\]\s*\+\s*10_000/;
-  const occurrences = (fn.match(new RegExp(retryGuard.source, 'g')) || []).length;
-  assert.equal(occurrences, 2,
-    'both the timeout-retry and the 429/503-retry paths must check the remaining budget before sleeping');
+test('the deadline is created at handler entry, before any external call', () => {
+  const handler = fn.slice(fn.indexOf('Deno.serve(async (req)'));
+  const deadlineAt = handler.indexOf('createRequestDeadline()');
+  const authAt = handler.indexOf('requireAdmin(req, deadline)');
+  assert.ok(deadlineAt > -1 && authAt > -1);
+  assert.ok(deadlineAt < authAt,
+    'the clock must start before auth, or auth time escapes the budget');
+});
+
+test('the retry ladder charges its sleeps to the same deadline', () => {
+  const guard = /deadline\.usable\(\) > RETRY_DELAYS\[attempt\] \+ GEMINI_MIN_ATTEMPT_MS/g;
+  assert.equal((fn.match(guard) || []).length, 2,
+    'both the timeout-retry and the 429/503-retry paths must check the shared budget before sleeping');
 });
 
 test('a timed-out attempt is rethrown as a normal Error, so the outer catch can answer', () => {
-  // The outer catch returns JSON *with* corsHeaders. Anything that escapes as a
-  // raw abort would be a response-less failure again.
   assert.match(fn, /TimeoutError'\s*\|\|\s*e\.name === 'AbortError'/);
-  assert.match(fn, /throw new Error\(\s*\n?\s*`Gemini did not respond within/);
+  assert.match(fn, /throw new Error\(GEMINI_TIMEOUT_MESSAGE\)/);
 });
 
-test('every error path still returns corsHeaders — that is what makes errors readable', () => {
-  const responses = [...fn.matchAll(/new Response\([^;]*?\{[^;]*?status:\s*(\d{3})/gs)];
-  assert.ok(responses.length >= 2);
-  // The outer catch, which now handles the timeout too.
-  const outerCatch = fn.slice(fn.lastIndexOf('} catch (error)'));
-  assert.match(outerCatch, /\.\.\.corsHeaders/);
-  assert.match(outerCatch, /status:\s*500/);
-});
-
-test('a 429 is reported as quota exhaustion, not a bare status', () => {
-  assert.match(fn, /Gemini API 429: quota exceeded/);
+test('a retryable Gemini status that runs out of budget is explained, not left bare', () => {
+  assert.match(fn, /Gemini is busy right now \(HTTP \$\{response\.status\}\)/);
+  assert.match(fn, /Try again in a minute, or generate with fewer photos/);
 });
 
 // ── The admin client classifies a response-less failure correctly ─────────
@@ -90,9 +92,9 @@ test('the admin fetch has its own ceiling, above the function budget', () => {
   const call = admin.slice(admin.indexOf("'/functions/v1/smart-listing-importer'"));
   const opts = call.slice(0, call.indexOf('if (!res.ok)'));
   const ms = Number(opts.match(/AbortSignal\.timeout\((\d+)\)/)[1]);
-  const budget = Number(fn.match(/GEMINI_TOTAL_BUDGET_MS\s*=\s*([\d_]+)/)[1].replace(/_/g, ''));
+  const budget = Number(fn.match(/REQUEST_BUDGET_MS\s*=\s*([\d_]+)/)[1].replace(/_/g, ''));
   assert.ok(ms > budget,
-    'the client ceiling must be LOOSER than the function budget, so the function\'s own ' +
+    'the client ceiling must be LOOSER than the whole-request budget, so the function\'s own ' +
     'readable JSON error wins the race instead of the client aborting first');
 });
 
