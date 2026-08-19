@@ -441,6 +441,26 @@ function renderPropertyCard(property, opts) {
     }
   }
 
+  // Secondary daily-rate line. A short-stay daily rate is a headline
+  // differentiator, so a listing that offers one says so on the CARD rather
+  // than only on the detail page -- but never in place of the main rent, and
+  // never duplicated when the listing's primary price IS already a daily one.
+  //
+  // resolveLeasePricing() (lease-pricing.js) is the only allowed reader of
+  // those columns (rule 3). Feature-detected because components.js also runs
+  // on pages that have no reason to load the pricing module; there the card
+  // renders exactly as it did before.
+  var dailyExtraHtml = '';
+  if (typeof resolveLeasePricing === 'function' && p.price_frequency !== 'daily' && p.rent_price_frequency !== 'daily') {
+    var _cardLease = resolveLeasePricing(p, null);
+    for (var _li = 0; _li < _cardLease.terms.length; _li++) {
+      if (_cardLease.terms[_li].key !== 'daily') continue;
+      var _dailyText = formatLeaseTermAmount(_cardLease.terms[_li], _cardLease.currency, lang);
+      if (_dailyText) dailyExtraHtml = '<p class="pt-card-price-daily">' + _ptEsc(_dailyText) + '</p>';
+      break;
+    }
+  }
+
   var price = formatPropertyPrice(p, lang);
   var priceHtml;
   if (price.isSor) {
@@ -451,6 +471,7 @@ function renderPropertyCard(property, opts) {
   } else {
     priceHtml = '<p class="pt-card-price">' + _ptEsc(price.singleText) + (price.unitText ? ' <span class="pt-card-price-unit">' + _ptEsc(price.unitText) + '</span>' : '') + '</p>';
   }
+  priceHtml += dailyExtraHtml;
 
   var agentHtml = '';
   if (opts.showAgentRow !== false) {

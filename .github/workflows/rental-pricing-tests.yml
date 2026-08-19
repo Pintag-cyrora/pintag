@@ -1,0 +1,98 @@
+name: Rental Pricing Tests
+
+# Covers the three rental-pricing additions and the modules they live in:
+#   * the Daily rate tier and the 3/6/12-month lease tiers (lease-pricing.js)
+#   * per-unit-type lease pricing on unit_types (admin.html / listing.html)
+#   * the Trash Fee rental term (rental-terms.js's included_or_amount kind)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lease-pricing.js'
+      - 'lease-pricing.test.js'
+      - 'rental-terms.js'
+      - 'rental-terms.test.js'
+      - 'currency.js'
+      - 'components.js'
+      - 'admin.html'
+      - 'listing.html'
+      - 'tests/rental-pricing/**'
+      - '.github/workflows/rental-pricing-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lease-pricing.js'
+      - 'lease-pricing.test.js'
+      - 'rental-terms.js'
+      - 'rental-terms.test.js'
+      - 'currency.js'
+      - 'components.js'
+      - 'admin.html'
+      - 'listing.html'
+      - 'tests/rental-pricing/**'
+      - '.github/workflows/rental-pricing-tests.yml'
+  workflow_dispatch:
+
+# Least privilege: this workflow only reads code and runs tests (audit 2026-08-17).
+permissions:
+  contents: read
+
+jobs:
+  lease-pricing-unit-tests:
+    name: lease-pricing.js + rental-terms.js unit tests (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The resolver's guarantees: no arithmetic (a total is never derived from
+      # a monthly rate and vice versa), tiers never inherit per column between a
+      # building and its unit types, and a daily rate is never reinterpreted by
+      # the monthly/total basis.
+      - name: Run lease-pricing.js unit tests
+        run: node --test lease-pricing.test.js
+
+      - name: Run rental-terms.js unit tests (incl. the Trash Fee)
+        run: node --test rental-terms.test.js
+
+  rental-pricing-e2e:
+    name: Rental pricing end-to-end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install test dependencies
+        working-directory: tests/rental-pricing
+        run: npm install
+
+      - name: Install Chromium
+        working-directory: tests/rental-pricing
+        run: npx playwright install --with-deps chromium
+
+      # Drives the real admin.html form and the real listing.html render, then
+      # reads back the exact payload builders saveListing() writes -- so a break
+      # in the form wiring or the public rendering fails here, not in production.
+      - name: Run Playwright suite
+        working-directory: tests/rental-pricing
+        run: npm test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rental-pricing-playwright-report
+          path: tests/rental-pricing/playwright-report/
+          retention-days: 14

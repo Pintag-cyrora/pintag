@@ -21,14 +21,27 @@
 //      of caching/deployment timing.
 const { test, expect } = require('@playwright/test');
 
+// admin.html is gated by admin-auth.js's isVerifiedAdminSession(), which
+// requires BOTH the sole administrator email AND an AAL2 (MFA-verified)
+// session. This stub previously answered only getSession()/getUser(), and
+// with a non-administrator email, so once MFA enforcement landed the page
+// never left the sign-in overlay -- which is what made the hard-refresh test
+// below fail while the others still passed (they call
+// populateFormFromImport() directly, which works even behind the overlay).
+const ADMIN_EMAIL = 'cyrora.trading@gmail.com';
 const STUB_SUPABASE = `
 window.supabase = {
   createClient: function() {
     return {
       auth: {
-        getSession: async () => ({ data: { session: { access_token: 'fake', user: { id: 'u1', email: 'admin@pintag.io' } } }, error: null }),
-        getUser: async () => ({ data: { user: { id: 'u1', email: 'admin@pintag.io' } }, error: null }),
+        getSession: async () => ({ data: { session: { access_token: 'fake', user: { id: 'u1', email: '${ADMIN_EMAIL}' } } }, error: null }),
+        getUser: async () => ({ data: { user: { id: 'u1', email: '${ADMIN_EMAIL}' } }, error: null }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe(){} } } }),
+        signOut: async () => ({ error: null }),
+        mfa: {
+          getAuthenticatorAssuranceLevel: async () => ({ data: { currentLevel: 'aal2', nextLevel: 'aal2' }, error: null }),
+          listFactors: async () => ({ data: { totp: [] }, error: null }),
+        },
       },
     };
   }
@@ -42,7 +55,10 @@ async function loadAdminAsStaff(page) {
   await page.route('**fonts.googleapis.com/**', route => route.fulfill({ contentType: 'text/css', body: '' }));
   await page.route('**/rest/v1/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
   await page.goto('/admin.html');
-  await page.waitForSelector('#admin-screen', { state: 'visible', timeout: 15000 }).catch(() => {});
+  // #admin-screen was never an id in admin.html, so this wait always timed out
+  // and was swallowed by .catch(). The "+ New Listing" button is what actually
+  // appears once admin-auth.js verifies the session and removes the overlay.
+  await page.waitForSelector('button.btn-import', { state: 'visible', timeout: 15000 });
   return pageErrors;
 }
 
@@ -125,7 +141,10 @@ test('Smart Import survives a hard refresh mid-session', async ({ page }) => {
   expect(before).toBe('280');
 
   await page.reload();
-  await page.waitForSelector('#admin-screen', { state: 'visible', timeout: 15000 }).catch(() => {});
+  // #admin-screen was never an id in admin.html, so this wait always timed out
+  // and was swallowed by .catch(). The "+ New Listing" button is what actually
+  // appears once admin-auth.js verifies the session and removes the overlay.
+  await page.waitForSelector('button.btn-import', { state: 'visible', timeout: 15000 });
 
   const after = await page.evaluate((data) => {
     populateFormFromImport(data);

@@ -16,14 +16,27 @@
 // silently recomputed from the title.
 const { test, expect } = require('@playwright/test');
 
+// admin.html is gated by admin-auth.js's isVerifiedAdminSession(), which
+// requires BOTH the sole administrator email AND an AAL2 (MFA-verified)
+// session. This stub previously answered only getUser()/getSession() with a
+// non-administrator email, so once MFA enforcement landed every test in this
+// file sat on the sign-in overlay until it timed out. It must satisfy all
+// three checks: getUser(), the email match, and
+// mfa.getAuthenticatorAssuranceLevel().
+const ADMIN_EMAIL = 'cyrora.trading@gmail.com';
 const STUB_SUPABASE = `
 window.supabase = {
   createClient: function() {
     return {
       auth: {
-        getSession: async () => ({ data: { session: { access_token: 'fake', user: { id: 'u1', email: 'admin@pintag.io' } } }, error: null }),
-        getUser: async () => ({ data: { user: { id: 'u1', email: 'admin@pintag.io' } }, error: null }),
+        getSession: async () => ({ data: { session: { access_token: 'fake', user: { id: 'u1', email: '${ADMIN_EMAIL}' } } }, error: null }),
+        getUser: async () => ({ data: { user: { id: 'u1', email: '${ADMIN_EMAIL}' } }, error: null }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe(){} } } }),
+        signOut: async () => ({ error: null }),
+        mfa: {
+          getAuthenticatorAssuranceLevel: async () => ({ data: { currentLevel: 'aal2', nextLevel: 'aal2' }, error: null }),
+          listFactors: async () => ({ data: { totp: [] }, error: null }),
+        },
       },
     };
   }
@@ -37,7 +50,11 @@ async function loadAdminAsStaff(page) {
   await page.route('**fonts.googleapis.com/**', route => route.fulfill({ contentType: 'text/css', body: '' }));
   await page.route('**/rest/v1/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
   await page.goto('/admin.html');
-  await page.waitForSelector('#admin-screen', { state: 'visible', timeout: 15000 }).catch(() => {});
+  // The "+ New Listing" button only exists once admin-auth.js has verified the
+  // AAL2 admin session and removed the sign-in overlay. (This used to wait on
+  // #admin-screen, an id admin.html does not have, and swallowed the timeout --
+  // so a failed sign-in looked like a selector bug much further down.)
+  await page.waitForSelector('button.btn-import', { state: 'visible', timeout: 15000 });
   return pageErrors;
 }
 
@@ -46,8 +63,14 @@ async function loadAdminAsStaff(page) {
 // its .ut-head is clicked, see _utToggle()/admin.html), returning its
 // locator.
 async function newUnitTypeCard(page) {
-  await page.click('.btn-new');
-  await page.click('.btn-add-row');
+  // showForm(null) is where the "+ New Listing" flow lands (via
+  // showImportPanel -> resetListingForm). The old '.btn-new' selector matched
+  // nothing -- that button's class is .btn-import.
+  await page.evaluate(() => showForm(null));
+  await page.waitForSelector('#f-transaction', { state: 'visible' });
+  // .btn-add-row is also the class on "+ Add nearby place", so scope to the
+  // Unit Types one.
+  await page.click('button.btn-add-row[onclick="addUnitType()"]');
   const card = page.locator('.ut-card').last();
   await card.locator('.ut-head').click();
   return card;
@@ -120,7 +143,8 @@ test('a manually-blanked field stays blank even if the name still parses', async
 
 test('loading an existing unit type never recomputes already-saved Bedrooms/Bathrooms from its title', async ({ page }) => {
   const pageErrors = await loadAdminAsStaff(page);
-  await page.click('.btn-new');
+  await page.evaluate(() => showForm(null));
+  await page.waitForSelector('#f-transaction', { state: 'visible' });
 
   // Simulates editListing()/loadUnitTypes() populating a card from a real
   // saved row whose title happens not to match its own numbers (a name

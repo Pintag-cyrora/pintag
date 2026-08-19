@@ -24,7 +24,8 @@ vm.runInThisContext(src, { filename: 'rental-terms.js' });
 const {
   resolveRentalTerms, _normalizeRentalTermsBlob, buildRentalTermsPayload,
   formatRentalTermValue, summarizeRentalTermOverrides, RENTAL_TERMS_FIELDS,
-  RENTAL_TERMS_SCHEMA_VERSION, RENTAL_LEASE_LENGTH_OPTIONS
+  RENTAL_TERMS_SCHEMA_VERSION, RENTAL_LEASE_LENGTH_OPTIONS,
+  RENTAL_INCLUDED_OR_AMOUNT_OPTIONS, getRentalTermAmount
 } = globalThis;
 
 function property(rental_terms) { return { id: 'p1', rental_terms }; }
@@ -317,4 +318,152 @@ test('resolveRentalTerms: existing listings on pre-existing lease lengths remain
   const r = resolveRentalTerms(property({ version: 1, lease_length: 'month_to_month' }), null);
   assert.equal(r.values.lease_length, 'month_to_month');
   assert.equal(formatRentalTermValue('lease_length', 'month_to_month', 'en'), 'Lease Length: Flexible');
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// TRASH FEE (included_or_amount kind)
+// ═══════════════════════════════════════════════════════════════════════
+// The Trash Fee is a Rental Term, not a parallel system: it is one entry in
+// RENTAL_TERMS_FIELDS, so it inherits the registry's display order, the
+// building-default/unit-override resolution, the admin renderer, the public
+// listing renderer, and the AI prompt's field sweep with no per-field code in
+// any of those consumers. These tests pin that, plus the two things the new
+// `included_or_amount` kind exists to guarantee: an "Included" answer is
+// distinguishable from an unanswered field, and an "Amount" answer is stored
+// as a real number in a real currency (not free text) so a filter or report
+// can use it without re-parsing prose.
+
+test('trash_fee is registered as a Rental Term, not a parallel system', () => {
+  const field = RENTAL_TERMS_FIELDS.find(f => f.key === 'trash_fee');
+  assert.ok(field, 'trash_fee must exist in RENTAL_TERMS_FIELDS');
+  assert.equal(field.kind, 'included_or_amount');
+  assert.equal(field.amountPeriod, 'monthly');
+  for (const lang of ['en', 'lo', 'zh']) {
+    assert.equal(typeof field.label[lang], 'string');
+    assert.ok(field.label[lang].length, 'missing ' + lang + ' label');
+  }
+});
+
+test('trash_fee offers exactly Included and Amount', () => {
+  assert.deepEqual(RENTAL_INCLUDED_OR_AMOUNT_OPTIONS.map(o => o.value), ['included', 'amount']);
+  for (const opt of RENTAL_INCLUDED_OR_AMOUNT_OPTIONS) {
+    for (const lang of ['en', 'lo', 'zh']) assert.ok(opt.label[lang], opt.value + '/' + lang);
+  }
+});
+
+test('trash_fee: Included renders as the option label, in every language', () => {
+  assert.equal(formatRentalTermValue('trash_fee', { type: 'included' }, 'en'), 'Trash Fee: Included');
+  assert.equal(formatRentalTermValue('trash_fee', { type: 'included' }, 'lo'), 'ຄ່າຂີ້ເຫຍື້ອ: ລວມຢູ່ແລ້ວ');
+  assert.equal(formatRentalTermValue('trash_fee', { type: 'included' }, 'zh'), '垃圾费: 包含');
+});
+
+test('trash_fee: an amount is labelled as MONTHLY, never as a one-off charge', () => {
+  // The whole point of amountPeriod: "$15" alone is ambiguous between a
+  // monthly charge and a move-in charge -- the same class of ambiguity that
+  // produced "Deposit: 100 Months" before the money_multiplier fix.
+  assert.equal(formatRentalTermValue('trash_fee', { type: 'amount', value: 15, currency: 'USD' }, 'en'),
+    'Trash Fee: $15 / month');
+  assert.equal(formatRentalTermValue('trash_fee', { type: 'amount', value: 150000, currency: 'LAK' }, 'lo'),
+    'ຄ່າຂີ້ເຫຍື້ອ: ₭150,000 / ເດືອນ');
+  assert.equal(formatRentalTermValue('trash_fee', { type: 'amount', value: 500, currency: 'THB' }, 'zh'),
+    '垃圾费: ฿500 / 月');
+});
+
+test('trash_fee: "Amount" with nothing typed renders nothing, never a bare symbol or $0', () => {
+  assert.equal(formatRentalTermValue('trash_fee', { type: 'amount' }, 'en'), null);
+  assert.equal(formatRentalTermValue('trash_fee', { type: 'amount', value: null }, 'en'), null);
+  assert.equal(formatRentalTermValue('trash_fee', { type: 'amount', value: '' }, 'en'), null);
+});
+
+test('trash_fee: an unset field renders nothing at all', () => {
+  assert.equal(formatRentalTermValue('trash_fee', null, 'en'), null);
+  assert.equal(formatRentalTermValue('trash_fee', undefined, 'en'), null);
+});
+
+test('trash_fee: a unit type overrides the building default like any other term', () => {
+  const r = resolveRentalTerms(
+    property({ version: 1, trash_fee: { type: 'included' }, deposit: { type: 'fixed_amount', value: 300, currency: 'USD' } }),
+    unitType({ version: 1, trash_fee: { type: 'amount', value: 12, currency: 'USD' } })
+  );
+  assert.deepEqual(r.values.trash_fee, { type: 'amount', value: 12, currency: 'USD' });
+  assert.deepEqual(r.values.deposit, { type: 'fixed_amount', value: 300, currency: 'USD' });
+  assert.ok(r.overriddenKeys.includes('trash_fee'));
+});
+
+test('trash_fee: round-trips through the save path unchanged', () => {
+  const saved = buildRentalTermsPayload({ trash_fee: { type: 'amount', value: 15, currency: 'USD' } });
+  assert.equal(saved.version, RENTAL_TERMS_SCHEMA_VERSION);
+  const reopened = resolveRentalTerms(property(saved), null);
+  assert.deepEqual(reopened.values.trash_fee, { type: 'amount', value: 15, currency: 'USD' });
+});
+
+// ── getRentalTermAmount(): the machine-readable read API ────────────────
+test('getRentalTermAmount: an amount comes back as a real number + currency', () => {
+  assert.deepEqual(
+    getRentalTermAmount(property({ version: 1, trash_fee: { type: 'amount', value: 15, currency: 'USD' } }), null, 'trash_fee'),
+    { key: 'trash_fee', included: false, amount: 15, currency: 'USD', period: 'monthly' });
+});
+
+test('getRentalTermAmount: "Included" is a real answer, distinct from unanswered', () => {
+  const included = getRentalTermAmount(property({ version: 1, trash_fee: { type: 'included' } }), null, 'trash_fee');
+  assert.deepEqual(included, { key: 'trash_fee', included: true, amount: null, currency: null, period: 'monthly' });
+  // ...whereas a listing where nobody answered returns null, not {included:false}.
+  assert.equal(getRentalTermAmount(property({ version: 1 }), null, 'trash_fee'), null);
+});
+
+test('getRentalTermAmount: resolves through the unit override, like every other reader', () => {
+  const got = getRentalTermAmount(
+    property({ version: 1, trash_fee: { type: 'included' } }),
+    unitType({ version: 1, trash_fee: { type: 'amount', value: 12, currency: 'THB' } }),
+    'trash_fee');
+  assert.deepEqual(got, { key: 'trash_fee', included: false, amount: 12, currency: 'THB', period: 'monthly' });
+});
+
+test('getRentalTermAmount: refuses fields that are not included_or_amount', () => {
+  // Generic over key by design -- but it must not pretend a deposit
+  // ({type,value,currency}, a superficially similar shape) is one of these.
+  assert.equal(getRentalTermAmount(
+    property({ version: 1, deposit: { type: 'fixed_amount', value: 300, currency: 'USD' } }), null, 'deposit'), null);
+  assert.equal(getRentalTermAmount(property({ version: 1 }), null, 'no_such_field'), null);
+});
+
+test('getRentalTermAmount: an incomplete amount is null, never 0', () => {
+  assert.equal(getRentalTermAmount(property({ version: 1, trash_fee: { type: 'amount' } }), null, 'trash_fee'), null);
+  assert.equal(getRentalTermAmount(property({ version: 1, trash_fee: { type: 'amount', value: 'lots' } }), null, 'trash_fee'), null);
+});
+
+test('getRentalTermAmount: a filter can compare amounts without parsing prose', () => {
+  // The reason this API exists at all -- the display string "$15 / month" is
+  // useless to a filter, and re-parsing it would reintroduce exactly the
+  // free-text fragility the `utility` kind's `rate` field has.
+  const listings = [
+    property({ version: 1, trash_fee: { type: 'included' } }),
+    property({ version: 1, trash_fee: { type: 'amount', value: 10, currency: 'USD' } }),
+    property({ version: 1, trash_fee: { type: 'amount', value: 30, currency: 'USD' } }),
+    property({ version: 1 })
+  ];
+  const cheapOrIncluded = listings.filter(p => {
+    const fee = getRentalTermAmount(p, null, 'trash_fee');
+    return fee && (fee.included || fee.amount <= 20);
+  });
+  assert.equal(cheapOrIncluded.length, 2);
+});
+
+// ── Existing listings are unaffected ────────────────────────────────────
+test('a listing saved before trash_fee existed resolves exactly as it did', () => {
+  const legacy = { version: 1, deposit: { type: 'months_of_rent', value: 2 }, pet_policy: 'allowed' };
+  const r = resolveRentalTerms(property(legacy), null);
+  assert.equal('trash_fee' in r.values, false);
+  assert.equal(formatRentalTermValue('trash_fee', r.values.trash_fee, 'en'), null);
+  assert.deepEqual(
+    RENTAL_TERMS_FIELDS.map(f => formatRentalTermValue(f.key, r.values[f.key], 'en')).filter(Boolean),
+    ["Security Deposit: 2 months' rent", 'Pet Policy: Pets Allowed']);
+});
+
+test('trash_fee sits with the other utilities in display order', () => {
+  const keys = RENTAL_TERMS_FIELDS.map(f => f.key);
+  assert.ok(keys.indexOf('trash_fee') > keys.indexOf('internet'),
+    'trash_fee should follow the other utility fields');
+  assert.equal(RENTAL_TERMS_FIELDS.find(f => f.key === 'trash_fee').group, 'utilities');
 });

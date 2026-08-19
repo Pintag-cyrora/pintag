@@ -1,0 +1,11 @@
+{
+  "name": "pintag-rental-pricing-tests",
+  "private": true,
+  "description": "End-to-end coverage for the three rental-pricing additions: a Daily rate tier, per-unit-type lease-term pricing (Daily/Monthly/3/6/12) for apartments and condos, and the Trash Fee rental term (Included | Amount, monthly). Drives the real admin.html form and reads back the exact payload builders saveListing() writes, so a regression in the form wiring fails here rather than in production.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

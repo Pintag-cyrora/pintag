@@ -133,6 +133,22 @@ var RENTAL_PARKING_OPTIONS = [
   {value:'extra_fee',   label:{en:'Available (Extra Fee)', lo:'ມີໃຫ້ (ເສຍຄ່າເພີ່ມ)', zh:'可提供(需额外付费)'}},
   {value:'not_available', label:{en:'Not Available',    lo:'ບໍ່ມີ',            zh:'不提供'}}
 ];
+// Included-or-Amount: the shape of a recurring service charge that a landlord
+// either bundles into the rent or bills separately. Two options only, on
+// purpose -- "Included" and "Amount" are the only answers that carry
+// information; a third "Not included / ask us" option would store the absence
+// of an answer as if it were one, and an unset field already says that.
+//
+// The stored VALUE is what matters and never changes when a label does:
+//   { type: 'included' }
+//   { type: 'amount', value: 15, currency: 'USD' }
+// -- a real number in a real currency, not free text, so a filter or a report
+// can compare it without re-parsing prose (contrast the `utility` kind's
+// free-text `rate`, which is display-only by design).
+var RENTAL_INCLUDED_OR_AMOUNT_OPTIONS = [
+  {value:'included', label:{en:'Included', lo:'ລວມຢູ່ແລ້ວ', zh:'包含'}},
+  {value:'amount',   label:{en:'Amount',   lo:'ຈຳນວນເງິນ',   zh:'金额'}}
+];
 var RENTAL_SMOKING_POLICY_OPTIONS = [
   {value:'allowed',        label:{en:'Smoking Allowed',    lo:'ສູບຢາໄດ້',           zh:'允许吸烟'}},
   {value:'not_allowed',    label:{en:'No Smoking',         lo:'ຫ້າມສູບຢາ',          zh:'禁止吸烟'}},
@@ -181,6 +197,16 @@ var RENTAL_TERMS_FIELDS = [
       {value:'not_included',   label:{en:'Not Included',    lo:'ບໍ່ລວມ',       zh:'不包含'}},
       {value:'available_extra',label:{en:'Available (Extra Fee)', lo:'ມີໃຫ້ (ເສຍຄ່າເພີ່ມ)', zh:'可提供(需额外付费)'}}
     ] },
+  // Trash Fee -- a recurring monthly service charge, so it sits with the other
+  // utilities rather than in `additional_fees` (which is a free-text list for
+  // one-off/ad-hoc charges and is deliberately not machine-readable).
+  // `amountPeriod` is what makes the amount self-describing: the formatter
+  // renders "$15 / month" from it, so the "monthly" in the label is not the
+  // only thing telling a reader what the number means. Nullable by
+  // construction -- an absent key resolves to nothing at all, so every listing
+  // that predates this field is unaffected.
+  { key:'trash_fee', kind:'included_or_amount', group:'utilities', amountPeriod:'monthly',
+    label:{en:'Trash Fee', lo:'ຄ່າຂີ້ເຫຍື້ອ', zh:'垃圾费'}, typeOptions:RENTAL_INCLUDED_OR_AMOUNT_OPTIONS },
   { key:'cleaning_frequency', kind:'select', group:'services',
     label:{en:'Cleaning Frequency', lo:'ຄວາມຖີ່ການທຳຄວາມສະອາດ', zh:'清洁频率'}, options:RENTAL_FREQUENCY_OPTIONS },
   { key:'sheet_changing_frequency', kind:'select', group:'services',
@@ -259,6 +285,52 @@ function buildRentalTermsPayload(fieldValues) {
   return payload;
 }
 
+// getRentalTermAmount(property, unitType, fieldKey) -- the machine-readable
+// read API for `included_or_amount` fields (Trash Fee today, any future
+// bundled-or-billed charge tomorrow). Rule 3 compliant: it calls
+// resolveRentalTerms() internally and reads its `.values`; it never opens
+// properties.rental_terms or unit_types.rental_terms_overrides itself.
+//
+// This exists because formatRentalTermValue() returns DISPLAY TEXT ("$15 /
+// month"), which is the right thing for a listing page and the wrong thing
+// for anything that has to compare, sum, sort or filter. A listing card, a
+// search filter, a report, or an AI prompt that needs the number gets it
+// here, in one shape, instead of each re-parsing the rendered string.
+//
+// Generic over fieldKey by design (rule 4) -- there is deliberately no
+// getTrashFee(). Returns null when the field is unset, is not an
+// included_or_amount field, or holds an incomplete value:
+//
+//   { key, included: true,  amount: null, currency: null, period: 'monthly' }
+//   { key, included: false, amount: 15,   currency: 'USD', period: 'monthly' }
+//
+// `included: true` with a null amount is a real, meaningful answer ("bundled
+// into the rent, costs nothing extra") and must not be confused with null
+// ("nobody said").
+function getRentalTermAmount(property, unitType, fieldKey) {
+  var fieldDef = null;
+  for (var i = 0; i < RENTAL_TERMS_FIELDS.length; i++) {
+    if (RENTAL_TERMS_FIELDS[i].key === fieldKey) { fieldDef = RENTAL_TERMS_FIELDS[i]; break; }
+  }
+  if (!fieldDef || fieldDef.kind !== 'included_or_amount') return null;
+
+  var raw = resolveRentalTerms(property, unitType).values[fieldKey];
+  if (!raw || !raw.type) return null;
+
+  if (raw.type !== 'amount') {
+    return { key: fieldKey, included: true, amount: null, currency: null, period: fieldDef.amountPeriod || null };
+  }
+  var n = Number(raw.value);
+  if (raw.value == null || raw.value === '' || isNaN(n)) return null;
+  return {
+    key: fieldKey,
+    included: false,
+    amount: n,
+    currency: raw.currency || DEFAULT_CURRENCY,
+    period: fieldDef.amountPeriod || null
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Formatting -- per-`kind` dispatch, generic over field key (rule 4).
 // ---------------------------------------------------------------------------
@@ -291,6 +363,13 @@ function _rtFormatRentMultiplier(value, lang) {
   return (T[lang] || T.en)(value);
 }
 
+// Period suffixes for the included_or_amount kind, keyed by a field's
+// `amountPeriod`. A table rather than a hardcoded "/ month" so a future
+// per-week or per-quarter charge is still a registry-only addition (rule 4).
+var _RT_AMOUNT_PERIOD_SUFFIX = {
+  monthly: { en: '/ month', lo: '/ ເດືອນ', zh: '/ 月' }
+};
+
 var RENTAL_TERM_KIND_FORMATTERS = {
   money_multiplier: function(fieldDef, raw, lang) {
     if (!raw || raw.value == null) return null;
@@ -306,6 +385,21 @@ var RENTAL_TERM_KIND_FORMATTERS = {
     // that is monetary by definition.
     if (raw.type === 'months_of_rent') return _rtFormatRentMultiplier(raw.value, lang);
     return _rtFormatMoney(raw.value, raw.currency);
+  },
+  // included_or_amount -- "the landlord bundles this into the rent" vs "the
+  // landlord bills N per period". Renders the option label for 'included' and
+  // real money for 'amount', with the period spelled out ("$15 / month") so
+  // the figure can never be mistaken for a one-off charge. Missing/zero-less
+  // amounts self-suppress like every other kind: a half-filled field shows
+  // nothing rather than a bare currency symbol.
+  included_or_amount: function(fieldDef, raw, lang) {
+    if (!raw || !raw.type) return null;
+    if (raw.type !== 'amount') return _rtOptionLabel(fieldDef.typeOptions, raw.type, lang);
+    if (raw.value == null || raw.value === '') return null;
+    var money = _rtFormatMoney(raw.value, raw.currency);
+    if (money == null) return null;
+    var period = _RT_AMOUNT_PERIOD_SUFFIX[fieldDef.amountPeriod];
+    return period ? (money + ' ' + (period[lang] || period.en)) : money;
   },
   utility: function(fieldDef, raw, lang) {
     if (!raw || !raw.type) return null;
@@ -401,7 +495,8 @@ var _RT_CHROME = {
   amount:            { en: 'Amount', lo: 'ຈຳນວນ', zh: '金额' },
   oneTime:           { en: 'One-Time', lo: 'ເທື່ອດຽວ', zh: '一次性' },
   monthly:           { en: 'Monthly', lo: 'ລາຍເດືອນ', zh: '每月' },
-  addFee:            { en: '+ Add Fee', lo: '+ ເພີ່ມຄ່າທຳນຽມ', zh: '+ 添加费用' }
+  addFee:            { en: '+ Add Fee', lo: '+ ເພີ່ມຄ່າທຳນຽມ', zh: '+ 添加费用' },
+  monthlyAmountHint: { en: 'per month', lo: 'ຕໍ່ເດືອນ', zh: '每月' }
 };
 function _rtChrome(key, lang) { return (_RT_CHROME[key][lang] || _RT_CHROME[key].en); }
 
@@ -457,6 +552,74 @@ var RENTAL_TERM_KIND_RENDERERS = {
     typeSel.onchange = emit; numInput.oninput = emit; curSel.onchange = emit;
     syncCurrency();
     row.appendChild(typeSel); row.appendChild(numInput); row.appendChild(curSel);
+    return row;
+  },
+  // The one kind with a CONDITIONAL control: the amount inputs exist in the
+  // DOM only conceptually -- they are hidden until 'Amount' is chosen, so
+  // 'Included' never presents an empty money box to fill in. This reveal is
+  // the genuinely new interaction model that justifies a new kind rather than
+  // bending `utility` (whose free-text `rate` is always visible and is not
+  // machine-readable) or `money_multiplier` (which has no "no amount at all"
+  // state). Everything else -- currency list, class names, onChange contract
+  // -- matches the existing renderers exactly.
+  included_or_amount: function(fieldDef, value, onChange, lang) {
+    lang = lang || 'en';
+    var row = document.createElement('div');
+    row.className = 'rt-field rt-field-included-amount';
+
+    var typeSel = document.createElement('select');
+    typeSel.className = 'form-input rt-input';
+    var ph = document.createElement('option');
+    ph.value = ''; ph.textContent = _rtChrome('selectPlaceholder', lang);
+    typeSel.appendChild(ph);
+    fieldDef.typeOptions.forEach(function(opt) {
+      var o = document.createElement('option');
+      o.value = opt.value; o.textContent = opt.label[lang] || opt.label.en;
+      if (value && value.type === opt.value) o.selected = true;
+      typeSel.appendChild(o);
+    });
+    if (!value || !value.type) ph.selected = true;
+
+    var numInput = document.createElement('input');
+    numInput.type = 'number'; numInput.min = '0'; numInput.className = 'form-input rt-input';
+    numInput.value = (value && value.value != null) ? value.value : '';
+    // The label a data-entry person reads while typing. Without it "15" in a
+    // box next to a currency is ambiguous between a monthly charge and a
+    // one-off one -- the same class of ambiguity that produced
+    // "Deposit: 100 Months" before the money_multiplier fix.
+    var periodHint = document.createElement('span');
+    periodHint.className = 'rt-period-hint';
+    periodHint.textContent = _rtChrome('monthlyAmountHint', lang);
+
+    var curSel = document.createElement('select');
+    curSel.className = 'form-input rt-input';
+    Object.keys(CURRENCIES).forEach(function(code) {
+      var o = document.createElement('option');
+      o.value = code; o.textContent = CURRENCIES[code].symbol + ' ' + code;
+      curSel.appendChild(o);
+    });
+    curSel.value = (value && value.currency) || DEFAULT_CURRENCY;
+
+    function syncAmountVisibility() {
+      var show = typeSel.value === 'amount';
+      numInput.style.display = show ? '' : 'none';
+      curSel.style.display   = show ? '' : 'none';
+      periodHint.style.display = show ? '' : 'none';
+    }
+    function emit() {
+      syncAmountVisibility();
+      if (!typeSel.value) { onChange(fieldDef.key, null); return; }
+      if (typeSel.value !== 'amount') { onChange(fieldDef.key, { type: typeSel.value }); return; }
+      // 'Amount' chosen but nothing typed yet is an INCOMPLETE answer, not a
+      // free service -- store nothing rather than a 0 that would publish
+      // "Trash Fee: $0 / month".
+      var v = numInput.value === '' ? null : parseFloat(numInput.value);
+      if (v == null || isNaN(v)) { onChange(fieldDef.key, null); return; }
+      onChange(fieldDef.key, { type: 'amount', value: v, currency: curSel.value });
+    }
+    typeSel.onchange = emit; numInput.oninput = emit; curSel.onchange = emit;
+    syncAmountVisibility();
+    row.appendChild(typeSel); row.appendChild(numInput); row.appendChild(curSel); row.appendChild(periodHint);
     return row;
   },
   utility: function(fieldDef, value, onChange, lang) {

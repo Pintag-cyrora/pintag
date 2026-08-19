@@ -174,6 +174,39 @@ entirely by `rental-terms.js` — see §2 (`resolveRentalTerms()`) and §3
 configuration/policy data only, never operational/transactional data (see
 Unit Availability below for the boundary).
 
+### Lease-Term Pricing
+The rental rates a listing offers per commitment length: a **Daily** rate,
+the base **Monthly** rent, and optional **3-month / 6-month / 1-year**
+rates. Flat columns on **both** `properties` and `unit_types`
+(`rent_price_daily`, `rent_price_3mo`, `rent_price_6mo`, `rent_price_12mo`,
+`lease_price_basis`) — deliberately *not* JSONB, because this is pricing
+(operational data), the same boundary Rental Terms documents in the other
+direction. Owned entirely by `lease-pricing.js` — see §2
+(`resolveLeasePricing()`).
+
+Three rules define the domain, all enforced in that one file:
+
+- **No arithmetic, ever.** A total is never derived from a monthly rate, a
+  monthly rate is never derived from a total, a missing tier is never
+  interpolated, and a daily rate is never computed from a monthly one.
+  Every figure shown is a figure a human typed. This is why
+  `lease_price_basis` (`monthly` | `total`) is carried through to display
+  rather than normalized away — normalizing would require exactly the
+  arithmetic that turns a quoted price into an invented one.
+- **Tiers do not inherit per column.** The single deliberate exception to
+  the null-means-inherit-the-building contract every other `unit_types`
+  column follows. A tier is a discount quoted against a *specific* base
+  rent, so pairing the building's "3 months: $420/month" (quoted against
+  its $450 base) with the 2BR's own $700 base would publish a price nobody
+  agreed to. A unit type shows its **own** tiers or none at all. Only
+  `basis` — a quoting convention, not a price — falls back to the
+  building's.
+- **Daily is per-day, always.** `basis` governs the 3/6/12-month tiers
+  only; it never reaches the daily rate.
+
+Independent from Rental Terms by design, the same way Unit Availability is:
+neither file references the other.
+
 ### Unit Availability
 "Available Now" / "Fully Occupied — Available from {date}" / "Currently
 Unavailable" for a unit type, plus available/total unit counts. Flat
@@ -255,6 +288,8 @@ new formatter, filter, or query.
 | API | File | Owns | Use it when... |
 |---|---|---|---|
 | `resolveRentalTerms(property, unitType)` | `rental-terms.js` | Merging building-level Rental Terms defaults with a unit type's overrides. Returns the frozen `{version, values, overriddenKeys}` contract. | You need any Rental Terms value for display, AI copy, or an edge function. Never read `properties.rental_terms` / `unit_types.rental_terms_overrides` directly. |
+| `resolveLeasePricing(property, unitType?)` | `lease-pricing.js` | Resolving a listing's — or one unit type's — Daily / Monthly / 3 / 6 / 12-month rental rates into the frozen `{version, basis, currency, source, baseAmount, terms, hasTiers}` contract. Never does arithmetic; never inherits a tier across the building/unit boundary. | You need any lease-term rate for display, AI copy, or an edge function. Never read `rent_price_daily`/`_3mo`/`_6mo`/`_12mo`/`lease_price_basis` directly. |
+| `getRentalTermAmount(property, unitType, fieldKey)` | `rental-terms.js` | The machine-readable read for `included_or_amount` Rental Terms (the Trash Fee today): `{included, amount, currency, period}`. Calls `resolveRentalTerms()` internally. | You need to compare, sum, sort or filter on a rental-term amount. `formatRentalTermValue()` returns display text — never re-parse that string to get the number back. |
 | `resolveUnitAvailability(unitType, computedNextAvailableDate?)` | `unit-availability.js` | Turning `available_count`/`total_units`/`next_available_date`/`availability_note` into one of the 3 frozen public statuses. | You need to display or reason about a unit type's availability. Never read the 4 raw columns directly. |
 | `resolveUnitType(property, unitType)` | `terminology.js` | Merging a building's own fields with one unit type's overrides for every *other* typed field (price, name, specs — not Rental Terms or Availability, which have their own resolvers above). | Rendering a specific unit type variant anywhere (admin preview, listing page, future search). |
 | `resolvePartyDisplay(party, listingCount, lang)` | `components.js` | Deriving a party's display name/photo/agency/verified-badge/bio with graceful placeholders and language-aware name precedence (Lao-first vs. English-first). | Any UI that shows an agent/owner/party, in any card, preview, or profile. |
