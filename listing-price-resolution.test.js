@@ -34,18 +34,24 @@ vm.runInThisContext(extractFn('listing.html', 'resolveUnitTypesPriceText'));
 
 const { formatPropertyPrice, resolveUnitTypesPriceText, formatAvailableFromLine } = globalThis;
 
-// Faithful mirror of the listing.html price-block decision (the same order of
-// checks): property-level price first, then the unit-type fallback, then
-// "Inquire for price".
+// Faithful mirror of the price-block decision. The unit-type fallback now lives
+// INSIDE formatPropertyPrice() (components.js) rather than being re-applied by
+// each caller, so that both the listing card and the detail page recover the
+// price identically -- the card previously could not, and showed "Price on
+// request" for any listing priced only under its unit types.
+//
+// The observable behaviour these tests assert (which TEXT is displayed) is
+// unchanged; only where the resolution happens moved, which `priceSource`
+// reports.
 function displayedPrice(property, lang) {
   lang = lang || 'en';
   const info = formatPropertyPrice(property, lang);
   if (info.isSor) return { source: 'sor', text: [info.saleText, info.rentText].filter(Boolean).join(' · ') || null };
-  if (info.isPriceOnRequest) {
-    const ut = resolveUnitTypesPriceText(property, lang);
-    return ut ? { source: 'unit_type', text: ut } : { source: 'inquire', text: null };
-  }
-  return { source: 'property', text: info.singleText + (info.unitText ? ' ' + info.unitText : '') };
+  if (info.isPriceOnRequest) return { source: 'inquire', text: null };
+  return {
+    source: info.priceSource === 'unit_type' ? 'unit_type' : 'property',
+    text: info.singleText + (info.unitText ? ' ' + info.unitText : '')
+  };
 }
 
 const OCCUPIED_UNIT = { id: 'u1', name_en: '1BR', price_amount: 450, price_currency: 'USD', price_frequency: 'month', is_available: false, available_count: 0 };

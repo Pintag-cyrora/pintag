@@ -10,6 +10,9 @@ on:
       - 'listings.html'
       - 'listing.html'
       - 'tests/pricing/**'
+      - 'components.js'
+      - 'listing-card-price-availability.test.js'
+      - 'tests/listing-cards/**'
       - '.github/workflows/pricing-tests.yml'
   pull_request:
     branches: [main]
@@ -20,6 +23,9 @@ on:
       - 'listings.html'
       - 'listing.html'
       - 'tests/pricing/**'
+      - 'components.js'
+      - 'listing-card-price-availability.test.js'
+      - 'tests/listing-cards/**'
       - '.github/workflows/pricing-tests.yml'
   workflow_dispatch:
 
@@ -30,6 +36,47 @@ permissions:
   contents: read
 
 jobs:
+  listing-card-price:
+    name: Listing card — price / availability / FOMO independence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # An unavailable listing must still show its price. The card previously
+      # lost it entirely, because admin nulls properties.price_amount when every
+      # unit type is occupied and the public query did not embed unit_types.
+      - name: Price/availability/FOMO unit tests
+        run: node --test listing-card-price-availability.test.js listing-price-resolution.test.js
+
+      - name: Install test dependencies
+        working-directory: tests/listing-cards
+        run: npm install
+
+      - name: Install Chromium
+        working-directory: tests/listing-cards
+        run: npx playwright install --with-deps chromium
+
+      # Drives the REAL listings.html on a mobile viewport — the surface the bug
+      # was reported on.
+      - name: Mobile public listing page (Playwright)
+        working-directory: tests/listing-cards
+        run: npm test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: listing-card-playwright-report
+          path: tests/listing-cards/playwright-report/
+          retention-days: 14
+
   currency-unit-tests:
     name: currency.js unit tests (formatMoney/formatMoneyRange/parseLegacyPriceAmount)
     runs-on: ubuntu-latest

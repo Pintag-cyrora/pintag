@@ -594,6 +594,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
+<script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
 <script src="tracking.js?v=__ASSET_VERSION__"></script>
@@ -1048,7 +1049,7 @@ function closeMapPreview() {
 
 async function loadListings() {
   try {
-    var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&select=*,contacts(role,name),parties(type,name_en,photo_url)', {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&select=*,contacts(role,name),parties(type,name_en,photo_url),unit_types(id,sort_order,name_en,name_lo,name_zh,price_display,sale_price,rent_price,rent_period,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency,is_available,available_count,total_units,next_available_date)', {
       headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
     });
     allProperties = await res.json();
