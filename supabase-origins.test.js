@@ -81,6 +81,13 @@ test('the auth storage key is pinned to the project ref, not the hostname', () =
   }
 });
 
+test('config.js pairs each environment\'s storage key with its own project ref', () => {
+  const src = read('config.js');
+  const origins = [...src.matchAll(/storageOrigin:\s*'https:\/\/([a-z0-9]+)\.supabase\.co'/g)].map(m => m[1]);
+  const keys    = [...src.matchAll(/storageKey:\s*'sb-([a-z0-9]+)-auth-token'/g)].map(m => m[1]);
+  assert.deepEqual(keys, origins, 'a storage key paired with the wrong project ref signs that environment out');
+});
+
 test('the storage key matches the project that actually owns the session', () => {
   // Derived from storagePublicOrigin, not supabaseUrl: supabaseUrl moves to
   // api.pintag.io at cutover, and this invariant must survive that.
@@ -96,6 +103,10 @@ test('the storage key matches the project that actually owns the session', () =>
 // ── 2. Config abstraction ─────────────────────────────────────────────────
 
 test('config files define all three origin/session keys', () => {
+  // config.js is NOT a copy of config.prod.js: it is the hostname-detecting
+  // config that serves local dev, previews and the Playwright static server,
+  // and it reaches the same three values through a per-environment table.
+  // (The deploy workflow overwrites it with config.prod.js at publish time.)
   for (const file of ['config.prod.js', 'config.dev.js', 'config.js']) {
     const src = read(file);
     for (const key of ['supabaseUrl', 'storagePublicOrigin', 'authStorageKey']) {
@@ -104,11 +115,35 @@ test('config files define all three origin/session keys', () => {
   }
 });
 
+test('config.js still defaults an UNKNOWN host to development, not production', () => {
+  // The safe direction, and easy to destroy by replacing this file with a
+  // static copy of config.prod.js: an unrecognized preview host landing in a
+  // blank dev database is a far cheaper mistake than one landing in the live
+  // site real customers see.
+  const src = read('config.js');
+  assert.match(src, /function detectEnvironment/, 'config.js must keep its hostname detection');
+  const run = (hostname) => {
+    const sandbox = { window: { location: { hostname } } };
+    new Function('window', src)(sandbox.window);
+    return sandbox.window.PINTAG;
+  };
+  assert.equal(run('localhost').env, 'development');
+  assert.equal(run('some-random-preview.example').env, 'development');
+  assert.equal(run('pintag.io').env, 'production');
+});
+
 test('storagePublicOrigin is a DIRECT Supabase origin, never the API proxy', () => {
   // The whole point: stored image URLs must not follow the delivery host.
-  for (const file of ['config.prod.js', 'config.dev.js', 'config.js']) {
+  for (const file of ['config.prod.js', 'config.dev.js']) {
     const origin = read(file).match(/storagePublicOrigin:\s*'([^']+)'/)[1];
     assert.match(origin, /^https:\/\/[a-z0-9]+\.supabase\.co$/, `${file}: ${origin}`);
+    assert.notEqual(origin, API_PROXY);
+  }
+  // config.js resolves it per environment, so assert both table entries.
+  const origins = [...read('config.js').matchAll(/storageOrigin:\s*'([^']+)'/g)].map(m => m[1]);
+  assert.equal(origins.length, 2, 'config.js must define storageOrigin for both environments');
+  for (const origin of origins) {
+    assert.match(origin, /^https:\/\/[a-z0-9]+\.supabase\.co$/, origin);
     assert.notEqual(origin, API_PROXY);
   }
 });
