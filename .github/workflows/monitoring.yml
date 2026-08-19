@@ -32,6 +32,19 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # PINTAG_PROD_DB_URL is scoped to the production-backup Environment (that is
+    # where backup.yml and image-integrity.yml already read it from). Without
+    # this line the secret resolves to an EMPTY STRING here rather than failing,
+    # and the DB checks below silently skip on their `if: env.PINTAG_PROD_DB_URL
+    # != ''` guard — a monitor that reports nothing while looking healthy.
+    # Declaring the environment is what makes the secret visible; the
+    # alternative was promoting it to a repository-wide secret, which would
+    # widen its blast radius to every workflow.
+    #
+    # Repository-level secrets and vars (ALERT_WEBHOOK_URL,
+    # MIN_EXPECTED_LISTINGS) are unaffected: an environment layers on top of
+    # them, it does not hide them.
+    environment: production-backup
     env:
       PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
       ALERT_WEBHOOK_URL:  ${{ secrets.ALERT_WEBHOOK_URL }}
