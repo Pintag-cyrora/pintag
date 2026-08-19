@@ -24,13 +24,19 @@ function extractVar(name) {
   return src.slice(start, i) + ';';
 }
 
-// Module state + collaborators the extracted functions read (stubbed).
+// Collaborators the extracted functions read. _resolvedPrice/_numericPrice are
+// the REAL ones now rather than a stub, because they resolve through
+// components.js' ptResolveSortPrice() -- a stub would hide exactly the
+// fully-occupied-building regression the suite below exists to catch.
+for (const f of ['currency.js', 'terminology.js', 'components.js']) {
+  vm.runInThisContext(fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8'), { filename: f });
+}
+globalThis.window = globalThis;
 vm.runInThisContext("var currentTxFilter='all', currentTypeFilter='all', currentAvailOnly=false, currentDistrictFilter='all', currentPriceBand='all';");
-vm.runInThisContext("var _numericPrice=function(p){return p.price_amount||0;};");
 vm.runInThisContext("var matchesRentalFilters=function(){return true;};");
 vm.runInThisContext("var isAvailableStatus=function(){return true;};");
 vm.runInThisContext(extractVar('PRICE_BANDS'));
-['currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand', 'matchesActiveFilters']
+['_resolvedPrice', '_numericPrice', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand', 'matchesActiveFilters']
   .forEach((n) => vm.runInThisContext(extractFn(n)));
 
 function setState(s) { Object.assign(globalThis, s); }

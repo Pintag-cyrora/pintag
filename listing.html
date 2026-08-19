@@ -200,6 +200,7 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .unit-fact{white-space:nowrap;}
 .unit-price{font-size:15px;font-weight:600;color:var(--ink);}
 .unit-deposit{font-size:12px;color:var(--ink-muted);}
+.unit-lease-terms{font-size:12px;color:var(--ink-muted);line-height:1.6;}
 .unit-movein{font-size:11.5px;color:var(--ink-muted);}
 .unit-note{font-size:11.5px;color:var(--ink-muted);font-style:italic;}
 .unit-cta-row{margin-top:2px;}
@@ -615,6 +616,7 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script src="currency.js?v=__ASSET_VERSION__"></script>
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
+<script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
@@ -1857,7 +1859,15 @@ function buildUnitPriceText(property, resolved, lang){
 // Picks the cheapest resolvable unit (the same "starting from min" convention
 // admin uses for the building-level price). Returns a price string, or null
 // when nothing resolves (caller then keeps "Inquire for price").
+//
+// Delegates to components.js' ptResolveUnitTypesPrice() -- the ONE shared
+// implementation, also used by the public card and (via ptResolveSortPrice)
+// by search sorting and price-band filtering. This page had its own copy
+// first; keeping both would let the price on the detail page drift from the
+// price on the card that led here. The local loop below survives only as the
+// fallback for a version-mismatched components.js cache.
 function resolveUnitTypesPriceText(property, lang){
+  if(typeof ptResolveUnitTypesPrice==='function') return ptResolveUnitTypesPrice(property, lang);
   var units = Array.isArray(property.unit_types) ? property.unit_types : [];
   if(!units.length || typeof resolveUnitType!=='function') return null;
   var best=null;
@@ -1926,6 +1936,22 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
     // already uses for the currently-selected unit.
     var unitDepositValue=(typeof resolveRentalTerms==='function')?resolveRentalTerms(property,u).values.deposit:null;
     var unitDepositText=(unitDepositValue&&typeof formatRentalTermValue==='function')?formatRentalTermValue('deposit',unitDepositValue,lang):null;
+    // This unit's OWN lease-term rates (Daily / 3 / 6 / 12-month). Same
+    // resolver the main price panel uses; rule 8 means a unit with no terms of
+    // its own shows none rather than borrowing the building's, so a card only
+    // grows this list when somebody priced that specific unit type by term.
+    // The base monthly rate is already the unit-price line above, so it is
+    // filtered out here rather than printed twice.
+    var unitLeaseLines=[];
+    if(typeof resolveLeasePricing==='function'){
+      var _uLease=resolveLeasePricing(property,u);
+      if(_uLease.hasTiers){
+        unitLeaseLines=_uLease.terms
+          .filter(function(t){return t.key!=='monthly';})
+          .map(function(t){return formatLeaseTermLine(t,_uLease.currency,lang);})
+          .filter(Boolean);
+      }
+    }
     // The move-in date is already embedded in the fully_occupied message
     // itself ("Fully Occupied — Available from {date}") — showing it again
     // as a separate line would just repeat the same date twice.
@@ -1980,6 +2006,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
       (factsHtml?'<div class="unit-facts">'+factsHtml+'</div>':'')+
       (priceText?'<div class="unit-price">'+esc(priceText)+'</div>':'')+
       (unitDepositText?'<div class="unit-deposit">'+esc(unitDepositText)+'</div>':'')+
+      (unitLeaseLines.length?'<div class="unit-lease-terms">'+unitLeaseLines.map(function(l){return '<div>'+esc(l)+'</div>';}).join('')+'</div>':'')+
       (showMoveIn?'<div class="unit-movein">'+esc(L.unitMoveIn[lang])+': '+esc(moveInText)+'</div>':'')+
       (noteText?'<div class="unit-note">'+esc(noteText)+'</div>':'')+
       (ctaHtml?'<div class="unit-cta-row">'+ctaHtml+'</div>':'')+
@@ -2139,7 +2166,8 @@ function buildMockupLayout(){
     showOverview:{lo:'ເບິ່ງພາບລວມອາຄານ',en:'Show building overview',zh:'查看整栋概览'},
     buildingPhotosAmenities:{lo:'ຮູບພາບ ແລະ ສິ່ງອຳນວຍຄວາມສະດວກຂອງອາຄານ',en:'Building Photos & Shared Amenities',zh:'楼栋照片与公共设施'},
     unitFurnished:{lo:'ເຄື່ອງເຟີນີເຈີ',en:'Furnished',zh:'装修情况'},
-    rentalTerms:{lo:'ເງື່ອນໄຂການເຊົ່າ',en:'Rental Terms',zh:'租赁条款'}
+    rentalTerms:{lo:'ເງື່ອນໄຂການເຊົ່າ',en:'Rental Terms',zh:'租赁条款'},
+    leaseTermPricing:{lo:'ລາຄາຕາມໄລຍະເຊົ່າ',en:'Lease-term pricing',zh:'租期价格'}
   };
 
   var I={
@@ -2276,6 +2304,37 @@ function buildMockupLayout(){
     }
   }
 
+  // ── Lease-term pricing (Daily / 3 / 6 / 12-month rates) ──
+  // resolveLeasePricing() is lease-pricing.js's only allowed read API (rule 3
+  // in that file), and the SAME call admin.html's preview and the AI prompt
+  // make — so what a visitor reads here is what the operator saw when they
+  // typed it, with no second formatter to drift.
+  //
+  // Passing the selected unit's raw row resolves THAT unit's own terms; with
+  // no unit selected it resolves the building's. A unit type never borrows the
+  // building's tiers (rule 8: a tier is a discount quoted against a specific
+  // base rent), so switching units genuinely changes what is shown rather than
+  // repeating one building figure under every unit.
+  //
+  // hasTiers gates the whole block: a listing with only a flat monthly rent —
+  // which is every listing that predates this feature — renders nothing at
+  // all, exactly as before.
+  var leasePricingHtml='';
+  if(typeof resolveLeasePricing==='function'){
+    var _lpResolved=resolveLeasePricing(data,selectedUnit?selectedUnit.raw:null);
+    if(_lpResolved.hasTiers){
+      var _lpLines=buildLeasePricingLines(_lpResolved,lang);
+      if(_lpLines.length){
+        leasePricingHtml=(
+          '<div class="amenity-row" data-track="lease-pricing-section" data-track-type="section" data-track-label="Lease-term pricing section" style="flex-direction:column;align-items:flex-start;gap:8px;">'+
+          '<span class="section-label" style="margin:0;">'+esc(L.leaseTermPricing[lang])+'</span>'+
+          _lpLines.map(function(line){return '<div class="amenity-item" style="width:100%;">'+esc(line)+'</div>';}).join('')+
+          '</div>'
+        );
+      }
+    }
+  }
+
   // ── Unavailable listings: the original asking price stays fully visible
   // (Pintag's price data is market history, not something that disappears
   // once a listing is off-market). Rented Listings UX v2, Priority 1: a
@@ -2299,13 +2358,18 @@ function buildMockupLayout(){
     // quick-scan color indicator only (🟢/🟡/🔴, listing-status.js) -- the
     // underlying message text is unchanged.
     resolvedPriceHtml+='<p class="price-status-note">'+(statusEmoji?esc(statusEmoji)+' ':'')+esc(unavailMsg||getMarketStatusLabel(listingStatusResolved.market,lang))+'</p>';
-    // Per-listing "Available from {date}" — the plain-listing complement to
-    // unit_types.next_available_date, so an unavailable rental of ANY property
-    // type (incl. a single apartment with no unit types) can state when it
-    // frees up. Self-suppressing: renders nothing when available_from is unset,
-    // in which case the price above still shows on its own.
-    var availFromLine=(typeof formatAvailableFromLine==='function')?formatAvailableFromLine(data.available_from,lang):null;
-    if(availFromLine) resolvedPriceHtml+='<p class="price-available-from">'+esc(availFromLine)+'</p>';
+    // "Available {date}" — the SAME resolver the listing card uses
+    // (ptResolveNextAvailable, components.js), so the two surfaces can never
+    // disagree about which date is shown. It considers BOTH sources of truth:
+    // every unit type's next_available_date (via resolveUnitAvailability) and
+    // the listing's own available_from, taking the earliest genuine future
+    // date. This page previously read available_from alone, so a multi-unit
+    // building whose units carried dates showed nothing here.
+    //
+    // Self-suppressing: renders nothing when no date is on file, in which case
+    // the price above still shows on its own. Never fabricates a date.
+    var nextAvail=(typeof ptResolveNextAvailable==='function')?ptResolveNextAvailable(data,lang):null;
+    if(nextAvail) resolvedPriceHtml+='<p class="price-available-from">'+esc(nextAvail.text)+'</p>';
   }
 
   // ── Persistent Building Photos / Shared Amenities strip ──────────────
@@ -2522,6 +2586,7 @@ function buildMockupLayout(){
     '<p class="body-narrative">'+resolvedDesc+'</p>'+
     amenityRowHtml+
     pdetailHtml+
+    leasePricingHtml+
     rentalTermsHtml+
     priceHistoryHtml+
     '</div>'

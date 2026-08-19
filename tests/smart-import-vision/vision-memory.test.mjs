@@ -132,7 +132,13 @@ check('6: object URL → render endpoint with width/quality',
   rUrl);
 check('6: render URL strips the original query string', !rUrl.includes('token=x'));
 check('6: non-storage URL → null (caller uses original)', buildRenderUrl('https://example.com/x.jpg') === null);
-check('6: fallback-to-original path exists in source', /async function loadImageBytes/.test(SRC) && /return await fetchImageBytes\(objectUrl\)/.test(SRC));
+// The fallback is unchanged in behaviour; its signature now carries the
+// request-wide deadline (fetchImageBytes(url, timeoutMs)), so the match is on
+// the objectUrl argument rather than an exact one-argument call.
+check('6: fallback-to-original path exists in source', /async function loadImageBytes/.test(SRC) && /return await fetchImageBytes\(objectUrl,/.test(SRC));
+check('6: image fetches take their timeout from the request deadline',
+  /async function fetchImageBytes\(url: string, timeoutMs: number\)/.test(SRC)
+  && /AbortSignal\.timeout\(timeoutMs\)/.test(SRC));
 
 // ── 7. request construction for 1 / 4 / 8 images ──
 for (const n of [1, 4, 8]) {

@@ -241,6 +241,267 @@ function _ptFrequencySuffix(frequency, lang) {
   var entry = PT_FREQUENCY_SUFFIX[frequency] || PT_FREQUENCY_SUFFIX.monthly;
   return entry[lang] || entry.en;
 }
+// ptResolveNextAvailable(property, lang, nowIso) -- the FOURTH axis: when an
+// unavailable listing frees up. Shared by the listing card and the detail page
+// so there is exactly one implementation of "which date, and is it real".
+//
+// SOURCE OF TRUTH -- two existing columns, no new field:
+//   unit_types.next_available_date   per unit type. Read ONLY through
+//                                    resolveUnitAvailability(), as that
+//                                    column's own comment requires.
+//   properties.available_from        per listing; the plain-listing complement
+//                                    for a property with no unit_types rows.
+// Both are documented as never fabricated or estimated: NULL means "no date on
+// file", and this function returns null for that rather than guessing.
+//
+// INDEPENDENT OF PRICE AND FOMO. It reads no price field, and nothing here can
+// suppress a price -- an occupied listing shows its price AND its next-available
+// date. It is also not scarcity messaging: a date is a fact, not persuasion.
+//
+// GATED ON THE LISTING BEING UNAVAILABLE. A listing you can rent today does not
+// need a future date; resolveListingStatus().isPubliclyAvailable is the single
+// gate, the same one every other consumer branches on.
+//
+// MULTI-UNIT: takes the EARLIEST qualifying date across all unit types, so a
+// building where one unit frees up sooner advertises that unit's date. The
+// property-level available_from is considered alongside them, so a building
+// that also carries a listing-level date cannot be missed.
+//
+// "Genuine future" is >= today, compared as ISO date strings (both are `date`
+// columns, so this is timezone-robust and needs no Date arithmetic). A date in
+// the PAST is stale data and is discarded -- "Available 3 Jan 2020" would be
+// worse than showing nothing.
+function ptResolveNextAvailable(property, lang, nowIso) {
+  lang = lang || 'en';
+  if (!property) return null;
+
+  var status = (typeof resolveListingStatus === 'function') ? resolveListingStatus(property) : null;
+  if (!status || status.isPubliclyAvailable) return null;   // available now -> no future date
+
+  var today = nowIso || new Date().toISOString().slice(0, 10);
+  var candidates = [];
+
+  var units = Array.isArray(property.unit_types) ? property.unit_types : [];
+  if (units.length && typeof resolveUnitAvailability === 'function') {
+    for (var i = 0; i < units.length; i++) {
+      var d = resolveUnitAvailability(units[i]).nextAvailableDate;
+      if (d) candidates.push(d);
+    }
+  }
+  if (property.available_from) candidates.push(property.available_from);
+
+  var earliest = null;
+  for (var j = 0; j < candidates.length; j++) {
+    var c = candidates[j];
+    if (typeof c !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(c)) continue;  // malformed -> ignore
+    if (c < today) continue;                                                 // stale -> ignore
+    if (earliest === null || c < earliest) earliest = c;
+  }
+  if (!earliest) return null;
+
+  // Existing trilingual date convention (unit-availability.js), not a new one.
+  var dateText = (typeof _formatAvailabilityDate === 'function')
+    ? _formatAvailabilityDate(earliest, lang) : earliest;
+  if (!dateText) return null;
+
+  var label = { en: 'Available', lo: 'ວ່າງ', zh: '可入住' };
+  return { isoDate: earliest, dateText: dateText, text: (label[lang] || label.en) + ' ' + dateText };
+}
+
+// ptResolveListingFomo(property, lang) -- the THIRD axis, kept strictly apart
+// from price and from raw availability.
+//
+// The three concepts this card renders are independent and must stay that way:
+//
+//   PRICE        what it costs                 -> formatPropertyPrice()
+//   AVAILABILITY inventory/market state        -> resolveListingStatus() /
+//                                                 resolveUnitAvailability()
+//   FOMO         derived persuasion messaging  -> here
+//
+// Collapsing any two of them is what produced the reported bug: an unavailable
+// listing lost its price, because "unavailable" was allowed to suppress
+// pricing. Nothing in this function is consulted when deciding whether to show
+// a price, and nothing here invents inventory.
+//
+// NEVER FABRICATE SCARCITY. Every claim below is backed by a column:
+//   * "Only N left" requires unit_types rows with a real available_count.
+//     Absent unit data, no scarcity claim is made AT ALL -- not a softened one.
+//   * "N of M available" additionally requires total_units to be tracked.
+//   * The unavailable/"missed it" line is backed by market_status, which is a
+//     statement of fact rather than persuasion, so it is always safe to show.
+// A listing with no inventory data gets no FOMO line, which is the correct and
+// honest outcome, not a gap to fill.
+function ptResolveListingFomo(property, lang) {
+  lang = lang || 'en';
+  var status = (typeof resolveListingStatus === 'function')
+    ? resolveListingStatus(property) : null;
+
+  // ── Unavailable: state it plainly. Factual, never scarcity bait. ──────────
+  if (status && !status.isPubliclyAvailable) {
+    var missed = {
+      rented:         { en: 'Just rented — see similar', lo: 'ຫາກໍ່ຖືກເຊົ່າ — ເບິ່ງແບບຄ້າຍກັນ', zh: '刚被租出 — 查看类似房源' },
+      sold:           { en: 'Just sold — see similar',   lo: 'ຫາກໍ່ຖືກຂາຍ — ເບິ່ງແບບຄ້າຍກັນ',  zh: '刚售出 — 查看类似房源' },
+      reserved:       { en: 'Reserved',                  lo: 'ຖືກຈອງແລ້ວ',                    zh: '已预订' },
+      fully_occupied: { en: 'Fully occupied',            lo: 'ເຕັມແລ້ວ',                       zh: '已住满' },
+      off_market:     { en: 'Off market',                lo: 'ບໍ່ຢູ່ໃນຕະຫຼາດ',                 zh: '已下架' }
+    }[status.market];
+    if (!missed) return null;
+    return { kind: 'missed', tone: 'unavailable', text: missed[lang] || missed.en };
+  }
+
+  // ── Available: scarcity ONLY from real unit inventory. ───────────────────
+  var units = (property && Array.isArray(property.unit_types)) ? property.unit_types : [];
+  if (!units.length || typeof resolveUnitAvailability !== 'function') return null;
+
+  var open = 0, total = 0, haveTotals = true, sawCount = false;
+  for (var i = 0; i < units.length; i++) {
+    var a = resolveUnitAvailability(units[i]);
+    if (a.status !== 'available') continue;
+    if (typeof a.availableCount !== 'number') continue;
+    sawCount = true;
+    open += a.availableCount;
+    if (a.totalUnits == null) haveTotals = false; else total += a.totalUnits;
+  }
+  if (!sawCount || open <= 0) return null;   // nothing truthful to say
+
+  if (open === 1) {
+    var one = { en: 'Only 1 left', lo: 'ເຫຼືອພຽງ 1 ຫ້ອງ', zh: '仅剩 1 间' };
+    return { kind: 'last_one', tone: 'urgent', text: one[lang] || one.en, count: 1 };
+  }
+  // "N of M" needs M genuinely tracked, and is only interesting while scarce.
+  if (haveTotals && total > 0 && open / total <= 0.25) {
+    var few = {
+      en: open + ' of ' + total + ' available',
+      lo: 'ວ່າງ ' + open + ' ຈາກ ' + total,
+      zh: total + ' 间中仅剩 ' + open + ' 间'
+    };
+    return { kind: 'scarce', tone: 'urgent', text: few[lang] || few.en, count: open, total: total };
+  }
+  return null;
+}
+
+// ptBuildUnitPriceText(property, resolvedUnit, lang) / ptResolveUnitTypesPrice()
+// -- the unit-type price fallback, shared by the CARD and the DETAIL page.
+//
+// WHY THIS EXISTS AT ALL (the bug it fixes)
+// -----------------------------------------
+// admin derives properties.price_amount from AVAILABLE unit types only
+// (syncPricingMode -> _utActiveAmounts filters on the Available checkbox). So
+// the moment a multi-unit building is marked fully occupied and saved, its
+// property-level price is written back as NULL. The price did not become
+// unknown -- it still exists on every unit_types row -- but the column the card
+// reads is now empty, and the card fell through to "Price on request".
+//
+// The detail page already worked around this (listing.html's
+// resolveUnitTypesPriceText). The CARD never did, because listings.html's query
+// did not embed unit_types at all, so there was nothing to fall back TO. Both
+// halves are fixed: the query now embeds them, and this is the one shared
+// implementation both surfaces call, rather than a second copy on the card.
+//
+// PRICE IS NEVER GATED ON AVAILABILITY. Nothing in here reads is_available,
+// available_count or market_status. An unavailable listing has a price and must
+// show it; "unavailable" is a separate axis rendered separately (see
+// ptResolveListingFomo below). This is deliberate and load-bearing: hiding the
+// price of a rented listing destroys the market history that is the whole point
+// of keeping unavailable listings visible.
+//
+// Picks the CHEAPEST resolvable unit -- the same "starting from min" convention
+// admin uses for the building-level price. Returns null when nothing resolves.
+function ptBuildUnitPriceText(property, resolved, lang) {
+  var isSorUnit = property.transaction_type === 'sale_or_rent';
+  if (isSorUnit) {
+    var parts = [];
+    if (resolved.priceAmount != null || resolved.rentPriceAmount != null) {
+      if (resolved.priceAmount != null) parts.push(formatMoney(resolved.priceAmount, resolved.priceCurrency));
+      if (resolved.rentPriceAmount != null) {
+        parts.push(formatMoney(resolved.rentPriceAmount, resolved.rentPriceCurrency) + ' ' + _ptFrequencySuffix(resolved.rentPriceFrequency, lang));
+      }
+    } else if (resolved.salePrice || resolved.rentPrice) {
+      var period = resolved.rentPeriod || 'month';
+      var periodLabel = { month: PT_PER_MONTH, year: { lo: '/ ປີ', en: '/ year', zh: '/ 年' }, day: { lo: '/ ວັນ', en: '/ day', zh: '/ 天' } };
+      if (resolved.salePrice) parts.push(resolved.salePrice);
+      if (resolved.rentPrice) parts.push(resolved.rentPrice + (periodLabel[period] || PT_PER_MONTH)[lang]);
+    }
+    return parts.length ? parts.join(' · ') : null;
+  }
+  if (resolved.priceAmount != null) {
+    var text = formatMoney(resolved.priceAmount, resolved.priceCurrency);
+    return property.transaction_type === 'for_rent'
+      ? (text + ' ' + _ptFrequencySuffix(resolved.priceFrequency, lang))
+      : text;
+  }
+  return resolved.priceDisplay || null;
+}
+
+// ptResolveUnitTypesPriceEntry() -- the one implementation. Returns the
+// CHEAPEST resolvable unit as { amount, currency, text }, or null when nothing
+// resolves. `amount` is null for a unit priced only as legacy display text
+// (there is no trustworthy number to sort or band-filter on in that case; the
+// callers below treat that exactly like "no numeric price on file", which is
+// what they already did for an unbackfilled property row).
+//
+// Separated from ptResolveUnitTypesPrice() because sorting and price-band
+// filtering on the search page need the NUMBER and the CURRENCY, not the
+// rendered string -- and must agree, row for row, with what the card displays.
+// Two independent notions of "this listing's price" is how the card and the
+// sort key drift apart.
+function ptResolveUnitTypesPriceEntry(property, lang) {
+  lang = lang || 'en';
+  var units = (property && Array.isArray(property.unit_types)) ? property.unit_types : [];
+  // resolveUnitType() lives in terminology.js. Feature-detected because
+  // components.js also runs on pages that do not load it; there the card simply
+  // behaves as it did before this fallback existed.
+  if (!units.length || typeof resolveUnitType !== 'function') return null;
+  var best = null;
+  for (var i = 0; i < units.length; i++) {
+    var resolvedUnit = resolveUnitType(property, units[i]);
+    var text = ptBuildUnitPriceText(property, resolvedUnit, lang);
+    if (!text) continue;
+    var amt = null, cur = null;
+    if (resolvedUnit.priceAmount != null) {
+      amt = resolvedUnit.priceAmount; cur = resolvedUnit.priceCurrency;
+    } else if (resolvedUnit.rentPriceAmount != null) {
+      amt = resolvedUnit.rentPriceAmount; cur = resolvedUnit.rentPriceCurrency;
+    }
+    if (best === null || (amt != null && (best.amount == null || amt < best.amount))) {
+      best = { amount: amt, currency: cur, text: text };
+    }
+  }
+  return best;
+}
+
+function ptResolveUnitTypesPrice(property, lang) {
+  var best = ptResolveUnitTypesPriceEntry(property, lang);
+  return best ? best.text : null;
+}
+
+// ptResolveSortPrice(property) -- the numeric price key for SORTING and
+// PRICE-BAND FILTERING, resolved through the same precedence the card uses:
+// structured property column -> cheapest unit type -> legacy display text.
+//
+// The unit-type step matters for rows saved by an admin build that predates
+// the _utPriceEntries() fix, which nulled properties.price_amount whenever
+// every unit was occupied. Without it those listings sort as if they cost 0
+// (bottom of price_asc, and unplaceable in any band) purely because they are
+// currently rented -- price silently coupled to availability again, on the
+// read side this time. Returns { amount, currency } with amount null when
+// there is genuinely no numeric price on file. Never fabricates a number.
+function ptResolveSortPrice(property, parseLegacy) {
+  if (!property) return { amount: null, currency: null };
+  if (property.price_amount != null) {
+    return { amount: property.price_amount, currency: property.price_currency || null };
+  }
+  var unit = ptResolveUnitTypesPriceEntry(property, 'en');
+  if (unit && unit.amount != null) {
+    return { amount: unit.amount, currency: unit.currency || null };
+  }
+  if (typeof parseLegacy === 'function') {
+    var legacy = parseLegacy(property.price_display);
+    if (legacy) return { amount: legacy, currency: property.price_currency || null };
+  }
+  return { amount: null, currency: property.price_currency || null };
+}
+
 function formatPropertyPrice(property, lang) {
   lang = lang || 'en';
   var kind = _ptTransactionKind(property.transaction_type);
@@ -278,7 +539,18 @@ function formatPropertyPrice(property, lang) {
   // in the alternation, otherwise the shorter alternative matches first
   // and leaves a stray "nth" behind.
   var raw = (property.price_display || '').replace(/\s*\/\s*(ເດືອນ|month|mo|月)\s*/i, '').trim();
-  if (!raw) return { isSor: false, singleText: null, isPriceOnRequest: true, requestText: PT_PRICE_ON_REQUEST[lang] };
+  if (!raw) {
+    // LAST RESORT BEFORE GIVING UP: the listing may be priced only under its
+    // unit types. That is the normal state for a fully-occupied multi-unit
+    // building, whose property-level price admin nulls out on save. Falling
+    // back here rather than at each call site means the card, the detail page
+    // and any future surface all recover the price identically.
+    var unitText = ptResolveUnitTypesPrice(property, lang);
+    if (unitText) {
+      return { isSor: false, singleText: unitText, unitText: null, isPriceOnRequest: false, priceSource: 'unit_type' };
+    }
+    return { isSor: false, singleText: null, isPriceOnRequest: true, requestText: PT_PRICE_ON_REQUEST[lang] };
+  }
   var showUnitLegacy = kind === 'rent';
   return { isSor: false, singleText: raw, unitText: showUnitLegacy ? PT_PER_MONTH[lang] : null, isPriceOnRequest: false };
 }
@@ -441,6 +713,26 @@ function renderPropertyCard(property, opts) {
     }
   }
 
+  // Secondary daily-rate line. A short-stay daily rate is a headline
+  // differentiator, so a listing that offers one says so on the CARD rather
+  // than only on the detail page -- but never in place of the main rent, and
+  // never duplicated when the listing's primary price IS already a daily one.
+  //
+  // resolveLeasePricing() (lease-pricing.js) is the only allowed reader of
+  // those columns (rule 3). Feature-detected because components.js also runs
+  // on pages that have no reason to load the pricing module; there the card
+  // renders exactly as it did before.
+  var dailyExtraHtml = '';
+  if (typeof resolveLeasePricing === 'function' && p.price_frequency !== 'daily' && p.rent_price_frequency !== 'daily') {
+    var _cardLease = resolveLeasePricing(p, null);
+    for (var _li = 0; _li < _cardLease.terms.length; _li++) {
+      if (_cardLease.terms[_li].key !== 'daily') continue;
+      var _dailyText = formatLeaseTermAmount(_cardLease.terms[_li], _cardLease.currency, lang);
+      if (_dailyText) dailyExtraHtml = '<p class="pt-card-price-daily">' + _ptEsc(_dailyText) + '</p>';
+      break;
+    }
+  }
+
   var price = formatPropertyPrice(p, lang);
   var priceHtml;
   if (price.isSor) {
@@ -451,6 +743,40 @@ function renderPropertyCard(property, opts) {
   } else {
     priceHtml = '<p class="pt-card-price">' + _ptEsc(price.singleText) + (price.unitText ? ' <span class="pt-card-price-unit">' + _ptEsc(price.unitText) + '</span>' : '') + '</p>';
   }
+  // "$450 / month · Available 15 Sep 2026" -- a compact inline suffix on the
+  // PRICE paragraph itself, not another block, so the card does not grow a line.
+  // Appended before dailyExtraHtml so it attaches to the price rather than to
+  // the secondary daily-rate line.
+  var nextAvail = (typeof ptResolveNextAvailable === 'function') ? ptResolveNextAvailable(p, lang) : null;
+  if (nextAvail) {
+    priceHtml = priceHtml.replace(/<\/p>\s*$/,
+      ' <span class="pt-card-next-available">\u00b7 ' + _ptEsc(nextAvail.text) + '</span></p>');
+  }
+
+  priceHtml += dailyExtraHtml;
+
+  // ── AVAILABILITY and FOMO — separate lines, rendered AFTER the price and
+  // never in place of it. The price block above has already been decided
+  // without consulting either, which is the fix for unavailable listings
+  // losing their price entirely.
+  var statusInfo = (typeof resolveListingStatus === 'function') ? resolveListingStatus(p) : null;
+  var availabilityHtml = '';
+  if (statusInfo && !statusInfo.isPubliclyAvailable && typeof getMarketStatusLabel === 'function') {
+    var statusLabel = getMarketStatusLabel(statusInfo.market, lang);
+    var statusEmoji = (typeof getMarketStatusEmoji === 'function') ? getMarketStatusEmoji(statusInfo.market) : '';
+    if (statusLabel) {
+      availabilityHtml = '<p class="pt-card-availability pt-card-availability-unavailable">'
+        + (statusEmoji ? _ptEsc(statusEmoji) + ' ' : '') + _ptEsc(statusLabel) + '</p>';
+    }
+  }
+  var fomo = (typeof ptResolveListingFomo === 'function') ? ptResolveListingFomo(p, lang) : null;
+  var fomoHtml = fomo
+    ? '<p class="pt-card-fomo pt-card-fomo-' + _ptEsc(fomo.tone) + '">' + _ptEsc(fomo.text) + '</p>'
+    : '';
+  // A "missed it" FOMO line already states the situation, so the plain status
+  // label above would just repeat it. Prefer the richer one, never both.
+  if (fomo && fomo.kind === 'missed') availabilityHtml = '';
+  priceHtml += availabilityHtml + fomoHtml;
 
   var agentHtml = '';
   if (opts.showAgentRow !== false) {

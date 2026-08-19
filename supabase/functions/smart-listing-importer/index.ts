@@ -48,6 +48,69 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// REQUEST-WIDE DEADLINE
+// ═══════════════════════════════════════════════════════════════════════════
+// ONE budget for the whole invocation. Every blocking external operation —
+// auth lookups, image fetches, retry sleeps, Gemini attempts — draws from this
+// same clock. No phase gets an independent allowance.
+//
+// Why it has to be request-wide, from a real production failure (execution
+// 7f1df030-fa10-4a2b-8eb0-03644d651ac5): Gemini answered 503, the code slept
+// 2s and retried, and the second attempt — a fetch() with no timeout — hung.
+// 75 seconds after the first 503 the Edge Runtime terminated the isolate:
+//
+//     "reason": "EarlyDrop", "memory_used.total": "13345582", "cpu_time_used": "73"
+//
+// 12.7 MB and 73 ms of CPU: the isolate was idle, blocked on a network read.
+// That is the WALL CLOCK, not a resource limit. Because the worker was killed
+// mid-await, `new Response(...)` never ran, so no CORS headers were ever
+// emitted and the browser saw a bare network failure or a gateway 503.
+//
+// A per-phase budget is not sufficient, and the first version of this fix got
+// that wrong: it capped the Gemini phase at 105s but started that clock AFTER
+// image loading, so a 75s image phase plus a 92s Gemini phase could still add
+// up to a 167s request against a ~150s ceiling. Phase budgets ADD; only a
+// shared deadline SUBTRACTS.
+//
+// The arithmetic that must always hold:
+//   image budget + Gemini budget + reserve  <=  REQUEST_BUDGET_MS  <  wall clock
+//        45s     +      60s      +    5s    =        110s          <    ~150s
+const REQUEST_BUDGET_MS     = 110_000;  // whole invocation, well under the ~150s wall clock
+const RESPONSE_RESERVE_MS   =   5_000;  // held back to build and send the response
+const IMAGE_PHASE_MAX_MS    =  45_000;  // images may never starve Gemini entirely
+const IMAGE_FETCH_MAX_MS    =  15_000;  // per-image ceiling
+const IMAGE_FETCH_MIN_MS    =   1_000;  // below this, skip rather than start
+const AUTH_FETCH_MAX_MS     =  10_000;  // auth/admin lookups are external too
+const GEMINI_ATTEMPT_MAX_MS =  45_000;  // per-attempt ceiling
+const GEMINI_MIN_ATTEMPT_MS =   5_000;  // below this, do not start another attempt
+
+// createRequestDeadline(totalMs, now) -- pure and injectable so the budget
+// arithmetic is unit-testable without a running isolate.
+//
+//   remaining() raw time left
+//   usable()    remaining minus the response reserve: what a blocking op may
+//               actually consume. Never negative.
+//   allot(want) the largest timeout affordable right now, capped at `want`.
+function createRequestDeadline(totalMs: number = REQUEST_BUDGET_MS, now: number = Date.now()) {
+  const startedAt = now;
+  const expiresAt = now + totalMs;
+  return {
+    startedAt,
+    expiresAt,
+    totalMs,
+    remaining(at: number = Date.now()): number { return expiresAt - at; },
+    usable(at: number = Date.now()): number { return Math.max(0, expiresAt - at - RESPONSE_RESERVE_MS); },
+    allot(wantMs: number, at: number = Date.now()): number { return Math.min(wantMs, this.usable(at)); },
+  };
+}
+type RequestDeadline = ReturnType<typeof createRequestDeadline>;
+
+// The one user-facing timeout message. Deliberately actionable and free of
+// runtime internals -- no isolate, wall-clock or EarlyDrop language.
+const GEMINI_TIMEOUT_MESSAGE =
+  'Gemini did not respond within the available time. Try again in a minute, or generate with fewer photos.';
+
 const MAX_IMAGES = 10;
 
 // Only fetch images from trusted Supabase Storage domains.
@@ -71,7 +134,7 @@ function tokenAal(token: string): string {
   }
 }
 
-async function requireAdmin(req: Request): Promise<{ error: string; status: number } | null> {
+async function requireAdmin(req: Request, deadline: RequestDeadline): Promise<{ error: string; status: number } | null> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
   if (!supabaseUrl || !supabaseAnonKey) return { error: 'Server misconfigured', status: 500 };
@@ -80,6 +143,7 @@ async function requireAdmin(req: Request): Promise<{ error: string; status: numb
   const token = auth.slice(7);
   const r = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey },
+    signal: AbortSignal.timeout(deadline.allot(AUTH_FETCH_MAX_MS)),
   });
   if (!r.ok) return { error: 'Invalid token', status: 401 };
   const user = await r.json();
@@ -101,6 +165,7 @@ async function requireAdmin(req: Request): Promise<{ error: string; status: numb
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'apikey': supabaseAnonKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_uid: user.id }),
+    signal: AbortSignal.timeout(deadline.allot(AUTH_FETCH_MAX_MS)),
   });
   if (!adminCheck.ok) return { error: 'Server misconfigured', status: 500 };
   if ((await adminCheck.json()) !== true) {
@@ -185,13 +250,16 @@ function buildRenderUrl(objectUrl: string): string | null {
 
 // Fetch image bytes with the full SSRF + size guards. Returns null on any
 // rejection (bad host, non-image, oversized, network error).
-async function fetchImageBytes(url: string): Promise<{ mimeType: string; bytes: Uint8Array } | null> {
+async function fetchImageBytes(url: string, timeoutMs: number): Promise<{ mimeType: string; bytes: Uint8Array } | null> {
   try {
     let parsed: URL;
     try { parsed = new URL(url); } catch { return null; }
     if (parsed.protocol !== 'https:') return null;
     if (!ALLOWED_IMAGE_HOSTS.test(parsed.hostname)) return null;
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    // Timeout comes from the REQUEST deadline, not a fixed constant: a slow
+    // gallery must shrink the time left for Gemini, never extend the request.
+    if (timeoutMs < IMAGE_FETCH_MIN_MS) return null;
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
     // Re-validate the FINAL host after any redirect, and require an image
     // content type + bounded size — the full SSRF checklist even though the
@@ -213,13 +281,15 @@ async function fetchImageBytes(url: string): Promise<{ mimeType: string; bytes: 
 // Load one listing image: prefer the downscaled render rendition; if that is
 // unavailable (Image Transformations disabled, 400, or a non-image response),
 // fall back to the original object. Same size/SSRF guards apply to both.
-async function loadImageBytes(objectUrl: string): Promise<{ mimeType: string; bytes: Uint8Array } | null> {
+async function loadImageBytes(objectUrl: string, budgetMs: () => number): Promise<{ mimeType: string; bytes: Uint8Array } | null> {
   const renderUrl = buildRenderUrl(objectUrl);
   if (renderUrl) {
-    const r = await fetchImageBytes(renderUrl);
+    // budgetMs() is re-read between the two attempts: the rendition fetch has
+    // already spent part of the request, and the fallback only gets what's left.
+    const r = await fetchImageBytes(renderUrl, Math.min(IMAGE_FETCH_MAX_MS, budgetMs()));
     if (r) return r;
   }
-  return await fetchImageBytes(objectUrl);
+  return await fetchImageBytes(objectUrl, Math.min(IMAGE_FETCH_MAX_MS, budgetMs()));
 }
 
 function buildPrompt(description: string, imageCount: number): string {
@@ -309,7 +379,7 @@ EVIDENCE & HONESTY RULES (do not violate):
 - State ONLY what is supported by a photo or by the description text. NEVER invent rooms, bedrooms/bathrooms, amenities, a pool, a finish, sizes, or a price that are not visibly shown and not stated.
 - A field MAY be filled from clearly-visible photo evidence when the text does not state it — set a confidence that reflects how certain the visual evidence is. If neither the photos nor the text support a value, return null with confidence 0. Do not guess numbers (bedrooms, bathrooms, sizes, price) beyond what the evidence supports.
 - Absence is not evidence: if something simply is not photographed, that is NOT proof it is missing — do not claim its absence.
-- LEASE-DURATION PRICING: the text may include a "Lease-duration pricing" line listing rates for specific commitments (e.g. 3 / 6 / 12 months), each marked as per-month or as a whole-lease total. You MAY state those exact rates in the description. You must NEVER invent, calculate, interpolate, or estimate a rate for a duration that is not listed, never convert a monthly rate into a total (or vice versa) yourself, and never present a discount/total you were not given. If no lease-duration pricing is provided, do not mention lease-duration rates at all.
+- LEASE-TERM PRICING: the text may include a "Lease-term pricing" line, and/or a "Per-unit lease-term pricing" block, listing rates for specific rental terms (a daily rate, and/or 3 / 6 / 12-month commitments). Each rate is already written out in full and is marked as per day, per month, or as a whole-lease total. You MAY state those exact rates in the description. You must NEVER invent, calculate, interpolate, or estimate a rate for a term that is not listed; never convert between a daily rate, a monthly rate and a lease total yourself; and never present a discount, total, or nightly equivalent you were not given. When rates are given per unit type, they belong to that named unit ONLY — never attribute one unit's rate to another unit or to the building as a whole. If no lease-term pricing is provided, do not mention lease-term rates at all.
 
 CONFLICT DETECTION (flag, never silently "correct"):
 - The description may include a "Known details:" line — values SUPPLIED by staff. If the photos CLEARLY contradict a supplied value (e.g. it says "5 bedroom" but the photos show a single studio room; or "with pool" but the photos positively show there is no pool where one would be), then:
@@ -436,7 +506,11 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  const authErr = await requireAdmin(req);
+  // The clock starts HERE, before any external call, and every phase below
+  // subtracts from it. This is the single budget for the whole invocation.
+  const deadline = createRequestDeadline();
+
+  const authErr = await requireAdmin(req, deadline);
   if (authErr) {
     return new Response(JSON.stringify({ error: authErr.error }), {
       status: authErr.status,
@@ -467,8 +541,20 @@ Deno.serve(async (req) => {
     // preserved), never silently accumulated into a WORKER_RESOURCE_LIMIT.
     let accumulatedB64 = 0;
     let skippedBudget = 0;
+    let skippedDeadline = 0;
+    // The image phase ends at whichever comes first: its own cap, or the point
+    // where the request must hand what is left to Gemini. Capping images at
+    // IMAGE_PHASE_MAX_MS is what guarantees Gemini always inherits a usable
+    // slice instead of being starved by a slow gallery.
+    const imagePhaseEndsAt = Math.min(
+      Date.now() + IMAGE_PHASE_MAX_MS,
+      deadline.expiresAt - RESPONSE_RESERVE_MS,
+    );
+    const imageBudgetMs = () => imagePhaseEndsAt - Date.now();
     const loaded = await mapWithConcurrency(urlsToFetch, IMAGE_CONCURRENCY, async (url) => {
-      const img = await loadImageBytes(url);
+      // Out of image time: skip the rest rather than push the request over.
+      if (imageBudgetMs() < IMAGE_FETCH_MIN_MS) { skippedDeadline++; return null; }
+      const img = await loadImageBytes(url, imageBudgetMs);
       if (!img) return null;
       const estB64 = Math.ceil(img.bytes.length / 3) * 4;
       if (accumulatedB64 + estB64 > MAX_TOTAL_INLINE_BYTES) { skippedBudget++; return null; }
@@ -480,37 +566,86 @@ Deno.serve(async (req) => {
     const imageParts = loaded
       .filter((p): p is { mimeType: string; data: string } => p !== null)
       .map(p => ({ inlineData: { mimeType: p.mimeType, data: p.data } }));
-    const failedToLoad = urlsToFetch.length - imageParts.length - skippedBudget;
+    const failedToLoad = urlsToFetch.length - imageParts.length - skippedBudget - skippedDeadline;
     console.log(JSON.stringify({
       fn: 'smart-listing-importer', source: importSource,
       images_in: urlsToFetch.length, images_used: imageParts.length,
       images_skipped_budget: skippedBudget, images_failed: failedToLoad,
+      images_skipped_deadline: skippedDeadline,
       inline_bytes: accumulatedB64,
+      image_phase_ms: Date.now() - deadline.startedAt,
+      budget_left_ms: deadline.remaining(),
     }));
 
     const textPart = { text: buildPrompt(description || '', imageParts.length) };
 
     const RETRY_DELAYS = [2000, 5000, 10000];
 
+    // ── Gemini, drawing from the SHARED request deadline ──────────────────
+    //
+    // Whatever the image phase consumed is already gone from this budget --
+    // deadline.usable() is computed from the ORIGINAL request start, so image
+    // time and Gemini time can never sum past REQUEST_BUDGET_MS. That is the
+    // property a per-phase budget cannot give you.
+    //
+    // Gemini 503 stays retryable: it means "model overloaded", a genuinely
+    // transient condition, and the observed production failure recovered from
+    // the FIRST 503 correctly. What it could not survive was the second attempt
+    // hanging with no timeout. So the ladder is kept and bounded, not removed.
     let response!: Response;
+    let attemptsMade = 0;
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
-      response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [...imageParts, textPart] }],
-            generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
-          }),
+      // Never more than the ceiling, never more than the request can afford.
+      const attemptBudget = deadline.allot(GEMINI_ATTEMPT_MAX_MS);
+      if (attemptBudget < GEMINI_MIN_ATTEMPT_MS) {
+        console.log(JSON.stringify({
+          fn: 'smart-listing-importer', event: 'gemini_budget_exhausted',
+          attempts: attemptsMade, budget_left_ms: deadline.remaining(),
+        }));
+        throw new Error(GEMINI_TIMEOUT_MESSAGE);
+      }
+
+      attemptsMade++;
+      try {
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [...imageParts, textPart] }],
+              generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
+            }),
+            // THE fix for the EarlyDrop: this fetch used to have no signal at
+            // all, so a hung attempt ran until the platform killed the isolate.
+            signal: AbortSignal.timeout(attemptBudget),
+          }
+        );
+      } catch (e) {
+        const timedOut = e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError');
+        if (!timedOut) throw e;
+        console.log(JSON.stringify({
+          fn: 'smart-listing-importer', event: 'gemini_attempt_timeout',
+          attempt: attempt + 1, attempt_budget_ms: attemptBudget, budget_left_ms: deadline.remaining(),
+        }));
+        // A timed-out attempt is as retryable as a 503 -- but only if the
+        // request can still fund the delay AND a meaningful attempt after it.
+        if (attempt < RETRY_DELAYS.length &&
+            deadline.usable() > RETRY_DELAYS[attempt] + GEMINI_MIN_ATTEMPT_MS) {
+          await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+          continue;
         }
-      );
+        throw new Error(GEMINI_TIMEOUT_MESSAGE);
+      }
 
       if (response.ok) break;
 
       if (
         (response.status === 429 || response.status === 503) &&
-        attempt < RETRY_DELAYS.length
+        attempt < RETRY_DELAYS.length &&
+        // The sleep itself draws from the same clock. Without this guard the
+        // ladder can spend the budget it is waiting to use.
+        deadline.usable() > RETRY_DELAYS[attempt] + GEMINI_MIN_ATTEMPT_MS
       ) {
         console.log(`Gemini ${response.status}, retry ${attempt + 1}/${RETRY_DELAYS.length}`);
         await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
@@ -518,6 +653,13 @@ Deno.serve(async (req) => {
       }
 
       const errText = await response.text();
+      if (response.status === 429 || response.status === 503) {
+        // Retryable, but out of budget to retry again.
+        throw new Error(
+          `Gemini is busy right now (HTTP ${response.status}) and did not recover within the time available. ` +
+          'Try again in a minute, or generate with fewer photos.'
+        );
+      }
       throw new Error(`Gemini API ${response.status}: ${errText.slice(0, 200)}`);
     }
 

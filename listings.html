@@ -591,8 +591,10 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 <script src="amenities.js?v=__ASSET_VERSION__"></script>
 <script src="terminology.js?v=__ASSET_VERSION__"></script>
 <script src="currency.js?v=__ASSET_VERSION__"></script>
+<script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
+<script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
 <script src="tracking.js?v=__ASSET_VERSION__"></script>
@@ -730,19 +732,35 @@ function getContactDisplay(p, lang) {
 // across different currencies (a USD listing vs. a LAK listing) without
 // normalization is a pre-existing limitation this sort inherits unchanged
 // from the legacy text-parsing version -- not something this fix expands.
+// Resolves through ptResolveSortPrice() (components.js) -- the SAME precedence
+// the card renders with (structured column -> cheapest unit type -> legacy
+// text), so the sort key can never disagree with the price the visitor is
+// looking at. The unit-type step is what keeps a fully-occupied building in
+// its correct sort position and price band: rows saved by an older admin
+// build have properties.price_amount = NULL purely because nothing was
+// available, and would otherwise sort as 0.
+//
+// parseLegacyPriceAmount() (currency.js) is range-aware -- a legacy
+// price_display like "$280-300 / month" resolves to its lower bound instead
+// of being digit-stripped into "280300", which would otherwise sort (and, if
+// it ever leaked into price_amount elsewhere, display) as if it were a real
+// ~280K value. It is passed IN rather than reached for inside components.js
+// so that module keeps no dependency on currency.js.
+function _resolvedPrice(p) {
+  // Feature-detected: components.js/currency.js are separately-cached static
+  // assets (see the repo-wide asset versioning that guards against this in
+  // the normal case). A version-mismatched cache degrades this sort key
+  // rather than throwing a ReferenceError that would break the whole page.
+  var legacy = typeof window.parseLegacyPriceAmount === 'function' ? window.parseLegacyPriceAmount : null;
+  if (typeof ptResolveSortPrice !== 'function') {
+    if (p.price_amount != null) return { amount: p.price_amount, currency: p.price_currency || null };
+    return { amount: legacy ? (legacy(p.price_display) || null) : null, currency: p.price_currency || null };
+  }
+  return ptResolveSortPrice(p, legacy);
+}
 function _numericPrice(p) {
-  // parseLegacyPriceAmount() (currency.js) is range-aware -- a legacy
-  // price_display like "$280-300 / month" resolves to its lower bound
-  // instead of being digit-stripped into "280300", which would otherwise
-  // sort (and, if it ever leaked into price_amount elsewhere, display) as
-  // if it were a real ~280K value.
-  if (p.price_amount != null) return p.price_amount;
-  // Feature-detected: currency.js is a separately-cached static asset (see
-  // the repo-wide asset versioning that guards against this in the normal
-  // case). A version-mismatched cache degrades this sort key to 0 instead
-  // of throwing a ReferenceError that would break the whole search page.
-  if (typeof window.parseLegacyPriceAmount !== 'function') return 0;
-  return window.parseLegacyPriceAmount(p.price_display) || 0;
+  var r = _resolvedPrice(p);
+  return r.amount != null ? r.amount : 0;
 }
 // Rented Listings UX: available listings always rank above unavailable
 // ones (sold/rented/reserved/fully occupied/off market), regardless of the
@@ -801,8 +819,13 @@ function getLatLng(p) {
 // to sniffing the legacy price_display text for a row that predates the
 // pricing migration's backfill.
 function formatPriceBubble(p) {
-  var num = p.price_amount;
-  var currency = p.price_currency;
+  // Resolved, not raw: the map bubble showed "?" for a fully-occupied building
+  // whose price lives only on its unit types -- the same availability/price
+  // coupling the card had. _resolvedPrice() gives the map the identical number
+  // the card and the sort key use.
+  var _r = _resolvedPrice(p);
+  var num = _r.amount;
+  var currency = _r.currency || p.price_currency;
   if (num == null) {
     var raw = p.price_display || '';
     if (!raw) return '?';
@@ -1047,7 +1070,7 @@ function closeMapPreview() {
 
 async function loadListings() {
   try {
-    var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&select=*,contacts(role,name),parties(type,name_en,photo_url)', {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&select=*,contacts(role,name),parties(type,name_en,photo_url),unit_types(id,sort_order,name_en,name_lo,name_zh,price_display,sale_price,rent_price,rent_period,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency,is_available,available_count,total_units,next_available_date)', {
       headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
     });
     allProperties = await res.json();
@@ -1155,9 +1178,14 @@ function currentPriceBandDef() {
 function matchesPriceBand(p) {
   var band = currentPriceBandDef();
   if (band.min == null && band.max == null) return true;    // Any price
-  var cur = p.price_currency || 'USD';
+  // Currency comes from the SAME resolution step as the amount, so a
+  // fully-occupied listing priced in LAK only on its unit types is still
+  // recognised as non-USD instead of being banded against USD thresholds
+  // (properties.price_currency is null on those rows alongside the amount).
+  var resolved = _resolvedPrice(p);
+  var cur = resolved.currency || p.price_currency || 'USD';
   if (cur !== 'USD') return true;                           // never drop non-USD (no conversion)
-  var v = _numericPrice(p);
+  var v = resolved.amount;
   if (!v) return true;                                      // no price on file -> don't hide
   if (band.min != null && v < band.min) return false;
   if (band.max != null && v > band.max) return false;
@@ -1392,9 +1420,11 @@ function renderListings() {
   });
 
   // Derive Best Value: price > 15% below group average (same district + type + transaction, min 3 peers)
+  // Same resolution as the sort key: a fully-occupied building priced only on
+  // its unit types must still count toward (and be eligible for) Best Value.
   var _grp = {};
   allProperties.forEach(function(p) {
-    var np = p.price_amount != null ? p.price_amount : parseNumericPrice(p.price_display);
+    var np = _resolvedPrice(p).amount || parseNumericPrice(p.price_display);
     if (!np || !p.district_en || !p.property_type || !p.transaction_type) return;
     var k = p.district_en + '|' + p.property_type + '|' + p.transaction_type;
     if (!_grp[k]) _grp[k] = [];
@@ -1406,7 +1436,7 @@ function renderListings() {
     if (arr.length >= 3) _grpAvg[k] = arr.reduce(function(a,b){return a+b;},0) / arr.length;
   });
   sorted.forEach(function(p) {
-    var np = p.price_amount != null ? p.price_amount : parseNumericPrice(p.price_display);
+    var np = _resolvedPrice(p).amount || parseNumericPrice(p.price_display);
     var k = (p.district_en||'') + '|' + (p.property_type||'') + '|' + (p.transaction_type||'');
     p._isBestValue = !!(np && _grpAvg[k] && np < _grpAvg[k] * 0.85);
   });

@@ -89,6 +89,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 .form-back{font-size:12px;color:var(--teal);cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:6px;font-weight:500;}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 .form-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;}
+.form-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
 .form-full{grid-column:1/-1;}
 .form-group{display:flex;flex-direction:column;gap:6px;}
 .form-label{font-size:10px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:var(--ink-muted);}
@@ -196,6 +197,8 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 .rental-terms-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
 .rt-row .form-label{display:block;font-size:10.5px;font-weight:500;color:var(--ink-muted);margin-bottom:4px;}
 .rt-field-money,.rt-field-utility{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.rt-field-included-amount{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;align-items:center;}
+.rt-period-hint{font-size:11px;color:var(--ink-muted);white-space:nowrap;}
 .rt-field-checkboxes{display:flex;flex-wrap:wrap;gap:10px;}
 .rt-checkbox-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink);cursor:pointer;}
 .rt-field-fees{display:flex;flex-direction:column;gap:6px;}
@@ -208,6 +211,9 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 .ut-rt-status-pill.ut-rt-override{color:var(--gold,#b8860b);font-weight:600;}
 .ut-rt-override-btn{border:1px solid var(--border);background:var(--white);border-radius:4px;padding:4px 10px;font-size:11px;color:var(--teal);cursor:pointer;flex-shrink:0;}
 .ut-rt-fields{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);}
+.ut-lease-basis-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-muted);}
+.ut-lease-basis-row .form-select{flex:0 0 auto;width:auto;}
+.ut-lease-preview{font-size:11.5px;color:var(--ink-muted);line-height:1.6;}
 /* AI Generation */
 .ai-gen-card{background:linear-gradient(135deg,rgba(45,140,140,0.07),rgba(45,140,140,0.03));border:1px dashed var(--teal-border);border-radius:6px;padding:20px 24px;margin-bottom:24px;}
 .btn-ai-gen{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--teal);color:#fff;border:none;padding:13px 24px;border-radius:5px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;transition:all 0.2s;width:100%;}
@@ -238,7 +244,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 .empty{text-align:center;padding:48px;color:var(--ink-muted);}
 .empty-title{font-size:16px;font-weight:500;margin-bottom:8px;color:var(--ink);}
 @media(max-width:640px){
-  .form-grid,.form-grid-3{grid-template-columns:1fr;}
+  .form-grid,.form-grid-3,.form-grid-4{grid-template-columns:1fr;}
   .form-full{grid-column:1;}
   .check-grid{grid-template-columns:1fr 1fr;}
   .nearby-row{grid-template-columns:44px 1fr auto;gap:6px;}
@@ -563,25 +569,36 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
             </div>
           </div>
 
-          <!-- LEASE-DURATION PRICING — optional tiered rental rates for longer
-               commitments. Flat columns (lease_price_basis / rent_price_3mo /
-               rent_price_6mo / rent_price_12mo, 20260808000000_lease_duration_pricing),
-               NOT rental_terms JSONB. The base 1-month/monthly price is the Rent
-               Price above; each tier is optional (blank = not offered). One
-               listing-level basis toggle (Monthly vs Total) governs all tiers.
-               Shown only for a single-price rental (hidden for sale-only and for
-               multi-unit range mode — per-unit-type lease pricing is out of scope). -->
+          <!-- LEASE-TERM PRICING — optional per-term rental rates: a Daily rate
+               plus the longer-commitment tiers. Flat columns (lease_price_basis /
+               rent_price_daily / rent_price_3mo / rent_price_6mo / rent_price_12mo,
+               20260808000000 + 20260818020000), NOT rental_terms JSONB — pricing
+               is operational data and stays relational (rental-terms.js rule 9).
+               The base 1-month/monthly price is the Rent Price above; every term
+               here is optional (blank = not offered).
+
+               The Monthly/Total toggle governs the 3/6/12-month tiers ONLY. The
+               Daily rate is per-day by definition and is never reinterpreted by
+               it — see lease-pricing.js rule 9, which is where that rule actually
+               lives; this form just renders what LEASE_TERMS declares.
+
+               Shown for a single-price rental. In multi-unit mode this block is
+               hidden and each Unit Type card carries its OWN lease-term pricing
+               instead (a tier is a discount quoted against a specific base rent,
+               so a building tier cannot be attached to a unit with a different
+               base — lease-pricing.js rule 8). -->
           <div class="form-group form-full" id="lease-duration-block" style="display:none;">
-            <label class="form-label">Lease-duration pricing <span style="color:var(--ink-muted);font-weight:400;">— optional. Longer commitments can have a lower rate; leave a duration blank if it isn't offered.</span></label>
+            <label class="form-label">Lease-term pricing <span style="color:var(--ink-muted);font-weight:400;">— optional. A daily rate, and lower rates for longer commitments; leave a term blank if it isn't offered.</span></label>
             <div id="lease-basis-row" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:4px 0 12px;font-size:13px;">
-              <span style="color:var(--ink-muted);">These prices are:</span>
+              <span style="color:var(--ink-muted);">The 3 / 6 / 12-month prices are:</span>
               <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="lease-basis" id="lease-basis-monthly" value="monthly" checked> Monthly (per month)</label>
               <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="lease-basis" id="lease-basis-total" value="total"> Total for the lease</label>
             </div>
-            <div class="form-grid-3">
-              <div class="form-group"><label class="form-label">3 months</label><input class="form-input" id="f-rent-3mo" type="number" min="0" placeholder="e.g. 380"></div>
-              <div class="form-group"><label class="form-label">6 months</label><input class="form-input" id="f-rent-6mo" type="number" min="0" placeholder="e.g. 350"></div>
-              <div class="form-group"><label class="form-label">1 year</label><input class="form-input" id="f-rent-12mo" type="number" min="0" placeholder="e.g. 320"></div>
+            <div class="form-grid-4">
+              <div class="form-group"><label class="form-label">Daily <span style="color:var(--ink-muted);font-weight:400;">— per day</span></label><input class="form-input" id="f-rent-daily" type="number" min="0" placeholder="e.g. 45"></div>
+              <div class="form-group"><label class="form-label">3 months</label><input class="form-input" id="f-rent-3mo" type="number" min="0" placeholder="e.g. 420"></div>
+              <div class="form-group"><label class="form-label">6 months</label><input class="form-input" id="f-rent-6mo" type="number" min="0" placeholder="e.g. 400"></div>
+              <div class="form-group"><label class="form-label">1 year</label><input class="form-input" id="f-rent-12mo" type="number" min="0" placeholder="e.g. 350"></div>
             </div>
             <div class="form-hint" id="lease-duration-preview" style="margin-top:10px;"></div>
           </div>
@@ -1018,6 +1035,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 <script src="terminology.js?v=__ASSET_VERSION__"></script>
 <script src="currency.js?v=__ASSET_VERSION__"></script>
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
+<script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script src="import-provenance.js?v=__ASSET_VERSION__"></script>
@@ -1555,10 +1573,23 @@ function computeStructuredPrice() {
   };
 }
 
-// ── LEASE-DURATION PRICING ────────────────────────────────────────────
-// Optional tiered rental rates (3/6/12-month) with one listing-level basis
-// (Monthly vs Total). Flat columns, not rental_terms JSONB. The base 1-month
-// price is the existing Rent Price. Shown only for a single-price rental.
+// ── LEASE-TERM PRICING (building level) ───────────────────────────────
+// The registry, the resolver, the formatter and the write payload all live in
+// lease-pricing.js (LEASE_TERMS / resolveLeasePricing / buildLeasePricingLines
+// / buildLeasePricingPayload) so this page, the public listing page and the AI
+// prompt read ONE implementation. Nothing here names a duration or a column:
+// adding a 24-month tier later is a LEASE_TERMS entry plus a migration, with no
+// edit to this block (lease-pricing.js rule 4).
+//
+// Field ids follow LEASE_TERMS' keys as `f-rent-<key>` (f-rent-daily,
+// f-rent-3mo, ...), which is what lets the loops below stay generic.
+// 'monthly' is skipped throughout — it has no column and no input of its own,
+// because the base monthly rent IS the Rent Price field above.
+//
+// Shown only for a single-price rental. With Unit Types present, pricing moves
+// into the cards (see the per-unit block in addUnitType) — a tier is quoted
+// against a specific base rent, so a building tier must never be shown against
+// a unit's different base (lease-pricing.js rule 8).
 function leaseHasUnitTypes() { return document.querySelectorAll('.ut-card').length > 0; }
 function leaseIsRental() {
   return typeof isRentalTransactionType === 'function'
@@ -1568,6 +1599,12 @@ function leaseBasis() {
   const t = document.getElementById('lease-basis-total');
   return (t && t.checked) ? 'total' : 'monthly';
 }
+// Every LEASE_TERMS entry that owns a column, i.e. everything the form has an
+// input for. Used by the read/write/listener loops below.
+function _leaseInputTerms() {
+  return (typeof LEASE_TERMS !== 'undefined' ? LEASE_TERMS : []).filter(t => t.column);
+}
+function _leaseInputId(term) { return 'f-rent-' + term.key; }
 // The rent leg's currency + base monthly amount: price_* for a pure for_rent
 // listing, rent_price_* for a sale_or_rent listing. Base is always a per-month
 // figure (the primary rent) regardless of the tier basis.
@@ -1587,33 +1624,52 @@ function leaseTier(id) {
 }
 // The value written to the property record. Only meaningful for a single-price
 // rental; null everything otherwise (sale-only, or multi-unit range mode) so a
-// stale value never leaks into a non-rental listing. Basis is stored only when
-// at least one tier is entered — no tiers ⇒ all NULL ⇒ today's behavior.
+// stale value never leaks into a non-rental listing. buildLeasePricingPayload()
+// is the single write path (lease-pricing.js rule 3) and is also what decides
+// that a listing with no tiers stores a NULL basis — i.e. an untouched listing
+// saves exactly the columns it saved before this feature existed.
 function computeLeaseDurationPricing() {
-  const out = { lease_price_basis: null, rent_price_3mo: null, rent_price_6mo: null, rent_price_12mo: null };
-  if (!leaseIsRental() || leaseHasUnitTypes()) return out;
-  const t3 = leaseTier('f-rent-3mo'), t6 = leaseTier('f-rent-6mo'), t12 = leaseTier('f-rent-12mo');
-  out.rent_price_3mo = t3; out.rent_price_6mo = t6; out.rent_price_12mo = t12;
-  if (t3 != null || t6 != null || t12 != null) out.lease_price_basis = leaseBasis();
-  return out;
+  const blank = buildLeasePricingPayload({}, null);
+  if (!leaseIsRental() || leaseHasUnitTypes()) return blank;
+  const values = {};
+  _leaseInputTerms().forEach(term => { values[term.key] = leaseTier(_leaseInputId(term)); });
+  return buildLeasePricingPayload(values, leaseBasis());
 }
-// Extremely explicit preview so whoever edits the listing can never mistake a
-// monthly rate for a lease total. Monthly → "$380/month"; Total → "$1,100 total".
+// Reads the form back through the SAME resolver the public page uses, so the
+// preview cannot drift from what a visitor will actually see. Extremely
+// explicit by design: "$420 / month" vs "$1,100 total" vs "$45 / day" so
+// whoever edits the listing can never mistake one for another.
 function renderLeasePreview() {
   const host = document.getElementById('lease-duration-preview');
   if (!host) return;
   const ctx = leaseRentContext();
-  const basis = leaseBasis();
+  const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
+  const payload = leaseIsRental() ? (() => {
+    const values = {};
+    _leaseInputTerms().forEach(term => { values[term.key] = leaseTier(_leaseInputId(term)); });
+    return buildLeasePricingPayload(values, leaseBasis());
+  })() : buildLeasePricingPayload({}, null);
+
+  // A synthetic property row shaped exactly like the one that will be saved --
+  // resolveLeasePricing() then produces the preview from the real code path
+  // rather than a hand-rolled second formatter.
+  const draft = Object.assign({
+    transaction_type: document.getElementById('f-transaction').value,
+    price_amount:          isSor ? null : ctx.base,
+    price_currency:        isSor ? null : ctx.currency,
+    rent_price_amount:     isSor ? ctx.base : null,
+    rent_price_currency:   isSor ? ctx.currency : null
+  }, payload);
+
+  const lines = buildLeasePricingLines(resolveLeasePricing(draft, null), 'en');
   const money = (n) => (typeof formatMoney === 'function' ? formatMoney(n, ctx.currency) : (ctx.currency + ' ' + n));
-  const suffix = basis === 'total' ? ' total' : '/month';
-  const lines = [];
-  if (ctx.base != null) lines.push('1 month — ' + money(ctx.base) + '/month');
-  const tiers = [['3 months', leaseTier('f-rent-3mo')], ['6 months', leaseTier('f-rent-6mo')], ['1 year', leaseTier('f-rent-12mo')]];
-  tiers.forEach(([label, val]) => { if (val != null) lines.push(label + ' — ' + money(val) + suffix); });
-  if (lines.length <= (ctx.base != null ? 1 : 0)) {
-    host.textContent = basis === 'total'
-      ? 'Enter a rate to see it here (shown as a whole-lease total, e.g. “6 months — ' + money(2000) + ' total”).'
-      : 'Enter a rate to see it here (shown per month, e.g. “6 months — ' + money(350) + '/month”).';
+  // Only the base monthly rent resolving means no term pricing was entered --
+  // show the worked example rather than a one-line "preview" of the rent the
+  // operator just typed into the field above.
+  if (!payload.lease_price_basis && payload.rent_price_daily == null) {
+    host.textContent = leaseBasis() === 'total'
+      ? 'Enter a rate to see it here (3/6/12-month rates shown as a whole-lease total, e.g. \u201C6 months \u2014 ' + money(2000) + ' total\u201D; a Daily rate always shows per day).'
+      : 'Enter a rate to see it here (e.g. \u201C6 months \u2014 ' + money(400) + ' / month\u201D, \u201CDaily \u2014 ' + money(45) + ' / day\u201D).';
     host.style.opacity = '0.7';
     return;
   }
@@ -1629,8 +1685,9 @@ function syncLeaseDurationPricing() {
   renderLeasePreview();
 }
 function initLeaseDurationPricing() {
-  ['f-rent-3mo', 'f-rent-6mo', 'f-rent-12mo'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.addEventListener('input', renderLeasePreview);
+  _leaseInputTerms().forEach(term => {
+    const el = document.getElementById(_leaseInputId(term));
+    if (el) el.addEventListener('input', renderLeasePreview);
   });
   ['lease-basis-monthly', 'lease-basis-total'].forEach(id => {
     const el = document.getElementById(id); if (el) el.addEventListener('change', renderLeasePreview);
@@ -1672,6 +1729,98 @@ function _parseImportPriceText(text) {
   }
   const amount = window.parseLegacyPriceAmount(text);
   return { amount: amount, currency: currency };
+}
+
+// ── LEASE-TERM PRICING (unit-type level) ──────────────────────────────
+// Every apartment/condo unit type carries its OWN Daily / 3 / 6 / 12-month
+// rates, on top of its own base monthly Price above. Same registry, same
+// resolver, same formatter as the building-level block — the only difference
+// is where the numbers are read from (lease-pricing.js rule 3/4).
+//
+// Why per-unit at all: a Studio at $300/month and a 2BR at $700/month do not
+// share a 6-month rate, and attaching the building's tier to either would
+// publish a price nobody quoted (lease-pricing.js rule 8). That is also why a
+// unit type with no tiers of its own shows NO tiers rather than falling back
+// to the building's.
+//
+// Inputs are classed `ut-lease-<term key>` so the read/render loops stay
+// generic; the basis is a per-card <select> rather than radios because radios
+// sharing a `name` would bind every card together.
+function _utLeasePricingFieldsHtml(data) {
+  const terms = (typeof LEASE_TERMS !== 'undefined' ? LEASE_TERMS : []).filter(t => t.column);
+  const basis = (data && data.lease_price_basis === 'total') ? 'total' : 'monthly';
+  const basisOptions = (typeof LEASE_BASIS_OPTIONS !== 'undefined' ? LEASE_BASIS_OPTIONS : [])
+    .map(o => `<option value="${o.value}" ${basis === o.value ? 'selected' : ''}>${esc(o.label.en)}</option>`)
+    .join('');
+  const inputs = terms.map(term => {
+    const raw = (data && data[term.column] != null) ? data[term.column] : '';
+    // "per day" is spelled out on the Daily field only, from the registry's
+    // own perDay flag -- never hardcoded here (rule 4).
+    const note = term.perDay ? ' <span style="color:var(--ink-muted);font-weight:400;">— per day</span>' : '';
+    return `<div class="ut-field">
+          <label>${esc(term.label.en)}${note}</label>
+          <input class="form-input ut-lease-${term.key}" type="number" min="0" value="${esc(String(raw))}" oninput="_utOnLeasePricingChange(this)">
+        </div>`;
+  }).join('');
+  return `<div class="ut-field ut-field-full">
+          <label>Lease-term pricing <span style="color:var(--ink-muted);font-weight:400;">— optional, this unit only. Leave a term blank if it isn't offered.</span></label>
+          <div class="ut-lease-basis-row">
+            <span>The 3 / 6 / 12-month prices are:</span>
+            <select class="form-select ut-lease-basis" onchange="_utOnLeasePricingChange(this)">${basisOptions}</select>
+          </div>
+        </div>
+        ${inputs}
+        <div class="ut-field ut-field-full"><div class="ut-lease-preview"></div></div>`;
+}
+
+// Reads one card's lease-term inputs into the exact column set to PATCH.
+// buildLeasePricingPayload() is the single write path (lease-pricing.js
+// rule 3) and nulls every unfilled term, so clearing a field really clears it.
+function _utReadCardLeasePricing(card, isRental) {
+  if (!isRental) return buildLeasePricingPayload({}, null);
+  const values = {};
+  (typeof LEASE_TERMS !== 'undefined' ? LEASE_TERMS : []).filter(t => t.column).forEach(term => {
+    const el = card.querySelector('.ut-lease-' + term.key);
+    const raw = el ? el.value.trim() : '';
+    values[term.key] = raw === '' ? null : Number(raw);
+  });
+  const basisEl = card.querySelector('.ut-lease-basis');
+  return buildLeasePricingPayload(values, basisEl ? basisEl.value : null);
+}
+
+// Live per-card preview, resolved through resolveLeasePricing() against a
+// draft row shaped exactly like the one that will be saved -- so what the
+// operator sees here is literally what the public page will render.
+function _utRenderLeasePreview(card) {
+  const host = card.querySelector('.ut-lease-preview');
+  if (!host) return;
+  const tx = document.getElementById('f-transaction').value;
+  const isRental = isRentalTransactionType(tx);
+  if (!isRental) { host.textContent = ''; return; }
+  const isSor = tx === 'sale_or_rent';
+  const priceEl = card.querySelector(isSor ? '.ut-rent-amount' : '.ut-price-amount');
+  const curEl   = card.querySelector(isSor ? '.ut-rent-currency' : '.ut-price-currency');
+  const baseRaw = priceEl ? priceEl.value.trim() : '';
+  const base = baseRaw === '' ? null : Number(baseRaw);
+  const currency = (curEl && curEl.value) || DEFAULT_CURRENCY;
+  const draft = Object.assign({
+    price_amount:        isSor ? null : base,
+    price_currency:      isSor ? null : currency,
+    rent_price_amount:   isSor ? base : null,
+    rent_price_currency: isSor ? currency : null
+  }, _utReadCardLeasePricing(card, true));
+  const resolved = resolveLeasePricing({ transaction_type: tx }, draft);
+  if (!resolved.hasTiers) {
+    host.textContent = 'No lease-term rates for this unit — it shows its monthly Price above only.';
+    host.style.opacity = '0.7';
+    return;
+  }
+  host.style.opacity = '1';
+  host.innerHTML = buildLeasePricingLines(resolved, 'en').map(l => '<div>' + esc(l) + '</div>').join('');
+}
+function _utOnLeasePricingChange(el) {
+  const card = el.closest('.ut-card');
+  if (card) _utRenderLeasePreview(card);
 }
 
 function addUnitType(data) {
@@ -1755,6 +1904,9 @@ function addUnitType(data) {
             <select class="form-select ut-rent-frequency" onchange="_utUpdateSummary(this)">${_priceFrequencyOptionsHtml(rentFrequency)}</select>
           </div>
         </div>
+      </div>
+      <div class="ut-grid ut-lease-row" style="display:${isRentalTx ? '' : 'none'}">
+        ${_utLeasePricingFieldsHtml(data)}
       </div>
       <div class="ut-grid ut-rt-row" style="display:${isRentalTx ? '' : 'none'}">
         <div class="ut-field ut-field-full">
@@ -1873,6 +2025,7 @@ function addUnitType(data) {
   if (data && data.bathrooms != null) card.querySelector('.ut-bathrooms').dataset.utManual = 'true';
   _utUpdateSummary(card.querySelector('.ut-name-en'));
   _utRenderUnitPhotoGrid(card);
+  _utRenderLeasePreview(card);
   _utRenderRentalTermsBlock(card);
   _utUpdateAvailabilityBadge(card);
   _utInitCheckGrid(card.querySelector('.ut-features-grid'), FEATURES);
@@ -1975,14 +2128,28 @@ function renderBuildingRentalTerms() {
 // shows resolved VALUES, not just field names -- "Deposit: 1 Month", not
 // "Deposit") and, when the override panel is open, the override form
 // itself, pre-filled with the current building defaults per field.
-function _utRenderRentalTermsBlock(card) {
-  let overrides;
-  try { overrides = JSON.parse(card.dataset.rentalTermsOverrides || '{}'); } catch (e) { overrides = {}; }
+function _utReadCardOverrides(card) {
+  try { return JSON.parse(card.dataset.rentalTermsOverrides || '{}'); } catch (e) { return {}; }
+}
+
+// Summary chrome only -- the collapsed pill and the Override/Edit/Hide button
+// label. Deliberately does NOT touch the fields container.
+//
+// Splitting this out fixes a real data-entry bug: the onChange below used to
+// call _utRenderRentalTermsBlock(), which rebuilds the whole field set via
+// renderRentalTermsFields()'s `container.innerHTML = ''`. Every keystroke in a
+// unit-type override therefore destroyed and recreated the input being typed
+// into, losing focus after a single character -- so a multi-digit override
+// amount could not be entered at all, and a control whose visibility depends
+// on its own current value (the Trash Fee's revealed amount box) snapped shut
+// the moment it was chosen. The building-level panel never had this because
+// its onChange only stores the value.
+function _utRefreshRentalTermsSummary(card) {
+  const overrides = _utReadCardOverrides(card);
   const overriddenKeys = Object.keys(overrides);
   const pill = card.querySelector('.ut-rt-status-pill');
   const btn = card.querySelector('.ut-rt-override-btn');
-  const fieldsContainer = card.querySelector('.ut-rt-fields');
-  const isOpen = fieldsContainer.style.display !== 'none';
+  const isOpen = card.querySelector('.ut-rt-fields').style.display !== 'none';
 
   if (!overriddenKeys.length) {
     pill.textContent = '✓ Use Building Default';
@@ -1993,13 +2160,19 @@ function _utRenderRentalTermsBlock(card) {
     pill.className = 'ut-rt-status-pill ut-rt-override';
   }
   btn.textContent = isOpen ? 'Hide' : (overriddenKeys.length ? 'Edit Overrides' : 'Override');
+}
 
-  const displayValues = Object.assign({}, _buildingRentalTermsValues, overrides);
-  renderRentalTermsFields(fieldsContainer, displayValues, function(key, value) {
-    const current = (function() { try { return JSON.parse(card.dataset.rentalTermsOverrides || '{}'); } catch (e) { return {}; } })();
+// Full render -- summary chrome plus a rebuilt field set. Called when the
+// panel's CONTENTS genuinely change identity (card created, panel toggled
+// open/closed), never from a keystroke inside it.
+function _utRenderRentalTermsBlock(card) {
+  _utRefreshRentalTermsSummary(card);
+  const displayValues = Object.assign({}, _buildingRentalTermsValues, _utReadCardOverrides(card));
+  renderRentalTermsFields(card.querySelector('.ut-rt-fields'), displayValues, function(key, value) {
+    const current = _utReadCardOverrides(card);
     if (value == null) delete current[key]; else current[key] = value;
     card.dataset.rentalTermsOverrides = JSON.stringify(current);
-    _utRenderRentalTermsBlock(card);
+    _utRefreshRentalTermsSummary(card);
   });
 }
 
@@ -2102,6 +2275,9 @@ function _utUpdateSummary(inputEl) {
   if (bed !== '') parts.push(bed + 'BR');
   if (bath !== '') parts.push(bath + 'BA');
   card.querySelector('.ut-summary').textContent = parts.join(' · ') || 'No details yet';
+  // The lease-term preview shows this unit's base 1-month rate alongside its
+  // tiers, so a base-price edit has to refresh it too.
+  _utRenderLeasePreview(card);
   syncPricingMode();
 }
 
@@ -2118,7 +2294,10 @@ function syncUnitTypePriceFields() {
     card.querySelector('.ut-price-rent').style.display   = isSor ? '' : 'none';
     const rtRow = card.querySelector('.ut-rt-row');
     if (rtRow) rtRow.style.display = isRentalTx ? '' : 'none';
+    const leaseRow = card.querySelector('.ut-lease-row');
+    if (leaseRow) leaseRow.style.display = isRentalTx ? '' : 'none';
     _utUpdateSummary(card.querySelector('.ut-name-en'));
+    _utRenderLeasePreview(card);
   });
 }
 
@@ -2130,9 +2309,13 @@ function syncUnitTypePriceFields() {
 // scope here); frequency is included in the summary text only when every
 // active unit agrees on it, mirroring the old text-parser's same
 // all-agree-or-omit rule for a trailing suffix.
-function _utActiveAmounts(amountSelector, currencySelector, frequencySelector) {
+//
+// PRICE IS NOT COUPLED TO AVAILABILITY (see _utPriceEntries below). This
+// helper answers only "what do the AVAILABLE units cost"; the decision about
+// what to do when that set is empty belongs to _utPriceEntries, not here.
+function _utActiveAmounts(amountSelector, currencySelector, frequencySelector, includeUnavailable) {
   return [...document.querySelectorAll('.ut-card')]
-    .filter(card => card.querySelector('.ut-is-available').checked)
+    .filter(card => includeUnavailable || card.querySelector('.ut-is-available').checked)
     .map(card => {
       const raw = card.querySelector(amountSelector).value;
       if (raw === '') return null;
@@ -2145,6 +2328,49 @@ function _utActiveAmounts(amountSelector, currencySelector, frequencySelector) {
       };
     })
     .filter(Boolean);
+}
+
+// THE CANONICAL PROPERTY-LEVEL PRICE BASIS.
+//
+// WHY THIS EXISTS: _utActiveAmounts() filters on the Available checkbox, so a
+// fully-occupied building produced an EMPTY entry set, _utComputeRange()
+// returned min:null, and syncPricingMode() wrote '' into f-price-amount --
+// which saveListing() then persisted as properties.price_amount = NULL. The
+// building's price had not become unknown: every unit_types row still carried
+// it. Nulling the column silently broke three separate things:
+//   1. the public card fell through to "Price on request",
+//   2. price_asc/price_desc sorted the listing as if it cost 0,
+//   3. price-band filtering could no longer place it in a band.
+// A rented listing has a price -- that is the entire point of keeping rented
+// listings browsable. Availability is a SEPARATE axis (rendered separately;
+// see ptResolveNextAvailable / ptResolveListingFomo in components.js).
+//
+// THE RULE, in priority order:
+//   1. If any AVAILABLE unit has a price -> min across the available units.
+//      This is the actionable "starting from" price a buyer can act on today,
+//      and is exactly the previous behaviour. Unchanged.
+//   2. Otherwise, if any unit at all has a price -> min across ALL units.
+//      The building is fully occupied but still legitimately priced. basis
+//      'all' is surfaced in the hint text so the admin can see why a price is
+//      showing for a building with nothing available.
+//   3. Otherwise -> no entries, price_amount stays NULL. NOTHING IS
+//      FABRICATED: this function never invents, carries forward or defaults a
+//      number. Every value it returns was typed into a unit-type card.
+function _utPriceEntries(amountSelector, currencySelector, frequencySelector) {
+  const available = _utActiveAmounts(amountSelector, currencySelector, frequencySelector, false);
+  if (available.length) return { entries: available, basis: 'available' };
+  const all = _utActiveAmounts(amountSelector, currencySelector, frequencySelector, true);
+  if (all.length) return { entries: all, basis: 'all' };
+  return { entries: [], basis: 'none' };
+}
+// Hint text under the (disabled) building price field. Spells out the basis so
+// "Calculated: $250 – $400 / month" on a fully-occupied building reads as
+// deliberate rather than as a stale value.
+function _utRangeHint(range, basis) {
+  if (!range.text) return 'Calculated from active Unit Types below — not editable here.';
+  return basis === 'all'
+    ? ('Calculated: ' + range.text + ' (from all Unit Types — none are currently available; the price is kept so this listing still sorts and filters)')
+    : ('Calculated: ' + range.text + ' (from active Unit Types)');
 }
 function _utComputeRange(entries) {
   if (!entries.length) return { min: null, max: null, currency: null, frequency: null, text: null };
@@ -2185,6 +2411,10 @@ function _utOnAvailableChange(checkbox) {
 // range ("$250 – $400 / month") is shown in the hint text and also becomes
 // the legacy price_display (see saveListing()) for pages not yet reading
 // the structured columns.
+//
+// When NO unit is available, the basis widens to all units rather than
+// collapsing to NULL -- see _utPriceEntries() above for why. price_amount is
+// never coupled to availability.
 function syncPricingMode() {
   const hasUnitTypes = document.querySelectorAll('.ut-card').length > 0;
   const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
@@ -2203,8 +2433,10 @@ function syncPricingMode() {
     return;
   }
   if (isSor) {
-    const saleRange = _utComputeRange(_utActiveAmounts('.ut-sale-amount', '.ut-sale-currency', null));
-    const rentRange = _utComputeRange(_utActiveAmounts('.ut-rent-amount', '.ut-rent-currency', '.ut-rent-frequency'));
+    const saleBasis = _utPriceEntries('.ut-sale-amount', '.ut-sale-currency', null);
+    const rentBasis = _utPriceEntries('.ut-rent-amount', '.ut-rent-currency', '.ut-rent-frequency');
+    const saleRange = _utComputeRange(saleBasis.entries);
+    const rentRange = _utComputeRange(rentBasis.entries);
     document.getElementById('f-sale-amount').value = saleRange.min != null ? saleRange.min : '';
     if (saleRange.currency) document.getElementById('f-sale-currency').value = saleRange.currency;
     document.getElementById('f-rent-amount').value = rentRange.min != null ? rentRange.min : '';
@@ -2212,9 +2444,9 @@ function syncPricingMode() {
     if (rentRange.frequency) document.getElementById('f-rent-frequency').value = rentRange.frequency;
     saleIds.forEach(id => document.getElementById(id).disabled = true);
     rentIds.forEach(id => document.getElementById(id).disabled = true);
-    document.getElementById('sale-range-hint').textContent = saleRange.text ? ('Calculated: ' + saleRange.text + ' (from active Unit Types)') : 'Calculated from active Unit Types below — not editable here.';
+    document.getElementById('sale-range-hint').textContent = _utRangeHint(saleRange, saleBasis.basis);
     document.getElementById('sale-range-hint').style.display = '';
-    document.getElementById('rent-range-hint').textContent = rentRange.text ? ('Calculated: ' + rentRange.text + ' (from active Unit Types)') : 'Calculated from active Unit Types below — not editable here.';
+    document.getElementById('rent-range-hint').textContent = _utRangeHint(rentRange, rentBasis.basis);
     document.getElementById('rent-range-hint').style.display = '';
     // f-price-* is hidden while sale_or_rent, but saveListing() only reads
     // it when NOT sale_or_rent -- still clear+re-enable it so it never
@@ -2223,12 +2455,13 @@ function syncPricingMode() {
     singleIds.forEach(id => document.getElementById(id).disabled = false);
     document.getElementById('price-range-hint').style.display = 'none';
   } else {
-    const range = _utComputeRange(_utActiveAmounts('.ut-price-amount', '.ut-price-currency', '.ut-price-frequency'));
+    const priceBasis = _utPriceEntries('.ut-price-amount', '.ut-price-currency', '.ut-price-frequency');
+    const range = _utComputeRange(priceBasis.entries);
     document.getElementById('f-price-amount').value = range.min != null ? range.min : '';
     if (range.currency) document.getElementById('f-price-currency').value = range.currency;
     if (range.frequency) document.getElementById('f-price-frequency').value = range.frequency;
     singleIds.forEach(id => document.getElementById(id).disabled = true);
-    document.getElementById('price-range-hint').textContent = range.text ? ('Calculated: ' + range.text + ' (from active Unit Types)') : 'Calculated from active Unit Types below — not editable here.';
+    document.getElementById('price-range-hint').textContent = _utRangeHint(range, priceBasis.basis);
     document.getElementById('price-range-hint').style.display = '';
     // saveListing() reads sale/rent unconditionally regardless of
     // transaction type -- clear+re-enable them so a computed value never
@@ -2329,6 +2562,10 @@ function getUnitTypesFromDom() {
     name_lo:       card.querySelector('.ut-name-lo').value.trim() || null,
     name_zh:       card.querySelector('.ut-name-zh').value.trim() || null,
     ..._utReadCardPrice(card, isSor, isRental),
+    // Per-unit lease-term pricing (lease_price_basis + rent_price_daily/3mo/
+    // 6mo/12mo). All-null for a non-rental listing, so a sale listing can
+    // never carry a stale rental tier.
+    ..._utReadCardLeasePricing(card, isRental),
     bedrooms:      card.querySelector('.ut-bedrooms').value.trim()  === '' ? null : Number(card.querySelector('.ut-bedrooms').value),
     bathrooms:     card.querySelector('.ut-bathrooms').value.trim() === '' ? null : Number(card.querySelector('.ut-bathrooms').value),
     sqm:           card.querySelector('.ut-sqm').value.trim()       === '' ? null : Number(card.querySelector('.ut-sqm').value),
@@ -3379,11 +3616,14 @@ async function editListing(id, from) {
   document.getElementById('f-rent-amount').value      = p.rent_price_amount != null ? p.rent_price_amount : '';
   document.getElementById('f-rent-currency').value    = p.rent_price_currency || DEFAULT_CURRENCY;
   document.getElementById('f-rent-frequency').value   = p.rent_price_frequency || 'monthly';
-  // Lease-duration pricing (optional tiers + basis). Null columns → blank inputs
-  // + Monthly default, i.e. an existing single-price listing is unchanged.
-  document.getElementById('f-rent-3mo').value  = p.rent_price_3mo  != null ? p.rent_price_3mo  : '';
-  document.getElementById('f-rent-6mo').value  = p.rent_price_6mo  != null ? p.rent_price_6mo  : '';
-  document.getElementById('f-rent-12mo').value = p.rent_price_12mo != null ? p.rent_price_12mo : '';
+  // Lease-term pricing (optional Daily + 3/6/12-month tiers, plus the basis).
+  // Driven by LEASE_TERMS rather than a hardcoded column list, so a term added
+  // to the registry loads here with no edit. Null columns → blank inputs +
+  // Monthly default, i.e. an existing single-price listing is unchanged.
+  _leaseInputTerms().forEach(term => {
+    const el = document.getElementById(_leaseInputId(term));
+    if (el) el.value = p[term.column] != null ? p[term.column] : '';
+  });
   document.getElementById('lease-basis-total').checked   = (p.lease_price_basis === 'total');
   document.getElementById('lease-basis-monthly').checked = (p.lease_price_basis !== 'total');
   document.getElementById('f-price-previous').value = p.price_previous || '';
@@ -3673,7 +3913,7 @@ async function saveListing(e) {
     rent_price_amount:    priceFields.rent_price_amount,
     rent_price_currency:   priceFields.rent_price_currency,
     rent_price_frequency:  priceFields.rent_price_frequency,
-    ...computeLeaseDurationPricing(),   // lease_price_basis + rent_price_3mo/6mo/12mo
+    ...computeLeaseDurationPricing(),   // lease_price_basis + rent_price_daily/3mo/6mo/12mo
     price_display:     priceFields.price_display,
     sale_price:        priceFields.sale_price,
     rent_price:        priceFields.rent_price,
@@ -4130,6 +4370,53 @@ function selectEditImages(list, budget) {
   return out;
 }
 
+// describeAiGenFailure(err) -- turn a fetch rejection into something a human can act on.
+//
+// The old message pasted err.message straight through, which for the most
+// confusing failure mode produced exactly one word of signal: "Load failed".
+// That string is WebKit's text for a fetch() TypeError (Chrome says "Failed to
+// fetch"); it means the request produced NO RESPONSE AT ALL, so it is
+// specifically NOT any of the things the old hint told the operator to check —
+// a missing GEMINI_API_KEY, an undeployed function or a bad token all return a
+// real HTTP status with a readable JSON body, and would have shown that status.
+//
+// A response-less failure has only a few possible causes, and they are worth
+// naming separately instead of listing every possibility every time:
+//   * the edge function was killed by the platform mid-request (wall-clock or
+//     memory limit) — it dies before it can emit its CORS headers, so the
+//     browser refuses to surface anything;
+//   * the browser genuinely could not reach Supabase (offline, VPN, DNS);
+//   * a CSP connect-src violation (also logs "Refused to connect" in console).
+function describeAiGenFailure(err) {
+  const raw = (err && err.message) ? String(err.message) : String(err);
+
+  // AbortSignal.timeout() on our own fetch.
+  if (err && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+    return 'the request timed out after 3 minutes with no reply from the Edge Function. '
+         + 'That usually means the function was killed by Supabase before it could answer — '
+         + 'check Supabase Dashboard → Edge Functions → smart-listing-importer → Logs for a '
+         + 'WORKER_LIMIT / wall-clock entry, and retry with fewer photos.';
+  }
+
+  // A fetch that never produced a Response. WebKit: "Load failed".
+  // Chrome: "Failed to fetch". Firefox: "NetworkError when attempting to fetch resource".
+  if (err instanceof TypeError || /^(Load failed|Failed to fetch|NetworkError)/i.test(raw)) {
+    return 'the browser got NO response from the Edge Function ("' + raw + '"). '
+         + 'This is a network-level failure, not an application error — an unset GEMINI_API_KEY '
+         + 'or an undeployed function would have returned a numbered HTTP error instead. '
+         + 'Most likely the function was killed mid-request by Supabase (wall-clock or memory limit), '
+         + 'so it never sent its CORS headers. Check Supabase Dashboard → Edge Functions → '
+         + 'smart-listing-importer → Logs for the matching invocation; if the log shows a 429 from '
+         + 'Gemini, the API key is out of quota. Also verify you are online and that no CSP '
+         + '"Refused to connect" error appears in the console.';
+  }
+
+  // Everything else already carries a real status and body from the function.
+  return raw + '. If this names a status code, the Edge Function answered and the detail above is '
+             + 'from it directly (check GEMINI_API_KEY in Supabase Dashboard → Edge Functions → '
+             + 'Manage secrets for a 500 about the key).';
+}
+
 async function generateAIContent() {
   const btn = document.getElementById('ai-gen-btn');
   const statusEl = document.getElementById('ai-gen-status');
@@ -4278,30 +4565,61 @@ async function generateAIContent() {
              + nbPlaces.join('; '))
           : '\n(No nearby landmarks were provided — do not invent any; keep the neighborhood insight short and honest.)');
 
-    // ── Lease-duration pricing → AI as explicit facts (never invented) ──
+    // ── Lease-term pricing → AI as explicit facts (never invented) ──
     // Only the rates the operator actually entered are handed over, each stated
-    // in full (per-month vs whole-lease total per the listing basis). The AI may
-    // repeat these exact figures but must never calculate, interpolate, or
-    // invent a rate for a duration that isn't listed (enforced in the prompt).
+    // in full through the SAME buildLeasePricingLines() a visitor sees, so the
+    // AI can never be told a rate the public page renders differently. The AI
+    // may repeat these exact figures but must never calculate, interpolate, or
+    // invent a rate for a term that isn't listed (enforced in the prompt).
+    //
+    // With Unit Types present the building block is empty by construction
+    // (computeLeaseDurationPricing() returns all-null in multi-unit mode), and
+    // each unit's own terms are handed over per unit below instead.
     let leaseBlock = '';
     {
-      const lp = computeLeaseDurationPricing();
-      if (lp.lease_price_basis) {
-        const ctx = leaseRentContext();
-        const money = (n) => (typeof formatMoney === 'function' ? formatMoney(n, ctx.currency) : (ctx.currency + ' ' + n));
-        const suffix = lp.lease_price_basis === 'total' ? ' total (for the whole lease)' : '/month';
-        const items = [];
-        if (ctx.base != null) items.push('1 month: ' + money(ctx.base) + '/month');
-        if (lp.rent_price_3mo  != null) items.push('3 months: ' + money(lp.rent_price_3mo)  + suffix);
-        if (lp.rent_price_6mo  != null) items.push('6 months: ' + money(lp.rent_price_6mo)  + suffix);
-        if (lp.rent_price_12mo != null) items.push('12 months: ' + money(lp.rent_price_12mo) + suffix);
+      const ctx = leaseRentContext();
+      const isSorLease = document.getElementById('f-transaction').value === 'sale_or_rent';
+      const draft = Object.assign({
+        transaction_type: document.getElementById('f-transaction').value,
+        price_amount:        isSorLease ? null : ctx.base,
+        price_currency:      isSorLease ? null : ctx.currency,
+        rent_price_amount:   isSorLease ? ctx.base : null,
+        rent_price_currency: isSorLease ? ctx.currency : null
+      }, computeLeaseDurationPricing());
+      const resolvedLease = resolveLeasePricing(draft, null);
+      if (resolvedLease.hasTiers) {
+        const items = buildLeasePricingLines(resolvedLease, 'en');
         if (items.length) {
           leaseBlock =
-            'Lease-duration pricing — these are the ONLY lease rates for this listing. '
+            'Lease-term pricing — these are the ONLY lease rates for this listing. '
             + 'Use them EXACTLY as written and NEVER invent, calculate, interpolate, or estimate a rate for any '
-            + 'duration not listed here, and never convert between monthly and total yourself:\n'
+            + 'term not listed here, and never convert between a daily rate, a monthly rate and a lease total yourself:\n'
             + items.join('; ') + '.';
         }
+      }
+    }
+
+    // Per-unit lease-term pricing. A multi-unit building prices each unit type
+    // separately, so the AI is handed each unit's own resolved terms, labelled
+    // by unit, rather than one building figure that belongs to none of them.
+    let unitLeaseBlock = '';
+    {
+      const txNow = document.getElementById('f-transaction').value;
+      const unitLines = (typeof getUnitTypesFromDom === 'function' ? getUnitTypesFromDom() : [])
+        .map(function (u) {
+          if (!u.name_en) return '';
+          const resolvedUnitLease = resolveLeasePricing({ transaction_type: txNow }, u);
+          if (!resolvedUnitLease.hasTiers) return '';
+          const lines = buildLeasePricingLines(resolvedUnitLease, 'en');
+          return lines.length ? (u.name_en + ': ' + lines.join('; ')) : '';
+        })
+        .filter(Boolean);
+      if (unitLines.length) {
+        unitLeaseBlock =
+          'Per-unit lease-term pricing — each unit type is priced separately. These are the ONLY rates for '
+          + 'each unit named below. Never move a rate from one unit to another, never invent a rate for a unit '
+          + 'or a term not listed, and never convert between daily, monthly and lease totals yourself:\n'
+          + unitLines.join('\n') + '.';
       }
     }
 
@@ -4309,10 +4627,14 @@ async function generateAIContent() {
     // everything else is concise, clearly-labelled support. When humanDesc is
     // empty we do NOT synthesize pseudo-prose — the photos carry the visual
     // evidence and the labelled facts stay secondary.
-    const description = [humanDesc, knownLine, neighbourhoodBlock, pricingLine, leaseBlock, titleContext].filter(Boolean).join('\n\n');
+    const description = [humanDesc, knownLine, neighbourhoodBlock, pricingLine, leaseBlock, unitLeaseBlock, titleContext].filter(Boolean).join('\n\n');
     // Cover + even spread across the gallery, capped at 8 (≤ Smart Import's ceiling).
     const editImages = selectEditImages(gallery, 8);
 
+    // Client-side ceiling, deliberately ABOVE the edge function's own 105s
+    // Gemini budget so the function's readable JSON error always wins the race.
+    // This only catches the case where the platform killed the function outright
+    // (no response, no CORS headers) — see the classifier in the catch below.
     const res = await fetch(SUPABASE_URL + '/functions/v1/smart-listing-importer', {
       method: 'POST',
       headers: {
@@ -4320,7 +4642,8 @@ async function generateAIContent() {
         'apikey':        SUPABASE_ANON,
         'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON)
       },
-      body: JSON.stringify({ description, image_urls: editImages, source: 'edit_regen' })
+      body: JSON.stringify({ description, image_urls: editImages, source: 'edit_regen' }),
+      signal: AbortSignal.timeout(180000)
     });
 
     if (!res.ok) {
@@ -4399,7 +4722,7 @@ async function generateAIContent() {
     if (statusEl) {
       statusEl.className = 'form-message error';
       statusEl.style = '';
-      statusEl.textContent = '✗ Generation failed: ' + err.message + '. Check: (1) Edge Function is deployed in Supabase, (2) GEMINI_API_KEY secret is set in Supabase Dashboard → Edge Functions → Manage secrets.';
+      statusEl.textContent = '✗ Generation failed: ' + describeAiGenFailure(err);
     }
   } finally {
     btn.disabled = false;

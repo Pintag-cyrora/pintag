@@ -125,6 +125,24 @@ html[lang="lo"] .pt-card.pt-featured .pt-card-title{line-height:1.45;}
 .pt-card-price{font-size:var(--pt-fs-price);font-weight:500;color:var(--pt-ink);letter-spacing:-0.01em;margin-bottom:14px;}
 .pt-card.pt-featured .pt-card-price{font-size:24px;font-weight:400;letter-spacing:-0.02em;margin-bottom:20px;}
 .pt-card-price-unit{font-size:var(--pt-fs-body);font-weight:400;color:var(--pt-ink-muted);}
+/* Secondary daily rate, shown under the headline price when a rental also
+   offers a per-day rate (lease-pricing.js). Deliberately quieter than
+   .pt-card-price -- it supplements the main rent, never replaces it. */
+.pt-card-price-daily{font-size:var(--pt-fs-body);font-weight:400;color:var(--pt-ink-muted);margin-top:2px;}
+/* AVAILABILITY and FOMO — deliberately their own lines under the price, never a
+   replacement for it. Both are quieter than .pt-card-price so the price stays
+   the dominant element on the card even when a listing is rented. */
+.pt-card-availability{font-size:var(--pt-fs-small,12px);font-weight:600;margin-top:4px;letter-spacing:0.01em;}
+.pt-card-availability-unavailable{color:var(--pt-ink-muted);}
+.pt-card-fomo{font-size:var(--pt-fs-small,12px);font-weight:600;margin-top:4px;letter-spacing:0.01em;}
+/* Real scarcity, backed by available_count. Warm, not alarming. */
+.pt-card-fomo-urgent{color:#B45309;}
+/* "Just rented — see similar": factual, and a nudge onward rather than a dead end. */
+.pt-card-fomo-unavailable{color:var(--pt-ink-muted);}
+/* "· Available 15 Sep 2026" — an inline suffix on the price line, never its own
+   block. Quieter and smaller than the price so it reads as a qualifier rather
+   than competing with it, and wraps with the price instead of forcing a row. */
+.pt-card-next-available{font-size:var(--pt-fs-small,12px);font-weight:500;color:var(--pt-ink-muted);white-space:nowrap;}
 .pt-card-price-req{font-size:12px;font-weight:400;color:var(--pt-ink-muted);font-style:italic;margin-bottom:14px;}
 .pt-card-divider{height:1px;background:var(--pt-border);margin:14px 0;}
 .pt-card-footer{margin-top:10px;}
