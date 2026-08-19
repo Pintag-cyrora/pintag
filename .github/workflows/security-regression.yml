@@ -51,6 +51,9 @@ jobs:
       - name: API proxy Worker — local integration over real HTTP
         run: node --test cloudflare-worker/api-proxy-integration.test.js
 
+      - name: Request-wide deadline (smart-listing-importer)
+        run: node --test tests/smart-import-vision/request-deadline.test.mjs
+
       - name: Supabase origin / auth-storage-key invariants
         run: node --test supabase-origins.test.js
 
