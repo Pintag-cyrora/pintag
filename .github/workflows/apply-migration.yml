@@ -88,13 +88,28 @@ env:
   #     applies in timestamp order, so this ordering is automatic.
   #   * backup.yml and image-integrity.yml have referenced property_images
   #     since 2026-08-13 and have been degraded without it.
+  # 20260818020000_daily_rate_and_unit_lease_pricing.sql — reviewed and
+  # authorized deliberately (this file's gate refuses anything not listed here).
+  # Why it is safe to apply:
+  #   * Purely additive: five ADD COLUMN IF NOT EXISTS on unit_types, one on
+  #     properties, plus one CHECK constraint. No column is dropped, no
+  #     column's type changes, no data is rewritten, and there is no backfill.
+  #   * Every new column is nullable with no default, so every existing row is
+  #     untouched and every existing reader keeps working.
+  #   * The one constraint (unit_types_lease_price_basis_check) is added to a
+  #     column that has no pre-existing values, so it cannot fail validation.
+  #   * MUST be applied BEFORE the frontend that writes these columns reaches
+  #     production — admin.html's save path always sends them (as nulls when
+  #     unset), and PostgREST rejects an unknown column with PGRST204, which
+  #     would break saving ANY listing. See this commit's notes.
   EXPECTED_MIGRATIONS: |
     20260813000000
     20260817000000
     20260817010000
     20260818000000
     20260818010000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql'
+    20260818020000
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
