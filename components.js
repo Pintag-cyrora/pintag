@@ -453,7 +453,19 @@ function ptBuildUnitPriceText(property, resolved, lang) {
   return resolved.priceDisplay || null;
 }
 
-function ptResolveUnitTypesPrice(property, lang) {
+// ptResolveUnitTypesPriceEntry() -- the one implementation. Returns the
+// CHEAPEST resolvable unit as { amount, currency, text }, or null when nothing
+// resolves. `amount` is null for a unit priced only as legacy display text
+// (there is no trustworthy number to sort or band-filter on in that case; the
+// callers below treat that exactly like "no numeric price on file", which is
+// what they already did for an unbackfilled property row).
+//
+// Separated from ptResolveUnitTypesPrice() because sorting and price-band
+// filtering on the search page need the NUMBER and the CURRENCY, not the
+// rendered string -- and must agree, row for row, with what the card displays.
+// Two independent notions of "this listing's price" is how the card and the
+// sort key drift apart.
+function ptResolveUnitTypesPriceEntry(property, lang) {
   lang = lang || 'en';
   var units = (property && Array.isArray(property.unit_types)) ? property.unit_types : [];
   // resolveUnitType() lives in terminology.js. Feature-detected because
@@ -465,14 +477,49 @@ function ptResolveUnitTypesPrice(property, lang) {
     var resolvedUnit = resolveUnitType(property, units[i]);
     var text = ptBuildUnitPriceText(property, resolvedUnit, lang);
     if (!text) continue;
-    var amt = (resolvedUnit.priceAmount != null) ? resolvedUnit.priceAmount
-            : (resolvedUnit.rentPriceAmount != null) ? resolvedUnit.rentPriceAmount
-            : null;
-    if (best === null || (amt != null && (best.amt == null || amt < best.amt))) {
-      best = { amt: amt, text: text };
+    var amt = null, cur = null;
+    if (resolvedUnit.priceAmount != null) {
+      amt = resolvedUnit.priceAmount; cur = resolvedUnit.priceCurrency;
+    } else if (resolvedUnit.rentPriceAmount != null) {
+      amt = resolvedUnit.rentPriceAmount; cur = resolvedUnit.rentPriceCurrency;
+    }
+    if (best === null || (amt != null && (best.amount == null || amt < best.amount))) {
+      best = { amount: amt, currency: cur, text: text };
     }
   }
+  return best;
+}
+
+function ptResolveUnitTypesPrice(property, lang) {
+  var best = ptResolveUnitTypesPriceEntry(property, lang);
   return best ? best.text : null;
+}
+
+// ptResolveSortPrice(property) -- the numeric price key for SORTING and
+// PRICE-BAND FILTERING, resolved through the same precedence the card uses:
+// structured property column -> cheapest unit type -> legacy display text.
+//
+// The unit-type step matters for rows saved by an admin build that predates
+// the _utPriceEntries() fix, which nulled properties.price_amount whenever
+// every unit was occupied. Without it those listings sort as if they cost 0
+// (bottom of price_asc, and unplaceable in any band) purely because they are
+// currently rented -- price silently coupled to availability again, on the
+// read side this time. Returns { amount, currency } with amount null when
+// there is genuinely no numeric price on file. Never fabricates a number.
+function ptResolveSortPrice(property, parseLegacy) {
+  if (!property) return { amount: null, currency: null };
+  if (property.price_amount != null) {
+    return { amount: property.price_amount, currency: property.price_currency || null };
+  }
+  var unit = ptResolveUnitTypesPriceEntry(property, 'en');
+  if (unit && unit.amount != null) {
+    return { amount: unit.amount, currency: unit.currency || null };
+  }
+  if (typeof parseLegacy === 'function') {
+    var legacy = parseLegacy(property.price_display);
+    if (legacy) return { amount: legacy, currency: property.price_currency || null };
+  }
+  return { amount: null, currency: property.price_currency || null };
 }
 
 function formatPropertyPrice(property, lang) {

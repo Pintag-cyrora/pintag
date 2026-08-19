@@ -214,3 +214,68 @@ test('the date sits on ONE line with the price — the card does not grow a row'
   expect(suffixMid, 'suffix should share the price row').toBeGreaterThanOrEqual(pb.y - 1);
   expect(suffixMid).toBeLessThanOrEqual(pb.y + pb.height + 1);
 });
+
+// ── SEARCH: sorting and price-band filtering for a fully occupied listing ──
+// The same decoupling bug, on the search controls rather than the card body.
+// `unavail-unit-price` is fully occupied with properties.price_amount = NULL
+// and $380 living only on an occupied unit_types row — the exact shape an
+// older admin build saved. Before the fix its sort key was 0 and it matched
+// every price band, so it floated to the top of Price: Low→High and could not
+// be filtered out. These drive the REAL <select>s on the real page.
+
+const slugsInOrder = (page) => page.locator('.pt-card').evaluateAll(
+  (els) => els.map((e) => (e.getAttribute('href').match(/slug=([^&]+)/) || [])[1]));
+
+test('SORT: an occupied listing sorts on its unit-type price, not as 0', async ({ page }) => {
+  await openListings(page);
+  await page.selectOption('#sort-select', 'price_asc');
+  const asc = await slugsInOrder(page);
+  // Within the unavailable group, $380 must precede $500 and $450.
+  const idx = (s) => asc.indexOf(s);
+  expect(idx('unavail-unit-price')).toBeGreaterThan(-1);
+  expect(idx('unavail-unit-price')).toBeLessThan(idx('unavail-prop-price'));   // 380 < 500
+  expect(idx('unavail-unit-price')).toBeLessThan(idx('next-avail-prop'));      // 380 < 450
+  // A genuinely unpriced listing still sorts as 0, and is available, so it
+  // leads its own group — the occupied one must not be sitting alongside it.
+  expect(idx('no-price')).toBeLessThan(idx('unavail-unit-price'));
+
+  await page.selectOption('#sort-select', 'price_desc');
+  const desc = await slugsInOrder(page);
+  expect(desc.indexOf('unavail-unit-price')).toBeGreaterThan(desc.indexOf('unavail-prop-price'));
+});
+
+test('FILTER: an occupied listing lands in its real price band', async ({ page }) => {
+  await openListings(page);
+  await page.click('.tx-btn[data-filter="for_rent"]');
+  await page.selectOption('#price-select', 'r2');            // $300–600
+  await expect(cardFor(page, 'unavail-unit-price')).toHaveCount(1);
+  await expect(cardFor(page, 'unavail-unit-price').locator('.pt-card-price')).toContainText('$380');
+
+  await page.selectOption('#price-select', 'r1');            // Under $300
+  await expect(cardFor(page, 'unavail-unit-price')).toHaveCount(0);  // was waved through before the fix
+  // r1 is {min:null, max:300}, so the $300 listing is inside it — asserted to
+  // pin the inclusive-bound behaviour this change did not touch.
+  await expect(cardFor(page, 'avail-unit-price')).toHaveCount(1);
+
+  await page.selectOption('#price-select', 'r4');            // Over $1,000
+  await expect(cardFor(page, 'unavail-unit-price')).toHaveCount(0);
+
+  await page.selectOption('#price-select', 'all');
+  await expect(cardFor(page, 'unavail-unit-price')).toHaveCount(1);
+});
+
+test('FILTER: a genuinely unpriced listing is never hidden by a band', async ({ page }) => {
+  await openListings(page);
+  await page.click('.tx-btn[data-filter="for_rent"]');
+  await page.selectOption('#price-select', 'r1');
+  await expect(cardFor(page, 'no-price')).toHaveCount(1);
+  await expect(cardFor(page, 'no-price')).toContainText(/request|ຕິດຕໍ່|询价/);
+});
+
+test('the occupied listing shows price, next-available and no scarcity together', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'next-avail-earliest');
+  await expect(card.locator('.pt-card-price')).toContainText('$300');
+  await expect(card.locator('.pt-card-next-available')).toContainText('15 Sep 2099');
+  await expect(card).not.toContainText(/Only 1 left|of \d+ available/);
+});
