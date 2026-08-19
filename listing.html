@@ -1859,7 +1859,15 @@ function buildUnitPriceText(property, resolved, lang){
 // Picks the cheapest resolvable unit (the same "starting from min" convention
 // admin uses for the building-level price). Returns a price string, or null
 // when nothing resolves (caller then keeps "Inquire for price").
+//
+// Delegates to components.js' ptResolveUnitTypesPrice() -- the ONE shared
+// implementation, also used by the public card and (via ptResolveSortPrice)
+// by search sorting and price-band filtering. This page had its own copy
+// first; keeping both would let the price on the detail page drift from the
+// price on the card that led here. The local loop below survives only as the
+// fallback for a version-mismatched components.js cache.
 function resolveUnitTypesPriceText(property, lang){
+  if(typeof ptResolveUnitTypesPrice==='function') return ptResolveUnitTypesPrice(property, lang);
   var units = Array.isArray(property.unit_types) ? property.unit_types : [];
   if(!units.length || typeof resolveUnitType!=='function') return null;
   var best=null;

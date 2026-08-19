@@ -2309,9 +2309,13 @@ function syncUnitTypePriceFields() {
 // scope here); frequency is included in the summary text only when every
 // active unit agrees on it, mirroring the old text-parser's same
 // all-agree-or-omit rule for a trailing suffix.
-function _utActiveAmounts(amountSelector, currencySelector, frequencySelector) {
+//
+// PRICE IS NOT COUPLED TO AVAILABILITY (see _utPriceEntries below). This
+// helper answers only "what do the AVAILABLE units cost"; the decision about
+// what to do when that set is empty belongs to _utPriceEntries, not here.
+function _utActiveAmounts(amountSelector, currencySelector, frequencySelector, includeUnavailable) {
   return [...document.querySelectorAll('.ut-card')]
-    .filter(card => card.querySelector('.ut-is-available').checked)
+    .filter(card => includeUnavailable || card.querySelector('.ut-is-available').checked)
     .map(card => {
       const raw = card.querySelector(amountSelector).value;
       if (raw === '') return null;
@@ -2324,6 +2328,49 @@ function _utActiveAmounts(amountSelector, currencySelector, frequencySelector) {
       };
     })
     .filter(Boolean);
+}
+
+// THE CANONICAL PROPERTY-LEVEL PRICE BASIS.
+//
+// WHY THIS EXISTS: _utActiveAmounts() filters on the Available checkbox, so a
+// fully-occupied building produced an EMPTY entry set, _utComputeRange()
+// returned min:null, and syncPricingMode() wrote '' into f-price-amount --
+// which saveListing() then persisted as properties.price_amount = NULL. The
+// building's price had not become unknown: every unit_types row still carried
+// it. Nulling the column silently broke three separate things:
+//   1. the public card fell through to "Price on request",
+//   2. price_asc/price_desc sorted the listing as if it cost 0,
+//   3. price-band filtering could no longer place it in a band.
+// A rented listing has a price -- that is the entire point of keeping rented
+// listings browsable. Availability is a SEPARATE axis (rendered separately;
+// see ptResolveNextAvailable / ptResolveListingFomo in components.js).
+//
+// THE RULE, in priority order:
+//   1. If any AVAILABLE unit has a price -> min across the available units.
+//      This is the actionable "starting from" price a buyer can act on today,
+//      and is exactly the previous behaviour. Unchanged.
+//   2. Otherwise, if any unit at all has a price -> min across ALL units.
+//      The building is fully occupied but still legitimately priced. basis
+//      'all' is surfaced in the hint text so the admin can see why a price is
+//      showing for a building with nothing available.
+//   3. Otherwise -> no entries, price_amount stays NULL. NOTHING IS
+//      FABRICATED: this function never invents, carries forward or defaults a
+//      number. Every value it returns was typed into a unit-type card.
+function _utPriceEntries(amountSelector, currencySelector, frequencySelector) {
+  const available = _utActiveAmounts(amountSelector, currencySelector, frequencySelector, false);
+  if (available.length) return { entries: available, basis: 'available' };
+  const all = _utActiveAmounts(amountSelector, currencySelector, frequencySelector, true);
+  if (all.length) return { entries: all, basis: 'all' };
+  return { entries: [], basis: 'none' };
+}
+// Hint text under the (disabled) building price field. Spells out the basis so
+// "Calculated: $250 – $400 / month" on a fully-occupied building reads as
+// deliberate rather than as a stale value.
+function _utRangeHint(range, basis) {
+  if (!range.text) return 'Calculated from active Unit Types below — not editable here.';
+  return basis === 'all'
+    ? ('Calculated: ' + range.text + ' (from all Unit Types — none are currently available; the price is kept so this listing still sorts and filters)')
+    : ('Calculated: ' + range.text + ' (from active Unit Types)');
 }
 function _utComputeRange(entries) {
   if (!entries.length) return { min: null, max: null, currency: null, frequency: null, text: null };
@@ -2364,6 +2411,10 @@ function _utOnAvailableChange(checkbox) {
 // range ("$250 – $400 / month") is shown in the hint text and also becomes
 // the legacy price_display (see saveListing()) for pages not yet reading
 // the structured columns.
+//
+// When NO unit is available, the basis widens to all units rather than
+// collapsing to NULL -- see _utPriceEntries() above for why. price_amount is
+// never coupled to availability.
 function syncPricingMode() {
   const hasUnitTypes = document.querySelectorAll('.ut-card').length > 0;
   const isSor = document.getElementById('f-transaction').value === 'sale_or_rent';
@@ -2382,8 +2433,10 @@ function syncPricingMode() {
     return;
   }
   if (isSor) {
-    const saleRange = _utComputeRange(_utActiveAmounts('.ut-sale-amount', '.ut-sale-currency', null));
-    const rentRange = _utComputeRange(_utActiveAmounts('.ut-rent-amount', '.ut-rent-currency', '.ut-rent-frequency'));
+    const saleBasis = _utPriceEntries('.ut-sale-amount', '.ut-sale-currency', null);
+    const rentBasis = _utPriceEntries('.ut-rent-amount', '.ut-rent-currency', '.ut-rent-frequency');
+    const saleRange = _utComputeRange(saleBasis.entries);
+    const rentRange = _utComputeRange(rentBasis.entries);
     document.getElementById('f-sale-amount').value = saleRange.min != null ? saleRange.min : '';
     if (saleRange.currency) document.getElementById('f-sale-currency').value = saleRange.currency;
     document.getElementById('f-rent-amount').value = rentRange.min != null ? rentRange.min : '';
@@ -2391,9 +2444,9 @@ function syncPricingMode() {
     if (rentRange.frequency) document.getElementById('f-rent-frequency').value = rentRange.frequency;
     saleIds.forEach(id => document.getElementById(id).disabled = true);
     rentIds.forEach(id => document.getElementById(id).disabled = true);
-    document.getElementById('sale-range-hint').textContent = saleRange.text ? ('Calculated: ' + saleRange.text + ' (from active Unit Types)') : 'Calculated from active Unit Types below — not editable here.';
+    document.getElementById('sale-range-hint').textContent = _utRangeHint(saleRange, saleBasis.basis);
     document.getElementById('sale-range-hint').style.display = '';
-    document.getElementById('rent-range-hint').textContent = rentRange.text ? ('Calculated: ' + rentRange.text + ' (from active Unit Types)') : 'Calculated from active Unit Types below — not editable here.';
+    document.getElementById('rent-range-hint').textContent = _utRangeHint(rentRange, rentBasis.basis);
     document.getElementById('rent-range-hint').style.display = '';
     // f-price-* is hidden while sale_or_rent, but saveListing() only reads
     // it when NOT sale_or_rent -- still clear+re-enable it so it never
@@ -2402,12 +2455,13 @@ function syncPricingMode() {
     singleIds.forEach(id => document.getElementById(id).disabled = false);
     document.getElementById('price-range-hint').style.display = 'none';
   } else {
-    const range = _utComputeRange(_utActiveAmounts('.ut-price-amount', '.ut-price-currency', '.ut-price-frequency'));
+    const priceBasis = _utPriceEntries('.ut-price-amount', '.ut-price-currency', '.ut-price-frequency');
+    const range = _utComputeRange(priceBasis.entries);
     document.getElementById('f-price-amount').value = range.min != null ? range.min : '';
     if (range.currency) document.getElementById('f-price-currency').value = range.currency;
     if (range.frequency) document.getElementById('f-price-frequency').value = range.frequency;
     singleIds.forEach(id => document.getElementById(id).disabled = true);
-    document.getElementById('price-range-hint').textContent = range.text ? ('Calculated: ' + range.text + ' (from active Unit Types)') : 'Calculated from active Unit Types below — not editable here.';
+    document.getElementById('price-range-hint').textContent = _utRangeHint(range, priceBasis.basis);
     document.getElementById('price-range-hint').style.display = '';
     // saveListing() reads sale/rent unconditionally regardless of
     // transaction type -- clear+re-enable them so a computed value never
