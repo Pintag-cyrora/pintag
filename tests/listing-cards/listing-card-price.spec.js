@@ -58,13 +58,32 @@ const FIXTURES = [
                unit({ id: 'e3', price_amount: 340, price_currency: 'USD', price_frequency: 'monthly',
                       is_available: false, available_count: 0, next_available_date: '2099-10-20' })
              ] }),
+  // ── THE FIELD REPORT, as three cards ───────────────────────────────────
+  // Reported live on mobile: the detail page showed "$350 / ເດືອນ" while the card
+  // for the same property showed no price. price_amount NULL, $350 living on
+  // an OCCUPIED unit type. Three variants: future date, no date, and the
+  // available twin that must not regress.
+  property({ slug: 'report-350-dated', market_status: 'fully_occupied',
+             price_amount: null, price_currency: null, price_frequency: null, price_display: null,
+             unit_types: [unit({ id: 'r1', name_en: '1BR', price_amount: 350, price_currency: 'USD',
+                                 price_frequency: 'monthly', is_available: false, available_count: 0,
+                                 next_available_date: '2099-09-15' })] }),
+  property({ slug: 'report-350-nodate', market_status: 'rented',
+             price_amount: null, price_currency: null, price_frequency: null, price_display: null,
+             unit_types: [unit({ id: 'r2', name_en: '1BR', price_amount: 350, price_currency: 'USD',
+                                 price_frequency: 'monthly', is_available: false, available_count: 0,
+                                 next_available_date: null })] }),
+  property({ slug: 'report-350-available', market_status: 'available',
+             price_amount: null, price_currency: null, price_frequency: null, price_display: null,
+             unit_types: [unit({ id: 'r3', name_en: '1BR', price_amount: 350, price_currency: 'USD',
+                                 price_frequency: 'monthly', is_available: true, available_count: 3 })] }),
   // Real scarcity, for the FOMO axis.
   property({ slug: 'one-left', market_status: 'available',
              price_amount: 600, price_currency: 'USD', price_frequency: 'monthly',
              unit_types: [unit({ id: 'c1', price_amount: 600, price_currency: 'USD', price_frequency: 'monthly', available_count: 1 })] })
 ];
 
-async function openListings(page) {
+async function openListings(page, query) {
   const errors = [];
   page.on('pageerror', e => errors.push(e));
   await page.route('**cdn.jsdelivr.net/**', r => r.fulfill({ contentType: 'application/javascript', body: '' }));
@@ -75,7 +94,10 @@ async function openListings(page) {
     lastQuery = req.url();
     return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FIXTURES) });
   });
-  await page.goto('/listings.html');
+  // `query` drives lang.js' highest-precedence signal (?lang=). Without it the
+  // page resolves from navigator.language, which is en-US under Playwright --
+  // so the Lao state the bug was reported in has to be asked for explicitly.
+  await page.goto('/listings.html' + (query || ''));
   await page.waitForSelector('.pt-card', { timeout: 15000 });
   return errors;
 }
@@ -278,4 +300,57 @@ test('the occupied listing shows price, next-available and no scarcity together'
   await expect(card.locator('.pt-card-price')).toContainText('$300');
   await expect(card.locator('.pt-card-next-available')).toContainText('15 Sep 2099');
   await expect(card).not.toContainText(/Only 1 left|of \d+ available/);
+});
+
+// ── THE REPORTED BUG, on the real public page, on a phone ─────────────────
+// The page renders in Lao by default (getCurrentLang() returns 'lo' unless the
+// body carries lang-en/lang-zh), which is the state the report came from — so
+// these assert the exact string from the screenshot: "$350 / ເດືອນ".
+//
+// On the shipped build all three would fail: listings.html did not embed
+// unit_types, and formatPropertyPrice() had no unit fallback, so the card
+// emitted .pt-card-price-req instead of .pt-card-price.
+
+test('REPORTED: occupied + $350 unit price + future date → price IS rendered', async ({ page }) => {
+  const errors = await openListings(page, '?lang=lo');
+  const card = cardFor(page, 'report-350-dated');
+  await expect(card.locator('.pt-card-price')).toContainText('$350');
+  await expect(card.locator('.pt-card-price')).toContainText('ເດືອນ');   // "$350 / ເດືອນ", as reported
+  await expect(card.locator('.pt-card-price-req')).toHaveCount(0);   // NOT "price on request"
+  // Localised alongside the price -- Lao renders "ວ່າງ 15 ກ.ຍ 2099", not the English
+  // form. Asserted in Lao because that is the state this was reported in.
+  await expect(card.locator('.pt-card-next-available')).toContainText('15 ກ.ຍ 2099');
+  await expect(card.locator('.pt-card-price')).toContainText('$350 / ເດືອນ');
+  expect(errors, errors.map(e => e.message).join('; ')).toHaveLength(0);
+});
+
+test('REPORTED: occupied + $350 unit price + NO future date → price still rendered', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'report-350-nodate');
+  await expect(card.locator('.pt-card-price')).toContainText('$350');
+  await expect(card.locator('.pt-card-price-req')).toHaveCount(0);
+  await expect(card.locator('.pt-card-next-available')).toHaveCount(0);  // no date invented
+  await expect(card).toContainText(/ຫາກໍ່ຖືກເຊົ່າ|Just rented/);          // factual, separate axis
+});
+
+test('REPORTED: the AVAILABLE twin renders the identical price (no regression)', async ({ page }) => {
+  await openListings(page);
+  const occupied  = await cardFor(page, 'report-350-nodate').locator('.pt-card-price').innerText();
+  const available = await cardFor(page, 'report-350-available').locator('.pt-card-price').innerText();
+  expect(available.trim()).toBe(occupied.trim());
+  await expect(cardFor(page, 'report-350-available').locator('.pt-card-next-available')).toHaveCount(0);
+});
+
+test('REPORTED: the price is actually VISIBLE on the phone, not merely in the DOM', async ({ page }) => {
+  await openListings(page);
+  const priceEl = cardFor(page, 'report-350-dated').locator('.pt-card-price');
+  await expect(priceEl).toBeVisible();
+  const box = await priceEl.boundingBox();
+  expect(box, 'price element has no layout box').not.toBeNull();
+  expect(box.width).toBeGreaterThan(0);
+  expect(box.height).toBeGreaterThan(0);
+  // and it sits inside the viewport rather than clipped off-screen
+  const vw = page.viewportSize().width;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(vw + 1);
 });

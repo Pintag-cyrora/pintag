@@ -380,3 +380,89 @@ test('C4. write side and read side agree on the same building', () => {
   assert.equal(written.price_amount, read.amount);
   assert.equal(written.price_currency, read.currency);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// D. THE FIELD REPORT, reproduced exactly
+// ══════════════════════════════════════════════════════════════════════════
+// Reported from the live site on mobile: the DETAIL page rendered
+// "$350 / ເດືອນ" while the CARD for the same property rendered no price.
+//
+// That asymmetry was real and had two causes, both in the SHIPPED build:
+//   1. listings.html' REST query did not embed unit_types, so the card had no
+//      unit data to fall back to at all;
+//   2. components.formatPropertyPrice() had no unit-type fallback, so it
+//      returned isPriceOnRequest and the card rendered .pt-card-price-req
+//      ("Price on request" in 12px italic muted text -- which reads as "no
+//      price" on a phone).
+// The detail page escaped both because listing.html DID embed unit_types and
+// carried its own private resolveUnitTypesPriceText().
+//
+// Both surfaces now go through ONE resolver. These tests pin the reported
+// numbers and the reported language.
+
+const reported = (extra) => Object.assign({
+  id: 'p350', slug: 'reported', transaction_type: 'for_rent',
+  market_status: 'fully_occupied',
+  price_amount: null, price_currency: null, price_frequency: null, price_display: null,
+  unit_types: [unitRow({ id: 'r1', name_en: '1BR', is_available: false, available_count: 0,
+                         price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' })]
+}, extra);
+
+test('D1. the reported property renders its price on the CARD path (en)', () => {
+  assert.equal(priceText(reported()), '$350 / month');
+});
+
+test('D2. ...and in Lao, matching the detail page screenshot exactly', () => {
+  assert.equal(priceText(reported(), 'lo'), '$350 / ເດືອນ');
+});
+
+test('D3. card and detail page produce the SAME string from the SAME resolver', () => {
+  // listing.html's resolveUnitTypesPriceText() now delegates to this function;
+  // if the two ever diverge again, this is what catches it.
+  const p = reported();
+  assert.equal(ptResolveUnitTypesPrice(p, 'lo'), '$350 / ເດືອນ');
+  assert.equal(priceText(p, 'lo'), ptResolveUnitTypesPrice(p, 'lo'));
+});
+
+test('D4. WITH a future date → price plus the availability suffix', () => {
+  const p = reported();
+  p.unit_types[0].next_available_date = '2026-09-15';
+  assert.equal(priceText(p), '$350 / month', 'price is unchanged by the date');
+  assert.equal(ptResolveNextAvailable(p, 'en', '2026-08-19').text, 'Available 15 Sep 2026');
+});
+
+test('D5. NO future date → the price still shows; only the suffix is absent', () => {
+  const p = reported();                       // no next_available_date anywhere
+  assert.equal(priceText(p), '$350 / month');
+  assert.equal(ptResolveNextAvailable(p, 'en', '2026-08-19'), null, 'no date must not be invented');
+  assert.equal(ptResolveListingFomo(p, 'en').text, 'Fully occupied', 'factual treatment, separate axis');
+});
+
+test('D6. a PAST date is not shown, and does not take the price with it', () => {
+  const p = reported();
+  p.unit_types[0].next_available_date = '2020-01-01';
+  assert.equal(priceText(p), '$350 / month');
+  assert.equal(ptResolveNextAvailable(p, 'en', '2026-08-19'), null);
+});
+
+test('D7. the AVAILABLE twin is unaffected — normal listings do not regress', () => {
+  const p = reported({ market_status: 'available' });
+  p.unit_types[0].is_available = true;
+  p.unit_types[0].available_count = 3;
+  assert.equal(priceText(p), '$350 / month', 'same price, available or not');
+  assert.equal(ptResolveNextAvailable(p, 'en', '2026-08-19'), null, 'available → no suffix');
+});
+
+test('D8. availability genuinely cannot move the price: 6 states, one string', () => {
+  const states = ['available', 'rented', 'sold', 'reserved', 'fully_occupied', 'off_market'];
+  const rendered = states.map((s) => priceText(reported({ market_status: s })));
+  assert.deepEqual([...new Set(rendered)], ['$350 / month'], JSON.stringify(rendered));
+});
+
+test('D9. no legitimate price anywhere → honest "on request", never a made-up number', () => {
+  const p = reported();
+  p.unit_types[0].price_amount = null;
+  const info = formatPropertyPrice(p, 'en');
+  assert.equal(info.isPriceOnRequest, true);
+  assert.equal(priceText(p), null);
+});
