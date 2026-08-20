@@ -77,6 +77,30 @@ const FIXTURES = [
              price_amount: null, price_currency: null, price_frequency: null, price_display: null,
              unit_types: [unit({ id: 'r3', name_en: '1BR', price_amount: 350, price_currency: 'USD',
                                  price_frequency: 'monthly', is_available: true, available_count: 3 })] }),
+  // ── THE PRODUCTION SHAPE ────────────────────────────────────────────────
+  // market_status NULL (staff never touched the dropdown), units switched off,
+  // future date typed on the unit row. Before the gate was widened these
+  // showed no Next Available suffix and no unavailable line at all.
+  property({ slug: 'prod-null-status', market_status: null,
+             price_amount: null, price_currency: null, price_frequency: null, price_display: null,
+             unit_types: [unit({ id: 'p1', name_en: '1BR', price_amount: 350, price_currency: 'USD',
+                                 price_frequency: 'monthly', is_available: false, available_count: 0,
+                                 next_available_date: '2099-09-15' })] }),
+  property({ slug: 'prod-null-nodate', market_status: null,
+             price_amount: null, price_currency: null, price_frequency: null, price_display: null,
+             unit_types: [unit({ id: 'p2', name_en: '1BR', price_amount: 350, price_currency: 'USD',
+                                 price_frequency: 'monthly', is_available: false, available_count: 0,
+                                 next_available_date: null })] }),
+  // Same shape but ONE unit still open -> must NOT show a suffix or a closure.
+  property({ slug: 'prod-null-oneopen', market_status: null,
+             price_amount: null, price_currency: null, price_frequency: null, price_display: null,
+             unit_types: [
+               unit({ id: 'p3a', name_en: '1BR', price_amount: 350, price_currency: 'USD',
+                      price_frequency: 'monthly', is_available: false, available_count: 0,
+                      next_available_date: '2099-09-15' }),
+               unit({ id: 'p3b', name_en: '2BR', price_amount: 500, price_currency: 'USD',
+                      price_frequency: 'monthly', is_available: true, available_count: 2 })
+             ] }),
   // Real scarcity, for the FOMO axis.
   property({ slug: 'one-left', market_status: 'available',
              price_amount: 600, price_currency: 'USD', price_frequency: 'monthly',
@@ -353,4 +377,39 @@ test('REPORTED: the price is actually VISIBLE on the phone, not merely in the DO
   const vw = page.viewportSize().width;
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(vw + 1);
+});
+
+// ── THE PRODUCTION SHAPE, on the real page ────────────────────────────────
+// market_status NULL + unit switched off + future date. All of these failed
+// before the availability gate was widened to consult the unit rows.
+
+test('PROD: market_status NULL + occupied unit + future date → suffix on the card (en)', async ({ page }) => {
+  const errors = await openListings(page, '?lang=en');
+  const card = cardFor(page, 'prod-null-status');
+  await expect(card.locator('.pt-card-price')).toContainText('$350');
+  await expect(card.locator('.pt-card-next-available')).toContainText('Available 15 Sep 2099');
+  expect(errors, errors.map(e => e.message).join('; ')).toHaveLength(0);
+});
+
+test('PROD: ...and in Lao', async ({ page }) => {
+  await openListings(page, '?lang=lo');
+  const card = cardFor(page, 'prod-null-status');
+  await expect(card.locator('.pt-card-price')).toContainText('$350 / ເດືອນ');
+  await expect(card.locator('.pt-card-next-available')).toContainText('ວ່າງ 15 ກ.ຍ 2099');
+});
+
+test('PROD: no future date → price + factual closure, no invented date', async ({ page }) => {
+  await openListings(page, '?lang=en');
+  const card = cardFor(page, 'prod-null-nodate');
+  await expect(card.locator('.pt-card-price')).toContainText('$350');
+  await expect(card.locator('.pt-card-next-available')).toHaveCount(0);
+  await expect(card).toContainText('Fully occupied');
+});
+
+test('PROD: one unit still open → no suffix and no closure claim', async ({ page }) => {
+  await openListings(page, '?lang=en');
+  const card = cardFor(page, 'prod-null-oneopen');
+  await expect(card.locator('.pt-card-price')).toContainText('$350');
+  await expect(card.locator('.pt-card-next-available')).toHaveCount(0);
+  await expect(card).not.toContainText('Fully occupied');
 });

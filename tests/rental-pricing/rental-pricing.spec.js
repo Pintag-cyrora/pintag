@@ -491,7 +491,7 @@ window.supabase = { createClient: function() { return { auth: {
 } }; } };
 `;
 
-async function openListing(page, property) {
+async function openListing(page, property, query) {
   const pageErrors = [];
   page.on('pageerror', err => pageErrors.push(err));
   await page.route('**cdn.jsdelivr.net/**', route => route.fulfill({ contentType: 'application/javascript', body: LISTING_STUB }));
@@ -501,7 +501,9 @@ async function openListing(page, property) {
   await page.route(url => /\/rest\/v1\/properties\?slug=eq\./.test(url.toString()), route => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify([property])
   }));
-  await page.goto('/listing.html?slug=' + property.slug);
+  // `query` appends lang.js' highest-precedence ?lang= signal; without it the
+  // page resolves from navigator.language, which is en-US under Playwright.
+  await page.goto('/listing.html?slug=' + property.slug + (query ? '&' + query.replace(/^\?/, '') : ''));
   await page.waitForSelector('.section-label', { timeout: 15000 });
   return pageErrors;
 }
@@ -592,4 +594,67 @@ test('a daily-only rental renders its headline price as "$X / day"', async ({ pa
   await expect(page.locator('.price-main, .price-value, [class*=price]').first()).toContainText('$60');
   const text = await page.locator('body').innerText();
   expect(text).toContain('/ day');
+});
+
+// ── DETAIL PAGE: the production availability shape ────────────────────────
+// market_status NULL (staff never touched the dropdown) + every unit type
+// switched off + a future next_available_date on the unit row.
+//
+// listing.html had its OWN market_status gate wrapping the whole unavailable
+// block (Original Asking Price label, status note, and the Next Available
+// line), so widening components.js alone would not have shown anything here.
+// listingStatusResolved is now derived through the same shared
+// _ptIsUnavailableNow() the card uses.
+
+const PROD_SHAPE = {
+  id: 'pd1', slug: 'prod-detail', status: 'active', workflow_status: 'active',
+  market_status: null,                       // <- never set by staff
+  transaction_type: 'for_rent', property_type: 'apartment',
+  title_en: 'Riverside', title_lo: 'Riverside', title_zh: 'Riverside',
+  description_en: 'A place.', district_en: 'Sisattanak', village_en: 'Thongkang',
+  images: [], features: [], amenities: [], contacts: null, parties: null,
+  price_amount: null, price_currency: null, price_frequency: null, price_display: null,
+  available_from: null,
+  unit_types: [{
+    id: 'pdu1', property_id: 'pd1', sort_order: 0, name_en: '1BR', name_lo: '1BR', name_zh: '1BR',
+    is_available: false, available_count: 0, total_units: null,
+    next_available_date: '2099-09-15',
+    price_amount: 350, price_currency: 'USD', price_frequency: 'monthly'
+  }]
+};
+const detailClone = (over) => Object.assign(JSON.parse(JSON.stringify(PROD_SHAPE)), over || {});
+
+test('DETAIL/PROD: market_status NULL + occupied unit + future date → price and suffix', async ({ page }) => {
+  const errors = await openListing(page, detailClone());
+  await expect(page.locator('.price-available-from')).toContainText('Available 15 Sep 2099');
+  await expect(page.locator('.price-box, .price-main, body')).toContainText('$350');
+  await expect(page.locator('.price-orig-label')).toBeVisible();   // factual historical framing
+  expect(errors, errors.map(e => e.message).join('; ')).toHaveLength(0);
+});
+
+test('DETAIL/PROD: ...localized in Lao', async ({ page }) => {
+  const p = detailClone({ slug: 'prod-detail-lo' });
+  await openListing(page, p, '?lang=lo');
+  await expect(page.locator('.price-available-from')).toContainText('ວ່າງ 15 ກ.ຍ 2099');
+});
+
+test('DETAIL/PROD: no future date → price plus the factual closure, no invented date', async ({ page }) => {
+  const p = detailClone({ slug: 'prod-detail-nodate' });
+  p.unit_types[0].next_available_date = null;
+  await openListing(page, p);
+  await expect(page.locator('.price-available-from')).toHaveCount(0);
+  await expect(page.locator('.price-status-note')).toBeVisible();
+  await expect(page.locator('body')).toContainText('$350');
+});
+
+test('DETAIL/PROD: one unit still open → treated as available, no suffix', async ({ page }) => {
+  const p = detailClone({ slug: 'prod-detail-open' });
+  p.unit_types.push({
+    id: 'pdu2', property_id: 'pd1', sort_order: 1, name_en: '2BR', name_lo: '2BR', name_zh: '2BR',
+    is_available: true, available_count: 2, total_units: null, next_available_date: null,
+    price_amount: 500, price_currency: 'USD', price_frequency: 'monthly'
+  });
+  await openListing(page, p);
+  await expect(page.locator('.price-available-from')).toHaveCount(0);
+  await expect(page.locator('.price-orig-label')).toHaveCount(0);
 });

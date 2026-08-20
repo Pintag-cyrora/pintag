@@ -203,3 +203,145 @@ test('the card renders it inline with the price, not as an extra block', () => {
   assert.match(src, /priceHtml = priceHtml\.replace\(\/<\\\/p>\\s\*\$\//);
   assert.equal(/<p class="pt-card-next-available"/.test(src), false, 'must not be its own paragraph');
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE PRODUCTION SHAPE — market_status is NULL and unit rows carry the truth
+// ═══════════════════════════════════════════════════════════════════════════
+// Reported live: Next Available never appeared. The resolver was gating on
+// properties.market_status ALONE, which is a standalone manual dropdown in
+// admin (f-market-status) that nothing derives from unit occupancy -- no
+// trigger, no save-path logic. resolveListingStatus() defaults NULL to
+// 'available', so the gate closed before the date was ever read.
+//
+// The ordinary production shape is exactly this: staff switch off each unit
+// type's Available checkbox and type a next_available_date, and never touch
+// Market Status. Every fixture in the original suite set market_status
+// explicitly, which is why none of them caught it -- see the blind-spot guard
+// at the bottom of this file.
+
+const prodShape = (over) => Object.assign({
+  id: 'prod', slug: 'prod', transaction_type: 'for_rent',
+  workflow_status: 'active', status: 'active',
+  market_status: null,                 // <- never set by staff
+  price_amount: null, price_currency: null, price_frequency: null, price_display: null,
+  available_from: null,
+  unit_types: [{
+    id: 'pu1', name_en: '1BR', sort_order: 0,
+    is_available: false, available_count: 0, total_units: null,
+    next_available_date: '2026-09-15',
+    price_amount: 350, price_currency: 'USD', price_frequency: 'monthly'
+  }]
+}, over);
+
+test('PROD-1. market_status NULL + occupied unit + future date → suffix appears (en)', () => {
+  const r = ptResolveNextAvailable(prodShape(), 'en', '2026-08-20');
+  assert.ok(r, 'this returned null before the gate was widened');
+  assert.equal(r.isoDate, '2026-09-15');
+  assert.equal(r.text, 'Available 15 Sep 2026');
+});
+
+test('PROD-2. ...and in Lao', () => {
+  assert.equal(ptResolveNextAvailable(prodShape(), 'lo', '2026-08-20').text, 'ວ່າງ 15 ກ.ຍ 2026');
+});
+
+test('PROD-3. the price stays visible and is unaffected by the gate', () => {
+  const p = prodShape();
+  assert.equal(formatPropertyPrice(p, 'en').singleText, '$350 / month');
+  assert.equal(formatPropertyPrice(p, 'lo').singleText, '$350 / ເດືອນ');
+  assert.equal(formatPropertyPrice(p, 'en').isPriceOnRequest, false);
+});
+
+test('PROD-4. factual unavailable treatment appears, derived from the units', () => {
+  const f = ptResolveListingFomo(prodShape(), 'en');
+  assert.equal(f.kind, 'missed');
+  assert.equal(f.tone, 'unavailable');
+  assert.equal(f.text, 'Fully occupied', 'market_status still says "available" — the label comes from the units');
+  assert.equal(ptResolveListingFomo(prodShape(), 'lo').text, 'ເຕັມແລ້ວ');
+  assert.equal(f.count, undefined, 'no scarcity count when nothing is open');
+});
+
+test('PROD-5. no future date → no suffix, but the factual line still shows', () => {
+  const p = prodShape();
+  p.unit_types[0].next_available_date = null;
+  assert.equal(ptResolveNextAvailable(p, 'en', '2026-08-20'), null, 'no date must not be invented');
+  assert.equal(ptResolveListingFomo(p, 'en').text, 'Fully occupied');
+  assert.equal(formatPropertyPrice(p, 'en').singleText, '$350 / month', 'price survives');
+});
+
+test('PROD-6. ONE unit still open → no suffix, and no unavailable line', () => {
+  const p = prodShape();
+  p.unit_types.push({ id: 'pu2', name_en: '2BR', sort_order: 1,
+                      is_available: true, available_count: 2, total_units: null,
+                      next_available_date: null,
+                      price_amount: 500, price_currency: 'USD', price_frequency: 'monthly' });
+  assert.equal(ptResolveNextAvailable(p, 'en', '2026-08-20'), null, 'rentable today');
+  const f = ptResolveListingFomo(p, 'en');
+  assert.ok(!f || f.kind !== 'missed', 'must not claim unavailable while a unit is open');
+});
+
+test('PROD-7. an explicit market_status still wins when it says unavailable', () => {
+  // Widening the gate must not weaken it: a listing marked rented stays rented
+  // even if a unit row was left switched on.
+  const p = prodShape({ market_status: 'rented' });
+  p.unit_types[0].is_available = true;
+  p.unit_types[0].available_count = 3;
+  assert.equal(ptResolveListingFomo(p, 'en').text, 'Just rented — see similar');
+});
+
+test('PROD-8. no unit types → falls back to market_status exactly as before', () => {
+  const avail = { transaction_type: 'for_rent', market_status: null,
+                  available_from: '2026-09-15', price_amount: 350, price_currency: 'USD' };
+  assert.equal(ptResolveNextAvailable(avail, 'en', '2026-08-20'), null,
+    'null unit data must read as "ask market_status", never as "closed"');
+  const rented = Object.assign({}, avail, { market_status: 'rented' });
+  assert.equal(ptResolveNextAvailable(rented, 'en', '2026-08-20').isoDate, '2026-09-15');
+});
+
+test('PROD-9. multiple occupied units → earliest future date across them', () => {
+  const p = prodShape();
+  p.unit_types[0].next_available_date = '2026-12-01';
+  p.unit_types.push({ id: 'pu2', name_en: '2BR', sort_order: 1, is_available: false,
+                      available_count: 0, total_units: null, next_available_date: '2026-09-15',
+                      price_amount: 500, price_currency: 'USD', price_frequency: 'monthly' });
+  assert.equal(ptResolveNextAvailable(p, 'en', '2026-08-20').isoDate, '2026-09-15');
+});
+
+test('PROD-10. FOMO numeric scarcity is unchanged by the widened gate', () => {
+  // One open unit with a real count still produces "Only 1 left"; the gate
+  // only decides unavailable-vs-not, it never touches the counting rules.
+  const p = prodShape({ market_status: null });
+  p.unit_types = [{ id: 'a', name_en: 'Studio', sort_order: 0, is_available: true,
+                    available_count: 1, total_units: null, next_available_date: null,
+                    price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' }];
+  assert.equal(ptResolveListingFomo(p, 'en').text, 'Only 1 left');
+  p.unit_types[0].available_count = 2;
+  p.unit_types[0].total_units = 20;
+  assert.equal(ptResolveListingFomo(p, 'en').text, '2 of 20 available');
+  // is_available true but ZERO available_count is not "open" -- and both
+  // columns are NOT NULL in the schema (20260720000000_unit_types.sql:55-56,
+  // `is_available boolean NOT NULL DEFAULT true` / `available_count integer
+  // NOT NULL DEFAULT 1`), so a null count is not a state production can reach.
+  p.unit_types[0].available_count = 0;
+  p.unit_types[0].total_units = null;
+  const f = ptResolveListingFomo(p, 'en');
+  assert.equal(f.kind, 'missed', 'zero open units is a factual closure, not a scarcity claim');
+  assert.equal(f.count, undefined, 'and it carries no count');
+});
+
+// ── THE BLIND-SPOT GUARD ──────────────────────────────────────────────────
+// Every fixture in the original suite set market_status explicitly, so the
+// suite tested a shape admin does not actually produce. This asserts that at
+// least one Next Available fixture leaves market_status unset, and fails if a
+// future edit deletes the production-shape block above.
+test('GUARD: the suite covers a fixture that never populates market_status', () => {
+  const src = fs.readFileSync(new URL('./next-available.test.js', import.meta.url), 'utf8');
+  assert.match(src, /market_status:\s*null/,
+    'at least one fixture must leave market_status unset — that is the production shape');
+  assert.match(src, /prodShape\(\)/, 'the production-shape block must still be exercised');
+  // And the resolver must not have gone back to reading market_status alone.
+  const comp = fs.readFileSync(new URL('./components.js', import.meta.url), 'utf8');
+  const fn = comp.slice(comp.indexOf('function ptResolveNextAvailable('));
+  const body = fn.slice(0, fn.indexOf('\n}'));
+  assert.ok(!/isPubliclyAvailable/.test(body),
+    'ptResolveNextAvailable must gate through _ptIsUnavailableNow, not resolveListingStatus directly');
+});
