@@ -241,6 +241,57 @@ function _ptFrequencySuffix(frequency, lang) {
   var entry = PT_FREQUENCY_SUFFIX[frequency] || PT_FREQUENCY_SUFFIX.monthly;
   return entry[lang] || entry.en;
 }
+// _ptHasOpenUnit(property) -> true | false | null
+//
+// "Is any unit type rentable TODAY?", resolved through
+// unit-availability.js' resolveUnitAvailability() -- that module's only
+// sanctioned read API (see its rule 3). This is the UNIT-LEVEL source of
+// truth for current availability, and for a listing that has unit types it
+// outranks properties.market_status.
+//
+// WHY IT EXISTS. properties.market_status is a standalone manual dropdown in
+// admin (f-market-status); nothing derives it from unit occupancy -- no
+// trigger, no save-path logic. resolveListingStatus() defaults a NULL
+// market_status to 'available'. So the ordinary production shape is: staff
+// switch off each unit type's Available checkbox and type a
+// next_available_date, and never touch the separate Market Status dropdown.
+// Both availability gates below used to read market_status ALONE, so they
+// went silent on exactly the listings that had something to say. Staff must
+// not have to restate in a second field what the unit rows already record.
+//
+// RETURNS NULL, NOT FALSE, when unit data cannot answer the question -- no
+// unit types, or a version-mismatched cache without unit-availability.js.
+// Callers must treat null as "ask market_status instead"; reading it as false
+// would mark every single-unit listing unavailable.
+//
+// DELIBERATELY NOT MERGED with ptResolveListingFomo's counting loop. That loop
+// answers a different question -- "how many units, exactly?" -- and needs a
+// trustworthy numeric available_count before it will claim "Only 1 left". This
+// one is a boolean: a unit that is open but tracks no count is still open.
+// Folding them together would either loosen FOMO's numeric rule or wrongly
+// treat a countless-but-open unit as closed.
+function _ptHasOpenUnit(property) {
+  var units = (property && Array.isArray(property.unit_types)) ? property.unit_types : [];
+  if (!units.length || typeof resolveUnitAvailability !== 'function') return null;
+  for (var i = 0; i < units.length; i++) {
+    if (resolveUnitAvailability(units[i]).status === 'available') return true;
+  }
+  return false;
+}
+
+// _ptIsUnavailableNow(property) -- the ONE availability gate both
+// ptResolveNextAvailable() and ptResolveListingFomo() ask. Unit rows win when
+// they exist; market_status answers for everything else. Returns the reason so
+// a caller can label a unit-derived closure correctly ('fully_occupied') rather
+// than reaching for market_status, which in that case still says 'available'.
+function _ptIsUnavailableNow(property) {
+  var status = (typeof resolveListingStatus === 'function') ? resolveListingStatus(property) : null;
+  if (!status) return null;
+  if (!status.isPubliclyAvailable) return { unavailable: true, market: status.market, source: 'market_status' };
+  if (_ptHasOpenUnit(property) === false) return { unavailable: true, market: 'fully_occupied', source: 'unit_types' };
+  return { unavailable: false, market: status.market, source: null };
+}
+
 // ptResolveNextAvailable(property, lang, nowIso) -- the FOURTH axis: when an
 // unavailable listing frees up. Shared by the listing card and the detail page
 // so there is exactly one implementation of "which date, and is it real".
@@ -275,8 +326,8 @@ function ptResolveNextAvailable(property, lang, nowIso) {
   lang = lang || 'en';
   if (!property) return null;
 
-  var status = (typeof resolveListingStatus === 'function') ? resolveListingStatus(property) : null;
-  if (!status || status.isPubliclyAvailable) return null;   // available now -> no future date
+  var avail = _ptIsUnavailableNow(property);
+  if (!avail || !avail.unavailable) return null;            // rentable now -> no future date
 
   var today = nowIso || new Date().toISOString().slice(0, 10);
   var candidates = [];
@@ -333,18 +384,21 @@ function ptResolveNextAvailable(property, lang, nowIso) {
 // honest outcome, not a gap to fill.
 function ptResolveListingFomo(property, lang) {
   lang = lang || 'en';
-  var status = (typeof resolveListingStatus === 'function')
-    ? resolveListingStatus(property) : null;
+  // Same gate as ptResolveNextAvailable (_ptIsUnavailableNow): unit rows win
+  // when they exist, market_status answers otherwise. A building whose every
+  // unit type is occupied reads as 'fully_occupied' even while its untouched
+  // market_status column still says 'available'.
+  var avail = _ptIsUnavailableNow(property);
 
   // ── Unavailable: state it plainly. Factual, never scarcity bait. ──────────
-  if (status && !status.isPubliclyAvailable) {
+  if (avail && avail.unavailable) {
     var missed = {
       rented:         { en: 'Just rented — see similar', lo: 'ຫາກໍ່ຖືກເຊົ່າ — ເບິ່ງແບບຄ້າຍກັນ', zh: '刚被租出 — 查看类似房源' },
       sold:           { en: 'Just sold — see similar',   lo: 'ຫາກໍ່ຖືກຂາຍ — ເບິ່ງແບບຄ້າຍກັນ',  zh: '刚售出 — 查看类似房源' },
       reserved:       { en: 'Reserved',                  lo: 'ຖືກຈອງແລ້ວ',                    zh: '已预订' },
       fully_occupied: { en: 'Fully occupied',            lo: 'ເຕັມແລ້ວ',                       zh: '已住满' },
       off_market:     { en: 'Off market',                lo: 'ບໍ່ຢູ່ໃນຕະຫຼາດ',                 zh: '已下架' }
-    }[status.market];
+    }[avail.market];
     if (!missed) return null;
     return { kind: 'missed', tone: 'unavailable', text: missed[lang] || missed.en };
   }

@@ -2087,6 +2087,26 @@ function buildMockupLayout(){
   var effectiveFeatures =selectedUnit?(Array.isArray(selectedUnit.resolved.features) ?selectedUnit.resolved.features :[]):(Array.isArray(data.features) ?data.features :[]);
 
   var listingStatusResolved=(typeof resolveListingStatus==='function')?resolveListingStatus(data):{market:'available',isPubliclyAvailable:true};
+  // UNIT ROWS OUTRANK properties.market_status when this listing has unit
+  // types -- _ptIsUnavailableNow()/_ptHasOpenUnit() (components.js) is the one
+  // shared gate the listing card uses too, so the two surfaces cannot disagree
+  // about whether a building is currently rentable.
+  //
+  // Why this is resolved ONCE here rather than at each call site: the status
+  // badge (below), the unavailable panel, the Similar heading, the price block
+  // and the CTA swap all read this object. Widening only the price block would
+  // have produced a listing showing "Available 15 Sep" beside a live-looking
+  // badge and a WhatsApp CTA. market_status is a standalone manual dropdown
+  // nothing derives from unit occupancy, so on the ordinary production row it
+  // says 'available' while every unit row says otherwise.
+  if(typeof _ptIsUnavailableNow==='function'){
+    var _dAvail=_ptIsUnavailableNow(data);
+    if(_dAvail) listingStatusResolved={
+      workflow:listingStatusResolved.workflow,
+      market:_dAvail.market,
+      isPubliclyAvailable:!_dAvail.unavailable
+    };
+  }
   // Rented Listings UX v2, Priority 2 -- a real transition date (never
   // fabricated: formatStatusChangeDate() returns null for any row with no
   // recorded market_status_changed_at, and the badge just shows the bare
