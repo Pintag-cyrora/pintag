@@ -173,18 +173,28 @@ ${JSON.stringify(rawMetricsSummary)}
 Canonical districts: ${CANONICAL_DISTRICTS.join(', ')}. Canonical property types: ${CANONICAL_PROPERTY_TYPES.join(', ')}.`;
 
   const structureByType = {
-    daily: `Write a DAILY INTELLIGENCE BRIEFING for the founder. It must be readable in UNDER 60 SECONDS — aim for 200-350 words. This is a briefing about TODAY, not a market report.
+    daily: `Write a DAILY INTELLIGENCE BRIEFING for the founder. It must be readable in UNDER 60 SECONDS. Keep it UNDER 350 WORDS — that is a ceiling, not a target, and there is NO minimum. If today's evidence supports a strong 150-word briefing, write 150 words and stop. Never add a sentence to reach a length. This is a briefing about TODAY, not a market report.
 
 It answers exactly four things: what happened today, what changed, what matters, and what to do next.
+
+ONE STORY, NOT FIVE. The insights below are already ranked; the FIRST new-or-continuing insight is the day's story and everything else is supporting detail. Do not open with a survey of every metric, and do not present several competing "biggest stories". Where two signals are really one story, CONNECT them rather than reporting them separately — e.g. "Gallery engagement remains unusually strong, but today's users are not progressing to contact" is one story about conversion, not a browsing story plus a lead story.
 
 COMPARISON HIERARCHY — use in this order:
 1. TODAY vs YESTERDAY is the primary comparison. Lead with it.
 2. The 7-day average is SECONDARY context, for saying whether today's move is part of a pattern.
 3. The 30-day average ONLY when it reveals a genuinely significant anomaly. Do not walk every metric through all three baselines — that is what makes this read like a monthly report.
 
-SMALL SAMPLES — a percentage is not automatically a finding. When the underlying counts are small (roughly single digits), say so in words instead of leading with the percentage: 1 to 2 events is +100% and usually means nothing. Reserve percentage-led statements for metrics with real volume. Interpret a zero in the context of the day's other volume — "0 leads" means something different on a day with 24 gallery interactions than on a day with no traffic at all.
+SMALL SAMPLES — a percentage is not automatically a finding. When the underlying counts are small (roughly single digits), say so in words instead of leading with the percentage: 1 to 2 events is +100% and usually means nothing. Reserve percentage-led statements for metrics with real volume. A ZERO IS ONLY AS INTERESTING AS THE TRAFFIC AROUND IT. Judge it against the same day's views, clicks and searches, and do NOT treat every zero-lead day as a critical problem:
+- 0 leads with little or no traffic: no conclusion to draw. Say that, or leave it out.
+- 0 leads with meaningful listing views or clicks: a real conversion problem, and worth leading with.
+- 0 leads with strong gallery engagement: possible conversion friction between browsing and contacting — worth investigating, stated as a question rather than a verdict.
 
-DO NOT RESTATE STANDING FACTS. Which district holds the most listings, which property type is most common, the median price, the overall marketplace composition — these are the same most days and are NOT news. Mention one only when it materially changed or when it is needed to explain a change. Avoid openers like "The marketplace currently...", "Sisattanak currently holds...", "Apartments continue to be...".
+DO NOT NARRATE STANDING MARKETPLACE FACTS. Specifically, do NOT describe:
+- current district inventory composition
+- current property-type composition
+- the current median price
+- total inventory
+These are the same most days and are NOT news. Mention one only when it materially changed or when it is needed to explain a change. Avoid openers like "The marketplace currently...", "Sisattanak currently holds...", "Apartments continue to be...".
 
 WRITE LIKE THIS: "Search activity fell 37% today but remains above the 7-day average." / "Gallery engagement rose again today, suggesting users are actively exploring listing photos." / "Despite strong gallery engagement, no leads were created today — this is the biggest conversion question to investigate." / "Five active listings are still missing prices and should be fixed."
 
@@ -200,7 +210,7 @@ Structure with these markdown headings, in order. OMIT ANY SECTION THAT HAS NO R
 ## Data / Product Issues
 (Data-quality and product problems, kept separate from marketplace performance. Omit if none.)
 ## Tomorrow's Priorities
-(2-4 concrete actions that follow from today's intelligence.)`,
+(2-4 CONCRETE actions, each grounded in evidence that appears above. Name what to look at and why today's data points there. A generic instruction is not an action: "consider optimizing image loading", "investigate further" and "continue monitoring" are all failures unless you say exactly what to investigate and what would settle it. Weak: "Consider optimizing image loading." Strong: "Check the gallery-loading path on the listings receiving unusually high gallery interaction before changing the gallery UX." If today's evidence supports only two actions, give two.)`,
     weekly: `Write a WEEKLY INTELLIGENCE REPORT. Compare this week to the previous week; highlight TRENDS, not just totals. Structure with these markdown headings:
 # Executive Summary
 ## What Changed This Week

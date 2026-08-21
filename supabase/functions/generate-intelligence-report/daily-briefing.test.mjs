@@ -50,12 +50,18 @@ test('small samples must be described, not sold as percentages', () => {
   const p = daily();
   assert.match(p, /1 to 2 events is \+100% and usually means nothing/i);
   assert.match(p, /Reserve percentage-led statements for metrics with real volume/i);
-  assert.match(p, /0 leads.*different on a day with 24 gallery interactions/is);
+  // The zero-in-context rule outgrew this test and has its own below.
 });
 
 test('standing marketplace facts are explicitly banned unless they moved', () => {
   const p = daily();
-  assert.match(p, /DO NOT RESTATE STANDING FACTS/);
+  assert.match(p, /DO NOT NARRATE STANDING MARKETPLACE FACTS/);
+  // The four values must be named individually — a vague "avoid composition"
+  // instruction is what the model kept talking through.
+  for (const v of ['current district inventory composition', 'current property-type composition',
+                   'the current median price', 'total inventory']) {
+    assert.ok(p.includes(v), 'must name: ' + v);
+  }
   for (const phrase of ['The marketplace currently', 'Sisattanak currently holds',
                         'Apartments continue to be']) {
     assert.ok(p.includes(phrase), 'must name the banned opener: ' + phrase);
@@ -72,11 +78,47 @@ test('supply composition is background for DAILY and narrative for weekly/monthl
   }
 });
 
-test('the briefing is short and says so', () => {
+test('length is a CEILING with no minimum — a short strong briefing is correct', () => {
   const p = daily();
   assert.match(p, /UNDER 60 SECONDS/);
-  assert.match(p, /200-350 words/);
+  assert.match(p, /UNDER 350 WORDS — that is a ceiling, not a target, and there is NO minimum/);
+  assert.match(p, /Never add a sentence to reach a length/);
+  // A floor would invite padding, which is the opposite of the goal: a 150-word
+  // briefing backed by evidence beats a padded 300-word one.
+  assert.ok(!/200-350/.test(p), 'no lower bound may be stated');
   assert.ok(!/300-600 words/.test(p), 'the old daily length target must be gone');
+});
+
+test('ONE dominant story — signals are connected, not listed side by side', () => {
+  const p = daily();
+  assert.match(p, /ONE STORY, NOT FIVE/);
+  assert.match(p, /the FIRST new-or-continuing insight is the day's story/);
+  assert.match(p, /do not present several competing "biggest stories"/i);
+  // The worked example must show two signals becoming one conversion story.
+  assert.match(p, /Gallery engagement remains unusually strong, but today's users are not progressing to contact/);
+});
+
+test('the final section demands concrete, evidence-grounded actions', () => {
+  const p = daily();
+  for (const generic of ['consider optimizing image loading', 'investigate further', 'continue monitoring']) {
+    assert.ok(p.toLowerCase().includes(generic.toLowerCase()),
+      'must name the generic phrasing it rejects: ' + generic);
+  }
+  assert.match(p, /A generic instruction is not an action/);
+  assert.match(p, /Check the gallery-loading path on the listings receiving unusually high gallery interaction/);
+  assert.match(p, /grounded in evidence that appears above/);
+  // And the count must follow the evidence, not the heading.
+  assert.match(p, /If today's evidence supports only two actions, give two/);
+});
+
+test('a zero is judged against the day\'s traffic, not treated as automatically critical', () => {
+  const p = daily();
+  assert.match(p, /A ZERO IS ONLY AS INTERESTING AS THE TRAFFIC AROUND IT/);
+  assert.match(p, /do NOT treat every zero-lead day as a critical problem/);
+  assert.match(p, /0 leads with little or no traffic: no conclusion to draw/);
+  assert.match(p, /0 leads with meaningful listing views or clicks: a real conversion problem/);
+  assert.match(p, /0 leads with strong gallery engagement: possible conversion friction/);
+  assert.match(p, /stated as a question rather than a verdict/);
 });
 
 test('empty sections are omitted rather than padded', () => {
