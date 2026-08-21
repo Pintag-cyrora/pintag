@@ -27,9 +27,19 @@ export const REPORT_FORMAT_VERSION = '1.1.0';
 // Bump whenever buildPrompt()'s instructions materially change (new
 // section requested, a rule loosened/tightened) — affects how to interpret
 // what Gemini was actually asked to do for a given historical report.
-export const PROMPT_VERSION = '1.1.0';
+// 2.0.0 — the DAILY report became a briefing: new section structure
+// (Today's Story / What Changed Today / Buyer Behaviour / Listings To Watch /
+// Data / Product Issues / Tomorrow's Priorities), a today-vs-yesterday-first
+// comparison hierarchy, an explicit small-sample rule, and a ban on restating
+// standing marketplace composition. Weekly/monthly prompts are unchanged. A
+// major bump because a 1.x daily report answers a materially different
+// question from a 2.x one and the two must not be read as the same artefact.
+export const PROMPT_VERSION = '2.0.0';
 
 // Bump whenever report-validator.js's contradiction/grounding rules change
 // — affects how much to trust "this report passed validation" for a given
 // historical report.
-export const VALIDATOR_VERSION = '1.0.0';
+// 1.1.0 — headlineSections() also recognises the daily briefing's
+// "# Today's Story" as the headline section. The old headings still validate
+// identically, so historical reports are unaffected.
+export const VALIDATOR_VERSION = '1.1.0';

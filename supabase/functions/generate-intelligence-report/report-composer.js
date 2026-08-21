@@ -127,8 +127,15 @@ export function buildPrompt(reportType, composed, rawMetricsSummary, supply, tre
     ? composed.resolved_insights.map(insightSummaryLine).join('\n')
     : '(none)';
 
+  // For WEEKLY/MONTHLY the composition of supply IS the story. For DAILY it
+  // is standing background: "Sisattanak has X listings" is true every day and
+  // says nothing about today, so it is explicitly marked do-not-narrate unless
+  // a linked insight or the trend analysis shows it actually moved. This is
+  // the single biggest cause of a daily report reading like a monthly one.
   const supplyBlock = supply
-    ? `\nCURRENT ACTIVE SUPPLY (live snapshot, not historical):\nBy district: ${JSON.stringify(supply.byDistrict)}\nBy property type: ${JSON.stringify(supply.byType)}\n`
+    ? (reportType === 'daily'
+        ? `\nCURRENT ACTIVE SUPPLY (BACKGROUND CONTEXT ONLY — do NOT describe this composition in the report. It is the same most days and is not news. Use it only to interpret a change that the insights or trend analysis actually show, e.g. to explain why one district absorbed a demand spike):\nBy district: ${JSON.stringify(supply.byDistrict)}\nBy property type: ${JSON.stringify(supply.byType)}\n`
+        : `\nCURRENT ACTIVE SUPPLY (live snapshot, not historical):\nBy district: ${JSON.stringify(supply.byDistrict)}\nBy property type: ${JSON.stringify(supply.byType)}\n`)
     : '';
 
   // Trend Calculator output (product spec §3/§7) — the ONLY comparisons
@@ -166,15 +173,34 @@ ${JSON.stringify(rawMetricsSummary)}
 Canonical districts: ${CANONICAL_DISTRICTS.join(', ')}. Canonical property types: ${CANONICAL_PROPERTY_TYPES.join(', ')}.`;
 
   const structureByType = {
-    daily: `Write a DAILY INTELLIGENCE REPORT, 300-600 words, readable in under two minutes. Natural prose, not a list of statistics. Structure with these markdown headings, in order:
-# Executive Summary
-## Biggest Story
-## Marketplace
+    daily: `Write a DAILY INTELLIGENCE BRIEFING for the founder. It must be readable in UNDER 60 SECONDS — aim for 200-350 words. This is a briefing about TODAY, not a market report.
+
+It answers exactly four things: what happened today, what changed, what matters, and what to do next.
+
+COMPARISON HIERARCHY — use in this order:
+1. TODAY vs YESTERDAY is the primary comparison. Lead with it.
+2. The 7-day average is SECONDARY context, for saying whether today's move is part of a pattern.
+3. The 30-day average ONLY when it reveals a genuinely significant anomaly. Do not walk every metric through all three baselines — that is what makes this read like a monthly report.
+
+SMALL SAMPLES — a percentage is not automatically a finding. When the underlying counts are small (roughly single digits), say so in words instead of leading with the percentage: 1 to 2 events is +100% and usually means nothing. Reserve percentage-led statements for metrics with real volume. Interpret a zero in the context of the day's other volume — "0 leads" means something different on a day with 24 gallery interactions than on a day with no traffic at all.
+
+DO NOT RESTATE STANDING FACTS. Which district holds the most listings, which property type is most common, the median price, the overall marketplace composition — these are the same most days and are NOT news. Mention one only when it materially changed or when it is needed to explain a change. Avoid openers like "The marketplace currently...", "Sisattanak currently holds...", "Apartments continue to be...".
+
+WRITE LIKE THIS: "Search activity fell 37% today but remains above the 7-day average." / "Gallery engagement rose again today, suggesting users are actively exploring listing photos." / "Despite strong gallery engagement, no leads were created today — this is the biggest conversion question to investigate." / "Five active listings are still missing prices and should be fixed."
+
+Structure with these markdown headings, in order. OMIT ANY SECTION THAT HAS NO REAL CONTENT TODAY — do not pad, and never write "nothing to report" under a heading:
+# Today's Story
+(1-3 sentences: the single most important thing that happened today.)
+## What Changed Today
+(A short list of the meaningful changes vs yesterday. Not every metric — the ones that matter.)
 ## Buyer Behaviour
-## Property Performance
-## Product Insights
-## Opportunities
-## AI Recommendations`,
+(What users actually DID: searches, listing views, gallery interactions, contacts, leads. Interpretation, not a list of numbers.)
+## Listings To Watch
+(Only listings that deserve attention today: unusual engagement, high impressions with poor CTR, views but no contacts, missing critical data, a sudden change. Omit the section if none qualify.)
+## Data / Product Issues
+(Data-quality and product problems, kept separate from marketplace performance. Omit if none.)
+## Tomorrow's Priorities
+(2-4 concrete actions that follow from today's intelligence.)`,
     weekly: `Write a WEEKLY INTELLIGENCE REPORT. Compare this week to the previous week; highlight TRENDS, not just totals. Structure with these markdown headings:
 # Executive Summary
 ## What Changed This Week

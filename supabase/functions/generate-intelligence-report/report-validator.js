@@ -41,6 +41,15 @@ function headlineSections(bodyMarkdown, executiveSummary) {
   const bm = bodyMarkdown || '';
   const bigStoryMatch = bm.match(/##\s*Biggest Story\s*\n([\s\S]*?)(?=\n##|\n#|$)/i);
   if (bigStoryMatch) parts.push(bigStoryMatch[1]);
+  // The daily briefing leads with "# Today's Story" instead of
+  // "# Executive Summary / ## Biggest Story". Same role, so it is checked the
+  // same way. Both forms are recognised: historical reports generated under
+  // PROMPT_VERSION <= 1.1.0 still use the old headings and must keep
+  // validating identically.
+  else if (/#\s*Today['’]s Story/i.test(bm)) {
+    const todayMatch = bm.match(/#\s*Today['’]s Story\s*\n([\s\S]*?)(?=\n##|\n#|$)/i);
+    if (todayMatch) parts.push(todayMatch[1]);
+  }
   else {
     // Weekly/Monthly have no "Biggest Story" heading -- fall back to the
     // first section after the Executive Summary, which plays the same role.
