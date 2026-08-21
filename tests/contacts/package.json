@@ -1,0 +1,11 @@
+{
+  "name": "pintag-contact-tests",
+  "private": true,
+  "description": "Multiple phone numbers per listing, each advertising its languages: the picker renders, the CTAs follow the buyer's choice, and a single-contact listing is unchanged.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

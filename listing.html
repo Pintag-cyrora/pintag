@@ -618,6 +618,7 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
+<script src="contact-languages.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
 <script src="tracking.js?v=__ASSET_VERSION__"></script>
@@ -1399,7 +1400,7 @@ async function fetchProperty(slug,id){
   try{
     // Prefer slug (canonical/shareable); fall back to id for slugless listings.
     var filter=slug?('slug=eq.'+encodeURIComponent(slug)):('id=eq.'+encodeURIComponent(id));
-    var data=await sbFetch('/rest/v1/properties?'+filter+'&select=*,contacts(id,role,name,phone,whatsapp,is_verified),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified),unit_types(*)&limit=1');
+    var data=await sbFetch('/rest/v1/properties?'+filter+'&select=*,contacts(id,role,name,phone,whatsapp,is_verified,languages),property_contacts(sort_order,is_primary,contacts(id,role,name,phone,whatsapp,is_verified,languages)),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified),unit_types(*)&limit=1');
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
@@ -1787,6 +1788,50 @@ var _currentGalleryImages = [];
 // _currentGalleryImages's own pattern: stash the current render's value in
 // a module-level var so a global click handler (handleNotifyMeClick(),
 // defined once, outside any single render) can reach it.
+// ptSelectContact(index) -- the buyer picked a different phone number.
+//
+// Re-points EVERY contact surface at once so the number a buyer sees selected
+// is the number they actually reach: the WhatsApp button's href, the Call
+// button's tel:, the mobile sticky bar (which reads _currentContactPhone), and
+// the contactId carried into lead_events. Each phone number is its own
+// contacts row, so lead attribution follows the selection with no change to
+// the tracking model.
+//
+// Deliberately does NOT re-render the page: swapping attributes preserves
+// scroll position, the selected unit type, and the gallery state.
+function ptSelectContact(index){
+  var c=_currentContacts&&_currentContacts[index];
+  if(!c) return;
+  _currentContactId=c.id||'';
+  // The mobile sticky bar and the status CTAs build their wa.me URLs from this
+  // digits-only global at click time, so updating it is what makes them follow
+  // the selection too.
+  _currentContactPhone=String(c.whatsapp||c.phone||'').replace(/[^0-9]/g,'');
+
+  var wa=document.getElementById('pt-wa-primary');
+  if(wa){
+    var existing=wa.getAttribute('href')||'';
+    var q=existing.indexOf('?');
+    var text=(q>-1)?existing.slice(q):'';
+    wa.setAttribute('href', _currentContactPhone?('https://wa.me/'+_currentContactPhone+text):'#');
+    wa.setAttribute('data-contact-id', _currentContactId);
+  }
+  var call=document.getElementById('pt-call-primary');
+  if(call){
+    call.setAttribute('href','tel:'+(c.phone||''));
+    call.setAttribute('data-contact-id', _currentContactId);
+  }
+  var rows=document.querySelectorAll('.contact-picker .cpick-row');
+  for(var i=0;i<rows.length;i++){
+    var on=(i===index);
+    rows[i].classList.toggle('is-active',on);
+    rows[i].setAttribute('aria-checked',on?'true':'false');
+  }
+}
+
+var _currentContacts=[];
+var _currentContactTier=0;
+var _currentContactId='';
 var _currentContactPhone = '';
 
 // Deep linking (?unit=slugified-name or ?unit=<uuid>) -- resolves to a
@@ -2459,10 +2504,36 @@ function buildMockupLayout(){
 
   // ── Buyer Contact (always rendered — who the buyer should actually call,
   // independent of whether a Pintag Agent Profile is linked below) ──
-  var contact=data.contacts||null;
+  // MULTI-NUMBER: resolveListingContacts() (contact-languages.js) is the one
+  // read API that merges the legacy single `contacts` embed with the
+  // property_contacts join rows and returns them in staff order, primary
+  // first. Feature-detected so a version-mismatched cache degrades to exactly
+  // the previous single-contact behaviour rather than throwing.
+  var allContacts=(typeof resolveListingContacts==='function')?resolveListingContacts(data):[];
+  if(!allContacts.length&&data.contacts){
+    var _c=data.contacts;
+    allContacts=[{id:_c.id,name:_c.name||null,role:_c.role||null,phone:_c.phone||'',
+                  whatsapp:(_c.whatsapp||_c.phone||''),isVerified:!!_c.is_verified,languages:[]}];
+  }
+  _currentContacts=allContacts;
+  // LANGUAGE-AWARE ROUTING. `lang` here is the value the existing toggle
+  // already resolved (lang.js: ?lang= -> stored choice -> navigator.language
+  // -> 'lo'); there is no second language selector and no parallel state.
+  // setLang() re-runs buildMockupLayout(), so switching language re-enters
+  // this line and the CTAs re-resolve immediately — that is the whole
+  // integration, no extra listener required.
+  //
+  // The CTA is never hidden for want of a match: resolveContactForLanguage()
+  // falls back to the general number and then to any number (tiers 2 and 3),
+  // so an older single-number listing behaves exactly as it always has.
+  var _routed=(typeof resolveContactForLanguage==='function')
+    ? resolveContactForLanguage(data,lang) : null;
+  _currentContactTier=_routed?_routed.tier:0;
+  var contact=(_routed&&_routed.contact)||(allContacts.length?allContacts[0]:(data.contacts||null));
   var contactPhone=contact?(contact.whatsapp||contact.phone||''):'';
   var cleanPhone=String(contactPhone).replace(/[^0-9]/g,'');
   _currentContactPhone=cleanPhone;
+  _currentContactId=contact&&contact.id||'';
   // Localized pre-filled WhatsApp message — {{PLACEHOLDER}} template per
   // language so word order can differ freely (Chinese puts location before
   // property type; Lao has no article). Property type name reuses the same
@@ -2514,15 +2585,65 @@ function buildMockupLayout(){
   // No data-track on either button below -- ptContactClick() posts
   // ui_events itself (see its header comment in components.js); this is a
   // real property inquiry, so recordLead stays at its true default.
-  var callBtn=(contact&&contact.phone)?'<a href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" onclick="ptContactClick({channel:\'call\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',contactId:\''+escJs(contact.id||'')+'\',trackId:\'contact-phone\',trackLabel:\'Call\'})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  // ── MULTI-NUMBER PICKER ──────────────────────────────────────────────
+  // Rendered ONLY when the listing genuinely advertises more than one number,
+  // so a normal single-contact listing keeps exactly the UI it had. Each row
+  // shows the number and the languages that person answers in; picking one
+  // re-points the WhatsApp and Call buttons at it via ptSelectContact().
+  //
+  // Languages are shown ONLY when recorded -- a contact with none renders as a
+  // bare number rather than a guessed "Lao" (contact-languages.js rule 7).
+  var contactPickerHtml='';
+  if(allContacts.length>1){
+    // The routed contact is preselected, so the visitor never has to touch
+    // this to reach the right person -- the toggle already did it. The list
+    // stays visible so the other numbers and their languages are discoverable,
+    // and so a visitor can override without changing the whole page language.
+    var _routedIdx=0;
+    for(var _ri=0;_ri<allContacts.length;_ri++){
+      if(contact&&allContacts[_ri].id===contact.id){_routedIdx=_ri;break;}
+    }
+    // Tier 1 only: naming the language is honest just when the match is real.
+    // On a fallback the heading stays neutral rather than implying this person
+    // speaks a language nobody recorded.
+    var matchedName=(_currentContactTier===1&&typeof formatContactLanguages==='function')
+      ? formatContactLanguages([lang],lang) : null;
+    var pickLabel=matchedName
+      ? ({en:'Speaks '+matchedName,lo:'ເວົ້າພາສາ'+matchedName,zh:'会说'+matchedName}[lang]
+         ||('Speaks '+matchedName))
+      : ({en:'Choose who to contact',lo:'ເລືອກຜູ້ຕິດຕໍ່',zh:'选择联系人'}[lang]
+         ||'Choose who to contact');
+    var rows=allContacts.map(function(c,i){
+      var langText=(typeof formatContactLanguages==='function')?formatContactLanguages(c.languages,lang):null;
+      var nameBit=c.name?'<span class="cpick-name">'+esc(c.name)+'</span>':'';
+      var langBit=langText?'<span class="cpick-langs">'+esc(langText)+'</span>':'';
+      var on=(i===_routedIdx);
+      return '<button type="button" class="cpick-row'+(on?' is-active':'')+'" '+
+             'data-contact-index="'+i+'" role="radio" aria-checked="'+(on?'true':'false')+'" '+
+             'onclick="ptSelectContact('+i+')">'+
+               '<span class="cpick-main">'+nameBit+'<span class="cpick-phone">'+esc(c.phone)+'</span></span>'+
+               langBit+
+             '</button>';
+    }).join('');
+    contactPickerHtml='<div class="contact-picker" role="radiogroup" aria-label="'+esc(pickLabel)+'">'+
+                        '<p class="cpick-label">'+esc(pickLabel)+'</p>'+rows+
+                      '</div>';
+  }
+
+  var callBtn=(contact&&contact.phone)?'<a id="pt-call-primary" data-contact-id="'+escJs(contact.id||'')+'" href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" onclick="ptContactClick({channel:\'call\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'contact-phone\',trackLabel:\'Call\'})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
   var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
     '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
     '<div class="agent-identity">'+
     '<div><div class="agent-name-en">'+esc((contact&&contact.name)||roleLabel.en)+'</div></div>'+
     '</div></div>'+
+    contactPickerHtml+
     '<div class="agent-ctas">'+
-    '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:\''+escJs(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\',trackId:\'contact-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    // id="pt-wa-primary" + data-contact-id let ptSelectContact() re-point BOTH
+    // the href and the lead attribution when the buyer picks another number.
+    // contactId comes from the RESOLVED primary, not propertyContext.contacts,
+    // so the tracked contact and the dialled number can never disagree.
+    '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'contact-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
     '</div></div>'
   );

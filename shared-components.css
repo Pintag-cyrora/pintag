@@ -273,3 +273,45 @@ html[lang="lo"] .pt-card.pt-featured .pt-card-title{line-height:1.45;}
    primary Contact/Find-Similar button -- same tap target, tighter
    footprint so both buttons fit one row. */
 .pt-share-btn--compact{padding:11px 14px;font-size:12.5px;flex-shrink:0;}
+
+/* ─── CONTACT PICKER (listing page, multi-number listings only) ────────────
+   Rendered only when a listing advertises more than one phone number, so a
+   single-contact listing's CTA block is visually unchanged. Each row is a
+   radio in a radiogroup: number on the left, languages on the right. */
+.contact-picker{margin:0 0 10px;}
+.cpick-label{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--pt-ink-muted,#6b7280);margin:0 0 6px;text-transform:uppercase;}
+.cpick-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  padding:9px 11px;margin-bottom:6px;background:var(--pt-off,#f7f8f8);
+  border:1px solid var(--pt-border,#e3e6e8);border-radius:6px;cursor:pointer;
+  font:inherit;text-align:left;transition:border-color .15s,background .15s;}
+.cpick-row:last-child{margin-bottom:0;}
+.cpick-row:hover{border-color:var(--teal,#2D8C8C);}
+.cpick-row.is-active{border-color:var(--teal,#2D8C8C);background:rgba(45,140,140,0.07);box-shadow:inset 0 0 0 1px var(--teal,#2D8C8C);}
+.cpick-main{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.cpick-name{font-size:11px;color:var(--pt-ink-muted,#6b7280);line-height:1.3;}
+.cpick-phone{font-size:14px;font-weight:600;color:var(--pt-ink,#1A2428);line-height:1.3;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cpick-langs{font-size:11px;color:var(--teal,#2D8C8C);font-weight:600;text-align:right;flex-shrink:0;line-height:1.3;}
+@media (max-width:420px){
+  .cpick-row{padding:8px 10px;}
+  .cpick-phone{font-size:13px;}
+  .cpick-langs{font-size:10px;}
+}
+
+/* ─── ADMIN: language chips + additional phone rows ────────────────────── */
+.lang-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+.lang-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;font-size:12px;font-weight:500;
+  background:var(--pt-off,#f7f8f8);border:1px solid var(--pt-border,#e3e6e8);border-radius:14px;cursor:pointer;user-select:none;}
+.lang-chip:hover{border-color:var(--teal,#2D8C8C);}
+.lang-chip input{margin:0;cursor:pointer;}
+.lang-chip:has(input:checked){background:rgba(45,140,140,0.1);border-color:var(--teal,#2D8C8C);color:var(--teal,#2D8C8C);}
+.lang-hint{font-size:11px;color:var(--pt-ink-muted,#6b7280);margin:6px 0 0;line-height:1.45;}
+.extra-contact-row{padding:10px;margin-bottom:8px;background:var(--pt-off,#f7f8f8);
+  border:1px solid var(--pt-border,#e3e6e8);border-radius:6px;}
+.xc-fields{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.xc-fields .form-input{flex:1 1 150px;min-width:0;}
+.xc-remove{flex:0 0 auto;}
+@media (max-width:560px){ .xc-fields{flex-direction:column;align-items:stretch;} .xc-remove{align-self:flex-end;} }
+.xc-primary{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;
+  color:var(--pt-ink-muted,#6b7280);white-space:nowrap;cursor:pointer;}
+.xc-primary input{margin:0;cursor:pointer;}

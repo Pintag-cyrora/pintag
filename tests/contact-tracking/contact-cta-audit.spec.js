@@ -47,6 +47,20 @@ const URL_SITE_RE = /(https:\/\/wa\.me\/)|(['"]tel:)/g;
 // tracking heuristic or this test fails.
 const ALLOWLIST = [
   {
+    file: 'listing.html',
+    match: /function ptSelectContact\(/,
+    reason:
+      'Not a CTA — an attribute update on CTAs that are already tracked. ' +
+      'ptSelectContact() runs when a buyer picks one of a listing\'s several ' +
+      'phone numbers; it rewrites the href of #pt-wa-primary and ' +
+      '#pt-call-primary, both of which carry ptContactClick() in their own ' +
+      'onclick and are audited at those sites. It also rewrites their ' +
+      'data-contact-id, which is precisely what makes lead_events attribute ' +
+      'the inquiry to the number the buyer actually chose. Adding a second ' +
+      'ptContactClick() call here would double-count every selection as an ' +
+      'inquiry the buyer never made.',
+  },
+  {
     file: 'admin.html',
     match: /renderOwnerPhoneCell/,
     reason:

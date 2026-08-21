@@ -102,6 +102,37 @@ env:
   #     production — admin.html's save path always sends them (as nulls when
   #     unset), and PostgREST rejects an unknown column with PGRST204, which
   #     would break saving ANY listing. See this commit's notes.
+  # 20260820000000_multi_phone_contacts.sql — reviewed and authorized
+  # deliberately. UNLIKE 20260818020000 above, this one DOES write rows and DOES
+  # change a policy, so it gets its own review rather than that one's reasoning:
+  #   * Schema is additive: one nullable column (contacts.languages text[]), one
+  #     NEW table (property_contacts), two indexes and one partial unique index.
+  #     No column is dropped, no column's type changes, nothing is renamed.
+  #   * It DOES backfill, and the writes are confined to the NEW table: one
+  #     INSERT ... SELECT that gives every listing with a contact_id a link row
+  #     (ON CONFLICT DO NOTHING, so re-running is a no-op), and one UPDATE that
+  #     promotes a primary only for a property that has none. Checked statement
+  #     by statement: NO pre-existing row in properties, contacts, leads or
+  #     lead_events is read-modified-written. properties.contact_id is not
+  #     touched, so leads.contact_id / lead_events.contact_id keep resolving.
+  #   * It WIDENS one RLS policy: "Public read contacts of active properties"
+  #     gains a second arm so a listing's ADDITIONAL numbers are readable by
+  #     anon. The original contact_id arm is kept verbatim, and exposure does
+  #     not broaden — a contact is still reachable only through a listing that
+  #     is already status IN ('active','available'). Without this arm the
+  #     feature is invisible in production rather than merely degraded.
+  #   * Validated against a throwaway PostgreSQL 16 cluster seeded with the real
+  #     production shape (ONE shared contacts row across THREE listings, plus a
+  #     draft listing and a contactless listing): applies cleanly, is idempotent
+  #     across two consecutive runs, backfills exactly one link per listing that
+  #     had a contact, leaves the contactless listing alone, exposes a second
+  #     number to anon, and still HIDES a number reachable only from a draft
+  #     listing. Reverting to the old policy made the second number vanish,
+  #     confirming the widening is load-bearing rather than cosmetic.
+  #   * MUST be applied BEFORE the frontend that writes these columns reaches
+  #     production — admin.html's save path sends contacts.languages and writes
+  #     property_contacts (including is_primary), and PostgREST rejects an
+  #     unknown column with PGRST204, which would break saving ANY listing.
   EXPECTED_MIGRATIONS: |
     20260813000000
     20260817000000
@@ -109,7 +140,8 @@ env:
     20260818000000
     20260818010000
     20260818020000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql'
+    20260820000000
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
