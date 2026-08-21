@@ -914,6 +914,20 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
               <input class="form-input" id="f-contact-whatsapp" type="text" placeholder="Defaults to phone if blank">
             </div>
             <div class="form-group form-full">
+              <label class="form-label">Languages spoken</label>
+              <div id="f-contact-languages" class="lang-chips"></div>
+              <p class="lang-hint">Leave all unchecked if you don't know — the listing shows the number with no language line rather than guessing.</p>
+            </div>
+            <!-- ADDITIONAL PHONE NUMBERS. Each row is its own contacts row, so
+                 a buyer who picks it produces a lead attributed to that person.
+                 No phone_2/phone_3 fields: rows are added and removed freely. -->
+            <div class="form-group form-full">
+              <label class="form-label">Additional phone numbers</label>
+              <div id="extra-contacts-list"></div>
+              <button type="button" class="btn-cancel" onclick="addExtraContact()" style="margin-top:8px;">+ Add another phone number</button>
+              <p class="lang-hint">Buyers see every number with the languages that person speaks, and choose who to contact.</p>
+            </div>
+            <div class="form-group form-full">
               <button type="button" class="btn-cancel" onclick="fillContactFromSelectedAgent()">Same as selected agent</button>
               <div id="contact-shared-note" class="agent-legacy-note" style="display:none;margin-top:8px;">
                 <div id="contact-shared-note-text"></div>
@@ -1037,6 +1051,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
+<script src="contact-languages.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script src="import-provenance.js?v=__ASSET_VERSION__"></script>
 <script src="listing-provenance.js?v=__ASSET_VERSION__"></script>
@@ -3557,6 +3572,9 @@ function resetListingForm() {
   document.getElementById('f-contact-name').value = '';
   document.getElementById('f-contact-phone').value = '';
   document.getElementById('f-contact-whatsapp').value = '';
+  renderLanguageChips(document.getElementById('f-contact-languages'), [], 'pc-lang');
+  document.getElementById('extra-contacts-list').innerHTML = '';
+  _removedExtraContactIds = [];
   _editingContactId = null;
   updateOwnerSectionVisibility();
 }
@@ -3590,7 +3608,7 @@ async function editListing(id, from) {
   // silently discarded by the browser, which is why an existing listing's
   // Agent could appear unselected after opening Edit.
   await showForm(id);
-  const data = await sbApi('GET', `properties?id=eq.${id}&select=*,contacts(*),unit_types(*)&limit=1`);
+  const data = await sbApi('GET', `properties?id=eq.${id}&select=*,contacts(*),property_contacts(sort_order,contacts(id,role,name,phone,whatsapp,is_verified,languages)),unit_types(*)&limit=1`);
   if (!data || !data[0]) return;
   const p = data[0];
 
@@ -3724,6 +3742,15 @@ async function editListing(id, from) {
   if (ownerSel) { populateOwnerSelect(p.owner_id || ''); onOwnerSelectChange(); }
 
   _editingContactId = p.contact_id || null;
+  // Languages + additional numbers. resolveListingContacts() returns the full
+  // ordered list; index 0 is the primary (already in the fields above), so the
+  // repeater renders the rest.
+  renderLanguageChips(document.getElementById('f-contact-languages'), (c && c.languages) || [], 'pc-lang');
+  document.getElementById('extra-contacts-list').innerHTML = '';
+  _removedExtraContactIds = [];
+  if (typeof resolveListingContacts === 'function') {
+    resolveListingContacts(p).slice(1).forEach(x => addExtraContact(x));
+  }
   document.getElementById('f-contact-role').value     = c ? c.role : 'agent';
   document.getElementById('f-contact-name').value     = c ? (c.name || '') : '';
   document.getElementById('f-contact-phone').value    = c ? (c.phone || '') : '';
@@ -3743,6 +3770,127 @@ async function editListing(id, from) {
         document.getElementById('contact-shared-note').style.display = 'block';
       }
     } catch (e) { console.error('Failed to check contact usage:', e); }
+  }
+}
+
+// ── CONTACT LANGUAGES + ADDITIONAL PHONE NUMBERS ──────────────────
+// The registry, labels and normalizer all live in contact-languages.js
+// (CONTACT_LANGUAGES / normalizeContactLanguages / resolveListingContacts) so
+// admin, the public listing page and any edge function read ONE list. Nothing
+// here names a language: adding Burmese later is one registry entry.
+//
+// Each additional number is a full contacts row, not a phone_2 column. That is
+// what makes per-number lead attribution work for free -- lead_events.contact_id
+// already exists, so a buyer picking the third number produces a lead against
+// that person with no change to the tracking model.
+
+// Renders the language checkboxes for a container. `selected` is an array of
+// codes. Generic over the registry (never hardcodes a language).
+function renderLanguageChips(container, selected, namePrefix) {
+  if (!container || typeof CONTACT_LANGUAGES === 'undefined') return;
+  const chosen = (typeof normalizeContactLanguages === 'function')
+    ? normalizeContactLanguages(selected) : (selected || []);
+  container.innerHTML = CONTACT_LANGUAGES.map(function (l) {
+    const on = chosen.indexOf(l.code) !== -1 ? ' checked' : '';
+    return '<label class="lang-chip"><input type="checkbox" class="' + namePrefix +
+           '" value="' + l.code + '"' + on + '> ' + esc(l.label.en) + '</label>';
+  }).join('');
+}
+
+// Reads the checked codes back, in REGISTRY order (contact-languages.js rule 2)
+// rather than click order, so two contacts with the same languages always
+// store the same array.
+function readLanguageChips(container, cls) {
+  if (!container) return [];
+  const checked = [...container.querySelectorAll('input.' + cls + ':checked')].map(i => i.value);
+  return (typeof normalizeContactLanguages === 'function')
+    ? normalizeContactLanguages(checked) : checked;
+}
+
+// Additional-number rows. Ids are carried in a data attribute so an existing
+// contacts row is PATCHed rather than duplicated on every save.
+let _extraContactSeq = 0;
+function addExtraContact(existing) {
+  const list = document.getElementById('extra-contacts-list');
+  if (!list) return;
+  const uid = 'xc' + (_extraContactSeq++);
+  const row = document.createElement('div');
+  row.className = 'extra-contact-row';
+  row.dataset.contactId = (existing && existing.id) || '';
+  row.innerHTML =
+    '<div class="xc-fields">' +
+      '<input class="form-input xc-name"  type="text" placeholder="Name (optional)" value="' + esc((existing && existing.name) || '') + '">' +
+      '<input class="form-input xc-phone" type="text" placeholder="020 XXXXXXXX" value="' + esc((existing && existing.phone) || '') + '">' +
+      '<button type="button" class="btn-cancel xc-remove" onclick="removeExtraContact(this)" aria-label="Remove this phone number">Remove</button>' +
+    '</div>' +
+    '<div class="lang-chips" id="' + uid + '-langs"></div>';
+  list.appendChild(row);
+  renderLanguageChips(document.getElementById(uid + '-langs'), (existing && existing.languages) || [], 'xc-lang');
+}
+
+function removeExtraContact(btn) {
+  const row = btn.closest('.extra-contact-row');
+  if (!row) return;
+  // Remembered so saveExtraContacts() can detach it from THIS listing. The
+  // contacts row itself is never deleted -- it may be shared by other
+  // listings (see the shared-contact warning above), so only the
+  // property_contacts link is removed.
+  if (row.dataset.contactId) _removedExtraContactIds.push(row.dataset.contactId);
+  row.remove();
+}
+let _removedExtraContactIds = [];
+
+// Reads every additional row. A row with no phone is skipped entirely rather
+// than saved as an empty contact.
+function getExtraContactsFromDom() {
+  return [...document.querySelectorAll('#extra-contacts-list .extra-contact-row')].map((row, i) => {
+    const phone = row.querySelector('.xc-phone').value.trim();
+    if (!phone) return null;
+    return {
+      id: row.dataset.contactId || null,
+      name: row.querySelector('.xc-name').value.trim() || null,
+      phone: phone,
+      languages: readLanguageChips(row, 'xc-lang'),
+      sort_order: i + 1                      // 0 is reserved for the primary
+    };
+  }).filter(Boolean);
+}
+
+// Persists the additional numbers and the property_contacts links.
+// Called AFTER the primary contact resolves, so sort_order 0 is already known.
+async function saveExtraContacts(propertyId, primaryContactId) {
+  const rows = getExtraContactsFromDom();
+
+  // Detach removed links. The contacts row survives -- it may be shared.
+  for (const cid of _removedExtraContactIds) {
+    await sbApi('DELETE', `property_contacts?property_id=eq.${propertyId}&contact_id=eq.${cid}`);
+  }
+  _removedExtraContactIds = [];
+
+  const linked = [];
+  if (primaryContactId) linked.push({ contact_id: primaryContactId, sort_order: 0 });
+
+  for (const r of rows) {
+    const body = { role: 'other', name: r.name, phone: r.phone, whatsapp: r.phone, languages: r.languages };
+    let cid = r.id;
+    if (cid) {
+      await sbApi('PATCH', `contacts?id=eq.${cid}`, body);
+    } else {
+      const created = await sbApi('POST', 'contacts', body);
+      cid = Array.isArray(created) ? created[0].id : (created && created.id);
+    }
+    if (cid) linked.push({ contact_id: cid, sort_order: r.sort_order });
+  }
+
+  // Rebuild the link set for this listing. Deleting links (never contacts)
+  // then re-inserting keeps sort_order contiguous after a middle row is
+  // removed, and is safe because property_contacts holds no data of its own
+  // beyond the ordering.
+  await sbApi('DELETE', `property_contacts?property_id=eq.${propertyId}`);
+  for (const l of linked) {
+    await sbApi('POST', 'property_contacts', {
+      property_id: propertyId, contact_id: l.contact_id, sort_order: l.sort_order
+    });
   }
 }
 
@@ -3871,7 +4019,10 @@ async function saveListing(e) {
         name:     document.getElementById('f-contact-name').value.trim() || null,
         phone:    contactPhone,
         whatsapp: document.getElementById('f-contact-whatsapp').value.trim() || contactPhone,
-        party_id: _selAgentId || null
+        party_id: _selAgentId || null,
+        // [] when nothing is checked -- an explicit "not recorded", which the
+        // listing page renders as no language line rather than a guess.
+        languages: readLanguageChips(document.getElementById('f-contact-languages'), 'pc-lang')
       };
       const forkRequested = document.getElementById('f-contact-fork') && document.getElementById('f-contact-fork').checked;
       if (_editingContactId && _editingContactSharedCount === 0) {
@@ -3999,6 +4150,20 @@ async function saveListing(e) {
       btn.textContent = 'Save Listing';
       msg.className = 'form-message error';
       msg.textContent = '✗ Listing saved, but Unit Types failed to save: ' + err.message;
+      msg.style.display = 'block';
+      return;
+    }
+    // Additional phone numbers + the property_contacts links. Runs AFTER the
+    // primary contact resolved, so sort_order 0 is known. Its own catch: the
+    // listing itself is already saved, and a link failure must say so plainly
+    // rather than look like a total failure.
+    try {
+      await saveExtraContacts(propertyId, resolvedContactId);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Save Listing';
+      msg.className = 'form-message error';
+      msg.textContent = '✗ Listing saved, but the phone numbers failed to save: ' + err.message;
       msg.style.display = 'block';
       return;
     }
