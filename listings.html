@@ -533,6 +533,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
     <div class="filter-bar-row filter-bar-row3">
       <label class="fc-field">
         <span class="fc-label lo-i">ເມືອງ</span><span class="fc-label en-i">District</span><span class="fc-label zh-i">城区</span>
+        <select class="fc-select" id="province-select" onchange="setProvinceFilter(this.value)" data-track="filter-province" data-track-type="select" data-track-label="Filter: Province"><option value="all">All provinces</option></select>
         <select class="fc-select" id="district-select" onchange="setDistrictFilter(this.value)" data-track="filter-district" data-track-type="select" data-track-label="Filter: District"><option value="all">All districts</option></select>
       </label>
       <label class="fc-field">
@@ -590,6 +591,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 <script src="lang.js?v=__ASSET_VERSION__"></script>
 <script src="amenities.js?v=__ASSET_VERSION__"></script>
 <script src="terminology.js?v=__ASSET_VERSION__"></script>
+<script src="provinces.js?v=__ASSET_VERSION__"></script>
 <script src="currency.js?v=__ASSET_VERSION__"></script>
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
@@ -645,6 +647,7 @@ let currentSmokingAllowed = false;
 // District + price-range dimensions (Priority 3). District is a plain dropdown
 // of the districts actually present in the data; price is a small set of
 // transaction-aware bands (rent $/month vs sale totals) -- see PRICE_BANDS.
+let currentProvinceFilter = 'all';
 let currentDistrictFilter = 'all';
 let currentPriceBand = 'all';
 
@@ -1074,6 +1077,7 @@ async function loadListings() {
       headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
     });
     allProperties = await res.json();
+    populateProvinceOptions();
     populateDistrictOptions();
     renderPriceOptions();
     renderListings();
@@ -1193,12 +1197,20 @@ function matchesPriceBand(p) {
 }
 // The ONE predicate BOTH views (grid + map) filter through, so a dimension can
 // never apply to one view but not the other.
-function matchesActiveFilters(p) {
+function matchesActiveFilters(p, opts) {
+  // opts.ignoreProvince — used when BUILDING the province list. Counting a
+  // province through its own filter would collapse the list to whatever is
+  // already selected, so the axis being populated is excluded from its own
+  // count. Every other filter still applies, which is what keeps the counts
+  // honest.
+  var _ignoreProvince = opts && opts.ignoreProvince;
+  var _ignoreDistrict = opts && opts.ignoreDistrict;
   if (!(currentTxFilter === 'all' || p.transaction_type === currentTxFilter)) return false;
   if (!(currentTypeFilter === 'all' || p.property_type === currentTypeFilter)) return false;
   if (currentAvailOnly && !isAvailableStatus(p)) return false;
   if (!matchesRentalFilters(p)) return false;
-  if (currentDistrictFilter !== 'all' && (p.district_en || p.district || '') !== currentDistrictFilter) return false;
+  if (!_ignoreProvince && currentProvinceFilter !== 'all' && _listingProvince(p) !== currentProvinceFilter) return false;
+  if (!_ignoreDistrict && currentDistrictFilter !== 'all' && (p.district_en || p.district || '') !== currentDistrictFilter) return false;
   if (!matchesPriceBand(p)) return false;
   return true;
 }
@@ -1225,17 +1237,91 @@ function renderPriceOptions() {
 }
 // Populate the District dropdown from the districts actually present in the
 // data, in the current language, preserving the current selection.
+// The 7 Vientiane Capital districts. Used ONLY to resolve a legacy listing
+// that predates properties.province_en; a backfilled row answers from its own
+// column and never consults this.
+var VIENTIANE_CAPITAL_DISTRICTS = ['Sisattanak','Saysettha','Chanthabouly',
+  'Sikhottabong','Xaythany','Hadxaifong','Naxaithong'];
+
+function _listingProvince(p) {
+  return (typeof resolveListingProvince === 'function')
+    ? resolveListingProvince(p, VIENTIANE_CAPITAL_DISTRICTS)
+    : (p.province_en || null);
+}
+
+function setProvinceFilter(val) {
+  currentProvinceFilter = val;
+  // Changing province can strand a district selection from the old province.
+  // populateDistrictOptions() re-derives the district list from what is
+  // actually visible now and resets a stranded value, so the two selects can
+  // never combine into a guaranteed-empty result.
+  populateProvinceOptions();
+  populateDistrictOptions();
+  applyFilters();
+}
+
+// THE CUSTOMER-FACING PROVINCE FILTER — inventory-driven and CONTEXTUAL.
+//
+// Built from the listings the page actually fetched, so it inherits the
+// existing visibility rules verbatim: the REST query already excludes drafts
+// (or=(status.neq.draft,status.is.null)) and RLS excludes everything else
+// non-public. There is deliberately no second definition of "published" here.
+//
+// `matches` applies every OTHER active filter, so the province list can never
+// promise inventory that disappears the moment the customer's existing
+// Rent/Apartment selection is applied — and a province with zero visible
+// matches is simply absent rather than offered and then empty.
+function populateProvinceOptions() {
+  var sel = document.getElementById('province-select');
+  if (!sel || typeof resolveAvailableProvinces !== 'function') return;
+  var lang = getCurrentLang();
+
+  var available = resolveAvailableProvinces(allProperties, {
+    vientianeDistricts: VIENTIANE_CAPITAL_DISTRICTS,
+    matches: function (p) { return matchesActiveFilters(p, { ignoreProvince: true }); }
+  });
+
+  // A selection that no longer has inventory resets to "all" rather than
+  // stranding the customer on an empty result set.
+  var keys = available.map(function (a) { return a.key; });
+  if (currentProvinceFilter !== 'all' && keys.indexOf(currentProvinceFilter) === -1) {
+    currentProvinceFilter = 'all';
+  }
+  var anyLabel = ({lo:'ທຸກແຂວງ', en:'All provinces', zh:'所有省份'})[lang] || 'All provinces';
+  sel.innerHTML = '<option value="all">' + esc(anyLabel) + '</option>' +
+    available.map(function (a) {
+      return '<option value="' + esc(a.key) + '">' +
+             esc(provinceLabel(a.key, lang)) + ' (' + a.count + ')</option>';
+    }).join('');
+  sel.value = currentProvinceFilter;
+  // One province and nothing to choose between is noise, not a filter.
+  sel.parentNode && (sel.style.display = available.length > 1 ? '' : 'none');
+}
+
 function populateDistrictOptions() {
   var sel = document.getElementById('district-select');
   if (!sel) return;
   var lang = getCurrentLang();
+  // Contextual, exactly like the province list above: only districts that
+  // still have visible inventory under every OTHER active filter (including
+  // the selected province). Otherwise picking a province could leave district
+  // options that are guaranteed to return nothing.
   var seen = {};
-  allProperties.forEach(function(p){ var d = p.district_en || p.district; if (d) seen[d] = true; });
+  allProperties.forEach(function(p){
+    if (!matchesActiveFilters(p, { ignoreDistrict: true })) return;
+    var d = p.district_en || p.district; if (d) seen[d] = true;
+  });
   var districts = Object.keys(seen).sort();
   var anyLabel = ({lo:'ທຸກເມືອງ', en:'All districts', zh:'所有城区'})[lang] || 'All districts';
   if (currentDistrictFilter !== 'all' && districts.indexOf(currentDistrictFilter) === -1) currentDistrictFilter = 'all';
   sel.innerHTML = '<option value="all">' + esc(anyLabel) + '</option>' +
-    districts.map(function(d){ return '<option value="' + esc(d) + '">' + esc(d) + '</option>'; }).join('');
+    districts.map(function(d){
+      var n = allProperties.filter(function(x){
+        return matchesActiveFilters(x, { ignoreDistrict: true }) &&
+               (x.district_en || x.district || '') === d;
+      }).length;
+      return '<option value="' + esc(d) + '">' + esc(d) + ' (' + n + ')</option>';
+    }).join('');
   sel.value = currentDistrictFilter;
 }
 
@@ -1548,6 +1634,7 @@ function setLang(lang, btn) {
   persistPintagLang(lang);
   applyPintagLang(lang, btn);
   updateSortLabels();
+  populateProvinceOptions();
   populateDistrictOptions();
   renderPriceOptions();
   renderListings();

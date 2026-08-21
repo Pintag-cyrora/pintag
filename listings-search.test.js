@@ -32,11 +32,16 @@ for (const f of ['currency.js', 'terminology.js', 'components.js']) {
   vm.runInThisContext(fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8'), { filename: f });
 }
 globalThis.window = globalThis;
-vm.runInThisContext("var currentTxFilter='all', currentTypeFilter='all', currentAvailOnly=false, currentDistrictFilter='all', currentPriceBand='all';");
+vm.runInThisContext("var currentTxFilter='all', currentTypeFilter='all', currentAvailOnly=false, currentDistrictFilter='all', currentPriceBand='all', currentProvinceFilter='all';");
+// The province axis joined matchesActiveFilters(). Load the REAL registry and
+// the REAL _listingProvince() rather than stubbing them, so these tests keep
+// exercising the shipped predicate.
+vm.runInThisContext(fs.readFileSync(new URL('./provinces.js', import.meta.url), 'utf8'), { filename: 'provinces.js' });
+vm.runInThisContext("var VIENTIANE_CAPITAL_DISTRICTS=['Sisattanak','Saysettha','Chanthabouly','Sikhottabong','Xaythany','Hadxaifong','Naxaithong'];");
 vm.runInThisContext("var matchesRentalFilters=function(){return true;};");
 vm.runInThisContext("var isAvailableStatus=function(){return true;};");
 vm.runInThisContext(extractVar('PRICE_BANDS'));
-['_resolvedPrice', '_numericPrice', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand', 'matchesActiveFilters']
+['_resolvedPrice', '_numericPrice', '_listingProvince', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand', 'matchesActiveFilters']
   .forEach((n) => vm.runInThisContext(extractFn(n)));
 
 function setState(s) { Object.assign(globalThis, s); }

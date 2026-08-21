@@ -737,6 +737,16 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
         <div class="form-section">
           <p class="form-section-title">&#9318; Location</p>
           <div class="form-grid">
+            <!-- ADMIN SHOWS ALL 18 provinces regardless of inventory: an
+                 agent must be able to create the FIRST listing in a province
+                 that has none yet. Only the customer-facing filter hides empty
+                 provinces (provinces.js rule 7). -->
+            <div class="form-group">
+              <label class="form-label">Province <span class="required">*</span></label>
+              <select class="form-select" id="f-province" onchange="onProvinceChange()">
+                <option value="">Select province</option>
+              </select>
+            </div>
             <div class="form-group">
               <label class="form-label">District <span class="required">*</span></label>
               <select class="form-select" id="f-district">
@@ -1055,6 +1065,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
+<script src="provinces.js?v=__ASSET_VERSION__"></script>
 <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script src="import-provenance.js?v=__ASSET_VERSION__"></script>
@@ -1164,6 +1175,54 @@ const DISTRICT_MAP={
   'Hadxaifong' :{lo:'ຫາດຊາຍຟອງ',        zh:'哈赛丰'     },
   'Naxaithong' :{lo:'ນາຊາຍທອງ',          zh:'纳赛通'     }
 };
+
+// ── PROVINCE (admin) ──────────────────────────────────────────────
+// Renders the FULL registry (provinces.js rule 7) — unlike the customer
+// filter, which is inventory-driven. Nothing here names a province: adding
+// one is a LAO_PROVINCES entry plus a migration.
+const VIENTIANE_CAPITAL_DISTRICTS = ['Sisattanak','Saysettha','Chanthabouly',
+  'Sikhottabong','Xaythany','Hadxaifong','Naxaithong'];
+
+function populateProvinceSelect(selected) {
+  const sel = document.getElementById('f-province');
+  if (!sel || typeof getAllProvinces !== 'function') return;
+  sel.innerHTML = '<option value="">Select province</option>' +
+    getAllProvinces().map(p =>
+      `<option value="${esc(p.key)}">${esc(p.key)} ${esc(p.lo)}</option>`).join('');
+  sel.value = selected || '';
+}
+
+// The 7 hardcoded district options are Vientiane Capital's. Outside the
+// capital Pintag has no district registry yet, so the select is replaced by a
+// free-text input rather than offering the wrong districts — a Luang Prabang
+// listing must not be filed under "Sisattanak".
+function onProvinceChange() {
+  const prov = document.getElementById('f-province').value;
+  const sel = document.getElementById('f-district');
+  const isCapital = prov === 'Vientiane Capital' || prov === '';
+  sel.style.display = isCapital ? '' : 'none';
+  let free = document.getElementById('f-district-free');
+  if (!free) {
+    free = document.createElement('input');
+    free.className = 'form-input';
+    free.id = 'f-district-free';
+    free.type = 'text';
+    free.placeholder = 'District name';
+    sel.parentNode.appendChild(free);
+  }
+  free.style.display = isCapital ? 'none' : '';
+}
+
+// The district value to save: the select inside the capital, the free-text
+// input outside it. One function so save and AI-generation cannot disagree.
+function currentDistrictValue() {
+  const prov = document.getElementById('f-province').value;
+  if (prov && prov !== 'Vientiane Capital') {
+    const free = document.getElementById('f-district-free');
+    return free ? free.value.trim() : '';
+  }
+  return document.getElementById('f-district').value;
+}
 
 // ── Normalize any value to canonical registry key ────────────────
 function normalizeToKey(value, registry) {
@@ -3676,6 +3735,15 @@ async function editListing(id, from) {
   setChecked('features-grid', rawFeatures, FEATURES);
   setChecked('amenities-grid', Array.isArray(p.amenities) ? p.amenities : [], AMENITIES);
 
+  // resolveListingProvince() handles a legacy row with no province column by
+  // inferring Vientiane Capital from its district — the same rule the
+  // migration's backfill used, so admin and the database agree.
+  populateProvinceSelect((typeof resolveListingProvince === 'function')
+    ? resolveListingProvince(p, VIENTIANE_CAPITAL_DISTRICTS)
+    : (p.province_en || ''));
+  onProvinceChange();
+  const _freeD = document.getElementById('f-district-free');
+  if (_freeD) _freeD.value = p.district_en || '';
   document.getElementById('f-district').value    = p.district_en || '';
   document.getElementById('f-village').value     = p.village_en || p.village || '';
   document.getElementById('f-map').value         = p.map_embed_url || '';
@@ -3938,9 +4006,13 @@ async function saveListing(e) {
   // try/catch blocks still handle their specific cases with tailored
   // messages; this outer guard is the backstop for everything else.
   try {
-  const districtEn = document.getElementById('f-district').value;
+  const districtEn = currentDistrictValue();
   const districtMap = DISTRICT_MAP[districtEn] || {};
   const village = document.getElementById('f-village').value.trim();
+  // Province labels are derived from the registry, never typed — so
+  // province_lo/_zh can never drift from province_en.
+  const provinceEn = document.getElementById('f-province').value || null;
+  const provinceDef = (typeof provinceByKey === 'function') ? provinceByKey(provinceEn) : null;
 
   const features  = getCheckedKeys('features-grid');
   const amenities = getCheckedKeys('amenities-grid');
@@ -4117,6 +4189,9 @@ async function saveListing(e) {
     ...buildTypedFieldsPayload(document.getElementById('f-type').value),
     features:          features.length ? features : null,
     amenities:         amenities.length ? amenities : null,
+    province_en:       provinceEn,
+    province_lo:       provinceDef ? provinceDef.lo : null,
+    province_zh:       provinceDef ? provinceDef.zh : null,
     district_en:       districtEn || null,
     district_lo:       districtMap.lo || null,
     district_zh:       districtMap.zh || null,
