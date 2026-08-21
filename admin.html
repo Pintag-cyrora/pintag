@@ -916,6 +916,10 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
             <div class="form-group form-full">
               <label class="form-label">Languages spoken</label>
               <div id="f-contact-languages" class="lang-chips"></div>
+              <label class="xc-primary" style="margin-top:8px;display:inline-flex;">
+                <input type="checkbox" id="f-contact-is-primary" checked onchange="onMainPrimaryChange()">
+                Primary / general number
+              </label>
               <p class="lang-hint">Leave all unchecked if you don't know — the listing shows the number with no language line rather than guessing.</p>
             </div>
             <!-- ADDITIONAL PHONE NUMBERS. Each row is its own contacts row, so
@@ -3573,6 +3577,7 @@ function resetListingForm() {
   document.getElementById('f-contact-phone').value = '';
   document.getElementById('f-contact-whatsapp').value = '';
   renderLanguageChips(document.getElementById('f-contact-languages'), [], 'pc-lang');
+  document.getElementById('f-contact-is-primary').checked = true;
   document.getElementById('extra-contacts-list').innerHTML = '';
   _removedExtraContactIds = [];
   _editingContactId = null;
@@ -3608,7 +3613,7 @@ async function editListing(id, from) {
   // silently discarded by the browser, which is why an existing listing's
   // Agent could appear unselected after opening Edit.
   await showForm(id);
-  const data = await sbApi('GET', `properties?id=eq.${id}&select=*,contacts(*),property_contacts(sort_order,contacts(id,role,name,phone,whatsapp,is_verified,languages)),unit_types(*)&limit=1`);
+  const data = await sbApi('GET', `properties?id=eq.${id}&select=*,contacts(*),property_contacts(sort_order,is_primary,contacts(id,role,name,phone,whatsapp,is_verified,languages)),unit_types(*)&limit=1`);
   if (!data || !data[0]) return;
   const p = data[0];
 
@@ -3746,10 +3751,15 @@ async function editListing(id, from) {
   // ordered list; index 0 is the primary (already in the fields above), so the
   // repeater renders the rest.
   renderLanguageChips(document.getElementById('f-contact-languages'), (c && c.languages) || [], 'pc-lang');
+  // Default true: a listing whose links predate the is_primary backfill still
+  // presents its main contact as the general number.
+  const _resolvedAll = (typeof resolveListingContacts === 'function') ? resolveListingContacts(p) : [];
+  const _mainRow = c ? _resolvedAll.find(x => x.id === c.id) : null;
+  document.getElementById('f-contact-is-primary').checked = _mainRow ? _mainRow.isPrimary : true;
   document.getElementById('extra-contacts-list').innerHTML = '';
   _removedExtraContactIds = [];
   if (typeof resolveListingContacts === 'function') {
-    resolveListingContacts(p).slice(1).forEach(x => addExtraContact(x));
+    _resolvedAll.slice(1).forEach(x => addExtraContact(x));
   }
   document.getElementById('f-contact-role').value     = c ? c.role : 'agent';
   document.getElementById('f-contact-name').value     = c ? (c.name || '') : '';
@@ -3821,11 +3831,29 @@ function addExtraContact(existing) {
     '<div class="xc-fields">' +
       '<input class="form-input xc-name"  type="text" placeholder="Name (optional)" value="' + esc((existing && existing.name) || '') + '">' +
       '<input class="form-input xc-phone" type="text" placeholder="020 XXXXXXXX" value="' + esc((existing && existing.phone) || '') + '">' +
+      '<label class="xc-primary" title="The general number, used when no contact speaks the visitor\'s language">' +
+        '<input type="radio" name="xc-primary-pick" class="xc-is-primary" onchange="onPrimaryContactChange()"> Primary' +
+      '</label>' +
       '<button type="button" class="btn-cancel xc-remove" onclick="removeExtraContact(this)" aria-label="Remove this phone number">Remove</button>' +
     '</div>' +
     '<div class="lang-chips" id="' + uid + '-langs"></div>';
   list.appendChild(row);
+  if (existing && existing.isPrimary) row.querySelector('.xc-is-primary').checked = true;
   renderLanguageChips(document.getElementById(uid + '-langs'), (existing && existing.languages) || [], 'xc-lang');
+}
+
+// Exactly one primary per listing. The radios and the "this is the primary"
+// checkbox on the main contact share one group, so choosing a primary among
+// the additional numbers visibly releases the main one -- rather than silently
+// producing two primaries the unique index would then reject at save time.
+function onPrimaryContactChange() {
+  const mainPrimary = document.getElementById('f-contact-is-primary');
+  const anyExtra = document.querySelector('#extra-contacts-list .xc-is-primary:checked');
+  if (mainPrimary) mainPrimary.checked = !anyExtra;
+}
+function onMainPrimaryChange() {
+  if (!document.getElementById('f-contact-is-primary').checked) return;
+  document.querySelectorAll('#extra-contacts-list .xc-is-primary').forEach(r => { r.checked = false; });
 }
 
 function removeExtraContact(btn) {
@@ -3851,7 +3879,8 @@ function getExtraContactsFromDom() {
       name: row.querySelector('.xc-name').value.trim() || null,
       phone: phone,
       languages: readLanguageChips(row, 'xc-lang'),
-      sort_order: i + 1                      // 0 is reserved for the primary
+      isPrimary: !!row.querySelector('.xc-is-primary:checked'),
+      sort_order: i + 1
     };
   }).filter(Boolean);
 }
@@ -3867,8 +3896,9 @@ async function saveExtraContacts(propertyId, primaryContactId) {
   }
   _removedExtraContactIds = [];
 
+  const mainIsPrimary = !document.querySelector('#extra-contacts-list .xc-is-primary:checked');
   const linked = [];
-  if (primaryContactId) linked.push({ contact_id: primaryContactId, sort_order: 0 });
+  if (primaryContactId) linked.push({ contact_id: primaryContactId, sort_order: 0, is_primary: mainIsPrimary });
 
   for (const r of rows) {
     const body = { role: 'other', name: r.name, phone: r.phone, whatsapp: r.phone, languages: r.languages };
@@ -3879,7 +3909,7 @@ async function saveExtraContacts(propertyId, primaryContactId) {
       const created = await sbApi('POST', 'contacts', body);
       cid = Array.isArray(created) ? created[0].id : (created && created.id);
     }
-    if (cid) linked.push({ contact_id: cid, sort_order: r.sort_order });
+    if (cid) linked.push({ contact_id: cid, sort_order: r.sort_order, is_primary: !!r.isPrimary });
   }
 
   // Rebuild the link set for this listing. Deleting links (never contacts)
@@ -3889,7 +3919,8 @@ async function saveExtraContacts(propertyId, primaryContactId) {
   await sbApi('DELETE', `property_contacts?property_id=eq.${propertyId}`);
   for (const l of linked) {
     await sbApi('POST', 'property_contacts', {
-      property_id: propertyId, contact_id: l.contact_id, sort_order: l.sort_order
+      property_id: propertyId, contact_id: l.contact_id,
+      sort_order: l.sort_order, is_primary: !!l.is_primary
     });
   }
 }

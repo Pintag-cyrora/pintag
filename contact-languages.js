@@ -138,7 +138,7 @@ function resolveListingContacts(property) {
   var out = [];
   var seen = {};
 
-  function push(row, sortOrder) {
+  function push(row, sortOrder, isPrimary) {
     if (!row || !row.id) return;
     if (seen[row.id]) return;
     var phone = (row.phone || '').trim();
@@ -154,7 +154,8 @@ function resolveListingContacts(property) {
       whatsapp: (row.whatsapp || '').trim() || phone,
       isVerified: !!row.is_verified,
       languages: normalizeContactLanguages(row.languages),
-      sortOrder: (typeof sortOrder === 'number') ? sortOrder : 0
+      sortOrder: (typeof sortOrder === 'number') ? sortOrder : 0,
+      isPrimary: !!isPrimary
     });
   }
 
@@ -164,7 +165,8 @@ function resolveListingContacts(property) {
       return (a && a.sort_order || 0) - (b && b.sort_order || 0);
     });
     for (var i = 0; i < joined.length; i++) {
-      push(joined[i] && joined[i].contacts, joined[i] && joined[i].sort_order);
+      push(joined[i] && joined[i].contacts, joined[i] && joined[i].sort_order,
+           joined[i] && joined[i].is_primary);
     }
   }
   // The legacy single embed. Pushed even when property_contacts existed --
@@ -173,13 +175,70 @@ function resolveListingContacts(property) {
   // without the primary link). sortOrder -1 puts a repaired primary FIRST, so
   // resolvePrimaryContact() still returns properties.contact_id's contact and
   // no call site changes meaning mid-migration.
-  if (property.contacts) push(property.contacts, -1);
+  if (property.contacts) push(property.contacts, -1, true);
 
   // Re-sort after the legacy push: it can carry sortOrder -1 and must not be
   // left wherever append order happened to put it.
   out.sort(function (a, b) { return a.sortOrder - b.sortOrder; });
 
   return out;
+}
+
+
+// ---------------------------------------------------------------------------
+// resolveContactForLanguage(property, uiLang) — THE LANGUAGE-AWARE ROUTER.
+//
+// The visitor picks a language with Pintag's existing toggle and is routed to
+// the number most likely to answer in it. There is no second language
+// selector: `uiLang` is whatever lang.js already resolved (?lang= -> stored
+// choice -> navigator.language -> 'lo'), passed straight in.
+//
+// FALLBACK HIERARCHY, in order. The CTA is NEVER hidden or disabled for want
+// of a language match -- an older listing with one unlabelled number must keep
+// converting exactly as it does today:
+//
+//   1. A contact whose `languages` include the active language. Ties break on
+//      the listing's own order (primary first, then sort_order), so a landlord
+//      who lists the general number first keeps it for shared languages.
+//   2. The listing's general/primary number (property_contacts.is_primary,
+//      which the migration backfills from properties.contact_id).
+//   3. Any number at all.
+//
+// Returns { contact, tier, matchedLanguage } so a caller can tell an explicit
+// match from a fallback -- the UI says "speaks English" only for tier 1, and
+// never implies a language nobody recorded.
+//
+// NOTE ON COVERAGE. Pintag's toggle is lo/en/zh (lang.js PINTAG_VALID_LANGS);
+// a Thai-only number can therefore never win tier 1 today and is reached via
+// the picker or the fallback. That is deliberate rather than a gap: the moment
+// 'th' is added to PINTAG_VALID_LANGS this function routes to it with no
+// change here, because nothing below names a language.
+// ---------------------------------------------------------------------------
+function resolveContactForLanguage(property, uiLang) {
+  var all = resolveListingContacts(property);
+  if (!all.length) return { contact: null, tier: 0, matchedLanguage: null };
+
+  var lang = (typeof uiLang === 'string' && uiLang) ? uiLang.trim().toLowerCase() : null;
+
+  // Tier 1 — an explicit language match. `all` is already in listing order
+  // (primary first via sortOrder -1, then sort_order), so the first hit is the
+  // right tie-break without re-sorting.
+  if (lang) {
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].languages.indexOf(lang) !== -1) {
+        return { contact: all[i], tier: 1, matchedLanguage: lang };
+      }
+    }
+  }
+
+  // Tier 2 — the general number.
+  for (var j = 0; j < all.length; j++) {
+    if (all[j].isPrimary) return { contact: all[j], tier: 2, matchedLanguage: null };
+  }
+
+  // Tier 3 — anything callable. Reached only by a listing whose links predate
+  // the is_primary backfill; still better than showing no CTA.
+  return { contact: all[0], tier: 3, matchedLanguage: null };
 }
 
 // The number a page should use before the buyer has chosen — the primary.
@@ -200,6 +259,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CONTACT_LANGUAGES_SCHEMA_VERSION, CONTACT_LANGUAGES, contactLanguageByCode,
     normalizeContactLanguages, formatContactLanguages,
-    resolveListingContacts, resolvePrimaryContact, hasMultipleContacts
+    resolveListingContacts, resolvePrimaryContact, hasMultipleContacts,
+    resolveContactForLanguage
   };
 }

@@ -39,9 +39,14 @@ CREATE TABLE IF NOT EXISTS property_contacts (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   property_id uuid NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
   contact_id  uuid NOT NULL REFERENCES contacts(id)   ON DELETE CASCADE,
-  -- Staff-controlled display order. 0 is the PRIMARY: the number shown before
-  -- a buyer chooses, and the one properties.contact_id mirrors.
+  -- Staff-controlled display order.
   sort_order  integer NOT NULL DEFAULT 0,
+  -- The GENERAL number for this listing: used whenever no contact speaks the
+  -- visitor's currently selected language. Per-LISTING, not per-person, which
+  -- is why it lives here and not on contacts -- the same shared contacts row
+  -- can be the general number for one listing and a language specialist for
+  -- another. Mirrors properties.contact_id for the backfilled primary.
+  is_primary  boolean NOT NULL DEFAULT false,
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT property_contacts_unique UNIQUE (property_id, contact_id)
@@ -61,11 +66,27 @@ CREATE TRIGGER trg_property_contacts_updated_at
 -- ── 3. Backfill: every existing listing keeps its current number ─────────
 -- Idempotent via the unique constraint. Only INSERTs; touches no existing row
 -- in properties or contacts.
-INSERT INTO property_contacts (property_id, contact_id, sort_order)
-SELECT p.id, p.contact_id, 0
+INSERT INTO property_contacts (property_id, contact_id, sort_order, is_primary)
+SELECT p.id, p.contact_id, 0, true
 FROM properties p
 WHERE p.contact_id IS NOT NULL
 ON CONFLICT (property_id, contact_id) DO NOTHING;
+
+-- Safety net for a row that somehow has links but no primary: promote the
+-- lowest sort_order. Without a primary the language fallback would drop
+-- straight to "any number", which is a worse answer than the general one.
+UPDATE property_contacts pc SET is_primary = true
+WHERE NOT EXISTS (
+  SELECT 1 FROM property_contacts x WHERE x.property_id = pc.property_id AND x.is_primary
+)
+AND pc.id = (
+  SELECT y.id FROM property_contacts y WHERE y.property_id = pc.property_id
+  ORDER BY y.sort_order, y.created_at LIMIT 1
+);
+
+-- At most one primary per listing.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_property_contacts_one_primary
+  ON property_contacts(property_id) WHERE is_primary;
 
 -- ── 4. RLS ───────────────────────────────────────────────────────────────
 -- Mirrors unit_types exactly (20260720000000): staff full access, a managing

@@ -1400,7 +1400,7 @@ async function fetchProperty(slug,id){
   try{
     // Prefer slug (canonical/shareable); fall back to id for slugless listings.
     var filter=slug?('slug=eq.'+encodeURIComponent(slug)):('id=eq.'+encodeURIComponent(id));
-    var data=await sbFetch('/rest/v1/properties?'+filter+'&select=*,contacts(id,role,name,phone,whatsapp,is_verified,languages),property_contacts(sort_order,contacts(id,role,name,phone,whatsapp,is_verified,languages)),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified),unit_types(*)&limit=1');
+    var data=await sbFetch('/rest/v1/properties?'+filter+'&select=*,contacts(id,role,name,phone,whatsapp,is_verified,languages),property_contacts(sort_order,is_primary,contacts(id,role,name,phone,whatsapp,is_verified,languages)),parties(id,name_en,name_lo,photo_url,agency_name,slug,type,bio_en,bio_lo,is_verified),unit_types(*)&limit=1');
     PT.timeEnd('fetchProperty');
     if(!Array.isArray(data)||data.length===0){showErrorState('Property not found. It may have been removed or the link may be incorrect.');return;}
     propertyContext=data[0];
@@ -1830,6 +1830,7 @@ function ptSelectContact(index){
 }
 
 var _currentContacts=[];
+var _currentContactTier=0;
 var _currentContactId='';
 var _currentContactPhone = '';
 
@@ -2515,10 +2516,20 @@ function buildMockupLayout(){
                   whatsapp:(_c.whatsapp||_c.phone||''),isVerified:!!_c.is_verified,languages:[]}];
   }
   _currentContacts=allContacts;
-  // The PRIMARY is index 0 — byte-identical to what data.contacts gave before,
-  // so every existing single-number code path below is untouched until the
-  // buyer actively picks a different number.
-  var contact=allContacts.length?allContacts[0]:(data.contacts||null);
+  // LANGUAGE-AWARE ROUTING. `lang` here is the value the existing toggle
+  // already resolved (lang.js: ?lang= -> stored choice -> navigator.language
+  // -> 'lo'); there is no second language selector and no parallel state.
+  // setLang() re-runs buildMockupLayout(), so switching language re-enters
+  // this line and the CTAs re-resolve immediately — that is the whole
+  // integration, no extra listener required.
+  //
+  // The CTA is never hidden for want of a match: resolveContactForLanguage()
+  // falls back to the general number and then to any number (tiers 2 and 3),
+  // so an older single-number listing behaves exactly as it always has.
+  var _routed=(typeof resolveContactForLanguage==='function')
+    ? resolveContactForLanguage(data,lang) : null;
+  _currentContactTier=_routed?_routed.tier:0;
+  var contact=(_routed&&_routed.contact)||(allContacts.length?allContacts[0]:(data.contacts||null));
   var contactPhone=contact?(contact.whatsapp||contact.phone||''):'';
   var cleanPhone=String(contactPhone).replace(/[^0-9]/g,'');
   _currentContactPhone=cleanPhone;
@@ -2584,14 +2595,31 @@ function buildMockupLayout(){
   // bare number rather than a guessed "Lao" (contact-languages.js rule 7).
   var contactPickerHtml='';
   if(allContacts.length>1){
-    var pickLabel={en:'Choose who to contact',lo:'ເລືອກຜູ້ຕິດຕໍ່',zh:'选择联系人'}[lang]
-                 ||'Choose who to contact';
+    // The routed contact is preselected, so the visitor never has to touch
+    // this to reach the right person -- the toggle already did it. The list
+    // stays visible so the other numbers and their languages are discoverable,
+    // and so a visitor can override without changing the whole page language.
+    var _routedIdx=0;
+    for(var _ri=0;_ri<allContacts.length;_ri++){
+      if(contact&&allContacts[_ri].id===contact.id){_routedIdx=_ri;break;}
+    }
+    // Tier 1 only: naming the language is honest just when the match is real.
+    // On a fallback the heading stays neutral rather than implying this person
+    // speaks a language nobody recorded.
+    var matchedName=(_currentContactTier===1&&typeof formatContactLanguages==='function')
+      ? formatContactLanguages([lang],lang) : null;
+    var pickLabel=matchedName
+      ? ({en:'Speaks '+matchedName,lo:'ເວົ້າພາສາ'+matchedName,zh:'会说'+matchedName}[lang]
+         ||('Speaks '+matchedName))
+      : ({en:'Choose who to contact',lo:'ເລືອກຜູ້ຕິດຕໍ່',zh:'选择联系人'}[lang]
+         ||'Choose who to contact');
     var rows=allContacts.map(function(c,i){
       var langText=(typeof formatContactLanguages==='function')?formatContactLanguages(c.languages,lang):null;
       var nameBit=c.name?'<span class="cpick-name">'+esc(c.name)+'</span>':'';
       var langBit=langText?'<span class="cpick-langs">'+esc(langText)+'</span>':'';
-      return '<button type="button" class="cpick-row'+(i===0?' is-active':'')+'" '+
-             'data-contact-index="'+i+'" role="radio" aria-checked="'+(i===0?'true':'false')+'" '+
+      var on=(i===_routedIdx);
+      return '<button type="button" class="cpick-row'+(on?' is-active':'')+'" '+
+             'data-contact-index="'+i+'" role="radio" aria-checked="'+(on?'true':'false')+'" '+
              'onclick="ptSelectContact('+i+')">'+
                '<span class="cpick-main">'+nameBit+'<span class="cpick-phone">'+esc(c.phone)+'</span></span>'+
                langBit+

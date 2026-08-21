@@ -187,7 +187,7 @@ test('the migration backfills, widens the anon policy, and adds no fixed phone c
 test('both public queries embed the join rows, else the feature is inert', () => {
   for (const f of ['listing.html', 'admin.html']) {
     const src = fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8');
-    assert.match(src, /property_contacts\(sort_order,contacts\(/, f + ' must embed property_contacts');
+    assert.match(src, /property_contacts\(sort_order,is_primary,contacts\(/, f + ' must embed property_contacts');
     assert.match(src, /languages/, f + ' must select the languages column');
   }
 });
@@ -204,4 +204,146 @@ test('the listing page routes CTAs through the SELECTED contact', () => {
     'WhatsApp and Call must both attribute to the selected contact');
   // The mobile sticky bar reads this global, so selection must update it.
   assert.match(src, /_currentContactPhone=String\(c\.whatsapp\|\|c\.phone\|\|''\)/);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LANGUAGE-AWARE ROUTING — the toggle picks the number
+// ═══════════════════════════════════════════════════════════════════════════
+// The visitor chooses a language with Pintag's EXISTING toggle and is routed
+// to the number most likely to answer in it. `uiLang` is whatever lang.js
+// already resolved; there is no second language selector anywhere.
+
+const { resolveContactForLanguage } = await import('./contact-languages.js');
+
+const routed = (rows) => ({ property_contacts: rows.map((r, i) => ({
+  sort_order: i, is_primary: !!r.primary,
+  contacts: c({ id: r.id, phone: r.phone, languages: r.langs || null })
+})) });
+
+const THREE = routed([
+  { id: 'a', phone: '+856 20 111 111', langs: ['lo', 'en'], primary: true },
+  { id: 'b', phone: '+856 20 222 222', langs: ['th'] },
+  { id: 'c', phone: '+856 20 333 333', langs: ['zh'] }
+]);
+
+test('ROUTING: each language reaches its assigned number', () => {
+  assert.equal(resolveContactForLanguage(THREE, 'lo').contact.id, 'a');
+  assert.equal(resolveContactForLanguage(THREE, 'en').contact.id, 'a');
+  assert.equal(resolveContactForLanguage(THREE, 'th').contact.id, 'b');
+  assert.equal(resolveContactForLanguage(THREE, 'zh').contact.id, 'c');
+});
+
+test('ROUTING: one number serving TWO languages is reached by both', () => {
+  const lo = resolveContactForLanguage(THREE, 'lo');
+  const en = resolveContactForLanguage(THREE, 'en');
+  assert.equal(lo.contact.id, en.contact.id, 'the Lao+English number serves both');
+  assert.equal(lo.tier, 1); assert.equal(en.tier, 1);
+});
+
+test('ROUTING: an explicit match reports tier 1 and the language it matched', () => {
+  const r = resolveContactForLanguage(THREE, 'zh');
+  assert.equal(r.tier, 1);
+  assert.equal(r.matchedLanguage, 'zh');
+});
+
+// ── The fallback hierarchy ────────────────────────────────────────────────
+test('FALLBACK 2: no number speaks the language -> the PRIMARY, never nothing', () => {
+  const noZh = routed([
+    { id: 'a', phone: '020111', langs: ['lo'], primary: true },
+    { id: 'b', phone: '020222', langs: ['th'] }
+  ]);
+  const r = resolveContactForLanguage(noZh, 'zh');
+  assert.equal(r.contact.id, 'a', 'must fall through to the general number');
+  assert.equal(r.tier, 2);
+  assert.equal(r.matchedLanguage, null, 'must NOT claim a language match');
+});
+
+test('FALLBACK 3: no language match and no primary -> any number', () => {
+  const none = routed([
+    { id: 'a', phone: '020111', langs: ['th'] },
+    { id: 'b', phone: '020222', langs: ['th'] }
+  ]);
+  const r = resolveContactForLanguage(none, 'en');
+  assert.equal(r.tier, 3);
+  assert.ok(r.contact, 'the CTA must never be left without a number');
+});
+
+test('FALLBACK: an OLD single-number listing keeps converting untouched', () => {
+  // The whole point of the hierarchy: no manual editing required.
+  const legacy = { contacts: c({ id: 'solo', phone: '02055555555' }) };
+  for (const l of ['lo', 'en', 'zh', 'th', null, undefined]) {
+    const r = resolveContactForLanguage(legacy, l);
+    assert.equal(r.contact.phone, '02055555555', 'lang=' + l);
+    assert.ok(r.tier >= 2, 'a fallback, never a claimed match');
+  }
+});
+
+test('the CTA is never hidden — only a listing with NO contact resolves empty', () => {
+  const empty = resolveContactForLanguage({}, 'en');
+  assert.equal(empty.contact, null);
+  assert.equal(empty.tier, 0, 'tier 0 is the only "nothing to call" state');
+});
+
+test('ROUTING: unlabelled numbers never win tier 1', () => {
+  const mixed = routed([
+    { id: 'a', phone: '020111', primary: true },          // no languages recorded
+    { id: 'b', phone: '020222', langs: ['en'] }
+  ]);
+  assert.equal(resolveContactForLanguage(mixed, 'en').contact.id, 'b');
+  assert.equal(resolveContactForLanguage(mixed, 'en').tier, 1);
+  assert.equal(resolveContactForLanguage(mixed, 'zh').contact.id, 'a', 'zh falls back to primary');
+});
+
+test('ROUTING: ties break on listing order, so the general number wins a shared language', () => {
+  const tie = routed([
+    { id: 'general', phone: '020111', langs: ['lo', 'en'], primary: true },
+    { id: 'other',   phone: '020222', langs: ['en'] }
+  ]);
+  assert.equal(resolveContactForLanguage(tie, 'en').contact.id, 'general');
+});
+
+test('ROUTING is case/whitespace tolerant on the incoming UI language', () => {
+  assert.equal(resolveContactForLanguage(THREE, 'ZH').contact.id, 'c');
+  assert.equal(resolveContactForLanguage(THREE, ' th ').contact.id, 'b');
+});
+
+test('COVERAGE: the toggle is lo/en/zh, so a Thai-only number is fallback-reachable today', () => {
+  // lang.js PINTAG_VALID_LANGS = ['en','lo','zh'] — 'th' cannot be selected in
+  // the toggle yet. This pins that the ROUTER is already correct for it, so
+  // adding 'th' to the toggle needs no change here.
+  const langJs = fs.readFileSync(new URL('./lang.js', import.meta.url), 'utf8');
+  assert.match(langJs, /PINTAG_VALID_LANGS\s*=\s*\['en',\s*'lo',\s*'zh'\]/,
+    'if the toggle gains a language, revisit this test, not the router');
+  assert.equal(resolveContactForLanguage(THREE, 'th').contact.id, 'b',
+    'the router already routes Thai correctly');
+});
+
+test('WIRING: the listing page routes through the EXISTING toggle, not a new one', () => {
+  const src = fs.readFileSync(new URL('./listing.html', import.meta.url), 'utf8');
+  assert.match(src, /resolveContactForLanguage\(data,\s*lang\)/,
+    'must pass the language lang.js already resolved');
+  // setLang() re-runs buildMockupLayout(), which is what makes a toggle click
+  // re-resolve the CTAs. If that call ever goes away, routing silently freezes.
+  const setLang = src.slice(src.indexOf('function setLang('));
+  assert.match(setLang.slice(0, setLang.indexOf('\n}')), /buildMockupLayout\(\)/,
+    'the language toggle must still re-render the contact block');
+  // No parallel language state.
+  assert.ok(!/contactLang|_contactLanguageSelector|selectContactLanguage/.test(src),
+    'must not introduce a second language selector');
+});
+
+test('WIRING: both queries select is_primary, else the fallback tier is lost', () => {
+  for (const f of ['listing.html', 'admin.html']) {
+    const src = fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8');
+    assert.match(src, /property_contacts\(sort_order,is_primary,contacts\(/, f);
+  }
+});
+
+test('MIGRATION: is_primary is backfilled from the existing single contact', () => {
+  const sql = fs.readFileSync(new URL('./supabase/migrations/20260820000000_multi_phone_contacts.sql', import.meta.url), 'utf8');
+  assert.match(sql, /INSERT INTO property_contacts \(property_id, contact_id, sort_order, is_primary\)[\s\S]*?true/,
+    'the existing number must become the primary automatically');
+  assert.match(sql, /idx_property_contacts_one_primary[\s\S]*WHERE is_primary/,
+    'at most one primary per listing');
+  assert.match(sql, /UPDATE property_contacts pc SET is_primary = true/, 'safety net for link rows with no primary');
 });
