@@ -150,15 +150,23 @@ jobs:
           echo "  set properties.contact_id via the legacy path and never write the"
           echo "  join row — that is drift, not a bad backfill. created_at/updated_at"
           echo "  relative to the migration timestamp tells the two apart."
+          # Optional columns are read through to_jsonb rather than named
+          # directly: properties has no updated_at (a trigger references one,
+          # but the column is not there), and naming a missing column aborts
+          # the whole step — which is how the previous run starved check 4 of
+          # its control group. An absent key yields NULL here instead.
+          # `|| true` for the same reason: a diagnostic must never be able to
+          # prevent the checks that follow it from running.
           q "SELECT p.slug, p.status, count(pc.id) AS join_rows,
-                    p.created_at::date AS created, p.updated_at::date AS updated,
-                    (p.created_at > timestamptz '2026-08-20 00:00:00+00') AS after_migration
+                    p.created_at::date AS created,
+                    (to_jsonb(p.*) ->> 'deleted_at') IS NOT NULL AS soft_deleted,
+                    (p.created_at > timestamptz '2026-08-20 00:00:00+00') AS created_after_migration
              FROM properties p
              LEFT JOIN property_contacts pc ON pc.property_id=p.id AND pc.contact_id=p.contact_id
              WHERE p.contact_id IS NOT NULL
-             GROUP BY p.id, p.slug, p.status, p.created_at, p.updated_at
+             GROUP BY p.id, p.slug, p.status, p.created_at
              HAVING count(pc.id) <> 1
-             ORDER BY p.created_at;"
+             ORDER BY p.created_at;" || true
 
           echo ""
           echo "── CHECK 2: primary + sort_order ──────────────────────────"
