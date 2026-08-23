@@ -53,85 +53,125 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
 
+      - name: Resolve the pooler endpoint for this project
+        id: pooler
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -euo pipefail
+          # The pooler hostname is region-specific and must NOT be guessed — a
+          # wrong region fails with a misleading "tenant/user not found". Ask the
+          # Management API (read-only GET) for this project's real region, then
+          # confirm the candidate host actually answers before using it.
+          REGION=""
+          if [ -n "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            REGION="$(curl -sS -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              https://api.supabase.com/v1/projects \
+              | jq -r --arg ref "$REF" 'if type=="array" then (.[] | select(.id==$ref) | .region) else empty end' \
+              2>/dev/null | head -1 || true)"
+            if [ "$REGION" = "null" ]; then REGION=""; fi
+          fi
+          if [ -n "$REGION" ]; then
+            echo "::notice title=Region::Management API reports region $REGION"
+            CANDIDATES="aws-0-${REGION}.pooler.supabase.com aws-1-${REGION}.pooler.supabase.com"
+          else
+            echo "::warning::Could not resolve the region from the Management API; probing known regions."
+            CANDIDATES=""
+            for r in ap-southeast-1 ap-southeast-2 ap-northeast-1 us-east-1 us-west-1 eu-central-1 eu-west-2; do
+              CANDIDATES="$CANDIDATES aws-0-${r}.pooler.supabase.com aws-1-${r}.pooler.supabase.com"
+            done
+          fi
+          HOST=""
+          for h in $CANDIDATES; do
+            if PGPASSWORD="${{ secrets.SUPABASE_DB_PASSWORD }}" PGCONNECT_TIMEOUT=10 \
+               psql -h "$h" -p 5432 -U "postgres.${REF}" -d postgres -X -t -A \
+                    -c "SELECT 1" >/dev/null 2>&1; then
+              HOST="$h"; break
+            fi
+          done
+          [ -n "$HOST" ] || { echo "::error::No pooler host accepted a connection for ref ${REF}."; exit 1; }
+          echo "host=$HOST" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Pooler::$HOST (session mode, port 5432)"
+
       - name: Checks 1 + 2 — backfill and primary constraint (SELECT only)
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           REF: ${{ steps.ref.outputs.ref }}
+          PGHOST_POOLER: ${{ steps.pooler.outputs.host }}
         run: |
           set -euo pipefail
           if [ -z "${PGPASSWORD:-}" ]; then
             echo "::error::Missing secret SUPABASE_DB_PASSWORD."; exit 1
           fi
-          # Session pooler; the direct db.<ref> host is IPv6-only on Supabase.
-          PSQL="psql -h aws-0-ap-southeast-1.pooler.supabase.com -p 5432 -U postgres.${REF} -d postgres -v ON_ERROR_STOP=1 -X -A -F' | '"
-          $PSQL -c "SET default_transaction_read_only = on;" >/dev/null
+          # A shell FUNCTION, not a string variable: the field separator is a
+          # literal " | " and word-splitting an unquoted "$PSQL" would tear it
+          # into three arguments.
+          q() {
+            psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres \
+                 -v ON_ERROR_STOP=1 -X -A -F ' | ' -c "SET default_transaction_read_only=on;
+          $1"
+          }
 
           echo "── schema objects ─────────────────────────────────────────"
-          $PSQL -c "SET default_transaction_read_only=on;
-            SELECT 'contacts.languages' AS object,
-                   (SELECT data_type FROM information_schema.columns
-                     WHERE table_name='contacts' AND column_name='languages') AS detail
-            UNION ALL SELECT 'property_contacts table', to_regclass('public.property_contacts')::text
-            UNION ALL SELECT 'idx_property_contacts_one_primary',
-                   (SELECT indexdef FROM pg_indexes WHERE indexname='idx_property_contacts_one_primary');"
+          q "SELECT 'contacts.languages' AS object,
+                    (SELECT data_type FROM information_schema.columns
+                      WHERE table_name='contacts' AND column_name='languages') AS detail
+             UNION ALL SELECT 'property_contacts table', to_regclass('public.property_contacts')::text
+             UNION ALL SELECT 'idx_property_contacts_one_primary',
+                    (SELECT indexdef FROM pg_indexes WHERE indexname='idx_property_contacts_one_primary');"
 
           echo ""
           echo "── CHECK 1: backfill counts ───────────────────────────────"
-          $PSQL -c "SET default_transaction_read_only=on;
-            SELECT
-              (SELECT count(*) FROM properties WHERE contact_id IS NOT NULL) AS legacy_listings_with_contact_id,
-              (SELECT count(*) FROM property_contacts)                        AS property_contacts_rows_total,
-              (SELECT count(*) FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
-                 WHERE p.contact_id = pc.contact_id)                          AS backfilled_rows;"
+          q "SELECT
+               (SELECT count(*) FROM properties WHERE contact_id IS NOT NULL) AS legacy_listings_with_contact_id,
+               (SELECT count(*) FROM property_contacts)                        AS property_contacts_rows_total,
+               (SELECT count(*) FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
+                  WHERE p.contact_id = pc.contact_id)                          AS backfilled_rows;"
 
           echo ""
           echo "  listings with a contact_id but NOT exactly one backfilled row (expect 0):"
-          $PSQL -c "SET default_transaction_read_only=on;
-            SELECT count(*) AS violations FROM (
-              SELECT p.id FROM properties p
-              LEFT JOIN property_contacts pc ON pc.property_id=p.id AND pc.contact_id=p.contact_id
-              WHERE p.contact_id IS NOT NULL
-              GROUP BY p.id HAVING count(pc.id) <> 1) t;"
+          q "SELECT count(*) AS violations FROM (
+               SELECT p.id FROM properties p
+               LEFT JOIN property_contacts pc ON pc.property_id=p.id AND pc.contact_id=p.contact_id
+               WHERE p.contact_id IS NOT NULL
+               GROUP BY p.id HAVING count(pc.id) <> 1) t;"
 
           echo ""
           echo "── CHECK 2: primary + sort_order ──────────────────────────"
           echo "  backfilled rows NOT sort_order=0 (expect 0):"
-          $PSQL -c "SET default_transaction_read_only=on;
-            SELECT count(*) AS violations FROM property_contacts pc
-            JOIN properties p ON p.id=pc.property_id
-            WHERE p.contact_id=pc.contact_id AND pc.sort_order <> 0;"
+          q "SELECT count(*) AS violations FROM property_contacts pc
+             JOIN properties p ON p.id=pc.property_id
+             WHERE p.contact_id=pc.contact_id AND pc.sort_order <> 0;"
           echo "  backfilled rows NOT is_primary (expect 0):"
-          $PSQL -c "SET default_transaction_read_only=on;
-            SELECT count(*) AS violations FROM property_contacts pc
-            JOIN properties p ON p.id=pc.property_id
-            WHERE p.contact_id=pc.contact_id AND pc.is_primary IS NOT TRUE;"
+          q "SELECT count(*) AS violations FROM property_contacts pc
+             JOIN properties p ON p.id=pc.property_id
+             WHERE p.contact_id=pc.contact_id AND pc.is_primary IS NOT TRUE;"
           echo "  listings with MORE THAN ONE primary (expect 0 — index enforces):"
-          $PSQL -c "SET default_transaction_read_only=on;
-            SELECT count(*) AS violations FROM (
-              SELECT property_id FROM property_contacts WHERE is_primary
-              GROUP BY property_id HAVING count(*) > 1) t;"
+          q "SELECT count(*) AS violations FROM (
+               SELECT property_id FROM property_contacts WHERE is_primary
+               GROUP BY property_id HAVING count(*) > 1) t;"
 
           echo ""
           echo "── inventory for the RLS checks ───────────────────────────"
           echo "  active/public listings with MORE THAN ONE contact:"
-          $PSQL -c "SET default_transaction_read_only=on;
-            SELECT p.slug, count(*) AS numbers FROM property_contacts pc
-            JOIN properties p ON p.id=pc.property_id
-            WHERE p.status IN ('active','available')
-            GROUP BY p.slug HAVING count(*) > 1 ORDER BY 2 DESC LIMIT 5;"
+          q "SELECT p.slug, count(*) AS numbers FROM property_contacts pc
+             JOIN properties p ON p.id=pc.property_id
+             WHERE p.status IN ('active','available')
+             GROUP BY p.slug HAVING count(*) > 1 ORDER BY 2 DESC LIMIT 5;"
           echo "  a contact reachable ONLY through a non-public listing:"
-          $PSQL -c "SET default_transaction_read_only=on;
-            SELECT c.id AS contact_id, right(c.phone,4) AS phone_last4
-            FROM contacts c
-            WHERE EXISTS (SELECT 1 FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
-                            WHERE pc.contact_id=c.id AND p.status NOT IN ('active','available'))
-              AND NOT EXISTS (SELECT 1 FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
-                            WHERE pc.contact_id=c.id AND p.status IN ('active','available'))
-              AND NOT EXISTS (SELECT 1 FROM properties p WHERE p.contact_id=c.id
-                            AND p.status IN ('active','available'))
-            LIMIT 3;"
+          q "SELECT c.id AS contact_id, right(c.phone,4) AS phone_last4
+             FROM contacts c
+             WHERE EXISTS (SELECT 1 FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
+                             WHERE pc.contact_id=c.id AND p.status NOT IN ('active','available'))
+               AND NOT EXISTS (SELECT 1 FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
+                             WHERE pc.contact_id=c.id AND p.status IN ('active','available'))
+               AND NOT EXISTS (SELECT 1 FROM properties p WHERE p.contact_id=c.id
+                             AND p.status IN ('active','available'))
+             LIMIT 3;"
 
       - name: Checks 3 + 4 — anonymous RLS through the real REST API
+        if: always()
         env:
           REF: ${{ steps.ref.outputs.ref }}
         run: |
