@@ -95,6 +95,7 @@ jobs:
           echo "::notice title=Pooler::$HOST (session mode, port 5432)"
 
       - name: Checks 1 + 2 — backfill and primary constraint (SELECT only)
+        id: db
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           REF: ${{ steps.ref.outputs.ref }}
@@ -110,6 +111,12 @@ jobs:
           q() {
             psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres \
                  -v ON_ERROR_STOP=1 -X -A -F ' | ' -c "SET default_transaction_read_only=on;
+          $1"
+          }
+          # Tuples-only variant, for capturing a value rather than printing a table.
+          q_raw() {
+            psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres \
+                 -v ON_ERROR_STOP=1 -X -A -t -c "SET default_transaction_read_only=on;
           $1"
           }
 
@@ -138,6 +145,22 @@ jobs:
                GROUP BY p.id HAVING count(pc.id) <> 1) t;"
 
           echo ""
+          echo "  WHICH listings, and when were they touched? A listing created or"
+          echo "  edited AFTER the migration but BEFORE the admin UI shipped would"
+          echo "  set properties.contact_id via the legacy path and never write the"
+          echo "  join row — that is drift, not a bad backfill. created_at/updated_at"
+          echo "  relative to the migration timestamp tells the two apart."
+          q "SELECT p.slug, p.status, count(pc.id) AS join_rows,
+                    p.created_at::date AS created, p.updated_at::date AS updated,
+                    (p.created_at > timestamptz '2026-08-20 00:00:00+00') AS after_migration
+             FROM properties p
+             LEFT JOIN property_contacts pc ON pc.property_id=p.id AND pc.contact_id=p.contact_id
+             WHERE p.contact_id IS NOT NULL
+             GROUP BY p.id, p.slug, p.status, p.created_at, p.updated_at
+             HAVING count(pc.id) <> 1
+             ORDER BY p.created_at;"
+
+          echo ""
           echo "── CHECK 2: primary + sort_order ──────────────────────────"
           echo "  backfilled rows NOT sort_order=0 (expect 0):"
           q "SELECT count(*) AS violations FROM property_contacts pc
@@ -160,20 +183,29 @@ jobs:
              WHERE p.status IN ('active','available')
              GROUP BY p.slug HAVING count(*) > 1 ORDER BY 2 DESC LIMIT 5;"
           echo "  a contact reachable ONLY through a non-public listing:"
-          q "SELECT c.id AS contact_id, right(c.phone,4) AS phone_last4
-             FROM contacts c
+          # These ids are the CONTROL GROUP for check 4. Counting how many
+          # contacts anon can see proves nothing on its own; naming the rows
+          # that MUST be absent and asserting their absence does.
+          DRAFT_ONLY="$(q_raw "SELECT c.id FROM contacts c
              WHERE EXISTS (SELECT 1 FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
                              WHERE pc.contact_id=c.id AND p.status NOT IN ('active','available'))
                AND NOT EXISTS (SELECT 1 FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
                              WHERE pc.contact_id=c.id AND p.status IN ('active','available'))
                AND NOT EXISTS (SELECT 1 FROM properties p WHERE p.contact_id=c.id
-                             AND p.status IN ('active','available'))
-             LIMIT 3;"
+                             AND p.status IN ('active','available'));" | tr -d ' ' | grep -E '^[0-9a-f-]{36}$' || true)"
+          echo "$DRAFT_ONLY" | sed 's/^/    must stay hidden: /'
+          echo "draft_only<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$DRAFT_ONLY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          echo "  total contacts in the database (compare with the anon count in check 4):"
+          q "SELECT count(*) AS contacts_total FROM contacts;"
 
       - name: Checks 3 + 4 — anonymous RLS through the real REST API
         if: always()
         env:
           REF: ${{ steps.ref.outputs.ref }}
+          DRAFT_ONLY: ${{ steps.db.outputs.draft_only }}
         run: |
           set -euo pipefail
           # The anon key is public (shipped in config.prod.js, visible in every
@@ -216,7 +248,37 @@ jobs:
             -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /tmp/anon_draft.json
           echo "  non-public listings visible to anon (expect []):"
           head -c 300 /tmp/anon_draft.json; echo
-          echo "  total contacts visible to anon vs total in the database:"
+
+          echo "  total contacts visible to anon:"
           curl -sS "${BASE}/contacts?select=id" -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" \
             -H "Prefer: count=exact" -H "Range: 0-0" -D /tmp/h.txt -o /dev/null
           grep -i '^content-range' /tmp/h.txt || true
+
+          # The decisive assertion. A count comparison cannot prove containment;
+          # naming the contacts that MUST be invisible and looking for them in
+          # the anon response can. These ids came from the privileged query in
+          # the previous step — each is reachable ONLY through a non-public
+          # listing, so a visitor must never receive any of them.
+          echo "  asserting the draft-only contacts are absent from the anon response:"
+          printf '%s\n' "$DRAFT_ONLY" | grep -E '^[0-9a-f-]{36}$' > /tmp/draft_ids.txt || true
+          curl -sS "${BASE}/contacts?select=id&limit=2000" \
+            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /tmp/anon_contacts.json
+          python3 - <<'PY'
+          import json
+          ids=[l.strip() for l in open('/tmp/draft_ids.txt') if l.strip()]
+          rows=json.load(open('/tmp/anon_contacts.json'))
+          if isinstance(rows,dict):
+              print("    REST ERROR:",json.dumps(rows)[:300]); raise SystemExit(1)
+          visible={r['id'] for r in rows}
+          if not ids:
+              print("    NO CONTROL GROUP: the database has no draft-only contact, so"
+                    "\n    check 4 has nothing to prove and is INCONCLUSIVE, not passed.")
+              raise SystemExit(0)
+          leaked=[i for i in ids if i in visible]
+          for i in ids:
+              print(f"    {i}  {'LEAKED — VISIBLE TO ANON' if i in visible else 'hidden (correct)'}")
+          print(f"    anon sees {len(visible)} contacts; {len(leaked)} of {len(ids)} draft-only contacts leaked")
+          if leaked:
+              print("::error::RLS LEAK — a contact reachable only through a non-public listing is readable by anon.")
+              raise SystemExit(1)
+          PY
