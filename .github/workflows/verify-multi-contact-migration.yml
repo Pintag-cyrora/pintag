@@ -94,6 +94,78 @@ jobs:
           echo "host=$HOST" >> "$GITHUB_OUTPUT"
           echo "::notice title=Pooler::$HOST (session mode, port 5432)"
 
+      - name: Phase 1 diagnostics — created_at semantics and contact identity
+        id: phase1
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          REF: ${{ steps.ref.outputs.ref }}
+          PGHOST_POOLER: ${{ steps.pooler.outputs.host }}
+        run: |
+          set -euo pipefail
+          d() {
+            psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres \
+                 -v ON_ERROR_STOP=1 -X -A -F ' | ' -c "SET default_transaction_read_only=on;
+          $1"
+          }
+
+          echo "── P1.1 column definition: nullable + default ─────────────"
+          d "SELECT column_name, is_nullable, coalesce(column_default,'(none)') AS column_default
+             FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='properties'
+               AND column_name IN ('created_at','contact_id')
+             ORDER BY column_name;"
+
+          echo ""
+          echo "── P1.2 how many properties have created_at IS NULL ───────"
+          d "SELECT count(*) FILTER (WHERE created_at IS NULL) AS null_created_at,
+                    count(*)                                   AS total_properties,
+                    round(100.0*count(*) FILTER (WHERE created_at IS NULL)/nullif(count(*),0),1) AS pct_null
+             FROM properties;"
+
+          echo ""
+          echo "  scope of the impact — NULL created_at broken out by status:"
+          d "SELECT coalesce(status,'(null)') AS status,
+                    count(*) FILTER (WHERE created_at IS NULL) AS null_created_at,
+                    count(*)                                   AS total
+             FROM properties GROUP BY 1 ORDER BY 2 DESC, 3 DESC;"
+
+          echo ""
+          echo "  earliest/latest created_at actually present (date semantics):"
+          d "SELECT min(created_at) AS earliest, max(created_at) AS latest,
+                    count(DISTINCT created_at::date) AS distinct_days
+             FROM properties WHERE created_at IS NOT NULL;"
+
+          echo ""
+          echo "  candidate historical sources for a NULL-created_at row:"
+          d "SELECT p.slug,
+                    (SELECT min(lp.created_at) FROM listing_provenance lp WHERE lp.listing_id=p.id) AS first_provenance,
+                    (SELECT min(pc.created_at) FROM property_contacts pc WHERE pc.property_id=p.id) AS first_link,
+                    p.status_changed_at
+             FROM properties p WHERE p.created_at IS NULL ORDER BY p.slug LIMIT 10;"
+
+          echo ""
+          echo "── P1.3 the two drift rows: is the contact REAL or the sentinel? ──"
+          d "SELECT p.slug, p.contact_id,
+                    (p.contact_id = '00000000-0000-0000-0000-0000000000c1') AS is_pending_sentinel,
+                    c.role, c.name, right(c.phone,4) AS phone_last4,
+                    c.languages,
+                    (SELECT count(*) FROM properties o WHERE o.contact_id=c.id) AS shared_by_listings
+             FROM properties p LEFT JOIN contacts c ON c.id=p.contact_id
+             WHERE p.slug IN ('modern-2-bedroom-house-near-lycee-francais-international-636385',
+                              'listing-34e02f9b');"
+
+          echo ""
+          echo "  their full listing_provenance trail (who set contact_id, and when):"
+          d "SELECT p.slug, lp.event_type, lp.field_name, lp.source, lp.actor, lp.created_at
+             FROM listing_provenance lp JOIN properties p ON p.id=lp.listing_id
+             WHERE p.slug IN ('modern-2-bedroom-house-near-lycee-francais-international-636385',
+                              'listing-34e02f9b')
+             ORDER BY lp.created_at;" || echo "  (listing_provenance unreadable or absent)"
+
+          echo ""
+          echo "  when did the migration backfill run (min property_contacts.created_at)?"
+          d "SELECT min(created_at) AS backfill_ran_at, count(*) AS rows FROM property_contacts;"
+
       - name: Checks 1 + 2 — backfill and primary constraint (SELECT only)
         id: db
         env:
