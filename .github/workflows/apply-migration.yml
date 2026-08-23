@@ -133,6 +133,39 @@ env:
   #     production — admin.html's save path sends contacts.languages and writes
   #     property_contacts (including is_primary), and PostgREST rejects an
   #     unknown column with PGRST204, which would break saving ANY listing.
+  # 20260822000000_province_coverage.sql — reviewed and authorized deliberately.
+  # It expands listings from Vientiane-only to all 17 Laos provinces plus
+  # Vientiane Capital. Reviewed on its own terms because, unlike 20260820000000
+  # above, this one DOES write to a pre-existing table:
+  #   * Schema is additive: three nullable columns on properties (province_en,
+  #     province_lo, province_zh), one CHECK, one index. No column is dropped,
+  #     no type changes, nothing is renamed. properties had NO province concept
+  #     before this, so nothing is being reinterpreted.
+  #   * It UPDATEs properties — the core listings table. Read statement by
+  #     statement, that UPDATE writes ONLY the three NEW columns, and only
+  #     `WHERE province_en IS NULL`, so it can neither overwrite a value that
+  #     already existed nor change any pre-existing column. Re-running is a
+  #     no-op. No other table is written at all.
+  #   * The backfill is a statement of fact, not a guess: it fires only for the
+  #     7 Vientiane Capital districts (Sisattanak, Saysettha, Chanthabouly,
+  #     Sikhottabong, Xaythany, Hadxaifong, Naxaithong), which are every value
+  #     admin's DISTRICT_MAP has ever offered. A row with an unrecognised
+  #     district is deliberately LEFT NULL — an unknown location must not
+  #     become a wrong one.
+  #   * The CHECK names exactly the 18 keys in provinces.js LAO_PROVINCES; a
+  #     test asserts the two lists are identical, so a typo or a duplicated
+  #     province cannot enter through any client. It is added AFTER the
+  #     backfill, when every province_en is either NULL or 'Vientiane Capital',
+  #     so validation of existing rows cannot fail.
+  #   * Vientiane Capital and Vientiane Province are separate keys. Conflating
+  #     them is the classic Laos data error and the CHECK makes it impossible.
+  #   * NOT YET VERIFIED AGAINST A THROWAWAY CLUSTER, unlike 20260820000000 —
+  #     the reviewer should treat the dry-run output as the first execution
+  #     evidence. The gate prints the full plan before applying.
+  #   * MUST be applied BEFORE the frontend that writes these columns reaches
+  #     production — admin.html's save path sends province_en/_lo/_zh, and
+  #     PostgREST rejects an unknown column with PGRST204, which would break
+  #     saving ANY listing.
   EXPECTED_MIGRATIONS: |
     20260813000000
     20260817000000
@@ -141,7 +174,8 @@ env:
     20260818010000
     20260818020000
     20260820000000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql'
+    20260822000000
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 

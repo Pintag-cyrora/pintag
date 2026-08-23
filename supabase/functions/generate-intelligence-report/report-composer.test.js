@@ -126,8 +126,13 @@ test('buildPrompt embeds the canonical lists and the report-type-specific struct
   const prompt = buildPrompt('daily', composed, { listing_impressions: 100 }, null);
   assert.ok(prompt.includes(CANONICAL_DISTRICTS[0]));
   assert.ok(prompt.includes(CANONICAL_PROPERTY_TYPES[0]));
-  assert.ok(prompt.includes('DAILY INTELLIGENCE REPORT'));
-  assert.ok(prompt.includes('Biggest Story'));
+  // The daily report is now a BRIEFING (PROMPT_VERSION 2.0.0): "Today's Story"
+  // replaced "Executive Summary / Biggest Story", and the old marketplace-
+  // composition sections are gone. See daily-briefing.test.mjs for the full
+  // structure contract.
+  assert.ok(prompt.includes('DAILY INTELLIGENCE BRIEFING'));
+  assert.ok(prompt.includes("# Today's Story"));
+  assert.ok(!prompt.includes('## Biggest Story'));
 });
 test('buildPrompt selects the weekly/monthly structure correctly', () => {
   const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
