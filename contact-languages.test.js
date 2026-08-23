@@ -347,3 +347,145 @@ test('MIGRATION: is_primary is backfilled from the existing single contact', () 
     'at most one primary per listing');
   assert.match(sql, /UPDATE property_contacts pc SET is_primary = true/, 'safety net for link rows with no primary');
 });
+
+// ---------------------------------------------------------------------------
+// REGRESSION: every known properties.contact_id write path maintains the
+// primary property_contacts link.
+//
+// Two production listings were found carrying a contact_id with zero links.
+// The root cause was that four of the five live write paths could only do half
+// the job. These tests pin the shape of the shared helper and assert -- by
+// reading the actual page sources -- that each of those paths now calls it.
+// A future edit that reintroduces a bare contact_id write fails here.
+// ---------------------------------------------------------------------------
+{
+  const {
+    primaryContactLinkRow, ensurePrimaryContactLink,
+    supabaseJsContactLinkIO, restContactLinkIO, PRIMARY_CONTACT_SORT_ORDER
+  } = await import('./contact-languages.js');
+
+  test('primaryContactLinkRow builds the one agreed link shape', () => {
+    assert.deepStrictEqual(
+      primaryContactLinkRow('p1', 'c1'),
+      { property_id: 'p1', contact_id: 'c1', sort_order: 0, is_primary: true });
+    assert.strictEqual(PRIMARY_CONTACT_SORT_ORDER, 0);
+  });
+
+  test('a NULL contact gets no link — matching the trigger', () => {
+    assert.strictEqual(primaryContactLinkRow('p1', null), null);
+    assert.strictEqual(primaryContactLinkRow('p1', undefined), null);
+    assert.strictEqual(primaryContactLinkRow(null, 'c1'), null);
+  });
+
+  test('ensurePrimaryContactLink demotes BEFORE it upserts', async () => {
+    // Order matters: idx_property_contacts_one_primary is a partial UNIQUE on
+    // (property_id) WHERE is_primary, so upserting first would raise a unique
+    // violation on every genuine A -> B reassignment.
+    const calls = [];
+    const io = {
+      demoteOtherPrimaries: async (pid, cid) => { calls.push(['demote', pid, cid]); },
+      upsertLink:           async (row)      => { calls.push(['upsert', row.contact_id]); }
+    };
+    const did = await ensurePrimaryContactLink(io, 'prop-1', 'contact-B');
+    assert.strictEqual(did, true);
+    assert.deepStrictEqual(calls, [['demote', 'prop-1', 'contact-B'], ['upsert', 'contact-B']]);
+  });
+
+  test('ensurePrimaryContactLink is a no-op for a NULL contact', async () => {
+    let touched = false;
+    const io = {
+      demoteOtherPrimaries: async () => { touched = true; },
+      upsertLink:           async () => { touched = true; }
+    };
+    assert.strictEqual(await ensurePrimaryContactLink(io, 'prop-1', null), false);
+    assert.strictEqual(touched, false, 'a NULL contact must not write anything');
+  });
+
+  test('the REST adapter demotes only OTHER primaries and upserts on the right constraint', async () => {
+    const seen = [];
+    const io = restContactLinkIO(async (m, path, body, headers) => {
+      seen.push({ m, path, body, headers });
+    });
+    await io.demoteOtherPrimaries('P', 'C');
+    await io.upsertLink(primaryContactLinkRow('P', 'C'));
+
+    assert.match(seen[0].path, /property_id=eq\.P/);
+    assert.match(seen[0].path, /is_primary=is\.true/);
+    assert.match(seen[0].path, /contact_id=neq\.C/,
+      'must never demote the contact it is about to promote');
+    assert.deepStrictEqual(seen[0].body, { is_primary: false });
+
+    assert.match(seen[1].path, /on_conflict=property_id,contact_id/,
+      'PostgREST needs the on_conflict target to upsert');
+    assert.strictEqual(seen[1].headers.Prefer, 'resolution=merge-duplicates',
+      'without merge-duplicates the POST is a plain insert and 409s');
+  });
+
+  test('the supabase-js adapter surfaces errors instead of silently continuing', async () => {
+    const client = { from: () => ({
+      update: () => ({ eq: () => ({ eq: () => ({ neq: async () => ({ error: { message: 'nope' } }) }) }) }),
+      upsert: async () => ({ error: null })
+    }) };
+    await assert.rejects(
+      () => supabaseJsContactLinkIO(client).demoteOtherPrimaries('P', 'C'), /nope/);
+  });
+
+  // ── the four previously-broken pages now call the shared helper ──────────
+  for (const [file, expected] of [
+    ['add-property.html', 1],
+    ['edit-listing.html', 1],
+    ['agent-setup.html',  2],   // both bulk-assignment loops
+  ]) {
+    test(`${file} maintains the primary link after writing contact_id`, () => {
+      const src = fs.readFileSync(file, 'utf8');
+      assert.match(src, /contact-languages\.js/,
+        `${file} must load the shared contact module`);
+      const calls = (src.match(/await ensurePrimaryContactLink\(/g) || []).length;
+      assert.strictEqual(calls, expected,
+        `${file} should call ensurePrimaryContactLink ${expected}x`);
+    });
+  }
+
+  test('admin.html saveExtraContacts never deletes before the replacements land', () => {
+    const src = fs.readFileSync('admin.html', 'utf8');
+    const fn = src.slice(src.indexOf('async function saveExtraContacts'),
+                         src.indexOf('// ── SAVE ─'));
+    const wipeAll = /DELETE',\s*`property_contacts\?property_id=eq\.\$\{propertyId\}`/;
+    assert.ok(!wipeAll.test(fn),
+      'the unconditional "delete every link for this listing" must be gone — it is what left two listings with zero numbers');
+    const upsertAt = fn.indexOf('on_conflict=property_id,contact_id');
+    const deleteAt = fn.indexOf("contact_id=not.in.");
+    assert.ok(upsertAt > -1, 'links must be upserted');
+    assert.ok(deleteAt > -1, 'removals must be scoped to contacts the user took away');
+    assert.ok(upsertAt < deleteAt,
+      'the upsert must come BEFORE the delete so a failure can never leave zero rows');
+  });
+
+  test('no page writes properties.contact_id without the module loaded', () => {
+    // Catches a NEW page repeating the original mistake.
+    for (const f of ['add-property.html', 'edit-listing.html', 'agent-setup.html', 'admin.html']) {
+      const src = fs.readFileSync(f, 'utf8');
+      if (/contact_id\s*:/.test(src)) {
+        assert.match(src, /contact-languages\.js/,
+          `${f} writes contact_id but does not load contact-languages.js`);
+      }
+    }
+  });
+
+  test('the invariant migration exists and is shaped correctly', () => {
+    const sql = fs.readFileSync(
+      'supabase/migrations/20260823000000_contact_primary_invariant.sql', 'utf8');
+    assert.match(sql, /AFTER INSERT OR UPDATE OF contact_id ON properties/,
+      'must fire on INSERT and on UPDATE of contact_id');
+    assert.match(sql, /IF NEW\.contact_id IS NULL THEN\s*\n\s*RETURN NULL/,
+      'a NULL contact must produce no link');
+    assert.match(sql, /SET is_primary = false[\s\S]*?contact_id <> NEW\.contact_id/,
+      'must demote a superseded primary');
+    assert.match(sql, /ON CONFLICT ON CONSTRAINT property_contacts_unique/,
+      'must upsert on the real unique constraint so a secondary is promoted, not duplicated');
+    assert.match(sql, /SECURITY DEFINER/,
+      'the safety net must hold for writers who lack RLS access to property_contacts');
+    assert.ok(!/INSERT INTO property_contacts[\s\S]*FROM properties p\s+WHERE p\.contact_id IS NOT NULL/.test(sql),
+      'the migration must NOT backfill — repairing existing rows is a separate authorized step');
+  });
+}

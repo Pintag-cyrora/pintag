@@ -2881,7 +2881,7 @@ function maybeIngestGalleryRecovery() {
 PintagAdminAuth.protect(sbClient, bootAdmin);
 
 // ── SUPABASE ──────────────────────────────────────────────────────
-async function sbApi(method, path, body) {
+async function sbApi(method, path, body, extraHeaders) {
   try {
     const token = _adminToken || SUPABASE_ANON;
     const headers = {
@@ -2890,6 +2890,9 @@ async function sbApi(method, path, body) {
       'Authorization': 'Bearer ' + token
     };
     if (method === 'POST' || method === 'PATCH') headers['Prefer'] = 'return=representation';
+    // extraHeaders last so a caller can REPLACE Prefer -- restContactLinkIO
+    // needs 'resolution=merge-duplicates' instead of 'return=representation'.
+    if (extraHeaders) Object.assign(headers, extraHeaders);
     const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
       method,
       headers,
@@ -3980,16 +3983,46 @@ async function saveExtraContacts(propertyId, primaryContactId) {
     if (cid) linked.push({ contact_id: cid, sort_order: r.sort_order, is_primary: !!r.isPrimary });
   }
 
-  // Rebuild the link set for this listing. Deleting links (never contacts)
-  // then re-inserting keeps sort_order contiguous after a middle row is
-  // removed, and is safe because property_contacts holds no data of its own
-  // beyond the ordering.
-  await sbApi('DELETE', `property_contacts?property_id=eq.${propertyId}`);
+  // Reconcile the link set. The previous version DELETED every link for this
+  // listing and only then re-inserted, so any failure in the insert loop --
+  // a dropped request, an RLS refusal, a 4xx on one row -- left the listing
+  // with ZERO numbers while properties.contact_id still named a contact. That
+  // is exactly the state two production listings were found in, and it is
+  // invisible on the public page because listing.html falls back to the legacy
+  // contacts() embed.
+  //
+  // Now nothing is destroyed until the replacements are known to have landed:
+  //   1. demote a superseded primary (idx_property_contacts_one_primary is a
+  //      partial UNIQUE on (property_id) WHERE is_primary, so the old primary
+  //      must step down BEFORE the new one is written);
+  //   2. upsert every desired link;
+  //   3. and only then remove the links the user actually took away.
+  // If step 1 or 2 throws, step 3 never runs and the listing keeps the numbers
+  // it already had. The worst case is a stale extra row, never zero rows.
+  const desiredIds = linked.map(l => l.contact_id);
+  const primaryId  = (linked.find(l => l.is_primary) || {}).contact_id || null;
+
+  if (primaryId) {
+    await sbApi('PATCH',
+      `property_contacts?property_id=eq.${propertyId}&is_primary=is.true` +
+      `&contact_id=neq.${encodeURIComponent(primaryId)}`,
+      { is_primary: false });
+  }
+
   for (const l of linked) {
-    await sbApi('POST', 'property_contacts', {
+    await sbApi('POST', 'property_contacts?on_conflict=property_id,contact_id', {
       property_id: propertyId, contact_id: l.contact_id,
       sort_order: l.sort_order, is_primary: !!l.is_primary
-    });
+    }, { Prefer: 'resolution=merge-duplicates' });
+  }
+
+  // Deletions last, and scoped to the contacts the user removed rather than
+  // "everything". With no desired links there is nothing to keep, but that only
+  // happens when the listing genuinely has no contact at all.
+  if (desiredIds.length) {
+    const keep = desiredIds.map(id => `"${id}"`).join(',');
+    await sbApi('DELETE',
+      `property_contacts?property_id=eq.${propertyId}&contact_id=not.in.(${keep})`);
   }
 }
 

@@ -594,6 +594,7 @@ body{
 <script src="amenities.js?v=__ASSET_VERSION__"></script>
 <script src="currency.js?v=__ASSET_VERSION__"></script>
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
+  <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -1119,7 +1120,7 @@ async function saveProperty(){
     '-' +
     Date.now();
 
-  const { error } =
+  const { data:insertedRows, error } =
     await supabaseClient
       .from('properties')
       .insert({
@@ -1161,7 +1162,8 @@ async function saveProperty(){
 
         ...buildTypedFieldsPayload(propertyType)
 
-      });
+      })
+      .select('id');
 
 if(error){
 
@@ -1174,6 +1176,26 @@ if(error){
 
   return;
 }
+
+  // The listing's contact must also exist as its PRIMARY property_contacts
+  // row. Before this, add-property wrote properties.contact_id and nothing
+  // else, so a listing created here was invisible to the language router
+  // until an admin happened to re-save it (see
+  // 20260823000000_contact_primary_invariant.sql).
+  //
+  // Best-effort on purpose: the listing IS saved by this point, and the
+  // database trigger from that migration writes the same row anyway. Failing
+  // the whole save over the redundant half would turn a safety net into a new
+  // way to lose a listing.
+  try {
+    const newId = Array.isArray(insertedRows) && insertedRows[0] ? insertedRows[0].id : null;
+    if (newId && contactId && typeof ensurePrimaryContactLink === 'function') {
+      await ensurePrimaryContactLink(
+        supabaseJsContactLinkIO(supabaseClient), newId, contactId);
+    }
+  } catch (linkErr) {
+    console.error('[contact-link]', linkErr);
+  }
 
   statusText.innerText =
     'ບັນທຶກສຳເລັດ';

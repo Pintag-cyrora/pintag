@@ -571,6 +571,7 @@ label{
 <script src="amenities.js?v=__ASSET_VERSION__"></script>
 <script src="currency.js?v=__ASSET_VERSION__"></script>
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
+  <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -1324,6 +1325,24 @@ async function saveProperty(){
 
     return;
 
+  }
+
+  // Keep the primary property_contacts row in step with contact_id. This page
+  // is the most likely origin of the production drift: its own "defensive
+  // fallback for a pre-migration listing with no contact_id yet" branch above
+  // CREATES a contact and sets contact_id, and until now wrote no link at all,
+  // so the 20260820000000 backfill (which correctly skips NULL contacts) could
+  // never have covered the result.
+  //
+  // Best-effort: the listing is already saved, and the database trigger in
+  // 20260823000000_contact_primary_invariant.sql writes the same row.
+  try {
+    if (editingContactId && typeof ensurePrimaryContactLink === 'function') {
+      await ensurePrimaryContactLink(
+        supabaseJsContactLinkIO(supabaseClient), propertyId, editingContactId);
+    }
+  } catch (linkErr) {
+    console.error('[contact-link]', linkErr);
   }
 
   document.getElementById(
