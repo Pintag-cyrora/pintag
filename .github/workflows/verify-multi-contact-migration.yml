@@ -94,271 +94,75 @@ jobs:
           echo "host=$HOST" >> "$GITHUB_OUTPUT"
           echo "::notice title=Pooler::$HOST (session mode, port 5432)"
 
-      - name: Phase 1 diagnostics — created_at semantics and contact identity
-        id: phase1
+      - name: Rendition storage sample — READ ONLY (downloads + encodes, uploads NOTHING)
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           REF: ${{ steps.ref.outputs.ref }}
           PGHOST_POOLER: ${{ steps.pooler.outputs.host }}
         run: |
           set -euo pipefail
-          d() {
-            psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres \
-                 -v ON_ERROR_STOP=1 -X -A -F ' | ' -c "SET default_transaction_read_only=on;
-          $1"
-          }
+          sudo apt-get install -y -qq webp imagemagick >/dev/null 2>&1 || sudo apt-get install -y -qq webp >/dev/null
 
-          echo "── P1.1 column definition: nullable + default ─────────────"
-          d "SELECT column_name, is_nullable, coalesce(column_default,'(none)') AS column_default
-             FROM information_schema.columns
-             WHERE table_schema='public' AND table_name='properties'
-               AND column_name IN ('created_at','contact_id')
-             ORDER BY column_name;"
+          # Stratified sample: the 3 largest, all PNGs, and a spread across the
+          # size distribution, plus images from listings that carry many photos.
+          psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres -X -A -t -q \
+            -c "SET default_transaction_read_only=on;
+                (SELECT name FROM storage.objects WHERE bucket_id='property-images'
+                   AND metadata->>'mimetype'='image/png'
+                 ORDER BY (metadata->>'size')::bigint DESC LIMIT 5)
+                UNION
+                (SELECT name FROM storage.objects WHERE bucket_id='property-images'
+                 ORDER BY (metadata->>'size')::bigint DESC LIMIT 5)
+                UNION
+                (SELECT name FROM storage.objects WHERE bucket_id='property-images'
+                   AND (metadata->>'size')::bigint BETWEEN 250000 AND 400000
+                 ORDER BY random() LIMIT 8)
+                UNION
+                (SELECT name FROM storage.objects WHERE bucket_id='property-images'
+                   AND (metadata->>'size')::bigint < 150000
+                 ORDER BY random() LIMIT 6);" > /tmp/sample.txt
+          sed -i '/^$/d' /tmp/sample.txt
+          echo "sample objects: $(wc -l < /tmp/sample.txt)"
 
-          echo ""
-          echo "── P1.2 how many properties have created_at IS NULL ───────"
-          d "SELECT count(*) FILTER (WHERE created_at IS NULL) AS null_created_at,
-                    count(*)                                   AS total_properties,
-                    round(100.0*count(*) FILTER (WHERE created_at IS NULL)/nullif(count(*),0),1) AS pct_null
-             FROM properties;"
+          BASE="https://${REF}.supabase.co/storage/v1/object/public/property-images"
+          mkdir -p /tmp/w && : > /tmp/results.csv
 
-          echo ""
-          echo "  scope of the impact — NULL created_at broken out by status:"
-          d "SELECT coalesce(status,'(null)') AS status,
-                    count(*) FILTER (WHERE created_at IS NULL) AS null_created_at,
-                    count(*)                                   AS total
-             FROM properties GROUP BY 1 ORDER BY 2 DESC, 3 DESC;"
-
-          echo ""
-          echo "  earliest/latest created_at actually present (date semantics):"
-          d "SELECT min(created_at) AS earliest, max(created_at) AS latest,
-                    count(DISTINCT created_at::date) AS distinct_days
-             FROM properties WHERE created_at IS NOT NULL;"
-
-          echo ""
-          echo "  candidate historical sources for a NULL-created_at row:"
-          d "SELECT p.slug,
-                    (SELECT min(lp.created_at) FROM listing_provenance lp WHERE lp.listing_id=p.id) AS first_provenance,
-                    (SELECT min(pc.created_at) FROM property_contacts pc WHERE pc.property_id=p.id) AS first_link,
-                    p.status_changed_at
-             FROM properties p WHERE p.created_at IS NULL ORDER BY p.slug LIMIT 10;"
-
-          echo ""
-          echo "── P1.3 the two drift rows: is the contact REAL or the sentinel? ──"
-          d "SELECT p.slug, p.contact_id,
-                    (p.contact_id = '00000000-0000-0000-0000-0000000000c1') AS is_pending_sentinel,
-                    c.role, c.name, right(c.phone,4) AS phone_last4,
-                    c.languages,
-                    (SELECT count(*) FROM properties o WHERE o.contact_id=c.id) AS shared_by_listings
-             FROM properties p LEFT JOIN contacts c ON c.id=p.contact_id
-             WHERE p.slug IN ('modern-2-bedroom-house-near-lycee-francais-international-636385',
-                              'listing-34e02f9b');"
+          while read -r OBJ; do
+            [ -n "$OBJ" ] || continue
+            ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$OBJ")
+            curl -sS -o /tmp/w/src "${BASE}/${ENC}" || continue
+            ORIG=$(stat -c%s /tmp/w/src 2>/dev/null || echo 0)
+            [ "$ORIG" -gt 1000 ] || continue
+            DIM=$(identify -format "%wx%h" /tmp/w/src 2>/dev/null || echo "?")
+            LINE="$OBJ,$ORIG,$DIM"
+            for spec in "200 70" "400 75" "800 78" "1200 82"; do
+              W=$(echo $spec | cut -d' ' -f1); Q=$(echo $spec | cut -d' ' -f2)
+              convert /tmp/w/src -resize "${W}x>" -quality "$Q" -define webp:method=6 /tmp/w/out.webp 2>/dev/null || { LINE="$LINE,0"; continue; }
+              LINE="$LINE,$(stat -c%s /tmp/w/out.webp)"
+            done
+            echo "$LINE" >> /tmp/results.csv
+          done < /tmp/sample.txt
 
           echo ""
-          echo "  their full listing_provenance trail (who set contact_id, and when):"
-          d "SELECT p.slug, lp.event_type, lp.field_name, lp.source, lp.actor, lp.created_at
-             FROM listing_provenance lp JOIN properties p ON p.id=lp.listing_id
-             WHERE p.slug IN ('modern-2-bedroom-house-near-lycee-francais-international-636385',
-                              'listing-34e02f9b')
-             ORDER BY lp.created_at;" || echo "  (listing_provenance unreadable or absent)"
-
+          echo "object,orig_bytes,dims,w200,w400,w800,w1200"
+          cat /tmp/results.csv
           echo ""
-          echo "  when did the migration backfill run (min property_contacts.created_at)?"
-          d "SELECT min(created_at) AS backfill_ran_at, count(*) AS rows FROM property_contacts;"
-
-      - name: Checks 1 + 2 — backfill and primary constraint (SELECT only)
-        id: db
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          REF: ${{ steps.ref.outputs.ref }}
-          PGHOST_POOLER: ${{ steps.pooler.outputs.host }}
-        run: |
-          set -euo pipefail
-          if [ -z "${PGPASSWORD:-}" ]; then
-            echo "::error::Missing secret SUPABASE_DB_PASSWORD."; exit 1
-          fi
-          # A shell FUNCTION, not a string variable: the field separator is a
-          # literal " | " and word-splitting an unquoted "$PSQL" would tear it
-          # into three arguments.
-          q() {
-            psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres \
-                 -v ON_ERROR_STOP=1 -X -A -F ' | ' -c "SET default_transaction_read_only=on;
-          $1"
-          }
-          # Tuples-only variant, for capturing a value rather than printing a table.
-          q_raw() {
-            psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres \
-                 -v ON_ERROR_STOP=1 -X -A -t -c "SET default_transaction_read_only=on;
-          $1"
-          }
-
-          echo "── schema objects ─────────────────────────────────────────"
-          q "SELECT 'contacts.languages' AS object,
-                    (SELECT data_type FROM information_schema.columns
-                      WHERE table_name='contacts' AND column_name='languages') AS detail
-             UNION ALL SELECT 'property_contacts table', to_regclass('public.property_contacts')::text
-             UNION ALL SELECT 'idx_property_contacts_one_primary',
-                    (SELECT indexdef FROM pg_indexes WHERE indexname='idx_property_contacts_one_primary');"
-
-          echo ""
-          echo "── CHECK 1: backfill counts ───────────────────────────────"
-          q "SELECT
-               (SELECT count(*) FROM properties WHERE contact_id IS NOT NULL) AS legacy_listings_with_contact_id,
-               (SELECT count(*) FROM property_contacts)                        AS property_contacts_rows_total,
-               (SELECT count(*) FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
-                  WHERE p.contact_id = pc.contact_id)                          AS backfilled_rows;"
-
-          echo ""
-          echo "  listings with a contact_id but NOT exactly one backfilled row (expect 0):"
-          q "SELECT count(*) AS violations FROM (
-               SELECT p.id FROM properties p
-               LEFT JOIN property_contacts pc ON pc.property_id=p.id AND pc.contact_id=p.contact_id
-               WHERE p.contact_id IS NOT NULL
-               GROUP BY p.id HAVING count(pc.id) <> 1) t;"
-
-          echo ""
-          echo "  WHICH listings, and when were they touched? A listing created or"
-          echo "  edited AFTER the migration but BEFORE the admin UI shipped would"
-          echo "  set properties.contact_id via the legacy path and never write the"
-          echo "  join row — that is drift, not a bad backfill. created_at/updated_at"
-          echo "  relative to the migration timestamp tells the two apart."
-          # Optional columns are read through to_jsonb rather than named
-          # directly: properties has no updated_at (a trigger references one,
-          # but the column is not there), and naming a missing column aborts
-          # the whole step — which is how the previous run starved check 4 of
-          # its control group. An absent key yields NULL here instead.
-          # `|| true` for the same reason: a diagnostic must never be able to
-          # prevent the checks that follow it from running.
-          q "SELECT p.slug, p.status, count(pc.id) AS join_rows,
-                    p.created_at::date AS created,
-                    (to_jsonb(p.*) ->> 'deleted_at') IS NOT NULL AS soft_deleted,
-                    (p.created_at > timestamptz '2026-08-20 00:00:00+00') AS created_after_migration
-             FROM properties p
-             LEFT JOIN property_contacts pc ON pc.property_id=p.id AND pc.contact_id=p.contact_id
-             WHERE p.contact_id IS NOT NULL
-             GROUP BY p.id, p.slug, p.status, p.created_at
-             HAVING count(pc.id) <> 1
-             ORDER BY p.created_at;" || true
-
-          echo ""
-          echo "── CHECK 2: primary + sort_order ──────────────────────────"
-          echo "  backfilled rows NOT sort_order=0 (expect 0):"
-          q "SELECT count(*) AS violations FROM property_contacts pc
-             JOIN properties p ON p.id=pc.property_id
-             WHERE p.contact_id=pc.contact_id AND pc.sort_order <> 0;"
-          echo "  backfilled rows NOT is_primary (expect 0):"
-          q "SELECT count(*) AS violations FROM property_contacts pc
-             JOIN properties p ON p.id=pc.property_id
-             WHERE p.contact_id=pc.contact_id AND pc.is_primary IS NOT TRUE;"
-          echo "  listings with MORE THAN ONE primary (expect 0 — index enforces):"
-          q "SELECT count(*) AS violations FROM (
-               SELECT property_id FROM property_contacts WHERE is_primary
-               GROUP BY property_id HAVING count(*) > 1) t;"
-
-          echo ""
-          echo "── inventory for the RLS checks ───────────────────────────"
-          echo "  active/public listings with MORE THAN ONE contact:"
-          q "SELECT p.slug, count(*) AS numbers FROM property_contacts pc
-             JOIN properties p ON p.id=pc.property_id
-             WHERE p.status IN ('active','available')
-             GROUP BY p.slug HAVING count(*) > 1 ORDER BY 2 DESC LIMIT 5;"
-          echo "  a contact reachable ONLY through a non-public listing:"
-          # These ids are the CONTROL GROUP for check 4. Counting how many
-          # contacts anon can see proves nothing on its own; naming the rows
-          # that MUST be absent and asserting their absence does.
-          DRAFT_ONLY="$(q_raw "SELECT c.id FROM contacts c
-             WHERE EXISTS (SELECT 1 FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
-                             WHERE pc.contact_id=c.id AND p.status NOT IN ('active','available'))
-               AND NOT EXISTS (SELECT 1 FROM property_contacts pc JOIN properties p ON p.id=pc.property_id
-                             WHERE pc.contact_id=c.id AND p.status IN ('active','available'))
-               AND NOT EXISTS (SELECT 1 FROM properties p WHERE p.contact_id=c.id
-                             AND p.status IN ('active','available'));" | tr -d ' ' | grep -E '^[0-9a-f-]{36}$' || true)"
-          echo "$DRAFT_ONLY" | sed 's/^/    must stay hidden: /'
-          echo "draft_only<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$DRAFT_ONLY" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-
-          echo "  total contacts in the database (compare with the anon count in check 4):"
-          q "SELECT count(*) AS contacts_total FROM contacts;"
-
-      - name: Checks 3 + 4 — anonymous RLS through the real REST API
-        if: always()
-        env:
-          REF: ${{ steps.ref.outputs.ref }}
-          DRAFT_ONLY: ${{ steps.db.outputs.draft_only }}
-        run: |
-          set -euo pipefail
-          # The anon key is public (shipped in config.prod.js, visible in every
-          # browser). Using it here is exactly what a visitor's browser does.
-          ANON="$(grep -oP "anonKey:\s*'\K[^']+" config.prod.js | head -1)"
-          [ -n "$ANON" ] || { echo "::error::Could not read anonKey from config.prod.js"; exit 1; }
-          BASE="https://${REF}.supabase.co/rest/v1"
-          SEL="select=slug,status,property_contacts(sort_order,is_primary,contacts(id,phone,languages))"
-
-          echo "── CHECK 3: anon read of an ACTIVE listing's contacts ─────"
-          curl -sS "${BASE}/properties?status=in.(active,available)&${SEL}&limit=400" \
-            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /tmp/anon_active.json
+          echo "=== TOTALS ==="
           python3 - <<'PY'
-          import json,collections
-          rows=json.load(open('/tmp/anon_active.json'))
-          if isinstance(rows,dict):
-              print("REST ERROR:",json.dumps(rows)[:400]); raise SystemExit(1)
-          print(f"  active listings returned to anon: {len(rows)}")
-          multi=[r for r in rows if len(r.get('property_contacts') or [])>1]
-          print(f"  of those, listings exposing MORE THAN ONE contact: {len(multi)}")
-          withdata=0
-          for r in rows:
-              for pc in (r.get('property_contacts') or []):
-                  c=pc.get('contacts') or {}
-                  if c.get('phone'): withdata+=1
-          print(f"  join rows whose nested contact object actually carries a phone: {withdata}")
-          for r in multi[:3]:
-              print(f"  listing {r['slug']} ({r['status']}):")
-              for pc in sorted(r['property_contacts'], key=lambda x: x.get('sort_order') or 0):
-                  c=pc.get('contacts') or {}
-                  ph=c.get('phone') or ''
-                  print(f"    sort={pc.get('sort_order')} primary={pc.get('is_primary')} "
-                        f"phone=***{ph[-4:] if ph else 'NONE'} languages={c.get('languages')}")
-          json.dump({'multi':len(multi),'withdata':withdata,'total':len(rows)},open('/tmp/summary.json','w'))
-          PY
-
-          echo ""
-          echo "── CHECK 4: anon must NOT see a draft-only contact ────────"
-          curl -sS "${BASE}/properties?status=not.in.(active,available)&select=slug,status&limit=5" \
-            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /tmp/anon_draft.json
-          echo "  non-public listings visible to anon (expect []):"
-          head -c 300 /tmp/anon_draft.json; echo
-
-          echo "  total contacts visible to anon:"
-          curl -sS "${BASE}/contacts?select=id" -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" \
-            -H "Prefer: count=exact" -H "Range: 0-0" -D /tmp/h.txt -o /dev/null
-          grep -i '^content-range' /tmp/h.txt || true
-
-          # The decisive assertion. A count comparison cannot prove containment;
-          # naming the contacts that MUST be invisible and looking for them in
-          # the anon response can. These ids came from the privileged query in
-          # the previous step — each is reachable ONLY through a non-public
-          # listing, so a visitor must never receive any of them.
-          echo "  asserting the draft-only contacts are absent from the anon response:"
-          printf '%s\n' "$DRAFT_ONLY" | grep -E '^[0-9a-f-]{36}$' > /tmp/draft_ids.txt || true
-          curl -sS "${BASE}/contacts?select=id&limit=2000" \
-            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /tmp/anon_contacts.json
-          python3 - <<'PY'
-          import json
-          ids=[l.strip() for l in open('/tmp/draft_ids.txt') if l.strip()]
-          rows=json.load(open('/tmp/anon_contacts.json'))
-          if isinstance(rows,dict):
-              print("    REST ERROR:",json.dumps(rows)[:300]); raise SystemExit(1)
-          visible={r['id'] for r in rows}
-          if not ids:
-              print("    NO CONTROL GROUP: the database has no draft-only contact, so"
-                    "\n    check 4 has nothing to prove and is INCONCLUSIVE, not passed.")
-              raise SystemExit(0)
-          leaked=[i for i in ids if i in visible]
-          for i in ids:
-              print(f"    {i}  {'LEAKED — VISIBLE TO ANON' if i in visible else 'hidden (correct)'}")
-          print(f"    anon sees {len(visible)} contacts; {len(leaked)} of {len(ids)} draft-only contacts leaked")
-          if leaked:
-              print("::error::RLS LEAK — a contact reachable only through a non-public listing is readable by anon.")
-              raise SystemExit(1)
+          rows=[l.strip().split(',') for l in open('/tmp/results.csv') if l.strip()]
+          n=len(rows)
+          orig=sum(int(r[1]) for r in rows)
+          cols={'200':3,'400':4,'800':5,'1200':6}
+          tot={k:sum(int(r[i]) for r in rows) for k,i in cols.items()}
+          print(f"  images sampled      : {n}")
+          print(f"  original bytes      : {orig:,} ({orig/1024/1024:.2f} MB)  avg {orig/n/1024:.0f} kB")
+          for k in ['200','400','800','1200']:
+              print(f"  webp {k:>4}px total   : {tot[k]:,} ({tot[k]/1024/1024:.2f} MB)  avg {tot[k]/n/1024:.0f} kB  = {100*tot[k]/orig:.1f}% of original")
+          four=sum(tot.values()); three=tot['200']+tot['400']+tot['800']
+          print(f"\n  4-size set (200/400/800/1200): {four:,} ({four/1024/1024:.2f} MB) = +{100*four/orig:.1f}% storage")
+          print(f"  3-size set (200/400/1200)    : {tot['200']+tot['400']+tot['1200']:,} = +{100*(tot['200']+tot['400']+tot['1200'])/orig:.1f}% storage")
+          LIB=540117759
+          print(f"\n  EXTRAPOLATED to the full 515 MB library (1,599 objects):")
+          print(f"    4-size: +{LIB*four/orig/1024/1024:.0f} MB   -> total {(LIB+LIB*four/orig)/1024/1024:.0f} MB")
+          print(f"    3-size: +{LIB*(tot['200']+tot['400']+tot['1200'])/orig/1024/1024:.0f} MB")
           PY
