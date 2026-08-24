@@ -173,3 +173,111 @@ test('renditions upload with the long immutable cache, like originals', () => {
   const edit = fs.readFileSync('edit-listing.html', 'utf8');
   assert.match(edit, /cacheControl: '31536000'/, 'the original upload must be long-cached too');
 });
+
+// ---------------------------------------------------------------------------
+// BACKFILL RUNNER — the guarantees are asserted from the source, because the
+// runner touches production Storage and "we intended it to be safe" is not a
+// test. Each of these would fail loudly if someone added a delete, widened the
+// scope beyond active listings, or re-implemented the sizing contract.
+// ---------------------------------------------------------------------------
+{
+  const RUNNER = fs.readFileSync('scripts/backfill-renditions.mjs', 'utf8');
+
+  test('the runner reuses the shared contract instead of redefining sizes', () => {
+    assert.match(RUNNER, /import\('\.\.\/image-renditions\.js'\)/,
+      'profiles and paths must come from the one module');
+    assert.match(RUNNER, /PT_RENDITION_PROFILES, renditionPath/);
+    // No hardcoded widths — those live in image-renditions.js and nowhere else.
+    assert.ok(!/\b(200|400|800|1200)\s*[,)]\s*(?!.*resize)/.test(
+      RUNNER.split('\n').filter(l => /width:\s*\d/.test(l)).join('\n')),
+      'the runner must not declare its own profile widths');
+  });
+
+  test('the runner can never delete anything', () => {
+    assert.ok(!/method:\s*['"]DELETE['"]/.test(RUNNER), 'no DELETE request');
+    assert.ok(!/\.remove\(/.test(RUNNER), 'no storage remove()');
+    assert.ok(!/\bDELETE\s+FROM\b|\bDROP\s+/i.test(RUNNER), 'no destructive SQL');
+  });
+
+  test('the runner only ever writes under renditions/', () => {
+    // Every upload target is renditionPath(), which is prefixed by construction.
+    assert.match(RUNNER, /const path = renditionPath\(im\.storage_path, profile\)/);
+    assert.match(RUNNER, /await upload\(path, out\)/);
+    assert.ok(!/upload\(\s*im\.storage_path/.test(RUNNER),
+      'an original path must never be an upload target');
+  });
+
+  test('scope is restricted to publicly delivered images', () => {
+    assert.match(RUNNER, /p\.status IN \('active','available'\)/,
+      'must use the same predicate as the public site');
+    assert.match(RUNNER, /pi\.status = 'active'/);
+    assert.match(RUNNER, /storage_path NOT LIKE 'renditions\/%'/,
+      'must not treat a rendition as a source image');
+    assert.match(RUNNER, /JOIN storage\.objects/,
+      'joining storage.objects drops registry rows whose object is missing');
+  });
+
+  test('every query is pinned read-only', () => {
+    const calls = RUNNER.match(/execFileSync\('psql'[\s\S]*?\)/g) || [];
+    assert.ok(calls.length > 0);
+    for (const c of calls) {
+      assert.match(c, /default_transaction_read_only=on/,
+        'a psql call without the read-only pin');
+      assert.match(c, /'-q'/,
+        'without -q psql prints the SET command tag as a phantom data row');
+    }
+  });
+
+  test('an unparseable size is fatal, never a silent NaN', () => {
+    // NaN compares false against the ceiling, so a bad parse would disable the
+    // storage gate rather than trip it.
+    assert.match(RUNNER, /Number\.isFinite\(n\)/);
+    assert.match(RUNNER, /bytesOf\(size, storage_path\)/);
+    assert.match(RUNNER, /bytesOf\(bytes, 'storage\.objects total'\)/);
+  });
+
+  test('the dry-run sample strides across the whole set', () => {
+    // Consecutive storage paths are same-listing, same-camera photos; the first
+    // N would not be representative of the site.
+    assert.match(RUNNER, /const stride = target > 0 \? work\.length \/ target : 1/);
+    assert.match(RUNNER, /work\[Math\.floor\(k \* stride\)\]/);
+    assert.match(RUNNER, /const queue = APPLY \? work/,
+      '--apply must process every image, never a sample');
+  });
+
+  test('uploads are idempotent and long-cached', () => {
+    assert.match(RUNNER, /'x-upsert': 'true'/, 're-running must overwrite, not duplicate');
+    assert.match(RUNNER, /public, max-age=31536000, immutable/);
+  });
+
+  test('the storage ceiling is checked against ACTUAL bytes before each write', () => {
+    assert.match(RUNNER, /STORAGE_CEILING = 0\.75 \* 1024 \*\* 3/);
+    assert.match(RUNNER, /if \(baseline \+ bytes \+ size > STORAGE_CEILING\)/,
+      'the gate must use accumulated real bytes, not an up-front estimate');
+    // and it must abort BEFORE the upload call, not after
+    const gate = RUNNER.indexOf('> STORAGE_CEILING');
+    const up   = RUNNER.indexOf('if (APPLY) await upload(');
+    assert.ok(gate > -1 && up > gate, 'the ceiling check must precede the upload');
+  });
+
+  test('--apply refuses without a credential rather than silently doing nothing', () => {
+    assert.match(RUNNER, /if \(APPLY && !SKEY\)/);
+    assert.match(RUNNER, /process\.exit\(2\)/);
+  });
+
+  test('a failed image is recorded and does not stop the run', () => {
+    assert.match(RUNNER, /state\.failed\[im\.storage_path\] = String/);
+    assert.match(RUNNER, /catch \(err\)/);
+    assert.match(RUNNER, /retryable failures/);
+  });
+
+  test('uploads are verified readable before being counted done', () => {
+    assert.match(RUNNER, /method: 'HEAD'/, 'a 2xx write is not proof of delivery');
+    assert.match(RUNNER, /throw new Error\(`verify \$\{head\.status\}`\)/);
+  });
+
+  test('the encoder never upscales, matching the browser path', () => {
+    assert.match(RUNNER, /`\$\{width\}x>`/,
+      "ImageMagick's > flag shrinks only — mirrors renditionTargets()'s Math.min");
+  });
+}

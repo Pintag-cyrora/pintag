@@ -58,11 +58,24 @@ const SB     = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const SKEY   = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const BUCKET = 'property-images';
 
+// -q matters more than it looks. Without it psql prints the command TAG of every
+// non-SELECT statement to stdout, so the read-only pin below emits a bare "SET"
+// line that -t does NOT suppress. Parsed as data that becomes a phantom row: an
+// object named "SET" with no size, which poisons every byte total to NaN and
+// sends the downloader after an object that does not exist.
 function psql(sql) {
-  return execFileSync('psql', [DB, '-X', '-A', '-t', '-F', SEP, '-v', 'ON_ERROR_STOP=1',
+  return execFileSync('psql', [DB, '-X', '-q', '-A', '-t', '-F', SEP, '-v', 'ON_ERROR_STOP=1',
     '-c', `SET default_transaction_read_only=on; ${sql}`],
     { encoding: 'utf8', maxBuffer: 64 << 20 })
     .split('\n').filter(Boolean).map((l) => l.split(SEP));
+}
+
+// A byte count that silently becomes NaN disables the storage ceiling, because
+// every comparison against NaN is false. Refuse to continue instead.
+function bytesOf(raw, what) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) throw new Error(`unparseable size for ${what}: ${JSON.stringify(raw)}`);
+  return n;
 }
 const fmt = (b) => `${(b / 1024 / 1024).toFixed(1)} MB`;
 
@@ -82,7 +95,8 @@ function activeImages() {
       AND p.status IN ('active','available')
       AND pi.storage_path NOT LIKE 'renditions/%'
     ORDER BY pi.storage_path;`)
-    .map(([storage_path, size, slug]) => ({ storage_path, size: Number(size), slug }));
+    .map(([storage_path, size, slug]) =>
+      ({ storage_path, size: bytesOf(size, storage_path), slug }));
 }
 
 function existingRenditions() {
@@ -96,7 +110,7 @@ function existingRenditions() {
 
 function currentStorageBytes() {
   const [[bytes]] = psql(`SELECT COALESCE(sum((metadata->>'size')::bigint),0) FROM storage.objects;`);
-  return Number(bytes);
+  return bytesOf(bytes, 'storage.objects total');
 }
 
 // ── 4. encode ──────────────────────────────────────────────────────────────
@@ -176,11 +190,19 @@ const tmp  = mkdtempSync(join(tmpdir(), 'rend-'));
 if (QA_DIR) mkdirSync(QA_DIR, { recursive: true });
 
 let produced = 0, bytes = 0, failed = 0, processed = 0;
+const perProfile = {};   // measured bytes per profile, for the delivery arithmetic
 const target = APPLY ? work.length : Math.min(SAMPLE, work.length);
-console.log(`\n── ${APPLY ? 'APPLY' : 'DRY RUN'} (${target} images) ─────────────────────`);
+// Storage paths are timestamp-prefixed, so consecutive ones are photos of the
+// SAME listing shot on the same camera. Sampling the first N would measure a
+// handful of listings and call it the site average. Stride across the whole set
+// instead — still deterministic, so a re-run measures the same images.
+const stride = target > 0 ? work.length / target : 1;
+const queue = APPLY ? work
+  : Array.from({ length: target }, (_, k) => work[Math.floor(k * stride)]);
+console.log(`\n── ${APPLY ? 'APPLY' : `DRY RUN (every ${stride.toFixed(1)}th image)`} (${target} images) ──`);
 
-for (let i = 0; i < target; i++) {
-  const im = work[i];
+for (let i = 0; i < queue.length; i++) {
+  const im = queue[i];
   const src = join(tmp, 'src');
   try {
     await download(im.storage_path, src);
@@ -198,6 +220,7 @@ for (let i = 0; i < target; i++) {
       }
       if (APPLY) await upload(path, out);
       if (QA_DIR) copyFileSync(out, join(QA_DIR, `${im.storage_path.replace(/\W+/g, '_')}__${profile}.webp`));
+      (perProfile[profile] ||= []).push(size);
       bytes += size; produced++;
     }
     if (QA_DIR) copyFileSync(src, join(QA_DIR, `${im.storage_path.replace(/\W+/g, '_')}__original`));
@@ -227,6 +250,22 @@ console.log(`  images processed     : ${processed}   (failed ${failed})`);
 console.log(`  renditions produced  : ${produced}`);
 console.log(`  bytes produced       : ${fmt(bytes)}`);
 console.log(`  measured per image   : ${(perImage / 1024).toFixed(0)} kB across ${profiles.length} renditions`);
+console.log('\n  per profile (measured from the encoded files):');
+for (const profile of profiles) {
+  const v = (perProfile[profile] || []).slice().sort((a, b) => a - b);
+  if (!v.length) continue;
+  const mean = v.reduce((a, b) => a + b, 0) / v.length;
+  console.log(`    ${profile.padEnd(9)} w=${String(PT_RENDITION_PROFILES[profile].width).padStart(4)}  `
+    + `n=${String(v.length).padStart(3)}  mean=${(mean / 1024).toFixed(0)} kB  `
+    + `median=${(v[v.length >> 1] / 1024).toFixed(0)} kB  max=${(v[v.length - 1] / 1024).toFixed(0)} kB`);
+}
+const srcSizes = queue.slice(0, processed).map((i) => i.size).sort((a, b) => a - b);
+if (srcSizes.length) {
+  console.log(`    ORIGINAL       n=${String(srcSizes.length).padStart(3)}  `
+    + `mean=${(srcSizes.reduce((a, b) => a + b, 0) / srcSizes.length / 1024).toFixed(0)} kB  `
+    + `median=${(srcSizes[srcSizes.length >> 1] / 1024).toFixed(0)} kB  `
+    + `max=${(srcSizes[srcSizes.length - 1] / 1024).toFixed(0)} kB`);
+}
 if (!APPLY) {
   console.log(`\n  PROJECTION for all ${needed.length} images needing work:`);
   console.log(`    additional storage : ${fmt(projected)}`);
