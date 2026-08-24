@@ -255,11 +255,103 @@ function hasMultipleContacts(property) {
   return resolveListingContacts(property).length > 1;
 }
 
+
+// ---------------------------------------------------------------------------
+// THE PRIMARY-LINK WRITE PATH — one implementation, four callers.
+//
+// Every path that writes properties.contact_id must also ensure the matching
+// primary property_contacts row. Four of the five live paths did not
+// (add-property, edit-listing, and both agent-setup bulk assigns), which is how
+// two production listings ended up carrying a contact_id with zero links. The
+// public page still showed a number only because listing.html also requests the
+// legacy contacts() embed -- language routing, which reads property_contacts,
+// silently degraded.
+//
+// 20260823000000_contact_primary_invariant.sql makes this a DATABASE guarantee,
+// and that trigger -- not this helper -- is what makes the invariant unbreakable
+// (it also covers recovery scripts and hand-written SQL, which no amount of
+// front-end code can reach). This helper exists so the application does not
+// depend on the safety net for ordinary correctness, and so the four callers
+// share ONE definition of "the primary link" instead of four copies free to
+// drift apart the way they did the first time.
+//
+// The two steps mirror the trigger exactly, in the same order and for the same
+// reason: idx_property_contacts_one_primary is a partial UNIQUE on
+// (property_id) WHERE is_primary, so a superseded primary must be demoted
+// BEFORE the new one is written or a genuine A -> B reassignment raises a
+// unique violation.
+// ---------------------------------------------------------------------------
+var PRIMARY_CONTACT_SORT_ORDER = 0;
+
+// The one agreed shape of a primary link. Returns null for a NULL contact --
+// a listing with no contact gets no link, matching the trigger.
+function primaryContactLinkRow(propertyId, contactId) {
+  if (!propertyId || !contactId) return null;
+  return {
+    property_id: propertyId,
+    contact_id:  contactId,
+    sort_order:  PRIMARY_CONTACT_SORT_ORDER,
+    is_primary:  true
+  };
+}
+
+// io is a transport adapter -- see supabaseJsContactLinkIO / restContactLinkIO
+// below. Pages talk to Supabase two different ways and neither is worth
+// rewriting, so the SHARED part is the logic and the per-page part is only how
+// a request is sent.
+async function ensurePrimaryContactLink(io, propertyId, contactId) {
+  var row = primaryContactLinkRow(propertyId, contactId);
+  if (!row) return false;
+  await io.demoteOtherPrimaries(propertyId, contactId);
+  await io.upsertLink(row);
+  return true;
+}
+
+// Adapter for the pages that use the supabase-js client
+// (add-property.html, edit-listing.html).
+function supabaseJsContactLinkIO(client) {
+  return {
+    demoteOtherPrimaries: async function (propertyId, contactId) {
+      var r = await client.from('property_contacts')
+        .update({ is_primary: false })
+        .eq('property_id', propertyId)
+        .eq('is_primary', true)
+        .neq('contact_id', contactId);
+      if (r && r.error) throw new Error(r.error.message || 'demote failed');
+    },
+    upsertLink: async function (row) {
+      var r = await client.from('property_contacts')
+        .upsert(row, { onConflict: 'property_id,contact_id' });
+      if (r && r.error) throw new Error(r.error.message || 'link upsert failed');
+    }
+  };
+}
+
+// Adapter for the pages that use the raw REST helper sbApi(method, path, body,
+// extraHeaders) (admin.html, agent-setup.html). PostgREST needs both the
+// on_conflict target and the merge-duplicates Prefer header to upsert.
+function restContactLinkIO(sbApiFn) {
+  return {
+    demoteOtherPrimaries: async function (propertyId, contactId) {
+      await sbApiFn('PATCH',
+        'property_contacts?property_id=eq.' + encodeURIComponent(propertyId) +
+        '&is_primary=is.true&contact_id=neq.' + encodeURIComponent(contactId),
+        { is_primary: false });
+    },
+    upsertLink: async function (row) {
+      await sbApiFn('POST', 'property_contacts?on_conflict=property_id,contact_id',
+        row, { Prefer: 'resolution=merge-duplicates' });
+    }
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CONTACT_LANGUAGES_SCHEMA_VERSION, CONTACT_LANGUAGES, contactLanguageByCode,
     normalizeContactLanguages, formatContactLanguages,
     resolveListingContacts, resolvePrimaryContact, hasMultipleContacts,
-    resolveContactForLanguage
+    resolveContactForLanguage,
+    PRIMARY_CONTACT_SORT_ORDER, primaryContactLinkRow, ensurePrimaryContactLink,
+    supabaseJsContactLinkIO, restContactLinkIO
   };
 }

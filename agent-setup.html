@@ -348,6 +348,7 @@ textarea{resize:vertical;min-height:80px;line-height:1.5;}
 <script src="config.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
+  <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
 <script>
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
 const SUPABASE_ANON = window.PINTAG.anonKey;
@@ -874,6 +875,17 @@ async function saveAssignments() {
         managed_by_party_id: a.id,
         contact_id:          defaultContactId
       });
+      // A bulk reassignment rewrites contact_id on EVERY listing it touches.
+      // Without this it left each listing's primary link pointing at the
+      // previous agent's contact -- or, for a listing that had no contact
+      // yet, with no link at all. ensurePrimaryContactLink demotes the
+      // superseded primary before writing the new one, which is what keeps
+      // idx_property_contacts_one_primary satisfied.
+      try {
+        if (defaultContactId && typeof ensurePrimaryContactLink === 'function') {
+          await ensurePrimaryContactLink(restContactLinkIO(sbApi), l.id, defaultContactId);
+        }
+      } catch (linkErr) { console.error('[contact-link]', linkErr); }
       setStep('a'+i, 'ok', 'assigned');
     }
 
@@ -1083,7 +1095,16 @@ async function runSetup() {
         managed_by_party_id: agentId,
         contact_id:          newAgentContactId
       };
-      await sbApi('PATCH', 'properties?slug=eq.' + encodeURIComponent(ls), patch);
+      const patched = await sbApi('PATCH', 'properties?slug=eq.' + encodeURIComponent(ls), patch);
+      // Same invariant as the assign-by-id loop above. This path addresses the
+      // listing by SLUG, so the id needed for the join row comes back from the
+      // PATCH itself (sbApi sends Prefer: return=representation).
+      try {
+        const pid = Array.isArray(patched) && patched[0] ? patched[0].id : null;
+        if (pid && newAgentContactId && typeof ensurePrimaryContactLink === 'function') {
+          await ensurePrimaryContactLink(restContactLinkIO(sbApi), pid, newAgentContactId);
+        }
+      } catch (linkErr) { console.error('[contact-link]', linkErr); }
       setStep('ls'+i, 'ok', 'managed_by_party_id and contact_id set');
     }
 
