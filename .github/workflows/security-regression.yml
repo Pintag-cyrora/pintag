@@ -32,10 +32,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Node 22+ is REQUIRED, not a preference. request-deadline.test.mjs below
+      # extracts createRequestDeadline() from the Edge Function's TypeScript
+      # source, writes it to a .mts file and imports it, which relies on Node's
+      # native type stripping (on by default from 22.18). Node 20 has no .mts
+      # loader at all and dies with ERR_UNKNOWN_FILE_EXTENSION before the test
+      # body runs — a red job that says nothing about security. Do not lower
+      # this pin without also changing how that test loads its subject.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: XSS / inline-handler escaping regressions
         run: node --test xss-inline-handlers.test.js
