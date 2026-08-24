@@ -1067,6 +1067,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script src="provinces.js?v=__ASSET_VERSION__"></script>
 <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
+  <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script src="import-provenance.js?v=__ASSET_VERSION__"></script>
 <script src="listing-provenance.js?v=__ASSET_VERSION__"></script>
@@ -4498,6 +4499,26 @@ async function uploadImageFileToStorage(file) {
   }
 
   if (res.ok) {
+    // Delivery renditions. Best effort and deliberately NOT awaited into the
+    // failure path: the original is stored, which is the only thing that must
+    // succeed. A missing rendition costs bandwidth, never a lost photo — the
+    // frontend falls back to the original via ptImageFallback().
+    try {
+      if (typeof uploadRenditions === 'function') {
+        await uploadRenditions(uploadBlob, fileName, {
+          put: async (path, blob, contentType, cacheControl) => {
+            const r = await fetch(
+              `${SUPABASE_URL}/storage/v1/object/property-images/${path}`,
+              { method: 'POST',
+                headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + _adminToken,
+                           'Content-Type': contentType, 'Cache-Control': cacheControl,
+                           'x-upsert': 'true' },
+                body: blob });
+            if (!r.ok && r.status !== 409) throw new Error('rendition ' + r.status);
+          }
+        });
+      }
+    } catch (renditionErr) { console.warn('[renditions]', renditionErr); }
     return `${SUPABASE_URL}/storage/v1/object/public/property-images/${fileName}`;
   }
 

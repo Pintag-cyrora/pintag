@@ -123,25 +123,56 @@ function _ptEscJs(s) {
 // It deliberately does NOT create new Storage objects. Originals stay the
 // single source of truth.
 // ---------------------------------------------------------------------------
+// ptImageUrl(url, profile) -- THE single delivery abstraction for a public
+// property image. Every card, thumbnail, slide and hero asks for a PROFILE;
+// nothing builds an image URL itself.
+//
+// It resolves to a WebP RENDITION generated at upload time (image-renditions.js)
+// -- NOT to Supabase's render endpoint, which answers 403 FeatureNotEnabled on
+// this Free project. No transformation URL is ever emitted.
+//
+// Renditions are best-effort and the backfill is incremental, so a rendition
+// may not exist. That is handled at the <img> level rather than here: callers
+// pair this with ptImageFallbackAttrs(), which carries the original in
+// data-pt-original and swaps it in on the first error. A missing rendition
+// therefore costs one 404 and shows the real photo -- never a broken image.
 var PT_IMAGE_PROFILES = {
-  thumbnail: { width: 200,  quality: 70 },   // gallery rail, ~100px CSS @2x
-  card:      { width: 400,  quality: 75 },   // grid tile / map preview
-  gallery:   { width: 800,  quality: 78 },   // mobile slide
-  hero:      { width: 1200, quality: 82 }    // detail-page hero, full-bleed
+  thumbnail: { width: 200 },
+  card:      { width: 400 },
+  gallery:   { width: 800 },
+  hero:      { width: 1200 }
 };
-var PT_RENDER_PATH = '/storage/v1/render/image/public/property-images/';
 
 function ptImageUrl(url, profile) {
   if (!url || typeof url !== 'string') return url;
   var P = (typeof window !== 'undefined') ? window.PINTAG : null;
-  if (!P || !P.transformsEnabled || !P.supabaseUrl) return url;   // OFF today
-  var spec = PT_IMAGE_PROFILES[profile];
-  if (!spec) return url;
-  var base = P.supabaseUrl + PT_PROPERTY_IMAGES_PATH;
-  if (url.indexOf(base) !== 0) return url;      // only THIS project's public property images
-  var obj = url.slice(base.length).split('?')[0];
-  return P.supabaseUrl + PT_RENDER_PATH + obj +
-         '?width=' + spec.width + '&resize=contain&quality=' + spec.quality;
+  if (!P || !P.renditionsEnabled || !P.supabaseUrl) return url;   // flag off -> original
+  if (!PT_IMAGE_PROFILES[profile]) return url;
+  if (typeof renditionPublicUrl !== 'function') return url;       // module not loaded
+  return renditionPublicUrl(url, profile, P.supabaseUrl) || url;
+}
+
+// Attributes that make a rendition safe to serve before the backfill has run.
+// Emitted next to src so a 404/decode failure falls back to the original ONCE
+// (the marker stops any loop) and the visitor still sees the photo.
+function ptImageFallbackAttrs(originalUrl) {
+  if (!originalUrl || typeof originalUrl !== 'string') return '';
+  return ' data-pt-original="' + _ptEsc(originalUrl) + '" onerror="ptImageFallback(this)"';
+}
+
+function ptImageFallback(el) {
+  if (!el || el.tagName !== 'IMG') return false;
+  if (el.dataset && el.dataset.ptFellBack) return false;   // once only
+  var original = el.getAttribute && el.getAttribute('data-pt-original');
+  if (!original) return false;
+  var current = el.getAttribute('src') || '';
+  if (current === original) return false;                  // already the original
+  if (el.dataset) el.dataset.ptFellBack = '1';
+  el.setAttribute('src', original);
+  if (typeof window !== 'undefined') {
+    window.__ptRenditionFallbacks = (window.__ptRenditionFallbacks || 0) + 1;
+  }
+  return true;
 }
 
 // ptCdnImage(url) -- render-time ONLY rewrite of a PUBLIC property-images URL to
@@ -780,7 +811,7 @@ function renderPropertyCard(property, opts) {
   var district = _ptEsc(p['district_' + lang] || p.district_en || '');
   var images = (Array.isArray(p.images) ? p.images.filter(Boolean) : []).map(ptCdnImage);
   var imgHtml = images.length
-    ? '<img src="' + _ptEsc(ptImageUrl(images[0], 'card')) + '" alt="' + title + '" loading="lazy">'
+    ? '<img src="' + _ptEsc(ptImageUrl(images[0], 'card')) + '" alt="' + title + '" loading="lazy"' + ptImageFallbackAttrs(images[0]) + '>'
     : '<div class="pt-card-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';
 
   var overlayTl = (opts.statusBadgeHtml || '') + (opts.extraOverlayHtml || '');
@@ -988,7 +1019,7 @@ function renderPropertyPreview(property, opts) {
   var district = _ptEsc(p['district_' + lang] || p.district_en || '');
   var images = (Array.isArray(p.images) ? p.images.filter(Boolean) : []).map(ptCdnImage);
   var imgHtml = images.length
-    ? '<img src="' + _ptEsc(ptImageUrl(images[0], 'card')) + '" alt="' + title + '" loading="lazy" decoding="async">'
+    ? '<img src="' + _ptEsc(ptImageUrl(images[0], 'card')) + '" alt="' + title + '" loading="lazy" decoding="async"' + ptImageFallbackAttrs(images[0]) + '>'
     : '<div class="pt-preview-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';
 
   var specsHtml = '';
