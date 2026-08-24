@@ -183,3 +183,29 @@ jobs:
              FROM pg_stat_user_indexes s JOIN pg_index i ON i.indexrelid=s.indexrelid
              WHERE s.idx_scan=0 AND NOT i.indisunique AND NOT i.indisprimary
              ORDER BY pg_relation_size(s.indexrelid) DESC LIMIT 15;"
+
+      - name: Supabase-reported usage vs PostgreSQL — READ ONLY GETs
+        # The audit measured pg_database_size at ~26 MB,約 5% of the Free
+        # plan's 500 MB. If Supabase is warning, its number is measuring
+        # something else (disk incl. WAL, or Storage buckets). These are
+        # read-only GETs against the Management API with the token
+        # apply-migration.yml already uses.
+        if: always()
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -euo pipefail
+          [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] || { echo "no token; skipping"; exit 0; }
+          g() {
+            echo "--- GET $1"
+            curl -sS -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+                 "https://api.supabase.com$1" 2>/dev/null | head -c 1500 || true
+            echo ""
+          }
+          g "/v1/projects/${REF}"
+          ORG="$(curl -sS -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+                 https://api.supabase.com/v1/organizations 2>/dev/null \
+                 | jq -r '.[0].slug' 2>/dev/null || true)"
+          echo "org slug: ${ORG:-<none>}"
+          [ -n "${ORG:-}" ] && [ "$ORG" != "null" ] && g "/v1/organizations/${ORG}/usage" || true
