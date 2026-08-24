@@ -34,7 +34,7 @@ env:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -47,6 +47,18 @@ jobs:
           [ "$REF" != "${DEV_REF}" ] || { echo "::error::Resolved ref is DEV. Refusing."; exit 1; }
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "::notice title=Target::PRODUCTION project ref: $REF (read-only)"
+
+      # TEMPORARY: production smoke test of the rendition delivery flag.
+      # Read-only: it loads the live site in a real browser and issues GETs.
+      # It never writes to Storage or the database.
+      - name: Rendition smoke test against production
+        run: |
+          set -euo pipefail
+          npm i -D @playwright/test@1.56.1 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null 2>&1
+          node smoke-renditions.mjs
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
 
       - name: Install psql
         run: |
