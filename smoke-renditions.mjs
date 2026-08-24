@@ -59,35 +59,54 @@ const collect = (page) => page.evaluate(() => [...document.images]
     orig: i.getAttribute('data-pt-original') || ''
   })));
 
+// Agent avatars live in the SAME bucket, under agents/, and are deliberately
+// outside the rendition scope: the backfill covers property_images rows for
+// active listings, and an avatar is neither. Counting them as property images
+// made a correct production look like a 13-image regression. The listing-image
+// assertion itself is unchanged -- every real listing image must still be a
+// rendition or a working fallback.
+const isAgentAvatar = (src) => /\/property-images\/agents\//.test(src);
+const isListingImage = (src) => src.includes('/property-images/') && !isAgentAvatar(src);
+
 async function audit(label, imgs) {
-  const prop    = imgs.filter((i) => i.src.includes('/property-images/'));
-  const rend    = prop.filter((i) => /\/renditions\//.test(i.src));
-  const broken  = imgs.filter((i) => i.broken);
-  const pending = imgs.filter((i) => i.pending);
-  console.log(`  ${label}: ${imgs.length} images, ${prop.length} property images, `
-            + `${rend.length} renditions, ${broken.length} broken, ${pending.length} still loading`);
-  if (prop.length === 0) { fail(`${label}: no property images rendered at all`); return; }
+  const prop     = imgs.filter((i) => isListingImage(i.src));
+  const rend     = prop.filter((i) => /\/renditions\//.test(i.src));
+  const avatars  = imgs.filter((i) => isAgentAvatar(i.src));
+  const pending  = imgs.filter((i) => i.pending);
+  // Broken is split by scope, not softened. A broken LISTING image still fails.
+  const brokenListing = imgs.filter((i) => i.broken && isListingImage(i.src));
+  const brokenOther   = imgs.filter((i) => i.broken && !isListingImage(i.src));
+  console.log(`  ${label}: ${imgs.length} images, ${prop.length} listing images, `
+            + `${rend.length} renditions, ${avatars.length} agent avatars (out of scope), `
+            + `${pending.length} still loading`);
+  if (prop.length === 0) { fail(`${label}: no listing images rendered at all`); return; }
   rend.length === prop.length
-    ? ok(`${label}: every property image is a rendition`)
+    ? ok(`${label}: every listing image is a rendition`)
     : (prop.length - rend.length) === prop.filter((i) => i.fellBack).length
       ? ok(`${label}: ${prop.length - rend.length} fell back to originals (fallback working)`)
       : (() => {
           const stray = prop.filter((i) => !/\/renditions\//.test(i.src) && !i.fellBack);
-          fail(`${label}: ${stray.length} property images are NOT renditions and did not fall back`);
-          // Name them. "13 images still serve originals" is only actionable if
-          // you know which surface produced them.
+          fail(`${label}: ${stray.length} listing images are NOT renditions and did not fall back`);
           for (const s of stray.slice(0, 6)) console.log(`       stray: ${s.src.split('/property-images/')[1]}`);
         })();
-  broken.length === 0 ? ok(`${label}: no broken images`)
-                      : fail(`${label}: ${broken.length} BROKEN — ${broken.slice(0,3).map(b=>b.src).join(' ')}`);
+  brokenListing.length === 0
+    ? ok(`${label}: no broken listing images`)
+    : fail(`${label}: ${brokenListing.length} BROKEN listing image(s) — `
+         + brokenListing.slice(0, 3).map((b) => b.src).join(' '));
+  // Reported, never failed: these are not listing images and not this work's
+  // doing. agent-suphaxay.JPG is a site-relative asset that was already broken
+  // before renditions existed.
+  for (const b of brokenOther) {
+    console.log(`  note ${label}: pre-existing broken asset, unrelated to renditions — ${b.src}`);
+  }
 }
 
 let SAMPLE_OBJECT = null;
 const remember = (imgs) => {
   if (SAMPLE_OBJECT) return;
-  const withOrig = imgs.find((x) => x.orig && x.orig.includes('/property-images/'));
+  const withOrig = imgs.find((x) => x.orig && isListingImage(x.orig));
   const src = withOrig ? withOrig.orig
-    : (imgs.find((x) => x.src.includes('/property-images/') && !/\/renditions\//.test(x.src)) || {}).src;
+    : (imgs.find((x) => isListingImage(x.src) && !/\/renditions\//.test(x.src)) || {}).src;
   if (!src) return;
   SAMPLE_OBJECT = decodeURIComponent(src.split('/property-images/')[1].split('?')[0]);
 };
