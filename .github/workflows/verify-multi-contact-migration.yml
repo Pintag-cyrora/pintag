@@ -27,7 +27,7 @@ on:
 
 permissions:
   contents: read
-  pages: write
+  pages: read
 
 env:
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
@@ -54,11 +54,6 @@ jobs:
       # It never writes to Storage or the database.
       - name: Where is production serving from (READ ONLY)
         run: node origin-diag.mjs
-
-      - name: Switch Pages to GitHub Actions + enforce HTTPS
-        run: node pages-set.mjs
-        env:
-          GH_TOKEN: ${{ github.token }}
 
       - name: Which origin is behind pintag.io (READ ONLY)
         run: node pages-diag.mjs
