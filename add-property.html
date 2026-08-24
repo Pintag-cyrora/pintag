@@ -594,6 +594,7 @@ body{
 <script src="amenities.js?v=__ASSET_VERSION__"></script>
 <script src="currency.js?v=__ASSET_VERSION__"></script>
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
+  <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
   <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
 <script>
 
@@ -986,6 +987,20 @@ async function uploadImages(){
       console.error(error);
       continue;
     }
+
+    // Delivery renditions — same shared generator the admin path uses.
+    try {
+      if (typeof uploadRenditions === 'function') {
+        await uploadRenditions(file, fileName, {
+          put: async (path, blob, contentType, cacheControl) => {
+            const { error: rErr } = await supabaseClient.storage
+              .from('property-images')
+              .upload(path, blob, { contentType, cacheControl: '31536000', upsert: true });
+            if (rErr) throw rErr;
+          }
+        });
+      }
+    } catch (renditionErr) { console.warn('[renditions]', renditionErr); }
 
     const { data } =
       supabaseClient

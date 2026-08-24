@@ -598,6 +598,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
+  <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
 <script src="tracking.js?v=__ASSET_VERSION__"></script>
 <script src="analytics-tracking.js?v=__ASSET_VERSION__"></script>
@@ -994,7 +995,7 @@ function renderMap() {
 function showMapPreview(p) {
   var lang = getCurrentLang();
   var imgInner = (p.images && p.images.length)
-    ? '<img src="' + esc(ptCdnImage(p.images[0])) + '" alt="" loading="lazy">'
+    ? '<img src="' + esc(ptCdnImage(ptImageUrl(p.images[0], 'card'))) + '" alt="" loading="lazy">'
     : '<div class="pt-card-no-img"></div>';
   document.getElementById('mp-img-inner').innerHTML = imgInner;
 
@@ -1557,7 +1558,23 @@ function renderListings() {
   var featuredUsed = false;
   container.innerHTML = '';
 
-  sorted.forEach(function(p, idx) {
+  // ── PROGRESSIVE RENDERING (cached-egress fix) ─────────────────────────────
+  // This grid used to append a card for EVERY matching listing in one pass.
+  // With ~59 active listings and no image transformation available on this
+  // Supabase project (the render endpoint answers 403 FeatureNotEnabled), that
+  // is ~59 full-resolution originals -- about 19 MB -- fetched before the
+  // visitor has scrolled once. loading="lazy" does not save it: the cards sit
+  // in one CSS grid, so a desktop viewport puts many of them in range
+  // immediately and the rest follow on the first scroll.
+  //
+  // Cards are now appended a page at a time. The DOM (and therefore the image
+  // requests) grows only as the visitor actually scrolls. Filtering, sorting,
+  // the featured card, the count line and the map are all untouched -- this
+  // changes WHEN a card is created, never WHICH cards or in what order.
+  var PT_PAGE_SIZE = 12;
+  var _ptCursor = 0;
+
+  function buildCard(p, idx) {
     var isFeaturedCard = p.is_featured && !featuredUsed;
     if (isFeaturedCard) featuredUsed = true;
 
@@ -1603,8 +1620,42 @@ function renderListings() {
       } : null
     });
 
-    container.appendChild(card);
-  });
+    return card;
+  }
+
+  // Append one page, then arm a sentinel for the next. The sentinel is a real
+  // grid child so it sits BELOW the last card; observing it means "the visitor
+  // has scrolled to the end of what is rendered".
+  function renderNextPage() {
+    var sentinel = document.getElementById('pt-grid-sentinel');
+    if (sentinel && sentinel.parentNode) sentinel.parentNode.removeChild(sentinel);
+
+    var end = Math.min(_ptCursor + PT_PAGE_SIZE, sorted.length);
+    for (var i = _ptCursor; i < end; i++) container.appendChild(buildCard(sorted[i], i));
+    _ptCursor = end;
+
+    if (_ptCursor >= sorted.length) return;   // everything rendered
+
+    sentinel = document.createElement('div');
+    sentinel.id = 'pt-grid-sentinel';
+    sentinel.style.cssText = 'grid-column:1/-1;height:1px;';
+    container.appendChild(sentinel);
+
+    if (typeof IntersectionObserver === 'function') {
+      var io = new IntersectionObserver(function (entries) {
+        if (!entries.some(function (e) { return e.isIntersecting; })) return;
+        io.disconnect();
+        renderNextPage();
+      }, { rootMargin: '200px 0px' });   // just ahead of the scroll, not a cascade
+      io.observe(sentinel);
+    } else {
+      // No IntersectionObserver (very old browser): render everything rather
+      // than stranding listings the visitor could never reach.
+      while (_ptCursor < sorted.length) container.appendChild(buildCard(sorted[_ptCursor], _ptCursor++));
+    }
+  }
+
+  renderNextPage();
 }
 
 function updateSortLabels() {

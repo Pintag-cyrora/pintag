@@ -619,6 +619,7 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
+  <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
 <script src="tracking.js?v=__ASSET_VERSION__"></script>
@@ -2016,7 +2017,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
     // already resolved that fallback), same "treat cards like selectable
     // products" ask as Booking.com room cards.
     var coverImg=Array.isArray(resolvedUnit.images)&&resolvedUnit.images.length?resolvedUnit.images[0]:null;
-    var coverHtml=coverImg?'<div class="unit-card-cover"><img src="'+esc(coverImg)+'" alt="" loading="lazy"></div>':'';
+    var coverHtml=coverImg?'<div class="unit-card-cover"><img src="'+esc(ptImageUrl(coverImg,'card'))+'" alt="" loading="lazy"></div>':'';
 
     var ctaHtml='';
     if(cleanPhone){
@@ -2454,7 +2455,7 @@ function buildMockupLayout(){
     if(_stripImgs.length||_stripAmenities.length){
       var _stripPhotosHtml=_stripImgs.length?(
         '<div class="building-strip-photos">'+_stripImgs.map(function(url){
-          return '<div class="building-strip-photo" data-url="'+esc(url)+'"><img src="'+esc(url)+'" alt="" loading="lazy"></div>';
+          return '<div class="building-strip-photo" data-url="'+esc(url)+'"><img src="'+esc(ptImageUrl(url,'card'))+'" alt="" loading="lazy"></div>';
         }).join('')+'</div>'
       ):'';
       var _stripAmenitiesHtml=_stripAmenities.length?(
@@ -3134,9 +3135,9 @@ function buildDesktopGallery(images){
     if(i<clean.length){
       if(i===maxThumbs-1&&clean.length>maxThumbs){
         var remaining=clean.length-maxThumbs;
-        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(clean[i])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
+        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(ptImageUrl(clean[i],'thumbnail'))+'" alt="" loading="lazy" decoding="async" data-pt-original="'+esc(clean[i])+'" onerror="if(!ptImageFallback(this))handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
       }else{
-        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(clean[i])+'" alt="" loading="lazy" decoding="async" onerror="handleImageError(this)"></div>';
+        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(ptImageUrl(clean[i],'thumbnail'))+'" alt="" loading="lazy" decoding="async" data-pt-original="'+esc(clean[i])+'" onerror="if(!ptImageFallback(this))handleImageError(this)"></div>';
       }
     }else{
       thumbsHtml+='<div class="dg-thumb" style="cursor:default;opacity:0.12;"><div style="width:100%;height:100%;background:var(--warm-deep);"></div></div>';
@@ -3145,7 +3146,7 @@ function buildDesktopGallery(images){
   return(
     '<div class="desktop-gallery" id="dg-hero-frame" data-track="gallery-hero-image" data-track-type="image" data-track-label="Hero image">'+
     '<div class="dg-hero" id="dg-hero-box">'+
-    '<img src="'+esc(clean[0])+'" id="dg-hero-img" alt="" decoding="async" onerror="handleImageError(this)">'+
+    '<img src="'+esc(ptImageUrl(clean[0],'hero'))+'" id="dg-hero-img" alt="" decoding="async" data-pt-original="'+esc(clean[0])+'" onerror="if(!ptImageFallback(this))handleImageError(this)">'+
     '<span class="dg-coord" id="dg-coord-lbl">01 / '+String(clean.length).padStart(2,'0')+'</span>'+
     '<button class="dg-view-all" id="dg-view-all-btn" data-track="gallery-view-all" data-track-type="button" data-track-label="View all photos">'+
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>'+
@@ -3166,7 +3167,7 @@ function syncDesktopHero(idx,thumbEl){
   if(heroImg){
     if(_heroTimer){clearTimeout(_heroTimer);_heroTimer=null;}
     heroImg.style.opacity='0';
-    var capturedSrc=clean[idx];
+    var capturedSrc=ptImageUrl(clean[idx],'hero');
     _heroTimer=setTimeout(function(){
       _heroTimer=null;
       heroImg.src=capturedSrc;
@@ -3180,20 +3181,53 @@ function syncDesktopHero(idx,thumbEl){
   if(thumbEl)thumbEl.classList.add('active');
 }
 
+// How many slides either side of the active one are allowed to hold a real
+// src. 2 keeps the next swipe instant in both directions while leaving the
+// long tail of a 44-photo gallery unfetched until it is actually approached.
+var PT_SLIDE_WINDOW = 2;
+
+// Promote data-src -> src for every slide within the window of `idx`. Idempotent:
+// a slide that already has a src is skipped, so a hydrated image is never
+// re-requested and the browser cache is never bypassed.
+function hydrateMobileSlides(idx){
+  var track=document.getElementById('mg-track-el');
+  if(!track)return;
+  var slides=track.querySelectorAll('.mg-slide');
+  for(var i=Math.max(0,idx-PT_SLIDE_WINDOW);i<=Math.min(slides.length-1,idx+PT_SLIDE_WINDOW);i++){
+    var img=slides[i]&&slides[i].querySelector('img');
+    if(!img)continue;
+    var pending=img.getAttribute('data-src');
+    if(pending&&!img.getAttribute('src')){img.setAttribute('src',pending);img.removeAttribute('data-src');}
+  }
+}
+
 function buildMobileGallery(images, statusBadgeHtml){
   var clean=(Array.isArray(images)?images:[]).filter(function(u){return u&&typeof u==='string';});
   if(!clean.length)return '<div class="mobile-gallery">'+(statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'')+'<div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
   var slidesHtml='',dotsHtml='';
+  // WINDOWED LOADING (cached-egress fix). Every slide used to carry a real
+  // src, so a 44-photo listing queued 44 full-resolution originals. lazy is
+  // not a defence here: the slides live in a horizontal scroll track, and a
+  // browser treats the whole track as one scroll container -- slides just
+  // off-screen are routinely fetched immediately.
+  //
+  // Only the slides in PT_SLIDE_WINDOW of the active one get a src; the rest
+  // carry data-src and are hydrated by hydrateMobileSlides() as the visitor
+  // swipes. The DOM shape, indices, dots, tracking attributes and
+  // jumpMobileGallerySlide() are all unchanged.
   clean.forEach(function(img,i){
+    var near=i<=PT_SLIDE_WINDOW;
+    var slideUrl=ptImageUrl(img,'gallery');
+    var srcAttr=near?('src="'+esc(slideUrl)+'"'):('data-src="'+esc(slideUrl)+'"');
     var loading=i===0?'eager':'lazy';
-    slidesHtml+='<div class="mg-slide" data-idx="'+i+'" data-track="gallery-mobile-slide" data-track-type="image" data-track-label="Photo '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(img)+'" alt="" loading="'+loading+'" decoding="async" onerror="handleImageError(this)"></div>';
+    slidesHtml+='<div class="mg-slide" data-idx="'+i+'" data-track="gallery-mobile-slide" data-track-type="image" data-track-label="Photo '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img '+srcAttr+' alt="" loading="'+loading+'" decoding="async" data-pt-original="'+esc(img)+'" onerror="if(!ptImageFallback(this))handleImageError(this)"></div>';
     dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'" data-track="gallery-mobile-dot" data-track-type="dot" data-track-label="Dot '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'></div>';
   });
   var overlayHtml=statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'';
   return '<div class="mobile-gallery">'+overlayHtml+'<div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
 }
 
-function jumpMobileGallerySlide(idx){var t=document.getElementById('mg-track-el');if(!t)return;t.scrollTo({left:idx*t.offsetWidth,behavior:'smooth'});}
+function jumpMobileGallerySlide(idx){var t=document.getElementById('mg-track-el');if(!t)return;hydrateMobileSlides(idx);t.scrollTo({left:idx*t.offsetWidth,behavior:'smooth'});}
 
 function wireMobileGalleryTrack(){
   var track=document.getElementById('mg-track-el');
@@ -3207,6 +3241,7 @@ function wireMobileGalleryTrack(){
       scrollDebounce=null;
       var w=track.offsetWidth;if(!w)return;
       var idx=Math.round(track.scrollLeft/w);
+      hydrateMobileSlides(idx);   // bring the next slides in range into range
       var dots=track.parentElement?track.parentElement.querySelectorAll('.mg-dot'):[];
       dots.forEach(function(d,i){d.classList.toggle('active',i===idx);});
       var c=_currentGalleryImages.filter(Boolean);
