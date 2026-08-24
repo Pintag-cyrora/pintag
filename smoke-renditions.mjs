@@ -71,7 +71,13 @@ async function audit(label, imgs) {
     ? ok(`${label}: every property image is a rendition`)
     : (prop.length - rend.length) === prop.filter((i) => i.fellBack).length
       ? ok(`${label}: ${prop.length - rend.length} fell back to originals (fallback working)`)
-      : fail(`${label}: ${prop.length - rend.length} property images are NOT renditions and did not fall back`);
+      : (() => {
+          const stray = prop.filter((i) => !/\/renditions\//.test(i.src) && !i.fellBack);
+          fail(`${label}: ${stray.length} property images are NOT renditions and did not fall back`);
+          // Name them. "13 images still serve originals" is only actionable if
+          // you know which surface produced them.
+          for (const s of stray.slice(0, 6)) console.log(`       stray: ${s.src.split('/property-images/')[1]}`);
+        })();
   broken.length === 0 ? ok(`${label}: no broken images`)
                       : fail(`${label}: ${broken.length} BROKEN — ${broken.slice(0,3).map(b=>b.src).join(' ')}`);
 }
