@@ -114,14 +114,14 @@ function _ptEscJs(s) {
 // falling back to originals since it shipped (fetchImageBytes returns null on
 // !res.ok), which is why the capability looked proven but never was.
 //
-// So PT_IMAGE_PROFILES is the vocabulary, and transformsEnabled is the switch.
-// With the switch off this returns the URL untouched -- byte-for-byte today's
-// behaviour, so wiring it in cannot regress anything. Turning it on requires a
-// backend that actually serves resized bytes: Supabase Pro, or the
-// img.pintag.io Cloudflare Worker doing the resizing itself.
+// So PT_IMAGE_PROFILES is the vocabulary and PINTAG.renditionsEnabled is the
+// switch. With the switch off this returns the URL untouched -- byte-for-byte
+// today's behaviour, so wiring it in cannot regress anything. Turning it on
+// requires only that renditions exist, which upload-time generation and the
+// backfill runner provide; no paid transformation backend is involved.
 //
-// It deliberately does NOT create new Storage objects. Originals stay the
-// single source of truth.
+// Originals are never modified or deleted. Renditions are additional objects
+// under renditions/, and the original stays the source of truth.
 // ---------------------------------------------------------------------------
 // ptImageUrl(url, profile) -- THE single delivery abstraction for a public
 // property image. Every card, thumbnail, slide and hero asks for a PROFILE;

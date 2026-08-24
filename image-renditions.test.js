@@ -273,7 +273,19 @@ test('renditions upload with the long immutable cache, like originals', () => {
 
   test('uploads are verified readable before being counted done', () => {
     assert.match(RUNNER, /method: 'HEAD'/, 'a 2xx write is not proof of delivery');
-    assert.match(RUNNER, /throw new Error\(`verify \$\{head\.status\}`\)/);
+    // req() throws on any non-2xx, so a failed HEAD propagates out of upload()
+    // and the image is recorded as failed rather than marked done.
+    assert.match(RUNNER, /withRetry\(`verify \$\{path\}`/);
+    assert.match(RUNNER, /if \(!res\.ok\) \{[\s\S]*?throw err;/,
+      'req() must reject every non-2xx response');
+  });
+
+  test('network calls have a deadline and retry only what is transient', () => {
+    assert.match(RUNNER, /AbortSignal\.timeout\(60000\)/,
+      'a stalled connection must not hang a tens-of-minutes backfill');
+    assert.match(RUNNER, /const fatal = status >= 400 && status < 500/,
+      'a 4xx is a fact about the object, not a hiccup — do not retry it');
+    assert.match(RUNNER, /500 \* 2 \*\* \(attempt - 1\)/, 'backoff between retries');
   });
 
   test('the encoder never upscales, matching the browser path', () => {

@@ -127,16 +127,44 @@ function encode(srcPath, outPath, width, quality) {
 const publicUrl = (name) =>
   `${SB}/storage/v1/object/public/${BUCKET}/${name.split('/').map(encodeURIComponent).join('/')}`;
 
+// A backfill runs for tens of minutes across hundreds of requests, so a single
+// stalled connection must not be able to hang the whole job: every request gets
+// a deadline. Transient failures (5xx, timeout) are retried with backoff; a 4xx
+// is a fact about the object, not a hiccup, so it fails straight through to the
+// per-image handler and gets recorded for later inspection.
+async function withRetry(what, fn, tries = 3) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const status = err && err.status;
+      const fatal = status >= 400 && status < 500;
+      if (fatal || attempt >= tries) throw err;
+      console.error(`  retry ${attempt}/${tries - 1} ${what}: ${err.message}`);
+      await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));
+    }
+  }
+}
+
+async function req(url, init = {}) {
+  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(60000) });
+  if (!res.ok) {
+    const err = new Error(`${init.method || 'GET'} ${res.status}: ${(await res.text()).slice(0, 160)}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res;
+}
+
 async function download(objectName, dest) {
-  const res = await fetch(publicUrl(objectName));
-  if (!res.ok) throw new Error(`download ${res.status}`);
+  const res = await withRetry(`download ${objectName}`, () => req(publicUrl(objectName)));
   writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
 }
 
 // ── 5-6. upload + verify ───────────────────────────────────────────────────
 async function upload(path, filePath) {
   const body = readFileSync(filePath);
-  const res = await fetch(`${SB}/storage/v1/object/${BUCKET}/${path}`, {
+  await withRetry(`upload ${path}`, () => req(`${SB}/storage/v1/object/${BUCKET}/${path}`, {
     method: 'POST',
     headers: {
       apikey: SKEY,
@@ -146,12 +174,10 @@ async function upload(path, filePath) {
       'x-upsert': 'true'   // idempotent: a re-run overwrites, never duplicates
     },
     body
-  });
-  if (!res.ok) throw new Error(`upload ${res.status}: ${(await res.text()).slice(0, 160)}`);
+  }));
   // Verify it is genuinely readable at its public URL before counting it done —
   // a 2xx on write is not proof that delivery works.
-  const head = await fetch(publicUrl(path), { method: 'HEAD' });
-  if (!head.ok) throw new Error(`verify ${head.status}`);
+  await withRetry(`verify ${path}`, () => req(publicUrl(path), { method: 'HEAD' }));
   return body.length;
 }
 
