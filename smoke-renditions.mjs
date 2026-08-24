@@ -12,19 +12,32 @@ import { chromium } from 'playwright';
 const SITE = 'https://pintag.io';
 const REF  = process.env.REF;
 const OBJ  = `https://${REF}.supabase.co/storage/v1/object/public/property-images`;
-const ANON = /anonKey:\s*'([^']+)'/.exec(await (await fetch(`${SITE}/config.js`)).text())[1];
-
 let failures = 0;
 const fail = (m) => { failures++; console.log(`  FAIL ${m}`); };
 const ok   = (m) => console.log(`  ok   ${m}`);
+const bust = () => `cb=${Date.now()}${Math.random().toString(36).slice(2)}`;
 
 // ── 0. the deployed build must actually carry the flag ─────────────────────
-const cfg = await (await fetch(`${SITE}/config.js`)).text();
+// Pages sits behind a CDN, so an un-busted fetch can return a copy from before
+// the deploy. Ask for a unique URL, and retry: propagation is not instant and a
+// stale read must not be reported as a failed deploy.
 console.log('── deployed flag state ───────────────────────────────');
-/renditionsEnabled:\s*true/.test(cfg)
-  ? ok('config.js on pintag.io has renditionsEnabled: true')
-  : fail('config.js does NOT have renditionsEnabled: true — nothing below is meaningful');
-console.log(`  env=${(/env:\s*'([^']+)'/.exec(cfg) || [])[1]}  project=${(/co\/?'|([a-z]{20})\.supabase/.exec(cfg) || [])[1] || REF}`);
+let cfg = '', flagOn = false;
+for (let attempt = 1; attempt <= 10; attempt++) {
+  cfg = await (await fetch(`${SITE}/config.js?${bust()}`, { cache: 'no-store' })).text();
+  flagOn = /renditionsEnabled:\s*true/.test(cfg);
+  if (flagOn) { console.log(`  flag visible on attempt ${attempt}`); break; }
+  console.log(`  attempt ${attempt}: not yet visible, waiting 20s`);
+  await new Promise((r) => setTimeout(r, 20000));
+}
+flagOn ? ok('config.js on pintag.io has renditionsEnabled: true')
+       : fail('config.js does NOT have renditionsEnabled: true — nothing below is meaningful');
+console.log(`  env=${(/env:\s*'([^']+)'/.exec(cfg) || [])[1]}  isProduction=${/isProduction:\s*true/.test(cfg)}`);
+// Which build do the PAGES reference? The deploy stamps ?v=<sha> into every
+// first-party script tag, so this is the deployed commit as the browser sees it.
+const html = await (await fetch(`${SITE}/listings.html?${bust()}`, { cache: 'no-store' })).text();
+console.log(`  listings.html asset stamp: ${(/config\.js\?v=([0-9a-f]+)/.exec(html) || [])[1]}`);
+const ANON = /anonKey:\s*'([^']+)'/.exec(cfg)[1];
 
 // ── 1. a real listing slug, from the same REST surface a visitor uses ──────
 const rows = await (await fetch(
@@ -42,7 +55,8 @@ const collect = (page) => page.evaluate(() => [...document.images]
     src: i.currentSrc || i.src,
     broken: i.complete && i.naturalWidth === 0,
     pending: !i.complete,
-    fellBack: i.hasAttribute('data-pt-original') && !/\/renditions\//.test(i.currentSrc || i.src)
+    fellBack: i.hasAttribute('data-pt-original') && !/\/renditions\//.test(i.currentSrc || i.src),
+    orig: i.getAttribute('data-pt-original') || ''
   })));
 
 async function audit(label, imgs) {
@@ -62,19 +76,29 @@ async function audit(label, imgs) {
                       : fail(`${label}: ${broken.length} BROKEN — ${broken.slice(0,3).map(b=>b.src).join(' ')}`);
 }
 
+let SAMPLE_OBJECT = null;
+const remember = (imgs) => {
+  if (SAMPLE_OBJECT) return;
+  const withOrig = imgs.find((x) => x.orig && x.orig.includes('/property-images/'));
+  const src = withOrig ? withOrig.orig
+    : (imgs.find((x) => x.src.includes('/property-images/') && !/\/renditions\//.test(x.src)) || {}).src;
+  if (!src) return;
+  SAMPLE_OBJECT = decodeURIComponent(src.split('/property-images/')[1].split('?')[0]);
+};
+
 const browser = await chromium.launch();
 
 // ── 2. listings grid, fully scrolled (progressive rendering) ───────────────
 console.log('\n── listings grid (desktop, scrolled to the end) ───────');
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto(`${SITE}/listings.html`, { waitUntil: 'networkidle', timeout: 60000 });
+  await page.goto(`${SITE}/listings.html?${bust()}`, { waitUntil: 'networkidle', timeout: 60000 });
   for (let i = 0; i < 12; i++) {                 // exhaust the IntersectionObserver pages
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(700);
   }
   await page.waitForTimeout(2500);
-  await audit('grid', await collect(page));
+  const gridImgs = await collect(page); remember(gridImgs); await audit('grid', gridImgs);
   await page.close();
 }
 
@@ -82,14 +106,14 @@ console.log('\n── listings grid (desktop, scrolled to the end) ────�
 console.log('\n── listing detail (desktop: hero, thumbnails, unit cards) ──');
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto(`${SITE}/listing.html?slug=${encodeURIComponent(SLUG)}`,
+  await page.goto(`${SITE}/listing.html?slug=${encodeURIComponent(SLUG)}&${bust()}`,
                   { waitUntil: 'networkidle', timeout: 60000 });
   for (let i = 0; i < 6; i++) {
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(600);
   }
   await page.waitForTimeout(2000);
-  const imgs = await collect(page);
+  const imgs = await collect(page); remember(imgs);
   await audit('detail-desktop', imgs);
   const hero = imgs.find((i) => /\/hero\.webp/.test(i.src));
   const thumb = imgs.filter((i) => /\/thumbnail\.webp/.test(i.src));
@@ -104,7 +128,7 @@ console.log('\n── listing detail (desktop: hero, thumbnails, unit cards) ─
 console.log('\n── listing detail (mobile gallery) ───────────────────');
 {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  await page.goto(`${SITE}/listing.html?slug=${encodeURIComponent(SLUG)}`,
+  await page.goto(`${SITE}/listing.html?slug=${encodeURIComponent(SLUG)}&${bust()}`,
                   { waitUntil: 'networkidle', timeout: 60000 });
   await page.waitForTimeout(1500);
   // Walk the gallery so the windowed hydration promotes data-src -> src.
@@ -129,10 +153,12 @@ await browser.close();
 // ── 5. the delivery contract, straight from the object endpoint ───────────
 console.log('\n── direct object checks ──────────────────────────────');
 const enc = (n) => n.split('/').map(encodeURIComponent).join('/');
-const stem = (await (await fetch(
-  `https://${REF}.supabase.co/rest/v1/property_images?status=eq.active&select=storage_path&limit=1`,
-  { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } })).json())[0].storage_path;
+// The object name comes from an image the site actually rendered -- anon has no
+// read on property_images, and a probe that invents a path proves nothing.
+if (!SAMPLE_OBJECT) { fail('no property image was rendered, so there is nothing to probe'); }
+const stem = SAMPLE_OBJECT;
 const base = stem.replace(/\.[A-Za-z0-9]+$/, '');
+console.log(`  probing object: ${stem}`);
 
 for (const profile of ['thumbnail', 'card', 'gallery', 'hero']) {
   const r = await fetch(`${OBJ}/${enc(`renditions/${base}/${profile}.webp`)}`);
