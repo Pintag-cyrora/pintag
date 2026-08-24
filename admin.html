@@ -3621,6 +3621,14 @@ function resetListingForm() {
   // cards, so a fresh listing can never inherit calculated/range pricing.
   renderPropertyTypeFields('');
   onTransactionChange();
+  // The province <select> ships with ONLY its "Select province" placeholder --
+  // its 18 real options are built by JS. populateProvinceSelect() used to be
+  // called from editListing() alone, so on New Listing the field stayed at the
+  // placeholder with nothing to choose, and every listing created that way
+  // saved province_en = null. Populating here (not just at init) also restores
+  // the placeholder selection, which is what a fresh listing should start on.
+  populateProvinceSelect('');
+  onProvinceChange();
   setHighlights([]);
   customTags = [];
   populateExistingImages([]);

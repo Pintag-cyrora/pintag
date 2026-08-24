@@ -215,3 +215,104 @@ test('WIRING: the customer filter is contextual and inventory-driven', () => {
   const admin = fs.readFileSync(new URL('./admin.html', import.meta.url), 'utf8');
   assert.match(admin, /getAllProvinces\(\)/, 'admin MUST render the full registry');
 });
+
+// ── ADMIN FORM WIRING ─────────────────────────────────────────────────────
+// Regression: 2026-08-24. The province <select> ships with ONLY its
+// "Select province" placeholder; its 18 real options are built by JS.
+// populateProvinceSelect() was wired into editListing() alone, so New Listing
+// showed a required field with nothing in it and saved province_en = null.
+// These tests run the REAL function extracted from admin.html (same
+// extract-the-shipped-function convention as xss-inline-handlers.test.js), so
+// they fail if the call is dropped again or pointed at the wrong resolver.
+const ADMIN = fs.readFileSync('./admin.html', 'utf8');
+
+function extractFn(src, startRe) {
+  const m = startRe.exec(src);
+  if (!m) return null;
+  let i = src.indexOf('{', m.index), depth = 0;
+  for (let j = i; j < src.length; j++) {
+    if (src[j] === '{') depth++;
+    else if (src[j] === '}' && --depth === 0) return src.slice(m.index, j + 1);
+  }
+  return null;
+}
+
+test('ADMIN: the province <select> ships empty, so the JS call is load-bearing', () => {
+  const markup = /<select[^>]*id="f-province"[\s\S]*?<\/select>/.exec(ADMIN);
+  assert.ok(markup, '#f-province select not found in admin.html');
+  const options = markup[0].match(/<option/g) || [];
+  assert.equal(options.length, 1,
+    'the select carries only its placeholder — every real province comes from JS');
+  assert.match(markup[0], /<option value="">/, 'the one static option is the empty placeholder');
+});
+
+test('ADMIN: populateProvinceSelect() renders all 18, from the full registry', () => {
+  const src = extractFn(ADMIN, /function populateProvinceSelect\(/);
+  assert.ok(src, 'populateProvinceSelect() not found in admin.html');
+
+  // A stand-in for the one <select> the function touches.
+  const select = { innerHTML: '', value: '' };
+  const sandboxDocument = { getElementById: (id) => (id === 'f-province' ? select : null) };
+  const run = new Function('document', 'getAllProvinces', 'esc',
+    `${src}; return populateProvinceSelect;`)(
+      sandboxDocument, getAllProvinces, (s) => String(s));
+
+  run('');
+  const values = [...select.innerHTML.matchAll(/<option value="([^"]*)"/g)].map(m => m[1]);
+  assert.equal(values.length, 19, 'placeholder + 18 provinces');
+  assert.equal(values[0], '', 'the placeholder stays first');
+  assert.deepEqual(values.slice(1), LAO_PROVINCES.map(p => p.key),
+    'every registry province, in registry order');
+  assert.equal(select.value, '', 'no province is pre-selected for a blank form');
+
+  run('Luang Prabang');
+  assert.equal(select.value, 'Luang Prabang', 'an existing listing selects its saved province');
+});
+
+test('ADMIN: populateProvinceSelect() uses the registry, NOT the customer filter', () => {
+  const src = extractFn(ADMIN, /function populateProvinceSelect\(/);
+  assert.match(src, /getAllProvinces\(\)/, 'admin must render the full registry (rule 7)');
+  assert.doesNotMatch(src, /resolveAvailableProvinces/,
+    'the inventory-driven filter belongs to listings.html — in admin it would hide ' +
+    'every province with no listings yet, which is exactly what an agent needs to create');
+});
+
+test('ADMIN: BOTH form entry points populate the province select', () => {
+  // This is the bug itself: New Listing resets the form and must rebuild the
+  // options, Edit fills the form and must select the saved one. Either call
+  // going missing puts a required field back in the unselectable state.
+  const reset = extractFn(ADMIN, /function resetListingForm\(/);
+  assert.ok(reset, 'resetListingForm() not found');
+  assert.match(reset, /populateProvinceSelect\(/,
+    'NEW LISTING: resetListingForm() must repopulate the province options');
+
+  const edit = extractFn(ADMIN, /async function editListing\(/);
+  assert.ok(edit, 'editListing() not found');
+  assert.match(edit, /populateProvinceSelect\(/,
+    'EDIT LISTING: editListing() must populate and select the saved province');
+});
+
+test('ADMIN: district control follows the province (capital list vs free text)', () => {
+  const src = extractFn(ADMIN, /function onProvinceChange\(/);
+  assert.ok(src, 'onProvinceChange() not found');
+  const made = {};
+  const el = (id) => (made[id] ||= { id, style: {}, value: '',
+    parentNode: { appendChild(c) { made[c.id] = c; } } });
+  const doc = {
+    getElementById: (id) => (id === 'f-district-free' ? (made[id] || null) : el(id)),
+    createElement: () => ({ style: {}, set className(v) {}, id: '', type: '', placeholder: '' })
+  };
+  const run = new Function('document', `${src}; return onProvinceChange;`)(doc);
+
+  el('f-province').value = 'Vientiane Capital';
+  run();
+  assert.notEqual(el('f-district').style.display, 'none', 'capital keeps the 7-district select');
+  assert.equal(made['f-district-free'].style.display, 'none', 'and hides free text');
+
+  el('f-province').value = 'Luang Prabang';
+  run();
+  assert.equal(el('f-district').style.display, 'none',
+    'outside the capital the Vientiane district list must be hidden — a Luang Prabang ' +
+    'listing must not be filed under "Sisattanak"');
+  assert.notEqual(made['f-district-free'].style.display, 'none', 'free text takes over');
+});
