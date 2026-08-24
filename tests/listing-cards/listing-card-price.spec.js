@@ -123,7 +123,24 @@ async function openListings(page, query) {
   // so the Lao state the bug was reported in has to be asked for explicitly.
   await page.goto('/listings.html' + (query || ''));
   await page.waitForSelector('.pt-card', { timeout: 15000 });
+  await revealAllCards(page);
   return errors;
+}
+
+// The grid renders progressively (listings.html PT_PAGE_SIZE) so a visitor
+// never downloads every card's image up front. These tests assert ordering and
+// filtering across the WHOLE result set, so they have to do what a visitor
+// does -- scroll until the grid stops growing. Without this they would silently
+// assert against the first page only, which is a weaker test, not a passing one.
+async function revealAllCards(page) {
+  let previous = -1;
+  for (let i = 0; i < 20; i++) {
+    const n = await page.locator('.pt-card').count();
+    if (n === previous) break;
+    previous = n;
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(120);
+  }
 }
 
 // renderPropertyCard() makes the CARD ITSELF the <a> (href="listing.html?slug=…"),

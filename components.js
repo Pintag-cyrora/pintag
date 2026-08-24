@@ -92,6 +92,58 @@ function _ptEscJs(s) {
 }
 
 
+// ---------------------------------------------------------------------------
+// ptImageUrl(url, profile) -- THE ONE PLACE a public property-image URL is
+// sized. Every card, thumbnail, slide and hero asks for a PROFILE rather than
+// building a URL itself, so the day a transformation backend exists we change
+// one function instead of a dozen call sites.
+//
+// WHY IT IS CURRENTLY A PASS-THROUGH. The plan was to call Supabase Storage's
+// render endpoint. It does not work on this project:
+//
+//   GET /storage/v1/render/image/public/property-images/<obj>?width=400
+//   -> HTTP 403 {"error":"FeatureNotEnabled",
+//                "message":"feature not enabled for this tenant"}
+//
+// Image Transformations are a paid Supabase feature and this project is on
+// Free. Verified against production at every width (200/400/1200) with and
+// without an Accept: image/webp header -- all 403. The original object
+// endpoint answers 200 with cache-control: public, max-age=31536000, immutable.
+//
+// smart-listing-importer builds the same render URLs and has been silently
+// falling back to originals since it shipped (fetchImageBytes returns null on
+// !res.ok), which is why the capability looked proven but never was.
+//
+// So PT_IMAGE_PROFILES is the vocabulary, and transformsEnabled is the switch.
+// With the switch off this returns the URL untouched -- byte-for-byte today's
+// behaviour, so wiring it in cannot regress anything. Turning it on requires a
+// backend that actually serves resized bytes: Supabase Pro, or the
+// img.pintag.io Cloudflare Worker doing the resizing itself.
+//
+// It deliberately does NOT create new Storage objects. Originals stay the
+// single source of truth.
+// ---------------------------------------------------------------------------
+var PT_IMAGE_PROFILES = {
+  thumbnail: { width: 200,  quality: 70 },   // gallery rail, ~100px CSS @2x
+  card:      { width: 400,  quality: 75 },   // grid tile / map preview
+  gallery:   { width: 800,  quality: 78 },   // mobile slide
+  hero:      { width: 1200, quality: 82 }    // detail-page hero, full-bleed
+};
+var PT_RENDER_PATH = '/storage/v1/render/image/public/property-images/';
+
+function ptImageUrl(url, profile) {
+  if (!url || typeof url !== 'string') return url;
+  var P = (typeof window !== 'undefined') ? window.PINTAG : null;
+  if (!P || !P.transformsEnabled || !P.supabaseUrl) return url;   // OFF today
+  var spec = PT_IMAGE_PROFILES[profile];
+  if (!spec) return url;
+  var base = P.supabaseUrl + PT_PROPERTY_IMAGES_PATH;
+  if (url.indexOf(base) !== 0) return url;      // only THIS project's public property images
+  var obj = url.slice(base.length).split('?')[0];
+  return P.supabaseUrl + PT_RENDER_PATH + obj +
+         '?width=' + spec.width + '&resize=contain&quality=' + spec.quality;
+}
+
 // ptCdnImage(url) -- render-time ONLY rewrite of a PUBLIC property-images URL to
 // the Cloudflare image CDN (img.pintag.io), so repeat views are served from
 // Cloudflare cache instead of Supabase egress (P1). It NEVER mutates a database
@@ -728,7 +780,7 @@ function renderPropertyCard(property, opts) {
   var district = _ptEsc(p['district_' + lang] || p.district_en || '');
   var images = (Array.isArray(p.images) ? p.images.filter(Boolean) : []).map(ptCdnImage);
   var imgHtml = images.length
-    ? '<img src="' + _ptEsc(images[0]) + '" alt="' + title + '" loading="lazy">'
+    ? '<img src="' + _ptEsc(ptImageUrl(images[0], 'card')) + '" alt="' + title + '" loading="lazy">'
     : '<div class="pt-card-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';
 
   var overlayTl = (opts.statusBadgeHtml || '') + (opts.extraOverlayHtml || '');
@@ -936,7 +988,7 @@ function renderPropertyPreview(property, opts) {
   var district = _ptEsc(p['district_' + lang] || p.district_en || '');
   var images = (Array.isArray(p.images) ? p.images.filter(Boolean) : []).map(ptCdnImage);
   var imgHtml = images.length
-    ? '<img src="' + _ptEsc(images[0]) + '" alt="' + title + '" loading="lazy" decoding="async">'
+    ? '<img src="' + _ptEsc(ptImageUrl(images[0], 'card')) + '" alt="' + title + '" loading="lazy" decoding="async">'
     : '<div class="pt-preview-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';
 
   var specsHtml = '';
