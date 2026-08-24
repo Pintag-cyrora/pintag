@@ -51,6 +51,9 @@ jobs:
       # TEMPORARY: production smoke test of the rendition delivery flag.
       # Read-only: it loads the live site in a real browser and issues GETs.
       # It never writes to Storage or the database.
+      - name: Where is production serving from (READ ONLY)
+        run: node origin-diag.mjs
+
       - name: Rendition smoke test against production
         run: |
           set -euo pipefail
