@@ -144,6 +144,126 @@ jobs:
           export SUPABASE_URL="https://${REF}.supabase.co"
           node scripts/backfill-renditions.mjs --apply --batch-size 25
 
+      # ----------------------------------------------------------------------
+      # Why a rendition serves Cache-Control: no-cache despite the upload
+      # sending "public, max-age=31536000, immutable".
+      # ----------------------------------------------------------------------
+      - name: Cache-Control forensics (READ ONLY)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          REF: ${{ steps.ref.outputs.ref }}
+          PGHOST_POOLER: ${{ steps.pooler.outputs.host }}
+        run: |
+          set -euo pipefail
+          q() { PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST_POOLER" -p 5432 \
+                  -U "postgres.${REF}" -d postgres -X -q -A -t \
+                  -v ON_ERROR_STOP=1 -c "SET default_transaction_read_only=on; $1"; }
+          BASE="https://${REF}.supabase.co/storage/v1/object/public/property-images"
+
+          # storage.objects.metadata is what Storage PERSISTED at upload time.
+          # If our header had been honoured it would be recorded here, so this
+          # separates "the upload was ignored" from "the CDN rewrites on the way
+          # out" without guessing.
+          echo "── what Storage PERSISTED (metadata->>'cacheControl') ──────"
+          echo "  renditions (written by scripts/backfill-renditions.mjs):"
+          q "SELECT '    '||name||'  ->  '||COALESCE(metadata->>'cacheControl','(null)')
+               FROM storage.objects
+              WHERE bucket_id='property-images' AND name LIKE 'renditions/%'
+              ORDER BY name LIMIT 3;"
+          echo "  originals (written by the admin UI via supabase-js):"
+          q "SELECT '    '||name||'  ->  '||COALESCE(metadata->>'cacheControl','(null)')
+               FROM storage.objects
+              WHERE bucket_id='property-images' AND name NOT LIKE 'renditions/%'
+              ORDER BY created_at DESC LIMIT 3;"
+          echo "  distinct persisted values, with counts:"
+          q "SELECT '    '||COALESCE(metadata->>'cacheControl','(null)')||'  x'||count(*)::text||
+                    '  ('||CASE WHEN name LIKE 'renditions/%' THEN 'rendition' ELSE 'original' END||')'
+               FROM storage.objects WHERE bucket_id='property-images'
+              GROUP BY 1 ORDER BY 1;"
+
+          echo ""
+          echo "── what the SERVER actually returns, by real GET ────────────"
+          probe() {
+            local label="$1" name="$2"
+            local enc; enc=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$name")
+            echo "  $label: $name"
+            # Cache-buster so a previously cached edge response cannot be
+            # mistaken for the object's current metadata.
+            curl -sS -o /dev/null -D - "$BASE/$enc?cb=$GITHUB_RUN_ID$RANDOM" \
+              | tr -d '\r' \
+              | awk -F': ' 'NR==1 || tolower($1) ~ /^(cache-control|content-type|content-length|age|etag|x-cache|cf-cache-status|server)$/ {print "      "$0}'
+          }
+          R=$(q "SELECT name FROM storage.objects WHERE bucket_id='property-images' AND name LIKE 'renditions/%' AND name NOT LIKE '% %' ORDER BY name LIMIT 1;")
+          O=$(q "SELECT pi.storage_path FROM property_images pi JOIN properties p ON p.id=pi.property_id
+                  WHERE pi.status='active' AND p.status IN ('active','available')
+                    AND pi.storage_path NOT LIKE 'renditions/%' AND pi.storage_path NOT LIKE '% %'
+                  ORDER BY pi.storage_path LIMIT 1;")
+          probe "RENDITION" "$R"
+          echo ""
+          probe "ORIGINAL " "$O"
+          echo "rendition_probe=$R" >> "$GITHUB_OUTPUT"
+        id: cc
+
+      - name: Cache-Control mechanism probe (upsert of ONE existing rendition)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          REF: ${{ steps.ref.outputs.ref }}
+          PGHOST_POOLER: ${{ steps.pooler.outputs.host }}
+          SKEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          N: ${{ steps.cc.outputs.rendition_probe }}
+        run: |
+          set -euo pipefail
+          # Creates NO new object and touches NO original: it re-uploads ONE
+          # existing rendition's own bytes to its own path with x-upsert, three
+          # different ways, and reads back what Storage persisted each time.
+          # That is the only way to establish the mechanism from evidence.
+          q() { PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST_POOLER" -p 5432 \
+                  -U "postgres.${REF}" -d postgres -X -q -A -t \
+                  -v ON_ERROR_STOP=1 -c "SET default_transaction_read_only=on; $1"; }
+          BASE="https://${REF}.supabase.co/storage/v1/object/public/property-images"
+          PUT="https://${REF}.supabase.co/storage/v1/object/property-images"
+          ENC=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$N")
+          echo "probe object: $N"
+          curl -sS -o /tmp/probe.webp "$BASE/$ENC"
+          echo "bytes: $(stat -c%s /tmp/probe.webp)  (re-uploaded unchanged each time)"
+
+          readback() {
+            local tag="$1"
+            local stored; stored=$(q "SELECT COALESCE(metadata->>'cacheControl','(null)') FROM storage.objects WHERE bucket_id='property-images' AND name='$N';")
+            local served; served=$(curl -sS -o /dev/null -D - "$BASE/$ENC?cb=$GITHUB_RUN_ID$RANDOM" | tr -d '\r' | awk -F': ' 'tolower($1)=="cache-control"{print $2}' | tail -1)
+            printf '    %-46s stored=%-34s served=%s\n' "$tag" "$stored" "$served"
+          }
+
+          echo "── baseline (as the backfill left it) ──"
+          readback "before any probe upload"
+
+          echo "── A: raw body + full directive header (what we sent) ──"
+          curl -sS -o /dev/null -X POST "$PUT/$ENC" \
+            -H "apikey: $SKEY" -H "Authorization: Bearer $SKEY" \
+            -H "Content-Type: image/webp" -H "x-upsert: true" \
+            -H "Cache-Control: public, max-age=31536000, immutable" \
+            --data-binary @/tmp/probe.webp
+          readback "Cache-Control: public, max-age=..., immutable"
+
+          echo "── B: raw body + bare max-age (the shape supabase-js sends) ──"
+          curl -sS -o /dev/null -X POST "$PUT/$ENC" \
+            -H "apikey: $SKEY" -H "Authorization: Bearer $SKEY" \
+            -H "Content-Type: image/webp" -H "x-upsert: true" \
+            -H "Cache-Control: max-age=31536000" \
+            --data-binary @/tmp/probe.webp
+          readback "Cache-Control: max-age=31536000"
+
+          echo "── C: multipart with a cacheControl field (supabase-js Blob path) ──"
+          curl -sS -o /dev/null -X POST "$PUT/$ENC" \
+            -H "apikey: $SKEY" -H "Authorization: Bearer $SKEY" \
+            -H "x-upsert: true" \
+            -F "cacheControl=31536000" \
+            -F "file=@/tmp/probe.webp;type=image/webp"
+          readback "multipart cacheControl=31536000"
+
+          echo ""
+          echo "  (object bytes unchanged throughout; no object created or deleted)"
+
       - name: AFTER verification
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -195,16 +315,26 @@ jobs:
                                            AND o.name = 'renditions/' || regexp_replace(pi.storage_path,'\\.[A-Za-z0-9]+$','') || '/card.webp');")
           echo "  active images with no card rendition: $MISSING"
           echo ""
-          echo "-- sample public rendition URLs --"
+          echo "-- sample public rendition URLs (real GET, not HEAD) --"
           BASE="https://${REF}.supabase.co/storage/v1/object/public/property-images"
           OK=0; BAD=0
-          for n in $(q "SELECT name FROM storage.objects WHERE bucket_id='property-images' AND name LIKE 'renditions/%' ORDER BY name LIMIT 12;"); do
-            OUT=$(curl -sS -o /dev/null -w '%{http_code} %{content_type}' "$BASE/$n" || echo "000 -")
-            CODE=${OUT%% *}; CT=${OUT##* }
-            CC=$(curl -sSI "$BASE/$n" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="cache-control"{print $2}')
+          # `for n in $(...)` word-split object names on spaces -- real names do
+          # contain them (iOS exports like "<uuid> Small.jpg"), so one object
+          # became two broken half-paths and curl correctly answered 400. Read
+          # line by line instead, and percent-encode the path the way a browser
+          # does. Separator is | because content_type itself contains a space
+          # ("text/html; charset=utf-8"), which broke ${OUT##* } the same way.
+          while IFS= read -r n; do
+            [ -n "$n" ] || continue
+            enc=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$n")
+            HDR=$(mktemp)
+            OUT=$(curl -sS -o /dev/null -D "$HDR" -w '%{http_code}|%{content_type}' "$BASE/$enc" || echo "000|-")
+            CODE=${OUT%%|*}; CT=${OUT##*|}
+            CC=$(tr -d '\r' < "$HDR" | awk -F': ' 'tolower($1)=="cache-control"{print $2}' | tail -1)
+            rm -f "$HDR"
             if [ "$CODE" = "200" ] && [ "$CT" = "image/webp" ]; then OK=$((OK+1)); else BAD=$((BAD+1)); echo "  BAD $CODE $CT $n"; fi
-            [ "$OK" -eq 1 ] && echo "  e.g. $CODE $CT  cache-control: $CC"
-          done
+            [ "$OK" -eq 1 ] && echo "  e.g. GET $CODE $CT  cache-control: $CC"
+          done < <(q "SELECT name FROM storage.objects WHERE bucket_id='property-images' AND name LIKE 'renditions/%' ORDER BY name LIMIT 12;")
           echo "  sampled: $OK ok, $BAD bad"
           [ "$BAD" -eq 0 ] || FAIL=1
           echo "-- a missing rendition must 4xx so the frontend can fall back --"
