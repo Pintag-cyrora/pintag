@@ -176,93 +176,42 @@ jobs:
               WHERE bucket_id='property-images' AND name NOT LIKE 'renditions/%'
               ORDER BY created_at DESC LIMIT 3;"
           echo "  distinct persisted values, with counts:"
-          q "SELECT '    '||COALESCE(metadata->>'cacheControl','(null)')||'  x'||count(*)::text||
-                    '  ('||CASE WHEN name LIKE 'renditions/%' THEN 'rendition' ELSE 'original' END||')'
-               FROM storage.objects WHERE bucket_id='property-images'
-              GROUP BY 1 ORDER BY 1;"
+          q "SELECT '    '||cc||'  x'||n::text||'  ('||kind||')' FROM (
+               SELECT COALESCE(metadata->>'cacheControl','(null)') AS cc,
+                      CASE WHEN name LIKE 'renditions/%' THEN 'rendition' ELSE 'original' END AS kind,
+                      count(*) AS n
+                 FROM storage.objects WHERE bucket_id='property-images'
+                GROUP BY 1,2) t ORDER BY kind, cc;"
 
           echo ""
           echo "── what the SERVER actually returns, by real GET ────────────"
+          # GET and HEAD, side by side. The original report of "no-cache" came
+          # from `curl -sSI`, which is a HEAD; if the two differ then the object
+          # metadata was never the problem and only the probe method was.
           probe() {
-            local label="$1" name="$2"
+            local label="$1" name="$2" method="$3"
             local enc; enc=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$name")
-            echo "  $label: $name"
+            local flag="-o /dev/null"; [ "$method" = "HEAD" ] && flag="-I"
+            echo "  $label via $method"
             # Cache-buster so a previously cached edge response cannot be
             # mistaken for the object's current metadata.
-            curl -sS -o /dev/null -D - "$BASE/$enc?cb=$GITHUB_RUN_ID$RANDOM" \
+            curl -sS $flag -D - "$BASE/$enc?cb=$GITHUB_RUN_ID$RANDOM$method" 2>/dev/null \
               | tr -d '\r' \
-              | awk -F': ' 'NR==1 || tolower($1) ~ /^(cache-control|content-type|content-length|age|etag|x-cache|cf-cache-status|server)$/ {print "      "$0}'
+              | awk -F': ' 'NR==1 || tolower($1) ~ /^(cache-control|content-type|content-length|age|etag|x-cache|cf-cache-status)$/ {print "      "$0}'
           }
           R=$(q "SELECT name FROM storage.objects WHERE bucket_id='property-images' AND name LIKE 'renditions/%' AND name NOT LIKE '% %' ORDER BY name LIMIT 1;")
           O=$(q "SELECT pi.storage_path FROM property_images pi JOIN properties p ON p.id=pi.property_id
                   WHERE pi.status='active' AND p.status IN ('active','available')
                     AND pi.storage_path NOT LIKE 'renditions/%' AND pi.storage_path NOT LIKE '% %'
                   ORDER BY pi.storage_path LIMIT 1;")
-          probe "RENDITION" "$R"
+          echo "  rendition: $R"
+          probe "RENDITION" "$R" GET
+          probe "RENDITION" "$R" HEAD
           echo ""
-          probe "ORIGINAL " "$O"
-          echo "rendition_probe=$R" >> "$GITHUB_OUTPUT"
+          echo "  original:  $O"
+          probe "ORIGINAL " "$O" GET
+          probe "ORIGINAL " "$O" HEAD
         id: cc
-
-      - name: Cache-Control mechanism probe (upsert of ONE existing rendition)
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          REF: ${{ steps.ref.outputs.ref }}
-          PGHOST_POOLER: ${{ steps.pooler.outputs.host }}
-          SKEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          N: ${{ steps.cc.outputs.rendition_probe }}
-        run: |
-          set -euo pipefail
-          # Creates NO new object and touches NO original: it re-uploads ONE
-          # existing rendition's own bytes to its own path with x-upsert, three
-          # different ways, and reads back what Storage persisted each time.
-          # That is the only way to establish the mechanism from evidence.
-          q() { PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST_POOLER" -p 5432 \
-                  -U "postgres.${REF}" -d postgres -X -q -A -t \
-                  -v ON_ERROR_STOP=1 -c "SET default_transaction_read_only=on; $1"; }
-          BASE="https://${REF}.supabase.co/storage/v1/object/public/property-images"
-          PUT="https://${REF}.supabase.co/storage/v1/object/property-images"
-          ENC=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$N")
-          echo "probe object: $N"
-          curl -sS -o /tmp/probe.webp "$BASE/$ENC"
-          echo "bytes: $(stat -c%s /tmp/probe.webp)  (re-uploaded unchanged each time)"
-
-          readback() {
-            local tag="$1"
-            local stored; stored=$(q "SELECT COALESCE(metadata->>'cacheControl','(null)') FROM storage.objects WHERE bucket_id='property-images' AND name='$N';")
-            local served; served=$(curl -sS -o /dev/null -D - "$BASE/$ENC?cb=$GITHUB_RUN_ID$RANDOM" | tr -d '\r' | awk -F': ' 'tolower($1)=="cache-control"{print $2}' | tail -1)
-            printf '    %-46s stored=%-34s served=%s\n' "$tag" "$stored" "$served"
-          }
-
-          echo "── baseline (as the backfill left it) ──"
-          readback "before any probe upload"
-
-          echo "── A: raw body + full directive header (what we sent) ──"
-          curl -sS -o /dev/null -X POST "$PUT/$ENC" \
-            -H "apikey: $SKEY" -H "Authorization: Bearer $SKEY" \
-            -H "Content-Type: image/webp" -H "x-upsert: true" \
-            -H "Cache-Control: public, max-age=31536000, immutable" \
-            --data-binary @/tmp/probe.webp
-          readback "Cache-Control: public, max-age=..., immutable"
-
-          echo "── B: raw body + bare max-age (the shape supabase-js sends) ──"
-          curl -sS -o /dev/null -X POST "$PUT/$ENC" \
-            -H "apikey: $SKEY" -H "Authorization: Bearer $SKEY" \
-            -H "Content-Type: image/webp" -H "x-upsert: true" \
-            -H "Cache-Control: max-age=31536000" \
-            --data-binary @/tmp/probe.webp
-          readback "Cache-Control: max-age=31536000"
-
-          echo "── C: multipart with a cacheControl field (supabase-js Blob path) ──"
-          curl -sS -o /dev/null -X POST "$PUT/$ENC" \
-            -H "apikey: $SKEY" -H "Authorization: Bearer $SKEY" \
-            -H "x-upsert: true" \
-            -F "cacheControl=31536000" \
-            -F "file=@/tmp/probe.webp;type=image/webp"
-          readback "multipart cacheControl=31536000"
-
-          echo ""
-          echo "  (object bytes unchanged throughout; no object created or deleted)"
 
       - name: AFTER verification
         env:
