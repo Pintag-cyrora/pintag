@@ -188,103 +188,90 @@ jobs:
           echo "── resolve every stored short link and parse it (DRY RUN) ──"
           node scripts/normalize-map-links.mjs 2>&1 | tee /tmp/normalize.log
           echo ""
-          echo "── ACCEPTANCE TEST: can a short link be resolved to an EXACT"
-          echo "   place coordinate? Nothing merges unless this passes. ─────"
-          # The gate is not "did something come back" -- it is "did we get a
-          # real destination carrying an exact place coordinate". So each
-          # attempt is judged by feeding the resolved URL to the SAME parser
-          # the map uses. A 200, a redirect, or a google.com URL that yields no
-          # coordinate is a FAILURE here, deliberately.
-          #
-          # Google serves maps.app.goo.gl a JS interstitial to browsers (200,
-          # 34KB, no coordinate, no Location). A non-browser client may still
-          # get the plain 302. That is one hypothesis of several, so this walks
-          # a matrix rather than betting on one.
+          echo "── FULL 29-LINK SWEEP, categorised ─────────────────────────"
+          # READ ONLY. Resolves every stored link with the proven method and
+          # sorts the outcome into four DISJOINT buckets. The distinction that
+          # matters is EXACT vs NAME_ONLY: both end on a google.com/maps URL and
+          # both look like success to a naive check, but a name-only
+          # destination (?q=<place name>&ftid=...) carries no coordinate and
+          # must never be written back as if it were a location.
           cat > /tmp/judge.mjs <<'JS'
           import { createRequire } from 'node:module';
           import path from 'node:path';
-          // Resolve against the WORKSPACE, not against /tmp where this file
-          // lives -- createRequire(import.meta.url) would look for
-          // /tmp/map-location.js and every verdict would come back
-          // judge-crashed, which reads exactly like "Google failed".
           const M = createRequire(path.join(process.cwd(), 'noop.js'))('./map-location.js');
-          const url = process.argv[2] || '';
-          const r = M.parseMapUrl(url);
-          if (r.ok) console.log(`COORD ${r.lat},${r.lng} via ${r.pattern}`);
-          else console.log(`NONE  ${r.reason}`);
+          const r = M.parseMapUrl(process.argv[2] || '');
+          console.log(r.ok ? `COORD ${r.lat},${r.lng} ${r.pattern}` : `NONE ${r.reason}`);
           JS
-          # Never let the judge's own failure masquerade as a verdict.
-          judge() { node /tmp/judge.mjs "$1" 2>/dev/null || echo "NONE  judge-crashed"; }
+          judge() { node /tmp/judge.mjs "$1" 2>/dev/null || echo "NONE judge-crashed"; }
 
-          UA_CHROME='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          UA_BOT='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
-          UA_FB='facebookexternalhit/1.1'
-          UA_WGET='Wget/1.21.3'
-          UA_CURL='curl/8.5.0'
+          UA='PintagMapLinkResolver/1.0 (+https://pintag.io)'
+          ANON="$(grep -oP "anonKey:\s*'\K[^']+" config.prod.js | head -1 || true)"
+          curl -sS "https://${REF}.supabase.co/rest/v1/properties?select=slug,map_embed_url&map_embed_url=not.is.null&limit=400" \
+            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /tmp/links.json
 
-          attempt() {  # name, ua, extra-curl-args, url
-            local name="$1" ua="$2" extra="$3" u="$4"
-            local final
-            final=$(curl -sS -m 25 -L -o /tmp/body.html \
-                      ${ua:+-A "$ua"} $extra -w '%{url_effective}' "$u" 2>/dev/null || echo '')
-            printf '  %-26s ' "$name"
-            if [ -z "$final" ]; then echo "(request failed)"; return 1; fi
-            local verdict; verdict=$(judge "$final")
-            case "$verdict" in
-              COORD*) echo "$verdict"; echo "      -> $final" ; return 0 ;;
-              *)      echo "$verdict  (final: ${final:0:70})" ; return 1 ;;
-            esac
-          }
-
-          U='https://maps.app.goo.gl/duPW1hq3Bb23EwPi7?g_st=ic'
-          echo "  subject: $U"
-          WINNER=''
-          attempt 'curl-default'    ''            ''                                   "$U" && WINNER='curl-default'
-          attempt 'curl-UA'         "$UA_CURL"    ''                                   "$U" && WINNER=${WINNER:-curl-UA}
-          attempt 'wget-UA'         "$UA_WGET"    ''                                   "$U" && WINNER=${WINNER:-wget-UA}
-          attempt 'facebookbot'     "$UA_FB"      ''                                   "$U" && WINNER=${WINNER:-facebookbot}
-          attempt 'googlebot'       "$UA_BOT"     ''                                   "$U" && WINNER=${WINNER:-googlebot}
-          attempt 'chrome'          "$UA_CHROME"  ''                                   "$U" && WINNER=${WINNER:-chrome}
-          attempt 'chrome+nojs-acc' "$UA_CHROME"  '-H Accept:text/plain'               "$U" && WINNER=${WINNER:-chrome+nojs-acc}
-          attempt 'curl+hl=en'      ''            ''                                   "${U}&hl=en" && WINNER=${WINNER:-curl+hl=en}
-          attempt 'curl+ucbcb'      ''            ''                                   "${U}&ucbcb=1" && WINNER=${WINNER:-curl+ucbcb}
-
-          echo ""
-          if [ -z "$WINNER" ]; then
-            echo "  RESULT: NO method resolved this short link to an exact coordinate."
-            echo "  The resolver CANNOT be proven correct, so the map fix stays unmerged."
-            echo "::warning::short-link resolution unproven — map fix remains gated"
-          else
-            echo "  RESULT: '$WINNER' produced an exact place coordinate."
-            echo "  Re-running across EVERY stored short link with that method:"
-            case "$WINNER" in
-              curl-default|curl+*) WUA='' ;;
-              curl-UA)   WUA="$UA_CURL" ;;
-              wget-UA)   WUA="$UA_WGET" ;;
-              facebookbot) WUA="$UA_FB" ;;
-              googlebot) WUA="$UA_BOT" ;;
-              *)         WUA="$UA_CHROME" ;;
-            esac
-            ANON="$(grep -oP "anonKey:\s*'\K[^']+" config.prod.js | head -1 || true)"
-            curl -sS "https://${REF}.supabase.co/rest/v1/properties?select=slug,map_embed_url&map_embed_url=not.is.null&limit=200" \
-              -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /tmp/links.json
-            OKC=0; BADC=0
-            while IFS=$'\t' read -r slug link; do
-              [ -n "$link" ] || continue
-              F=$(curl -sS -m 25 -L -o /dev/null ${WUA:+-A "$WUA"} -w '%{url_effective}' "$link" 2>/dev/null || echo '')
-              V=$(judge "$F")
-              case "$V" in
-                COORD*) OKC=$((OKC+1)); printf '    ok  %-52s %s\n' "${slug:0:52}" "$V" ;;
-                *)      BADC=$((BADC+1)); printf '    BAD %-52s %s\n' "${slug:0:52}" "$V" ;;
+          : > /tmp/exact.txt; : > /tmp/nameonly.txt; : > /tmp/unresolved.txt; : > /tmp/failed.txt
+          TOTAL=0
+          while IFS=$'\t' read -r slug link; do
+            [ -n "$link" ] || continue
+            TOTAL=$((TOTAL+1))
+            OUT=$(curl -sS -m 25 -L -A "$UA" -o /dev/null \
+                    -w '%{http_code}|%{url_effective}' "$link" 2>/dev/null || echo "000|")
+            CODE=${OUT%%|*}; FINAL=${OUT#*|}
+            V=$(judge "$FINAL")
+            if [ "$CODE" = "000" ] || [ -z "$FINAL" ]; then
+              printf '%s\t%s\tHTTP %s\n' "$slug" "$link" "$CODE" >> /tmp/failed.txt
+            elif [ "${V%% *}" = "COORD" ]; then
+              printf '%s\t%s\t%s\n' "$slug" "${V#COORD }" "$FINAL" >> /tmp/exact.txt
+            else
+              REASON=${V#NONE }
+              case "$REASON" in
+                unresolved-short-link) printf '%s\t%s\tHTTP %s\n' "$slug" "$FINAL" "$CODE" >> /tmp/unresolved.txt ;;
+                *)                     printf '%s\t%s\t%s\n' "$slug" "$REASON" "$FINAL"  >> /tmp/nameonly.txt ;;
               esac
-            done < <(python3 -c "
+            fi
+          done < <(python3 -c "
           import json
           for r in json.load(open('/tmp/links.json')):
               print(r['slug'] + chr(9) + (r.get('map_embed_url') or ''))
           ")
-            echo ""
-            echo "  resolved to an exact coordinate: $OKC    still unresolvable: $BADC"
+
+          E=$(wc -l < /tmp/exact.txt); N=$(wc -l < /tmp/nameonly.txt)
+          U=$(wc -l < /tmp/unresolved.txt); F=$(wc -l < /tmp/failed.txt)
+
+          echo ""
+          echo "  ══ 1. EXACT COORDINATE ($E of $TOTAL) ══════════════════════"
+          awk -F'\t' '{printf "    %-54s %s\n", substr($1,1,54), $2}' /tmp/exact.txt
+          echo ""
+          echo "  ══ 2. AMBIGUOUS / NAME-ONLY ($N) ═══════════════════════════"
+          echo "     Resolved to a real Google destination that carries NO coordinate."
+          echo "     These must NOT be written back as locations."
+          awk -F'\t' '{printf "    %-54s %s\n      -> %s\n", substr($1,1,54), $2, substr($3,1,120)}' /tmp/nameonly.txt
+          echo ""
+          echo "  ══ 3. UNRESOLVED (still a short link) ($U) ═════════════════"
+          awk -F'\t' '{printf "    %-54s %s  %s\n", substr($1,1,54), $3, substr($2,1,80)}' /tmp/unresolved.txt
+          echo ""
+          echo "  ══ 4. FAILED (request error) ($F) ══════════════════════════"
+          awk -F'\t' '{printf "    %-54s %s  %s\n", substr($1,1,54), $3, substr($2,1,80)}' /tmp/failed.txt
+          echo ""
+          echo "  TOTALS: exact=$E  name-only=$N  unresolved=$U  failed=$F  (of $TOTAL)"
+          if [ $((E+N+U+F)) -ne "$TOTAL" ]; then
+            echo "::error::buckets do not sum to the total — the categorisation is wrong"
           fi
+
+          echo ""
+          echo "  spread of the EXACT set (the old markers occupied ~660m):"
+          # $2 is "<lat>,<lng> <pattern>" -- take the two numbers only, or
+          # float() chokes on the pattern name and (stderr being suppressed)
+          # the whole spread block silently prints nothing.
+          awk -F'\t' '{split($2,c,","); split(c[2],d," "); print c[1], d[1]}' /tmp/exact.txt | python3 -c "
+          import sys
+          pts=[tuple(map(float,l.split())) for l in sys.stdin if l.strip()]
+          if pts:
+              la=[p[0] for p in pts]; lo=[p[1] for p in pts]
+              print(f'    lat {min(la):.6f}..{max(la):.6f}  ({(max(la)-min(la))*111:.1f} km)')
+              print(f'    lng {min(lo):.6f}..{max(lo):.6f}  ({(max(lo)-min(lo))*106:.1f} km)')
+              print(f'    distinct coordinates: {len(set(pts))} of {len(pts)}')
+          "
 
       - name: Rendition smoke test against production
         run: |
