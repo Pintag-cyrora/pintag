@@ -77,6 +77,10 @@ let fail = 0;
 const bad = (m) => { console.log(`  ✗ ${m}`); fail++; };
 const ok = (m) => console.log(`  ✓ ${m}`);
 const coordOf = (u) => { const r = M.parseMapUrl(u); return r.ok ? { c: `${r.lat},${r.lng}`, p: r.pattern } : null; };
+// At least one production row has slug NULL. Reading .startsWith on it threw
+// and killed the audit mid-check, so every slug access goes through this.
+const sl = (r) => (r && typeof r.slug === 'string' ? r.slug : '');
+const hasSlug = (pre) => (x) => sl(x).startsWith(pre);
 
 // Classify every row by what its CURRENT stored value actually is.
 const withLink = rows.filter((r) => r.map_embed_url);
@@ -92,7 +96,7 @@ console.log(`  map_embed_url IS NULL:               ${noLink.length}`);
 console.log(`  -> yields an EXACT coordinate:       ${exact.length}`);
 console.log(`  -> still an unexpanded short link:   ${shortLnk.length}`);
 console.log(`  -> neither (unexpected):             ${other.length}`);
-for (const r of other) console.log(`       ${r.slug}: ${String(r.map_embed_url).slice(0, 100)}`);
+for (const r of other) console.log(`       ${sl(r) || '(null slug)'} [${r.status}]: ${String(r.map_embed_url).slice(0, 100)}`);
 
 console.log(`\n── 1. exactly 23 hold verified exact-coordinate URLs ───`);
 exact.length === 23 ? ok('23 rows yield an exact coordinate') : bad(`expected 23, found ${exact.length}`);
@@ -100,29 +104,45 @@ exact.length === 23 ? ok('23 rows yield an exact coordinate') : bad(`expected 23
 console.log(`\n── 2. exactly 6 still hold their original short links ──`);
 shortLnk.length === 6 ? ok('6 rows still hold an unexpanded short link') : bad(`expected 6, found ${shortLnk.length}`);
 for (const pre of STEP2_NAME_ONLY) {
-  const r = shortLnk.find((x) => x.slug.startsWith(pre));
+  const r = shortLnk.find(hasSlug(pre));
   if (!r) bad(`name-only listing "${pre}…" is NOT among the remaining short links`);
   else if (!/^https:\/\/maps\.app\.goo\.gl\/|^https:\/\/goo\.gl\//.test(r.map_embed_url))
-    bad(`${r.slug}: no longer an original Google short link — ${r.map_embed_url.slice(0, 80)}`);
+    bad(`${sl(r)}: no longer an original Google short link — ${r.map_embed_url.slice(0, 80)}`);
 }
 if (!fail) ok('all 6 are the exact listings Step 2 classified as name-only, still short links');
 
-console.log(`\n── 3. the remaining 101 rows carry no link at all ──────`);
-rows.length - 29 === noLink.length
-  ? ok(`${noLink.length} rows have map_embed_url NULL — nothing was written to a listing that had no link`)
-  : bad(`expected ${rows.length - 29} link-less rows, found ${noLink.length}`);
+console.log(`\n── 3. every other row accounted for ────────────────────`);
+// Do not assume 130-29. The partition is measured: rows either have no link,
+// or their link is exact / short / something else. Anything in "something
+// else" is a row the normalization never touched, and it has to be NAMED
+// rather than folded into an arithmetic mismatch.
+console.log(`  map_embed_url IS NULL:            ${noLink.length}`);
+console.log(`  carries a link:                   ${withLink.length}  (exact ${exact.length} + short ${shortLnk.length} + other ${other.length})`);
+exact.length + shortLnk.length + other.length === withLink.length
+  ? ok('the link-bearing rows partition exactly into exact / short / other')
+  : bad('classification does not partition the link-bearing rows');
+noLink.length + withLink.length === rows.length
+  ? ok(`${noLink.length} + ${withLink.length} = ${rows.length} — every row accounted for`)
+  : bad('row classification does not sum to the row count');
+// A row in "other" must not be one this exercise ever touched.
+for (const r of other) {
+  const touched = STEP2.some(([pre]) => hasSlug(pre)(r)) || STEP2_NAME_ONLY.some((pre) => hasSlug(pre)(r));
+  touched
+    ? bad(`${sl(r)}: is one of the 29 but its link is now neither exact nor a short link`)
+    : ok(`${sl(r) || '(null slug)'} [${r.status}]: carries a link but is NOT one of the 29 — outside this exercise, untouched`);
+}
 
 console.log(`\n── 4/5. stored coordinates vs the STEP 2 reference ─────`);
 let matched = 0;
 for (const [pre, want] of STEP2) {
-  const r = exact.find((x) => x.slug.startsWith(pre));
+  const r = exact.find(hasSlug(pre));
   if (!r) { bad(`no row found for "${pre}…"`); continue; }
   const got = coordOf(r.map_embed_url);
   // String equality: a rounded, reformatted, transposed or substituted value
   // all fail here. Numeric comparison with a tolerance would hide rounding,
   // which is one of the things being checked for.
   if (got.c !== want) bad(`${r.slug}\n        stored ${got.c}\n        step 2 ${want}`);
-  else { matched++; console.log(`  ✓ ${r.slug.slice(0, 54).padEnd(54)} ${got.c}  (${got.p})`); }
+  else { matched++; console.log(`  ✓ ${sl(r).slice(0, 54).padEnd(54)} ${got.c}  (${got.p})`); }
 }
 matched === STEP2.length
   ? ok(`all ${matched} match Step 2 exactly — no rounding, transposition, substitution or invention`)
@@ -133,13 +153,13 @@ console.log(`\n── 6. no plus code decoded, no geocoding, nothing invented �
 // name-only. Equivalently: no name-only listing may now yield a coordinate.
 let inferred = 0;
 for (const pre of STEP2_NAME_ONLY) {
-  const r = rows.find((x) => x.slug.startsWith(pre));
-  if (r && r.map_embed_url && coordOf(r.map_embed_url)) { bad(`${r.slug}: now yields a coordinate — a plus code or name was resolved into a location`); inferred++; }
+  const r = rows.find(hasSlug(pre));
+  if (r && r.map_embed_url && coordOf(r.map_embed_url)) { bad(`${sl(r)}: now yields a coordinate — a plus code or name was resolved into a location`); inferred++; }
 }
 if (!inferred) ok('no name-only listing gained a coordinate — no plus code decoded, no geocoding');
 // And every stored coordinate must trace to a link Step 2 verified, so none
 // was invented for a listing that never had one.
-const exactSlugs = exact.map((r) => r.slug);
+const exactSlugs = exact.map(sl);
 const unexpected = exactSlugs.filter((s) => !STEP2.some(([pre]) => s.startsWith(pre)));
 unexpected.length === 0
   ? ok('every coordinate-bearing row is one Step 2 verified — none invented or inferred')
