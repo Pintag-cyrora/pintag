@@ -173,42 +173,97 @@ jobs:
           echo "── resolve every stored short link and parse it (DRY RUN) ──"
           node scripts/normalize-map-links.mjs 2>&1 | tee /tmp/normalize.log
           echo ""
-          echo "── does the User-Agent decide whether Google redirects? ────"
-          # The Chrome UA gets 200 + a 34KB JS interstitial with no coordinate
-          # anywhere in it. Google serves that page to BROWSERS. A non-browser
-          # client may still get the plain 302 the resolver is written to
-          # follow -- and the edge function currently sends a Chrome UA, which
-          # would explain why 27 of 29 came back unchanged while 2 resolved.
-          # Read-only: HEAD/GET against Google, nothing stored.
-          probe() {
-            printf '  %-22s ' "$1"
-            curl -sS -o /dev/null -D /tmp/h.txt \
-              ${2:+-A "$2"} -w 'status=%{http_code} ' "$3" || true
-            L=$(grep -i '^location:' /tmp/h.txt | head -1 | tr -d '\r' | cut -c11-)
-            echo "location=${L:-<none>}"
-          }
-          U='https://maps.app.goo.gl/duPW1hq3Bb23EwPi7?g_st=ic'
-          echo "  target: $U"
-          probe 'chrome-UA'  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' "$U"
-          probe 'curl-default' '' "$U"
-          probe 'empty-UA'   ' ' "$U"
-          probe 'googlebot'  'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' "$U"
-          probe 'facebookbot' 'facebookexternalhit/1.1' "$U"
-          probe 'wget'       'Wget/1.21.3' "$U"
-          echo ""
-          echo "  the ONE link that did resolve, for comparison:"
-          V='https://maps.app.goo.gl/1nUNWTrSAhEfzVZRA'
-          probe 'chrome-UA'  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' "$V"
-          probe 'curl-default' '' "$V"
-          echo ""
-          echo "  whichever UA yields a Location, follow it fully:"
-          for UA in '' 'Wget/1.21.3' 'facebookexternalhit/1.1'; do
-            FINAL=$(curl -sS -o /dev/null -L ${UA:+-A "$UA"} -w '%{url_effective}' "$U" || true)
-            case "$FINAL" in
-              *google.com/maps*) echo "    UA='${UA:-curl-default}' -> $FINAL" ;;
-              *) echo "    UA='${UA:-curl-default}' -> (no maps URL: ${FINAL:0:90})" ;;
+          echo "── ACCEPTANCE TEST: can a short link be resolved to an EXACT"
+          echo "   place coordinate? Nothing merges unless this passes. ─────"
+          # The gate is not "did something come back" -- it is "did we get a
+          # real destination carrying an exact place coordinate". So each
+          # attempt is judged by feeding the resolved URL to the SAME parser
+          # the map uses. A 200, a redirect, or a google.com URL that yields no
+          # coordinate is a FAILURE here, deliberately.
+          #
+          # Google serves maps.app.goo.gl a JS interstitial to browsers (200,
+          # 34KB, no coordinate, no Location). A non-browser client may still
+          # get the plain 302. That is one hypothesis of several, so this walks
+          # a matrix rather than betting on one.
+          cat > /tmp/judge.mjs <<'JS'
+          import { createRequire } from 'node:module';
+          const M = createRequire(import.meta.url)('./map-location.js');
+          const url = process.argv[2] || '';
+          const r = M.parseMapUrl(url);
+          if (r.ok) console.log(`COORD ${r.lat},${r.lng} via ${r.pattern}`);
+          else console.log(`NONE  ${r.reason}`);
+          JS
+          judge() { node /tmp/judge.mjs "$1"; }
+
+          UA_CHROME='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          UA_BOT='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+          UA_FB='facebookexternalhit/1.1'
+          UA_WGET='Wget/1.21.3'
+          UA_CURL='curl/8.5.0'
+
+          attempt() {  # name, ua, extra-curl-args, url
+            local name="$1" ua="$2" extra="$3" u="$4"
+            local final
+            final=$(curl -sS -m 25 -L -o /tmp/body.html \
+                      ${ua:+-A "$ua"} $extra -w '%{url_effective}' "$u" 2>/dev/null || echo '')
+            printf '  %-26s ' "$name"
+            if [ -z "$final" ]; then echo "(request failed)"; return 1; fi
+            local verdict; verdict=$(judge "$final")
+            case "$verdict" in
+              COORD*) echo "$verdict"; echo "      -> $final" ; return 0 ;;
+              *)      echo "$verdict  (final: ${final:0:70})" ; return 1 ;;
             esac
-          done
+          }
+
+          U='https://maps.app.goo.gl/duPW1hq3Bb23EwPi7?g_st=ic'
+          echo "  subject: $U"
+          WINNER=''
+          attempt 'curl-default'    ''            ''                                   "$U" && WINNER='curl-default'
+          attempt 'curl-UA'         "$UA_CURL"    ''                                   "$U" && WINNER=${WINNER:-curl-UA}
+          attempt 'wget-UA'         "$UA_WGET"    ''                                   "$U" && WINNER=${WINNER:-wget-UA}
+          attempt 'facebookbot'     "$UA_FB"      ''                                   "$U" && WINNER=${WINNER:-facebookbot}
+          attempt 'googlebot'       "$UA_BOT"     ''                                   "$U" && WINNER=${WINNER:-googlebot}
+          attempt 'chrome'          "$UA_CHROME"  ''                                   "$U" && WINNER=${WINNER:-chrome}
+          attempt 'chrome+nojs-acc' "$UA_CHROME"  '-H Accept:text/plain'               "$U" && WINNER=${WINNER:-chrome+nojs-acc}
+          attempt 'curl+hl=en'      ''            ''                                   "${U}&hl=en" && WINNER=${WINNER:-curl+hl=en}
+          attempt 'curl+ucbcb'      ''            ''                                   "${U}&ucbcb=1" && WINNER=${WINNER:-curl+ucbcb}
+
+          echo ""
+          if [ -z "$WINNER" ]; then
+            echo "  RESULT: NO method resolved this short link to an exact coordinate."
+            echo "  The resolver CANNOT be proven correct, so the map fix stays unmerged."
+            echo "::warning::short-link resolution unproven — map fix remains gated"
+          else
+            echo "  RESULT: '$WINNER' produced an exact place coordinate."
+            echo "  Re-running across EVERY stored short link with that method:"
+            case "$WINNER" in
+              curl-default|curl+*) WUA='' ;;
+              curl-UA)   WUA="$UA_CURL" ;;
+              wget-UA)   WUA="$UA_WGET" ;;
+              facebookbot) WUA="$UA_FB" ;;
+              googlebot) WUA="$UA_BOT" ;;
+              *)         WUA="$UA_CHROME" ;;
+            esac
+            ANON="$(grep -oP "anonKey:\s*'\K[^']+" config.prod.js | head -1)"
+            curl -sS "https://${REF}.supabase.co/rest/v1/properties?select=slug,map_embed_url&map_embed_url=not.is.null&limit=200" \
+              -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /tmp/links.json
+            OKC=0; BADC=0
+            while IFS=$'\t' read -r slug link; do
+              [ -n "$link" ] || continue
+              F=$(curl -sS -m 25 -L -o /dev/null ${WUA:+-A "$WUA"} -w '%{url_effective}' "$link" 2>/dev/null || echo '')
+              V=$(judge "$F")
+              case "$V" in
+                COORD*) OKC=$((OKC+1)); printf '    ok  %-52s %s\n' "${slug:0:52}" "$V" ;;
+                *)      BADC=$((BADC+1)); printf '    BAD %-52s %s\n' "${slug:0:52}" "$V" ;;
+              esac
+            done < <(python3 -c "
+          import json
+          for r in json.load(open('/tmp/links.json')):
+              print(r['slug'] + chr(9) + (r.get('map_embed_url') or ''))
+          ")
+            echo ""
+            echo "  resolved to an exact coordinate: $OKC    still unresolvable: $BADC"
+          fi
 
       - name: Rendition smoke test against production
         run: |
