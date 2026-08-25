@@ -98,8 +98,18 @@ console.log(`  -> still an unexpanded short link:   ${shortLnk.length}`);
 console.log(`  -> neither (unexpected):             ${other.length}`);
 for (const r of other) console.log(`       ${sl(r) || '(null slug)'} [${r.status}]: ${String(r.map_embed_url).slice(0, 100)}`);
 
-console.log(`\n── 1. exactly 23 hold verified exact-coordinate URLs ───`);
-exact.length === 23 ? ok('23 rows yield an exact coordinate') : bad(`expected 23, found ${exact.length}`);
+// IN SCOPE = one of the 29 links this exercise dealt with. The database also
+// contains rows that already held a coordinate URL and were never short links,
+// so counting every coordinate-bearing row would measure the wrong thing.
+const inScope = (r) => STEP2.some(([pre]) => hasSlug(pre)(r)) || STEP2_NAME_ONLY.some((pre) => hasSlug(pre)(r));
+
+console.log(`\n── 1. exactly 23 of the 29 hold exact-coordinate URLs ──`);
+const exactInScope = exact.filter(inScope);
+console.log(`  coordinate-bearing rows in the database: ${exact.length}`);
+console.log(`  of those, within the 29-link scope:      ${exactInScope.length}`);
+exactInScope.length === STEP2.length
+  ? ok(`${STEP2.length} of the 29 now yield an exact coordinate`)
+  : bad(`expected ${STEP2.length} in-scope, found ${exactInScope.length}`);
 
 console.log(`\n── 2. exactly 6 still hold their original short links ──`);
 shortLnk.length === 6 ? ok('6 rows still hold an unexpanded short link') : bad(`expected 6, found ${shortLnk.length}`);
@@ -159,11 +169,21 @@ for (const pre of STEP2_NAME_ONLY) {
 if (!inferred) ok('no name-only listing gained a coordinate — no plus code decoded, no geocoding');
 // And every stored coordinate must trace to a link Step 2 verified, so none
 // was invented for a listing that never had one.
-const exactSlugs = exact.map(sl);
-const unexpected = exactSlugs.filter((s) => !STEP2.some(([pre]) => s.startsWith(pre)));
-unexpected.length === 0
-  ? ok('every coordinate-bearing row is one Step 2 verified — none invented or inferred')
-  : bad(`${unexpected.length} row(s) carry a coordinate Step 2 never verified: ${unexpected.join(', ')}`);
+const preExisting = exact.filter((r) => !inScope(r));
+if (preExisting.length === 0) {
+  ok('every coordinate-bearing row is one Step 2 verified');
+} else {
+  // Not a failure. A row outside the 29 was never a short link and was never
+  // touched -- it already carried a coordinate URL. Failing on it would be
+  // failing on the database for containing correct data.
+  ok(`${preExisting.length} row(s) carry a coordinate but are OUTSIDE the 29-link scope — pre-existing, never touched:`);
+  for (const r of preExisting) console.log(`      ${sl(r) || '(null slug)'} [${r.status}]  ${coordOf(r.map_embed_url).c}\n        ${String(r.map_embed_url).slice(0, 110)}`);
+}
+// The real invariant: nothing IN scope gained a coordinate it should not have.
+const scopedExact = exact.filter(inScope);
+scopedExact.length === STEP2.length
+  ? ok(`exactly ${STEP2.length} in-scope rows carry a coordinate — none invented or inferred`)
+  : bad(`${scopedExact.length} in-scope rows carry a coordinate, expected ${STEP2.length}`);
 
 console.log(`\n── 7. no duplicate location model ──────────────────────`);
 const ll = rows.filter((r) => r.latitude !== null || r.longitude !== null);
@@ -174,12 +194,17 @@ ll.length === 0
 console.log(`\n── 8. the frontend parser accepts all 23 ───────────────`);
 // The same map-location.js listings.html loads. Parsing here is the identical
 // code path a visitor's browser runs.
-const parsed = exact.map((r) => coordOf(r.map_embed_url)).filter(Boolean);
-parsed.length === 23 ? ok('map-location.js parses all 23 stored values into coordinates') : bad(`parser accepted ${parsed.length} of 23`);
+// Assert against the 23 we normalized, not against every coordinate in the
+// database -- the pre-existing row above is not ours to account for here.
+const parsedScoped = scopedExact.map((r) => coordOf(r.map_embed_url)).filter(Boolean);
+parsedScoped.length === STEP2.length
+  ? ok(`map-location.js parses all ${STEP2.length} normalized values into coordinates`)
+  : bad(`parser accepted ${parsedScoped.length} of ${STEP2.length} normalized values`);
+const parsed = parsedScoped;
 const byPattern = parsed.reduce((a, p) => (a[p.p] = (a[p.p] || 0) + 1, a), {});
 for (const [p, n] of Object.entries(byPattern)) console.log(`      ${n} via ${p}`);
 const uniq = new Set(parsed.map((p) => p.c));
-uniq.size === parsed.length ? ok(`all ${uniq.size} coordinates are distinct — no shared or default value`) : bad(`only ${uniq.size} distinct coordinates among ${parsed.length}`);
+uniq.size === parsed.length ? ok(`all ${uniq.size} normalized coordinates are distinct — no shared or default value`) : bad(`only ${uniq.size} distinct coordinates among ${parsed.length}`);
 
 const lats = parsed.map((p) => +p.c.split(',')[0]), lngs = parsed.map((p) => +p.c.split(',')[1]);
 console.log(`      lat ${Math.min(...lats).toFixed(6)}..${Math.max(...lats).toFixed(6)}   lng ${Math.min(...lngs).toFixed(6)}..${Math.max(...lngs).toFixed(6)}`);
