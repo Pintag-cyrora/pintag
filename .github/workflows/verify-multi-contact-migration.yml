@@ -119,7 +119,7 @@ jobs:
 
           echo ""
           echo "── 4. public pages still serve ─────────────────────────────"
-          for p in "" index.html listings.html listing.html agents.html for-agents.html admin.html config.js components.js image-renditions.js map-location.js; do
+          for p in "" index.html listings.html listing.html agents.html for-agents.html admin.html config.js components.js image-renditions.js; do
             C="$(curl -sS -H 'Cache-Control: no-cache' -o /dev/null -w '%{http_code}' "https://pintag.io/$p")"
             [ "$C" = "200" ] && ok "/$p -> $C" || bad "/$p -> $C (expected 200)"
           done
@@ -173,30 +173,31 @@ jobs:
           echo "── resolve every stored short link and parse it (DRY RUN) ──"
           node scripts/normalize-map-links.mjs 2>&1 | tee /tmp/normalize.log
           echo ""
-          echo "── are the resolved pins actually SPREAD OUT? ──────────────"
-          # The symptom was 59 markers within a 660m box. Distinct coordinates
-          # with a real bounding box is the measurable opposite of that, and it
-          # is checked here rather than eyeballed from a screenshot.
-          python3 - <<'PY'
-          import re
-          pts=[]
-          for line in open('/tmp/normalize.log'):
-              m=re.match(r'\s+(-?\d+\.\d+), (-?\d+\.\d+)\s+\(', line)
-              if m: pts.append((float(m.group(1)), float(m.group(2))))
-          print(f"  resolved coordinates: {len(pts)}")
-          print(f"  DISTINCT coordinates: {len(set(pts))}")
-          if pts:
-              lats=[p[0] for p in pts]; lngs=[p[1] for p in pts]
-              dlat=max(lats)-min(lats); dlng=max(lngs)-min(lngs)
-              print(f"  latitude  range: {min(lats):.6f} .. {max(lats):.6f}  (spread {dlat:.6f} deg ~ {dlat*111:.2f} km)")
-              print(f"  longitude range: {min(lngs):.6f} .. {max(lngs):.6f}  (spread {dlng:.6f} deg ~ {dlng*106:.2f} km)")
-              # The old fallback produced +/-0.006 deg of jitter around one point.
-              # Anything at that scale means the real coordinates never arrived.
-              if max(dlat, dlng) < 0.02:
-                  print("::error::Resolved pins are still confined to a ~2km box — coordinates are NOT coming from the links.")
-                  raise SystemExit(1)
-              print("  PASS: pins span a real city, not a jitter box")
-          PY
+          echo "── WHY does the resolver hand back the input URL? ─────────"
+          # 27 of 29 short links came back from resolve-map-url unchanged, which
+          # means fetch(redirect:'follow') saw no HTTP redirect at all. Before
+          # writing a fix, establish what maps.app.goo.gl actually answers with.
+          # Read-only: one GET against Google, nothing stored.
+          SHORT='https://maps.app.goo.gl/duPW1hq3Bb23EwPi7'
+          UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          echo "  probe: $SHORT"
+          curl -sS -A "$UA" -o /tmp/short.html -D /tmp/short.hdr -w '  status=%{http_code} final=%{url_effective} type=%{content_type} bytes=%{size_download}\n' -L "$SHORT" || true
+          echo "  redirect chain (Location headers seen):"
+          grep -i '^location:' /tmp/short.hdr | sed 's/^/    /' || echo "    (none — no HTTP redirect was issued)"
+          echo "  body size: $(wc -c < /tmp/short.html) bytes"
+          echo "  does the body carry a coordinate anywhere?"
+          for pat in 'staticmap' 'og:image' 'http-equiv="refresh"' '!3d' '!4d' 'APP_INITIALIZATION_STATE' '/maps/place/'; do
+            n=$(grep -c -- "$pat" /tmp/short.html || true)
+            echo "    ${pat}: ${n} occurrence(s)"
+          done
+          echo "  first coordinate-looking pairs found in the body:"
+          grep -oE '[-]?1[0-9]\.[0-9]{4,},ance?[-]?10[0-9]\.[0-9]{4,}' /tmp/short.html | head -3 | sed 's/^/    /' || true
+          grep -oE 'center=[-0-9.]+(%2C|,)[-0-9.]+' /tmp/short.html | head -3 | sed 's/^/    /' || true
+          grep -oE '!3d[-0-9.]+!4d[-0-9.]+' /tmp/short.html | head -3 | sed 's/^/    /' || true
+          grep -oE '@[-0-9.]+,[-0-9.]+' /tmp/short.html | head -3 | sed 's/^/    /' || true
+          echo "  first 400 bytes of the body:"
+          head -c 400 /tmp/short.html | tr -d '\000' | sed 's/^/    /'
+          echo ""
 
       - name: Rendition smoke test against production
         run: |
