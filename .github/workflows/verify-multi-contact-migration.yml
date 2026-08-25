@@ -158,6 +158,91 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+
+      # ── TEMPORARY: map-pin pipeline forensics ─────────────────────────
+      # READ ONLY. Anonymous REST reads only -- exactly what a visitor's
+      # browser does. Establishes which column actually holds the Google Maps
+      # link, and how many public listings can have coordinates extracted from
+      # it by the parser the map view uses today.
+      - name: Map pin pipeline forensics (READ ONLY)
+        if: always()
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -uo pipefail
+          ANON="$(grep -oP "anonKey:\s*'\K[^']+" config.prod.js | head -1)"
+          BASE="https://${REF}.supabase.co/rest/v1"
+          H1="apikey: ${ANON}"; H2="Authorization: Bearer ${ANON}"
+
+          echo "── does a map_url column exist at all? ─────────────────────"
+          curl -sS "${BASE}/properties?select=map_url&limit=1" -H "$H1" -H "$H2" | head -c 300; echo
+          echo ""
+          echo "── does map_embed_url exist? ───────────────────────────────"
+          curl -sS "${BASE}/properties?select=map_embed_url&limit=1" -H "$H1" -H "$H2" | head -c 300; echo
+          echo ""
+          echo "── does a latitude column exist? ───────────────────────────"
+          curl -sS "${BASE}/properties?select=latitude,longitude&limit=1" -H "$H1" -H "$H2" | head -c 300; echo
+          echo ""
+          echo "── district vs district_en ─────────────────────────────────"
+          curl -sS "${BASE}/properties?select=district&limit=1" -H "$H1" -H "$H2" | head -c 200; echo
+          curl -sS "${BASE}/properties?select=district_en&limit=1" -H "$H1" -H "$H2" | head -c 200; echo
+
+          echo ""
+          echo "── every PUBLIC listing's map link, and what today's parser does with it ──"
+          curl -sS "${BASE}/properties?status=in.(active,available)&select=slug,district_en,province_en,map_embed_url&limit=400" \
+            -H "$H1" -H "$H2" -o /tmp/maps.json
+          python3 - <<'PY'
+          import json,re,collections
+          rows=json.load(open('/tmp/maps.json'))
+          if isinstance(rows,dict):
+              print("REST ERROR:",json.dumps(rows)[:400]); raise SystemExit(0)
+          print(f"  public listings: {len(rows)}")
+
+          # The three patterns listings.html:getLatLng() tries today, in order.
+          def legacy(u):
+              if not u: return None,'no-url'
+              m=re.search(r'@([-\d.]+),([-\d.]+)',u)
+              if m: return (float(m.group(1)),float(m.group(2))),'@lat,lng'
+              m=re.search(r'[?&]q=([-\d.]+),([-\d.]+)',u)
+              if m: return (float(m.group(1)),float(m.group(2))),'?q=lat,lng'
+              m=re.search(r'!3d([-\d.]+).*?!2d([-\d.]+)',u)
+              if m: return (float(m.group(1)),float(m.group(2))),'!3d..!2d'
+              return None,'UNPARSEABLE'
+
+          have=sum(1 for r in rows if r.get('map_embed_url'))
+          print(f"  listings WITH a map_embed_url: {have}")
+          print(f"  listings WITHOUT one:          {len(rows)-have}")
+
+          kinds=collections.Counter(); hosts=collections.Counter(); pats=collections.Counter()
+          unparsed=[]
+          for r in rows:
+              u=r.get('map_embed_url') or ''
+              if u:
+                  m=re.match(r'https?://([^/]+)',u); hosts[m.group(1) if m else '?']+=1
+              c,how=legacy(u); pats[how]+=1
+              if u and c is None: unparsed.append((r['slug'],u[:110]))
+          print("\n  URL hosts stored:")
+          for h,n in hosts.most_common(): print(f"    {n:4d}  {h}")
+          print("\n  what today's map-view parser yields:")
+          for k,n in pats.most_common(): print(f"    {n:4d}  {k}")
+
+          print("\n  sample of stored links (first 12):")
+          for r in rows[:12]:
+              u=(r.get('map_embed_url') or '(none)')
+              c,how=legacy(u if r.get('map_embed_url') else None)
+              print(f"    {r['slug'][:44]:44s} {how:14s} {str(c):30s} {u[:70]}")
+
+          if unparsed:
+              print(f"\n  UNPARSEABLE links ({len(unparsed)}):")
+              for s,u in unparsed[:20]: print(f"    {s[:44]:44s} {u}")
+
+          # District key mismatch: the fallback keys DISTRICT_COORDS[p.district]
+          # but the column populated is district_en.
+          d=collections.Counter((r.get('district_en') or '(null)') for r in rows)
+          print("\n  district_en values present:")
+          for k,n in d.most_common(): print(f"    {n:4d}  {k}")
+          PY
+
       - name: Rendition smoke test against production
         run: |
           set -euo pipefail
