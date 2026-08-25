@@ -173,31 +173,42 @@ jobs:
           echo "── resolve every stored short link and parse it (DRY RUN) ──"
           node scripts/normalize-map-links.mjs 2>&1 | tee /tmp/normalize.log
           echo ""
-          echo "── WHY does the resolver hand back the input URL? ─────────"
-          # 27 of 29 short links came back from resolve-map-url unchanged, which
-          # means fetch(redirect:'follow') saw no HTTP redirect at all. Before
-          # writing a fix, establish what maps.app.goo.gl actually answers with.
-          # Read-only: one GET against Google, nothing stored.
-          SHORT='https://maps.app.goo.gl/duPW1hq3Bb23EwPi7'
-          UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          echo "  probe: $SHORT"
-          curl -sS -A "$UA" -o /tmp/short.html -D /tmp/short.hdr -w '  status=%{http_code} final=%{url_effective} type=%{content_type} bytes=%{size_download}\n' -L "$SHORT" || true
-          echo "  redirect chain (Location headers seen):"
-          grep -i '^location:' /tmp/short.hdr | sed 's/^/    /' || echo "    (none — no HTTP redirect was issued)"
-          echo "  body size: $(wc -c < /tmp/short.html) bytes"
-          echo "  does the body carry a coordinate anywhere?"
-          for pat in 'staticmap' 'og:image' 'http-equiv="refresh"' '!3d' '!4d' 'APP_INITIALIZATION_STATE' '/maps/place/'; do
-            n=$(grep -c -- "$pat" /tmp/short.html || true)
-            echo "    ${pat}: ${n} occurrence(s)"
-          done
-          echo "  first coordinate-looking pairs found in the body:"
-          grep -oE '[-]?1[0-9]\.[0-9]{4,},ance?[-]?10[0-9]\.[0-9]{4,}' /tmp/short.html | head -3 | sed 's/^/    /' || true
-          grep -oE 'center=[-0-9.]+(%2C|,)[-0-9.]+' /tmp/short.html | head -3 | sed 's/^/    /' || true
-          grep -oE '!3d[-0-9.]+!4d[-0-9.]+' /tmp/short.html | head -3 | sed 's/^/    /' || true
-          grep -oE '@[-0-9.]+,[-0-9.]+' /tmp/short.html | head -3 | sed 's/^/    /' || true
-          echo "  first 400 bytes of the body:"
-          head -c 400 /tmp/short.html | tr -d '\000' | sed 's/^/    /'
+          echo "── does the User-Agent decide whether Google redirects? ────"
+          # The Chrome UA gets 200 + a 34KB JS interstitial with no coordinate
+          # anywhere in it. Google serves that page to BROWSERS. A non-browser
+          # client may still get the plain 302 the resolver is written to
+          # follow -- and the edge function currently sends a Chrome UA, which
+          # would explain why 27 of 29 came back unchanged while 2 resolved.
+          # Read-only: HEAD/GET against Google, nothing stored.
+          probe() {
+            printf '  %-22s ' "$1"
+            curl -sS -o /dev/null -D /tmp/h.txt \
+              ${2:+-A "$2"} -w 'status=%{http_code} ' "$3" || true
+            L=$(grep -i '^location:' /tmp/h.txt | head -1 | tr -d '\r' | cut -c11-)
+            echo "location=${L:-<none>}"
+          }
+          U='https://maps.app.goo.gl/duPW1hq3Bb23EwPi7?g_st=ic'
+          echo "  target: $U"
+          probe 'chrome-UA'  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' "$U"
+          probe 'curl-default' '' "$U"
+          probe 'empty-UA'   ' ' "$U"
+          probe 'googlebot'  'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' "$U"
+          probe 'facebookbot' 'facebookexternalhit/1.1' "$U"
+          probe 'wget'       'Wget/1.21.3' "$U"
           echo ""
+          echo "  the ONE link that did resolve, for comparison:"
+          V='https://maps.app.goo.gl/1nUNWTrSAhEfzVZRA'
+          probe 'chrome-UA'  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' "$V"
+          probe 'curl-default' '' "$V"
+          echo ""
+          echo "  whichever UA yields a Location, follow it fully:"
+          for UA in '' 'Wget/1.21.3' 'facebookexternalhit/1.1'; do
+            FINAL=$(curl -sS -o /dev/null -L ${UA:+-A "$UA"} -w '%{url_effective}' "$U" || true)
+            case "$FINAL" in
+              *google.com/maps*) echo "    UA='${UA:-curl-default}' -> $FINAL" ;;
+              *) echo "    UA='${UA:-curl-default}' -> (no maps URL: ${FINAL:0:90})" ;;
+            esac
+          done
 
       - name: Rendition smoke test against production
         run: |
