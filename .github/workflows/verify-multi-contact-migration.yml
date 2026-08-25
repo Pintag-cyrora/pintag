@@ -180,6 +180,7 @@ jobs:
         # ever did. `set -u` then killed the step at the moment of success.
         env:
           REF: ${{ steps.ref.outputs.ref }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -uo pipefail
           echo "── parser unit tests ───────────────────────────────────────"
@@ -188,126 +189,39 @@ jobs:
           echo "── resolve every stored short link and parse it (DRY RUN) ──"
           node scripts/normalize-map-links.mjs 2>&1 | tee /tmp/normalize.log
           echo ""
-          echo "── STEP 2: ACCEPTANCE TEST vs the DEPLOYED edge function ───"
-          # Every request below goes to the PRODUCTION resolve-map-url function.
-          # Nothing is written: this step issues POSTs to the function and GETs
-          # to Google only. map_embed_url is never touched.
-          cat > /tmp/judge.mjs <<'JS'
-          import { createRequire } from 'node:module';
-          import path from 'node:path';
-          const M = createRequire(path.join(process.cwd(), 'noop.js'))('./map-location.js');
-          const r = M.parseMapUrl(process.argv[2] || '');
-          console.log(r.ok ? `COORD ${r.lat},${r.lng} ${r.pattern}` : `NONE ${r.reason}`);
-          JS
-          judge() { node /tmp/judge.mjs "$1" 2>/dev/null || echo "NONE judge-crashed"; }
-
-          ANON="$(grep -oP "anonKey:\s*'\K[^']+" config.prod.js | head -1 || true)"
-          FN="https://${REF}.supabase.co/functions/v1/resolve-map-url"
-          UA='PintagMapLinkResolver/1.0 (+https://pintag.io)'
-
-          # Calls the DEPLOYED function. Prints "<http_status>|<resolved_url_or_error>".
-          call_fn() {
-            curl -sS -m 30 -X POST "$FN" \
-              -H "Content-Type: application/json" \
-              -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" \
-              -w '\n%{http_code}' -d "{\"url\":\"$1\"}" 2>/dev/null || echo -e '\n000'
-          }
-
-          echo ""
-          echo "  ── 2a. the resolved === input guard ─────────────────────"
-          # With the new UA every real stored link redirects, so the guard needs
-          # a link that CANNOT redirect. A well-formed but non-existent short
-          # link is the honest probe: allowlisted host, nothing to redirect to.
-          DEAD='https://maps.app.goo.gl/zzzzzzzzzzzzzzzz'
-          RESP=$(call_fn "$DEAD"); CODE=$(printf '%s' "$RESP" | tail -1); BODY=$(printf '%s' "$RESP" | sed '$d')
-          echo "    probe: $DEAD"
-          echo "    HTTP $CODE  body: $(printf '%s' "$BODY" | head -c 160)"
-          if [ "$CODE" = "200" ] && printf '%s' "$BODY" | grep -q "$DEAD"; then
-            echo "    ✗ FAIL: function returned 200 with the INPUT url — false success"
-            GUARD=FAIL
-          elif [ "$CODE" = "502" ] || [ "$CODE" = "403" ] || [ "$CODE" = "400" ]; then
-            echo "    ✓ explicit failure, not a false 200"
-            GUARD=PASS
-          else
-            echo "    ? unexpected: HTTP $CODE"
-            GUARD=UNEXPECTED
+          echo "── STEP 3: normalize map links (WRITES map_embed_url) ─────"
+          # The ONLY writing step in this workflow. It PATCHes exactly one
+          # column on rows whose link independently resolves to a coordinate.
+          # Everything around it is an independent audit: the backfill's own
+          # tally is not accepted as evidence.
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::error::SUPABASE_SERVICE_ROLE_KEY missing — refusing to run --apply"
+            exit 1
           fi
 
           echo ""
-          echo "  ── 2b. all 29 stored links through the DEPLOYED function ──"
-          curl -sS "https://${REF}.supabase.co/rest/v1/properties?select=slug,map_embed_url&map_embed_url=not.is.null&limit=400" \
-            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /tmp/links.json
-          : > /tmp/fn_exact.txt; : > /tmp/fn_name.txt; : > /tmp/fn_err.txt; : > /tmp/fn_mismatch.txt
-          T=0
-          while IFS=$'\t' read -r slug link; do
-            [ -n "$link" ] || continue
-            T=$((T+1))
-            RESP=$(call_fn "$link"); CODE=$(printf '%s' "$RESP" | tail -1); BODY=$(printf '%s' "$RESP" | sed '$d')
-            RURL=$(printf '%s' "$BODY" | python3 -c "
-          import sys,json
-          try: print(json.load(sys.stdin).get('resolved_url') or '')
-          except Exception: print('')
-          " 2>/dev/null)
-            if [ "$CODE" != "200" ] || [ -z "$RURL" ]; then
-              printf '%s\tHTTP %s\t%s\n' "$slug" "$CODE" "$(printf '%s' "$BODY" | head -c 100)" >> /tmp/fn_err.txt
-              continue
-            fi
-            # The function must never hand back the input as a resolution.
-            if [ "$RURL" = "$link" ]; then
-              printf '%s\tRETURNED-INPUT\t%s\n' "$slug" "$RURL" >> /tmp/fn_err.txt
-              continue
-            fi
-            V=$(judge "$RURL")
-            if [ "${V%% *}" = "COORD" ]; then
-              # Independent cross-check: resolve the SAME link directly and
-              # require the same coordinate. Proves the function is not doing
-              # something subtly different from the reference resolution.
-              DIRECT=$(curl -sS -m 25 -L -A "$UA" -o /dev/null -w '%{url_effective}' "$link" 2>/dev/null || echo '')
-              DV=$(judge "$DIRECT")
-              if [ "${V#COORD }" != "${DV#COORD }" ]; then
-                printf '%s\tfn=%s\tdirect=%s\n' "$slug" "${V#COORD }" "${DV#COORD }" >> /tmp/fn_mismatch.txt
-              fi
-              printf '%s\t%s\n' "$slug" "${V#COORD }" >> /tmp/fn_exact.txt
-            else
-              printf '%s\t%s\t%s\n' "$slug" "${V#NONE }" "$(printf '%s' "$RURL" | head -c 110)" >> /tmp/fn_name.txt
-            fi
-          done < <(python3 -c "
-          import json
-          for r in json.load(open('/tmp/links.json')):
-              print(r['slug'] + chr(9) + (r.get('map_embed_url') or ''))
-          ")
-
-          E=$(wc -l < /tmp/fn_exact.txt); N=$(wc -l < /tmp/fn_name.txt)
-          ER=$(wc -l < /tmp/fn_err.txt); MM=$(wc -l < /tmp/fn_mismatch.txt)
+          echo "  ── BEFORE snapshot + independent resolution ─────────────"
+          # Must happen BEFORE the write: expanding a link in place destroys
+          # the short URL, so this is the last moment the stored value can be
+          # checked against a from-scratch resolution of the original.
+          node verify-normalization.mjs before || { echo "::error::before-snapshot failed"; exit 1; }
 
           echo ""
-          echo "    EXACT via deployed function ($E):"
-          awk -F'\t' '{printf "      %-54s %s\n", substr($1,1,54), $2}' /tmp/fn_exact.txt
-          echo ""
-          echo "    NAME-ONLY, parser refused ($N)  <- must NOT become coordinates:"
-          awk -F'\t' '{printf "      %-54s %s\n", substr($1,1,54), $2}' /tmp/fn_name.txt
-          echo ""
-          echo "    ERRORS / returned-input ($ER):"
-          awk -F'\t' '{printf "      %-54s %s  %s\n", substr($1,1,54), $2, $3}' /tmp/fn_err.txt
-          echo ""
-          echo "    coordinate MISMATCHES vs direct resolution ($MM):"
-          awk -F'\t' '{printf "      %-40s %s  %s\n", substr($1,1,40), $2, $3}' /tmp/fn_mismatch.txt
+          echo "  ── APPLY ────────────────────────────────────────────────"
+          node scripts/normalize-map-links.mjs --apply
+          APPLY_RC=$?
+          echo "  normalize exit code: $APPLY_RC"
 
           echo ""
-          echo "  ── 2c. verdict ─────────────────────────────────────────"
-          echo "    total=$T  exact=$E  name-only=$N  errors=$ER  mismatches=$MM  guard=$GUARD"
-          OK=1
-          [ "$T"  -eq 29 ] || { echo "    ✗ expected 29 links, saw $T"; OK=0; }
-          [ "$E"  -eq 23 ] || { echo "    ✗ expected 23 exact, got $E"; OK=0; }
-          [ "$N"  -eq 6  ] || { echo "    ✗ expected 6 name-only, got $N"; OK=0; }
-          [ "$ER" -eq 0  ] || { echo "    ✗ expected 0 errors, got $ER"; OK=0; }
-          [ "$MM" -eq 0  ] || { echo "    ✗ deployed function disagrees with direct resolution"; OK=0; }
-          [ "$GUARD" = "PASS" ] || { echo "    ✗ resolved===input guard did not produce an explicit failure"; OK=0; }
-          if [ "$OK" = "1" ]; then
-            echo "    STEP 2 ACCEPTANCE: PASS"
-          else
-            echo "::error::STEP 2 ACCEPTANCE FAILED — do not proceed to normalization"
+          echo "  ── AFTER audit (independent of the script's own tally) ──"
+          node verify-normalization.mjs after
+          AUDIT_RC=$?
+
+          if [ "$AUDIT_RC" != "0" ] || [ "$APPLY_RC" != "0" ]; then
+            echo "::error::STEP 3 FAILED — do not merge or deploy the map fix"
+            exit 1
           fi
+          echo "  STEP 3: PASS"
 
       - name: Rendition smoke test against production
         run: |
