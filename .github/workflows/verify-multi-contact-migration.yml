@@ -186,42 +186,15 @@ jobs:
           echo "── parser unit tests ───────────────────────────────────────"
           node --test tests/map-location/map-location.test.js 2>&1 | tail -12
           echo ""
-          echo "── resolve every stored short link and parse it (DRY RUN) ──"
-          node scripts/normalize-map-links.mjs 2>&1 | tee /tmp/normalize.log
-          echo ""
-          echo "── STEP 3: normalize map links (WRITES map_embed_url) ─────"
-          # The ONLY writing step in this workflow. It PATCHes exactly one
-          # column on rows whose link independently resolves to a coordinate.
-          # Everything around it is an independent audit: the backfill's own
-          # tally is not accepted as evidence.
-          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
-            echo "::error::SUPABASE_SERVICE_ROLE_KEY missing — refusing to run --apply"
+          echo "── STEP 4: READ-ONLY post-write verification ──────────────"
+          # The --apply from step 3 is GONE from this workflow on purpose. This
+          # step issues GETs only; re-running it can never write again.
+          node verify-step4.mjs
+          S4=$?
+          if [ "$S4" != "0" ]; then
+            echo "::error::STEP 4 FAILED — do not merge or deploy the map fix"
             exit 1
           fi
-
-          echo ""
-          echo "  ── BEFORE snapshot + independent resolution ─────────────"
-          # Must happen BEFORE the write: expanding a link in place destroys
-          # the short URL, so this is the last moment the stored value can be
-          # checked against a from-scratch resolution of the original.
-          node verify-normalization.mjs before || { echo "::error::before-snapshot failed"; exit 1; }
-
-          echo ""
-          echo "  ── APPLY ────────────────────────────────────────────────"
-          node scripts/normalize-map-links.mjs --apply
-          APPLY_RC=$?
-          echo "  normalize exit code: $APPLY_RC"
-
-          echo ""
-          echo "  ── AFTER audit (independent of the script's own tally) ──"
-          node verify-normalization.mjs after
-          AUDIT_RC=$?
-
-          if [ "$AUDIT_RC" != "0" ] || [ "$APPLY_RC" != "0" ]; then
-            echo "::error::STEP 3 FAILED — do not merge or deploy the map fix"
-            exit 1
-          fi
-          echo "  STEP 3: PASS"
 
       - name: Rendition smoke test against production
         run: |
