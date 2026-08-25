@@ -165,6 +165,16 @@ jobs:
       # coordinate it would store without writing anything.
       - name: Map pin pipeline — unit tests + real-link resolution (READ ONLY)
         if: always()
+        # `bash {0}` instead of GitHub's default `bash -e {0}`. This step's JOB
+        # is to report commands that come back non-zero -- a curl that finds no
+        # Location header, a grep that finds no match, a parse that yields no
+        # coordinate. Under errexit the FIRST such result kills the step, so the
+        # measurement destroys itself: run 32819146948 died on
+        # `grep -i '^location:'` returning 1, which was not an error at all but
+        # the very finding being measured (Google sent no Location for a Chrome
+        # UA). Every verdict below is an explicit test, so errexit buys nothing
+        # here and costs the whole step.
+        shell: bash {0}
         run: |
           set -uo pipefail
           echo "── parser unit tests ───────────────────────────────────────"
@@ -187,13 +197,19 @@ jobs:
           # a matrix rather than betting on one.
           cat > /tmp/judge.mjs <<'JS'
           import { createRequire } from 'node:module';
-          const M = createRequire(import.meta.url)('./map-location.js');
+          import path from 'node:path';
+          // Resolve against the WORKSPACE, not against /tmp where this file
+          // lives -- createRequire(import.meta.url) would look for
+          // /tmp/map-location.js and every verdict would come back
+          // judge-crashed, which reads exactly like "Google failed".
+          const M = createRequire(path.join(process.cwd(), 'noop.js'))('./map-location.js');
           const url = process.argv[2] || '';
           const r = M.parseMapUrl(url);
           if (r.ok) console.log(`COORD ${r.lat},${r.lng} via ${r.pattern}`);
           else console.log(`NONE  ${r.reason}`);
           JS
-          judge() { node /tmp/judge.mjs "$1"; }
+          # Never let the judge's own failure masquerade as a verdict.
+          judge() { node /tmp/judge.mjs "$1" 2>/dev/null || echo "NONE  judge-crashed"; }
 
           UA_CHROME='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           UA_BOT='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
@@ -244,7 +260,7 @@ jobs:
               googlebot) WUA="$UA_BOT" ;;
               *)         WUA="$UA_CHROME" ;;
             esac
-            ANON="$(grep -oP "anonKey:\s*'\K[^']+" config.prod.js | head -1)"
+            ANON="$(grep -oP "anonKey:\s*'\K[^']+" config.prod.js | head -1 || true)"
             curl -sS "https://${REF}.supabase.co/rest/v1/properties?select=slug,map_embed_url&map_embed_url=not.is.null&limit=200" \
               -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" -o /tmp/links.json
             OKC=0; BADC=0
