@@ -70,8 +70,12 @@ jobs:
           # rather than silently believed.
           get() { curl -sS -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$@"; }
 
-          SHA8="$(echo "${GITHUB_SHA}" | cut -c1-8)"
-          echo "expecting asset stamp: ?v=${SHA8}  (deployed commit ${GITHUB_SHA})"
+          # The stamp comes from the commit deploy-prod built, which is main's
+          # head -- NOT ${GITHUB_SHA}, which is this verification branch. Using
+          # the wrong one asserts a stamp that was never supposed to be there.
+          MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          SHA8="$(echo "$MAIN_SHA" | cut -c1-8)"
+          echo "expecting asset stamp: ?v=${SHA8}  (main head ${MAIN_SHA})"
           echo ""
 
           echo "── 1. config.js is the GENERATED production config ─────────"
@@ -91,14 +95,18 @@ jobs:
           echo "── 2. __ASSET_VERSION__ is substituted in served HTML ──────"
           for p in index.html listings.html listing.html admin.html about.html; do
             H="$(get "https://pintag.io/$p")"
-            if echo "$H" | grep -q "__ASSET_VERSION__"; then
-              bad "$p still contains the literal __ASSET_VERSION__ placeholder"
+            # Every grep here ends in `|| true`: pipefail is on, and "no match"
+            # is a RESULT to report, not a reason to abort the whole step.
+            PLACE="$(printf '%s' "$H" | grep -c '__ASSET_VERSION__' || true)"
+            N="$(printf '%s' "$H" | grep -o "?v=${SHA8}" | wc -l || true)"
+            SEEN="$(printf '%s' "$H" | grep -oE '\?v=[A-Za-z0-9_]+' | sort -u | tr '\n' ' ' || true)"
+            if [ "${PLACE:-0}" -gt 0 ]; then
+              bad "$p: ${PLACE} unsubstituted __ASSET_VERSION__ placeholder(s) still present"
+            elif [ "${N:-0}" -gt 0 ]; then
+              ok "$p: 0 placeholders, ${N} asset URLs stamped ?v=${SHA8}"
             else
-              N="$(echo "$H" | grep -o "?v=${SHA8}" | wc -l)"
-              if [ "$N" -gt 0 ]; then ok "$p: 0 placeholders, ${N} asset URLs stamped ?v=${SHA8}"
-              else bad "$p: placeholder gone but NO ?v=${SHA8} found (stamped with a different sha?)"
-                   echo "$H" | grep -oE '\?v=[A-Za-z0-9_]+' | sort -u | head -5 | sed 's/^/      saw: /'
-              fi
+              bad "$p: placeholder gone but NO ?v=${SHA8} -- stamped from a different commit"
+              echo "      stamps seen: ${SEEN:-(none)}"
             fi
           done
 
