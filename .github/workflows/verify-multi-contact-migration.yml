@@ -49,6 +49,96 @@ jobs:
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "::notice title=Target::PRODUCTION project ref: $REF (read-only)"
 
+      # ── TEMPORARY: production artifact verification ────────────────────
+      # Proves pintag.io is now served from the GitHub Actions artifact
+      # (generated config.js + stamped asset URLs + pruned pages) rather than
+      # from main's raw branch tree. READ ONLY: GETs against the live site and
+      # one GET against the Pages settings API. Writes nothing anywhere.
+      - name: Production artifact verification (READ ONLY)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          FAIL=0
+          bad() { echo "  ✗ $*"; FAIL=$((FAIL+1)); }
+          ok()  { echo "  ✓ $*"; }
+
+          # Cloudflare fronts /, /index.html*, /listing.html*, /listings.html*.
+          # Every request below is sent with Cache-Control: no-cache so a cached
+          # copy of the PREVIOUS branch-served deploy cannot masquerade as the
+          # new artifact. cf-cache-status is printed so a cache HIT is visible
+          # rather than silently believed.
+          get() { curl -sS -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$@"; }
+
+          SHA8="$(echo "${GITHUB_SHA}" | cut -c1-8)"
+          echo "expecting asset stamp: ?v=${SHA8}  (deployed commit ${GITHUB_SHA})"
+          echo ""
+
+          echo "── 1. config.js is the GENERATED production config ─────────"
+          CFG="$(get https://pintag.io/config.js)"
+          echo "$CFG" | grep -q "detectEnvironment" \
+            && bad "config.js still contains detectEnvironment() -- this is the RAW repo file" \
+            || ok "no detectEnvironment() -- not the raw repo config.js"
+          echo "$CFG" | grep -qE "env: *'production'"      && ok "env: 'production' (literal)"     || bad "env: 'production' missing"
+          echo "$CFG" | grep -qE "isProduction: *true"     && ok "isProduction: true"              || bad "isProduction: true missing"
+          echo "$CFG" | grep -qE "renditionsEnabled: *true" && ok "renditionsEnabled: true"        || bad "renditionsEnabled: true missing"
+          echo "$CFG" | grep -qE "tag: *'PROD'"            && ok "tag: 'PROD'"                     || bad "tag: 'PROD' missing"
+          echo ""
+          echo "  served config.js, PINTAG fields only:"
+          echo "$CFG" | grep -vE '^\s*//' | grep -E "env:|isProduction:|tag:|label:|renditionsEnabled:|supabaseUrl:" | sed 's/^/    /'
+
+          echo ""
+          echo "── 2. __ASSET_VERSION__ is substituted in served HTML ──────"
+          for p in index.html listings.html listing.html admin.html about.html; do
+            H="$(get "https://pintag.io/$p")"
+            if echo "$H" | grep -q "__ASSET_VERSION__"; then
+              bad "$p still contains the literal __ASSET_VERSION__ placeholder"
+            else
+              N="$(echo "$H" | grep -o "?v=${SHA8}" | wc -l)"
+              if [ "$N" -gt 0 ]; then ok "$p: 0 placeholders, ${N} asset URLs stamped ?v=${SHA8}"
+              else bad "$p: placeholder gone but NO ?v=${SHA8} found (stamped with a different sha?)"
+                   echo "$H" | grep -oE '\?v=[A-Za-z0-9_]+' | sort -u | head -5 | sed 's/^/      saw: /'
+              fi
+            fi
+          done
+
+          echo ""
+          echo "── 3. pruned pages are gone from the published artifact ────"
+          for p in agent-login.html dashboard.html edit-listing.html add-property.html marketing-os.html; do
+            C="$(curl -sS -H 'Cache-Control: no-cache' -o /dev/null -w '%{http_code}' "https://pintag.io/$p")"
+            [ "$C" = "404" ] && ok "$p -> $C" || bad "$p -> $C (expected 404)"
+          done
+
+          echo ""
+          echo "── 4. public pages still serve ─────────────────────────────"
+          for p in "" index.html listings.html listing.html about.html contact.html admin.html config.js components.js image-renditions.js; do
+            C="$(curl -sS -H 'Cache-Control: no-cache' -o /dev/null -w '%{http_code}' "https://pintag.io/$p")"
+            [ "$C" = "200" ] && ok "/$p -> $C" || bad "/$p -> $C (expected 200)"
+          done
+
+          echo ""
+          echo "── 5. Pages configuration (read-only) ──────────────────────"
+          gh api "repos/${GITHUB_REPOSITORY}/pages" \
+            --jq '"  build_type=\(.build_type)  status=\(.status)  https_enforced=\(.https_enforced)  cname=\(.cname // "-")  source=\(.source // "-" | tostring)"' \
+            || echo "  (pages API unreadable with this token)"
+          echo "  latest build:"
+          gh api "repos/${GITHUB_REPOSITORY}/pages/builds/latest" \
+            --jq '"    status=\(.status)  commit=\(.commit[0:8])  pusher=\(.pusher.login // "-")  updated=\(.updated_at)"' \
+            || echo "    (unreadable)"
+
+          echo ""
+          echo "── 6. edge cache visibility ────────────────────────────────"
+          curl -sS -D - -o /dev/null -H 'Cache-Control: no-cache' https://pintag.io/config.js \
+            | grep -iE '^(cf-cache-status|age|server|cache-control|last-modified):' | sed 's/^/  /'
+
+          echo ""
+          if [ "$FAIL" -eq 0 ]; then
+            echo "PRODUCTION ARTIFACT VERIFICATION: PASS"
+          else
+            echo "::error::PRODUCTION ARTIFACT VERIFICATION FAILED ($FAIL check(s))"
+            exit 1
+          fi
+
       # TEMPORARY: production smoke test of the rendition delivery flag.
       # Read-only: it loads the live site in a real browser and issues GETs.
       # It never writes to Storage or the database.
