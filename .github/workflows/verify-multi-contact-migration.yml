@@ -175,6 +175,11 @@ jobs:
         # UA). Every verdict below is an explicit test, so errexit buys nothing
         # here and costs the whole step.
         shell: bash {0}
+        # REF is used by the full-sweep branch, which had never executed before
+        # -- it only runs once a method actually WINS, and until run 40 none
+        # ever did. `set -u` then killed the step at the moment of success.
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
         run: |
           set -uo pipefail
           echo "── parser unit tests ───────────────────────────────────────"
