@@ -208,10 +208,21 @@ const slugs = markers.map((m) => m.slug || '');
 let leaked = 0;
 for (const pre of NAME_ONLY) if (slugs.some((s) => s.startsWith(pre))) { bad(`name-only listing ${pre}… IS on the map`); leaked++; }
 if (!leaked) ok(`all ${NAME_ONLY.length} name-only listings remain unmapped`);
-console.log(`  public listings loaded: ${total}`);
-console.log(`  unmapped: ${total - markers.length}  (6 name-only + ${total - markers.length - 6} with no usable coordinate)`);
-const notice = await page.locator('#map-unmapped').textContent().catch(() => '');
-console.log(`  on-map notice: ${(notice || '(none)').trim().slice(0, 120)}`);
+console.log(`  listing cards on the first page: ${total}`);
+// The map's own notice is the authority on how many listings it considered:
+// the card grid is paginated, so its length is a page size, not a total.
+const notice = ((await page.locator('#map-unmapped').textContent().catch(() => '')) || '').trim();
+console.log(`  on-map notice: ${notice || '(none)'}`);
+const m = notice.match(/(\d+)\s+of\s+(\d+)/);
+if (m) {
+  const [unmappedN, consideredN] = [Number(m[1]), Number(m[2])];
+  console.log(`  considered: ${consideredN}   mapped: ${markers.length}   unmapped: ${unmappedN}`);
+  unmappedN + markers.length === consideredN
+    ? ok(`every listing is accounted for — ${markers.length} mapped + ${unmappedN} unmapped = ${consideredN}`)
+    : bad(`${consideredN} considered but ${markers.length} mapped + ${unmappedN} unmapped — ${consideredN - markers.length - unmappedN} listing(s) silently dropped`);
+} else {
+  bad('the map reported no unmapped-listing notice — cannot confirm listings are accounted for');
+}
 
 // ── 6. clustering does not move anything ───────────────────────────────────
 console.log('\n── 6. clustering ───────────────────────────────────────');
@@ -271,8 +282,27 @@ mapWarnings.slice(0, 3).forEach((w) => console.log(`      ${w.slice(0, 110)}`));
 const assetFailures = failedRequests.filter((f) => !/favicon|tile\.openstreetmap/i.test(f));
 console.log(`  failed asset requests: ${assetFailures.length}`);
 assetFailures.slice(0, 8).forEach((f) => console.log(`      ${f}`));
-const realErrors = errors.filter((e) => !/favicon|net::ERR_|tile\.openstreetmap/i.test(e));
-realErrors.length === 0 ? ok('no console errors') : bad(`${realErrors.length} console error(s):\n      ${realErrors.slice(0, 5).join('\n      ')}`);
+const PRE_EXISTING_ERRORS = [
+  // Cloudflare injects its Web Analytics beacon at the edge; the CSP declines
+  // it. Nothing in this repository references cloudflareinsights, and the map
+  // merge changed no CSP directive -- this is the policy working, on every
+  // Cloudflare-fronted page, and it predates this work.
+  { name: 'Cloudflare Web Analytics beacon refused by CSP', re: /cloudflareinsights\.com/i },
+  // agent-setup.html stores avatar URLs absolutely, as https://www.pintag.io/...
+  // The document is served from the apex, so 'self' does not cover the www
+  // host and img-src declines it. A pre-existing broken agent avatar, in files
+  // the map merge never touched -- reported here, not fixed here.
+  { name: 'agent avatar on the www host refused by img-src (pre-existing)', re: /pintag\.io\/agent-[^']*\.(jpe?g|png|webp)/i },
+];
+const preExisting = [], realErrors = [];
+for (const e of errors) {
+  if (/favicon|net::ERR_|tile\.openstreetmap/i.test(e)) continue;
+  const known = PRE_EXISTING_ERRORS.find((k) => k.re.test(e));
+  (known ? preExisting : realErrors).push(known ? `${known.name}: ${e.slice(0, 140)}` : e);
+}
+console.log(`  known pre-existing errors (not caused by the map): ${preExisting.length}`);
+preExisting.forEach((e) => console.log(`      ${e}`));
+realErrors.length === 0 ? ok('no console errors attributable to the map') : bad(`${realErrors.length} console error(s):\n      ${realErrors.slice(0, 5).join('\n      ')}`);
 
 await browser.close();
 console.log(`\n${fail === 0 ? 'MAP SMOKE TEST PASSED' : `MAP SMOKE TEST FAILED (${fail} check(s))`}`);
