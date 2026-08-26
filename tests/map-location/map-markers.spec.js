@@ -103,7 +103,14 @@ async function openMap(page) {
   // allProperties is declared with `let`, which does not create a window
   // property — wait on rendered cards, which is what "data arrived" means to a
   // visitor anyway.
-  await page.waitForSelector('#listings-container .pt-card, #listings-container [data-slug]', { timeout: 15000 });
+  //
+  // It must be a REAL card, not one of the six aria-hidden skeleton .pt-card
+  // placeholders the page ships to stop the grid jumping. Matching a skeleton
+  // means clicking through to the map before any listing has loaded, which
+  // renders zero markers and looks identical to a broken map. The stubbed
+  // response here resolves fast enough to usually win that race — which is
+  // exactly why the assertion must not depend on winning it.
+  await page.waitForSelector('#listings-container a.pt-card[href*="listing.html"]', { timeout: 15000 });
   await page.click('#btn-map');
   await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 15000 });
   return warnings;

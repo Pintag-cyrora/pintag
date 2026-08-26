@@ -55,6 +55,8 @@ const NAME_ONLY = [
 ];
 
 const OLD_CENTER = [17.960, 102.630];   // the coordinate every marker used to sit on
+// Only a real, data-backed card — never one of the page's loading skeletons.
+const REAL_CARD = '#listings-container a.pt-card[href*="listing.html"]';
 
 let fail = 0;
 const bad = (m) => { console.log(`  ✗ ${m}`); fail++; };
@@ -110,7 +112,22 @@ const lhCode = lhBody.replace(/^\s*\/\/.*$/gm, '');
 // ── 2. open the real map ────────────────────────────────────────────────────
 console.log('\n── 2. live map ─────────────────────────────────────────');
 await page.goto(bust(`${SITE}/listings.html`), { waitUntil: 'domcontentloaded' });
-await page.waitForSelector('#listings-container .pt-card, #listings-container [data-slug]', { timeout: 40000 });
+// listings.html ships SIX static skeleton .pt-card placeholders so the grid
+// does not jump when data arrives. Waiting on `.pt-card` therefore matches
+// instantly, before a single listing has loaded — run 32977370252 clicked
+// through to the map with allProperties still empty and read 0 markers, 0
+// unmapped, which looks exactly like a broken map. A real card is an <a> with
+// a listing href; a skeleton is an aria-hidden <div> with neither.
+await page.waitForSelector(REAL_CARD, { timeout: 60000 });
+// The first card can render before the rest of the page's listings do, so
+// settle on a stable count rather than the first arrival.
+let prevCount = -1;
+for (let i = 0; i < 20; i++) {
+  const n = await page.locator(REAL_CARD).count();
+  if (n === prevCount && n > 0) break;
+  prevCount = n;
+  await page.waitForTimeout(500);
+}
 await page.click('#btn-map');
 try {
   await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 40000 });
@@ -123,7 +140,9 @@ try {
     parser:       typeof (window.PintagMapLocation && window.PintagMapLocation.parseMapUrl),
     mapCreated:   !!window._map,
     markers:      window._markers ? window._markers.length : 'undefined',
-    cards:        document.querySelectorAll('#listings-container .pt-card, #listings-container [data-slug]').length,
+    realCards:    document.querySelectorAll('#listings-container a.pt-card[href*="listing.html"]').length,
+    skeletons:    document.querySelectorAll('#listings-container .pt-card[aria-hidden]').length,
+    loaded:       typeof window.allProperties === 'undefined' ? '(not a window property)' : window.allProperties.length,
     mapWrap:      (document.getElementById('map-wrap') || {}).style?.display,
     notice:       (document.getElementById('map-unmapped') || {}).textContent?.trim().slice(0, 200),
   }));
@@ -148,7 +167,7 @@ const markers = await read();
 // allProperties is declared with `let`, which creates no window property, so it
 // cannot be read from here. The rendered card count is the same number and is
 // what a visitor actually sees.
-const total = await page.locator('#listings-container .pt-card, #listings-container [data-slug]').count();
+const total = await page.locator(REAL_CARD).count();
 console.log(`  markers rendered: ${markers.length}`);
 
 const want = { ...EXPECTED, ...PRE_EXISTING };
