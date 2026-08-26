@@ -71,6 +71,12 @@ page.on('console', (m) => {
   if (m.type() === 'warning') warnings.push(m.text());
 });
 page.on('pageerror', (e) => errors.push('PAGEERROR: ' + e.message));
+// A CDN script that never arrives produces no console error and no exception
+// at the point of failure -- only a later "is not a function". Recording the
+// failed request names the real cause instead of its symptom.
+const failedRequests = [];
+page.on('requestfailed', (r) => failedRequests.push(`${r.url().slice(0, 120)} — ${r.failure()?.errorText}`));
+page.on('response', (r) => { if (r.status() >= 400) failedRequests.push(`${r.url().slice(0, 120)} — HTTP ${r.status()}`); });
 
 // ── 1. is the browser actually being served the NEW map-location.js? ────────
 console.log('── 1. deployed artifact ────────────────────────────────');
@@ -91,16 +97,49 @@ const lhBody = await (await page.request.get(bust(`${SITE}/listings.html`))).tex
 const stamp = (lhBody.match(/\?v=([A-Za-z0-9]+)/) || [])[1];
 console.log(`  listings.html asset stamp: ${stamp}`);
 lhBody.includes('map-location.js') ? ok('listings.html loads map-location.js') : bad('listings.html does NOT reference map-location.js — stale artifact');
-// The old broken source must be gone from what visitors receive.
-!/DISTRICT_COORDS/.test(lhBody) ? ok('DISTRICT_COORDS is gone from the served page') : bad('served listings.html STILL contains DISTRICT_COORDS — old artifact');
-!/p\.map_url/.test(lhBody)      ? ok('p.map_url is gone from the served page')      : bad('served listings.html STILL reads p.map_url — old artifact');
+// The old broken source must be gone from what visitors receive. Comments are
+// stripped first: listings.html explains the old defect in prose, and matching
+// that prose would report a stale artifact where none exists.
+const lhCode = lhBody.replace(/^\s*\/\/.*$/gm, '');
+!/DISTRICT_COORDS/.test(lhCode) ? ok('DISTRICT_COORDS is gone from the served page') : bad('served listings.html STILL contains DISTRICT_COORDS — old artifact');
+!/p\.map_url/.test(lhCode)      ? ok('p.map_url is gone from the served page')      : bad('served listings.html STILL reads p.map_url — old artifact');
+/parseMapUrl\(\s*p\.map_embed_url\s*\)/.test(lhCode)
+  ? ok('served page reads the coordinate through parseMapUrl(p.map_embed_url)')
+  : bad('served page does NOT call parseMapUrl(p.map_embed_url) — old artifact');
 
 // ── 2. open the real map ────────────────────────────────────────────────────
 console.log('\n── 2. live map ─────────────────────────────────────────');
 await page.goto(bust(`${SITE}/listings.html`), { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#listings-container .pt-card, #listings-container [data-slug]', { timeout: 40000 });
 await page.click('#btn-map');
-await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 40000 });
+try {
+  await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 40000 });
+} catch {
+  // "Timeout exceeded" names the symptom, not the cause. Every plausible cause
+  // is observable from here, so report all of them rather than guessing.
+  const d = await page.evaluate(() => ({
+    leaflet:      typeof window.L,
+    markerCluster: typeof (window.L && window.L.markerClusterGroup),
+    parser:       typeof (window.PintagMapLocation && window.PintagMapLocation.parseMapUrl),
+    mapCreated:   !!window._map,
+    markers:      window._markers ? window._markers.length : 'undefined',
+    cards:        document.querySelectorAll('#listings-container .pt-card, #listings-container [data-slug]').length,
+    mapWrap:      (document.getElementById('map-wrap') || {}).style?.display,
+    notice:       (document.getElementById('map-unmapped') || {}).textContent?.trim().slice(0, 200),
+  }));
+  console.log('  DIAGNOSTIC — no marker appeared:');
+  for (const [k, v] of Object.entries(d)) console.log(`      ${k}: ${v}`);
+  console.log(`      console errors (${errors.length}):`);
+  errors.slice(0, 10).forEach((e) => console.log(`        ${e.slice(0, 200)}`));
+  console.log(`      console warnings (${warnings.length}):`);
+  warnings.slice(0, 10).forEach((w) => console.log(`        ${w.slice(0, 200)}`));
+  console.log(`      failed requests (${failedRequests.length}):`);
+  failedRequests.slice(0, 12).forEach((f) => console.log(`        ${f}`));
+  bad('no markers rendered on the live map');
+  await browser.close();
+  console.log('\nMAP SMOKE TEST FAILED (no markers)');
+  process.exit(1);
+}
 
 const read = () => page.evaluate(() => window._markers.map((m) => ({
   slug: m._pintag.slug, lat: m.getLatLng().lat, lng: m.getLatLng().lng })));
@@ -210,6 +249,9 @@ console.log('\n── 8. console ───────────────�
 const mapWarnings = warnings.filter((w) => w.includes('[pintag/map]'));
 console.log(`  map diagnostic warnings: ${mapWarnings.length}`);
 mapWarnings.slice(0, 3).forEach((w) => console.log(`      ${w.slice(0, 110)}`));
+const assetFailures = failedRequests.filter((f) => !/favicon|tile\.openstreetmap/i.test(f));
+console.log(`  failed asset requests: ${assetFailures.length}`);
+assetFailures.slice(0, 8).forEach((f) => console.log(`      ${f}`));
 const realErrors = errors.filter((e) => !/favicon|net::ERR_|tile\.openstreetmap/i.test(e));
 realErrors.length === 0 ? ok('no console errors') : bad(`${realErrors.length} console error(s):\n      ${realErrors.slice(0, 5).join('\n      ')}`);
 
