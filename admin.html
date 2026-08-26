@@ -1058,6 +1058,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 </div>
 
 <script src="config.js?v=__ASSET_VERSION__"></script>
+<script src="map-location.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>
 <script src="amenities.js?v=__ASSET_VERSION__"></script>
 <script src="terminology.js?v=__ASSET_VERSION__"></script>
@@ -1485,26 +1486,69 @@ function setHighlights(values) {
 
 
 // ── Resolve Google Maps short URL ────────────────────────────────
+// This is the ONLY place a short link can be expanded: maps.app.goo.gl answers
+// with a redirect that a browser cannot read across origins, so the edge
+// function follows it server-side. If this step is skipped or fails, the link
+// is stored unexpanded and the map view has no coordinate to place -- which is
+// how 29 of 59 production listings ended up unmappable.
+//
+// Every outcome is now REPORTED. The previous version returned early for
+// goo.gl/maps links (it only matched 'maps.app.goo.gl'), and swallowed both
+// fetch errors and non-2xx responses into the neutral placeholder hint, so an
+// operator saw no difference between "resolved" and "silently gave up".
+const MAP_HINT_DEFAULT = 'Paste any Google Maps share link — it will be resolved automatically to show the exact pin on the listing page.';
+
+function setMapHint(text, color) {
+  const hint = document.getElementById('f-map-hint');
+  if (!hint) return;
+  hint.textContent = text;
+  hint.style.color = color || '';
+}
+
+// Reports whether the (possibly just-resolved) URL actually yields a pin, using
+// the same parser the public map uses -- so what admin promises and what the
+// map does cannot diverge.
+function reportMapCoords(url) {
+  const r = window.PintagMapLocation.parseMapUrl(url);
+  if (r.ok) {
+    setMapHint('✓ Exact pin found: ' + r.lat.toFixed(6) + ', ' + r.lng.toFixed(6) +
+               ' (from ' + r.pattern + ')', 'var(--teal)');
+  } else if (r.reason === 'no-url') {
+    setMapHint(MAP_HINT_DEFAULT, '');
+  } else {
+    setMapHint('⚠ This link will NOT place a pin on the map: ' +
+               window.PintagMapLocation.describeFailure(r) +
+               '. Open the location in Google Maps and copy the share link again.', 'var(--danger, #b91c1c)');
+  }
+}
+
 async function resolveMapUrl(el) {
   const url = el.value.trim();
-  if (!url || !url.includes('maps.app.goo.gl')) return;
-  const hint = document.getElementById('f-map-hint');
-  if (hint) { hint.textContent = 'Resolving link…'; hint.style.color = 'var(--teal)'; }
+  if (!url) { setMapHint(MAP_HINT_DEFAULT, ''); return; }
+
+  // A link that already carries coordinates needs no round trip.
+  if (!window.PintagMapLocation.isShortLink(url)) { reportMapCoords(url); return; }
+
+  setMapHint('Resolving link…', 'var(--teal)');
   try {
     const res = await fetch(SUPABASE_URL + '/functions/v1/resolve-map-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + (_adminToken || SUPABASE_ANON) },
       body: JSON.stringify({ url })
     });
-    const data = await res.json();
-    if (data.resolved_url && data.resolved_url !== url) {
-      el.value = data.resolved_url;
-      if (hint) { hint.textContent = '✓ Link resolved — map will show exact pin.'; hint.style.color = 'var(--teal)'; }
-    } else {
-      if (hint) { hint.textContent = 'Paste any Google Maps share link — it will be resolved automatically to show the exact pin on the listing page.'; hint.style.color = ''; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.resolved_url) {
+      setMapHint('⚠ Could not expand this short link (' + (data.error || ('HTTP ' + res.status)) +
+                 '). It will be saved as-is and the listing will NOT appear on the map. Try again, or paste the full google.com/maps URL.',
+                 'var(--danger, #b91c1c)');
+      return;
     }
-  } catch (_) {
-    if (hint) { hint.textContent = 'Paste any Google Maps share link — it will be resolved automatically to show the exact pin on the listing page.'; hint.style.color = ''; }
+    if (data.resolved_url !== url) el.value = data.resolved_url;
+    reportMapCoords(el.value.trim());
+  } catch (e) {
+    setMapHint('⚠ Could not reach the link resolver (' + (e && e.message ? e.message : 'network error') +
+               '). The short link will be saved unexpanded and the listing will NOT appear on the map.',
+               'var(--danger, #b91c1c)');
   }
 }
 

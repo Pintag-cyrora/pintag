@@ -37,8 +37,10 @@
 <meta name="twitter:image" content="https://pintag.io/og-preview-listings.jpg">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Noto+Sans+Lao:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
 <link rel="stylesheet" href="shared-components.css?v=__ASSET_VERSION__">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -309,6 +311,16 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 /* ── MAP CONTAINER ────────────────────────────────── */
 #map-wrap{display:none;height:calc(100vh - 112px);min-height:500px;position:relative;}
 #map{width:100%;height:100%;}
+/* Sits ABOVE the tiles (Leaflet panes top out at z-index 700) so the count of
+   listings the map is not showing cannot be hidden by the map itself. */
+#map-unmapped{position:absolute;left:12px;bottom:12px;z-index:900;max-width:min(420px,calc(100% - 24px));
+  background:var(--warm-deep,#fff);border:1px solid var(--border,#e5e0d8);border-radius:8px;
+  padding:8px 12px;font-size:13px;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,.12);display:none;}
+/* Cluster bubbles reuse the price-bubble palette so a cluster reads as "several
+   of these", not as a different kind of thing. */
+.pt-cluster{background:var(--teal,#0f766e);color:#fff;border-radius:999px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 1px 6px rgba(0,0,0,.3);
+  font-family:'DM Sans',sans-serif;}
 .leaflet-container{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif!important;}
 
 /* ── PRICE BUBBLES ────────────────────────────────── */
@@ -547,6 +559,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 <!-- MAP VIEW -->
 <div id="map-wrap">
   <div id="map"></div>
+  <div id="map-unmapped" role="status"></div>
 </div>
 
 <!-- MAP PREVIEW CARD -->
@@ -592,6 +605,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 <script src="amenities.js?v=__ASSET_VERSION__"></script>
 <script src="terminology.js?v=__ASSET_VERSION__"></script>
 <script src="provinces.js?v=__ASSET_VERSION__"></script>
+<script src="map-location.js?v=__ASSET_VERSION__"></script>
 <script src="currency.js?v=__ASSET_VERSION__"></script>
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
@@ -790,33 +804,27 @@ function sortProperties(arr) {
   return copy;
 }
 
-// ── DISTRICT COORDINATES (Vientiane) ──────────────────
-const DISTRICT_COORDS = {
-  'Chanthabouly': [17.9620, 102.6135],
-  'Sikhottabong':  [17.9180, 102.5695],
-  'Xaythany':      [18.0265, 102.6695],
-  'Sisattanak':    [17.9440, 102.6270],
-  'Hadxaifong':    [17.8860, 102.7350],
-  'Saysettha':     [17.9835, 102.6910],
-  'Naxaithong':    [18.0660, 102.5840]
-};
+// ── LISTING COORDINATES ───────────────────────────────
+// MAP_CENTER/MAP_ZOOM are the OPENING VIEWPORT only, used before any marker
+// exists and when none can be placed. No marker is ever positioned from them.
+// The previous implementation used them as a coordinate fallback and that is
+// precisely what broke the map: it read p.map_url (a column that does not
+// exist -- properties has map_embed_url) and keyed a district table off
+// p.district (also absent -- the column is district_en), so BOTH lookups
+// missed for every listing and all 59 markers were drawn at MAP_CENTER plus
+// +/-0.006 degrees of Math.random() jitter. That is the cluster in the
+// screenshot: not a clustering artefact, a default coordinate wearing a
+// disguise. Jitter made it look like real scatter, which is why it survived.
 const MAP_CENTER = [17.960, 102.630];
 const MAP_ZOOM   = 12;
 
+// Resolves ONE listing to a marker position, or explains why it cannot be
+// mapped. Returns null on failure -- callers must skip, never substitute.
+// Parsing itself lives in map-location.js so the listing detail page cannot
+// drift from this page again.
 function getLatLng(p) {
-  // Try to extract from map_url (Google Maps formats)
-  if (p.map_url) {
-    var m = p.map_url.match(/@([-\d.]+),([-\d.]+)/);
-    if (m) return [parseFloat(m[1]), parseFloat(m[2])];
-    m = p.map_url.match(/[?&]q=([-\d.]+),([-\d.]+)/);
-    if (m) return [parseFloat(m[1]), parseFloat(m[2])];
-    m = p.map_url.match(/!3d([-\d.]+).*?!2d([-\d.]+)/);
-    if (m) return [parseFloat(m[1]), parseFloat(m[2])];
-  }
-  // Fall back to district centroid with small random jitter
-  var base = DISTRICT_COORDS[p.district] || MAP_CENTER;
-  var jitter = function() { return (Math.random() - 0.5) * 0.012; };
-  return [base[0] + jitter(), base[1] + jitter()];
+  var r = window.PintagMapLocation.parseMapUrl(p.map_embed_url);
+  return r.ok ? [r.lat, r.lng] : null;
 }
 
 // price_amount/price_currency are the structured source; only falls back
@@ -948,6 +956,7 @@ function showMapView() {
 
 // ── MAP INIT & RENDER ─────────────────────────────────
 var _map = null;
+var _clusters = null;
 var _markers = [];
 var _activeSlug = null;
 
@@ -958,18 +967,55 @@ function initMap() {
     maxZoom: 19
   }).addTo(_map);
   _map.on('click', function() { closeMapPreview(); });
+
+  // CLUSTERING IS A DISPLAY CONCERN AND NOTHING ELSE. Every marker keeps its
+  // own exact coordinate; the cluster is only what the map draws when several
+  // of them would overlap at the current zoom. Zooming in always separates
+  // them back to their real positions, and spiderfy handles the case where two
+  // listings genuinely share a building. This deliberately does NOT move a
+  // marker to make the map look better -- that was the old jitter's job, and
+  // the jitter is gone.
+  _clusters = L.markerClusterGroup({
+    showCoverageOnHover: false,
+    spiderfyOnMaxZoom: true,
+    // Below this zoom the map is showing a city, where overlapping price
+    // bubbles are unreadable; above it the visitor is looking at a
+    // neighbourhood and wants individual pins.
+    disableClusteringAtZoom: 16,
+    maxClusterRadius: 55,
+    iconCreateFunction: function (cluster) {
+      var n = cluster.getChildCount();
+      var size = n < 10 ? 34 : (n < 50 ? 42 : 50);
+      return L.divIcon({
+        html: '<div class="pt-cluster" style="width:' + size + 'px;height:' + size + 'px;">' + n + '</div>',
+        className: '',
+        iconSize: L.point(size, size)
+      });
+    }
+  });
+  _map.addLayer(_clusters);
 }
 
 function renderMap() {
   if (!_map) return;
-  _markers.forEach(function(m) { _map.removeLayer(m); });
+  _clusters.clearLayers();
   _markers = [];
   _activeSlug = null;
 
   var filtered = allProperties.filter(matchesActiveFilters);
+  var unmapped = [];
+  var bounds   = [];
 
   filtered.forEach(function(p) {
-    var latlng = getLatLng(p);
+    var res = window.PintagMapLocation.parseMapUrl(p.map_embed_url);
+    if (!res.ok) {
+      // Explicitly NOT mapped. A listing whose location we do not know is left
+      // off the map and counted, because inventing a position for it would put
+      // a real property in front of a buyer at an address it is not at.
+      unmapped.push({ slug: p.slug, reason: res.reason, detail: res.detail });
+      return;
+    }
+    var latlng = [res.lat, res.lng];
     var label  = formatPriceBubble(p);
     var isFeat = !!p.is_featured;
     var icon = L.divIcon({
@@ -977,7 +1023,7 @@ function renderMap() {
       html: '<div class="price-bubble' + (isFeat ? ' pb-featured' : '') + '" data-slug="' + (p.slug||'') + '">' + label + '</div>',
       iconAnchor: [0, 0]
     });
-    var marker = L.marker(latlng, { icon: icon }).addTo(_map);
+    var marker = L.marker(latlng, { icon: icon });
     marker._pintag = p;
     marker.on('click', function(e) {
       L.DomEvent.stopPropagation(e);
@@ -989,7 +1035,48 @@ function renderMap() {
       showMapPreview(p);
     });
     _markers.push(marker);
+    bounds.push(latlng);
   });
+
+  _clusters.addLayers(_markers);
+  reportUnmapped(unmapped, filtered.length);
+
+  // Frame what is actually there. Hard-coding the Vientiane viewport would
+  // hide a correctly-placed listing in another province off-screen and make it
+  // look like the marker was missing.
+  if (bounds.length === 1)      _map.setView(bounds[0], 15);
+  else if (bounds.length > 1)   _map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 16 });
+}
+
+// A bad Google Maps URL must never be able to fail quietly. Two audiences:
+// the visitor gets a count so the map does not silently under-report the
+// listings they filtered for, and the operator gets the offending slug and
+// reason in the console so the link can actually be fixed.
+function reportUnmapped(unmapped, totalShown) {
+  var box = document.getElementById('map-unmapped');
+  if (!box) return;
+  if (!unmapped.length) { box.style.display = 'none'; box.textContent = ''; return; }
+
+  var byReason = {};
+  unmapped.forEach(function (u) { (byReason[u.reason] = byReason[u.reason] || []).push(u.slug); });
+
+  console.warn('[pintag/map] ' + unmapped.length + ' of ' + totalShown +
+               ' listings have no usable Google Maps coordinate and are NOT on the map.');
+  Object.keys(byReason).forEach(function (reason) {
+    console.warn('  ' + reason + ' (' + byReason[reason].length + '): ' + byReason[reason].join(', '));
+  });
+  unmapped.forEach(function (u) {
+    console.warn('  [' + u.slug + '] ' + window.PintagMapLocation.describeFailure(u));
+  });
+
+  var lang = getCurrentLang();
+  var msg = ({
+    lo: unmapped.length + ' ຈາກ ' + totalShown + ' ລາຍການ ຍັງບໍ່ມີຈຸດທີ່ຕັ້ງແນ່ນອນ ຈຶ່ງບໍ່ສະແດງຢູ່ແຜນທີ່',
+    en: unmapped.length + ' of ' + totalShown + ' listings have no exact location yet and are not shown on the map',
+    zh: totalShown + ' 个房源中有 ' + unmapped.length + ' 个尚无确切位置，未在地图上显示'
+  })[lang];
+  box.textContent = msg;
+  box.style.display = 'block';
 }
 
 function showMapPreview(p) {

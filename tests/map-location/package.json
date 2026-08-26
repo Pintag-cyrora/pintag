@@ -1,0 +1,13 @@
+{
+  "name": "pintag-map-location-tests",
+  "private": true,
+  "description": "Proves the map view places each marker at the coordinate carried by that listing's Google Maps link, and places NO marker for a listing whose link yields none. The bug this guards against is a marker at a plausible-but-invented position, so the assertions compare rendered marker positions against the coordinates in the stubbed links rather than merely counting markers.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "leaflet": "1.9.4",
+    "leaflet.markercluster": "1.5.3"
+  }
+}
