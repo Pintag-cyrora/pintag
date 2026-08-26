@@ -147,60 +147,24 @@ jobs:
             exit 1
           fi
 
-      # TEMPORARY: production smoke test of the rendition delivery flag.
-      # Read-only: it loads the live site in a real browser and issues GETs.
-      # It never writes to Storage or the database.
-      - name: Where is production serving from (READ ONLY)
-        run: node origin-diag.mjs
+      # ── TEMPORARY: prove the MAP PIN pipeline on the LIVE site ─────────
+      # Google Maps URL -> map-location.js -> exact Leaflet marker.
+      #
+      # READ ONLY. It loads pintag.io in a real browser and issues GETs; it
+      # writes nothing to the database, to Storage, or to the repository. No
+      # service-role key is exported to this step, so a write is not merely
+      # unintended but impossible.
+      #
+      # It reads marker positions back out of Leaflet instead of counting DOM
+      # nodes, because the defect being verified produced the RIGHT NUMBER of
+      # markers in the WRONG PLACES -- a count-based check passes on the broken
+      # build and proves nothing.
+      - name: Map parser unit tests
+        run: node --test tests/map-location/map-location.test.js
 
-      - name: Which origin is behind pintag.io (READ ONLY)
-        run: node pages-diag.mjs
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-
-      # ── TEMPORARY: prove the map fix against the REAL stored links ────
-      # READ ONLY. The backfill runs in DRY RUN (no --apply, and no service-role
-      # key is exported), so it resolves every short link and reports the
-      # coordinate it would store without writing anything.
-      - name: Map pin pipeline — unit tests + real-link resolution (READ ONLY)
-        if: always()
-        # `bash {0}` instead of GitHub's default `bash -e {0}`. This step's JOB
-        # is to report commands that come back non-zero -- a curl that finds no
-        # Location header, a grep that finds no match, a parse that yields no
-        # coordinate. Under errexit the FIRST such result kills the step, so the
-        # measurement destroys itself: run 32819146948 died on
-        # `grep -i '^location:'` returning 1, which was not an error at all but
-        # the very finding being measured (Google sent no Location for a Chrome
-        # UA). Every verdict below is an explicit test, so errexit buys nothing
-        # here and costs the whole step.
-        shell: bash {0}
-        # REF is used by the full-sweep branch, which had never executed before
-        # -- it only runs once a method actually WINS, and until run 40 none
-        # ever did. `set -u` then killed the step at the moment of success.
-        env:
-          REF: ${{ steps.ref.outputs.ref }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          set -uo pipefail
-          echo "── parser unit tests ───────────────────────────────────────"
-          node --test tests/map-location/map-location.test.js 2>&1 | tail -12
-          echo ""
-          echo "── STEP 4: READ-ONLY post-write verification ──────────────"
-          # The --apply from step 3 is GONE from this workflow on purpose. This
-          # step issues GETs only; re-running it can never write again.
-          node verify-step4.mjs
-          S4=$?
-          if [ "$S4" != "0" ]; then
-            echo "::error::STEP 4 FAILED — do not merge or deploy the map fix"
-            exit 1
-          fi
-
-      - name: Rendition smoke test against production
+      - name: Map pin pipeline smoke test against production (READ ONLY)
         run: |
           set -euo pipefail
           npm i -D @playwright/test@1.56.1 >/dev/null 2>&1
           npx playwright install --with-deps chromium >/dev/null 2>&1
-          node smoke-renditions.mjs
-        env:
-          REF: ${{ steps.ref.outputs.ref }}
+          node smoke-map.mjs
