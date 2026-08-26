@@ -80,6 +80,23 @@
     // is stood up and verified independently, flip this to true (e.g.
     // `ENV === 'production'`) to activate the CDN. This flag is the only switch
     // needed; no DB or code-path change is required to enable/disable it.
-    imageCdn: false
+    imageCdn: false,
+
+    // Serve the pre-generated WebP renditions (image-renditions.js).
+    //
+    // THIS FILE, not config.prod.js, is what production actually serves. The
+    // deploy workflow does `cp config.prod.js config.js`, but the live origin
+    // returns this file verbatim -- measured 2026-08-24: cf-cache-status=MISS,
+    // age=0, last-modified matching the deploy, yet the body is this template
+    // and listings.html still carries a literal __ASSET_VERSION__. So a flag
+    // set only in config.prod.js never reaches a browser. It is set in BOTH,
+    // which is correct under either mechanism: if Pages is later switched to
+    // the built artifact, config.prod.js replaces this file and already
+    // carries renditionsEnabled: true.
+    //
+    // Scoped to production because the renditions only exist in the production
+    // Storage bucket. In development every rendition would 404 and fall back to
+    // the original -- harmless, but a pointless round trip per image.
+    renditionsEnabled: ENV === 'production'
   };
 })();
