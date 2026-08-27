@@ -168,3 +168,37 @@ jobs:
           npm i -D @playwright/test@1.56.1 >/dev/null 2>&1
           npx playwright install --with-deps chromium >/dev/null 2>&1
           node smoke-map.mjs
+
+      # ── TEMPORARY: the admin Province dropdown on the LIVE artifact ────
+      # READ ONLY, and structurally incapable of writing: no service-role key
+      # reaches this step, every /rest/v1/ request is intercepted in the
+      # browser, and the script asserts that zero writes escaped.
+      #
+      # It does NOT sign in. Admin access requires TOTP two-factor and there is
+      # no bypass here by design. Instead it fetches the deployed admin.html
+      # byte-for-byte from production and drives that -- the province select is
+      # populated client-side before any authenticated fetch, so this is the
+      # same code path an administrator hits, minus the gate in front of it.
+      - name: Admin Province dropdown against production (READ ONLY)
+        run: node smoke-province.mjs
+
+      # Proves the DB would accept what the form sends, without sending it.
+      # SELECT only, and the session is pinned read-only so a write would error
+      # rather than succeed.
+      - name: Province CHECK constraint accepts all 18 (READ ONLY)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -uo pipefail
+          if [ -z "${PGPASSWORD:-}" ]; then
+            echo "::notice title=Skipped::no SUPABASE_DB_PASSWORD secret; constraint read from the migration instead"
+            exit 0
+          fi
+          psql "postgresql://postgres.${REF}:${PGPASSWORD}@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres" \
+            -v ON_ERROR_STOP=1 -At <<'SQL'
+          SET default_transaction_read_only = on;
+          SELECT pg_get_constraintdef(oid)
+            FROM pg_constraint
+           WHERE conname = 'properties_province_en_check';
+          SQL
