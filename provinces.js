@@ -95,6 +95,31 @@ function provinceByKey(key) {
 
 function isValidProvince(key) { return provinceByKey(key) !== null; }
 
+// The CITY-level label for a province key, per language.
+//
+// Rule 1 puts every piece of province metadata here, including this one. A
+// title or an address says "Sisattanak, Vientiane" -- nobody writes "Sisattanak,
+// Vientiane Capital", because Vientiane Capital is the prefecture and Vientiane
+// is the city inside it. Only that one entry differs from its key; for every
+// other province the province name IS the label a reader expects.
+//
+// 'Vientiane Province' deliberately keeps its full label. Shortening it to
+// "Vientiane" would merge it with the capital, which is exactly the conflation
+// the NOTE ON THE COUNT above warns about -- and it would do so silently, in
+// the one field a customer actually reads.
+var PROVINCE_CITY_LABELS = {
+  'Vientiane Capital': { en: 'Vientiane', lo: 'ວຽງຈັນ', zh: '万象' }
+};
+
+function provinceCityLabel(key, lang) {
+  var def = provinceByKey(key);
+  if (!def) return '';
+  var L = lang === 'lo' || lang === 'zh' ? lang : 'en';
+  var override = PROVINCE_CITY_LABELS[def.key];
+  if (override && override[L]) return override[L];
+  return L === 'en' ? def.key : def[L];
+}
+
 // The full registry, for ADMIN forms only (rule 7).
 function getAllProvinces() { return LAO_PROVINCES.slice(); }
 
@@ -160,10 +185,30 @@ function resolveAvailableProvinces(listings, opts) {
   return out;
 }
 
+// Also published under one name, the way map-location.js does. The flat
+// top-level `var`/`function` declarations above are already globals in a
+// browser, but a consumer that wants to ask "is provinces.js loaded?" needs
+// something to test, and under node --test the top-level names are module
+// scope rather than globals -- so a shared module cannot reach them by name.
+if (typeof globalThis !== 'undefined') {
+  globalThis.PintagProvinces = {
+    PROVINCES_SCHEMA_VERSION: PROVINCES_SCHEMA_VERSION,
+    LAO_PROVINCES: LAO_PROVINCES,
+    DEFAULT_PROVINCE: DEFAULT_PROVINCE,
+    provinceByKey: provinceByKey,
+    isValidProvince: isValidProvince,
+    getAllProvinces: getAllProvinces,
+    provinceLabel: provinceLabel,
+    provinceCityLabel: provinceCityLabel,
+    resolveListingProvince: resolveListingProvince,
+    resolveAvailableProvinces: resolveAvailableProvinces
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     PROVINCES_SCHEMA_VERSION, LAO_PROVINCES, DEFAULT_PROVINCE,
     provinceByKey, isValidProvince, getAllProvinces, provinceLabel,
-    resolveListingProvince, resolveAvailableProvinces
+    provinceCityLabel, resolveListingProvince, resolveAvailableProvinces
   };
 }

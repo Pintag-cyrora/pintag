@@ -212,6 +212,8 @@ button:disabled{opacity:.5;cursor:default}
 <div id="log"></div>
 
 <script src="config.js?v=__ASSET_VERSION__"></script>
+<script src="provinces.js?v=__ASSET_VERSION__"></script>
+<script src="listing-title.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script>
 (function () {
@@ -1305,6 +1307,7 @@ button:disabled{opacity:.5;cursor:default}
       property_type: p.property_type||null, property_style: p.property_style||null,
       transaction_type: p.transaction_type||null, bedrooms: p.bedrooms||null, bathrooms: p.bathrooms||null,
       price_display: p.price_display||null, village: p.village_en||p.village||null, district: p.district_en||null,
+      province: p.province_en||null,
       features: Array.isArray(p.features)?p.features:null,
       nearby_places: Array.isArray(p.nearby_places)?p.nearby_places:null,
       existing_title: p.title_lo || p.title_en || null           // surviving Lao title = the base
@@ -1315,7 +1318,12 @@ button:disabled{opacity:.5;cursor:default}
     if (res.error) throw new Error(res.error.message || 'AI request failed');
     var d = res.data || {};
     if (d.error) throw new Error(d.error);
-    return { title_lo: d.title_lo||'', title_en: d.title_en||'', title_zh: d.title_zh||'' };
+    var titles = { title_lo: d.title_lo||'', title_en: d.title_en||'', title_zh: d.title_zh||'' };
+    // Same guarantee as admin's Smart Import: the prompt asks for the location,
+    // this makes sure of it, against the listing's OWN structured fields.
+    return window.PintagListingTitle
+      ? window.PintagListingTitle.ensureAllTitleLocations(titles, p, { enKey: 'title_en' })
+      : titles;
   }
   async function saveTitles(p, gen, source){
     source = source || 'recovery_ai_generated';
