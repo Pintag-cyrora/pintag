@@ -182,60 +182,9 @@ jobs:
       - name: Admin Province dropdown against production (READ ONLY)
         run: node smoke-province.mjs
 
-      # ── The deployed code must be LIVE before any title is rewritten ───
-      # Rewriting titles to match a rule the site is not yet running would
-      # leave the two out of step in production, so this gates the write.
-      - name: Confirm listing-title.js is live in the artifact (READ ONLY)
-        # `bash {0}`, not the default `bash -e {0}`: this step's job is to
-        # REPORT what each origin is serving. Under errexit the first curl that
-        # comes back non-zero kills the step and the measurement destroys
-        # itself -- run 33047015152 failed here with no indication of whether
-        # the file was a 404, a stale cache, or the wrong host.
-        shell: bash {0}
-        run: |
-          set -uo pipefail
-          CB="$(date +%s)"
-          FAIL=1
-          for HOST in https://www.pintag.io https://pintag.io https://pintag-cyrora.github.io/pintag; do
-            CODE="$(curl -sS -o /tmp/lt.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$HOST/listing-title.js?cb=$CB" || echo 000)"
-            SIZE="$(wc -c < /tmp/lt.js 2>/dev/null || echo 0)"
-            HAS=no; grep -q 'ensureTitleLocation' /tmp/lt.js 2>/dev/null && HAS=yes
-            echo "  $HOST/listing-title.js -> $CODE  ${SIZE}B  ensureTitleLocation=$HAS"
-            [ "$HAS" = yes ] && FAIL=0
-          done
-          echo ""
-          echo "  cache headers from www:"
-          curl -sS -D - -o /dev/null -H 'Cache-Control: no-cache' "https://www.pintag.io/listing-title.js?cb=$CB" \
-            | grep -iE '^(HTTP/|cf-cache-status|age|last-modified|server):' | sed 's/^/    /'
-          A="$(curl -sS -H 'Cache-Control: no-cache' "https://www.pintag.io/admin.html?cb=$CB")"
-          echo "  admin.html references listing-title.js: $(echo "$A" | grep -c 'listing-title.js')"
-          echo "  admin.html stamp: $(echo "$A" | grep -oE '\?v=[A-Za-z0-9]+' | head -1)"
-          if [ "$FAIL" != 0 ]; then
-            echo "::error::listing-title.js is not being served by any origin — NOT applying any title write"
-            exit 1
-          fi
 
-      # ── APPLY: write the audited title updates ─────────────────────────
-      # Writes title_en/title_lo/title_zh on ACTIVE listings only, and only
-      # where a location can be built from columns the row already has. The
-      # operation is idempotent, so a re-run writes nothing.
-      - name: Apply title locations to ACTIVE listings
-        env:
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/audit-listing-titles.mjs --apply
-
-      # ── Independent read-back, not the writer's own tally ──────────────
-      - name: Verify every ACTIVE listing names its location (READ ONLY)
-        env:
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node verify-titles.mjs
-
-      # A second --apply must be a no-op; if it is not, the rule is not stable.
-      - name: Re-run the audit — it must now find nothing to do
-        env:
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          set -euo pipefail
-          OUT="$(node scripts/audit-listing-titles.mjs)"
-          echo "$OUT" | tail -3
-          echo "$OUT" | grep -qE 'WOULD LOCATE: 0' || { echo "::error::the audit is not idempotent — a second run still wants to write"; exit 1; }
+      # ── READ ONLY: why does an iPhone see an empty Province dropdown? ──
+      # GETs and page loads only. No service-role key is exported to this
+      # step, so it has no credential with which to write even by mistake.
+      - name: Probe the Province dropdown as production actually delivers it
+        run: node probe-province.mjs
