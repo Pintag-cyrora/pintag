@@ -182,12 +182,42 @@ jobs:
       - name: Admin Province dropdown against production (READ ONLY)
         run: node smoke-province.mjs
 
-      # ── TEMPORARY: which ACTIVE listings have an unlocated title? ──────
-      # DRY RUN — no --apply, and the service-role key is exported only so the
-      # audit sees the same rows a write WOULD touch (drafts and soft-deleted
-      # rows included, so they can be shown as skipped rather than silently
-      # missing). Without --apply the script has no code path that writes.
-      - name: Audit ACTIVE listing titles for location (DRY RUN, READ ONLY)
+      # ── The deployed code must be LIVE before any title is rewritten ───
+      # Rewriting titles to match a rule the site is not yet running would
+      # leave the two out of step in production, so this gates the write.
+      - name: Confirm listing-title.js is live in the artifact (READ ONLY)
+        run: |
+          set -euo pipefail
+          CB="$(date +%s)"
+          BODY="$(curl -sS -H 'Cache-Control: no-cache' "https://www.pintag.io/listing-title.js?cb=$CB")"
+          echo "$BODY" | grep -q 'ensureTitleLocation' || { echo "::error::listing-title.js is not serving the new module"; exit 1; }
+          echo "$BODY" | grep -q 'titleLocationPatch'   || { echo "::error::listing-title.js is missing titleLocationPatch"; exit 1; }
+          echo "  listing-title.js is live ($(echo "$BODY" | wc -c) bytes)"
+          A="$(curl -sS -H 'Cache-Control: no-cache' "https://www.pintag.io/admin.html?cb=$CB")"
+          echo "$A" | grep -q 'listing-title.js' || { echo "::error::admin.html does not load listing-title.js"; exit 1; }
+          echo "  admin.html loads it; stamp $(echo "$A" | grep -oE '\?v=[A-Za-z0-9]+' | head -1)"
+
+      # ── APPLY: write the audited title updates ─────────────────────────
+      # Writes title_en/title_lo/title_zh on ACTIVE listings only, and only
+      # where a location can be built from columns the row already has. The
+      # operation is idempotent, so a re-run writes nothing.
+      - name: Apply title locations to ACTIVE listings
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/audit-listing-titles.mjs
+        run: node scripts/audit-listing-titles.mjs --apply
+
+      # ── Independent read-back, not the writer's own tally ──────────────
+      - name: Verify every ACTIVE listing names its location (READ ONLY)
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node verify-titles.mjs
+
+      # A second --apply must be a no-op; if it is not, the rule is not stable.
+      - name: Re-run the audit — it must now find nothing to do
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          OUT="$(node scripts/audit-listing-titles.mjs)"
+          echo "$OUT" | tail -3
+          echo "$OUT" | grep -qE 'WOULD LOCATE: 0' || { echo "::error::the audit is not idempotent — a second run still wants to write"; exit 1; }
