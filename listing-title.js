@@ -58,6 +58,36 @@
 
   function langCfg(lang) { return LANG[lang] || LANG.en; }
 
+  // Production village_en values carry BOTH scripts in one field —
+  // "Phonsinuan ໂພນສີນວນ", "Yapha Village ບ້ານ ຍະພາ". Rendering the whole
+  // string puts Lao script inside an English title, and comparing against the
+  // whole string fails to notice that the title already says "Phonsinuan" —
+  // which is how the first audit produced "...in Phonsinuan ... in Phonsinuan
+  // ໂພນສີນວນ, Sisattanak, Vientiane", the exact duplication this must prevent.
+  //
+  // So a value is split by script and the run matching the target language is
+  // used. Falling back to the whole string keeps a single-script value intact.
+  var SCRIPT_RUNS = {
+    lo: /[\u0E80-\u0EFF][\u0E80-\u0EFF\s]*/g,          // Lao
+    zh: /[\u4E00-\u9FFF][\u4E00-\u9FFF\s]*/g,          // CJK
+    en: /[A-Za-z][A-Za-z0-9'’.\-\s]*/g                   // Latin
+  };
+
+  function scriptRun(value, lang) {
+    var v = String(value || '');
+    // Chinese has no village column of its own, so a zh title falls back to
+    // the Latin spelling rather than borrowing the Lao script.
+    var order = lang === 'lo' ? ['lo', 'en'] : lang === 'zh' ? ['zh', 'en'] : ['en'];
+    for (var i = 0; i < order.length; i++) {
+      var m = v.match(SCRIPT_RUNS[order[i]]);
+      if (m && m.length) {
+        var best = m.sort(function (a, b) { return b.trim().length - a.trim().length; })[0].trim();
+        if (best) return best;
+      }
+    }
+    return v.trim();
+  }
+
   function clean(v) {
     if (v === null || v === undefined) return '';
     var s = String(v).trim();
@@ -75,7 +105,7 @@
     // village_en is the ONLY village column and is used verbatim in all three
     // languages -- see rule 1's note. Falling back to `village` covers the
     // legacy rows written before the column was renamed.
-    var village = clean(p.village_en || p.village);
+    var village = clean(scriptRun(p.village_en || p.village, L));
 
     var district = clean(p['district_' + L] || p.district_en || p.district);
 
@@ -109,12 +139,24 @@
 
   // Comparison that survives the ways the same place gets written: casing,
   // punctuation, and the "Ban "/"Ban." prefix Lao villages carry inconsistently.
+  // \p{M} (combining marks) MUST be kept. Lao writes its vowels and tones as
+  // combining marks, so stripping them shatters ວຽງຈັນ into "ວຽງຈ" + "ນ" —
+  // and a one-character fragment then matches almost any Lao title, which made
+  // titleHasLocation() report every Lao title as already located.
   function normalize(s) {
     return String(s || '')
       .toLowerCase()
       .replace(/[‘’'`]/g, '')
-      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ')
       .trim();
+  }
+
+  // Words that describe a place rather than name one; matching on them would
+  // call any title with the word "village" in it located.
+  var GENERIC = { ban: 1, village: 1, muang: 1, district: 1, city: 1, province: 1, the: 1 };
+
+  function placeTokens(term) {
+    return normalize(term).split(' ').filter(function (w) { return w && !GENERIC[w]; });
   }
 
   function mentions(title, term) {
@@ -122,9 +164,29 @@
     var n = normalize(term);
     if (!t || !n) return false;
     if (t.indexOf(n) !== -1) return true;
-    // "Ban Phonxay" in the field vs "Phonxay" in the title, and the reverse.
-    var stripped = n.replace(/^ban\s+/, '');
-    return stripped !== n && stripped.length > 2 && t.indexOf(stripped) !== -1;
+
+    var titleWords = t.split(' ').filter(Boolean);
+    var terms = placeTokens(term);
+    for (var i = 0; i < terms.length; i++) {
+      var w = terms[i];
+      // A one- or two-character fragment is not evidence that a title names a
+      // place; it is evidence that something upstream split a word.
+      if (w.length < 3) continue;
+      if (t.indexOf(w) !== -1) return true;
+      // Romanised Lao place names vary in their final vowels between the
+      // title and the field — Sungjiang/Sungjieng, Phakhaw/Phakhao. A shared
+      // five-character prefix treats those as the same place; five is long
+      // enough to keep Phonthan, Phonsinuan and Phonphanao apart.
+      //
+      // A false positive here means "the title already names this place, so
+      // leave it alone" — the safe direction for a bulk edit of live titles.
+      if (w.length >= 5) {
+        for (var j = 0; j < titleWords.length; j++) {
+          if (titleWords[j].length >= 5 && titleWords[j].slice(0, 5) === w.slice(0, 5)) return true;
+        }
+      }
+    }
+    return false;
   }
 
   // Does the title already tell a reader where this is?
@@ -152,7 +214,21 @@
     if (titleHasLocation(t, listing, lang)) return t;
     var phrase = locationPhrase(listing, lang);
     if (!phrase) return t;                      // rule 1: never invent
-    return t + langCfg(lang).connector + phrase;
+
+    var cfg = langCfg(lang);
+    // "Cozy 3-Bedroom House with Carport." + " in ..." keeps the full stop in
+    // the middle of the sentence.
+    t = t.replace(/[.,;:\s]+$/, '');
+
+    // A title that already reads "... in <somewhere else>" gets the location
+    // as a continuation rather than a second "in": "Home in Sikhai in Yapha
+    // Village, Sikhottabong" is clumsy where "Home in Sikhai, Yapha Village,
+    // Sikhottabong" reads as one address.
+    var connector = cfg.connector;
+    var already = new RegExp('(^|\\s)' + cfg.connector.trim() + '\\s', 'i');
+    if (cfg.connector.trim() && already.test(t)) connector = cfg.separator;
+
+    return t + connector + phrase;
   }
 
   // Convenience for the three-language records both edge functions and the

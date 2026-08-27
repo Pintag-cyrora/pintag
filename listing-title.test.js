@@ -191,16 +191,23 @@ test('a title is never lengthened without limit — location is added once only'
   assert.strictEqual((t.match(/Sisattanak/g) || []).length, 1, t);
 });
 
-test('the location phrase carries no HTML — nothing here can inject markup', () => {
-  // Titles are escaped at every render site; this asserts the module itself
-  // introduces no markup of its own beyond the stored field values.
-  const out = T.ensureTitleLocation('Condo',
-    { village_en: '<img src=x onerror=alert(1)>', district_en: 'Sisattanak' }, 'en');
-  // The value passes through verbatim — escaping stays the renderer's job,
-  // exactly as it is for every other stored field — and nothing is executed
-  // or concatenated into markup here.
-  assert.ok(out.includes('<img src=x onerror=alert(1)>'));
-  assert.ok(!/[<>]/.test(T.locationPhrase({ district_en: 'Sisattanak' }, 'en')));
+test('a location phrase can never carry markup', () => {
+  // Defence in depth, not the primary control: titles are escaped at every
+  // render site, and that is still what stops XSS. But the script-run
+  // extraction that picks the Latin part of "Phonsinuan ໂພນສີນວນ" also means
+  // angle brackets, quotes and parentheses cannot survive into the phrase at
+  // all — so this asserts the stronger property the implementation now has.
+  const dirty = { village_en: '<img src=x onerror=alert(1)>', district_en: 'Sisattanak' };
+  for (const lang of ['en', 'lo', 'zh']) {
+    const phrase = T.locationPhrase(dirty, lang);
+    assert.ok(!/[<>"'()]/.test(phrase), `${lang}: ${phrase}`);
+    assert.ok(!/onerror\s*=/.test(phrase), `${lang}: ${phrase}`);
+  }
+  const out = T.ensureTitleLocation('Condo', dirty, 'en');
+  assert.ok(!/[<>]/.test(out), out);
+  // A title the operator typed is still returned as typed — this module is
+  // not a sanitiser for the title itself, and must not silently rewrite one.
+  assert.strictEqual(T.ensureTitleLocation('<b>Condo</b>', {}, 'en'), '<b>Condo</b>');
 });
 
 // ── The active-listing audit rules ────────────────────────────────────────
@@ -293,4 +300,95 @@ test('a Smart Import title with the location already written in is left alone', 
                    title_lo: null, title_zh: null };
   const out = T.ensureAllTitleLocations(fromAi, FULL);
   assert.strictEqual(out.title, fromAi.title);
+});
+
+// ── Real production data, from the first dry-run audit ─────────────────────
+// Every case below is a real active listing whose title the first version of
+// this module got WRONG. Clean fixtures could not have caught any of them.
+
+test('a village field holding BOTH scripts renders only the right one', () => {
+  const row = { village_en: 'Phonsinuan ໂພນສີນວນ', district_en: 'Sisattanak',
+                district_lo: 'ສີສັດຕະນາກ', district_zh: '西沙塔纳克',
+                province_en: 'Vientiane Capital' };
+  assert.strictEqual(T.locationParts(row, 'en').village, 'Phonsinuan');
+  assert.strictEqual(T.locationParts(row, 'lo').village, 'ໂພນສີນວນ');
+  // No Chinese village exists, so zh falls back to the Latin spelling rather
+  // than dropping Lao script into a Chinese title.
+  assert.strictEqual(T.locationParts(row, 'zh').village, 'Phonsinuan');
+  assert.ok(!/[຀-໿]/.test(T.locationPhrase(row, 'en')), 'no Lao script in an English phrase');
+});
+
+test('THE DUPLICATION BUG: a title naming the village is not given it again', () => {
+  const row = { village_en: 'Phonsinuan ໂພນສີນວນ', district_en: 'Sisattanak',
+                province_en: 'Vientiane Capital' };
+  const title = 'Service Townhouse for Rent in Phonsinuan with Security and Wi-Fi';
+  // The first audit produced "...in Phonsinuan ... in Phonsinuan ໂພນສີນວນ,
+  // Sisattanak, Vientiane" because the stored value is not a substring of the
+  // title.
+  assert.strictEqual(T.ensureTitleLocation(title, row, 'en'), title);
+});
+
+test('the Lao title is not re-located when it already says the village', () => {
+  const row = { village_en: 'Phonthan ໂພນທັນ', district_en: 'Saysettha',
+                district_lo: 'ໄຊເສດຖາ', province_en: 'Vientiane Capital' };
+  const lo = 'ເຮືອນສອງຊັ້ນຫຼູຫຼາໃຫ້ເຊົ່າຢູ່ບ້ານໂພນທັນ';
+  assert.strictEqual(T.ensureTitleLocation(lo, row, 'lo'), lo);
+});
+
+test('romanised spelling variants count as the same place', () => {
+  for (const [title, village] of [
+    ['Fully Furnished Apartment with Balcony in Sungjiang', 'Sungjieng ຊັງຈ່ຽງ'],
+    ['Newly Opened Fully Furnished Apartment in Phakhaw Village', 'Phakhao ພະຂາວ'],
+  ]) {
+    const row = { village_en: village, district_en: 'Sikhottabong', province_en: 'Vientiane Capital' };
+    assert.strictEqual(T.ensureTitleLocation(title, row, 'en'), title, title);
+  }
+});
+
+test('but genuinely different villages sharing a prefix are NOT confused', () => {
+  const row = { village_en: 'Phonsinuan', district_en: 'Sisattanak', province_en: 'Vientiane Capital' };
+  // "Phonthan" and "Phonsinuan" share "Phon" but differ by the fifth letter.
+  const out = T.ensureTitleLocation('House in Phonthan', row, 'en');
+  assert.ok(out.includes('Phonsinuan'), out);
+});
+
+test('"Village" and "Ban" alone never count as naming a place', () => {
+  const row = { village_en: 'Yapha Village ບ້ານ ຍະພາ', district_en: 'Sikhottabong',
+                province_en: 'Vientiane Capital' };
+  // The title says "Village" but names a different place — it still needs the
+  // real location.
+  const out = T.ensureTitleLocation('Newly Built 5-Bedroom Luxury Home in Sikhai', row, 'en');
+  assert.ok(out.includes('Yapha Village'), out);
+});
+
+test('a second "in" becomes a continuation, not a stutter', () => {
+  const row = { village_en: 'Yapha Village ບ້ານ ຍະພາ', district_en: 'Sikhottabong',
+                province_en: 'Vientiane Capital' };
+  const out = T.ensureTitleLocation('Newly Built 5-Bedroom Luxury Home in Sikhai', row, 'en');
+  assert.strictEqual(out,
+    'Newly Built 5-Bedroom Luxury Home in Sikhai, Yapha Village, Sikhottabong, Vientiane');
+  assert.strictEqual((out.match(/\sin\s/g) || []).length, 1, 'only one "in": ' + out);
+});
+
+test('trailing punctuation is not stranded mid-sentence', () => {
+  const row = { village_en: 'Donnokkhoum ດອນນົກຂຸ້ມ', district_en: 'Sisattanak',
+                province_en: 'Vientiane Capital' };
+  const out = T.ensureTitleLocation('Cozy 3-Bedroom House with Carport.', row, 'en');
+  assert.strictEqual(out, 'Cozy 3-Bedroom House with Carport in Donnokkhoum, Sisattanak, Vientiane');
+});
+
+test('the real audit rows are still idempotent after all of the above', () => {
+  const rows = [
+    { village_en: 'Phonsinuan ໂພນສີນວນ', district_en: 'Sisattanak', province_en: 'Vientiane Capital',
+      title_en: 'Service Townhouse for Rent with Wi-Fi' },
+    { village_en: 'Yapha Village ບ້ານ ຍະພາ', district_en: 'Sikhottabong', province_en: 'Vientiane Capital',
+      title_en: 'Newly Built 5-Bedroom Luxury Home in Sikhai' },
+    { district_en: 'Sisattanak', province_en: 'Vientiane Capital',
+      title_en: 'Prime Ground Floor Commercial Space for Rent' },
+  ];
+  for (const row of rows) {
+    const once = { ...row, ...T.titleLocationPatch(row).patch };
+    const second = T.titleLocationPatch(once);
+    assert.deepStrictEqual(second.patch, {}, once.title_en);
+  }
 });

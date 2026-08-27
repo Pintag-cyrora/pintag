@@ -193,21 +193,22 @@ test('no uncaught exceptions while any of this runs', async ({ page }) => {
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
-test('a title carrying markup is still escaped where it is rendered', async ({ page }) => {
-  // The module passes stored values through verbatim, exactly as every other
-  // field is; escaping is the renderer's job. This asserts the renderer still
-  // does it, so the new concatenation cannot become an injection route.
+test('markup in a location field cannot reach the title, and never executes', async ({ page }) => {
   await openAdmin(page);
-  const escaped = await page.evaluate(() => {
-    const dirty = '<img src=x onerror=window.__xss=1>';
-    document.getElementById('f-village').value = dirty;
+  const out = await page.evaluate(() => {
+    document.getElementById('f-village').value = '<img src=x onerror=window.__xss=1>';
     document.getElementById('f-district').value = 'Sisattanak';
     document.getElementById('f-title-en').value = 'Condo';
     applyImportTitles();
-    // esc() is admin.html's own escaper, used at every render site.
-    return { title: document.getElementById('f-title-en').value, rendered: esc(document.getElementById('f-title-en').value) };
+    const title = document.getElementById('f-title-en').value;
+    // esc() is admin.html's own escaper, used at every render site — the
+    // primary control, asserted here to still be in force.
+    return { title, rendered: esc(title) };
   });
-  expect(escaped.title).toContain('<img');            // stored verbatim, like any field
-  expect(escaped.rendered).not.toContain('<img');     // escaped when rendered
+  // Defence in depth: the phrase is built from script runs, so angle brackets
+  // cannot survive into it at all.
+  expect(out.title, out.title).not.toContain('<');
+  expect(out.title, out.title).toContain('Sisattanak');
+  expect(out.rendered).not.toContain('<img');
   expect(await page.evaluate(() => window.__xss)).toBeUndefined();
 });
