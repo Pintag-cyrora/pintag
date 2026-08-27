@@ -121,7 +121,8 @@ PROPERTY DETAILS:
 - Land Size: ${data.sqm_land ? data.sqm_land + ' sqm' : 'not specified'}
 - Price: ${data.price_display || 'on request'}
 - Village: ${data.village || 'not specified'}
-- District: ${data.district || 'not specified'}, Vientiane, Laos
+- District: ${data.district || 'not specified'}
+- City/Province: ${data.province || 'Vientiane'}, Laos
 - Features: ${featuresList || 'not specified'}
 - Furnished: ${data.furnished || 'not specified'}${depositLine}${rentalTermsLine}
 - Nearby Landmarks: ${nearbyNames.join(', ') || 'not specified'}${existingTitleLine}
@@ -131,7 +132,16 @@ CONTENT RULES:
 TITLES (max 80 characters each):
 - Short and professional
 - No excessive marketing language
-- Mention the key selling point (location, style, or unique feature)
+- Lead with the key selling point (style, or a unique feature)
+- LOCATION IS REQUIRED. End the title with " in <Village>, <District>, <City>",
+  skipping any level that is "not specified" — village first when there is one,
+  district and city otherwise. A reader must know WHERE the property is from
+  the title alone, because the title is the only line that travels into a
+  shared link's preview.
+- A DISTRICT IS NOT A VILLAGE. Sisattanak, Saysettha, Chanthabouly,
+  Sikhottabong, Xaythany, Hadxaifong and Naxaithong are DISTRICTS. Never
+  present one as a village, and never invent a village from a district name.
+- Do NOT repeat a location that is already in the title.
 - If an Existing/source title is provided above, produce polished Pintag-quality
   titles consistent with its meaning in all three languages (do not copy it verbatim)
 

@@ -1067,6 +1067,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script src="provinces.js?v=__ASSET_VERSION__"></script>
+<script src="listing-title.js?v=__ASSET_VERSION__"></script>
 <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
   <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
@@ -1213,6 +1214,37 @@ function onProvinceChange() {
     sel.parentNode.appendChild(free);
   }
   free.style.display = isCapital ? 'none' : '';
+}
+
+// The listing's structured location AS THE FORM CURRENTLY HOLDS IT — the
+// shape listing-title.js expects. Built here rather than at each call site so
+// Smart Import, Edit-regenerate and save all read the location the same way.
+//
+// This is the only place that knows all three levels at once: the importer
+// extracts a district and village from the source post, but the PROVINCE is
+// the operator's choice in the form and never comes back from the AI.
+function currentListingLocation() {
+  const districtEn = currentDistrictValue();
+  const districtMap = DISTRICT_MAP[districtEn] || {};
+  const provinceEn = document.getElementById('f-province').value || null;
+  const provinceDef = (typeof provinceByKey === 'function') ? provinceByKey(provinceEn) : null;
+  return {
+    village_en:  document.getElementById('f-village').value.trim() || null,
+    district_en: districtEn || null,
+    district_lo: districtMap.lo || null,
+    district_zh: districtMap.zh || null,
+    province_en: provinceEn,
+    province_lo: provinceDef ? provinceDef.lo : null,
+    province_zh: provinceDef ? provinceDef.zh : null
+  };
+}
+
+// Every AI-generated title passes through here before it reaches a field.
+// The prompts ASK for the location; this GUARANTEES it, and does nothing when
+// the title already carries it or the listing has no location to add.
+function withTitleLocation(titles) {
+  if (!window.PintagListingTitle) return titles;   // never block a generation
+  return window.PintagListingTitle.ensureAllTitleLocations(titles, currentListingLocation());
 }
 
 // The district value to save: the select inside the capital, the free-text
@@ -5049,9 +5081,11 @@ async function generateAIContent() {
     // wrote. Structured fields, the gallery, and workflow status are left
     // untouched, so nothing the operator set is overwritten. Note:
     // smart-listing-importer returns the English title as `title` (not title_en).
-    if (result.title)    document.getElementById('f-title-en').value = result.title;
-    if (result.title_lo) document.getElementById('f-title-lo').value = result.title_lo;
-    if (result.title_zh) document.getElementById('f-title-zh').value = result.title_zh;
+    const _titles = withTitleLocation({
+      title: result.title, title_lo: result.title_lo, title_zh: result.title_zh });
+    if (_titles.title)    document.getElementById('f-title-en').value = _titles.title;
+    if (_titles.title_lo) document.getElementById('f-title-lo').value = _titles.title_lo;
+    if (_titles.title_zh) document.getElementById('f-title-zh').value = _titles.title_zh;
 
     // ── Fill property highlights ─────────────────────────────────
     ['en','lo','zh'].forEach(lang => {
@@ -5602,6 +5636,9 @@ function populateFormFromImport(data) {
   document.getElementById('f-land-title').value  = '';
   document.getElementById('f-featured').value    = 'false';
 
+  // Deferred: Smart Import fills the location fields further down this same
+  // function, so the title is located AFTER them (see applyImportTitles below)
+  // -- locating it here would read an empty district and add nothing.
   document.getElementById('f-title-en').value    = data.title    || '';
   document.getElementById('f-title-lo').value    = data.title_lo || '';
   document.getElementById('f-title-zh').value    = data.title_zh || '';
@@ -5713,6 +5750,26 @@ function populateFormFromImport(data) {
   document.getElementById('f-contact-whatsapp').value = contactPhone || '';
   updateOwnerSectionVisibility();
   flagContactSectionForReview(!contactPhone);
+
+  // LAST, deliberately: the location fields above have only just been filled
+  // from the import, and the province select is the operator's (defaulting to
+  // Vientiane Capital on a new listing). Running this earlier would read an
+  // empty district and leave the title unlocated — the whole point.
+  applyImportTitles();
+}
+
+// Re-locates the three title fields from whatever location the form now holds.
+// Separate from populateFormFromImport so the operator can also reach it after
+// correcting a district the AI got wrong, without regenerating anything.
+function applyImportTitles() {
+  const located = withTitleLocation({
+    title:    document.getElementById('f-title-en').value,
+    title_lo: document.getElementById('f-title-lo').value,
+    title_zh: document.getElementById('f-title-zh').value
+  });
+  if (located.title)    document.getElementById('f-title-en').value = located.title;
+  if (located.title_lo) document.getElementById('f-title-lo').value = located.title_lo;
+  if (located.title_zh) document.getElementById('f-title-zh').value = located.title_zh;
 }
 
 // Visually flags the Buyer Contact section amber so staff notices it needs
