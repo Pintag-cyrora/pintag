@@ -100,8 +100,12 @@ async function run(label, deviceName, freshContext, engine) {
   const state = await page.evaluate(() => {
     const opts = () => document.querySelectorAll('#f-province option').length;
     const out = {
-      servedFixInReset: typeof resetListingForm === 'function'
+      // The fix now lives OUTSIDE resetListingForm, so this must be false —
+      // if it were true the old code would still be deployed.
+      oldCallStillInsideReset: typeof resetListingForm === 'function'
         && /populateProvinceSelect\(''\)/.test(resetListingForm.toString()),
+      resetClearsSelectionOnly: typeof resetListingForm === 'function'
+        && /_provSel/.test(resetListingForm.toString()),
       getAllProvinces: typeof getAllProvinces,
       registry: typeof getAllProvinces === 'function' ? getAllProvinces().length : null,
       populateFn: typeof populateProvinceSelect,
@@ -109,10 +113,41 @@ async function run(label, deviceName, freshContext, engine) {
       districtOptions: document.querySelectorAll('#f-district option').length,
       loginVisible: !!document.querySelector('#paa-email, #paa-pw'),
     };
+    const list = () => [...document.querySelectorAll('#f-province option')].map((o) => o.value);
+    out.provincesAtLoad = list().filter(Boolean).length;
+
     // Now do exactly what the visitor does.
     try { showImportPanel(); out.showImportPanelThrew = null; }
     catch (e) { out.showImportPanelThrew = String(e); }
     out.optionsAfterNewListing = opts();
+
+    // Both entry points.
+    try { showForm(null); } catch (e) { out.showFormThrew = String(e); }
+    out.optionsAfterShowForm = opts();
+
+    // Close and reopen, repeatedly — no duplication, no drift.
+    for (let i = 0; i < 3; i++) { try { showListings(); showImportPanel(); } catch (_) {} }
+    out.optionsAfterReopen = opts();
+    out.duplicates = list().length - new Set(list()).size;
+
+    // Selecting a province still drives District correctly.
+    const sel = document.getElementById('f-province');
+    sel.value = 'Luang Prabang'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+    out.nonCapital = { selected: sel.value,
+      districtHidden: document.getElementById('f-district').style.display === 'none',
+      freeTextShown: !!document.getElementById('f-district-free') };
+    sel.value = 'Vientiane Capital'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+    out.capital = { selected: sel.value,
+      districtShown: document.getElementById('f-district').style.display !== 'none',
+      districtOptions: document.querySelectorAll('#f-district option').length };
+
+    // THE FAULT THAT CAUSED THIS: make resetListingForm throw early and prove
+    // the Province field survives it, on the LIVE production page.
+    const orig = window.loadUnitTypes;
+    window.loadUnitTypes = () => { throw new Error('simulated early fault'); };
+    try { resetListingForm(); out.faultThrew = null; } catch (e) { out.faultThrew = e.message; }
+    window.loadUnitTypes = orig;
+    out.optionsAfterSimulatedFault = opts();
 
     // If the options are still missing, find out how far resetListingForm got.
     if (out.optionsAfterNewListing <= 1) {
