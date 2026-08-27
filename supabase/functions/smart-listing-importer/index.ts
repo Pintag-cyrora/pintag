@@ -402,11 +402,15 @@ TITLE — the single most important field. Make THIS property recognizable, not 
   * If the current title is already specific and clearly accurate, PRESERVE its useful information — do NOT rewrite a good title just for variation.
   * Do NOT assume the current title is accurate beyond what it says, and do NOT invent anything to "beat" it.
   * Do NOT return it unchanged if it is generic (e.g. "House for Rent in <District>") — rebuild it from real, supported features.
-- Location (district) is SUPPORTING context at most — never the whole title. A title that only names type + transaction + district is a FAILURE.
+- LOCATION IS REQUIRED IN THE TITLE. End the title with " in <Village>, <District>" using the village and district you extracted (village first when you have one; district alone when you do not). A reader must know WHERE the property is from the title alone — it is the only line that travels into a shared link's preview, where the location field does not follow it.
+- Location is required, but it is not the SELLING point: the title must still lead with what makes this property distinct. A title that names ONLY type + transaction + district ("House for Rent in Sisattanak") is still a FAILURE — the location goes AFTER a real differentiator, not instead of one.
+- A DISTRICT IS NOT A VILLAGE. Sisattanak, Saysettha, Chanthabouly, Sikhottabong, Xaythany, Hadxaifong and Naxaithong are DISTRICTS of Vientiane Capital. Never present one as a village or neighbourhood, and never invent a village name from a district (there is no "Ban Sisattanak"). If you did not find a real village, use the district alone.
 - Use only features the evidence supports. Never invent. Keep it natural (about 5–10 words); do NOT keyword-stuff — two well-chosen differentiators beat five.
 - Two different properties must produce two different titles.
 - Only if the photos show nothing distinctive AND the text is sparse: fall back to the clearest supported detail (type + one real field), still avoiding the bare district template.
-Example — Current listing title "House for Rent in Sisattanak"; photos show a modern furnished interior, large living room, private garden, and 3 bedrooms → a strong title is "Modern 3-Bedroom Home with Private Garden" (the district moves into the description as supporting context, not the title).
+Example — Current listing title "House for Rent in Sisattanak"; photos show a modern furnished interior, large living room, private garden, and 3 bedrooms; the post names Ban Phonxay → a strong title is "Modern 3-Bedroom Home with Private Garden in Ban Phonxay, Sisattanak" (a real differentiator leads, the location follows it).
+Example — same property, no village found in the source → "Modern 3-Bedroom Home with Private Garden in Sisattanak" (district alone; do NOT invent a village).
+Do NOT repeat the location if it is already in the title — "... in Sisattanak, Sisattanak" is wrong.
 
 PROPERTY HIGHLIGHT — sell ONE strong quality; do not echo the title.
 - Its job is to sell the property's strongest VISUAL or FUNCTIONAL quality, or the concrete benefit it gives the resident, grounded ONLY in evidence from the photos or supplied data.

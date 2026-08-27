@@ -1,0 +1,7 @@
+{
+  "name": "pintag-listing-title-tests",
+  "private": true,
+  "description": "Proves the admin form actually applies the shared location rule to AI-generated titles, on BOTH the Smart Import and the Edit-regenerate path. The unit tests prove the rule; they cannot prove the page calls it, reads the right fields, or runs it after the location is filled — and each of those is a way the guarantee silently disappears.",
+  "scripts": { "test": "playwright test" },
+  "devDependencies": { "@playwright/test": "1.56.1" }
+}
