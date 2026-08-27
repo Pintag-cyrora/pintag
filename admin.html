@@ -1195,6 +1195,26 @@ function populateProvinceSelect(selected) {
   sel.value = selected || '';
 }
 
+// Build the options ONCE, here, at page load.
+//
+// The 18 provinces are a static registry, not form state: they are identical
+// for every listing and never change while the page is open. Building them
+// inside resetListingForm() made them depend on that function reaching its
+// twelfth statement, and on which entry point the operator used -- so anything
+// throwing earlier in that function left the operator with a Province field
+// containing only its placeholder, while District stayed full because its
+// seven options are static HTML. That is the production failure this replaces.
+//
+// Safe to run at parse time: the <select> is declared far above this script
+// block, so the element exists. Safe to run repeatedly: the function assigns
+// sel.innerHTML wholesale rather than appending, so the option list is
+// REPLACED on every call and can never accumulate duplicates.
+//
+// It stays inside the same guard the function already has -- a missing
+// provinces.js means no options rather than an exception that would take the
+// rest of the admin script down with it.
+populateProvinceSelect('');
+
 // The 7 hardcoded district options are Vientiane Capital's. Outside the
 // capital Pintag has no district registry yet, so the select is replaced by a
 // free-text input rather than offering the wrong districts — a Luang Prabang
@@ -3707,16 +3727,18 @@ function resetListingForm() {
   ['neighborhood-count-en','neighborhood-count-lo','neighborhood-count-zh'].forEach(cid => {
     const el = document.getElementById(cid); if (el) el.textContent = '0 / 220';
   });
-  // The province <select> is EMPTY in the HTML -- one placeholder <option> and
-  // nothing else; all 18 come from the LAO_PROVINCES registry at runtime. Until
-  // now the ONLY caller of populateProvinceSelect() was the edit path, so a New
-  // Listing opened with no province to choose and the required Location section
-  // could not be completed. Populated here because both entry points --
-  // showForm(null) and showImportPanel() -- funnel through this one reset, so
-  // neither can drift from the other. onProvinceChange() follows for the same
-  // reason the rest of this function exists: it hides the free-text district
-  // input a previously-edited non-capital listing leaves behind.
-  populateProvinceSelect('');
+  // The province OPTIONS are built once at page load (see the initializer under
+  // populateProvinceSelect) and are deliberately NOT rebuilt here -- a fresh
+  // listing needs the selection cleared, not the registry re-rendered, and
+  // making the option list depend on this function completing is exactly what
+  // left the live Province field empty.
+  //
+  // This reads no registry and calls nothing that can throw, so it also cannot
+  // become the reason a later statement is skipped.
+  const _provSel = document.getElementById('f-province');
+  if (_provSel) _provSel.value = '';
+  // Still needed: it hides the free-text district input a previously-edited
+  // non-capital listing leaves behind. That is form state, not registry data.
   onProvinceChange();
   // Reset the internal owner picker + Buyer Contact -- a fresh listing must
   // never silently inherit the previously-edited listing's owner/contact.
