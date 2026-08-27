@@ -84,9 +84,15 @@ const browser = await chromium.launch();
 const ctx = await browser.newContext({ ...devices['Desktop Chrome'] });
 const page = await ctx.newPage();
 
-const exceptions = [], consoleErrors = [];
+const exceptions = [], consoleErrors = [], badRequests = [];
 page.on('pageerror', (e) => exceptions.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+// A console line for a failed subresource is just "Failed to load resource:
+// ... 404" with NO url in it, so it cannot be classified from the console
+// alone. The response event carries the url, which is the difference between
+// "provinces.js is missing" and "the known image-preview placeholder 404s".
+page.on('response', (r) => { if (r.status() >= 400) badRequests.push(`${r.status()} ${r.url()}`); });
+page.on('requestfailed', (r) => badRequests.push(`FAILED ${r.url()}`));
 
 // admin.html builds a Supabase client at module scope. Without a stub the
 // script block aborts there and everything after it is missing -- which would
@@ -212,22 +218,44 @@ exceptions.length === 0 ? ok('no uncaught exceptions') : bad(`exceptions:\n     
 // Named, printed, not silently dropped -- both predate this change and neither
 // is in the province path. The ${esc(url)} 404 is the known admin
 // image-preview bug, deliberately left unfixed.
-const KNOWN = [
+const KNOWN_URLS = [
   { name: 'Cloudflare Web Analytics beacon refused by CSP', re: /cloudflareinsights/i },
-  { name: 'pre-existing admin image-preview ${esc(url)} 404', re: /esc\(url\)|%7Besc/i },
-  { name: 'CDN/font blocked in this runner', re: /jsdelivr|googleapis|gstatic/i },
+  { name: 'pre-existing admin image-preview ${esc(url)} placeholder', re: /%7Besc|\$\{esc/i },
+  { name: 'CDN/font not reachable from this runner', re: /jsdelivr|googleapis|gstatic/i },
 ];
+console.log(`  failing requests: ${badRequests.length}`);
+const knownReq = [], unknownReq = [];
+for (const r of badRequests) {
+  if (/favicon/i.test(r)) continue;
+  const k = KNOWN_URLS.find((x) => x.re.test(r));
+  (k ? knownReq : unknownReq).push(k ? `${k.name}  <-  ${r.slice(0, 120)}` : r);
+}
+knownReq.forEach((r) => console.log(`      known: ${r}`));
+unknownReq.forEach((r) => console.log(`      UNEXPLAINED: ${r}`));
+
+// The province flow loads exactly two first-party assets: admin.html and
+// provinces.js. If either 404s, populateProvinceSelect() silently returns and
+// the dropdown is empty -- that is the failure mode this whole task was about,
+// so it is asserted by url rather than inferred from a console line.
+const firstParty = unknownReq.filter((r) => /localhost:\d+\/[^?]*\.(js|html|css)/.test(r));
+firstParty.length === 0
+  ? ok('every first-party asset the province flow needs was served')
+  : bad(`first-party asset(s) failed: ${firstParty.join(', ')}`);
+
+// Console errors, minus the resource-load lines already accounted for by url
+// above -- counting both would report the same 404 twice, and the console
+// copy carries no url to identify it by.
+const nonResource = consoleErrors.filter((e) => !/Failed to load resource|favicon/i.test(e));
 const known = [], unknown = [];
-for (const e of consoleErrors) {
-  if (/favicon/i.test(e)) continue;
-  const k = KNOWN.find((x) => x.re.test(e));
+for (const e of nonResource) {
+  const k = KNOWN_URLS.find((x) => x.re.test(e));
   (k ? known : unknown).push(k ? `${k.name}: ${e.slice(0, 110)}` : e);
 }
 console.log(`  known pre-existing (not province-related): ${known.length}`);
 known.forEach((e) => console.log(`      ${e}`));
-unknown.length === 0
+unknown.length === 0 && unknownReq.length === firstParty.length
   ? ok('no console errors related to the province flow')
-  : bad(`${unknown.length} unexplained console error(s):\n      ${unknown.slice(0, 5).join('\n      ')}`);
+  : bad(`unexplained: ${[...unknown, ...unknownReq.filter((r) => !firstParty.includes(r))].slice(0, 5).join('\n      ')}`);
 
 await browser.close();
 server.close();
