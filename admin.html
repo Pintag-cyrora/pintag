@@ -3675,6 +3675,17 @@ function resetListingForm() {
   ['neighborhood-count-en','neighborhood-count-lo','neighborhood-count-zh'].forEach(cid => {
     const el = document.getElementById(cid); if (el) el.textContent = '0 / 220';
   });
+  // The province <select> is EMPTY in the HTML -- one placeholder <option> and
+  // nothing else; all 18 come from the LAO_PROVINCES registry at runtime. Until
+  // now the ONLY caller of populateProvinceSelect() was the edit path, so a New
+  // Listing opened with no province to choose and the required Location section
+  // could not be completed. Populated here because both entry points --
+  // showForm(null) and showImportPanel() -- funnel through this one reset, so
+  // neither can drift from the other. onProvinceChange() follows for the same
+  // reason the rest of this function exists: it hides the free-text district
+  // input a previously-edited non-capital listing leaves behind.
+  populateProvinceSelect('');
+  onProvinceChange();
   // Reset the internal owner picker + Buyer Contact -- a fresh listing must
   // never silently inherit the previously-edited listing's owner/contact.
   populateOwnerSelect('');
