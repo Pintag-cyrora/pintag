@@ -86,6 +86,68 @@ const readProvince = (page) => page.evaluate(() => {
   };
 });
 
+test.describe('the province options exist independently of any form action', () => {
+  test('all 18 are present ON PAGE LOAD, before any New Listing is opened', async ({ page }) => {
+    await openAdmin(page);
+    // The whole point of the fix: the options are a static registry built once
+    // at page load, so nothing a form function does — or fails to do — can
+    // leave the field empty.
+    const got = await readProvince(page);
+    expect(got.placeholders, 'the empty placeholder').toBe(1);
+    expect(got.provinces.length, 'provinces at load, with no interaction').toBe(18);
+    expect(got.total).toBe(19);
+  });
+
+  test('THE PRODUCTION FAILURE: options survive resetListingForm() throwing', async ({ page }) => {
+    await openAdmin(page);
+    // Reproduce the shape of the live fault without guessing which statement
+    // caused it: make an early statement in resetListingForm throw, exactly as
+    // something did in the authenticated session, and prove the Province field
+    // is still usable. Under the old code this is what emptied it.
+    const after = await page.evaluate(() => {
+      const original = window.loadUnitTypes;
+      window.loadUnitTypes = () => { throw new Error('simulated failure early in resetListingForm'); };
+      let threw = null;
+      try { resetListingForm(); } catch (e) { threw = String(e.message); }
+      window.loadUnitTypes = original;
+      const o = [...document.querySelectorAll('#f-province option')];
+      return { threw, total: o.length, provinces: o.filter((x) => x.value !== '').length };
+    });
+    expect(after.threw, 'the simulated fault must actually have fired').toContain('simulated failure');
+    expect(after.provinces, 'provinces survive the fault').toBe(18);
+    expect(after.total).toBe(19);
+  });
+
+  test('calling the initializer repeatedly cannot duplicate the options', async ({ page }) => {
+    await openAdmin(page);
+    const counts = await page.evaluate(() => {
+      const n = () => document.querySelectorAll('#f-province option').length;
+      const out = [n()];
+      for (let i = 0; i < 5; i++) { populateProvinceSelect(''); out.push(n()); }
+      // And with a selection argument, the shape callers on the edit path use.
+      populateProvinceSelect('Luang Prabang'); out.push(n());
+      return out;
+    });
+    // innerHTML is ASSIGNED, not appended — the list is replaced every time.
+    expect(new Set(counts).size, `option count varied: ${counts}`).toBe(1);
+    expect(counts[0]).toBe(19);
+  });
+
+  test('resetListingForm clears the SELECTION without rebuilding the list', async ({ page }) => {
+    await openAdmin(page);
+    const out = await page.evaluate(() => {
+      populateProvinceSelect('Luang Prabang');
+      const before = document.querySelectorAll('#f-province option').length;
+      resetListingForm();
+      return { before, after: document.querySelectorAll('#f-province option').length,
+               selected: document.getElementById('f-province').value };
+    });
+    expect(out.before).toBe(19);
+    expect(out.after, 'still 19 — the registry was not re-rendered').toBe(19);
+    expect(out.selected, 'a fresh listing starts with nothing selected').toBe('');
+  });
+});
+
 test.describe('the admin Province select on a NEW listing', () => {
   test('showForm(null) offers 1 placeholder + all 18 provinces', async ({ page }) => {
     await openAdmin(page);
