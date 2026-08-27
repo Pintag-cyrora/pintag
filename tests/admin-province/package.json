@@ -1,0 +1,11 @@
+{
+  "name": "pintag-admin-province-tests",
+  "private": true,
+  "description": "Proves the admin Province select is actually populated on BOTH New Listing entry points. The select ships with a single placeholder <option> and all 18 provinces are injected at runtime from the LAO_PROVINCES registry, so an unpopulated dropdown looks identical to a populated one in the HTML and blocks the required Location section. Assertions count and name the rendered options rather than checking that the element exists.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
