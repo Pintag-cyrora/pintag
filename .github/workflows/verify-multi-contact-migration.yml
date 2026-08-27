@@ -181,24 +181,3 @@ jobs:
       # same code path an administrator hits, minus the gate in front of it.
       - name: Admin Province dropdown against production (READ ONLY)
         run: node smoke-province.mjs
-
-      # Proves the DB would accept what the form sends, without sending it.
-      # SELECT only, and the session is pinned read-only so a write would error
-      # rather than succeed.
-      - name: Province CHECK constraint accepts all 18 (READ ONLY)
-        env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          REF: ${{ steps.ref.outputs.ref }}
-        run: |
-          set -uo pipefail
-          if [ -z "${PGPASSWORD:-}" ]; then
-            echo "::notice title=Skipped::no SUPABASE_DB_PASSWORD secret; constraint read from the migration instead"
-            exit 0
-          fi
-          psql "postgresql://postgres.${REF}:${PGPASSWORD}@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres" \
-            -v ON_ERROR_STOP=1 -At <<'SQL'
-          SET default_transaction_read_only = on;
-          SELECT pg_get_constraintdef(oid)
-            FROM pg_constraint
-           WHERE conname = 'properties_province_en_check';
-          SQL

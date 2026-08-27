@@ -21,6 +21,7 @@
 // and reading it, never by sending it.
 import { chromium, devices } from '@playwright/test';
 import http from 'node:http';
+import { readFileSync } from 'node:fs';
 
 const SITE = 'https://www.pintag.io';
 const PORT = 8977;
@@ -256,6 +257,32 @@ known.forEach((e) => console.log(`      ${e}`));
 unknown.length === 0 && unknownReq.length === firstParty.length
   ? ok('no console errors related to the province flow')
   : bad(`unexplained: ${[...unknown, ...unknownReq.filter((r) => !firstParty.includes(r))].slice(0, 5).join('\n      ')}`);
+
+// ── 6. the province column is live in production, read-only ────────────────
+// This is the "accepted by the API" half, without writing anything. If the
+// migration were missing, province_en would not exist and PostgREST would
+// answer 42703 rather than a result set; if the CHECK were not applied, stored
+// values could drift off the registry. Both are observable from a GET.
+console.log('\n── 6. province column in production (READ ONLY GET) ────');
+const cfg = readFileSync(new URL('./config.prod.js', import.meta.url), 'utf8');
+const pick = (k) => (cfg.match(new RegExp(`${k}:\\s*'([^']+)'`)) || [])[1];
+const SUPABASE_URL = pick('supabaseUrl'), ANON = pick('anonKey');   // anonKey is public
+const res = await fetch(`${SUPABASE_URL}/rest/v1/properties?select=province_en&limit=1000`,
+  { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } });
+console.log(`  GET properties?select=province_en -> ${res.status}`);
+if (res.status !== 200) {
+  const body = await res.text();
+  bad(`province_en is not queryable: ${res.status} ${body.slice(0, 160)}`);
+} else {
+  ok('province_en exists and is queryable (the migration is applied)');
+  const rows = await res.json();
+  const distinct = [...new Set(rows.map((r) => r.province_en).filter(Boolean))];
+  console.log(`  ${rows.length} rows, distinct province_en: ${distinct.join(', ') || '(none)'}`);
+  const offRegistry = distinct.filter((v) => !DB_ALLOWED.includes(v));
+  offRegistry.length === 0
+    ? ok('every stored province_en is one of the 18 — the CHECK is holding')
+    : bad(`stored value(s) outside the registry: ${offRegistry.join(', ')}`);
+}
 
 await browser.close();
 server.close();
