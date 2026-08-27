@@ -171,9 +171,35 @@ const total = await page.locator(REAL_CARD).count();
 console.log(`  markers rendered: ${markers.length}`);
 
 const want = { ...EXPECTED, ...PRE_EXISTING };
-markers.length === 24
-  ? ok('24 pins — the 23 normalized plus the 1 pre-existing')
-  : bad(`expected 24 pins, got ${markers.length}`);
+// The 24 verified pins are a FLOOR, not a total. Production inventory is live:
+// a new listing with a good Google Maps link legitimately adds a 25th pin, and
+// freezing the total would turn "the business added a property" into a map
+// regression. What must never change is that all 24 verified pins are still
+// exactly where they were -- asserted individually in section 3 -- and that
+// every EXTRA pin came from its own link rather than a fallback, which
+// section 4's MAP_CENTER and distinctness checks cover.
+markers.length >= 24
+  ? ok(`${markers.length} pins — the 23 normalized, the 1 pre-existing` +
+       (markers.length > 24 ? `, and ${markers.length - 24} added since` : ''))
+  : bad(`expected at least 24 pins, got ${markers.length} — a verified pin is MISSING`);
+
+const extra = markers.filter((m) => !Object.keys(want).some((pre) => (m.slug || '').startsWith(pre)));
+if (extra.length) {
+  console.log(`  ${extra.length} pin(s) not in the verified set — new inventory, listed for the record:`);
+  for (const m of extra) console.log(`      ${m.slug}  ->  ${m.lat},${m.lng}`);
+  // A new pin still has to be a real coordinate from a real link, not a
+  // fallback wearing a new slug.
+  const parser = await page.evaluate((slugs) => slugs.map((s) => {
+    const mk = window._markers.find((x) => x._pintag.slug === s);
+    const r = window.PintagMapLocation.parseMapUrl(mk._pintag.map_embed_url);
+    return { slug: s, ok: !!r.ok, pattern: r.pattern || r.reason,
+             matches: r.ok && r.lat === mk.getLatLng().lat && r.lng === mk.getLatLng().lng };
+  }), extra.map((m) => m.slug));
+  const bogus = parser.filter((x) => !x.ok || !x.matches);
+  bogus.length === 0
+    ? ok(`each added pin sits on the coordinate parsed from its own link (${parser.map((x) => x.pattern).join(', ')})`)
+    : bad(`added pin(s) not backed by their link: ${JSON.stringify(bogus)}`);
+}
 
 // ── 3. every marker on its verified coordinate ──────────────────────────────
 console.log('\n── 3. each marker vs its verified coordinate ───────────');
