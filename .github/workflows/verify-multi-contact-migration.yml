@@ -181,3 +181,13 @@ jobs:
       # same code path an administrator hits, minus the gate in front of it.
       - name: Admin Province dropdown against production (READ ONLY)
         run: node smoke-province.mjs
+
+      # ── TEMPORARY: which ACTIVE listings have an unlocated title? ──────
+      # DRY RUN — no --apply, and the service-role key is exported only so the
+      # audit sees the same rows a write WOULD touch (drafts and soft-deleted
+      # rows included, so they can be shown as skipped rather than silently
+      # missing). Without --apply the script has no code path that writes.
+      - name: Audit ACTIVE listing titles for location (DRY RUN, READ ONLY)
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/audit-listing-titles.mjs
