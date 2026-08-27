@@ -54,14 +54,22 @@ adminRes.status === 200 ? ok('admin.html is served') : bad(`admin.html -> ${admi
 const stamp = (adminRes.body.match(/\?v=([A-Za-z0-9]+)/) || [])[1];
 console.log(`  asset stamp: ${stamp}`);
 
-// The fix itself, in the bytes production is serving.
-/populateProvinceSelect\(''\)/.test(adminRes.body)
-  ? ok("served admin.html calls populateProvinceSelect('') in the reset")
-  : bad('served admin.html does NOT contain the fix — stale artifact');
-const resetFn = adminRes.body.slice(adminRes.body.indexOf('function resetListingForm()'));
-/populateProvinceSelect\(''\)/.test(resetFn.slice(0, 3000))
-  ? ok('the call is inside resetListingForm(), which both entry points share')
-  : bad('populateProvinceSelect is present but NOT inside resetListingForm()');
+// The fix itself, in the bytes production is serving. It is now a TOP-LEVEL
+// initializer, deliberately NOT inside resetListingForm — building the
+// registry on the twelfth statement of that function is what left the live
+// Province field empty when something earlier in it threw.
+/^populateProvinceSelect\(''\);$/m.test(adminRes.body)
+  ? ok("served admin.html initializes the province options at page load (top level)")
+  : bad('served admin.html has no page-load initializer — stale artifact');
+
+const resetFn = adminRes.body.slice(adminRes.body.indexOf('function resetListingForm()'), 
+                                   adminRes.body.indexOf('function resetListingForm()') + 3000);
+!/populateProvinceSelect\(''\)/.test(resetFn)
+  ? ok('resetListingForm no longer rebuilds the registry — the old coupling is gone')
+  : bad('resetListingForm STILL rebuilds the registry — the old artifact is deployed');
+/_provSel/.test(resetFn)
+  ? ok('resetListingForm clears the selection only')
+  : bad('resetListingForm does not clear the province selection');
 
 const provRes = await fetchText('/provinces.js');
 console.log(`  GET /provinces.js -> ${provRes.status} ${provRes.body.length} bytes`);
