@@ -187,4 +187,7 @@ jobs:
       # GETs and page loads only. No service-role key is exported to this
       # step, so it has no credential with which to write even by mistake.
       - name: Probe the Province dropdown as production actually delivers it
-        run: node probe-province.mjs
+        run: |
+          set -euo pipefail
+          npx playwright install --with-deps webkit >/dev/null 2>&1 || echo "(webkit install failed — probe will report it)"
+          node probe-province.mjs

@@ -17,7 +17,7 @@
 //      its 7 options are static HTML. That is exactly the reported symptom.
 //
 // This distinguishes them instead of guessing.
-import { chromium, devices } from '@playwright/test';
+import { chromium, webkit, devices } from '@playwright/test';
 
 const ORIGINS = ['https://www.pintag.io', 'https://pintag.io', 'https://pintag-cyrora.github.io/pintag'];
 const say = (m) => console.log(m);
@@ -83,8 +83,9 @@ for (const u of [`https://www.pintag.io/provinces.js`, `https://www.pintag.io/pr
 say('\n── 4. the real page in a real browser (bare url, no stubs) ──');
 const browser = await chromium.launch();
 
-async function run(label, deviceName, freshContext) {
-  const ctx = await browser.newContext(
+async function run(label, deviceName, freshContext, engine) {
+  const b = engine || browser;
+  const ctx = await b.newContext(
     deviceName ? { ...devices[deviceName] } : { ...devices['Desktop Chrome'] });
   const page = await ctx.newPage();
   const errors = [], failed = [];
@@ -134,10 +135,22 @@ async function run(label, deviceName, freshContext) {
 }
 
 const desktop = await run('Desktop Chrome, fresh context', null, true);
-const iphone  = await run('iPhone 13 Safari UA, fresh context', 'iPhone 13', true);
+const iphone  = await run('Chromium with an iPhone UA string', 'iPhone 13', true);
+
+// The previous verification's blind spot: devices['iPhone 13'] on a CHROMIUM
+// launch only changes the user-agent string. The reporter is on a real iPhone,
+// which runs WebKit — a different JS engine, with different parser support.
+// Nothing Chromium does here says anything about that.
+let safari = { optionsAfterNewListing: 'not run' };
+try {
+  const wk = await webkit.launch();
+  safari = await run('REAL WebKit (Safari engine), iPhone 13', 'iPhone 13', true, wk);
+  await wk.close();
+} catch (e) { say(`  [WebKit] could not launch: ${e.message}`); }
 
 await browser.close();
 say('\n── summary ──────────────────────────────────────────────────');
 say(`  bare-url admin.html carries the fix : ${bare['https://www.pintag.io']?.hasFixInReset}`);
 say(`  desktop options after New Listing   : ${desktop.optionsAfterNewListing}`);
-say(`  iphone  options after New Listing   : ${iphone.optionsAfterNewListing}`);
+say(`  chromium+iPhone UA after New Listing: ${iphone.optionsAfterNewListing}`);
+say(`  REAL WebKit/Safari after New Listing: ${safari.optionsAfterNewListing}`);
