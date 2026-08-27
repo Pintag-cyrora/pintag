@@ -186,16 +186,34 @@ jobs:
       # Rewriting titles to match a rule the site is not yet running would
       # leave the two out of step in production, so this gates the write.
       - name: Confirm listing-title.js is live in the artifact (READ ONLY)
+        # `bash {0}`, not the default `bash -e {0}`: this step's job is to
+        # REPORT what each origin is serving. Under errexit the first curl that
+        # comes back non-zero kills the step and the measurement destroys
+        # itself -- run 33047015152 failed here with no indication of whether
+        # the file was a 404, a stale cache, or the wrong host.
+        shell: bash {0}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           CB="$(date +%s)"
-          BODY="$(curl -sS -H 'Cache-Control: no-cache' "https://www.pintag.io/listing-title.js?cb=$CB")"
-          echo "$BODY" | grep -q 'ensureTitleLocation' || { echo "::error::listing-title.js is not serving the new module"; exit 1; }
-          echo "$BODY" | grep -q 'titleLocationPatch'   || { echo "::error::listing-title.js is missing titleLocationPatch"; exit 1; }
-          echo "  listing-title.js is live ($(echo "$BODY" | wc -c) bytes)"
+          FAIL=1
+          for HOST in https://www.pintag.io https://pintag.io https://pintag-cyrora.github.io/pintag; do
+            CODE="$(curl -sS -o /tmp/lt.js -w '%{http_code}' -H 'Cache-Control: no-cache' "$HOST/listing-title.js?cb=$CB" || echo 000)"
+            SIZE="$(wc -c < /tmp/lt.js 2>/dev/null || echo 0)"
+            HAS=no; grep -q 'ensureTitleLocation' /tmp/lt.js 2>/dev/null && HAS=yes
+            echo "  $HOST/listing-title.js -> $CODE  ${SIZE}B  ensureTitleLocation=$HAS"
+            [ "$HAS" = yes ] && FAIL=0
+          done
+          echo ""
+          echo "  cache headers from www:"
+          curl -sS -D - -o /dev/null -H 'Cache-Control: no-cache' "https://www.pintag.io/listing-title.js?cb=$CB" \
+            | grep -iE '^(HTTP/|cf-cache-status|age|last-modified|server):' | sed 's/^/    /'
           A="$(curl -sS -H 'Cache-Control: no-cache' "https://www.pintag.io/admin.html?cb=$CB")"
-          echo "$A" | grep -q 'listing-title.js' || { echo "::error::admin.html does not load listing-title.js"; exit 1; }
-          echo "  admin.html loads it; stamp $(echo "$A" | grep -oE '\?v=[A-Za-z0-9]+' | head -1)"
+          echo "  admin.html references listing-title.js: $(echo "$A" | grep -c 'listing-title.js')"
+          echo "  admin.html stamp: $(echo "$A" | grep -oE '\?v=[A-Za-z0-9]+' | head -1)"
+          if [ "$FAIL" != 0 ]; then
+            echo "::error::listing-title.js is not being served by any origin — NOT applying any title write"
+            exit 1
+          fi
 
       # ── APPLY: write the audited title updates ─────────────────────────
       # Writes title_en/title_lo/title_zh on ACTIVE listings only, and only
