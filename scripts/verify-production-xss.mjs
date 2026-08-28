@@ -23,6 +23,22 @@ import vm from 'node:vm';
 
 const SITE = process.env.SITE_URL || 'https://pintag.io';
 
+// pintag.io sits behind Cloudflare Bot Fight Mode — confirmed 2026-08-28 from
+// Security Analytics: action=managed_challenge, source=botFight,
+// ruleId=bot_fight_mode. BFM issues a managed challenge to clients it scores as
+// automated, which includes Node's default undici User-Agent and anything
+// CLAIMING to be a browser without a matching TLS fingerprint. It does not
+// challenge a client that honestly identifies itself as a non-browser tool.
+//
+// This is an HONEST IDENTIFIER, NOT A BYPASS. Nothing in Cloudflare is
+// allowlisted, no rule exempts it, it grants no privilege, and an attacker
+// forging it gains nothing they did not already have. If Cloudflare's
+// heuristics change and this starts being challenged too, the cf-mitigated
+// guard below is what keeps the result honest — the UA is an optimisation, the
+// guard is the correctness property. Overridable so the guard itself can be
+// tested: SITE_UA=curl/8.5.0 must produce BLOCKED, never FAIL.
+const UA = process.env.SITE_UA || 'GitHub-Actions-Monitoring/1.0';
+
 // Attacker-controlled text reaches these fields via Smart Import, the Facebook
 // adapter and AI generation — which is why they are the ones under test.
 const PAYLOADS = [
@@ -66,9 +82,14 @@ function extractFn(src, name) {
   return src.slice(start, i);
 }
 
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, block = 0;
 const ok  = (m) => { console.log('  PASS  ' + m); pass++; };
 const bad = (m, d) => { console.log('  FAIL  ' + m + (d ? '\n      → ' + d : '')); fail++; };
+// "The check could not run" is a THIRD outcome, distinct from pass and fail.
+// Collapsing it into either one is the defect this exists to fix: into pass and
+// a real regression goes unseen; into fail and the report invents a production
+// vulnerability that does not exist.
+const blocked = (m, d) => { console.log('  BLOCKED  ' + m + (d ? '\n      → ' + d : '')); block++; };
 
 console.log('==============================================================');
 console.log(' XSS fix — proven against the LIVE production pages');
@@ -79,7 +100,20 @@ for (const page of ['listing.html', 'admin.html']) {
   console.log('\n' + page);
   let src;
   try {
-    const res = await fetch(`${SITE}/${page}`, { redirect: 'follow' });
+    const res = await fetch(`${SITE}/${page}`, {
+      redirect: 'follow',
+      headers: { 'User-Agent': UA },
+    });
+    // A Cloudflare challenge is not a finding about production. The body is an
+    // interstitial, so every assertion below would measure Cloudflare's page
+    // instead of ours and report "ships NO escJs()" about a page that ships it.
+    const mit = res.headers.get('cf-mitigated');
+    if (mit) {
+      blocked(`${page}: VERIFICATION COULD NOT RUN — HTTP ${res.status}, cf-mitigated=${mit}`,
+              'the edge challenged this probe; NOTHING was measured about the deployed ' +
+              'page. This is not evidence for or against the XSS fix.');
+      continue;
+    }
     if (!res.ok) { bad(`${page} fetch returned HTTP ${res.status}`); continue; }
     src = await res.text();
   } catch (e) {
@@ -122,6 +156,7 @@ for (const page of ['listing.html', 'admin.html']) {
 }
 
 console.log('\n==============================================================');
-console.log(` RESULT: ${pass} passed, ${fail} failed`);
+console.log(` RESULT: ${pass} passed, ${fail} failed, ${block} could not run`);
+if (block) console.log(' A blocked check is NOT a pass — the verification did not execute.');
 console.log('==============================================================');
-process.exit(fail === 0 ? 0 : 1);
+process.exit(fail === 0 && block === 0 ? 0 : 1);

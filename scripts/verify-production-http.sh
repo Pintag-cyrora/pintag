@@ -18,7 +18,10 @@
 #   * it never writes, deletes, or modifies anything;
 #   * it prints no tokens, keys, emails, or listing content.
 #
-# Exit code: 0 = every control held. 1 = at least one FAIL.
+# Exit code: 0 = every control held AND every check actually ran. 1 = at least
+# one FAIL, or at least one BLOCKED (a check the Cloudflare edge prevented from
+# running — reported separately, because "could not be measured" must never be
+# recorded as either a pass or a production vulnerability).
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -30,8 +33,46 @@ PASS=0; FAIL=0; WARN=0
 ok()   { printf '  PASS  %s\n' "$1"; PASS=$((PASS+1)); }
 bad()  { printf '  FAIL  %s\n      → %s\n' "$1" "${2:-}"; FAIL=$((FAIL+1)); }
 warn() { printf '  WARN  %s\n      → %s\n' "$1" "${2:-}"; WARN=$((WARN+1)); }
+BLOCKED=0
+blocked() { printf '  BLOCKED  %s\n      → %s\n' "$1" "${2:-}"; BLOCKED=$((BLOCKED+1)); }
 
 CURL=(curl -sS --max-time 25 -H "apikey: ${SUPABASE_ANON_KEY}")
+
+# ── Fetching pintag.io itself (NOT Supabase) ────────────────────────────────
+# See the comment block in scripts/verify-production-xss.mjs for why this UA:
+# Cloudflare Bot Fight Mode (ruleId=bot_fight_mode, confirmed 2026-08-28)
+# challenges automated clients on HTML paths. Honest identifier, not a bypass;
+# overridable so the guard can be tested (SITE_UA=curl/8.5.0 must yield BLOCKED).
+SITE_UA="${SITE_UA:-GitHub-Actions-Monitoring/1.0}"
+SITE_CURL=(curl -sS --max-time 25 -A "$SITE_UA")
+
+# cf_challenged <header-blob> → 0 when the edge mitigated the request.
+cf_challenged() { printf '%s' "$1" | grep -qi '^cf-mitigated:'; }
+
+# site_head <url> → response headers of a GET. Deliberately NOT `curl -I`
+# (HEAD): the Worker wraps a GET response, and only the method a browser
+# actually sends is guaranteed to reproduce what a browser receives.
+site_head() { "${SITE_CURL[@]}" -o /dev/null -D - "$1" 2>/dev/null || true; }
+
+# site_get <url> → sets SITE_BODY to the response body and SITE_MIT to the
+# cf-mitigated value ("" when the edge did not mitigate), so the caller can tell
+# "this is the real page" from "this is a challenge interstitial".
+#
+# It returns BOTH values through globals and prints NOTHING, deliberately. The
+# obvious shape — print the body, set SITE_MIT as a side effect, call it as
+# page="$(site_get "$url")" — is broken: command substitution runs the function
+# in a SUBSHELL, so the SITE_MIT assignment dies with it and the caller always
+# reads "". That silently disables the guard, which is the exact failure this
+# code exists to prevent. Verified by test; do not "simplify" it back.
+SITE_BODY=""
+SITE_MIT=""
+site_get() {
+  local h
+  h="$(mktemp)"
+  SITE_BODY="$("${SITE_CURL[@]}" -D "$h" "$1" 2>/dev/null || true)"
+  SITE_MIT="$(grep -i '^cf-mitigated:' "$h" 2>/dev/null | tr -d '\r' | cut -d' ' -f2- || true)"
+  rm -f "$h"
+}
 
 echo "=============================================================="
 echo " Pintag production verification — HTTP surface"
@@ -221,10 +262,13 @@ done
 # ── 8. Security headers on the public site ──────────────────────────────────
 echo
 echo "8. HEADERS — transport and framing protections on ${SITE_URL}"
-hdrs="$(curl -sSI --max-time 25 "${SITE_URL}/listing.html" 2>/dev/null || true)"
+hdrs="$(site_head "${SITE_URL}/listing.html")"
 has() { grep -qi "^$1:" <<< "$hdrs"; }
 if [ -z "$hdrs" ]; then
   warn "could not fetch headers from ${SITE_URL}" "site unreachable from this runner"
+elif cf_challenged "$hdrs"; then
+  blocked "header check on listing.html COULD NOT RUN" \
+    "Cloudflare returned a bot challenge (cf-mitigated) — these are the challenge page's headers, not production's. Absence of HSTS/XCTO/Referrer-Policy here says NOTHING about what a browser receives."
 else
   has 'strict-transport-security' && ok "Strict-Transport-Security present" \
     || bad "Strict-Transport-Security missing" "add via the Cloudflare Transform Rule in docs/CSP.md"
@@ -244,9 +288,12 @@ fi
 # value page on the site — is NOT on a Worker route, so it only gets these
 # headers if a zone-wide Transform Rule exists (docs/CSP.md). Check it directly
 # rather than assuming the listing.html result generalises.
-ahdrs="$(curl -sSI --max-time 25 "${SITE_URL}/admin.html" 2>/dev/null || true)"
+ahdrs="$(site_head "${SITE_URL}/admin.html")"
 if [ -z "$ahdrs" ]; then
   warn "could not fetch headers for admin.html" "cannot confirm zone-wide header coverage"
+elif cf_challenged "$ahdrs"; then
+  blocked "admin.html header-coverage check COULD NOT RUN" \
+    "Cloudflare bot challenge (cf-mitigated); the zone-wide Transform Rule in docs/CSP.md is neither confirmed nor refuted by this run"
 else
   missing=""
   for h in strict-transport-security x-content-type-options referrer-policy; do
@@ -261,8 +308,16 @@ else
 fi
 
 # The page-level CSP is delivered as a meta tag (GitHub Pages cannot set headers).
-page="$(curl -sS --max-time 25 "${SITE_URL}/listing.html" 2>/dev/null || true)"
-if grep -qi 'http-equiv="Content-Security-Policy"' <<< "$page"; then
+site_get "${SITE_URL}/listing.html"; page="$SITE_BODY"; page_mit="$SITE_MIT"
+# This ONE fetch feeds BOTH the CSP check here and section 9's escJs check, so
+# the challenge guard has to cover both. Without it a challenge interstitial
+# (which carries neither a CSP meta tag nor escJs) is reported as "the CSP
+# commit is not deployed" AND "the deployed build predates the XSS fix" — two
+# fabricated critical findings about controls that are live and working.
+if [ -n "$page_mit" ]; then
+  blocked "CSP meta-tag check on listing.html COULD NOT RUN" \
+    "Cloudflare bot challenge (cf-mitigated=$page_mit); \$page holds an interstitial, not the deployed page"
+elif grep -qi 'http-equiv="Content-Security-Policy"' <<< "$page"; then
   if grep -qi 'connect-src' <<< "$page"; then
     ok "deployed listing.html carries the CSP meta tag (connect-src present)"
   else
@@ -275,14 +330,20 @@ fi
 # ── 9. Is the XSS fix actually deployed? (F-01 / F-02) ──────────────────────
 echo
 echo "9. XSS FIX — is the corrected escaping actually live?"
-if grep -q 'function escJs' <<< "$page"; then
+if [ -n "$page_mit" ]; then
+  blocked "XSS-fix deployment check on listing.html COULD NOT RUN" \
+    "Cloudflare bot challenge (cf-mitigated=$page_mit); this is NOT evidence that F-02 is unfixed"
+elif grep -q 'function escJs' <<< "$page"; then
   ok "listing.html on ${SITE_URL} contains escJs() (F-02 fix deployed)"
 else
   bad "listing.html on ${SITE_URL} has NO escJs()" \
       "the deployed build predates the XSS fix — F-02 is still live"
 fi
-admin_page="$(curl -sS --max-time 25 "${SITE_URL}/admin.html" 2>/dev/null || true)"
-if grep -q 'escJs(p.title_en' <<< "$admin_page"; then
+site_get "${SITE_URL}/admin.html"; admin_page="$SITE_BODY"; admin_mit="$SITE_MIT"
+if [ -n "$admin_mit" ]; then
+  blocked "admin.html F-01 deployment check COULD NOT RUN" \
+    "Cloudflare bot challenge (cf-mitigated=$admin_mit); this is NOT evidence that F-01 is unfixed"
+elif grep -q 'escJs(p.title_en' <<< "$admin_page"; then
   ok "admin.html on ${SITE_URL} escapes the listing title for the JS context (F-01 fix deployed)"
 elif [ -z "$admin_page" ]; then
   warn "admin.html not fetchable" "cannot confirm the F-01 fix is deployed"
@@ -293,6 +354,7 @@ fi
 
 echo
 echo "=============================================================="
-printf ' RESULT: %s passed, %s failed, %s warning(s)\n' "$PASS" "$FAIL" "$WARN"
+printf ' RESULT: %s passed, %s failed, %s warning(s), %s could not run\n' "$PASS" "$FAIL" "$WARN" "$BLOCKED"
+[ "$BLOCKED" -eq 0 ] || echo ' A BLOCKED check is NOT a pass — that verification did not execute.'
 echo "=============================================================="
-[ "$FAIL" -eq 0 ]
+[ "$FAIL" -eq 0 ] && [ "$BLOCKED" -eq 0 ]

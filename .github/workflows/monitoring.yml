@@ -50,8 +50,49 @@ jobs:
       ALERT_WEBHOOK_URL:  ${{ secrets.ALERT_WEBHOOK_URL }}
       MIN_EXPECTED_LISTINGS: ${{ vars.MIN_EXPECTED_LISTINGS || 1 }}
     steps:
-      - name: Uptime — public site
+      - name: Uptime — origin asset + build marker (PRIMARY signal)
         run: |
+          # PRIMARY uptime signal, and strictly STRONGER than the "/" probe it
+          # replaces — that one only proved the edge answered 2xx.
+          #
+          # pintag.io sits behind Cloudflare Bot Fight Mode (confirmed
+          # 2026-08-28 from Security Analytics: action=managed_challenge,
+          # source=botFight, ruleId=bot_fight_mode). BFM challenges automated
+          # clients on HTML paths but by DESIGN exempts static assets by
+          # extension. Measured in run 33140390449, same client, same second:
+          # config.js / components.js / map-location.js all 200 with
+          # cf-mitigated absent, while "/" and /listings.html were challenged.
+          #
+          # The cache-busting query forces cf-cache-status: MISS, so this is a
+          # genuine ORIGIN fetch and not an edge-cache read: it proves GitHub
+          # Pages is serving, and the marker proves it is serving the
+          # PRODUCTION build. Failures stay detectable — a missing asset
+          # returns 404 with cf-mitigated absent (verified against
+          # /does-not-exist-xyz.js), so this step still fails loudly.
+          url="https://pintag.io/config.js?monitor=${GITHUB_RUN_ID}-$(date +%s)"
+          resp=$(curl -sS --max-time 20 -w '\n%{http_code}' "$url" || true)
+          code=$(printf '%s' "$resp" | tail -n1)
+          [ -n "$code" ] || code=000
+          body=$(printf '%s' "$resp" | sed '$d')
+          echo "config.js → $code"
+          case "$code" in
+            2*) ;;
+            *) echo "::error::Origin asset config.js returned $code — origin or deploy is broken"; exit 1 ;;
+          esac
+          if ! printf '%s' "$body" | grep -q 'isProduction: *true'; then
+            echo "::error::config.js is served but carries NO production marker — the wrong build is live"
+            exit 1
+          fi
+          echo "Origin healthy and serving the PRODUCTION build."
+
+      - name: Uptime — public HTML surface (secondary)
+        run: |
+          # SECONDARY. Reaching this step at all means the asset step above
+          # already proved the origin is healthy and serving the production
+          # build — a failed step halts the job. THAT ORDERING IS THE SAFETY
+          # PROPERTY: it is what makes downgrading a challenge to a warning
+          # safe. Never add continue-on-error to the step above.
+          #
           # pintag.io is fronted by a Cloudflare Worker (cloudflare-worker/
           # og-listing-preview.js). While MAINTENANCE_MODE is on, the public
           # browsing pages ("/", /index.html, /listings.html, /listing.html) are
@@ -60,17 +101,34 @@ jobs:
           # temporary and never index the placeholder). admin.html and every
           # asset pass through untouched. Classify accordingly:
           #   2xx/3xx                         → live
+          #   403 + cf-mitigated              → expected Bot Fight Mode challenge
+          #                                     for an automated client; NOT an
+          #                                     incident (origin proven above)
+          #   403 WITHOUT cf-mitigated        → genuine failure
           #   503 + Pintag maintenance page   → intentional maintenance, NOT an incident
           #   503 WITHOUT the maintenance page, or any other 4xx/5xx → genuine failure
+          #
+          # The challenge escape hatch is deliberately scoped to 403 ALONE —
+          # the only status Cloudflare's managed challenge uses. A 500 or 503
+          # is a real outage no matter what headers accompany it, and the
+          # mirrored test pins that.
           # Logic mirrored by tests/monitoring/uptime-classify.test.sh (kept in
           # sync by hand — this workflow has no checkout to share a script).
-          resp=$(curl -s --max-time 20 -w '\n%{http_code}' https://pintag.io/)
+          resp=$(curl -sS --max-time 20 -D /tmp/h -w '\n%{http_code}' https://pintag.io/ || true)
           code=$(printf '%s' "$resp" | tail -n1)
+          [ -n "$code" ] || code=000
           body=$(printf '%s' "$resp" | sed '$d')
-          echo "pintag.io → $code"
+          mit=$(grep -i '^cf-mitigated:' /tmp/h 2>/dev/null | tr -d '\r' | cut -d' ' -f2- || true)
+          echo "pintag.io → $code (cf-mitigated: ${mit:-none})"
           case "$code" in
             2*|3*)
               echo "Public site is live." ;;
+            403)
+              if [ -n "$mit" ]; then
+                echo "::warning::HTML surface returned 403 with cf-mitigated=$mit — expected Cloudflare Bot Fight Mode challenge for an automated client. Origin and production build were independently verified by the asset check. Not an incident."
+              else
+                echo "::error::Public site returned 403 with no cf-mitigated header — genuine failure"; exit 1
+              fi ;;
             503)
               if printf '%s' "$body" | grep -qi 'maintenance'; then
                 echo "Public site is in INTENTIONAL maintenance (503 + maintenance page). Not an incident."
@@ -83,9 +141,20 @@ jobs:
 
       - name: Uptime — admin surface
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://pintag.io/admin.html)
-          echo "admin.html → $code"
-          case "$code" in 2*|3*) ;; *) echo "::error::Admin surface returned $code"; exit 1;; esac
+          code=$(curl -sS -o /dev/null -D /tmp/ha -w '%{http_code}' --max-time 20 https://pintag.io/admin.html || true)
+          [ -n "$code" ] || code=000
+          mit=$(grep -i '^cf-mitigated:' /tmp/ha 2>/dev/null | tr -d '\r' | cut -d' ' -f2- || true)
+          echo "admin.html → $code (cf-mitigated: ${mit:-none})"
+          case "$code" in
+            2*|3*) ;;
+            403)
+              if [ -n "$mit" ]; then
+                echo "::warning::admin.html returned 403 with cf-mitigated=$mit — expected Bot Fight Mode challenge. Not an incident."
+              else
+                echo "::error::Admin surface returned 403 with no cf-mitigated header"; exit 1
+              fi ;;
+            *) echo "::error::Admin surface returned $code"; exit 1 ;;
+          esac
 
       - name: Database checks (listing floor, critical alerts, admin-activity anomaly)
         if: env.PINTAG_PROD_DB_URL != ''
