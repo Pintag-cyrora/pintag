@@ -147,47 +147,14 @@ jobs:
             exit 1
           fi
 
-      # ── TEMPORARY: prove the MAP PIN pipeline on the LIVE site ─────────
-      # Google Maps URL -> map-location.js -> exact Leaflet marker.
-      #
-      # READ ONLY. It loads pintag.io in a real browser and issues GETs; it
-      # writes nothing to the database, to Storage, or to the repository. No
-      # service-role key is exported to this step, so a write is not merely
-      # unintended but impossible.
-      #
-      # It reads marker positions back out of Leaflet instead of counting DOM
-      # nodes, because the defect being verified produced the RIGHT NUMBER of
-      # markers in the WRONG PLACES -- a count-based check passes on the broken
-      # build and proves nothing.
-      - name: Map parser unit tests
-        run: node --test tests/map-location/map-location.test.js
 
-      - name: Map pin pipeline smoke test against production (READ ONLY)
+      # ── READ ONLY: diagnose the Production Monitoring 403 ──────────────
+      # GETs only. Varies ONE thing at a time (User-Agent) so the answer is
+      # evidence rather than inference, and separately asks whether a real
+      # browser can still use the site — the question that actually matters.
+      - name: Diagnose the pintag.io 403 seen by Production Monitoring
         run: |
           set -euo pipefail
           npm i -D @playwright/test@1.56.1 >/dev/null 2>&1
           npx playwright install --with-deps chromium >/dev/null 2>&1
-          node smoke-map.mjs
-
-      # ── TEMPORARY: the admin Province dropdown on the LIVE artifact ────
-      # READ ONLY, and structurally incapable of writing: no service-role key
-      # reaches this step, every /rest/v1/ request is intercepted in the
-      # browser, and the script asserts that zero writes escaped.
-      #
-      # It does NOT sign in. Admin access requires TOTP two-factor and there is
-      # no bypass here by design. Instead it fetches the deployed admin.html
-      # byte-for-byte from production and drives that -- the province select is
-      # populated client-side before any authenticated fetch, so this is the
-      # same code path an administrator hits, minus the gate in front of it.
-      - name: Admin Province dropdown against production (READ ONLY)
-        run: node smoke-province.mjs
-
-
-      # ── READ ONLY: why does an iPhone see an empty Province dropdown? ──
-      # GETs and page loads only. No service-role key is exported to this
-      # step, so it has no credential with which to write even by mistake.
-      - name: Probe the Province dropdown as production actually delivers it
-        run: |
-          set -euo pipefail
-          npx playwright install --with-deps webkit >/dev/null 2>&1 || echo "(webkit install failed — probe will report it)"
-          node probe-province.mjs
+          node probe-403.mjs
