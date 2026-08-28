@@ -44,9 +44,7 @@ jobs:
       # first now fails on the very 403 being diagnosed, and under `bash -e`
       # that killed the job before the diagnostic could run — the measurement
       # destroying itself again. GETs only; nothing is written anywhere.
-      - name: Diagnose the pintag.io 403 seen by Production Monitoring
-        run: |
-          set -euo pipefail
-          npm i -D @playwright/test@1.56.1 >/dev/null 2>&1
-          npx playwright install --with-deps chromium >/dev/null 2>&1
-          node probe-403.mjs
+      # READ ONLY. Validates the assumptions a monitoring fix would rest on
+      # before any fix is written. No browser needed — plain fetches.
+      - name: Validate the assumptions behind a monitoring fix (READ ONLY)
+        run: node probe-monitor-design.mjs
