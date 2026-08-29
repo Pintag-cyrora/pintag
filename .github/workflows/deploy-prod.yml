@@ -33,7 +33,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Every first-party <script src="X.js?v=__ASSET_VERSION__">/<link
       # href="X.css?v=__ASSET_VERSION__"> tag gets its placeholder replaced
@@ -65,12 +65,12 @@ jobs:
       - name: Prune non-production surfaces from the production artifact
         run: rm -f agent-login.html dashboard.html edit-listing.html add-property.html marketing-os.html
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
       # path: . uploads the whole repo root, so the existing CNAME file
       # (pintag.io) is included automatically — required for the custom
       # domain to keep working under an Actions-based Pages deploy.
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: .
 
@@ -82,7 +82,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   # Deploys cloudflare-worker/og-listing-preview.js to Cloudflare, replacing
   # the previously-manual `wrangler deploy` step. Independent of the Pages
@@ -109,15 +109,21 @@ jobs:
     name: Deploy Cloudflare Worker (OG preview)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Deploy via Wrangler
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: cloudflare-worker
           command: deploy
+          # Pin Wrangler CLI to v3 to preserve the exact deploy behavior that
+          # wrangler-action@v3 used (v3 installed Wrangler v3 by default;
+          # wrangler-action@v4 would otherwise default to Wrangler v4). The
+          # action bump to v4 is only to move the action's own runtime off the
+          # deprecated Node 20 onto Node 24 — it is not a Wrangler CLI upgrade.
+          wranglerVersion: '3'
           # No `continue-on-error` anywhere in this job: a failed Wrangler
           # deploy fails this job, which fails the workflow run, which shows
           # red in the Actions tab and (if branch protection/notifications
