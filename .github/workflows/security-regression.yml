@@ -35,7 +35,12 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Node 24: request-deadline.test.mjs imports a temp .mts extracted
+          # from index.ts and relies on the runtime's TypeScript type-stripping.
+          # Node 20 has no type-stripping and no .mts loader, so that import
+          # throws ERR_UNKNOWN_FILE_EXTENSION. Type-stripping is on by default
+          # from Node 24. (setup-node itself already runs on Node 24.)
+          node-version: '24'
 
       - name: XSS / inline-handler escaping regressions
         run: node --test xss-inline-handlers.test.js
