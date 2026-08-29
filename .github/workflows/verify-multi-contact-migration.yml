@@ -39,12 +39,81 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── READ ONLY: diagnose the Production Monitoring 403 ──────────────
-      # This is the ONLY step. The artifact-verification step that used to run
-      # first now fails on the very 403 being diagnosed, and under `bash -e`
-      # that killed the job before the diagnostic could run — the measurement
-      # destroying itself again. GETs only; nothing is written anywhere.
-      # READ ONLY. Validates the assumptions a monitoring fix would rest on
-      # before any fix is written. No browser needed — plain fetches.
-      - name: Validate the assumptions behind a monitoring fix (READ ONLY)
-        run: node probe-monitor-design.mjs
+      # ── TESTS 6, 7, 9 for commit 1f22c99. READ ONLY: GETs only. ──────────
+      # `shell: bash {0}` (no -e) throughout: several of these steps EXPECT a
+      # non-zero exit as the result being measured, and `bash -e {0}` would
+      # kill the step before it could be recorded. Same trap as before.
+
+      - name: Resolve production Supabase from config.prod.js
+        id: cfg
+        run: |
+          set -euo pipefail
+          echo "url=$(grep -oE 'https://[a-z0-9]+\.supabase\.co' config.prod.js | head -1)" >> "$GITHUB_OUTPUT"
+          echo "key=$(grep -oE 'eyJ[A-Za-z0-9._-]+' config.prod.js | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: EVIDENCE — raw edge response per User-Agent
+        shell: bash {0}
+        run: |
+          for ua in 'GitHub-Actions-Monitoring/1.0' 'curl/8.5.0'; do
+            for p in listing.html admin.html; do
+              echo "── UA='$ua'  path=/$p ──"
+              curl -sS --max-time 25 -A "$ua" -o /tmp/b -D - "https://pintag.io/$p" \
+                | tr -d '\r' | grep -iE '^(HTTP/|cf-mitigated|cf-ray|server|content-type):' | sed 's/^/    /'
+              echo "    body-bytes=$(wc -c </tmp/b)  title=$(grep -oiE '<title[^>]*>[^<]{0,60}' /tmp/b | head -1)"
+              echo "    ships-escJs=$(grep -c 'function escJs' /tmp/b || true)"
+            done
+          done
+
+      - name: TEST 6 — XSS verification with the monitoring UA (expect exit 0)
+        shell: bash {0}
+        env: { SITE_URL: 'https://pintag.io' }
+        run: |
+          node scripts/verify-production-xss.mjs | tee /tmp/t6.txt
+          rc=${PIPESTATUS[0]}; echo "::notice title=TEST 6 exit::$rc"
+          echo "--- assertions ---"
+          [ "$rc" -eq 0 ]                          && echo "OK exit 0"            || { echo "FAIL exit=$rc"; exit 1; }
+          ! grep -q 'BLOCKED'   /tmp/t6.txt        && echo "OK no BLOCKED"        || { echo "FAIL was blocked"; exit 1; }
+          ! grep -q '  FAIL '   /tmp/t6.txt        && echo "OK no FAIL lines"     || { echo "FAIL had failures"; exit 1; }
+          [ "$(grep -c 'payloads neutralised by the DEPLOYED escJs' /tmp/t6.txt)" -eq 2 ] \
+            && echo "OK both pages proved" || { echo "FAIL not both pages"; exit 1; }
+
+      - name: TEST 7 — XSS negative control, SITE_UA=curl/8.5.0 (expect exit 1 + BLOCKED)
+        shell: bash {0}
+        env: { SITE_URL: 'https://pintag.io', SITE_UA: 'curl/8.5.0' }
+        run: |
+          node scripts/verify-production-xss.mjs | tee /tmp/t7.txt
+          rc=${PIPESTATUS[0]}; echo "::notice title=TEST 7 exit::$rc"
+          echo "--- assertions ---"
+          [ "$rc" -eq 1 ]                                   && echo "OK exit 1"                 || { echo "FAIL exit=$rc"; exit 1; }
+          [ "$(grep -c 'VERIFICATION COULD NOT RUN' /tmp/t7.txt)" -eq 2 ] && echo "OK 2x BLOCKED" || { echo "FAIL blocked-count"; exit 1; }
+          ! grep -q 'ships NO escJs'   /tmp/t7.txt          && echo "OK no fabricated escJs finding" || { echo "FAIL FABRICATED FINDING"; exit 1; }
+          ! grep -q '  FAIL '          /tmp/t7.txt          && echo "OK zero FAIL lines"        || { echo "FAIL had FAIL lines"; exit 1; }
+          grep -q 'A blocked check is NOT a pass' /tmp/t7.txt && echo "OK caveat printed"       || { echo "FAIL no caveat"; exit 1; }
+
+      - name: TEST 9 — HTTP verification, SITE_UA=curl/8.5.0 (expect BLOCKED, zero false findings)
+        shell: bash {0}
+        env:
+          SUPABASE_URL: ${{ steps.cfg.outputs.url }}
+          SUPABASE_ANON_KEY: ${{ steps.cfg.outputs.key }}
+          SITE_URL: 'https://pintag.io'
+          SITE_UA: 'curl/8.5.0'
+        run: |
+          bash scripts/verify-production-http.sh | tee /tmp/t9.txt
+          rc=${PIPESTATUS[0]}; echo "::notice title=TEST 9 exit::$rc"
+          echo "--- sections 8 and 9 as reported ---"; sed -n '/^8\. HEADERS/,$p' /tmp/t9.txt
+          echo "--- assertions ---"
+          [ "$(grep -c 'COULD NOT RUN' /tmp/t9.txt)" -eq 4 ] && echo "OK 4x BLOCKED" || { echo "FAIL blocked-count=$(grep -c 'COULD NOT RUN' /tmp/t9.txt)"; exit 1; }
+          for false_finding in \
+              'Strict-Transport-Security missing' \
+              'X-Content-Type-Options missing' \
+              'Referrer-Policy missing' \
+              'no framing protection header' \
+              'carries NO CSP' \
+              'has NO escJs' \
+              'still interpolates the title unsafely' \
+              'is MISSING security headers'; do
+            if grep -q "$false_finding" /tmp/t9.txt; then
+              echo "FAIL fabricated finding present: $false_finding"; exit 1
+            fi
+            echo "OK absent: $false_finding"
+          done
