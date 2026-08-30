@@ -52,34 +52,41 @@ jobs:
     steps:
       - name: Uptime — public site
         run: |
-          # pintag.io is fronted by a Cloudflare Worker (cloudflare-worker/
-          # og-listing-preview.js). While MAINTENANCE_MODE is on, the public
-          # browsing pages ("/", /index.html, /listings.html, /listing.html) are
-          # served an "Under Maintenance" page as HTTP 503 + Retry-After — an
-          # INTENTIONAL, healthy state (so crawlers treat the downtime as
-          # temporary and never index the placeholder). admin.html and every
-          # asset pass through untouched. Classify accordingly:
-          #   2xx/3xx                         → live
-          #   503 + Pintag maintenance page   → intentional maintenance, NOT an incident
-          #   503 WITHOUT the maintenance page, or any other 4xx/5xx → genuine failure
-          # Logic mirrored by tests/monitoring/uptime-classify.test.sh (kept in
-          # sync by hand — this workflow has no checkout to share a script).
-          resp=$(curl -s --max-time 20 -w '\n%{http_code}' https://pintag.io/)
+          # Probe a STATIC ASSET (config.js), not the HTML document root.
+          #
+          # WHY: pintag.io sits behind Cloudflare Bot Fight Mode (confirmed from
+          # Security Analytics: action=managed_challenge, source=botFight,
+          # ruleId=bot_fight_mode). BFM issues interactive (JS) challenges to
+          # automated clients on HTML navigations — this runner's curl is scored
+          # a bot and gets a 403 it cannot solve — but by DESIGN exempts static
+          # assets by extension. Measured on production (run 33140390449, same
+          # client, same second): config.js returned 200 with cf-mitigated
+          # absent while "/" was challenged. Probing the HTML root here is what
+          # caused the recurring false 403 "outage" alerts.
+          #
+          # config.js is STRICTLY STRONGER than the old "/" probe: deploy-prod.yml
+          # regenerates it from config.prod.js on every deploy (cp step), so it
+          # is not just a static file — a 200 whose body carries the production
+          # marker proves GitHub Pages is serving the PRODUCTION build. The
+          # cache-busting query forces cf-cache-status: MISS, so this is a real
+          # ORIGIN fetch, not an edge-cache read. Failures stay loud — a missing
+          # asset returns 404 (cf-mitigated absent), so a broken deploy/origin
+          # still fails this step. No Cloudflare/BFM/Worker setting is changed;
+          # only the monitor's probe target moves off the challenged HTML path.
+          url="https://pintag.io/config.js?monitor=${GITHUB_RUN_ID}-$(date +%s)"
+          resp=$(curl -sS --max-time 20 -w '\n%{http_code}' "$url" || true)
           code=$(printf '%s' "$resp" | tail -n1)
+          [ -n "$code" ] || code=000
           body=$(printf '%s' "$resp" | sed '$d')
-          echo "pintag.io → $code"
+          echo "config.js → $code"
           case "$code" in
-            2*|3*)
-              echo "Public site is live." ;;
-            503)
-              if printf '%s' "$body" | grep -qi 'maintenance'; then
-                echo "Public site is in INTENTIONAL maintenance (503 + maintenance page). Not an incident."
-              else
-                echo "::error::Public site returned 503 without the maintenance page — unexpected outage"; exit 1
-              fi ;;
-            *)
-              echo "::error::Public site returned $code"; exit 1 ;;
+            2*) ;;
+            *) echo "::error::Origin asset config.js returned $code — origin or deploy is broken"; exit 1 ;;
           esac
+          if ! printf '%s' "$body" | grep -q 'isProduction: *true'; then
+            echo "::error::config.js is served but carries NO production marker — the wrong build is live"; exit 1
+          fi
+          echo "Public site is live (origin serving the PRODUCTION build)."
 
       - name: Uptime — admin surface
         run: |
