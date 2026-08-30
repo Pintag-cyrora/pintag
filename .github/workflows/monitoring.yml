@@ -90,9 +90,36 @@ jobs:
 
       - name: Uptime — admin surface
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://pintag.io/admin.html)
-          echo "admin.html → $code"
-          case "$code" in 2*|3*) ;; *) echo "::error::Admin surface returned $code"; exit 1;; esac
+          # Probe an ADMIN-SPECIFIC static asset (admin-auth.js), not admin.html.
+          #
+          # admin.html is an HTML navigation behind Cloudflare Bot Fight Mode:
+          # BFM challenges automated clients (this runner's curl) and returns a
+          # 403 it cannot solve — a false "admin down" incident while the page
+          # loads fine in a browser. BFM exempts static assets by extension
+          # (same basis as the config.js probe above), so admin-auth.js is
+          # reachable while still being a genuine ADMIN signal: it is the sole
+          # administrator auth module that admin.html loads
+          # (<script src="admin-auth.js">), is published on every deploy (not in
+          # deploy-prod.yml's prune list), and is not Worker-fronted. The
+          # cache-busting query forces a real origin fetch (cf-cache-status:
+          # MISS); the marker grep proves it is really admin-auth.js and not a
+          # 200 error/placeholder page. No Cloudflare / Bot Fight Mode / Worker /
+          # auth change — only the monitor's probe target moves off the
+          # challenged HTML path.
+          url="https://pintag.io/admin-auth.js?monitor=${GITHUB_RUN_ID}-$(date +%s)"
+          resp=$(curl -sS --max-time 20 -w '\n%{http_code}' "$url" || true)
+          code=$(printf '%s' "$resp" | tail -n1)
+          [ -n "$code" ] || code=000
+          body=$(printf '%s' "$resp" | sed '$d')
+          echo "admin-auth.js → $code"
+          case "$code" in
+            2*) ;;
+            *) echo "::error::Admin asset admin-auth.js returned $code — admin surface or deploy is broken"; exit 1 ;;
+          esac
+          if ! printf '%s' "$body" | grep -q 'administrator authentication flow'; then
+            echo "::error::admin-auth.js is served but missing its expected marker — wrong/partial file"; exit 1
+          fi
+          echo "Admin surface is live (admin-auth.js served)."
 
       - name: Database checks (listing floor, critical alerts, admin-activity anomaly)
         if: env.PINTAG_PROD_DB_URL != ''
