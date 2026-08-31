@@ -37,7 +37,8 @@ pg -c "\copy (select schemaname,tablename,policyname,cmd,roles,qual,with_check f
 pg -c "\copy (select p.proname, pg_get_function_identity_arguments(p.oid) as args, p.prosecdef from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' order by 1) TO '$DB/functions.csv' WITH (FORMAT csv, HEADER true)"
 
 echo "== reference-only exports (NOT directly restorable — see DR doc) =="
-pg -c "\copy (select id, email, created_at, last_sign_in_at from auth.users order by created_at) TO '$DB/reference/auth_users.csv' WITH (FORMAT csv, HEADER true)"
+pg -c "\copy (select id, email, created_at, last_sign_in_at from auth.users order by created_at) TO '$DB/reference/auth_users.csv' WITH (FORMAT csv, HEADER true)" \
+  || echo "(auth schema not readable by backup_ro — reference-only export skipped)"
 
 # ── Dynamic relationship-table discovery ────────────────────────────────────
 # Auto-includes ANY public table that (a) has a FK to properties/parties/
