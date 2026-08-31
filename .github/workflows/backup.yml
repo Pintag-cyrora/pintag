@@ -44,12 +44,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tools (pg client, rclone, age)
+      - name: Install tools (pg client 17, rclone, age)
         run: |
           sudo apt-get update -qq
-          # match the production Postgres major version (Supabase = 15/16)
-          sudo apt-get install -y postgresql-client rclone age
+          # Production Postgres is v17 (Supabase upgraded past the old 15/16).
+          # Ubuntu 24.04 (noble) ships only postgresql-client-16, whose pg_dump
+          # refuses to dump a v17 server ("aborting because of server version
+          # mismatch"). Install the v17 client from the official PostgreSQL Apt
+          # repository (PGDG); pg_wrapper then points /usr/bin/pg_dump at the
+          # highest installed major (17), so no script or PATH change is needed.
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17 rclone age
           rclone version && pg_dump --version && age --version
+          # Fail loudly if pg_dump is not the v17 client that matches the server,
+          # so a version mismatch can never silently reach pg_dump again.
+          pg_dump --version | grep -qE '\(PostgreSQL\) 17\.' \
+            || { echo "::error::pg_dump is not v17 (production server is 17.x) — aborting before a version-mismatch backup"; exit 1; }
 
       - name: Compute backup identity
         id: id
