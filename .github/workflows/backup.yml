@@ -91,7 +91,8 @@ jobs:
                    metadata->>'mimetype' as mimetype, \
                    coalesce(metadata->>'eTag',metadata->>'etag') as etag_checksum, \
                    created_at,updated_at from storage.objects where bucket_id='$BUCKET' order by name \
-          ) TO '$DEST/storage/manifest.csv' WITH (FORMAT csv, HEADER true)"
+          ) TO '$DEST/storage/manifest.csv' WITH (FORMAT csv, HEADER true)" \
+            || echo "(storage schema not readable by backup_ro — DB object manifest skipped; the R2 object pool + property_images registry remain the restore-critical artifacts)"
           # Incremental, checksum-verified sync of the immutable photo pool.
           rclone sync "SB:$BUCKET" "R2:$R2_BUCKET/storage/objects" --checksum --transfers 8 --fast-list
 
