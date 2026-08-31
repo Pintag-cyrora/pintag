@@ -51,11 +51,21 @@ jobs:
           # Ubuntu 24.04 (noble) ships only postgresql-client-16, whose pg_dump
           # refuses to dump a v17 server ("aborting because of server version
           # mismatch"). Install the v17 client from the official PostgreSQL Apt
-          # repository (PGDG); pg_wrapper then points /usr/bin/pg_dump at the
-          # highest installed major (17), so no script or PATH change is needed.
+          # repository (PGDG). NOTE: /usr/bin/pg_dump is pg_wrapper, which selects
+          # pg_dump's version from the runner's DEFAULT PostgreSQL 16 cluster
+          # (only psql/pg_isready are hard-coded to "newest") — so bare pg_dump
+          # stays 16 even with client-17 installed. We must pin the v17 bin dir.
           sudo apt-get install -y postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y postgresql-client-17 rclone age
+          # Put the real v17 binaries first on PATH, bypassing the wrapper:
+          # `export` for this step's assertion, and $GITHUB_PATH so every later
+          # step (backup-database.sh's bare pg_dump/psql) also resolves to 17 —
+          # no change to the backup logic itself.
+          PG17_BIN=/usr/lib/postgresql/17/bin
+          test -x "$PG17_BIN/pg_dump" || { echo "::error::PostgreSQL 17 client not found at $PG17_BIN after install"; exit 1; }
+          export PATH="$PG17_BIN:$PATH"
+          echo "$PG17_BIN" >> "$GITHUB_PATH"
           rclone version && pg_dump --version && age --version
           # Fail loudly if pg_dump is not the v17 client that matches the server,
           # so a version mismatch can never silently reach pg_dump again.
