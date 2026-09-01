@@ -32,7 +32,7 @@ jobs:
       # Supabase Storage's S3 gateway is region-specific; without this rclone
       # defaults to us-east-1 and the source read fails with BucketRegionError
       # ("bucket is in 'eu-west-1'"). Region reported by the gateway itself.
-      RCLONE_CONFIG_SB_REGION: eu-west-1
+      RCLONE_CONFIG_SB_REGION: ap-southeast-1
       RCLONE_CONFIG_SB_ENDPOINT: ${{ secrets.SUPABASE_S3_ENDPOINT }}
       RCLONE_CONFIG_SB_ACCESS_KEY_ID: ${{ secrets.SUPABASE_S3_ACCESS_KEY_ID }}
       RCLONE_CONFIG_SB_SECRET_ACCESS_KEY: ${{ secrets.SUPABASE_S3_SECRET_ACCESS_KEY }}
