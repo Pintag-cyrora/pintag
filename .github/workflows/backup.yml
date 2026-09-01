@@ -125,7 +125,7 @@ jobs:
           # rclone check: every file the manifest lists must exist in R2, hashes matching.
           rclone check "SB:$BUCKET" "R2:$R2_BUCKET/storage/objects" --checksum --one-way \
             2> "$DEST/storage/rclone-check.txt" || { cat "$DEST/storage/rclone-check.txt"; exit 1; }
-          rclone hashsum SHA256 "R2:$R2_BUCKET/storage/objects" > "$DEST/storage/checksums.sha256"
+          rclone hashsum MD5 "R2:$R2_BUCKET/storage/objects" > "$DEST/storage/checksums.md5"
 
       - name: Verify database dump is readable/complete (fail-closed)
         run: |
