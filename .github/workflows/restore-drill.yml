@@ -38,7 +38,9 @@ jobs:
     timeout-minutes: 60           # the drill-scale RTO bound
     services:
       postgres:
-        image: postgres:16
+        # Match production's PostgreSQL major (17.6) so the pg_dump 17 archive and
+        # its PG17 statements (e.g. SET transaction_timeout) restore cleanly.
+        image: postgres:17
         env:
           POSTGRES_PASSWORD: drill
         ports: ['5432:5432']
@@ -131,7 +133,7 @@ jobs:
         run: |
           START=$(date +%s)
           AGE_KEY=./backup-age-key.txt \
-            bash scripts/restore-production.sh --backup "./${{ steps.pick.outputs.dir }}"
+            bash scripts/restore-production.sh --backup "./${{ steps.pick.outputs.dir }}" --seed-stub-auth
           END=$(date +%s)
           echo "Drill restore+validation took $(( (END-START)/60 ))m $(( (END-START)%60 ))s (RTO bound: job timeout 60m)"
 
