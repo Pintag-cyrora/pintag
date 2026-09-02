@@ -2775,17 +2775,24 @@ function getUnitTypesFromDom() {
 // in the DOM is DELETEd. This preserves unit_type.id across saves, which
 // Phase 3's Individual Units will need to FK to.
 async function saveUnitTypes(propertyId) {
+  // Same selector and order getUnitTypesFromDom() reads, so rows[i] is cards[i].
+  const cards = [...document.querySelectorAll('.ut-card')];
   const rows = getUnitTypesFromDom();
   for (const id of _removedUnitTypeIds) {
     await sbApi('DELETE', `unit_types?id=eq.${id}`);
   }
-  for (const row of rows) {
-    const { id, ...fields } = row;
+  for (let i = 0; i < rows.length; i++) {
+    const { id, ...fields } = rows[i];
     fields.property_id = propertyId;
     if (id) {
       await sbApi('PATCH', `unit_types?id=eq.${id}`, fields);
     } else {
-      await sbApi('POST', 'unit_types', fields);
+      const created = await sbApi('POST', 'unit_types', fields);
+      // Write the new id back onto its card immediately: if a later row (or a
+      // later save step) fails and the operator saves again, this row must be
+      // PATCHed, not POSTed a second time.
+      const newId = Array.isArray(created) ? (created[0] && created[0].id) : (created && created.id);
+      if (newId && cards[i]) cards[i].dataset.id = newId;
     }
   }
   _removedUnitTypeIds = [];
@@ -4271,17 +4278,34 @@ async function saveListing(e) {
         languages: readLanguageChips(document.getElementById('f-contact-languages'), 'pc-lang')
       };
       const forkRequested = document.getElementById('f-contact-fork') && document.getElementById('f-contact-fork').checked;
-      if (_editingContactId && _editingContactSharedCount === 0) {
-        await sbApi('PATCH', `contacts?id=eq.${_editingContactId}`, contactBody);
-        resolvedContactId = _editingContactId;
-      } else if (_editingContactId && _editingContactSharedCount > 0 && !forkRequested) {
-        await sbApi('PATCH', `contacts?id=eq.${_editingContactId}`, contactBody);
-        resolvedContactId = _editingContactId;
+      // The shared PENDING sentinel is a placeholder, never a person's record.
+      // A draft still pointing at it has NO existing contact to update:
+      // PATCHing the sentinel would rewrite the row every other phone-less
+      // draft shares (and every future one ensurePendingContact() hands out).
+      // Treat it exactly like a listing with no contact yet and POST a new
+      // row. The DB enforces the same rule (trg_contacts_protect_pending_sentinel).
+      const existingContactId =
+        (_editingContactId && _editingContactId !== PENDING_CONTACT_ID) ? _editingContactId : null;
+      if (existingContactId && _editingContactSharedCount === 0) {
+        await sbApi('PATCH', `contacts?id=eq.${existingContactId}`, contactBody);
+        resolvedContactId = existingContactId;
+      } else if (existingContactId && _editingContactSharedCount > 0 && !forkRequested) {
+        await sbApi('PATCH', `contacts?id=eq.${existingContactId}`, contactBody);
+        resolvedContactId = existingContactId;
       } else {
         const created = await sbApi('POST', 'contacts', contactBody);
         resolvedContactId = Array.isArray(created) ? created[0].id : created.id;
+        // A freshly created row is this listing's own contact, shared with
+        // nobody -- clear the fork/shared state that described the OLD one.
+        _editingContactSharedCount = 0;
+        if (document.getElementById('f-contact-fork')) document.getElementById('f-contact-fork').checked = false;
+        document.getElementById('contact-shared-note').style.display = 'none';
       }
     }
+    // The contact row is persisted at this point. Remember it so a retry after
+    // a later partial failure (properties insert, unit types, phone links)
+    // updates this same row instead of creating another one.
+    _editingContactId = resolvedContactId;
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'Save Listing';
@@ -4392,6 +4416,15 @@ async function saveListing(e) {
   const saved = Array.isArray(result) ? result.length > 0 : !!result;
   if (saved) {
     const propertyId = editId || (Array.isArray(result) ? result[0].id : result.id);
+    if (!editId) {
+      // The properties row exists now. From here on this form IS an edit of
+      // that row: a retry after one of the partial failures below, or a
+      // second Save, must PATCH it rather than POST a duplicate listing.
+      // Same three fields editListing()/revealFormPanel() set for an edit.
+      document.getElementById('edit-id').value = propertyId;
+      document.getElementById('form-title').textContent = 'Edit Listing';
+      document.getElementById('publish-btn').style.display = (workflowStatus === 'draft') ? 'inline-block' : 'none';
+    }
     try {
       await saveUnitTypes(propertyId);
     } catch (err) {
@@ -4475,14 +4508,22 @@ async function saveListing(e) {
       }
     }
   }
-  btn.disabled = false;
-  btn.textContent = 'Save Listing';
   if (saved) {
+    // Stay disabled until the listings view takes over: a second click in
+    // this window used to re-run the whole create. The label is deliberately
+    // not 'Saving...' so the finally block below leaves it alone.
+    btn.textContent = 'Saved ✓';
     msg.className = 'form-message success';
     msg.textContent = editId ? '✓ Listing updated successfully.' : '✓ Listing created successfully.';
     msg.style.display = 'block';
-    setTimeout(() => showListings(), 1500);
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Save Listing';
+      showListings();
+    }, 1500);
   } else {
+    btn.disabled = false;
+    btn.textContent = 'Save Listing';
     msg.className = 'form-message error';
     msg.textContent = editId
       ? '✗ Save failed — not authorised to edit this listing. Check Supabase RLS policies.'
