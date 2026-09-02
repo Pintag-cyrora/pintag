@@ -60,7 +60,24 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client rclone age
+          # The backup archive is created by pg_dump 17 (custom format, archive
+          # version 1.16). pg_restore 16 cannot read it ("unsupported version
+          # (1.16) in file header"). Ubuntu 24.04 (noble) ships only
+          # postgresql-client-16, and /usr/bin/pg_restore is pg_wrapper, which
+          # selects the runner's DEFAULT PG16 cluster — so install the v17 client
+          # from PGDG and pin its bin dir on PATH, exactly as backup.yml does for
+          # pg_dump, so bare pg_restore/psql (restore-production.sh) resolve to 17.
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17 rclone age
+          PG17_BIN=/usr/lib/postgresql/17/bin
+          test -x "$PG17_BIN/pg_restore" || { echo "::error::PostgreSQL 17 client not found at $PG17_BIN after install"; exit 1; }
+          echo "$PG17_BIN" >> "$GITHUB_PATH"
+          export PATH="$PG17_BIN:$PATH"
+          # Fail loudly if pg_restore is not v17, so a 1.16 archive can never
+          # reach a v16 pg_restore again.
+          pg_restore --version | grep -qE '\(PostgreSQL\) 17\.' \
+            || { echo "::error::pg_restore is not v17 — the pg_dump 17 archive (v1.16) cannot be restored by an older client"; exit 1; }
 
       - name: Locate and download the backup snapshot
         id: pick
