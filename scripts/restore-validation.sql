@@ -22,4 +22,4 @@ UNION ALL SELECT 'functions_present',
 UNION ALL SELECT 'rls_enabled_tables',
        (SELECT count(*)::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity)
-ORDER BY check;
+ORDER BY "check";
