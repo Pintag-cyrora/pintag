@@ -20,7 +20,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Same asset-versioning stamp as deploy-prod.yml -- see that file's
       # comment for the full rationale. Keeping the dev mirror on the same
@@ -37,7 +37,7 @@ jobs:
         run: rm -f CNAME
 
       - name: Publish to pintag-dev
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
         with:
           personal_token: ${{ secrets.PINTAG_DEV_DEPLOY_TOKEN }}
           external_repository: Pintag-cyrora/pintag-dev
