@@ -1089,7 +1089,10 @@ function getParam(name){
   try{var v=new URLSearchParams(window.location.search).get(name);if(v&&v.trim())return v.trim();}catch(_){}
   var m=RegExp('[?&]'+name+'=([^&]*)').exec(window.location.search);
   if(m&&m[1]){var q=decodeURIComponent(m[1].replace(/\+/g,' ')).trim();if(q)return q;}
-  if(name==='slug'){var h=(window.location.hash||'').replace(/^#/,'').trim();if(h)return decodeURIComponent(h);}
+  // The hash is a slug only when nothing else identifies the listing: on a
+  // ?id= URL it is a same-page anchor (#similar-section after Find Similar),
+  // and reading it as a slug turned a refresh/share into "Property not found".
+  if(name==='slug'&&!/[?&]id=[^&]+/.test(window.location.search)){var h=(window.location.hash||'').replace(/^#/,'').trim();if(h)return decodeURIComponent(h);}
   return null;
 }
 
@@ -1679,7 +1682,7 @@ function renderSimilarGrid(similar){
   var frag=document.createDocumentFragment();
   var idxCounter=1;
   similar.forEach(function(p){
-    if(!p||!p.slug)return;
+    if(!p)return;   // _ptListingHref() links a slugless row through ?id=; dropping it left the "N similar" count contradicting the grid
     var simIdx = p.id ? idxCounter++ : null;
     var card = renderPropertyPreview(p, {
       lang: lang,
@@ -1693,12 +1696,19 @@ function renderSimilarGrid(similar){
   gridEl.innerHTML='';
   gridEl.appendChild(frag);
 
-  var sessionId=getOrCreateSessionId();
-  var impressionRows=similar.filter(function(p){return p&&p.id;}).map(function(p,idx){
-    return {property_id:p.id,event_type:'impression',session_id:sessionId,source:'similar',search_position:idx+1};
-  });
-  if(impressionRows.length) postEvent('listing_events',impressionRows);
+  // setLang() re-renders the same cached result set; the impressions belong
+  // to the fetch, so a lo -> en -> zh toggle must not triple the count that
+  // is the click-through denominator in analytics.
+  if(similar!==_similarImpressionsPostedFor){
+    _similarImpressionsPostedFor=similar;
+    var sessionId=getOrCreateSessionId();
+    var impressionRows=similar.filter(function(p){return p&&p.id;}).map(function(p,idx){
+      return {property_id:p.id,event_type:'impression',session_id:sessionId,source:'similar',search_position:idx+1};
+    });
+    if(impressionRows.length) postEvent('listing_events',impressionRows);
+  }
 }
+var _similarImpressionsPostedFor=null;
 
 function showErrorState(msg){
   var t=document.getElementById('view-target');
@@ -1783,6 +1793,10 @@ function _syncUnitUrlParam(){
 // whichever gallery is actually on screen rather than always reopening the
 // building's photos underneath a unit's swapped-in hero.
 var _currentGalleryImages = [];
+// Index of the photo the desktop hero is showing. The lightbox used to
+// recover it by indexOf(heroImg.src) against the ORIGINAL urls, which never
+// matches once the hero shows a WebP rendition, so it always opened at 0.
+var _currentHeroIdx = 0;
 
 // Rented Listings UX v2, Priority 4 -- the "Notify Me About Similar
 // Properties" waiting-list CTA needs the buyer contact's WhatsApp number,
@@ -1810,14 +1824,17 @@ function ptSelectContact(index){
   // the selection too.
   _currentContactPhone=ptNormalizePhoneDigits(c.whatsapp||c.phone||'');
 
-  var wa=document.getElementById('pt-wa-primary');
-  if(wa){
+  // Both WhatsApp buttons -- the desktop one and the mobile sticky bar's,
+  // which are on screen together on a phone -- must dial the picked contact.
+  ['pt-wa-primary','pt-wa-mobile'].forEach(function(id){
+    var wa=document.getElementById(id);
+    if(!wa) return;
     var existing=wa.getAttribute('href')||'';
     var q=existing.indexOf('?');
     var text=(q>-1)?existing.slice(q):'';
     wa.setAttribute('href', _currentContactPhone?('https://wa.me/'+_currentContactPhone+text):'#');
     wa.setAttribute('data-contact-id', _currentContactId);
-  }
+  });
   var call=document.getElementById('pt-call-primary');
   if(call){
     call.setAttribute('href',ptTelHref(c.phone));
@@ -2018,7 +2035,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
     // already resolved that fallback), same "treat cards like selectable
     // products" ask as Booking.com room cards.
     var coverImg=Array.isArray(resolvedUnit.images)&&resolvedUnit.images.length?resolvedUnit.images[0]:null;
-    var coverHtml=coverImg?'<div class="unit-card-cover"><img src="'+esc(ptImageUrl(coverImg,'card'))+'" alt="" loading="lazy"></div>':'';
+    var coverHtml=coverImg?'<div class="unit-card-cover"><img src="'+esc(ptImageUrl(coverImg,'card'))+'" alt="" loading="lazy"'+ptImageFallbackAttrs(coverImg)+'></div>':'';
 
     var ctaHtml='';
     if(cleanPhone){
@@ -2032,7 +2049,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
       // itself; adding data-track too would double-post (see its header
       // comment in components.js).
       ctaHtml='<a href="'+esc(waUnitUrl)+'" target="_blank" rel="noopener noreferrer" class="unit-cta" '+
-        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:\''+escJs((property.contacts&&property.contacts.id)||'')+'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+escJs(unitName)+'\'}})">'+
+        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:\''+escJs(_currentContactId)+'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+escJs(unitName)+'\'}})">'+
         esc(L.unitInquire[lang])+'</a>';
     }
 
@@ -2119,6 +2136,7 @@ function buildMockupLayout(){
 
   var imagesArray=(selectedUnit?selectedUnit.resolved.images:(Array.isArray(data.images)?data.images:[])).filter(function(u){return u&&typeof u==='string';});
   _currentGalleryImages=imagesArray;
+  _currentHeroIdx=0;
 
   // Description/Features/Amenities also become the SELECTED UNIT's own
   // (already-inherited-from-the-building-when-null) values, same
@@ -2456,7 +2474,7 @@ function buildMockupLayout(){
     if(_stripImgs.length||_stripAmenities.length){
       var _stripPhotosHtml=_stripImgs.length?(
         '<div class="building-strip-photos">'+_stripImgs.map(function(url){
-          return '<div class="building-strip-photo" data-url="'+esc(url)+'"><img src="'+esc(ptImageUrl(url,'card'))+'" alt="" loading="lazy"></div>';
+          return '<div class="building-strip-photo" data-url="'+esc(url)+'"><img src="'+esc(ptImageUrl(url,'card'))+'" alt="" loading="lazy"'+ptImageFallbackAttrs(url)+'></div>';
         }).join('')+'</div>'
       ):'';
       var _stripAmenitiesHtml=_stripAmenities.length?(
@@ -2679,7 +2697,7 @@ function buildMockupLayout(){
       if(statusCta.action==='find_similar'){
         // Same-page anchor scroll, not a contact action -- data-track is
         // sufficient (no lead_events involved either way).
-        statusCtaHtml='<a href="#similar-section" class="btn-primary" style="justify-content:center;" data-track="status-cta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>';
+        statusCtaHtml='<a href="#similar-section" class="btn-primary" style="justify-content:center;" onclick="scrollToSimilar(event)" data-track="status-cta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>';
       }else{
         // waiting_list/notify_me -- a waitlist ping for an UNAVAILABLE
         // listing, not a live property inquiry (mirrors
@@ -3064,12 +3082,12 @@ function buildMockupLayout(){
     // recordLead semantics per branch).
     var mCtaButtonHtml=(typeof statusCta!=='undefined'&&statusCta)
       ? (statusCta.action==='find_similar'
-          ? '<a href="#similar-section" class="mcta-btn" data-track="mcta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>'
+          ? '<a href="#similar-section" class="mcta-btn" onclick="scrollToSimilar(event)" data-track="mcta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>'
           : (function(){
               var mWaStatusUrl=cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+(data.title_en||''))):'#';
               return '<a href="'+esc(mWaStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'mcta-whatsapp-status\',trackLabel:\''+escJs(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
             })())
-      : '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:\''+escJs(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
+      : '<a id="pt-wa-mobile" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
       '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+
@@ -3163,6 +3181,7 @@ function buildDesktopGallery(images){
 function syncDesktopHero(idx,thumbEl){
   var clean=_currentGalleryImages.filter(function(u){return u&&typeof u==='string';});
   if(!clean[idx])return;
+  _currentHeroIdx=idx;
   var heroImg=document.getElementById('dg-hero-img');
   var coordLbl=document.getElementById('dg-coord-lbl');
   var heroBox=document.getElementById('dg-hero-box');
@@ -3172,6 +3191,12 @@ function syncDesktopHero(idx,thumbEl){
     var capturedSrc=ptImageUrl(clean[idx],'hero');
     _heroTimer=setTimeout(function(){
       _heroTimer=null;
+      // The on-error fallback must point at THIS photo's original: it was
+      // emitted once for photo 1, so a missing rendition swapped the hero
+      // back to photo 1 (and blanked it on the next miss, the fallback
+      // being once-only).
+      heroImg.setAttribute('data-pt-original',clean[idx]);
+      if(heroImg.dataset)delete heroImg.dataset.ptFellBack;
       heroImg.src=capturedSrc;
       if(heroImg.decode){heroImg.decode().then(function(){heroImg.style.opacity='1';}).catch(function(){heroImg.style.opacity='1';});}
       else{requestAnimationFrame(function(){heroImg.style.opacity='1';});}
@@ -3395,10 +3420,7 @@ function wireGalleryLightbox(){
   if(frame){
     frame.style.cursor='pointer';
     frame.onclick=function(){
-      var heroImg=document.getElementById('dg-hero-img');
-      var currentSrc=heroImg?heroImg.src:(images[0]||'');
-      var startIdx=images.indexOf(currentSrc);
-      if(startIdx<0)startIdx=0;
+      var startIdx=(_currentHeroIdx>=0&&_currentHeroIdx<images.length)?_currentHeroIdx:0;
       LB.open(images,startIdx);
     };
   }

@@ -4,38 +4,7 @@
 // listing looks exactly like it did before.
 const { test, expect } = require('@playwright/test');
 
-const LISTING_STUB = `
-window.supabase = { createClient: function() { return { auth: {
-  getSession: async () => ({ data: { session: null }, error: null }),
-  onAuthStateChange: () => ({ data: { subscription: { unsubscribe(){} } } }),
-} }; } };
-`;
-
-const contact = (o) => Object.assign(
-  { id: 'c1', role: 'agent', name: null, phone: '02011111111', whatsapp: null, is_verified: false, languages: null }, o);
-
-const BASE = {
-  id: 'p1', slug: 'multi', status: 'active', workflow_status: 'active', market_status: 'available',
-  transaction_type: 'for_rent', property_type: 'apartment',
-  title_en: 'Riverside', title_lo: 'Riverside', title_zh: 'Riverside',
-  description_en: 'A place.', district_en: 'Sisattanak', village_en: 'Thongkang',
-  images: [], features: [], amenities: [], parties: null, unit_types: [],
-  price_amount: 500, price_currency: 'USD', price_frequency: 'monthly'
-};
-
-async function openListing(page, property) {
-  const errors = [];
-  page.on('pageerror', e => errors.push(e));
-  await page.route('**cdn.jsdelivr.net/**', r => r.fulfill({ contentType: 'application/javascript', body: LISTING_STUB }));
-  await page.route('**fonts.googleapis.com/**', r => r.fulfill({ contentType: 'text/css', body: '' }));
-  await page.route('**unpkg.com/**', r => r.fulfill({ contentType: 'text/css', body: '' }));
-  await page.route('**/rest/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
-  await page.route(u => /\/rest\/v1\/properties\?slug=eq\./.test(u.toString()),
-    r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([property]) }));
-  await page.goto('/listing.html?slug=' + property.slug + '&lang=en');
-  await page.waitForSelector('.section-label', { timeout: 15000 });
-  return errors;
-}
+const { contact, BASE, openListing } = require('./fixtures');
 
 const THREE = Object.assign({}, BASE, {
   contacts: contact({ id: 'a', phone: '+856 20 111 1111', languages: ['lo', 'en'] }),
@@ -64,7 +33,7 @@ test('the primary is preselected and drives the CTAs before any choice', async (
   await expect(page.locator('.cpick-row.is-active')).toHaveCount(1);
   await expect(page.locator('.cpick-row').nth(0)).toHaveClass(/is-active/);
   await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/856201111111/);
-  await expect(page.locator('#pt-call-primary')).toHaveAttribute('href', 'tel:+856 20 111 1111');
+  await expect(page.locator('#pt-call-primary')).toHaveAttribute('href', 'tel:+856201111111');
   await expect(page.locator('#pt-wa-primary')).toHaveAttribute('data-contact-id', 'a');
 });
 
@@ -72,7 +41,7 @@ test('choosing the Thai number re-points BOTH WhatsApp and Call', async ({ page 
   await openListing(page, THREE);
   await page.locator('.cpick-row').nth(1).click();
   await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/856202222222/);
-  await expect(page.locator('#pt-call-primary')).toHaveAttribute('href', 'tel:+856 20 222 2222');
+  await expect(page.locator('#pt-call-primary')).toHaveAttribute('href', 'tel:+856202222222');
   await expect(page.locator('.cpick-row').nth(1)).toHaveClass(/is-active/);
   await expect(page.locator('.cpick-row').nth(0)).not.toHaveClass(/is-active/);
 });
@@ -98,7 +67,7 @@ test('a SINGLE-contact listing renders no picker at all (unchanged UI)', async (
   const one = Object.assign({}, BASE, { slug: 'single', contacts: contact({ id: 'solo', phone: '02055555555' }) });
   const errors = await openListing(page, one);
   await expect(page.locator('.contact-picker')).toHaveCount(0);
-  await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/02055555555/);
+  await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/8562055555555/);
   expect(errors, errors.map(e => e.message).join('; ')).toHaveLength(0);
 });
 
@@ -165,7 +134,7 @@ async function openAt(page, property, lang) {
 test('LANG: arriving in Chinese routes the CTAs to the Chinese number', async ({ page }) => {
   const errors = await openAt(page, LANG_ROUTED, 'zh');
   await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/856203333333/);
-  await expect(page.locator('#pt-call-primary')).toHaveAttribute('href', 'tel:+856 20 333 3333');
+  await expect(page.locator('#pt-call-primary')).toHaveAttribute('href', 'tel:+856203333333');
   await expect(page.locator('#pt-wa-primary')).toHaveAttribute('data-contact-id', 'c');
   expect(errors, errors.map(e => e.message).join('; ')).toHaveLength(0);
 });
@@ -188,7 +157,7 @@ test('LANG: switching the toggle mid-visit retargets the CTAs immediately', asyn
   await page.locator('.lang-btn').filter({ hasText: /中文|ZH/i }).first().click();
   await expect(page.locator('#pt-wa-primary')).toHaveAttribute('data-contact-id', 'c');
   await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/856203333333/);
-  await expect(page.locator('#pt-call-primary')).toHaveAttribute('href', 'tel:+856 20 333 3333');
+  await expect(page.locator('#pt-call-primary')).toHaveAttribute('href', 'tel:+856203333333');
   expect(errors, errors.map(e => e.message).join('; ')).toHaveLength(0);
 });
 
@@ -209,7 +178,7 @@ test('LANG: with no match the CTA still works and claims no language', async ({ 
     ]
   });
   await openAt(page, noZh, 'zh');
-  await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/020111/);
+  await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/85620111\b/);
   await expect(page.locator('#pt-wa-primary')).toHaveAttribute('data-contact-id', 'a');
   await expect(page.locator('.cpick-label')).not.toContainText('中文');
 });
@@ -218,7 +187,7 @@ test('LANG: a legacy single-number listing keeps its CTA in every language', asy
   const legacy = Object.assign({}, BASE, { slug: 'legacy', contacts: contact({ id: 'solo', phone: '02055555555' }) });
   for (const l of ['lo', 'en', 'zh']) {
     await openAt(page, legacy, l);
-    await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/02055555555/);
+    await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/8562055555555/);
     await expect(page.locator('.contact-picker')).toHaveCount(0);
   }
 });
