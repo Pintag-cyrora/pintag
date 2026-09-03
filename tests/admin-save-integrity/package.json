@@ -1,0 +1,11 @@
+{
+  "name": "pintag-admin-save-integrity-tests",
+  "private": true,
+  "description": "Drives the REAL admin.html saveListing() against an in-memory fake of the Supabase REST API and asserts the two P1 data-integrity fixes: (1) a Smart Import draft still pointing at the shared PENDING sentinel contact gets a NEW contacts row when staff enter a real phone -- the sentinel is never PATCHed; (2) the create path becomes re-entrant the moment the properties POST succeeds -- a retry after a partial failure, or a second Save, PATCHes the same row, and unit types receive their ids so they are never POSTed twice.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

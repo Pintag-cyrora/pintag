@@ -203,7 +203,9 @@ test('the listing page routes CTAs through the SELECTED contact', () => {
   assert.ok((src.match(/contactId:this\.getAttribute\(\\?'data-contact-id\\?'\)/g) || []).length >= 2,
     'WhatsApp and Call must both attribute to the selected contact');
   // The mobile sticky bar reads this global, so selection must update it.
-  assert.match(src, /_currentContactPhone=String\(c\.whatsapp\|\|c\.phone\|\|''\)/);
+  // ...through the ONE phone normaliser (components.js), so a locally-stored
+  // number ("020…") still yields a valid wa.me link.
+  assert.match(src, /_currentContactPhone=ptNormalizePhoneDigits\(c\.whatsapp\|\|c\.phone\|\|''\)/);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -689,6 +689,7 @@ function setAvailFilter(val, btn) {
   closeMapPreview();
   if (_viewMode === 'map') renderMap();
   else renderListings();
+  _writeFiltersToUrl();
 }
 
 function getCurrentLang() {
@@ -778,7 +779,26 @@ function _resolvedPrice(p) {
 }
 function _numericPrice(p) {
   var r = _resolvedPrice(p);
-  return r.amount != null ? r.amount : 0;
+  return r.amount != null ? r.amount : null;
+}
+// Price ordering (QA 2026-09-02): a listing with no price goes LAST in both
+// directions (it used to sort as $0, i.e. first under Low→High), and under
+// "All" every rental is ordered before every sale so "$300 / month" never
+// interleaves with "$300,000". Currencies are still compared raw (documented
+// limitation above).
+function _comparePrice(a, b, dir) {
+  var pa = _numericPrice(a), pb = _numericPrice(b);
+  if (pa == null && pb == null) return 0;
+  if (pa == null) return 1;
+  if (pb == null) return -1;
+  if (currentTxFilter === 'all') {
+    // Low→High: every rental, then every sale. High→Low: the reverse, so the
+    // most expensive group leads in both directions.
+    var sa = (a.transaction_type === 'for_sale' || a.transaction_type === 'sale_or_rent') ? 1 : 0;
+    var sb = (b.transaction_type === 'for_sale' || b.transaction_type === 'sale_or_rent') ? 1 : 0;
+    if (sa !== sb) return dir * (sa - sb);
+  }
+  return dir * (pa - pb);
 }
 // Rented Listings UX: available listings always rank above unavailable
 // ones (sold/rented/reserved/fully occupied/off market), regardless of the
@@ -793,8 +813,8 @@ function _availabilityRank(p) {
 function sortProperties(arr) {
   var copy = arr.slice();
   if (currentSort === 'featured')  copy.sort(function(a,b){ return (b.is_featured?1:0)-(a.is_featured?1:0); });
-  else if (currentSort === 'price_asc') copy.sort(function(a,b){ return _numericPrice(a)-_numericPrice(b); });
-  else if (currentSort === 'price_desc') copy.sort(function(a,b){ return _numericPrice(b)-_numericPrice(a); });
+  else if (currentSort === 'price_asc') copy.sort(function(a,b){ return _comparePrice(a, b, 1); });
+  else if (currentSort === 'price_desc') copy.sort(function(a,b){ return _comparePrice(a, b, -1); });
   /* else newest: already ordered by created_at desc from API */
   // Stable secondary pass: JS's Array.sort is a stable sort in every
   // engine this site targets, so re-sorting by availability alone here
@@ -942,6 +962,9 @@ function showListView() {
   document.getElementById('page-content-wrap').style.display = 'block';
   document.getElementById('btn-list').classList.add('active');
   document.getElementById('btn-map').classList.remove('active');
+  // Filters/sort changed while the map was showing only re-rendered the map;
+  // the grid and the count must catch up the moment the list is shown again.
+  renderListings();
 }
 
 function showMapView() {
@@ -1164,15 +1187,79 @@ async function loadListings() {
     var res = await fetch(SUPABASE_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&select=*,contacts(role,name),parties(type,name_en,photo_url),unit_types(id,sort_order,name_en,name_lo,name_zh,price_display,sale_price,rent_price,rent_period,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency,is_available,available_count,total_units,next_available_date)', {
       headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
     });
-    allProperties = await res.json();
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var rows = await res.json();
+    if (!Array.isArray(rows)) throw new Error('unexpected response');
+    allProperties = rows;
+    _listingsLoaded = true;
     populateProvinceOptions();
     populateDistrictOptions();
     renderPriceOptions();
     renderListings();
   } catch(e) {
+    // A failed load must never leave the header on "Loading…", leave a
+    // non-array in allProperties (every later filter click would throw), or
+    // strand the visitor without a way to try again.
+    allProperties = [];
+    var countEl = document.getElementById('count-text');
+    if (countEl) countEl.innerHTML =
+      '<span class="lo-i">ໂຫຼດບໍ່ສຳເລັດ</span><span class="en-i">Could not load listings</span><span class="zh-i">加载失败</span>';
     var container = document.getElementById('listings-container');
-    container.innerHTML = '<div style="grid-column:1/-1;" class="state-center"><p class="state-title lo-i">ເກີດຂໍ້ຜິດພາດ ກະລຸນາລອງໃໝ່</p><p class="state-title en-i">Something went wrong, please try again</p><p class="state-title zh-i">出现错误，请重试</p></div>';
+    container.innerHTML = '<div style="grid-column:1/-1;" class="state-center"><p class="state-title lo-i">ເກີດຂໍ້ຜິດພາດ ກະລຸນາລອງໃໝ່</p><p class="state-title en-i">Something went wrong, please try again</p><p class="state-title zh-i">出现错误，请重试</p>'
+      + '<p><button type="button" class="filter-btn" id="listings-retry" onclick="loadListings()"><span class="lo-i">ລອງໃໝ່</span><span class="en-i">Retry</span><span class="zh-i">重试</span></button></p></div>';
   }
+}
+var _listingsLoaded = false;
+
+// ── FILTER STATE IN THE URL (QA 2026-09-02) ───────────────────────────────
+// Filters used to live only in memory: refresh, back/forward and a shared
+// link all lost them, and listing.html's Buy/Rent links (?filter=for_sale)
+// landed on "All". The setters below mirror their state into the address bar
+// with replaceState (no history entries, same as reflectLangInUrl), and this
+// reads it back before the first load. Unknown values are ignored;
+// province/district are validated against inventory by the populate* calls.
+function _readFiltersFromUrl() {
+  var q;
+  try { q = new URLSearchParams(window.location.search); } catch (e) { return; }
+  var tx = q.get('tx') || q.get('filter');
+  if (tx === 'for_rent' || tx === 'for_sale') {
+    currentTxFilter = tx;
+    document.querySelectorAll('.tx-btn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-filter') === tx); });
+    updateRentalFiltersVisibility();
+  }
+  var type = q.get('type');
+  if (type && document.querySelector('.filter-btn[data-filter="' + type + '"]')) {
+    currentTypeFilter = type;
+    document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-filter') === type); });
+  }
+  if (q.get('avail') === 'available') {
+    currentAvailOnly = true;
+    document.querySelectorAll('.avail-btn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-avail') === 'available'); });
+  }
+  if (q.get('province')) currentProvinceFilter = q.get('province');
+  if (q.get('district')) currentDistrictFilter = q.get('district');
+  if (q.get('price')) currentPriceBand = q.get('price');
+  var sort = q.get('sort');
+  var sortSel = document.getElementById('sort-select');
+  if (sort && sortSel && Array.from(sortSel.options).some(function(o){ return o.value === sort; })) {
+    currentSort = sort;
+    sortSel.value = sort;
+  }
+}
+function _writeFiltersToUrl() {
+  try {
+    var url = new URL(window.location.href);
+    var set = function (k, v, def) { if (v && v !== def) url.searchParams.set(k, v); else url.searchParams.delete(k); };
+    set('tx', currentTxFilter, 'all');
+    url.searchParams.delete('filter');           // legacy alias, normalised to tx
+    set('type', currentTypeFilter, 'all');
+    set('province', currentProvinceFilter, 'all');
+    set('district', currentDistrictFilter, 'all');
+    set('price', currentPriceBand, 'all');
+    set('sort', currentSort, 'newest');
+    set('avail', currentAvailOnly ? 'available' : '', '');
+    if (url.toString() !== window.location.href) history.replaceState(null, '', url.toString());
+  } catch (e) {}
 }
 
 function setTxFilter(filter, btn) {
@@ -1185,6 +1272,7 @@ function setTxFilter(filter, btn) {
   closeMapPreview();
   if (_viewMode === 'map') renderMap();
   else renderListings();
+  _writeFiltersToUrl();
 }
 
 // Pet Friendly / Smoking Allowed only make sense once the visitor has
@@ -1275,6 +1363,11 @@ function matchesPriceBand(p) {
   // recognised as non-USD instead of being banded against USD thresholds
   // (properties.price_currency is null on those rows alongside the amount).
   var resolved = _resolvedPrice(p);
+  // A sale_or_rent listing under "For Rent" is banded on its RENT leg, not
+  // its sale price (which is what price_amount holds for that transaction).
+  if (currentTxFilter === 'for_rent' && p.transaction_type === 'sale_or_rent' && p.rent_price_amount != null) {
+    resolved = { amount: p.rent_price_amount, currency: p.rent_price_currency || null };
+  }
   var cur = resolved.currency || p.price_currency || 'USD';
   if (cur !== 'USD') return true;                           // never drop non-USD (no conversion)
   var v = resolved.amount;
@@ -1293,7 +1386,7 @@ function matchesActiveFilters(p, opts) {
   // honest.
   var _ignoreProvince = opts && opts.ignoreProvince;
   var _ignoreDistrict = opts && opts.ignoreDistrict;
-  if (!(currentTxFilter === 'all' || p.transaction_type === currentTxFilter)) return false;
+  if (!(currentTxFilter === 'all' || p.transaction_type === currentTxFilter || p.transaction_type === 'sale_or_rent')) return false;
   if (!(currentTypeFilter === 'all' || p.property_type === currentTypeFilter)) return false;
   if (currentAvailOnly && !isAvailableStatus(p)) return false;
   if (!matchesRentalFilters(p)) return false;
@@ -1306,11 +1399,13 @@ function setDistrictFilter(val) {
   currentDistrictFilter = val;
   closeMapPreview();
   if (_viewMode === 'map') renderMap(); else renderListings();
+  _writeFiltersToUrl();
 }
 function setPriceFilter(val) {
   currentPriceBand = val;
   closeMapPreview();
   if (_viewMode === 'map') renderMap(); else renderListings();
+  _writeFiltersToUrl();
 }
 // Rebuild the Price dropdown for the current Rent/Sale bands, in the current
 // language, preserving the selected band when it still exists.
@@ -1345,7 +1440,9 @@ function setProvinceFilter(val) {
   // never combine into a guaranteed-empty result.
   populateProvinceOptions();
   populateDistrictOptions();
-  applyFilters();
+  closeMapPreview();
+  if (_viewMode === 'map') renderMap(); else renderListings();
+  _writeFiltersToUrl();
 }
 
 // THE CUSTOMER-FACING PROVINCE FILTER — inventory-driven and CONTEXTUAL.
@@ -1420,11 +1517,13 @@ function setTypeFilter(filter, btn) {
   closeMapPreview();
   if (_viewMode === 'map') renderMap();
   else renderListings();
+  _writeFiltersToUrl();
 }
 
 function setSort(val) {
   currentSort = val;
   if (_viewMode === 'list') renderListings();
+  _writeFiltersToUrl();
 }
 
 // ── BEHAVIORAL EVENT TRACKING (Intelligence layer) ────
@@ -1579,6 +1678,11 @@ function updateListingsMetaForFilters() {
 }
 
 function renderListings() {
+  // Nothing has loaded yet (first paint, or the load failed and the Retry
+  // state is showing): leave the skeleton / error state in place. Any
+  // filter or language click before data lands used to replace it with a
+  // misleading "No listings found" -- and, after a failure, removed Retry.
+  if (!_listingsLoaded) return;
   var filtered = allProperties.filter(matchesActiveFilters);
   var sorted = sortProperties(filtered);
   updateListingsMetaForFilters();
@@ -1765,6 +1869,7 @@ function applyPintagLang(lang, btn) {
   document.querySelectorAll('.lang-btn').forEach(function(b){ b.classList.remove('active'); });
   var activeBtn = btn || document.querySelector('.lang-btn[data-lang="' + lang + '"]');
   if (activeBtn) activeBtn.classList.add('active');
+  updateSortLabels();   // the <option> text is static Lao; relabel on every apply, not only on a toggle
   reflectLangInUrl(lang);
 }
 
@@ -1808,6 +1913,7 @@ function updateFiltersFade() {
 // reads getCurrentLang() off the body class this sets, so metadata is
 // correct from the very first render.
 applyPintagLang(resolvePintagLang());
+_readFiltersFromUrl();
 
 loadListings();
 

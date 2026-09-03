@@ -1808,7 +1808,7 @@ function ptSelectContact(index){
   // The mobile sticky bar and the status CTAs build their wa.me URLs from this
   // digits-only global at click time, so updating it is what makes them follow
   // the selection too.
-  _currentContactPhone=String(c.whatsapp||c.phone||'').replace(/[^0-9]/g,'');
+  _currentContactPhone=ptNormalizePhoneDigits(c.whatsapp||c.phone||'');
 
   var wa=document.getElementById('pt-wa-primary');
   if(wa){
@@ -1820,7 +1820,7 @@ function ptSelectContact(index){
   }
   var call=document.getElementById('pt-call-primary');
   if(call){
-    call.setAttribute('href','tel:'+(c.phone||''));
+    call.setAttribute('href',ptTelHref(c.phone));
     call.setAttribute('data-contact-id', _currentContactId);
   }
   var rows=document.querySelectorAll('.contact-picker .cpick-row');
@@ -2533,7 +2533,7 @@ function buildMockupLayout(){
   _currentContactTier=_routed?_routed.tier:0;
   var contact=(_routed&&_routed.contact)||(allContacts.length?allContacts[0]:(data.contacts||null));
   var contactPhone=contact?(contact.whatsapp||contact.phone||''):'';
-  var cleanPhone=String(contactPhone).replace(/[^0-9]/g,'');
+  var cleanPhone=ptNormalizePhoneDigits(contactPhone);
   _currentContactPhone=cleanPhone;
   _currentContactId=contact&&contact.id||'';
   // Localized pre-filled WhatsApp message — {{PLACEHOLDER}} template per
@@ -2632,7 +2632,7 @@ function buildMockupLayout(){
                       '</div>';
   }
 
-  var callBtn=(contact&&contact.phone)?'<a id="pt-call-primary" data-contact-id="'+escJs(contact.id||'')+'" href="tel:'+esc(contact.phone)+'" class="btn-primary btn-call" onclick="ptContactClick({channel:\'call\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'contact-phone\',trackLabel:\'Call\'})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  var callBtn=(contact&&contact.phone)?'<a id="pt-call-primary" data-contact-id="'+escJs(contact.id||'')+'" href="'+esc(ptTelHref(contact.phone))+'" class="btn-primary btn-call" onclick="ptContactClick({channel:\'call\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'contact-phone\',trackLabel:\'Call\'})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
   var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
     '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
