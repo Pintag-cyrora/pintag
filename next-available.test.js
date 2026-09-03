@@ -345,3 +345,29 @@ test('GUARD: the suite covers a fixture that never populates market_status', () 
   assert.ok(!/isPubliclyAvailable/.test(body),
     'ptResolveNextAvailable must gate through _ptIsUnavailableNow, not resolveListingStatus directly');
 });
+
+// ═══ Default "today" is the LOCAL calendar date ═══════════════════════════
+// Every case above passes TODAY explicitly. Production never does, and the
+// default used toISOString()'s UTC date: between 00:00 and 07:00 in Laos
+// (UTC+7) that is still yesterday, so a date that had already passed was
+// still advertised as "Available <yesterday>".
+test('the default today is the visitor-local calendar date, not the UTC one', () => {
+  const RealDate = Date;
+  // 2026-08-19 23:30 UTC == 2026-08-20 06:30 in Vientiane (UTC+7)
+  class FakeDate extends RealDate {
+    constructor(...a) { super(...(a.length ? a : ['2026-08-19T23:30:00Z'])); }
+    getTimezoneOffset() { return -420; }
+  }
+  globalThis.Date = FakeDate;
+  try {
+    assert.equal(globalThis.ptLocalIsoDate(), '2026-08-20');
+    const p = { transaction_type: 'for_rent', market_status: 'rented',
+      price_amount: 450, price_currency: 'USD', price_frequency: 'monthly', available_from: '2026-08-19' };
+    assert.equal(ptResolveNextAvailable(p, 'en'), null,
+      'a date that is already yesterday in Laos must not be advertised');
+    const q = Object.assign({}, p, { available_from: '2026-08-21' });
+    assert.equal(ptResolveNextAvailable(q, 'en').isoDate, '2026-08-21');
+  } finally {
+    globalThis.Date = RealDate;
+  }
+});

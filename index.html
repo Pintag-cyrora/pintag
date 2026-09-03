@@ -653,7 +653,7 @@ function _homeAvailabilityRank(p) {
 }
 async function loadFeatured() {
   try {
-    const res = await fetch(SB_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&limit=12&select=*,contacts(name),parties(type,name_en,photo_url)', {
+    const res = await fetch(SB_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&limit=12&select=*,contacts(role,name),parties(type,name_en,name_lo,photo_url),unit_types(id,sort_order,name_en,name_lo,name_zh,price_display,sale_price,rent_price,rent_period,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency,is_available,available_count,total_units,next_available_date)', {
       headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);

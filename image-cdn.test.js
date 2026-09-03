@@ -176,3 +176,29 @@ test('fallback: ignores non-IMG elements and missing config', () => {
   globalThis.window.PINTAG = { imageCdn: true };    // no supabaseUrl
   assert.equal(ptCdnImageFallback(fakeImg(CDN + 'a.jpg')), false);
 });
+
+// ── Card composition: rendition FIRST, CDN SECOND ─────────────────────────
+// renditionPublicUrl() only recognises the Supabase origin, so CDN-rewriting
+// the original before deriving the rendition returned the full-size original
+// through the CDN and no rendition was ever requested once imageCdn flipped.
+vm.runInThisContext(fs.readFileSync(new URL('./image-renditions.js', import.meta.url), 'utf8'), { filename: 'image-renditions.js' });
+vm.runInThisContext("var PT_IMAGE_PROFILES = { thumbnail: { width: 200 }, card: { width: 400 }, gallery: { width: 800 }, hero: { width: 1200 } };");
+['_ptEsc', 'ptImageUrl', 'ptImageFallbackAttrs', 'ptCardImageSrc', 'ptCardImageFallbackAttrs']
+  .forEach((n) => vm.runInThisContext(extractFn('components.js', n)));
+const { ptCardImageSrc, ptCardImageFallbackAttrs } = globalThis;
+
+test('with the CDN and renditions both on, a card src is the CDN-routed RENDITION and the fallback the CDN-routed original', () => {
+  globalThis.window = { PINTAG: { imageCdn: true, renditionsEnabled: true, supabaseUrl: PROD } };
+  const src = ptCardImageSrc(PUB + '1787301675902-4gcl6e.jpg', 'card');
+  assert.equal(src, CDN + 'renditions/1787301675902-4gcl6e/card.webp');
+  assert.equal(ptCardImageFallbackAttrs(PUB + '1787301675902-4gcl6e.jpg'),
+    ' data-pt-original="' + CDN + '1787301675902-4gcl6e.jpg" onerror="ptImageFallback(this)"');
+});
+
+test('renditions on, CDN off: plain Supabase rendition; both off: the original untouched', () => {
+  globalThis.window = { PINTAG: { imageCdn: false, renditionsEnabled: true, supabaseUrl: PROD } };
+  assert.equal(ptCardImageSrc(PUB + 'a.jpg', 'card'), PUB + 'renditions/a/card.webp');
+  globalThis.window = { PINTAG: { imageCdn: false, renditionsEnabled: false, supabaseUrl: PROD } };
+  assert.equal(ptCardImageSrc(PUB + 'a.jpg', 'card'), PUB + 'a.jpg');
+  assert.equal(ptCardImageSrc('https://scontent.fbcdn.net/x.jpg', 'card'), 'https://scontent.fbcdn.net/x.jpg');
+});

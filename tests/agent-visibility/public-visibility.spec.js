@@ -111,3 +111,55 @@ test.describe('listing.html attribution for a hidden agent', () => {
     expect(bodyText).toContain('Daeng Somphone');
   });
 });
+
+// ── Portfolio availability badge + WhatsApp button (2026-09-03) ────────────
+// agents.html keyed its badge on the legacy `status` column, which the DB
+// collapses to active/draft/archived, so every sold or rented listing was
+// badged "ວ່າງ" (Available); agent.html showed no badge at all. Both now
+// resolve market_status through listing-status.js. And an agent with no
+// WhatsApp number got a wa.me/?text=... button with no recipient.
+for (const pageFile of ['agents.html', 'agent.html']) {
+  test.describe(pageFile + ' portfolio', () => {
+    const listing = (o) => Object.assign({
+      id: 'p-' + o.slug, slug: o.slug, title_lo: 'ບ້ານ ' + o.slug, title_en: 'House ' + o.slug,
+      price_amount: 500, price_currency: 'USD', price_frequency: 'monthly', district_lo: 'ສີສັດຕະນາກ', district_en: 'Sisattanak',
+      images: [], transaction_type: 'for_rent', is_featured: false, status: 'active', workflow_status: 'active', market_status: 'available',
+    }, o);
+    async function openWith(page, rows, agent) {
+      const seen = {}; const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await mockProfile(page, [agent || AGENT], seen);
+      await page.route('**/rest/v1/properties**', (route) => {
+        seen.props = route.request().url();
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+      });
+      await page.goto('/' + pageFile + '?slug=daeng');
+      await expect(page.locator('#page')).toBeVisible();
+      return { seen, errors };
+    }
+
+    test('sold / rented / reserved listings are badged by market_status, never "ວ່າງ"', async ({ page }) => {
+      const { seen, errors } = await openWith(page, [
+        listing({ slug: 'a', market_status: 'available' }), listing({ slug: 'r', market_status: 'rented' }),
+        listing({ slug: 's', market_status: 'sold', status: 'active' }), listing({ slug: 'v', market_status: 'reserved' }),
+      ]);
+      expect(seen.props).toContain('market_status');
+      const badges = await page.evaluate(() => [...document.querySelectorAll('.p-card .p-status')].map((b) => b.className.replace('p-status ', '') + ':' + b.textContent));
+      expect(badges).toEqual(['p-status-available:ວ່າງ', 'p-status-rented:ເຊົ່າແລ້ວ', 'p-status-sold:ຂາຍແລ້ວ', 'p-status-offer:ຖືກຈອງແລ້ວ']);
+      expect(errors).toEqual([]);
+    });
+
+    test('an agent with no WhatsApp number gets no WhatsApp button (not a recipient-less wa.me link)', async ({ page }) => {
+      const { errors } = await openWith(page, [], Object.assign({}, AGENT, { whatsapp: null }));
+      await expect(page.locator('#wa-btn')).toBeHidden();
+      expect(await page.locator('#wa-btn').getAttribute('href')).not.toMatch(/wa\.me\/\?/);
+      expect(errors).toEqual([]);
+    });
+
+    test('an agent WITH a number keeps the normalised wa.me link', async ({ page }) => {
+      await openWith(page, []);
+      await expect(page.locator('#wa-btn')).toBeVisible();
+      await expect(page.locator('#wa-btn')).toHaveAttribute('href', /wa\.me\/8562055500000\?text=/);
+    });
+  });
+}

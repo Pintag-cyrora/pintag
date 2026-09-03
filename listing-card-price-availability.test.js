@@ -191,3 +191,19 @@ test('price, availability and FOMO are computed from disjoint inputs', () => {
       `the price resolver must not read ${forbidden} — that coupling is the bug`);
   }
 });
+
+// ═══ Legacy sale_or_rent rent leg honours rent_period, never double-suffixes ═
+// rent_price is produced by deriveLegacyPriceFields(), which already appends
+// the period; the card appended "/ month" on top ("$1,200 / year / month").
+test('legacy sale_or_rent: a rent text that already carries its period is left alone; a bare one gets the row\'s rent_period', () => {
+  const yearly = { transaction_type: 'sale_or_rent', sale_price: '$250,000', rent_price: '$1,200 / year', rent_period: 'year' };
+  assert.equal(formatPropertyPrice(yearly, 'en').rentText, '$1,200 / year');
+  const bare = { transaction_type: 'sale_or_rent', sale_price: '$250,000', rent_price: '$1,200', rent_period: 'year' };
+  assert.equal(formatPropertyPrice(bare, 'en').rentText, '$1,200 / year');
+  assert.equal(formatPropertyPrice(bare, 'lo').rentText, '$1,200 / ປີ');
+  const monthly = { transaction_type: 'sale_or_rent', sale_price: '$250,000', rent_price: '$1,200' };
+  assert.equal(formatPropertyPrice(monthly, 'en').rentText, '$1,200 / month', 'no rent_period -> month, as before');
+  // structured sale leg + legacy rent leg (mid-backfill row)
+  const mixed = { transaction_type: 'sale_or_rent', price_amount: 250000, price_currency: 'USD', rent_price: '$1,200 / year', rent_period: 'year' };
+  assert.equal(formatPropertyPrice(mixed, 'en').rentText, '$1,200 / year');
+});

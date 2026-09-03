@@ -179,12 +179,35 @@ function ptImageUrl(url, profile) {
   return renditionPublicUrl(url, profile, P.supabaseUrl) || url;
 }
 
+// Today's calendar date as YYYY-MM-DD in the VISITOR's timezone. The stored
+// availability columns are date-only (local calendar days); comparing them
+// against toISOString()'s UTC date made every "Available <date>" one day
+// stale between midnight and 07:00 in Laos (UTC+7), advertising a date that
+// had already passed.
+function ptLocalIsoDate(now) {
+  var d = now instanceof Date ? now : new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
 // Attributes that make a rendition safe to serve before the backfill has run.
 // Emitted next to src so a 404/decode failure falls back to the original ONCE
 // (the marker stops any loop) and the visitor still sees the photo.
 function ptImageFallbackAttrs(originalUrl) {
   if (!originalUrl || typeof originalUrl !== 'string') return '';
   return ' data-pt-original="' + _ptEsc(originalUrl) + '" onerror="ptImageFallback(this)"';
+}
+
+// The ONE composition every card/preview image uses: derive the rendition
+// from the ORIGINAL Supabase URL, then route the result through the CDN.
+// The reverse order silently disabled renditions the moment imageCdn was
+// switched on: renditionPublicUrl() only recognises the Supabase origin, so a
+// CDN-rewritten input fell through unchanged and the full-size original was
+// served. The fallback carries the CDN-routed original.
+function ptCardImageSrc(originalUrl, profile) {
+  return ptCdnImage(ptImageUrl(originalUrl, profile));
+}
+function ptCardImageFallbackAttrs(originalUrl) {
+  return ptImageFallbackAttrs(ptCdnImage(originalUrl));
 }
 
 function ptImageFallback(el) {
@@ -351,6 +374,20 @@ function _ptFrequencySuffix(frequency, lang) {
   var entry = PT_FREQUENCY_SUFFIX[frequency] || PT_FREQUENCY_SUFFIX.monthly;
   return entry[lang] || entry.en;
 }
+// The rent leg of a LEGACY sale_or_rent row (no rent_price_amount yet).
+// rent_price is produced by deriveLegacyPriceFields(), which already appends
+// " / month" / " / year"; appending PT_PER_MONTH on top rendered
+// "$1,200 / year / month". A bare figure gets the suffix for the row's own
+// rent_period, not an unconditional "/ month".
+var PT_RENT_PERIOD_FREQUENCY = { month: 'monthly', year: 'yearly', week: 'weekly', day: 'daily' };
+function _ptLegacyRentText(property, lang) {
+  var raw = property && property.rent_price;
+  if (!raw) return null;
+  var text = String(raw).trim();
+  if (/\/\s*\S+$/.test(text)) return text;   // "… / month", "… / ປີ": already carries its period
+  var frequency = PT_RENT_PERIOD_FREQUENCY[property.rent_period] || 'monthly';
+  return text + ' ' + _ptFrequencySuffix(frequency, lang);
+}
 // _ptHasOpenUnit(property) -> true | false | null
 //
 // "Is any unit type rentable TODAY?", resolved through
@@ -439,7 +476,7 @@ function ptResolveNextAvailable(property, lang, nowIso) {
   var avail = _ptIsUnavailableNow(property);
   if (!avail || !avail.unavailable) return null;            // rentable now -> no future date
 
-  var today = nowIso || new Date().toISOString().slice(0, 10);
+  var today = nowIso || ptLocalIsoDate();
   var candidates = [];
 
   var units = Array.isArray(property.unit_types) ? property.unit_types : [];
@@ -677,14 +714,14 @@ function formatPropertyPrice(property, lang) {
       var saleText = property.price_amount != null ? formatMoney(property.price_amount, property.price_currency) : (property.sale_price || null);
       var rentText = property.rent_price_amount != null
         ? (formatMoney(property.rent_price_amount, property.rent_price_currency) + ' ' + _ptFrequencySuffix(property.rent_price_frequency, lang))
-        : (property.rent_price ? (property.rent_price + ' ' + PT_PER_MONTH[lang]) : null);
+        : _ptLegacyRentText(property, lang);
       return { isSor: true, saleText: saleText, rentText: rentText, isPriceOnRequest: false };
     }
     if (property.sale_price || property.rent_price) {
       return {
         isSor: true,
         saleText: property.sale_price || null,
-        rentText: property.rent_price ? (property.rent_price + ' ' + PT_PER_MONTH[lang]) : null,
+        rentText: _ptLegacyRentText(property, lang),
         isPriceOnRequest: false
       };
     }
@@ -836,9 +873,9 @@ function renderPropertyCard(property, opts) {
 
   var title = _ptEsc(p['title_' + lang] || p.title_en || '');
   var district = _ptEsc(p['district_' + lang] || p.district_en || '');
-  var images = (Array.isArray(p.images) ? p.images.filter(Boolean) : []).map(ptCdnImage);
+  var images = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
   var imgHtml = images.length
-    ? '<img src="' + _ptEsc(ptImageUrl(images[0], 'card')) + '" alt="' + title + '" loading="lazy"' + ptImageFallbackAttrs(images[0]) + '>'
+    ? '<img src="' + _ptEsc(ptCardImageSrc(images[0], 'card')) + '" alt="' + title + '" loading="lazy"' + ptCardImageFallbackAttrs(images[0]) + '>'
     : '<div class="pt-card-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';
 
   var overlayTl = (opts.statusBadgeHtml || '') + (opts.extraOverlayHtml || '');
@@ -1044,9 +1081,9 @@ function renderPropertyPreview(property, opts) {
 
   var title = _ptEsc(p['title_' + lang] || p.title_en || '');
   var district = _ptEsc(p['district_' + lang] || p.district_en || '');
-  var images = (Array.isArray(p.images) ? p.images.filter(Boolean) : []).map(ptCdnImage);
+  var images = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
   var imgHtml = images.length
-    ? '<img src="' + _ptEsc(ptImageUrl(images[0], 'card')) + '" alt="' + title + '" loading="lazy" decoding="async"' + ptImageFallbackAttrs(images[0]) + '>'
+    ? '<img src="' + _ptEsc(ptCardImageSrc(images[0], 'card')) + '" alt="' + title + '" loading="lazy" decoding="async"' + ptCardImageFallbackAttrs(images[0]) + '>'
     : '<div class="pt-preview-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';
 
   var specsHtml = '';
@@ -1111,8 +1148,11 @@ function renderAgentCard(party, opts) {
   var d = resolvePartyDisplay(party, opts.listingCount, lang);
   if (!d) return document.createElement('div');
 
-  var card = document.createElement('a');
-  card.href = 'agent.html?slug=' + encodeURIComponent(d.slug || '');
+  // A party without a slug has no profile page: agent.html?slug= renders
+  // "profile not found", so the card is inert rather than a dead link (the
+  // same guard renderAgentPreview() already applies).
+  var card = document.createElement(d.slug ? 'a' : 'div');
+  if (d.slug) card.href = 'agent.html?slug=' + encodeURIComponent(d.slug);
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
   var bioText = d.bio || (PT_BIO_FALLBACK[lang] || PT_BIO_FALLBACK.en);
 

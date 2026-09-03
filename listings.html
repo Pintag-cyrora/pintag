@@ -1149,9 +1149,9 @@ function showMapPreview(p) {
   // Same composition as renderPropertyCard(): drop falsy entries (a [null]
   // gallery produced src="", which re-fetches the page URL), CDN first then
   // rendition, and carry the original for the on-error fallback.
-  var firstImg = (Array.isArray(p.images) ? p.images.filter(Boolean) : []).map(ptCdnImage)[0];
+  var firstImg = (Array.isArray(p.images) ? p.images.filter(Boolean) : [])[0];
   var imgInner = firstImg
-    ? '<img src="' + esc(ptImageUrl(firstImg, 'card')) + '" alt="" loading="lazy"' + ptImageFallbackAttrs(firstImg) + '>'
+    ? '<img src="' + esc(ptCardImageSrc(firstImg, 'card')) + '" alt="" loading="lazy"' + ptCardImageFallbackAttrs(firstImg) + '>'
     : '<div class="pt-card-no-img"></div>';
   document.getElementById('mp-img-inner').innerHTML = imgInner;
 

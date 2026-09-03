@@ -196,6 +196,11 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 .p-tx-rent{background:rgba(45,140,140,0.13);color:var(--teal);}
 .p-tx-sor{background:rgba(139,92,246,0.12);color:#7C3AED;}
 .p-featured-dot{position:absolute;top:9px;right:9px;width:6px;height:6px;border-radius:50%;background:var(--teal-light);box-shadow:0 0 0 2px rgba(255,255,255,0.6);}
+.p-status{position:absolute;bottom:10px;left:10px;font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;padding:3px 8px;border-radius:3px;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.22);}
+.p-status-available{background:rgba(22,101,52,0.92);}
+.p-status-sold{background:rgba(185,28,28,0.94);}
+.p-status-rented{background:rgba(194,65,0,0.92);}
+.p-status-offer{background:rgba(30,64,175,0.88);}
 
 .p-body{padding:11px 2px 0;}
 .p-price{font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-0.02em;line-height:1;margin-bottom:4px;}
@@ -306,6 +311,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 <script src="config.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>
 <script src="currency.js?v=__ASSET_VERSION__"></script>
+<script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
 <script src="tracking.js?v=__ASSET_VERSION__"></script>
@@ -444,7 +450,7 @@ async function load(){
     var a=ag[0];
     console.log('Agent ID:', a.id);
     var r2=await fetch(
-      SB+'/rest/v1/properties?managed_by_party_id=eq.'+encodeURIComponent(a.id)+'&order=is_featured.desc,created_at.desc&select=id,slug,title_lo,title_en,price_display,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency,district_lo,district_en,images,transaction_type,is_featured',
+      SB+'/rest/v1/properties?managed_by_party_id=eq.'+encodeURIComponent(a.id)+'&order=is_featured.desc,created_at.desc&select=id,slug,title_lo,title_en,price_display,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency,district_lo,district_en,images,transaction_type,is_featured,market_status,workflow_status',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var listings=await r2.json();
     console.log('Listings returned:', listings);
@@ -494,8 +500,9 @@ function render(a,listings){
   // WhatsApp
   var waN=ptNormalizePhoneDigits(a.whatsapp);
   var waM=encodeURIComponent('ສະບາຍດີ '+(a.name_lo||a.name_en||'')+', ຂ້ອຍຢາກສອບຖາມກ່ຽວກັບລາຍການ Pintag ຂອງທ່ານ');
-  var waUrl='https://wa.me/'+waN+'?text='+waM;
-  document.getElementById('wa-btn').href=waUrl;
+  // No number on file -> no button (wa.me/?text=... has no recipient).
+  document.getElementById('wa-btn').style.display=waN?'':'none';
+  document.getElementById('wa-btn').href=waN?('https://wa.me/'+waN+'?text='+waM):'#';
   document.getElementById('wa-label').textContent='WhatsApp · '+(a.name_lo||a.name_en||'');
 
   // Contact tracking -- this button contacts the agent directly (no single
@@ -564,6 +571,12 @@ function render(a,listings){
     tx.className='p-tx'+(p.transaction_type==='for_sale'?'':isSor?' p-tx-sor':' p-tx-rent');
     tx.textContent=p.transaction_type==='for_sale'?'ຂາຍ':isSor?'ຊື້/ເຊົ່າ':'ເຊົ່າ';imgDiv.appendChild(tx);
     if(p.is_featured){var dot=document.createElement('span');dot.className='p-featured-dot';imgDiv.appendChild(dot);}
+    // Availability badge from market_status (listing-status.js), so a rented
+    // or sold listing is not presented as live on the profile page the
+    // directory actually links to.
+    var st=document.createElement('span');
+    var stInfo=ptAgentPortfolioBadge(p);
+    st.className='p-status '+stInfo[0];st.textContent=stInfo[1];imgDiv.appendChild(st);
     var body=document.createElement('div');body.className='p-body';
     // This page has no language switcher (all hardcoded Lao, e.g. the
     // ຂາຍ/ຊື້ເຊົ່າ/ເຊົ່າ badge above) -- 'lo' matches that fixed convention.

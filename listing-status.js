@@ -94,6 +94,21 @@ function getMarketStatusEmoji(marketStatus) {
   return MARKET_STATUS_BUCKET_EMOJI[getMarketStatusBadgeClass(marketStatus)] || '';
 }
 
+// ptAgentPortfolioBadge(property) -> [cssClass, laoLabel] for the portfolio
+// grids on agents.html / agent.html (Lao-only pages). One resolver for both,
+// mapped onto the p-status-* classes those pages define, so the two profile
+// pages can never disagree about whether a listing is still available.
+var _AGENT_PORTFOLIO_BADGE_CLASS = {
+  'status-available':   'p-status-available',
+  'status-pending':     'p-status-offer',
+  'status-unavailable': 'p-status-rented'
+};
+function ptAgentPortfolioBadge(property) {
+  var market = resolveListingStatus(property).market;
+  var cls = market === 'sold' ? 'p-status-sold' : (_AGENT_PORTFOLIO_BADGE_CLASS[getMarketStatusBadgeClass(market)] || 'p-status-available');
+  return [cls, getMarketStatusLabel(market, 'lo')];
+}
+
 // Per-status "keep browsing" action for the unavailable-listing treatment.
 // Intentionally distinct per status rather than one generic "Browse More" --
 // the right next step differs (a sold house is gone for good; a fully
