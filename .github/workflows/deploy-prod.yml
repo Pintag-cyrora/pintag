@@ -33,7 +33,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # Every first-party <script src="X.js?v=__ASSET_VERSION__">/<link
       # href="X.css?v=__ASSET_VERSION__"> tag gets its placeholder replaced
@@ -65,12 +65,12 @@ jobs:
       - name: Prune non-production surfaces from the production artifact
         run: rm -f agent-login.html dashboard.html edit-listing.html add-property.html marketing-os.html
 
-      - uses: actions/configure-pages@v6
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       # path: . uploads the whole repo root, so the existing CNAME file
       # (pintag.io) is included automatically — required for the custom
       # domain to keep working under an Actions-based Pages deploy.
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: .
 
@@ -82,7 +82,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
 
   # Deploys cloudflare-worker/og-listing-preview.js to Cloudflare, replacing
   # the previously-manual `wrangler deploy` step. Independent of the Pages
@@ -109,10 +109,10 @@ jobs:
     name: Deploy Cloudflare Worker (OG preview)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Deploy via Wrangler
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
