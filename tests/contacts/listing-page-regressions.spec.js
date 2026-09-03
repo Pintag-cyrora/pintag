@@ -142,3 +142,22 @@ test.describe('similar listings', () => {
     expect(errors.map((e) => e.message)).toEqual([]);
   });
 });
+
+test.describe('status copy for sale_or_rent and localised WhatsApp titles', () => {
+  test('the market-transition line treats sale_or_rent as a sale, like every other surface', async ({ page }) => {
+    await openListing(page, Object.assign({}, BASE, { slug: 'sor', transaction_type: 'sale_or_rent', contacts: contact({ id: 'a' }) }));
+    const line = (tx) => page.evaluate((tx) => { applyMarketTransitionStats({ sample_size: 5, median_days: 12 }, 'en', tx); return document.getElementById('market-insight-days').textContent; }, tx);
+    expect(await line('sale_or_rent')).toContain('sell within 12 days');
+    expect(await line('for_sale')).toContain('sell within 12 days');
+    expect(await line('for_rent')).toContain('rent within 12 days');
+  });
+
+  test('the waiting-list WhatsApp message carries the title in the page language, not always English', async ({ page }) => {
+    const occupied = Object.assign({}, BASE, { slug: 'occ', market_status: 'fully_occupied', title_lo: 'ອາພາດເມັນ ລິມແມ່ນ້ຳ', title_en: 'Riverside Apartment', contacts: contact({ id: 'a' }) });
+    await openListing(page, occupied, 'lo');
+    const hrefs = await page.evaluate(() => [...document.querySelectorAll('a[href*="wa.me"]')].map((a) => decodeURIComponent(a.getAttribute('href'))));
+    const statusLinks = hrefs.filter((h) => /ລໍຖ້າ/.test(h));   // the "Join Waiting List" CTA (desktop + mobile)
+    expect(statusLinks.length).toBeGreaterThan(0);
+    statusLinks.forEach((h) => { expect(h).toContain('ອາພາດເມັນ ລິມແມ່ນ້ຳ'); expect(h).not.toContain('Riverside Apartment'); });
+  });
+});

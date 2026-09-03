@@ -20,7 +20,7 @@ const BASE = {
   price_amount: 500, price_currency: 'USD', price_frequency: 'monthly'
 };
 
-async function openListing(page, property) {
+async function openListing(page, property, lang) {
   const errors = [];
   page.on('pageerror', e => errors.push(e));
   await page.route('**cdn.jsdelivr.net/**', r => r.fulfill({ contentType: 'application/javascript', body: LISTING_STUB }));
@@ -29,7 +29,7 @@ async function openListing(page, property) {
   await page.route('**/rest/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
   await page.route(u => /\/rest\/v1\/properties\?slug=eq\./.test(u.toString()),
     r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([property]) }));
-  await page.goto('/listing.html?slug=' + property.slug + '&lang=en');
+  await page.goto('/listing.html?slug=' + property.slug + '&lang=' + (lang || 'en'));
   await page.waitForSelector('.section-label', { timeout: 15000 });
   return errors;
 }

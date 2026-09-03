@@ -713,7 +713,7 @@ function getFomoLines(stats, lang, ctx) {
   // District popularity with transaction context
   if (stats.is_top_district && stats.district) {
     var d = esc(stats.district);
-    if (isSale !== undefined) {
+    if (ctx) {   // isSale is never undefined (ctx && ...), so the generic line below was unreachable
       lines.push({
         lo: 'ນິຍົມ' + (isSale ? 'ຊື້ຂາຍ' : 'ເຊົ່າ') + 'ໃນ ' + d,
         en: 'Popular ' + (isSale ? 'sale' : 'rental') + ' in ' + d,
@@ -811,7 +811,9 @@ function applyMarketTransitionStats(stats, lang, transactionType) {
     return;
   }
   var days = Math.round(stats.median_days);
-  var isSale = transactionType === 'for_sale';
+  // sale_or_rent is bucketed with sales here exactly as getFomoLines() and
+  // listings.html's activity line do; it was told "typically rent within".
+  var isSale = transactionType === 'for_sale' || transactionType === 'sale_or_rent';
   var text = isSale
     ? { lo:'ອະສັງຫາປະເພດນີ້ໂດຍປົກກະຕິຂາຍພາຍໃນ '+days+' ມື້', en:'Homes like this typically sell within '+days+' days', zh:'此类房源通常在 '+days+' 天内售出' }[lang]
     : { lo:'ອະສັງຫາປະເພດນີ້ໂດຍປົກກະຕິເຊົ່າພາຍໃນ '+days+' ມື້', en:'Homes like this typically rent within '+days+' days', zh:'此类房源通常在 '+days+' 天内租出' }[lang];
@@ -1191,7 +1193,7 @@ function handleNotifyMeClick(){
     zh:'您好，这套房源我错过了，有类似的'+typeLabel+'时请通知我。'
   }[lang];
   if(_currentContactPhone){
-    var url='https://wa.me/'+_currentContactPhone+'?text='+encodeURIComponent(msg+' — '+(propertyContext.title_en||''));
+    var url='https://wa.me/'+_currentContactPhone+'?text='+encodeURIComponent(msg+' — '+resolveLangField(propertyContext,'title',lang));
     window.open(url,'_blank','noopener,noreferrer');
   }
   if(typeof postEvent==='function'&&propertyContext.id){
@@ -2707,7 +2709,7 @@ function buildMockupLayout(){
         // matches this button's pre-existing behavior (it never called
         // trackLead() either), just now via the shared, audited helper
         // instead of silently omitting a call.
-        var waStatusMsg=encodeURIComponent(statusCta.label+' — '+(data.title_en||''));
+        var waStatusMsg=encodeURIComponent(statusCta.label+' — '+resolveLangField(data,'title',lang));   // localised like every other field
         var waStatusUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waStatusMsg:'#';
         statusCtaHtml='<a href="'+esc(waStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'contact-whatsapp-status-cta\',trackLabel:\''+escJs(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
       }
@@ -3084,7 +3086,7 @@ function buildMockupLayout(){
       ? (statusCta.action==='find_similar'
           ? '<a href="#similar-section" class="mcta-btn" onclick="scrollToSimilar(event)" data-track="mcta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>'
           : (function(){
-              var mWaStatusUrl=cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+(data.title_en||''))):'#';
+              var mWaStatusUrl=cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+resolveLangField(data,'title',lang))):'#';
               return '<a href="'+esc(mWaStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'mcta-whatsapp-status\',trackLabel:\''+escJs(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
             })())
       : '<a id="pt-wa-mobile" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
