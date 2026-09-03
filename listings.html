@@ -686,10 +686,51 @@ function setAvailFilter(val, btn) {
   currentAvailOnly = (val === 'available');
   document.querySelectorAll('.avail-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
+  _applyFilterChange();
+}
+
+// The ONE pipeline every filter setter runs after changing its axis, so no
+// setter can forget a step: the contextual Province/District selects are
+// rebuilt against the new state (a Land click used to leave "Sisattanak (2)"
+// on offer with zero Land in it), the open map preview is closed, whichever
+// view is showing is re-rendered, and the URL mirrors the new state.
+function _applyFilterChange() {
+  populateProvinceOptions();
+  populateDistrictOptions();
   closeMapPreview();
+  _renderCurrentView();
+  _writeFiltersToUrl();
+}
+function _renderCurrentView() {
   if (_viewMode === 'map') renderMap();
   else renderListings();
-  _writeFiltersToUrl();
+}
+// The result count is written by BOTH views: it sits in the page header,
+// which stays visible in Map view, so a map-only re-render used to leave it
+// stale ("5 listings" over a map showing 2). The place suffix names the
+// province actually being browsed rather than assuming Vientiane.
+function updateCountText(n) {
+  var countEl = document.getElementById('count-text');
+  if (!countEl) return;
+  var place = _countPlaceLabel();
+  countEl.innerHTML =
+    '<span class="lo-i">' + n + ' ລາຍການ · ' + esc(place.lo) + '</span>' +
+    '<span class="en-i">' + n + ' listings · ' + esc(place.en) + '</span>' +
+    '<span class="zh-i">' + n + ' 个房源 · ' + esc(place.zh) + '</span>';
+}
+function _countPlaceLabel() {
+  var key = currentProvinceFilter;
+  if (key === 'all') {
+    // Under "All provinces": name the one province when every listing shares
+    // it (the common single-city case), otherwise the country.
+    var seen = {};
+    (allProperties || []).forEach(function (p) { var k = _listingProvince(p); if (k) seen[k] = true; });
+    var keys = Object.keys(seen);
+    if (keys.length !== 1) return { lo: 'ລາວ', en: 'Laos', zh: '老挝' };
+    key = keys[0];
+  }
+  if (typeof provinceCityLabel !== 'function') return { lo: 'ວຽງຈັນ', en: 'Vientiane', zh: '万象' };
+  return { lo: provinceCityLabel(key, 'lo') || key, en: provinceCityLabel(key, 'en') || key, zh: provinceCityLabel(key, 'zh') || key };
 }
 
 function getCurrentLang() {
@@ -855,7 +896,7 @@ function formatPriceBubble(p) {
   // whose price lives only on its unit types -- the same availability/price
   // coupling the card had. _resolvedPrice() gives the map the identical number
   // the card and the sort key use.
-  var _r = _resolvedPrice(p);
+  var _r = _resolvedPriceForCurrentTx(p);
   var num = _r.amount;
   var currency = _r.currency || p.price_currency;
   if (num == null) {
@@ -936,7 +977,7 @@ function getActivityLine(p, lang) {
 
   // District-trending context replaces age line for popular/hot listings
   if (score >= 100 && p.district_en) {
-    var d = esc(p.district_en);
+    var d = p.district_en;   // plain text: the card escapes it, the map preview sets textContent
     return {
       lo: 'ຍອດນິຍົມ ' + (isSale ? 'ຊື້ຂາຍ' : 'ເຊົ່າ') + ' ໃນ ' + d,
       en: 'Popular ' + (isSale ? 'sale' : 'rental') + ' in ' + d,
@@ -1062,6 +1103,7 @@ function renderMap() {
   });
 
   _clusters.addLayers(_markers);
+  updateCountText(filtered.length);
   reportUnmapped(unmapped, filtered.length);
 
   // Frame what is actually there. Hard-coding the Vientiane viewport would
@@ -1104,8 +1146,12 @@ function reportUnmapped(unmapped, totalShown) {
 
 function showMapPreview(p) {
   var lang = getCurrentLang();
-  var imgInner = (p.images && p.images.length)
-    ? '<img src="' + esc(ptCdnImage(ptImageUrl(p.images[0], 'card'))) + '" alt="" loading="lazy">'
+  // Same composition as renderPropertyCard(): drop falsy entries (a [null]
+  // gallery produced src="", which re-fetches the page URL), CDN first then
+  // rendition, and carry the original for the on-error fallback.
+  var firstImg = (Array.isArray(p.images) ? p.images.filter(Boolean) : []).map(ptCdnImage)[0];
+  var imgInner = firstImg
+    ? '<img src="' + esc(ptImageUrl(firstImg, 'card')) + '" alt="" loading="lazy"' + ptImageFallbackAttrs(firstImg) + '>'
     : '<div class="pt-card-no-img"></div>';
   document.getElementById('mp-img-inner').innerHTML = imgInner;
 
@@ -1148,7 +1194,7 @@ function showMapPreview(p) {
   document.getElementById('mp-loc').innerHTML =
     '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>' +
     (district ? esc(district) + ', ' : '') +
-    {lo:'ວຽງຈັນ',en:'Vientiane',zh:'万象'}[lang];
+    esc(_listingPlaceLabel(p, lang));
 
   // Agent / Buyer Contact
   var agentRow = document.getElementById('mp-agent-row');
@@ -1175,6 +1221,15 @@ function showMapPreview(p) {
   document.getElementById('map-preview').style.display = 'block';
 }
 
+// "Sisattanak, Vientiane" / "Luang Prabang, Luang Prabang" -> the listing's
+// own province (city label for the capital), falling back to the old
+// Vientiane wording only for a row whose province cannot be resolved.
+function _listingPlaceLabel(p, lang) {
+  var key = _listingProvince(p);
+  var label = (key && typeof provinceCityLabel === 'function') ? provinceCityLabel(key, lang) : '';
+  return label || {lo:'ວຽງຈັນ',en:'Vientiane',zh:'万象'}[lang];
+}
+
 function closeMapPreview() {
   document.getElementById('map-preview').style.display = 'none';
   var prev = document.querySelector('.price-bubble.pb-active');
@@ -1196,6 +1251,10 @@ async function loadListings() {
     populateDistrictOptions();
     renderPriceOptions();
     renderListings();
+    // The populate/renderPriceOptions calls above may have reset a URL value
+    // with no inventory (a stale province, a band from the other Rent/Sale
+    // set); the address bar must show what is actually applied.
+    _writeFiltersToUrl();
   } catch(e) {
     // A failed load must never leave the header on "Loading…", leave a
     // non-array in allProperties (every later filter click would throw), or
@@ -1228,9 +1287,17 @@ function _readFiltersFromUrl() {
     updateRentalFiltersVisibility();
   }
   var type = q.get('type');
-  if (type && document.querySelector('.filter-btn[data-filter="' + type + '"]')) {
+  // Validated by comparing attribute values, never by interpolating the
+  // query into a selector: `?type=a"b` made querySelector throw at top
+  // level, which aborted the script before loadListings() ever ran.
+  var typeBtns = Array.prototype.slice.call(document.querySelectorAll('.filter-btn'));
+  if (type && typeBtns.some(function(b){ return b.getAttribute('data-filter') === type; })) {
     currentTypeFilter = type;
-    document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-filter') === type); });
+    typeBtns.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-filter') === type); });
+  }
+  if (currentTxFilter === 'for_rent') {
+    if (q.get('pet') === '1') { currentPetFriendly = true; var _pb = document.getElementById('rf-pet'); if (_pb) _pb.classList.add('active'); }
+    if (q.get('smoking') === '1') { currentSmokingAllowed = true; var _sb = document.getElementById('rf-smoking-allowed'); if (_sb) _sb.classList.add('active'); }
   }
   if (q.get('avail') === 'available') {
     currentAvailOnly = true;
@@ -1258,6 +1325,8 @@ function _writeFiltersToUrl() {
     set('price', currentPriceBand, 'all');
     set('sort', currentSort, 'newest');
     set('avail', currentAvailOnly ? 'available' : '', '');
+    set('pet', currentPetFriendly ? '1' : '', '');
+    set('smoking', currentSmokingAllowed ? '1' : '', '');
     if (url.toString() !== window.location.href) history.replaceState(null, '', url.toString());
   } catch (e) {}
 }
@@ -1269,10 +1338,7 @@ function setTxFilter(filter, btn) {
   updateRentalFiltersVisibility();
   currentPriceBand = 'all';   // rent vs sale price scales differ -> reset the band
   renderPriceOptions();
-  closeMapPreview();
-  if (_viewMode === 'map') renderMap();
-  else renderListings();
-  _writeFiltersToUrl();
+  _applyFilterChange();
 }
 
 // Pet Friendly / Smoking Allowed only make sense once the visitor has
@@ -1300,9 +1366,7 @@ function toggleRentalFilter(kind, btn) {
   if (kind === 'pet') { currentPetFriendly = !currentPetFriendly; }
   else if (kind === 'smoking') { currentSmokingAllowed = !currentSmokingAllowed; }
   btn.classList.toggle('active');
-  closeMapPreview();
-  if (_viewMode === 'map') renderMap();
-  else renderListings();
+  _applyFilterChange();
 }
 
 // Single source of truth: reads the exact same rental-terms.js registry/
@@ -1362,19 +1426,28 @@ function matchesPriceBand(p) {
   // fully-occupied listing priced in LAK only on its unit types is still
   // recognised as non-USD instead of being banded against USD thresholds
   // (properties.price_currency is null on those rows alongside the amount).
-  var resolved = _resolvedPrice(p);
-  // A sale_or_rent listing under "For Rent" is banded on its RENT leg, not
-  // its sale price (which is what price_amount holds for that transaction).
-  if (currentTxFilter === 'for_rent' && p.transaction_type === 'sale_or_rent' && p.rent_price_amount != null) {
-    resolved = { amount: p.rent_price_amount, currency: p.rent_price_currency || null };
-  }
+  var resolved = _resolvedPriceForCurrentTx(p);
   var cur = resolved.currency || p.price_currency || 'USD';
   if (cur !== 'USD') return true;                           // never drop non-USD (no conversion)
   var v = resolved.amount;
   if (!v) return true;                                      // no price on file -> don't hide
+  // Half-open [min, max), the same contract as budget-bands.js's
+  // bandContains(): the bands above share their edges ($300 ends "Under
+  // $300" and starts "$300-600"), so an inclusive max put a $300 rental in
+  // both and a $50,000 sale in both "Under $50k" and "$50k-150k".
   if (band.min != null && v < band.min) return false;
-  if (band.max != null && v > band.max) return false;
+  if (band.max != null && v >= band.max) return false;
   return true;
+}
+// A sale_or_rent listing under "For Rent" is priced on its RENT leg, not its
+// sale price (which is what price_amount holds for that transaction). Shared
+// by the band predicate and the map bubble so the marker can never show $250k
+// for a villa that "Over $1,000" kept because it rents for $1,200.
+function _resolvedPriceForCurrentTx(p) {
+  if (currentTxFilter === 'for_rent' && p.transaction_type === 'sale_or_rent' && p.rent_price_amount != null) {
+    return { amount: p.rent_price_amount, currency: p.rent_price_currency || null };
+  }
+  return _resolvedPrice(p);
 }
 // The ONE predicate BOTH views (grid + map) filter through, so a dimension can
 // never apply to one view but not the other.
@@ -1397,15 +1470,11 @@ function matchesActiveFilters(p, opts) {
 }
 function setDistrictFilter(val) {
   currentDistrictFilter = val;
-  closeMapPreview();
-  if (_viewMode === 'map') renderMap(); else renderListings();
-  _writeFiltersToUrl();
+  _applyFilterChange();
 }
 function setPriceFilter(val) {
   currentPriceBand = val;
-  closeMapPreview();
-  if (_viewMode === 'map') renderMap(); else renderListings();
-  _writeFiltersToUrl();
+  _applyFilterChange();
 }
 // Rebuild the Price dropdown for the current Rent/Sale bands, in the current
 // language, preserving the selected band when it still exists.
@@ -1438,11 +1507,7 @@ function setProvinceFilter(val) {
   // populateDistrictOptions() re-derives the district list from what is
   // actually visible now and resets a stranded value, so the two selects can
   // never combine into a guaranteed-empty result.
-  populateProvinceOptions();
-  populateDistrictOptions();
-  closeMapPreview();
-  if (_viewMode === 'map') renderMap(); else renderListings();
-  _writeFiltersToUrl();
+  _applyFilterChange();
 }
 
 // THE CUSTOMER-FACING PROVINCE FILTER — inventory-driven and CONTEXTUAL.
@@ -1491,21 +1556,24 @@ function populateDistrictOptions() {
   // still have visible inventory under every OTHER active filter (including
   // the selected province). Otherwise picking a province could leave district
   // options that are guaranteed to return nothing.
-  var seen = {};
+  // Keyed by the English district (the value the filter predicate compares
+  // against); the option TEXT is the current language's column, the same one
+  // the cards and the map preview show, so a Lao visitor is not asked to
+  // match "Sisattanak" against cards that all say "ສີສັດຕະນາກ".
+  var seen = {}, labels = {}, counts = {};
   allProperties.forEach(function(p){
     if (!matchesActiveFilters(p, { ignoreDistrict: true })) return;
-    var d = p.district_en || p.district; if (d) seen[d] = true;
+    var d = p.district_en || p.district; if (!d) return;
+    seen[d] = true;
+    counts[d] = (counts[d] || 0) + 1;
+    if (!labels[d] && p['district_' + lang]) labels[d] = p['district_' + lang];
   });
   var districts = Object.keys(seen).sort();
   var anyLabel = ({lo:'ທຸກເມືອງ', en:'All districts', zh:'所有城区'})[lang] || 'All districts';
   if (currentDistrictFilter !== 'all' && districts.indexOf(currentDistrictFilter) === -1) currentDistrictFilter = 'all';
   sel.innerHTML = '<option value="all">' + esc(anyLabel) + '</option>' +
     districts.map(function(d){
-      var n = allProperties.filter(function(x){
-        return matchesActiveFilters(x, { ignoreDistrict: true }) &&
-               (x.district_en || x.district || '') === d;
-      }).length;
-      return '<option value="' + esc(d) + '">' + esc(d) + ' (' + n + ')</option>';
+      return '<option value="' + esc(d) + '">' + esc(labels[d] || d) + ' (' + counts[d] + ')</option>';
     }).join('');
   sel.value = currentDistrictFilter;
 }
@@ -1514,10 +1582,7 @@ function setTypeFilter(filter, btn) {
   currentTypeFilter = filter;
   document.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
-  closeMapPreview();
-  if (_viewMode === 'map') renderMap();
-  else renderListings();
-  _writeFiltersToUrl();
+  _applyFilterChange();
 }
 
 function setSort(val) {
@@ -1725,11 +1790,7 @@ function renderListings() {
   var saved = ptGetSavedSet();
   var n = filtered.length;
 
-  var countEl = document.getElementById('count-text');
-  countEl.innerHTML =
-    '<span class="lo-i">' + n + ' ລາຍການ · ວຽງຈັນ</span>' +
-    '<span class="en-i">' + n + ' listings · Vientiane</span>' +
-    '<span class="zh-i">' + n + ' 个房源 · 万象</span>';
+  updateCountText(n);
 
   var container = document.getElementById('listings-container');
 
@@ -1880,7 +1941,11 @@ function setLang(lang, btn) {
   populateProvinceOptions();
   populateDistrictOptions();
   renderPriceOptions();
-  renderListings();
+  // The visible surface must be the one repainted: in Map view a grid
+  // re-render left the "N of M listings have no exact location" notice, the
+  // count and an open preview in the previous language.
+  if (_viewMode === 'map') closeMapPreview();
+  _renderCurrentView();
 }
 
 // Bug 2 fix: drives the right-edge fade on the horizontally-scrollable
