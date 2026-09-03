@@ -75,6 +75,11 @@ async function loadAdminAsStaff(page, { agentsDelayMs = 0, property = baseProper
   page.on('pageerror', err => pageErrors.push(err));
   await page.route('**cdn.jsdelivr.net/**', route => route.fulfill({ contentType: 'application/javascript', body: STUB_SUPABASE }));
   await page.route('**fonts.googleapis.com/**', route => route.fulfill({ contentType: 'text/css', body: '' }));
+  // admin-auth.js enforces the AAL2 (MFA) admin gate since 2026-08; with the
+  // stub session above the real module keeps #admin-screen hidden, so every
+  // click/fill step timed out. Same stub the other admin suites use.
+  await page.route('**/admin-auth.js*', route => route.fulfill({ status: 200, contentType: 'application/javascript',
+    body: 'window.PintagAdminAuth={protect:function(c,cb){cb();},token:async()=>"test-token",requireAdminSession:async()=>true,ADMIN_EMAIL:"x"};' }));
 
   // Catch-all first (Playwright matches the most-recently-registered route
   // first, so specific routes registered after this one correctly win).
