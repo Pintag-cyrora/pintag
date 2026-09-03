@@ -1472,10 +1472,26 @@ function buildTypedFieldsPayload(typeKey) {
     if (f.kind === 'multi_checkbox') { out[column] = getCheckedKeys(f.id + '-grid'); return; }
     const el = document.getElementById(f.id);
     if (!el) { out[column] = null; return; }
-    out[column] = f.kind === 'number' ? (parseInt(el.value) || null) : (el.value.trim() || null);
+    const raw = el.value.trim();
+    if (raw === '') { out[column] = null; return; }
+    if (f.kind === 'number') {
+      // `parseInt(v) || null` turned a real 0 (a studio's bedrooms, zero
+      // parking) into NULL on every save -- including a load-then-save of an
+      // untouched listing -- and truncated 120.5 sqm to 120. Only the columns
+      // Postgres declares integer are truncated (PostgREST rejects "2.5" for
+      // an integer column outright); numeric columns keep their decimals.
+      const n = Number(raw);
+      if (!Number.isFinite(n)) { out[column] = null; return; }
+      out[column] = TYPED_INTEGER_COLUMNS.indexOf(column) !== -1 ? Math.trunc(n) : n;
+      return;
+    }
+    out[column] = raw;
   });
   return out;
 }
+// The typed-field columns declared `integer` in supabase/migrations (the rest
+// are `numeric`). Kept next to the one writer that needs the distinction.
+const TYPED_INTEGER_COLUMNS = ['bedrooms', 'bathrooms', 'floors', 'year_built', 'parking_spaces'];
 
 // Safe accessor for non-critical read sites (e.g. the AI content helper)
 // that reference typed-field ids which may not currently be rendered for
@@ -1574,7 +1590,16 @@ function reportMapCoords(url) {
   }
 }
 
-async function resolveMapUrl(el) {
+// The in-flight short-link expansion, if any. Save awaits it: the input's
+// blur (which starts the round trip) fires on the way to the Save click, so
+// without this the unexpanded goo.gl link was read and persisted verbatim --
+// the exact pipeline that left 29 of 59 listings unmappable.
+let _mapResolvePromise = null;
+function resolveMapUrl(el) {
+  _mapResolvePromise = _resolveMapUrlNow(el).catch(() => {}).finally(() => { _mapResolvePromise = null; });
+  return _mapResolvePromise;
+}
+async function _resolveMapUrlNow(el) {
   const url = el.value.trim();
   if (!url) { setMapHint(MAP_HINT_DEFAULT, ''); return; }
 
@@ -2261,18 +2286,20 @@ async function handleUnitImageUpload(inputEl) {
     if (statusEl) { statusEl.style.color = '#C0392B'; statusEl.textContent = 'Not signed in — please refresh and log in again.'; }
     return;
   }
-  let images = _utGetUnitImages(card);
   let completed = 0;
   for (const file of files) {
     if (statusEl) { statusEl.style.color = ''; statusEl.textContent = `Uploading ${file.name}… (${completed + 1}/${files.length})`; }
     try {
-      images.push(await uploadImageFileToStorage(file));
+      const url = await uploadImageFileToStorage(file);
+      // Append to the card's CURRENT gallery, not a snapshot taken before the
+      // uploads started: a photo removed, a cover chosen or a second batch
+      // finished while these were in flight was silently reverted.
+      _utSetUnitImages(card, _utGetUnitImages(card).concat([url]));
       completed++;
     } catch (e) {
       if (statusEl) { statusEl.style.color = '#C0392B'; statusEl.textContent = e.message; }
     }
   }
-  _utSetUnitImages(card, images);
   if (completed && statusEl) {
     statusEl.style.color = '#166534';
     statusEl.textContent = `Uploaded ${completed} of ${files.length}`;
@@ -3369,8 +3396,16 @@ function populateOwnerSelect(selectedId) {
   const sel = document.getElementById('f-owner-select');
   if (!sel) return;
   const current = selectedId !== undefined ? selectedId : sel.value;
+  // Same hazard buildAgentOptions() guards with ensureId: a <select> set to an
+  // id with no matching <option> silently becomes "", and saveListing() then
+  // wrote owner_id NULL -- so a failed/late owners load unlinked the owner
+  // of any listing merely opened and saved. Keep the link renderable.
+  const known = (_ownersAll || []).some(o => o.id === current);
+  const placeholder = (current && current !== '__new__' && !known)
+    ? `<option value="${esc(current)}">Owner on file (details not loaded)</option>` : '';
   sel.innerHTML =
     '<option value="">— No owner on file —</option>' +
+    placeholder +
     (_ownersAll || []).map(o =>
       `<option value="${esc(o.id)}">${esc(o.name)}${o.phone ? ' · ' + esc(o.phone) : ''}</option>`
     ).join('') +
@@ -3412,7 +3447,13 @@ function onOwnerSelectChange() {
     return;
   }
   const o = _ownersAll.find(x => x.id === v);
-  if (!o) return;
+  if (!o) {
+    // Linked owner whose row is not loaded (see populateOwnerSelect): nothing
+    // to edit, and the link is preserved untouched on save.
+    fields.style.display = 'none';
+    note.textContent = 'Owner details could not be loaded — the existing link is kept as is.';
+    return;
+  }
   document.getElementById('f-owner-name').value     = o.name || '';
   document.getElementById('f-owner-phone').value    = o.phone || '';
   document.getElementById('f-owner-whatsapp').value = o.whatsapp || '';
@@ -3433,6 +3474,9 @@ async function resolveOwnerId() {
   if (!sel) return null;
   const v = sel.value;
   if (!v) return null;
+  // A link to an owner row that was never loaded: keep it, never PATCH it
+  // from empty fields.
+  if (v !== '__new__' && !(_ownersAll || []).some(o => o.id === v)) return v;
   const payload = {
     name:     document.getElementById('f-owner-name').value.trim(),
     phone:    document.getElementById('f-owner-phone').value.trim() || null,
@@ -3715,6 +3759,7 @@ function revealFormPanel(titleText, id) {
 // only clears the JS/DOM state that native reset() doesn't reach.
 function resetListingForm() {
   document.getElementById('listing-form').reset();
+  clearImportReviewFlags();
   document.getElementById('nearby-list').innerHTML = '';
   addNearby();
   _buildingRentalTermsValues = {};
@@ -3930,7 +3975,12 @@ async function editListing(id, from) {
   // Buyer Contact: always populate from the linked contacts row (mandatory
   // going forward). Falls back to the sentinel-shaped defaults for listings
   // that predate this field.
-  const c = p.contacts || null;
+  // The PENDING sentinel is "no contact yet", never a person: loading its
+  // placeholder name/phone ("0000000000") into the form satisfied the
+  // publish-time phone check and let saveListing() POST a brand-new contact
+  // carrying the placeholder, so a draft could go live dialling 0000000000.
+  const _isPendingContact = !!(p.contact_id && p.contact_id === PENDING_CONTACT_ID);
+  const c = (_isPendingContact ? null : p.contacts) || null;
   // Internal owner — select the linked owner (if any) and populate its
   // fields via the same handler the manual picker uses, so there is one
   // code path for "show this owner's details".
@@ -3957,6 +4007,10 @@ async function editListing(id, from) {
   document.getElementById('f-contact-phone').value    = c ? (c.phone || '') : '';
   document.getElementById('f-contact-whatsapp').value = c ? (c.whatsapp || '') : '';
   updateOwnerSectionVisibility();
+  // Review flags belong to the listing that produced them: clear whatever a
+  // previous Smart Import left, then re-flag only a still-pending contact.
+  clearImportReviewFlags();
+  if (_isPendingContact) flagContactSectionForReview(true);
 
   document.getElementById('contact-shared-note').style.display = 'none';
   _editingContactSharedCount = 0;
@@ -4159,6 +4213,7 @@ async function saveListing(e) {
   // try/catch blocks still handle their specific cases with tailored
   // messages; this outer guard is the backstop for everything else.
   try {
+  if (_mapResolvePromise) await _mapResolvePromise;   // see resolveMapUrl()
   const districtEn = currentDistrictValue();
   const districtMap = DISTRICT_MAP[districtEn] || {};
   const village = document.getElementById('f-village').value.trim();
@@ -4915,7 +4970,7 @@ async function generateAIContent() {
   const statusEl = document.getElementById('ai-gen-status');
   if (!btn) return;
 
-  const districtEn = document.getElementById('f-district').value;
+  const districtEn = currentDistrictValue();   // free-text outside the capital, same as saveListing()
   const village    = document.getElementById('f-village').value.trim();
 
   // Deposit — reuses rental-terms.js's own formatter rather than
@@ -5510,7 +5565,10 @@ async function runSmartImport() {
     // Provenance v2: assemble the import context (source + AI + full raw
     // payload manifest). saveListing() writes it after the listing is saved.
     (function () {
-      const _fb = (importSource === 'facebook') ? (window._importFbData || {}) : {};
+      // importSource is 'facebook_og' for a fetched post (the adapter's own
+      // value); comparing against 'facebook' left every Facebook import's
+      // provenance empty (source_url NULL, no original image URLs).
+      const _fb = fbUrl ? (window._importFbData || {}) : {};
       // Complete original source-image URL set as received (superset of the
       // saved subset) — from the fetched adapter payload, else the FB image map.
       let _origUrls = [];
@@ -5862,6 +5920,16 @@ function applyImportTitles() {
   if (located.title)    document.getElementById('f-title-en').value = located.title;
   if (located.title_lo) document.getElementById('f-title-lo').value = located.title_lo;
   if (located.title_zh) document.getElementById('f-title-zh').value = located.title_zh;
+}
+
+// Smart Import's low-confidence highlights and the amber Buyer Contact
+// outline used to survive into the NEXT listing opened for edit, flagging
+// hand-entered data as AI-suspect. Cleared on every form reset/load.
+function clearImportReviewFlags() {
+  document.querySelectorAll('.field-low-confidence').forEach(el => el.classList.remove('field-low-confidence'));
+  const phoneEl = document.getElementById('f-contact-phone');
+  const section = phoneEl && phoneEl.closest('.form-section');
+  if (section) section.style.outline = '';
 }
 
 // Visually flags the Buyer Contact section amber so staff notices it needs
