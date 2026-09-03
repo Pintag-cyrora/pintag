@@ -149,6 +149,22 @@ for (const pageFile of ['agents.html', 'agent.html']) {
       expect(errors).toEqual([]);
     });
 
+    test('portfolio and hero photos are sized renditions with the once-only fallback, not bare originals', async ({ page }) => {
+      // Same-origin photo (the page's CSP img-src allows 'self', not arbitrary
+      // hosts), so what is asserted is the composition, not the fallback chain
+      // firing on a blocked URL.
+      const PHOTO = 'http://localhost:8956/pintag-hero.png';
+      const { errors } = await openWith(page, [listing({ slug: 'a', images: [PHOTO] })]);
+      const imgs = await page.evaluate(() => [...document.querySelectorAll('.p-card .p-img img, .hero-img, .hero-bg-slide')].map((i) => ({
+        src: i.getAttribute('src'), orig: i.getAttribute('data-pt-original'), fallback: typeof i.onerror === 'function' || /ptImageFallback/.test(i.getAttribute('onerror') || '') })));
+      expect(imgs.length).toBeGreaterThan(0);
+      // renditionsEnabled is production-only, so here src === original; the
+      // data-pt-original + fallback wiring is what proves the shared
+      // composition (ptCardImageSrc) is in use rather than a bare .src.
+      imgs.forEach((i) => { expect(i.orig).toBe(PHOTO); expect(i.src).toBe(PHOTO); expect(i.fallback).toBe(true); });
+      expect(errors).toEqual([]);
+    });
+
     test('an agent with no WhatsApp number gets no WhatsApp button (not a recipient-less wa.me link)', async ({ page }) => {
       const { errors } = await openWith(page, [], Object.assign({}, AGENT, { whatsapp: null }));
       await expect(page.locator('#wa-btn')).toBeHidden();

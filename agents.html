@@ -240,6 +240,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 const SB=window.PINTAG.supabaseUrl;
 const KEY=window.PINTAG.anonKey;
 const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-villa.png';
+// Sized rendition + fallback for every listing photo on this page, the same
+// composition renderPropertyCard() uses. Previously the full-size originals
+// (~330 kB each) were loaded behind 4:3 thumbnails.
+function setListingImage(img, url, profile){
+  img.src=ptCardImageSrc(url,profile);
+  img.setAttribute('data-pt-original',ptCdnImage(url));
+  img.onerror=function(){ if(!ptImageFallback(this)) this.src=FALLBACK; };
+}
+
 const slug=new URLSearchParams(location.search).get('slug');
 
 function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -302,7 +311,7 @@ function render(a,listings){
 
   if(heroImg){
     heroEl.innerHTML=
-      '<img class="hero-img" src="'+esc(heroImg)+'" alt="" loading="eager" onerror="this.src=\''+FALLBACK+'\'">'+
+      '<img class="hero-img" src="'+esc(ptCardImageSrc(heroImg,'hero'))+'" alt="" loading="eager" data-pt-original="'+esc(ptCdnImage(heroImg))+'" onerror="if(!ptImageFallback(this))this.src=\''+FALLBACK+'\'">'+
       '<div class="hero-gradient"></div>'+
       '<div class="hero-identity fu fu1">'+
         '<div class="hero-avatar" id="h-av"><div class="hero-avatar-initial">'+initial+'</div></div>'+
@@ -401,7 +410,7 @@ function render(a,listings){
     card.className='p-card';
     var imgDiv=document.createElement('div');imgDiv.className='p-img';
     if(imgs[0]){
-      var ti=document.createElement('img');ti.src=imgs[0];ti.alt='';
+      var ti=document.createElement('img');setListingImage(ti,imgs[0],'card');ti.alt='';
       ti.loading=i===0?'eager':'lazy';ti.decoding='async';imgDiv.appendChild(ti);
     }
     var tx=document.createElement('span');
