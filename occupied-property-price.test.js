@@ -60,7 +60,7 @@ function extractVar(file, name) {
 }
 vm.runInThisContext("var currentTxFilter='all', currentPriceBand='all', currentSort='featured';");
 vm.runInThisContext(extractVar('listings.html', 'PRICE_BANDS'));
-['_resolvedPrice', '_numericPrice', '_comparePrice', 'formatPriceBubble', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand']
+['_resolvedPrice', '_resolvedPriceForCurrentTx', '_numericPrice', '_comparePrice', 'formatPriceBubble', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand']
   .forEach((n) => vm.runInThisContext(extractFn('listings.html', n)));
 vm.runInThisContext("var _availabilityRank=function(p){return 0;};");
 vm.runInThisContext(extractFn('listings.html', 'sortProperties'));
