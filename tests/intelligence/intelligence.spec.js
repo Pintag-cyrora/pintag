@@ -7,9 +7,12 @@ const { installSupabaseMocks } = require('./mock-supabase');
 const { makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight, makeListingsNeedingAttentionInsights, makeValidationFallbackReport } = require('./fixtures');
 
 async function login(page) {
+  // Privileged pages now gate on the shared admin-auth.js module (single admin,
+  // AAL2 2FA), which injects its own overlay and reveals #intel-screen only
+  // after it verifies an AAL2 cyrora session server-side. installSupabaseMocks()
+  // pre-seeds exactly such a persisted session, so the real module boots the
+  // page on its own — there is no inline #password-input/.login-btn to drive.
   await page.goto('/intelligence.html');
-  await page.fill('#password-input', 'whatever');
-  await page.click('.login-btn');
   await page.waitForSelector('#intel-screen', { state: 'visible' });
   await page.waitForTimeout(200); // let the initial loadOverview() settle
 }

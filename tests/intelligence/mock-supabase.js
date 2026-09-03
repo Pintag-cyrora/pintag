@@ -33,8 +33,51 @@ function applyPostgrestFilters(rows, url) {
   return result;
 }
 
+// Base64url without padding, for building a JWT the browser-side stub decodes.
+function b64url(obj) {
+  return Buffer.from(JSON.stringify(obj)).toString('base64url');
+}
+
+// The single administrator the production auth module (admin-auth.js) admits.
+const ADMIN_EMAIL = 'cyrora.trading@gmail.com';
+const ADMIN_USER = { id: 'user-1', email: ADMIN_EMAIL, aud: 'authenticated', role: 'authenticated' };
+
+// A real (decodable) access-token JWT whose payload carries aal: "aal2", so the
+// unmodified admin-auth.js verification path — getUser() + mfa
+// getAuthenticatorAssuranceLevel() — sees a verified AAL2 admin session and
+// reaches enterAdmin()/bootIntelligence() on its own. The signature is a
+// placeholder: supabase-js decodes (never verifies) the JWT client-side.
+function makeAal2AccessToken() {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url({ alg: 'HS256', typ: 'JWT' });
+  const payload = b64url({
+    sub: ADMIN_USER.id, email: ADMIN_EMAIL, aud: 'authenticated', role: 'authenticated',
+    aal: 'aal2', amr: [{ method: 'password' }, { method: 'totp' }],
+    iat: now, exp: now + 3600,
+  });
+  return header + '.' + payload + '.' + 'test-signature-not-verified';
+}
+
 async function installSupabaseMocks(page, { reports, insights, reportInsights, leads }) {
   leads = leads || [];
+
+  // Seed a PERSISTED verified admin session before any page script runs, the
+  // way real supabase-js would hydrate one from localStorage. The browser-side
+  // stub (fake-supabase-js.js) rehydrates it on createClient(); admin-auth.js
+  // then validates it (server-side getUser + AAL2) and reveals #intel-screen
+  // naturally. This does not touch or bypass the production auth module.
+  const accessToken = makeAal2AccessToken();
+  await page.addInitScript(({ key, session }) => {
+    try { window.localStorage.setItem(key, JSON.stringify(session)); } catch (e) { /* ignore */ }
+  }, {
+    key: 'pintag.test.auth.session',
+    session: {
+      access_token: accessToken, token_type: 'bearer', expires_in: 3600,
+      expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'fake-refresh',
+      user: ADMIN_USER,
+    },
+  });
+
   await page.route('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', async (route) => {
     const body = fs.readFileSync(path.join(__dirname, 'fake-supabase-js.js'), 'utf8');
     return route.fulfill({ status: 200, contentType: 'application/javascript', body });
@@ -50,11 +93,16 @@ async function installSupabaseMocks(page, { reports, insights, reportInsights, l
       return route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({
-          access_token: 'fake-token', token_type: 'bearer', expires_in: 3600,
+          access_token: accessToken, token_type: 'bearer', expires_in: 3600,
           expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'fake-refresh',
-          user: { id: 'user-1', email: 'admin@pintag.io' },
+          user: ADMIN_USER,
         }),
       });
+    }
+    // Server-side identity check performed by admin-auth.js's getUser(): return
+    // the verified administrator so the real verification path passes honestly.
+    if (url.includes('/auth/v1/user')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ADMIN_USER) });
     }
     if (url.includes('/auth/v1/')) return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     if (url.includes('/functions/v1/generate-intelligence-report')) {
