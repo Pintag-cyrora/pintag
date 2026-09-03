@@ -2938,7 +2938,8 @@ function showAdminScreen() {
   loadListings();
   loadAgentsForDropdown();
   loadOwners();
-  WM.init('assets/pintag-watermark.png');
+  // Kept so the uploaders can WAIT for the logo instead of racing it.
+  WM.initPromise = WM.init('assets/pintag-watermark.png');
   // Deep-link support: ?edit=<property-id> opens straight into that
   // listing's edit form, e.g. from an Intelligence Alert's one-click
   // action ("Fix now"). editListing() fetches the property itself, so
@@ -3458,7 +3459,9 @@ async function resolveOwnerId() {
 // call (tel: -- becomes a real dialer tap on mobile), and WhatsApp when
 // the owner has one on file. Deliberately compact so the column doesn't
 // crowd the table.
-function _ownerWaDigits(v) { return String(v || '').replace(/[^0-9]/g, ''); }
+function _ownerWaDigits(v) {
+  return (typeof ptNormalizePhoneDigits === 'function') ? ptNormalizePhoneDigits(v) : String(v || '').replace(/[^0-9]/g, '');
+}
 
 function copyOwnerPhone(phone, btn) {
   function done() {
@@ -4611,19 +4614,34 @@ if (importZone) {
 // implementation, not two. Resolves with the public URL; rejects with an
 // Error carrying a user-facing message on any failure (oversized file,
 // network error, storage/RLS error), so both callers can just try/catch.
+// Resolves with the watermarked JPEG blob for `file`, or throws an Error whose
+// message says exactly why the file is NOT being uploaded. Shared by the
+// building uploader, every unit-type uploader and the Smart Import uploader.
+async function _wmBlobOrThrow(file) {
+  if (!WM.ready && WM.initPromise) { try { await WM.initPromise; } catch (_) {} }
+  if (!WM.ready) {
+    throw new Error(`${file.name} NOT uploaded — the Pintag watermark could not be loaded. Refresh the page and try again.`);
+  }
+  let wm = null;
+  try { wm = await WM.applyToFile(file); } catch (e) { console.warn('[WM] applyToFile failed:', e); }
+  if (!wm) {
+    throw new Error(`${file.name} NOT uploaded — it could not be watermarked (unsupported or corrupt image).`);
+  }
+  return wm;
+}
+
 async function uploadImageFileToStorage(file) {
   if (file.size > 20 * 1024 * 1024) {
     throw new Error(`${file.name} too large (max 20 MB)`);
   }
-  let uploadBlob = file;
-  let uploadExt  = (file.name.split('.').pop() || 'jpg').toLowerCase();
-  let uploadType = file.type || 'image/jpeg';
-  if (WM.ready) {
-    try {
-      const wm = await WM.applyToFile(file);
-      if (wm) { uploadBlob = wm; uploadExt = 'jpg'; uploadType = 'image/jpeg'; }
-    } catch (e) { console.warn('[WM] applyToFile failed:', e); }
-  }
+  // Never publish an unbranded photo (QA 2026-09-02). Previously a photo
+  // dropped before the watermark logo finished loading -- or one the canvas
+  // could not process -- was uploaded RAW with only a console warning. Now the
+  // uploader waits for the logo, and refuses the file with a visible message
+  // if the watermark cannot be applied.
+  const uploadBlob = await _wmBlobOrThrow(file);
+  const uploadExt  = 'jpg';
+  const uploadType = 'image/jpeg';
 
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${uploadExt}`;
 
@@ -5146,28 +5164,37 @@ async function generateAIContent() {
     // smart-listing-importer returns the English title as `title` (not title_en).
     const _titles = withTitleLocation({
       title: result.title, title_lo: result.title_lo, title_zh: result.title_zh });
-    if (_titles.title)    document.getElementById('f-title-en').value = _titles.title;
-    if (_titles.title_lo) document.getElementById('f-title-lo').value = _titles.title_lo;
-    if (_titles.title_zh) document.getElementById('f-title-zh').value = _titles.title_zh;
 
-    // ── Fill property highlights ─────────────────────────────────
+    // Every prose field the AI produced, with its target input. Nothing the
+    // operator already wrote is replaced without asking (QA 2026-09-02): the
+    // occupied targets are listed in ONE confirm; Cancel keeps the existing
+    // text and fills only the empty fields.
+    const _aiTargets = [];
+    const _aiPush = (id, val, label, countId, max) => {
+      if (val && document.getElementById(id)) _aiTargets.push({ id, val, label, countId, max });
+    };
+    _aiPush('f-title-en', _titles.title,    'Title (EN)');
+    _aiPush('f-title-lo', _titles.title_lo, 'Title (LO)');
+    _aiPush('f-title-zh', _titles.title_zh, 'Title (ZH)');
     ['en','lo','zh'].forEach(lang => {
-      const val = result['property_highlight_'+lang];
-      const el  = document.getElementById('f-highlight-'+lang);
-      if (val && el) { el.value = val; updateCharCount(el, 'highlight-count-'+lang, 160); }
+      _aiPush('f-highlight-'+lang,    result['property_highlight_'+lang],   'Highlight ('+lang.toUpperCase()+')',    'highlight-count-'+lang, 160);
+      _aiPush('f-neighborhood-'+lang, result['neighborhood_insight_'+lang], 'Neighborhood ('+lang.toUpperCase()+')', 'neighborhood-count-'+lang, 220);
+      _aiPush('f-desc-'+lang,         result['description_'+lang],          'Description ('+lang.toUpperCase()+')');
     });
-
-    // ── Fill neighborhood insights ───────────────────────────────
-    ['en','lo','zh'].forEach(lang => {
-      const val = result['neighborhood_insight_'+lang];
-      const el  = document.getElementById('f-neighborhood-'+lang);
-      if (val && el) { el.value = val; updateCharCount(el, 'neighborhood-count-'+lang, 220); }
+    const _occupied = _aiTargets.filter(t => {
+      const cur = document.getElementById(t.id).value.trim();
+      return cur && cur !== String(t.val).trim();
     });
-
-    // ── Fill descriptions ────────────────────────────────────────
-    if (result.description_en) document.getElementById('f-desc-en').value = result.description_en;
-    if (result.description_lo) document.getElementById('f-desc-lo').value = result.description_lo;
-    if (result.description_zh) document.getElementById('f-desc-zh').value = result.description_zh;
+    const _replaceExisting = !_occupied.length || confirm(
+      'The AI generated text for fields that already have content:\n\n'
+      + _occupied.map(t => '• ' + t.label).join('\n')
+      + '\n\nOK = replace them with the AI text.\nCancel = keep your text and fill only the empty fields.');
+    _aiTargets.forEach(t => {
+      const el = document.getElementById(t.id);
+      if (el.value.trim() && !_replaceExisting) return;
+      el.value = t.val;
+      if (t.countId) updateCharCount(el, t.countId, t.max);
+    });
 
     // Photo-vs-supplied-data conflicts the AI flagged (it did NOT silently
     // change your fields). Surfaced for review; nothing is auto-corrected.
@@ -5259,18 +5286,20 @@ async function handleImportImageUpload(files) {
       status.textContent = `${file.name} too large (max 20 MB)`;
       continue;
     }
-    // Watermark before upload
+    // Watermark before upload -- refused (with the reason shown) if it cannot
+    // be applied; see _wmBlobOrThrow().
     status.style.color = '';
     status.textContent = `Watermarking ${file.name}…`;
-    let uploadBlob = file;
-    let uploadExt  = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    let uploadType = file.type || 'image/jpeg';
-    if (WM.ready) {
-      try {
-        const wm = await WM.applyToFile(file);
-        if (wm) { uploadBlob = wm; uploadExt = 'jpg'; uploadType = 'image/jpeg'; }
-      } catch(e) { console.warn('[WM] applyToFile failed:', e); }
+    let uploadBlob;
+    try {
+      uploadBlob = await _wmBlobOrThrow(file);
+    } catch (wmErr) {
+      status.style.color = '#C0392B';
+      status.textContent = wmErr.message;
+      continue;
     }
+    const uploadExt  = 'jpg';
+    const uploadType = 'image/jpeg';
 
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${uploadExt}`;
     status.textContent = `Uploading ${file.name}…`;

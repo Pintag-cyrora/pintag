@@ -69,6 +69,33 @@ function ptToggleSave(slug, e, propertyId) {
   return nowSaved; // caller uses this to update the clicked button's visible state
 }
 
+// ---------------------------------------------------------------------------
+// Phone numbers for wa.me / tel: links -- the ONE normaliser (QA 2026-09-02).
+// Contacts are stored the way staff typed them ("020 5551 2345",
+// "+856 20 5551 2345", "0020..."). WhatsApp only accepts E.164 digits, so a
+// locally-formatted number produced an invalid wa.me link. Every CTA builder
+// (listing.html, agent.html, agents.html, admin.html) calls this instead of
+// stripping non-digits itself. Stored values are NOT rewritten.
+//   "020 5551 2345"      -> "8562055512345"
+//   "+856 20 5551 2345"  -> "8562055512345"
+//   "00856 20 5551 2345" -> "8562055512345"
+//   "2055512345"         -> "8562055512345"   (Lao mobile without the 0)
+//   "+66 81 234 5678"    -> "66812345678"     (other country codes pass through)
+// ---------------------------------------------------------------------------
+function ptNormalizePhoneDigits(raw) {
+  var d = String(raw == null ? '' : raw).replace(/[^0-9]/g, '');
+  if (!d) return '';
+  if (d.indexOf('00') === 0) d = d.slice(2);                 // international 00 prefix
+  if (d.indexOf('856') === 0 && d.length >= 11) return d;    // already Lao E.164
+  if (d.charAt(0) === '0') return '856' + d.slice(1);        // 020… / 030… / 021… local format
+  if (/^(20|30)[0-9]{8}$/.test(d)) return '856' + d;         // local mobile without the leading 0
+  return d;                                                  // another country's code, as typed
+}
+function ptTelHref(raw) {
+  var d = ptNormalizePhoneDigits(raw);
+  return d ? 'tel:+' + d : '#';
+}
+
 function _ptEsc(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');

@@ -656,6 +656,7 @@ async function loadFeatured() {
     const res = await fetch(SB_URL + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&order=is_featured.desc,created_at.desc&limit=12&select=*,contacts(name),parties(type,name_en,photo_url)', {
       headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
     });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const fetched = await res.json();
     const data = (Array.isArray(fetched) ? fetched.slice() : [])
       .sort(function(a, b) { return _homeAvailabilityRank(a) - _homeAvailabilityRank(b); })

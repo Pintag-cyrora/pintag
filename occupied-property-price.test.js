@@ -60,7 +60,7 @@ function extractVar(file, name) {
 }
 vm.runInThisContext("var currentTxFilter='all', currentPriceBand='all', currentSort='featured';");
 vm.runInThisContext(extractVar('listings.html', 'PRICE_BANDS'));
-['_resolvedPrice', '_numericPrice', 'formatPriceBubble', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand']
+['_resolvedPrice', '_numericPrice', '_comparePrice', 'formatPriceBubble', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand']
   .forEach((n) => vm.runInThisContext(extractFn('listings.html', n)));
 vm.runInThisContext("var _availabilityRank=function(p){return 0;};");
 vm.runInThisContext(extractFn('listings.html', 'sortProperties'));
@@ -250,8 +250,29 @@ test('B3. SORT: occupied listing sorts on its real price, not 0', () => {
   globalThis.currentSort = 'featured';
 });
 
-test('B4. SORT: a genuinely unpriced listing still sorts as 0 (unchanged)', () => {
-  assert.equal(_numericPrice({ price_amount: null, price_display: null }), 0);
+test('B4. SORT: a genuinely unpriced listing has NO sort key and goes last in both directions', () => {
+  // QA 2026-09-02: null used to become 0, which put "Price on request"
+  // listings at the very top of Low→High.
+  assert.equal(_numericPrice({ price_amount: null, price_display: null }), null);
+  const none  = { id: 'n', price_amount: null, price_display: null, transaction_type: 'for_rent' };
+  const cheap = { id: 'c', price_amount: 200, price_currency: 'USD', transaction_type: 'for_rent' };
+  globalThis.currentSort = 'price_asc';
+  assert.deepEqual(sortProperties([none, cheap]).map((p) => p.id), ['c', 'n']);
+  globalThis.currentSort = 'price_desc';
+  assert.deepEqual(sortProperties([none, cheap]).map((p) => p.id), ['c', 'n']);
+  globalThis.currentSort = 'featured';
+});
+
+test('B4b. SORT: under "All", rentals never interleave with sales; the pricier group leads High→Low', () => {
+  const rent = { id: 'r', price_amount: 900, price_currency: 'USD', transaction_type: 'for_rent' };
+  const sale = { id: 's', price_amount: 50000, price_currency: 'USD', transaction_type: 'for_sale' };
+  const both = { id: 'b', price_amount: 40000, price_currency: 'USD', transaction_type: 'sale_or_rent' };
+  globalThis.currentTxFilter = 'all';
+  globalThis.currentSort = 'price_asc';
+  assert.deepEqual(sortProperties([sale, both, rent]).map((p) => p.id), ['r', 'b', 's']);
+  globalThis.currentSort = 'price_desc';
+  assert.deepEqual(sortProperties([rent, both, sale]).map((p) => p.id), ['s', 'b', 'r']);
+  globalThis.currentSort = 'featured';
 });
 
 test('B5. FILTER: occupied listing lands in the correct price band', () => {
