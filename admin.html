@@ -1596,8 +1596,12 @@ function reportMapCoords(url) {
 // the exact pipeline that left 29 of 59 listings unmappable.
 let _mapResolvePromise = null;
 function resolveMapUrl(el) {
-  _mapResolvePromise = _resolveMapUrlNow(el).catch(() => {}).finally(() => { _mapResolvePromise = null; });
-  return _mapResolvePromise;
+  const p = _resolveMapUrlNow(el).catch(() => {});
+  _mapResolvePromise = p;
+  // Only the LATEST resolution clears the slot: a second blur while the first
+  // is in flight must not leave Save awaiting nothing.
+  p.finally(() => { if (_mapResolvePromise === p) _mapResolvePromise = null; });
+  return p;
 }
 async function _resolveMapUrlNow(el) {
   const url = el.value.trim();
@@ -3388,8 +3392,15 @@ async function loadAnalytics() {
 let _ownersAll = [];
 
 async function loadOwners() {
+  // If the form is already showing a linked owner this loader has not seen
+  // yet (the placeholder <option> from populateOwnerSelect), the details
+  // fields must be filled in once the row arrives -- otherwise they stay
+  // hidden and empty, and Save then refuses with "Owner Name is required".
+  const sel = document.getElementById('f-owner-select');
+  const pendingId = (sel && sel.value && sel.value !== '__new__' && !(_ownersAll || []).some(o => o.id === sel.value)) ? sel.value : null;
   _ownersAll = await sbApi('GET', 'owners?select=id,name,phone,whatsapp,email,notes&order=name.asc').catch(() => []);
   populateOwnerSelect();
+  if (pendingId && sel.value === pendingId && _ownersAll.some(o => o.id === pendingId)) onOwnerSelectChange();
 }
 
 function populateOwnerSelect(selectedId) {

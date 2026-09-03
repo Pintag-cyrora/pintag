@@ -300,3 +300,13 @@ test.describe('listings.html — 2026-09-03 search fixes', () => {
     expect(await page.evaluate(() => document.querySelector('.card-activity-line').textContent)).toBe('Popular rental in Ban Kao & Mai');
   });
 });
+
+test('the Province select stays visible while a type/price choice narrows inventory to one province (it is decided on the whole inventory)', async ({ page }) => {
+  await open(page, '?lang=en');
+  const state = () => page.evaluate(() => ({ display: document.getElementById('province-select').style.display, opts: [...document.getElementById('province-select').options].map((o) => o.value) }));
+  expect(await state()).toEqual({ display: '', opts: ['all', 'Vientiane Capital', 'Luang Prabang'] });
+  await page.evaluate(() => setTypeFilter('land', document.querySelector('.filter-btn[data-filter="land"]')));   // only the capital has land
+  expect(await state()).toEqual({ display: '', opts: ['all', 'Vientiane Capital'] });
+  await page.evaluate(() => setTypeFilter('all', document.querySelector('.filter-btn[data-filter="all"]')));
+  expect((await state()).opts).toEqual(['all', 'Vientiane Capital', 'Luang Prabang']);
+});

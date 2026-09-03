@@ -172,3 +172,43 @@ test('Facebook Smart Import provenance reads the fetched payload (source string 
   expect(src).not.toMatch(/importSource === 'facebook'\)/);
   expect(src).toMatch(/const _fb = fbUrl \? \(window\._importFbData \|\| \{\}\) : \{\};/);
 });
+
+test('owners list arriving AFTER the edit form was populated: details fill in, save succeeds, link and owner row intact', async ({ page }) => {
+  const backend = fakeBackend({ seedContacts: [REAL_CONTACT], seedProperties: [baseProp({ owner_id: 'own-1' })] });   // owners answers [] at boot
+  const errors = await boot(page, backend);
+  await page.evaluate(() => editListing('prop-1'));
+  await expect.poll(() => page.evaluate(() => document.getElementById('f-owner-select').value)).toBe('own-1');
+  // Now the owners row arrives (a slow/late loadOwners), registered after boot so it wins the route.
+  const ownersPatches = [];
+  await page.route('**/rest/v1/owners**', (r) => {
+    if (r.request().method() === 'PATCH') { ownersPatches.push(r.request().postDataJSON()); return r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }); }
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 'own-1', name: 'Real Owner', phone: '0205555', whatsapp: null, email: null, notes: null }]) });
+  });
+  await page.evaluate(() => loadOwners());
+  await expect.poll(() => page.evaluate(() => document.getElementById('f-owner-name').value)).toBe('Real Owner');
+  expect(await page.evaluate(() => document.getElementById('owner-fields').style.display)).toBe('block');
+  await page.evaluate(SAVE);
+  const s = await page.evaluate(FORM_STATE);
+  expect(s.msgClass, s.msg).toContain('success');
+  expect(patchOf(backend, 'prop-1').body.owner_id).toBe('own-1');
+  expect(ownersPatches).toHaveLength(1);
+  expect(ownersPatches[0]).toMatchObject({ name: 'Real Owner', phone: '0205555' });
+  expect(errors).toEqual([]);
+});
+
+test('a second short-link blur while the first is still resolving: Save waits for the LATEST resolution', async ({ page }) => {
+  const backend = fakeBackend({ seedContacts: [REAL_CONTACT], seedProperties: [baseProp()] });
+  let n = 0;
+  await page.route('**/functions/v1/resolve-map-url', async (r) => {
+    const body = r.request().postDataJSON(); const i = ++n;
+    await new Promise((res) => setTimeout(res, i === 1 ? 150 : 700));   // the first returns quickly, the second slowly
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ resolved_url: 'https://www.google.com/maps/place/R' + body.url.slice(-1) + '/@17.9,102.6,17z/' }) });
+  });
+  await boot(page, backend);
+  await page.evaluate(() => editListing('prop-1'));
+  await expect.poll(() => page.evaluate(() => document.getElementById('f-title-en').value)).toBe('Studio House');
+  await page.evaluate(() => { const el = document.getElementById('f-map'); el.value = 'https://maps.app.goo.gl/1'; resolveMapUrl(el); el.value = 'https://maps.app.goo.gl/2'; resolveMapUrl(el); });
+  await page.waitForTimeout(250);   // first resolution has completed, second still in flight
+  await page.evaluate(SAVE);
+  expect(patchOf(backend, 'prop-1').body.map_embed_url).toBe('https://www.google.com/maps/place/R2/@17.9,102.6,17z/');
+});

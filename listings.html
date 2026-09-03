@@ -1147,8 +1147,8 @@ function reportUnmapped(unmapped, totalShown) {
 function showMapPreview(p) {
   var lang = getCurrentLang();
   // Same composition as renderPropertyCard(): drop falsy entries (a [null]
-  // gallery produced src="", which re-fetches the page URL), CDN first then
-  // rendition, and carry the original for the on-error fallback.
+  // gallery produced src="", which re-fetches the page URL), rendition first
+  // then CDN (ptCardImageSrc), and carry the original for the on-error fallback.
   var firstImg = (Array.isArray(p.images) ? p.images.filter(Boolean) : [])[0];
   var imgInner = firstImg
     ? '<img src="' + esc(ptCardImageSrc(firstImg, 'card')) + '" alt="" loading="lazy"' + ptCardImageFallbackAttrs(firstImg) + '>'
@@ -1544,8 +1544,13 @@ function populateProvinceOptions() {
              esc(provinceLabel(a.key, lang)) + ' (' + a.count + ')</option>';
     }).join('');
   sel.value = currentProvinceFilter;
-  // One province and nothing to choose between is noise, not a filter.
-  sel.parentNode && (sel.style.display = available.length > 1 ? '' : 'none');
+  // One province and nothing to choose between is noise, not a filter. The
+  // decision is made on the WHOLE fetched inventory, not the filtered one:
+  // the options are contextual and rebuilt on every filter change, so
+  // judging by them made the select vanish the moment a type/price choice
+  // left inventory in a single province, and reappear when it was undone.
+  var inventoryProvinces = resolveAvailableProvinces(allProperties, { vientianeDistricts: VIENTIANE_CAPITAL_DISTRICTS });
+  sel.parentNode && (sel.style.display = inventoryProvinces.length > 1 ? '' : 'none');
 }
 
 function populateDistrictOptions() {
