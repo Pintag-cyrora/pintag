@@ -237,7 +237,7 @@ test('renditions upload with the long immutable cache, like originals', () => {
   test('discovery works under least privilege: no storage-schema access required', () => {
     // The production read-only role has no `storage` schema grant, so the
     // discovery query must read `public` only. Object existence and size come
-    // from unauthenticated HEADs on the PUBLIC bucket instead — the same
+    // from unauthenticated GETs on the PUBLIC bucket instead — the same
     // request the site makes for every photo.
     const queries = [...RUNNER.matchAll(/psql\(`([\s\S]*?)`\)/g)].map((m) => m[1]);
     const discovery = queries.filter((q) => /FROM\s+property_images|FROM\s+unit_types/i.test(q));
@@ -247,11 +247,29 @@ test('renditions upload with the long immutable cache, like originals', () => {
     // probe, which degrades to the Storage API when the role cannot read it.
     assert.equal(queries.filter((q) => /storage\.objects/i.test(q)).length, 1);
 
-    const head = RUNNER.slice(RUNNER.indexOf('async function headObject'), RUNNER.indexOf('async function mapPool'));
-    assert.match(head, /method: 'HEAD'/);
-    assert.match(head, /publicUrl\(objectName\)/);
-    assert.ok(!/apikey|Authorization/.test(head), 'a public read must not send a credential');
-    assert.match(head, /r\.status !== 404/, 'a 404 is an answer, not a failure to retry');
+    const probe = RUNNER.slice(RUNNER.indexOf('async function probeObject'), RUNNER.indexOf('async function drain'));
+    assert.match(probe, /publicUrl\(objectName\)/);
+    assert.ok(!/apikey|Authorization/.test(probe), 'a public read must not send a credential');
+    assert.match(probe, /r\.status !== 404/, 'a 404 is an answer, not a failure to retry');
+  });
+
+  test('object existence is checked with GET, never HEAD — production 400s on HEAD for this endpoint', () => {
+    // A real dry run against production failed with "HEAD 400
+    // renditions/<stem>/card.webp": Supabase's HEAD route for
+    // /storage/v1/object/public/ does not behave like its GET route (which
+    // this codebase has already proven correct in production — see
+    // cloudflare-worker/image-cdn-worker.js, which does `fetch(originUrl,
+    // { method: 'GET' })` against the identical path and keys its cache/404
+    // logic on a real 404 for a missing object). HEAD must not be used
+    // anywhere against this endpoint again.
+    assert.ok(!/method:\s*'HEAD'/.test(RUNNER), 'no HEAD request may remain in the runner');
+    const probe = RUNNER.slice(RUNNER.indexOf('async function probeObject'), RUNNER.indexOf('async function drain'));
+    assert.match(probe, /method: 'GET'/);
+    assert.match(probe, /Range['"]?\s*:\s*'bytes=0-0'/, 'a Range probe, not a full download, keeps discovery cheap');
+    // Only 404 means "does not exist" -- any other status (400 included)
+    // must still be a real, thrown/retried failure, never silently treated
+    // as "missing".
+    assert.match(probe, /if \(!r\.ok && r\.status !== 404\)/);
   });
 
   test('a psql failure never reaches a log: its message quotes the connection string', () => {
@@ -288,10 +306,12 @@ test('renditions upload with the long immutable cache, like originals', () => {
     // storage gate rather than trip it.
     assert.match(RUNNER, /Number\.isFinite\(n\)/);
     assert.match(RUNNER, /bytesOf\(bytes, 'storage\.objects total'\)/);
-    // Sizes now come from Content-Length; a header that is not a number must
-    // not become NaN and silently disable the gate.
-    assert.match(RUNNER, /const len = Number\(res\.headers\.get\('content-length'\)\)/);
-    assert.match(RUNNER, /Number\.isFinite\(len\) \? len : 0/);
+    // Sizes come from the probe response: Content-Range's total when a Range
+    // request is honoured (206), else Content-Length. Either way, a header
+    // that is not a number must fall back to 0, never a silent NaN.
+    const probe = RUNNER.slice(RUNNER.indexOf('async function probeObject'), RUNNER.indexOf('async function drain'));
+    assert.match(probe, /Number\.isFinite\(total\) \? total : Number\(res\.headers\.get\('content-length'\)\)/);
+    assert.match(probe, /Number\.isFinite\(len\) \? len : 0/);
   });
 
   test('the dry-run sample strides across the whole set', () => {
@@ -334,9 +354,15 @@ test('renditions upload with the long immutable cache, like originals', () => {
   });
 
   test('uploads are verified readable before being counted done', () => {
-    assert.match(RUNNER, /method: 'HEAD'/, 'a 2xx write is not proof of delivery');
-    // req() throws on any non-2xx, so a failed HEAD propagates out of upload()
-    // and the image is recorded as failed rather than marked done.
+    // GET+Range, not HEAD -- production's HEAD route 400s on this endpoint
+    // (see the probeObject regression test above), which would have turned
+    // every SUCCESSFUL upload's verify step into a false failure: req()
+    // throws on any non-2xx, with no special case for 400.
+    const verify = RUNNER.slice(RUNNER.indexOf('async function upload'), RUNNER.indexOf('async function upload') + 2000);
+    assert.match(verify, /method: 'GET', headers: \{ Range: 'bytes=0-0' \}/, 'a 2xx write is not proof of delivery');
+    assert.ok(!/verify[\s\S]{0,120}method: 'HEAD'/.test(verify), 'the verify step must not use HEAD');
+    // req() throws on any non-2xx, so a failed verify propagates out of
+    // upload() and the image is recorded as failed rather than marked done.
     assert.match(RUNNER, /withRetry\(`verify \$\{path\}`/);
     assert.match(RUNNER, /if \(!res\.ok\) \{[\s\S]*?throw err;/,
       'req() must reject every non-2xx response');

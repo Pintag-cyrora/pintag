@@ -19,8 +19,10 @@ name: Backfill Image Renditions
 # CREDENTIALS. The production DB role is read-only and has NO access to the
 # `storage` schema, which is why the first run of this workflow failed with
 # "permission denied for schema storage". Discovery no longer needs it: object
-# existence and size come from unauthenticated HEADs on the PUBLIC bucket (the
-# same request a visitor's browser makes for every photo), so a DRY RUN needs
+# existence and size come from unauthenticated GETs (Range: bytes=0-0) on the
+# PUBLIC bucket (the same request pattern a visitor's browser makes for every
+# photo — never HEAD; a second dry run found production's HEAD route 400s on
+# this exact endpoint instead of 404ing a missing object), so a DRY RUN needs
 # no Storage credential at all. Only apply does, to write and to measure total
 # storage for the ceiling.
 #
@@ -172,7 +174,8 @@ jobs:
       # prints the scope and measures real rendition sizes before a single
       # object is written. NOTE the absence of SUPABASE_SERVICE_ROLE_KEY here —
       # this step has no credential that can write to Storage, and needs none:
-      # discovery is public HEADs plus public-schema reads.
+      # discovery is public GETs (Range: bytes=0-0, not HEAD) plus public-schema
+      # reads.
       #
       # Total storage is NOT measurable without a Storage credential, so the
       # dry run reports the projected addition and says the total is unknown

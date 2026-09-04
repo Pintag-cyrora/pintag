@@ -13,6 +13,11 @@
 // What it proves:
 //   1. A dry run completes as a role that CANNOT read the storage schema.
 //   2. A dry run writes NOTHING to Storage.
+//   2b. Neither a dry run nor apply EVER sends a HEAD request to the public
+//       bucket -- the fake server 400s every HEAD to it, reproducing the
+//       real production failure ("HEAD 400 renditions/<stem>/card.webp"),
+//       so this is a genuine regression test for that bug, not just a
+//       source-level assertion.
 //   3. Discovery finds unit-type photos, deduplicates them against the
 //      building gallery, and skips objects that are not in Storage.
 //   4. Apply writes only under renditions/ and leaves every original byte-identical.
@@ -43,6 +48,7 @@ const check = (name, cond, detail = '') => {
 // ── fake Supabase Storage: public reads, authenticated writes, list API ──────
 const store = new Map();                 // object name -> Buffer
 const writes = [];                       // every write the script attempts
+const headRequests = [];                 // every HEAD the script sends (must stay empty)
 let bucketListWorks = true;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 const server = http.createServer((req, res) => {
@@ -52,10 +58,23 @@ const server = http.createServer((req, res) => {
   const send = (code, body, headers = {}) => { res.writeHead(code, headers); res.end(body); };
 
   if (url.pathname.startsWith(pub)) {                      // public read: NO auth
+    // Reproduces the REAL production bug (2026-09): Supabase's HEAD route for
+    // this exact endpoint answered "HEAD 400 renditions/<stem>/card.webp" for
+    // an object that had simply never been generated -- not the 404 a
+    // "does it exist" check needs. Any HEAD here, to ANY path (existing
+    // object or not), gets that same 400 -- exercising the fix means the
+    // script must never depend on HEAD succeeding at all.
+    if (req.method === 'HEAD') { headRequests.push(url.pathname); return send(400, '{"error":"Bad Request"}'); }
+
     const name = decodeURIComponent(url.pathname.slice(pub.length));
     const buf = store.get(name);
     if (!buf) return send(404, '{"error":"not found"}');
-    if (req.method === 'HEAD') return send(200, null, { 'content-length': String(buf.length) });
+    // A real Range request is honoured: 206 + Content-Range carrying the
+    // OBJECT'S TOTAL size (not the one byte actually sent), matching what
+    // an S3-compatible backend does and what probeObject() relies on.
+    const range = req.headers.range;
+    const m = range && /^bytes=0-0$/.exec(range);
+    if (m) return send(206, buf.subarray(0, 1), { 'content-range': `bytes 0-0/${buf.length}`, 'content-length': '1', 'content-type': 'image/png' });
     return send(200, buf, { 'content-length': String(buf.length), 'content-type': 'image/png' });
   }
   if (url.pathname === '/storage/v1/bucket') {
@@ -184,6 +203,12 @@ try {
   check('…and treats it as expected rather than fatal', /not readable by this role/.test(dry.stdout) && /── SCOPE/.test(dry.stdout));
   check('dry run performs NO writes', writes.length === 0, `writes: ${writes.join(', ')}`);
   check('dry run reports no verdict it cannot compute', /projected total\s*: unknown/.test(dry.stdout));
+  // THE REGRESSION: production failed with "HEAD 400 renditions/<stem>/
+  // card.webp" during discovery. The fake server 400s EVERY HEAD to this
+  // endpoint (existing object or not), so the dry run completing cleanly
+  // above already proves the fix; this makes the guarantee explicit and
+  // names exactly what must never happen again.
+  check('discovery never sends a HEAD request to the public bucket', headRequests.length === 0, `HEAD sent to: ${headRequests.join(', ')}`);
 
   // 3. discovery: 3 real images (bldg-1 deduplicated, query string stripped,
   //    rendition/foreign/draft entries excluded), 1 reported missing
@@ -200,6 +225,7 @@ try {
   const untouched = [...originalsBefore].every(([n, b]) => store.get(n)?.equals(b));
   check('every original is byte-identical after apply', untouched);
   check('no original was deleted', [...originalsBefore.keys()].every((n) => store.has(n)));
+  check('apply -- including its post-upload verify step -- never sends a HEAD request', headRequests.length === 0, `HEAD sent to: ${headRequests.join(', ')}`);
 
   // 5. idempotent: a second apply writes nothing new
   const before = writes.length;

@@ -76,7 +76,12 @@ transaction.
 
 ## Image Rendition Backfill
 
-**Status:** Ready to run — the workflow exists; the production run has not been made.
+**Status:** Ready to run — the workflow exists; the production run has not been
+made. Two issues surfaced by real dry runs against production are already
+fixed: `storage.objects` is unreadable by the read-only role (discovery moved
+to public HTTP), and Supabase's `HEAD` route 400s on this endpoint instead of
+404ing a missing object (discovery and the post-upload verify step both moved
+from `HEAD` to `GET` with `Range: bytes=0-0`).
 
 **Purpose:** Generate the pre-sized WebP delivery renditions
 (`image-renditions.js`) for every image on an ACTIVE listing — the building
@@ -102,21 +107,29 @@ on every view. Unit-type photos were missed by the first backfill: it read the
   — run by hand (`node tests/backfill-renditions/e2e.mjs`). Boots a throwaway
   PostgreSQL cluster, a fake Storage server and a stub encoder, then runs the
   REAL script against them to prove: a dry run completes as a role with no
-  `storage` schema access and writes nothing, discovery finds unit-type photos
-  and deduplicates them, apply writes only under `renditions/` and leaves every
-  original byte-identical, a second apply writes nothing new, and apply refuses
-  to write when the ceiling cannot be enforced. Skips cleanly where `initdb` is
+  `storage` schema access and writes nothing, neither dry-run nor apply ever
+  sends a `HEAD` request (the fake server 400s every one, reproducing the real
+  production failure), discovery finds unit-type photos and deduplicates them,
+  apply writes only under `renditions/` and leaves every original
+  byte-identical, a second apply writes nothing new, and apply refuses to
+  write when the ceiling cannot be enforced. Skips cleanly where `initdb` is
   unavailable, so it touches nothing and needs no credentials.
 
 **Credentials — why the dry run needs none.** The production database role is
 read-only and deliberately has no access to the `storage` schema, so
 `SELECT ... FROM storage.objects` fails with *permission denied for schema
 storage*. Discovery does not use it: `property-images` is a public-read bucket,
-so an unauthenticated `HEAD` on an object's public URL returns its
-`Content-Length`, or 404 when it is absent — the same request the site makes for
-every photo. A dry run therefore needs only the read-only DB URL and
-`SUPABASE_URL`. `SUPABASE_SERVICE_ROLE_KEY` is required for `--apply` alone, to
-write renditions and to measure total storage for the ceiling.
+so an unauthenticated `GET` with `Range: bytes=0-0` on an object's public URL
+returns its real size (via `Content-Range`, or `Content-Length` if the range is
+ignored), or 404 when it is absent — the same request pattern the site makes
+for every photo. Deliberately **not** `HEAD`: a real dry run found production's
+`HEAD` route for this exact endpoint returns 400 for an object that has simply
+never been generated, instead of the 404 a "does it exist" check needs — the
+same method this codebase already uses successfully in production
+(`cloudflare-worker/image-cdn-worker.js` does `fetch(originUrl, { method: 'GET' })`
+against the identical path). A dry run therefore needs only the read-only DB
+URL and `SUPABASE_URL`. `SUPABASE_SERVICE_ROLE_KEY` is required for `--apply`
+alone, to write renditions and to measure total storage for the ceiling.
 
 **How to run it:** use the **Backfill Image Renditions** GitHub Actions
 workflow (`.github/workflows/backfill-renditions.yml`) rather than running the
