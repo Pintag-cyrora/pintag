@@ -4,6 +4,16 @@
 //
 // Plain JS, same dual-runtime (Deno + node unit tests) rationale as
 // insight-engine.js / metrics-utils.js / report-composer.js.
+//
+// MODEL: gemini-3.1-flash-lite, not gemini-2.5-flash. The Free-Tier Gemini
+// project backing GEMINI_API_KEY cannot use gemini-2.5-flash ("This model
+// ... is no longer available to new users", HTTP 404 from Google) — the
+// exact failure this file's own tests reproduce as a non-retryable 4xx.
+// smart-listing-importer/index.ts hit the identical 404 and moved to
+// gemini-3.1-flash-lite first (see that commit); this file was explicitly
+// called out as still broken and out of scope there, which is what this
+// change closes. index.ts's `modelUsed` label must be kept in sync with
+// this literal — it records what was actually called, not a guess.
 
 const RETRY_DELAYS = [2000, 5000, 10000];
 // A hang (not an HTTP error) can otherwise outlive the edge function's own
@@ -21,7 +31,7 @@ export async function callGemini(apiKey, prompt) {
 
     try {
       response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

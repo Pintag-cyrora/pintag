@@ -468,7 +468,7 @@ Deno.serve(async (req) => {
       if (!apiKey) throw new Error('GEMINI_API_KEY is not configured. Add it in Supabase Dashboard → Edge Functions → Manage secrets.');
       const prompt = buildPrompt(reportType, composed, rawMetricsSummary, supply, trendAnalysis);
       gemini = await callGemini(apiKey, prompt);
-      modelUsed = 'gemini-2.5-flash';
+      modelUsed = 'gemini-3.1-flash-lite';
       promptVersionUsed = PROMPT_VERSION;
       validatorVersionUsed = VALIDATOR_VERSION;
 

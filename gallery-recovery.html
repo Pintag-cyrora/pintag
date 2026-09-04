@@ -1333,7 +1333,7 @@ button:disabled{opacity:.5;cursor:default}
     var r = await sb.from('properties').update(patch).eq('id', p.id).select('id');
     if (r.error) throw new Error(r.error.message);
     var evt = source === 'manual' ? 'manual_entry' : 'ai_generation';
-    var rows = filled.map(function(f){ return { listing_id:p.id, event_type:evt, field_name:f, old_value:null, new_value:patch[f], source:source, actor:OPERATOR, details:{ via:'gallery-recovery', model: source==='manual'?null:'gemini-2.5-flash' } }; });
+    var rows = filled.map(function(f){ return { listing_id:p.id, event_type:evt, field_name:f, old_value:null, new_value:patch[f], source:source, actor:OPERATOR, details:{ via:'gallery-recovery', model: source==='manual'?null:'gemini-3.1-flash-lite' } }; });
     var reg = await sb.from('listing_provenance').insert(rows);
     if (reg.error) log('WARN provenance insert failed: '+reg.error.message);
     filled.forEach(function(f){ p[f] = patch[f]; });
