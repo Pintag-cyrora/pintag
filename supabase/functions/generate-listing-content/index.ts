@@ -193,8 +193,13 @@ Return ONLY valid JSON in this exact format with no additional text:
   "nearby_zh": []
 }`;
 
+    // gemini-3.1-flash-lite, not gemini-2.5-flash: the Free-Tier Gemini project
+    // behind GEMINI_API_KEY 404s on gemini-2.5-flash ("no longer available to
+    // new users") — the same failure smart-listing-importer and
+    // generate-intelligence-report hit and moved off of. Keep this in sync
+    // with those two if the model ever changes again.
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
