@@ -77,11 +77,15 @@ transaction.
 ## Image Rendition Backfill
 
 **Status:** Ready to run — the workflow exists; the production run has not been
-made. Two issues surfaced by real dry runs against production are already
-fixed: `storage.objects` is unreadable by the read-only role (discovery moved
-to public HTTP), and Supabase's `HEAD` route 400s on this endpoint instead of
-404ing a missing object (discovery and the post-upload verify step both moved
-from `HEAD` to `GET` with `Range: bytes=0-0`).
+made. Three issues surfaced by real dry runs against production are already
+fixed: `storage.objects` is unreadable by the read-only role (the script now
+never queries it, in either mode), Supabase's `HEAD` route 400s on this
+endpoint instead of 404ing a missing object, and — the same problem, worse
+than first diagnosed — its `GET` route (even with `Range: bytes=0-0`) 400s
+too. Neither method can tell "missing" from "broken" on this deployment, so
+existence discovery no longer asks the public endpoint about a specific
+object at all: it uses the Storage API's authenticated `list` operation
+instead (see **Credentials**, below).
 
 **Purpose:** Generate the pre-sized WebP delivery renditions
 (`image-renditions.js`) for every image on an ACTIVE listing — the building
@@ -106,30 +110,44 @@ on every view. Unit-type photos were missed by the first backfill: it read the
 - [`../tests/backfill-renditions/e2e.mjs`](../tests/backfill-renditions/e2e.mjs)
   — run by hand (`node tests/backfill-renditions/e2e.mjs`). Boots a throwaway
   PostgreSQL cluster, a fake Storage server and a stub encoder, then runs the
-  REAL script against them to prove: a dry run completes as a role with no
-  `storage` schema access and writes nothing, neither dry-run nor apply ever
-  sends a `HEAD` request (the fake server 400s every one, reproducing the real
-  production failure), discovery finds unit-type photos and deduplicates them,
-  apply writes only under `renditions/` and leaves every original
-  byte-identical, a second apply writes nothing new, and apply refuses to
-  write when the ceiling cannot be enforced. Skips cleanly where `initdb` is
-  unavailable, so it touches nothing and needs no credentials.
+  REAL script against them to prove: a dry run without
+  `SUPABASE_SERVICE_ROLE_KEY` refuses outright, a dry run with it completes and
+  writes nothing, neither dry-run nor apply ever sends a `HEAD` request or
+  triggers the fake server's 400-for-a-missing-object response (which it
+  returns for GET *and* HEAD, reproducing the real production failure exactly),
+  discovery finds unit-type photos, deduplicates them, and recognises a
+  pre-existing rendition through the Storage listing rather than re-generating
+  it, the authenticated `list` call genuinely paginates across a 1000+ object
+  bucket, apply writes only the renditions that do not already exist (all
+  under `renditions/`) and leaves every original and every pre-existing
+  rendition byte-identical, a second apply writes nothing new, and apply
+  refuses to write when the ceiling cannot be enforced. Skips cleanly where
+  `initdb` is unavailable, so it touches nothing and needs no credentials.
 
-**Credentials — why the dry run needs none.** The production database role is
-read-only and deliberately has no access to the `storage` schema, so
-`SELECT ... FROM storage.objects` fails with *permission denied for schema
-storage*. Discovery does not use it: `property-images` is a public-read bucket,
-so an unauthenticated `GET` with `Range: bytes=0-0` on an object's public URL
-returns its real size (via `Content-Range`, or `Content-Length` if the range is
-ignored), or 404 when it is absent — the same request pattern the site makes
-for every photo. Deliberately **not** `HEAD`: a real dry run found production's
-`HEAD` route for this exact endpoint returns 400 for an object that has simply
-never been generated, instead of the 404 a "does it exist" check needs — the
-same method this codebase already uses successfully in production
-(`cloudflare-worker/image-cdn-worker.js` does `fetch(originUrl, { method: 'GET' })`
-against the identical path). A dry run therefore needs only the read-only DB
-URL and `SUPABASE_URL`. `SUPABASE_SERVICE_ROLE_KEY` is required for `--apply`
-alone, to write renditions and to measure total storage for the ceiling.
+**Credentials — why a dry run needs the service-role key too.** The
+production database role is read-only and has no access to the `storage`
+schema; the script never queries it — not `storage.objects`, not in dry-run,
+not in apply. That schema was never the problem going forward: the deeper one
+is that `property-images`'s PUBLIC Storage endpoint cannot be trusted to
+answer "does this object exist" at all. Real dry runs against production found
+it returns 400 (not 404) for a missing object on **both** `HEAD` and `GET`
+(even with `Range: bytes=0-0`) — so no public request, of any method, can
+distinguish "missing" from "broken" there. (The site itself still renders
+existing images fine over plain `GET` — see
+`cloudflare-worker/image-cdn-worker.js`, live in production — which is why
+`download()` still uses it, but only ever for an object a listing has already
+confirmed is there.)
+
+Discovery instead uses the Storage API's **authenticated** `list` operation
+(`POST /storage/v1/object/list/{bucket}`), which is read-only — it lists, it
+never writes — but does need `SUPABASE_SERVICE_ROLE_KEY`, in **both** modes
+now. This is a genuine trade-off: unlike the previous design, a dry run is no
+longer "the key literally cannot reach this step." What still holds, and is
+what a dry run's write-safety now rests on, is that the script's one write
+call (`upload()`) is only ever reached from inside `if (APPLY)` — asserted
+directly by the runner-invariant tests in `image-renditions.test.js`, which
+also assert that no public HEAD/GET existence probing exists anywhere in the
+file any more.
 
 **How to run it:** use the **Backfill Image Renditions** GitHub Actions
 workflow (`.github/workflows/backfill-renditions.yml`) rather than running the
@@ -142,11 +160,11 @@ canary pass. Its safety properties are pinned by
 `backfill-renditions-workflow.test.js`.
 
 Running the script directly instead needs `PINTAG_DB_URL`, `SUPABASE_URL` and
-(for `--apply`) `SUPABASE_SERVICE_ROLE_KEY` in the environment, plus `psql` and
-ImageMagick on PATH.
+`SUPABASE_SERVICE_ROLE_KEY` in the environment for BOTH modes now, plus `psql`
+and ImageMagick on PATH.
 
 **Resuming:** re-running is safe and picks up where the last run stopped — the
-set of renditions that already exist is re-derived from `storage.objects` every
-time, so resume does not depend on the `.rendition-backfill-state.json` the
-script writes (that file records failures for inspection and is uploaded as a
-workflow artifact).
+set of renditions that already exist is re-derived from a fresh Storage
+`list` call every time, so resume does not depend on the
+`.rendition-backfill-state.json` the script writes (that file records failures
+for inspection and is uploaded as a workflow artifact).

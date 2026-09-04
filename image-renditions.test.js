@@ -206,7 +206,7 @@ test('renditions upload with the long immutable cache, like originals', () => {
     const applyLoop = RUNNER.slice(RUNNER.indexOf('for (let i = 0; i < queue.length'));
     assert.ok(applyLoop.length > 0, 'apply loop not found');
     assert.match(applyLoop, /const path = renditionPath\(im\.storage_path, profile\)/);
-    assert.match(applyLoop, /await upload\(path, out\)/);
+    assert.match(applyLoop, /await upload\(path, out, auth\)/);
     assert.ok(!/upload\(\s*im\.storage_path/.test(RUNNER),
       'an original path must never be an upload target');
   });
@@ -234,60 +234,81 @@ test('renditions upload with the long immutable cache, like originals', () => {
       'unit_types.images must be part of discovery, not just the registry');
   });
 
-  test('discovery works under least privilege: no storage-schema access required', () => {
-    // The production read-only role has no `storage` schema grant, so the
-    // discovery query must read `public` only. Object existence and size come
-    // from unauthenticated GETs on the PUBLIC bucket instead — the same
-    // request the site makes for every photo.
+  test('discovery reads the public schema only and never touches storage.objects', () => {
+    // The production read-only role has no `storage` schema grant, and this
+    // design never asks it to try: unlike the two prior designs (a
+    // storage.objects JOIN, then a storage.objects fallback query), NO query
+    // anywhere in this file may reference the storage schema at all.
     const queries = [...RUNNER.matchAll(/psql\(`([\s\S]*?)`\)/g)].map((m) => m[1]);
-    const discovery = queries.filter((q) => /FROM\s+property_images|FROM\s+unit_types/i.test(q));
-    assert.ok(discovery.length > 0, 'discovery query not found');
-    for (const q of discovery) assert.ok(!/storage\./i.test(q), 'discovery must not read the storage schema:\n' + q);
-    // storage.objects may survive in exactly one place: the OPTIONAL usage
-    // probe, which degrades to the Storage API when the role cannot read it.
-    assert.equal(queries.filter((q) => /storage\.objects/i.test(q)).length, 1);
-
-    const probe = RUNNER.slice(RUNNER.indexOf('async function probeObject'), RUNNER.indexOf('async function drain'));
-    assert.match(probe, /publicUrl\(objectName\)/);
-    assert.ok(!/apikey|Authorization/.test(probe), 'a public read must not send a credential');
-    assert.match(probe, /r\.status !== 404/, 'a 404 is an answer, not a failure to retry');
+    assert.ok(queries.length > 0, 'no psql query found');
+    for (const q of queries) assert.ok(!/storage\./i.test(q), 'a query must not read the storage schema:\n' + q);
+    assert.equal(queries.filter((q) => /storage\.objects/i.test(q)).length, 0,
+      'storage.objects must never be queried, not even as a fallback');
+    assert.ok(!RUNNER.includes('function storageBytesFromDb'),
+      'the storage.objects fallback query must be gone entirely');
   });
 
-  test('object existence is checked with GET, never HEAD — production 400s on HEAD for this endpoint', () => {
-    // A real dry run against production failed with "HEAD 400
-    // renditions/<stem>/card.webp": Supabase's HEAD route for
-    // /storage/v1/object/public/ does not behave like its GET route (which
-    // this codebase has already proven correct in production — see
-    // cloudflare-worker/image-cdn-worker.js, which does `fetch(originUrl,
-    // { method: 'GET' })` against the identical path and keys its cache/404
-    // logic on a real 404 for a missing object). HEAD must not be used
-    // anywhere against this endpoint again.
+  test('no public HEAD/GET existence probing remains — objects are discovered only by listing', () => {
+    // Production returns 400 (not 404) for a missing object on its public
+    // endpoint, for BOTH HEAD and GET, with or without Range: neither method
+    // can distinguish "missing" from "broken" there, so existence discovery
+    // must never ask the public endpoint about a specific object at all.
+    // (download() and upload()'s write call still use the public/authed
+    // object endpoints, but only ever against an object already CONFIRMED
+    // to exist by a Storage listing — never to answer "does this exist?".)
+    assert.ok(!RUNNER.includes('function probeObject'), 'probeObject() (public existence probing) must be gone');
+    assert.ok(!RUNNER.includes('async function drain'), 'drain() existed only to support probeObject()');
     assert.ok(!/method:\s*'HEAD'/.test(RUNNER), 'no HEAD request may remain in the runner');
-    const probe = RUNNER.slice(RUNNER.indexOf('async function probeObject'), RUNNER.indexOf('async function drain'));
-    assert.match(probe, /method: 'GET'/);
-    assert.match(probe, /Range['"]?\s*:\s*'bytes=0-0'/, 'a Range probe, not a full download, keeps discovery cheap');
-    // Only 404 means "does not exist" -- any other status (400 included)
-    // must still be a real, thrown/retried failure, never silently treated
-    // as "missing".
-    assert.match(probe, /if \(!r\.ok && r\.status !== 404\)/);
+    assert.ok(!/Range['"]?\s*:\s*['"]bytes=/.test(RUNNER),
+      'a Range probe header was only ever used for existence/verify probing of a possibly-missing object; none may remain in a request');
+  });
+
+  test('existence and size come from the authenticated Storage list API, with real pagination', () => {
+    const fn = RUNNER.slice(RUNNER.indexOf('async function listPrefixObjects'), RUNNER.indexOf('async function listBucketObjects'));
+    assert.ok(fn.length > 0, 'listPrefixObjects() not found');
+    assert.match(fn, /\/storage\/v1\/object\/list\/\$\{bucket\}/, 'discovery must use the Storage list endpoint');
+    assert.match(fn, /method: 'POST'/);
+    assert.match(fn, /\.\.\.auth/, 'listing requires the service-role credential (the auth headers)');
+    assert.match(fn, /limit: PAGE, offset/, 'pagination must advance by offset, not assume one page');
+    assert.match(fn, /rows\.length < PAGE/, 'a short page is what ends pagination, not a fixed request count');
+    assert.match(fn, /row\.id == null/, 'a folder row (null id) must be recursed into, not skipped');
+    assert.match(fn, /bytesOf\(row\.metadata && row\.metadata\.size/,
+      'a file row without a parseable metadata.size must be fatal, never a silent 0');
+  });
+
+  test('a dry run needs the service-role key too, because discovery itself needs it', () => {
+    // Discovery is no longer optional-credential: without SUPABASE_SERVICE_ROLE_KEY
+    // there is no way to ask Storage what exists, in EITHER mode.
+    assert.match(RUNNER, /if \(!SKEY\)/);
+    assert.ok(!/if \(APPLY && !SKEY\)/.test(RUNNER),
+      'the credential gate must not be apply-only any more');
+    assert.match(RUNNER, /process\.exit\(2\)/);
+  });
+
+  test('the property-images listing is fetched once and reused for both discovery and the ceiling', () => {
+    assert.match(RUNNER, /const objects = await listBucketObjects\(BUCKET, auth\)/);
+    assert.match(RUNNER, /activeImages\(objects\)/);
+    assert.match(RUNNER, /existingRenditions\(images, objects\)/);
+    assert.match(RUNNER, /currentStorageBytes\(objects, auth\)/);
+    assert.match(RUNNER, /sumSizes\(propertyImagesObjects\)/,
+      'the ceiling must reuse the already-fetched bucket total, not re-list it');
+    assert.match(RUNNER, /if \(name === BUCKET\) continue/,
+      'the property-images bucket must not be listed a second time for the ceiling');
   });
 
   test('a psql failure never reaches a log: its message quotes the connection string', () => {
     // execFileSync puts the whole command line into its error message, and
-    // that includes PINTAG_DB_URL. Only these two functions call psql(), and
-    // neither may echo the error.
+    // that includes PINTAG_DB_URL. Only candidateImages() calls psql() now
+    // (the storage.objects fallback query is gone), and it may never echo
+    // the error.
     const psqlCalls = (RUNNER.match(/\bpsql\(/g) || []).length;
-    let accounted = 0;
-    for (const name of ['function candidateImages(', 'function storageBytesFromDb(']) {
-      const start = RUNNER.indexOf(name);
-      assert.ok(start > -1, `${name} not found`);
-      const body = RUNNER.slice(start, RUNNER.indexOf('\n}', start));
-      accounted += (body.match(/\bpsql\(/g) || []).length;
-      assert.ok(!/console\.(log|error|warn)\([^)]*err(\s*&&\s*err)?\.message/.test(body),
-        `${name}: a psql error must never be printed`);
-    }
-    assert.equal(psqlCalls - 1, accounted, 'psql() is called only from the two functions audited here');
-    assert.match(RUNNER, /message suppressed/);
+    const start = RUNNER.indexOf('function candidateImages(');
+    assert.ok(start > -1, 'function candidateImages( not found');
+    const body = RUNNER.slice(start, RUNNER.indexOf('\n}', start));
+    const accounted = (body.match(/\bpsql\(/g) || []).length;
+    assert.ok(!/console\.(log|error|warn)\([^)]*err(\s*&&\s*err)?\.message/.test(body),
+      'candidateImages(): a psql error must never be printed');
+    assert.equal(psqlCalls - 1, accounted, 'psql() is called only from candidateImages()');
   });
 
   test('every query is pinned read-only', () => {
@@ -303,15 +324,12 @@ test('renditions upload with the long immutable cache, like originals', () => {
 
   test('an unparseable size is fatal, never a silent NaN', () => {
     // NaN compares false against the ceiling, so a bad parse would disable the
-    // storage gate rather than trip it.
+    // storage gate rather than trip it. This now guards every Storage list
+    // row's metadata.size, not a psql total: bytesOf() is shared between them.
     assert.match(RUNNER, /Number\.isFinite\(n\)/);
-    assert.match(RUNNER, /bytesOf\(bytes, 'storage\.objects total'\)/);
-    // Sizes come from the probe response: Content-Range's total when a Range
-    // request is honoured (206), else Content-Length. Either way, a header
-    // that is not a number must fall back to 0, never a silent NaN.
-    const probe = RUNNER.slice(RUNNER.indexOf('async function probeObject'), RUNNER.indexOf('async function drain'));
-    assert.match(probe, /Number\.isFinite\(total\) \? total : Number\(res\.headers\.get\('content-length'\)\)/);
-    assert.match(probe, /Number\.isFinite\(len\) \? len : 0/);
+    assert.match(RUNNER, /function bytesOf\(raw, what\)/);
+    assert.match(RUNNER, /into\.set\(full, bytesOf\(row\.metadata && row\.metadata\.size, full\)\)/,
+      'a file row with an unparseable size must throw, never default to 0');
   });
 
   test('the dry-run sample strides across the whole set', () => {
@@ -342,30 +360,28 @@ test('renditions upload with the long immutable cache, like originals', () => {
     assert.ok(gate > -1 && up > gate, 'the ceiling check must precede the upload');
   });
 
-  test('--apply refuses without a credential rather than silently doing nothing', () => {
-    assert.match(RUNNER, /if \(APPLY && !SKEY\)/);
-    assert.match(RUNNER, /process\.exit\(2\)/);
-  });
-
   test('a failed image is recorded and does not stop the run', () => {
     assert.match(RUNNER, /state\.failed\[im\.storage_path\] = String/);
     assert.match(RUNNER, /catch \(err\)/);
     assert.match(RUNNER, /retryable failures/);
   });
 
-  test('uploads are verified readable before being counted done', () => {
-    // GET+Range, not HEAD -- production's HEAD route 400s on this endpoint
-    // (see the probeObject regression test above), which would have turned
-    // every SUCCESSFUL upload's verify step into a false failure: req()
-    // throws on any non-2xx, with no special case for 400.
-    const verify = RUNNER.slice(RUNNER.indexOf('async function upload'), RUNNER.indexOf('async function upload') + 2000);
-    assert.match(verify, /method: 'GET', headers: \{ Range: 'bytes=0-0' \}/, 'a 2xx write is not proof of delivery');
-    assert.ok(!/verify[\s\S]{0,120}method: 'HEAD'/.test(verify), 'the verify step must not use HEAD');
-    // req() throws on any non-2xx, so a failed verify propagates out of
-    // upload() and the image is recorded as failed rather than marked done.
-    assert.match(RUNNER, /withRetry\(`verify \$\{path\}`/);
-    assert.match(RUNNER, /if \(!res\.ok\) \{[\s\S]*?throw err;/,
-      'req() must reject every non-2xx response');
+  test('uploads are verified against the authenticated listing, with a size check, before being counted done', () => {
+    // A 2xx on the write is not proof delivery works, and production 400s
+    // (not 404s) on the public endpoint for a missing object — so verify
+    // asks the SAME authenticated Storage list operation used for
+    // discovery, never a public GET/HEAD.
+    const upload = RUNNER.slice(RUNNER.indexOf('async function upload('), RUNNER.indexOf('async function verifyUploaded'));
+    assert.ok(upload.length > 0, 'upload() not found');
+    assert.match(upload, /const size = await verifyUploaded\(path, auth\)/);
+    assert.match(upload, /if \(size !== body\.length\)/, 'a size mismatch after upload must be a failure, not a pass');
+    const verifyStart = RUNNER.indexOf('async function verifyUploaded');
+    const verify = RUNNER.slice(verifyStart, RUNNER.indexOf('\n}', verifyStart));
+    assert.match(verify, /listPrefixObjects\(BUCKET, auth, prefix, new Map\(\)\)/,
+      'verify must re-list Storage, not probe the public object endpoint');
+    assert.ok(!/\{\s*apikey/.test(verify),
+      'verify must not build its own request headers — it delegates to the shared, audited listing function');
+    assert.match(verify, /if \(size == null\) throw/, 'an object absent from the re-listing must fail verification');
   });
 
   test('network calls have a deadline and retry only what is transient', () => {

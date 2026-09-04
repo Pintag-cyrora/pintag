@@ -63,13 +63,22 @@ test('the production DB secret is mapped to the PINTAG_DB_URL the script reads',
   assert.ok(!/\$\{\{ secrets\.PINTAG_DB_URL \}\}/.test(src), 'no secret of that name exists');
 });
 
-test('the dry run always runs and is never handed a credential that can write', () => {
+test('the dry run always runs, and never passes --apply even though it now holds the service-role key', () => {
+  // Discovery uses the authenticated (read-only) Storage `list` operation in
+  // BOTH modes, so unlike the previous design the dry-run step DOES receive
+  // SUPABASE_SERVICE_ROLE_KEY now — see the workflow's own CREDENTIALS
+  // comment for why. Its write-safety therefore no longer comes from lacking
+  // a write-capable credential; it comes from the script gating its one write
+  // call behind `if (APPLY)`, and this step never passing --apply is what
+  // keeps it on the read-only side of that gate. The script-level guarantee
+  // (every write reachable only from inside `if (APPLY)`) is pinned in
+  // image-renditions.test.js, not here.
   const dry = stepNamed('dry run');
   assert.ok(!/^\s+if:/m.test(dry.block), 'the dry run must run in BOTH modes — it is the apply pre-flight');
-  assert.ok(!dry.block.includes('SUPABASE_SERVICE_ROLE_KEY'),
-    'the dry-run step must not receive the service-role key: it cannot then write even if invoked wrongly');
+  assert.match(dry.block, /SUPABASE_SERVICE_ROLE_KEY:\s+\$\{\{ secrets\.SUPABASE_SERVICE_ROLE_KEY \}\}/,
+    'discovery needs the authenticated Storage list operation even in dry-run');
   assert.match(dry.block, /--dry-run/);
-  assert.ok(!dry.block.includes('--apply'));
+  assert.ok(!dry.block.includes('--apply'), 'the dry-run step must never pass --apply');
 });
 
 test('apply is gated on the mode input, runs after the dry run, and needs the typed confirmation', () => {
