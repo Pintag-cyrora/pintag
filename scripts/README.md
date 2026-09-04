@@ -92,10 +92,31 @@ on every view. Unit-type photos were missed by the first backfill: it read the
 - [`backfill-renditions.mjs`](backfill-renditions.mjs) — resumable, idempotent.
   `--dry-run` reports scope and projects storage with no writes at all;
   `--apply` generates the missing objects. Every DB query runs under
-  `SET default_transaction_read_only=on`; the only write is a `POST` under
-  `renditions/`; there is no `DELETE`, `PUT` or `PATCH` in the file, so an
-  original is never modified. Existing renditions are skipped and writes stop
-  before crossing a 768 MB storage ceiling.
+  `SET default_transaction_read_only=on` and reads only the `public` schema;
+  the only write is a `POST` under `renditions/`, and `upload()` re-checks its
+  own destination so a miscomputed path cannot overwrite an original. There is
+  no `DELETE`, `PUT` or `PATCH` in the file. Existing renditions are skipped,
+  writes stop before crossing a 768 MB storage ceiling, and apply refuses to
+  start (exit 4) if it cannot measure total storage to enforce that ceiling.
+- [`../tests/backfill-renditions/e2e.mjs`](../tests/backfill-renditions/e2e.mjs)
+  — run by hand (`node tests/backfill-renditions/e2e.mjs`). Boots a throwaway
+  PostgreSQL cluster, a fake Storage server and a stub encoder, then runs the
+  REAL script against them to prove: a dry run completes as a role with no
+  `storage` schema access and writes nothing, discovery finds unit-type photos
+  and deduplicates them, apply writes only under `renditions/` and leaves every
+  original byte-identical, a second apply writes nothing new, and apply refuses
+  to write when the ceiling cannot be enforced. Skips cleanly where `initdb` is
+  unavailable, so it touches nothing and needs no credentials.
+
+**Credentials — why the dry run needs none.** The production database role is
+read-only and deliberately has no access to the `storage` schema, so
+`SELECT ... FROM storage.objects` fails with *permission denied for schema
+storage*. Discovery does not use it: `property-images` is a public-read bucket,
+so an unauthenticated `HEAD` on an object's public URL returns its
+`Content-Length`, or 404 when it is absent — the same request the site makes for
+every photo. A dry run therefore needs only the read-only DB URL and
+`SUPABASE_URL`. `SUPABASE_SERVICE_ROLE_KEY` is required for `--apply` alone, to
+write renditions and to measure total storage for the ceiling.
 
 **How to run it:** use the **Backfill Image Renditions** GitHub Actions
 workflow (`.github/workflows/backfill-renditions.yml`) rather than running the

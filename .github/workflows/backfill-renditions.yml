@@ -16,12 +16,25 @@ name: Backfill Image Renditions
 # own. `mode` defaults to dry-run, and dry-run is what a bare "Run workflow"
 # click does.
 #
+# CREDENTIALS. The production DB role is read-only and has NO access to the
+# `storage` schema, which is why the first run of this workflow failed with
+# "permission denied for schema storage". Discovery no longer needs it: object
+# existence and size come from unauthenticated HEADs on the PUBLIC bucket (the
+# same request a visitor's browser makes for every photo), so a DRY RUN needs
+# no Storage credential at all. Only apply does, to write and to measure total
+# storage for the ceiling.
+#
 # SAFETY MODEL — the script's, which this workflow does not weaken:
-#   * Every DB query runs under `SET default_transaction_read_only=on`.
+#   * Every DB query runs under `SET default_transaction_read_only=on`, and
+#     reads only the `public` schema.
 #   * The ONLY write is a POST to storage/v1/object/property-images/renditions/…
 #     There is no DELETE, PUT or PATCH anywhere in the script.
 #   * Originals are read (GET) and never modified.
 #   * Existing renditions are skipped; a re-run is idempotent (x-upsert).
+#   * upload() re-checks its own destination and refuses anything outside
+#     renditions/, so a miscomputed path cannot overwrite an original.
+#   * Apply REFUSES to start (exit 4) if total storage cannot be measured, so
+#     the ceiling can never be bypassed by writing blind.
 #   * A per-image failure is recorded and the run continues; the original is
 #     untouched either way.
 #   * Writes stop before crossing a 768 MB storage ceiling (exit 3).
@@ -39,10 +52,13 @@ name: Backfill Image Renditions
 #
 # SECRETS (Settings → Secrets and variables → Actions)
 #   PINTAG_PROD_DB_URL         production Postgres connection. Mapped to the
-#                              PINTAG_DB_URL the script expects. Read-only
-#                              queries only — a read-only role is sufficient.
+#                              PINTAG_DB_URL the script expects. The existing
+#                              least-privilege backup role is sufficient: only
+#                              the `public` schema is read, and no
+#                              storage-schema grant is needed or wanted.
 #   SUPABASE_URL               https://<ref>.supabase.co
-#   SUPABASE_SERVICE_ROLE_KEY  required for mode=apply only (Storage writes).
+#   SUPABASE_SERVICE_ROLE_KEY  required for mode=apply only — Storage writes,
+#                              and measuring total storage for the ceiling.
 #
 # RESUMING. The script persists .rendition-backfill-state.json, uploaded as an
 # artifact for the record. Resume does not depend on it: the set of renditions
@@ -153,10 +169,16 @@ jobs:
           echo "Apply confirmed. limit=$LIMIT (0 = all)."
 
       # Always runs, in BOTH modes. In apply mode this is the pre-flight: it
-      # prints the scope, measures real rendition sizes and reports the storage
-      # verdict before a single object is written. NOTE the absence of
-      # SUPABASE_SERVICE_ROLE_KEY here — this step has no credential that can
-      # write to Storage.
+      # prints the scope and measures real rendition sizes before a single
+      # object is written. NOTE the absence of SUPABASE_SERVICE_ROLE_KEY here —
+      # this step has no credential that can write to Storage, and needs none:
+      # discovery is public HEADs plus public-schema reads.
+      #
+      # Total storage is NOT measurable without a Storage credential, so the
+      # dry run reports the projected addition and says the total is unknown
+      # rather than inventing a verdict. The guarantee is not weakened: apply
+      # measures the real total, refuses to start without it, and re-checks
+      # before every single write.
       - name: Dry run (report only, no writes)
         env:
           PINTAG_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
