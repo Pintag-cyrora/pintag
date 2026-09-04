@@ -331,5 +331,6 @@ if (!APPLY) {
   console.log(`    VERDICT            : ${baseline + projected > STORAGE_CEILING ? 'EXCEEDS CEILING — DO NOT RUN' : 'within ceiling'}`);
 }
 if (Object.keys(state.failed).length) {
-  console.log(`\n  retryable failures   : ${Object.keys(state.failed).length} (recorded in ${STATE_FILE})`);
+  // The state file is only written under --apply; a dry run keeps nothing.
+  console.log(`\n  retryable failures   : ${Object.keys(state.failed).length} ${APPLY ? `(recorded in ${STATE_FILE})` : '(not recorded: --dry-run writes no state file)'}`);
 }
