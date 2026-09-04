@@ -71,3 +71,48 @@ copy-paste checklist (every SQL block verified against a local Postgres
 replica) for whoever has that access to isolate the cause in under 10
 minutes, and to safely repair every corrupted `price_amount` in one guarded
 transaction.
+
+---
+
+## Image Rendition Backfill
+
+**Status:** Ready to run — the workflow exists; the production run has not been made.
+
+**Purpose:** Generate the pre-sized WebP delivery renditions
+(`image-renditions.js`) for every image on an ACTIVE listing — the building
+gallery *and* each unit type's own gallery. Production serves renditions
+(`config.js` `renditionsEnabled`). An image with no rendition object still
+displays, because every `<img>` carries `data-pt-original` and falls back to
+the original on the first error, but it costs a 404 plus a full-size download
+on every view. Unit-type photos were missed by the first backfill: it read the
+`property_images` registry, which is synced from `properties.images` only, so
+`unit_types.images` was never enumerated.
+
+**Scripts:**
+- [`backfill-renditions.mjs`](backfill-renditions.mjs) — resumable, idempotent.
+  `--dry-run` reports scope and projects storage with no writes at all;
+  `--apply` generates the missing objects. Every DB query runs under
+  `SET default_transaction_read_only=on`; the only write is a `POST` under
+  `renditions/`; there is no `DELETE`, `PUT` or `PATCH` in the file, so an
+  original is never modified. Existing renditions are skipped and writes stop
+  before crossing a 768 MB storage ceiling.
+
+**How to run it:** use the **Backfill Image Renditions** GitHub Actions
+workflow (`.github/workflows/backfill-renditions.yml`) rather than running the
+script by hand — it holds the production credentials so nobody has to. It is
+`workflow_dispatch` only and defaults to `dry-run`, so a bare "Run workflow"
+click reports and writes nothing. Choosing `mode: apply` additionally requires
+typing `APPLY`, and the dry run always executes first so its storage verdict is
+on the record before any object is written. `limit` caps an apply run for a
+canary pass. Its safety properties are pinned by
+`backfill-renditions-workflow.test.js`.
+
+Running the script directly instead needs `PINTAG_DB_URL`, `SUPABASE_URL` and
+(for `--apply`) `SUPABASE_SERVICE_ROLE_KEY` in the environment, plus `psql` and
+ImageMagick on PATH.
+
+**Resuming:** re-running is safe and picks up where the last run stopped — the
+set of renditions that already exist is re-derived from `storage.objects` every
+time, so resume does not depend on the `.rendition-backfill-state.json` the
+script writes (that file records failures for inspection and is uploaded as a
+workflow artifact).

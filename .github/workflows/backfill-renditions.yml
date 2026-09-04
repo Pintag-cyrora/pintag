@@ -1,0 +1,205 @@
+name: Backfill Image Renditions
+
+# Generates the pre-sized WebP delivery renditions (image-renditions.js) for
+# every image on an ACTIVE listing — the building gallery AND each unit type's
+# own gallery — by running scripts/backfill-renditions.mjs.
+#
+# WHY THIS EXISTS. Production serves renditions (config.js renditionsEnabled).
+# An image with no rendition object still displays, because every <img> carries
+# data-pt-original and falls back to the original on the first error — but it
+# costs a 404 plus a full-size download on every view. Unit-type photos were
+# missed by the first backfill (it read the property_images registry, which is
+# synced from properties.images only), so this workflow is how the missing
+# objects get generated without anyone handling production credentials locally.
+#
+# MANUAL ONLY. The sole trigger is workflow_dispatch: it can never fire on its
+# own. `mode` defaults to dry-run, and dry-run is what a bare "Run workflow"
+# click does.
+#
+# SAFETY MODEL — the script's, which this workflow does not weaken:
+#   * Every DB query runs under `SET default_transaction_read_only=on`.
+#   * The ONLY write is a POST to storage/v1/object/property-images/renditions/…
+#     There is no DELETE, PUT or PATCH anywhere in the script.
+#   * Originals are read (GET) and never modified.
+#   * Existing renditions are skipped; a re-run is idempotent (x-upsert).
+#   * A per-image failure is recorded and the run continues; the original is
+#     untouched either way.
+#   * Writes stop before crossing a 768 MB storage ceiling (exit 3).
+# and this workflow's own:
+#   * A dry run ALWAYS runs first and its verdict is printed, including in
+#     apply mode — so the ceiling check happens before any write.
+#   * mode=apply additionally requires typing APPLY, matching the house pattern
+#     in apply-migration.yml (guards against a stray click).
+#   * The service-role key is passed ONLY to the apply step. The dry run cannot
+#     write even in principle: it never receives a credential that could.
+#   * No step ever echoes a secret. Values are passed through `env:` and only
+#     ever tested for emptiness. GitHub also masks registered secret values in
+#     logs and summaries, which covers text the script itself may print (a psql
+#     failure message quotes the command line, i.e. the connection string).
+#
+# SECRETS (Settings → Secrets and variables → Actions)
+#   PINTAG_PROD_DB_URL         production Postgres connection. Mapped to the
+#                              PINTAG_DB_URL the script expects. Read-only
+#                              queries only — a read-only role is sufficient.
+#   SUPABASE_URL               https://<ref>.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY  required for mode=apply only (Storage writes).
+#
+# RESUMING. The script persists .rendition-backfill-state.json, uploaded as an
+# artifact for the record. Resume does not depend on it: the set of renditions
+# that already exist is re-derived from storage.objects on every run, so simply
+# re-running the workflow picks up where the last one stopped.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'dry-run = report only (no writes). apply = generate the missing renditions.'
+        type: choice
+        options:
+          - dry-run
+          - apply
+        default: dry-run
+        required: true
+      confirm:
+        description: 'mode=apply ONLY: type APPLY to confirm writing to production Storage.'
+        required: false
+        default: ''
+      limit:
+        description: 'mode=apply ONLY: process at most N images (0 = all). Use a small number for a first canary run.'
+        required: false
+        default: '0'
+
+# One backfill at a time, and never cancel one that is mid-upload.
+concurrency:
+  group: backfill-renditions
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    name: ${{ inputs.mode }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Holds PINTAG_PROD_DB_URL (same protected environment image-integrity.yml
+    # and backup.yml already use). Repository-level secrets resolve here too.
+    environment: production-backup
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      # psql for the read-only discovery queries; ImageMagick for the WebP
+      # encodes. Both modes need both: a dry run encodes a stride sample to
+      # measure real rendition sizes for its projection.
+      - name: Install psql client and ImageMagick
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client imagemagick
+
+      # Presence only. Never prints a value; the diagnostics name the secret.
+      - name: Verify the required secrets are present
+        env:
+          PINTAG_DB_URL:             ${{ secrets.PINTAG_PROD_DB_URL }}
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MODE:                      ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          missing=()
+          if [ -z "${PINTAG_DB_URL:-}" ]; then missing+=(PINTAG_PROD_DB_URL); fi
+          if [ -z "${SUPABASE_URL:-}" ];  then missing+=(SUPABASE_URL); fi
+          if [ "$MODE" = "apply" ] && [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            missing+=(SUPABASE_SERVICE_ROLE_KEY)
+          fi
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing secret(s): ${missing[*]}. Add them under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "All required secrets for mode=$MODE are present."
+
+      # Fail BEFORE the dry run when apply was chosen without the confirmation,
+      # so a mistaken apply costs nothing.
+      # Inputs reach the shell through `env:` only, never through expression
+      # interpolation inside a run block: a free-text input pasted into a
+      # script is a shell injection, whatever the dispatcher's permissions.
+      - name: Confirm apply and validate the limit
+        if: inputs.mode == 'apply'
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          LIMIT:   ${{ inputs.limit }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "APPLY" ]; then
+            echo "::error::mode=apply requires typing APPLY in the confirm input. Nothing was written."
+            exit 1
+          fi
+          # A non-numeric limit would parse to NaN in the script and silently
+          # mean "every image" -- the opposite of what someone typing a limit
+          # intends. Refuse it instead.
+          case "$LIMIT" in
+            ''|*[!0-9]*)
+              echo "::error::limit must be a non-negative whole number (0 = all). Got: $LIMIT"
+              exit 1
+              ;;
+          esac
+          echo "Apply confirmed. limit=$LIMIT (0 = all)."
+
+      # Always runs, in BOTH modes. In apply mode this is the pre-flight: it
+      # prints the scope, measures real rendition sizes and reports the storage
+      # verdict before a single object is written. NOTE the absence of
+      # SUPABASE_SERVICE_ROLE_KEY here — this step has no credential that can
+      # write to Storage.
+      - name: Dry run (report only, no writes)
+        env:
+          PINTAG_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+          SUPABASE_URL:  ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -euo pipefail
+          node scripts/backfill-renditions.mjs --dry-run | tee dry-run-report.txt
+          {
+            echo "## Rendition backfill — dry run"
+            echo ""
+            echo '```'
+            cat dry-run-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply (generate the missing renditions)
+        if: inputs.mode == 'apply'
+        env:
+          PINTAG_DB_URL:             ${{ secrets.PINTAG_PROD_DB_URL }}
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LIMIT:                     ${{ inputs.limit }}
+        run: |
+          set -euo pipefail
+          node scripts/backfill-renditions.mjs --apply --limit "$LIMIT" | tee apply-report.txt
+          {
+            echo "## Rendition backfill — apply"
+            echo ""
+            echo '```'
+            cat apply-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The reports and the resume/failure state, for the record. Contains
+      # object names and HTTP status text only — no credentials.
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rendition-backfill-${{ inputs.mode }}-${{ github.run_id }}
+          path: |
+            dry-run-report.txt
+            apply-report.txt
+            .rendition-backfill-state.json
+          retention-days: 30
+          if-no-files-found: ignore
