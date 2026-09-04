@@ -18,13 +18,20 @@ name: Backfill Image Renditions
 #
 # CREDENTIALS. The production DB role is read-only and has NO access to the
 # `storage` schema, which is why the first run of this workflow failed with
-# "permission denied for schema storage". Discovery no longer needs it: object
-# existence and size come from unauthenticated GETs (Range: bytes=0-0) on the
-# PUBLIC bucket (the same request pattern a visitor's browser makes for every
-# photo — never HEAD; a second dry run found production's HEAD route 400s on
-# this exact endpoint instead of 404ing a missing object), so a DRY RUN needs
-# no Storage credential at all. Only apply does, to write and to measure total
-# storage for the ceiling.
+# "permission denied for schema storage"; the script never queries it, in
+# either mode. Two later dry runs then found that the PUBLIC Storage endpoint
+# itself cannot be trusted to say whether an object exists: it returned 400
+# (not 404) for a missing object, first over HEAD, then over GET+Range too —
+# so no public request, of any kind, can tell "missing" from "broken" there.
+# Discovery therefore uses the Storage API's AUTHENTICATED list operation
+# instead (read-only: it lists, it does not write), which needs
+# SUPABASE_SERVICE_ROLE_KEY — so, unlike the previous design, a DRY RUN now
+# needs the service-role key too. This is a real trade-off, not an oversight:
+# a dry run's write-safety is no longer "it holds no write-capable
+# credential" but "the script only ever calls the write path from inside
+# `if (APPLY)`" — see the runner-invariant tests in image-renditions.test.js,
+# which assert both that every write is APPLY-gated and that no public
+# HEAD/GET existence probing exists anywhere in the script.
 #
 # SAFETY MODEL — the script's, which this workflow does not weaken:
 #   * Every DB query runs under `SET default_transaction_read_only=on`, and
@@ -45,8 +52,11 @@ name: Backfill Image Renditions
 #     apply mode — so the ceiling check happens before any write.
 #   * mode=apply additionally requires typing APPLY, matching the house pattern
 #     in apply-migration.yml (guards against a stray click).
-#   * The service-role key is passed ONLY to the apply step. The dry run cannot
-#     write even in principle: it never receives a credential that could.
+#   * The service-role key is now READ (list) capable in BOTH modes, because
+#     discovery itself needs it — it is no longer withheld from the dry run.
+#     A dry run's write-safety comes from the script's structure instead: every
+#     write is reached only from inside `if (APPLY)`, which is exactly what the
+#     runner-invariant tests in image-renditions.test.js assert.
 #   * No step ever echoes a secret. Values are passed through `env:` and only
 #     ever tested for emptiness. GitHub also masks registered secret values in
 #     logs and summaries, which covers text the script itself may print (a psql
@@ -57,15 +67,20 @@ name: Backfill Image Renditions
 #                              PINTAG_DB_URL the script expects. The existing
 #                              least-privilege backup role is sufficient: only
 #                              the `public` schema is read, and no
-#                              storage-schema grant is needed or wanted.
+#                              storage-schema grant is needed or wanted — the
+#                              script never queries storage.objects at all.
 #   SUPABASE_URL               https://<ref>.supabase.co
-#   SUPABASE_SERVICE_ROLE_KEY  required for mode=apply only — Storage writes,
-#                              and measuring total storage for the ceiling.
+#   SUPABASE_SERVICE_ROLE_KEY  required for BOTH modes now: the authenticated
+#                              Storage `list` operation is how discovery finds
+#                              real objects and their sizes (a dry run only
+#                              ever calls list — never write). apply also uses
+#                              it to write and to measure total storage for
+#                              the ceiling.
 #
 # RESUMING. The script persists .rendition-backfill-state.json, uploaded as an
 # artifact for the record. Resume does not depend on it: the set of renditions
-# that already exist is re-derived from storage.objects on every run, so simply
-# re-running the workflow picks up where the last one stopped.
+# that already exist is re-derived from a fresh Storage listing on every run,
+# so simply re-running the workflow picks up where the last one stopped.
 
 on:
   workflow_dispatch:
@@ -134,7 +149,10 @@ jobs:
           missing=()
           if [ -z "${PINTAG_DB_URL:-}" ]; then missing+=(PINTAG_PROD_DB_URL); fi
           if [ -z "${SUPABASE_URL:-}" ];  then missing+=(SUPABASE_URL); fi
-          if [ "$MODE" = "apply" ] && [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+          # Required in BOTH modes: discovery itself is the authenticated
+          # Storage list operation now, not an optional credential for apply
+          # or the ceiling alone.
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
             missing+=(SUPABASE_SERVICE_ROLE_KEY)
           fi
           if [ ${#missing[@]} -gt 0 ]; then
@@ -172,20 +190,22 @@ jobs:
 
       # Always runs, in BOTH modes. In apply mode this is the pre-flight: it
       # prints the scope and measures real rendition sizes before a single
-      # object is written. NOTE the absence of SUPABASE_SERVICE_ROLE_KEY here —
-      # this step has no credential that can write to Storage, and needs none:
-      # discovery is public GETs (Range: bytes=0-0, not HEAD) plus public-schema
-      # reads.
+      # object is written.
       #
-      # Total storage is NOT measurable without a Storage credential, so the
-      # dry run reports the projected addition and says the total is unknown
-      # rather than inventing a verdict. The guarantee is not weakened: apply
-      # measures the real total, refuses to start without it, and re-checks
-      # before every single write.
+      # NOTE that SUPABASE_SERVICE_ROLE_KEY is now present here too. Discovery
+      # itself needs it: it asks the authenticated Storage `list` operation
+      # what objects actually exist (list only — read-only, never a write),
+      # because the public Storage endpoint returns 400, not 404, for a
+      # missing object here and so cannot answer "does this exist" at all.
+      # This step's write-safety is therefore no longer "it holds no
+      # write-capable credential" — it is that the script only ever reaches
+      # its one write call from inside `if (APPLY)`, which this step never
+      # passes. See the runner-invariant tests in image-renditions.test.js.
       - name: Dry run (report only, no writes)
         env:
-          PINTAG_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
-          SUPABASE_URL:  ${{ secrets.SUPABASE_URL }}
+          PINTAG_DB_URL:             ${{ secrets.PINTAG_PROD_DB_URL }}
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
           node scripts/backfill-renditions.mjs --dry-run | tee dry-run-report.txt
