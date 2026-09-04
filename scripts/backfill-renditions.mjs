@@ -37,11 +37,16 @@
 // schema, so `SELECT ... FROM storage.objects` fails with "permission denied
 // for schema storage". Object existence and size are therefore discovered over
 // plain HTTP instead: property-images is a public-read bucket ("Public read
-// property images", migration 20260804150000), so an unauthenticated HEAD
-// returns an object's Content-Length, or 404 when it is not there — the same
-// request a visitor's browser makes for every photo on the site. A dry run
-// consequently needs NO Storage credential at all, which is what lets it run
-// under least privilege AND keeps every write-capable credential out of it.
+// property images", migration 20260804150000), so an unauthenticated GET with
+// Range: bytes=0-0 returns an object's real size (via Content-Range, or
+// Content-Length if Range is ignored), or 404 when it is not there — the same
+// request pattern a visitor's browser makes for every photo on the site.
+// NOT HEAD: production's HEAD route for this exact endpoint returned 400 for
+// an object that had simply never been generated, not the 404 a "does it
+// exist" check needs (see probeObject()'s own comment for the full story).
+// A dry run consequently needs NO Storage credential at all, which is what
+// lets it run under least privilege AND keeps every write-capable credential
+// out of it.
 //
 // ENV
 //   PINTAG_DB_URL              postgres connection. Read-only queries against
@@ -106,7 +111,7 @@ const fmt = (b) => `${(b / 1024 / 1024).toFixed(1)} MB`;
 //
 // Reads the `public` schema ONLY. Whether each object actually exists — what
 // the old JOIN to storage.objects decided — is settled afterwards by
-// headObject(), so no storage-schema grant is required.
+// probeObject(), so no storage-schema grant is required.
 //
 // Two sources, de-duplicated on the object name:
 //   * property_images — the registry of properties.images (building gallery).
@@ -144,29 +149,61 @@ function candidateImages() {
     .map(([storage_path, slug]) => ({ storage_path, slug }));
 }
 
-// HEAD one object on the PUBLIC bucket. No credential is used or needed: this
-// is the same unauthenticated request the site makes for every photo. Returns
-// the object's size, or exists:false on a 404 — which is how both "the
-// original is gone" and "this rendition does not exist yet" are detected.
-async function headObject(objectName) {
-  const res = await withRetry(`head ${objectName}`, async () => {
-    const r = await fetch(publicUrl(objectName), { method: 'HEAD', signal: AbortSignal.timeout(30000) });
+// GET one byte of an object on the PUBLIC bucket (Range: bytes=0-0). No
+// credential is used or needed: this is the same unauthenticated request
+// pattern the site's images already make; the Range header just keeps a
+// probe of a 200-400KB rendition cheap.
+//
+// NOT a HEAD request. Production returned "HEAD 400 renditions/<stem>/
+// card.webp" here for an object that had simply never been generated --
+// not the 404 the code expected, so withRetry() (which never retries a 4xx)
+// surfaced it as a fatal error and killed the run before a single rendition
+// was checked. GET is what this codebase has already PROVEN correct against
+// this exact bucket: cloudflare-worker/image-cdn-worker.js — live in
+// production -- does `fetch(originUrl, { method: 'GET' })` for the identical
+// /storage/v1/object/public/property-images/ path and keys its whole
+// cache/404 behaviour on originResp.status === 404 for a missing object.
+// Supabase's HEAD route for this endpoint is evidently not equivalent to
+// its GET route; rather than guess at HEAD's rules, this uses the method
+// already verified to behave correctly here.
+//
+// Still narrow: ONLY 404 is "does not exist". Any other non-2xx (400
+// included) is a real, unexplained failure and is thrown/retried exactly as
+// before -- a 400 must never be silently read as "missing".
+async function probeObject(objectName) {
+  const url = publicUrl(objectName);
+  const res = await withRetry(`probe ${objectName}`, async () => {
+    const r = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-0' }, signal: AbortSignal.timeout(30000) });
     // A 404 is an ANSWER, not a failure: returned rather than thrown, so
     // withRetry() does not spend attempts re-asking a settled question.
     if (!r.ok && r.status !== 404) {
-      const err = new Error(`HEAD ${r.status} ${objectName}`);
+      const err = new Error(`GET ${r.status} ${objectName}`);
       err.status = r.status;
       throw err;
     }
     return r;
   });
-  if (res.status === 404) return { exists: false, size: 0 };
-  const len = Number(res.headers.get('content-length'));
+  if (res.status === 404) { await drain(res); return { exists: false, size: 0 }; }
+  // A satisfiable Range answers 206 with Content-Range: "bytes 0-0/<total>" --
+  // the object's REAL size, not the one byte actually sent. A backend that
+  // ignores Range just returns the whole object as 200, whose
+  // Content-Length already IS the real size; only that path is the fallback.
+  const range = res.headers.get('content-range');
+  const total = range ? Number(range.split('/')[1]) : NaN;
+  const len = Number.isFinite(total) ? total : Number(res.headers.get('content-length'));
+  await drain(res);
   return { exists: true, size: Number.isFinite(len) ? len : 0 };
 }
 
-// Bounded-concurrency map. Thousands of HEADs one at a time would dominate the
-// run; unbounded would hammer Storage. Results keep the input's order.
+// A probe response is read for its headers only; draining/cancelling the
+// (0-1 byte, or occasionally a whole rendition) body is what lets undici
+// release the connection instead of leaking it across thousands of probes.
+async function drain(res) {
+  try { await res.body?.cancel(); } catch (_e) { /* best effort */ }
+}
+
+// Bounded-concurrency map. Thousands of probes one at a time would dominate
+// the run; unbounded would hammer Storage. Results keep the input's order.
 async function mapPool(items, worker, concurrency = 12) {
   const out = new Array(items.length);
   let next = 0;
@@ -180,7 +217,7 @@ async function mapPool(items, worker, concurrency = 12) {
 // true size — the two things the storage.objects JOIN used to provide.
 async function activeImages() {
   const rows = candidateImages();
-  const probes = await mapPool(rows, (r) => headObject(r.storage_path));
+  const probes = await mapPool(rows, (r) => probeObject(r.storage_path));
   const found = [];
   const missing = [];
   rows.forEach((r, i) => (probes[i].exists ? found.push({ ...r, size: probes[i].size }) : missing.push(r.storage_path)));
@@ -206,7 +243,7 @@ async function existingRenditions(images) {
       if (path) paths.push(path);
     }
   }
-  const probes = await mapPool(paths, headObject);
+  const probes = await mapPool(paths, probeObject);
   const set = new Set();
   paths.forEach((path, i) => { if (probes[i].exists) set.add(path); });
   return set;
@@ -356,8 +393,18 @@ async function upload(path, filePath) {
     body
   }));
   // Verify it is genuinely readable at its public URL before counting it done —
-  // a 2xx on write is not proof that delivery works.
-  await withRetry(`verify ${path}`, () => req(publicUrl(path), { method: 'HEAD' }));
+  // a 2xx on write is not proof that delivery works. GET+Range, not HEAD, for
+  // the same reason probeObject() gives up HEAD entirely: production's HEAD
+  // route 400'd on this exact endpoint, which req()'s "any non-2xx throws"
+  // rule would have turned into every single successful upload being logged
+  // as a FAILED image. req() already throws on a 404 here too (a truly
+  // missing object right after its own upload is exactly the kind of real
+  // failure this check exists to catch), so the "reject anything but 2xx"
+  // contract is unchanged -- only the HTTP method is.
+  const verified = await withRetry(`verify ${path}`, () => req(publicUrl(path), {
+    method: 'GET', headers: { Range: 'bytes=0-0' }
+  }));
+  await drain(verified);
   return body.length;
 }
 
@@ -377,7 +424,7 @@ const doneSet = new Set(state.done);
 console.log('── DISCOVERY ─────────────────────────────────────────');
 console.log('  Reading listings from the database (public schema only)…');
 const images   = await activeImages();
-console.log(`  Checking which renditions already exist (HEAD, public bucket)…`);
+console.log(`  Checking which renditions already exist (GET, public bucket)…`);
 const already  = await existingRenditions(images);
 const profiles = Object.keys(PT_RENDITION_PROFILES);
 
