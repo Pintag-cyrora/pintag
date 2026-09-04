@@ -200,3 +200,79 @@ test.describe('with renditions ON (production): the hero shows a WebP rendition 
     expect(errors.map((e) => e.message)).toEqual([]);
   });
 });
+
+// ── Unit photos whose rendition object does not exist (production, 2026-09-04) ──
+// The rendition backfill enumerated the property_images registry, which is
+// synced from properties.images only, so unit-type photos uploaded before
+// renditions shipped have NO renditions/<stem>/card.webp object. With
+// renditionsEnabled the deployed unit card requested that 404 and (on main)
+// carried no fallback attribute, so the cover stayed blank while the unit's
+// text rendered. These tests run the page with the production flag on, serve
+// 404 for every rendition and a real image for every original, and assert
+// each unit-photo surface ends up DISPLAYING the original.
+test.describe('unit photos without a rendition object still display (renditions ON)', () => {
+  const SB = 'https://ebtgoqrywdywuqrvudcp.supabase.co';
+  const PATH = '/storage/v1/object/public/property-images/';
+  const orig = (n) => SB + PATH + n + '.jpg';
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const UNITS = Object.assign({}, BASE, {
+    slug: 'units-norend', images: [orig('bldg-1'), orig('bldg-2')], contacts: contact({ id: 'a' }),
+    unit_types: [
+      { id: 'own', name_en: 'Studio', bedrooms: 0, bathrooms: 1, sqm: 30, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly', is_available: true, available_count: 1, total_units: 2, sort_order: 0, images: [orig('unit-1'), orig('unit-2')] },
+      { id: 'inherit', name_en: 'One Bedroom', bedrooms: 1, bathrooms: 1, sqm: 45, price_amount: 450, price_currency: 'USD', price_frequency: 'monthly', is_available: true, available_count: 1, total_units: 2, sort_order: 1, images: [] },
+    ],
+  });
+  const requested = [];
+  async function openNoRenditions(page) {
+    requested.length = 0;
+    await page.route('**/config.js*', async (r) => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\nwindow.PINTAG.renditionsEnabled = true;' }); });
+    await page.route('**' + PATH + 'renditions/**', (r) => { requested.push(r.request().url()); r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' }); });
+    await page.route('**' + PATH + '*.jpg', (r) => { requested.push(r.request().url()); r.fulfill({ status: 200, contentType: 'image/png', body: PNG }); });
+    const errors = await openListing(page, UNITS);
+    await page.evaluate(() => document.querySelector('.unit-card').scrollIntoView());   // covers are loading="lazy"
+    return errors;
+  }
+  // src the browser actually settled on + whether it decoded a real image
+  const shown = (page, sel) => page.evaluate((sel) => [...document.querySelectorAll(sel)].map((i) => ({ src: i.getAttribute('src'), w: i.naturalWidth })), sel);
+
+  test('desktop: a unit with its own photo and a unit inheriting the building photo both render through the original after the rendition 404', async ({ page }) => {
+    const errors = await openNoRenditions(page);
+    await expect.poll(() => shown(page, '.unit-card-cover img').then((a) => a.map((i) => i.w > 0)), { timeout: 8000 }).toEqual([true, true]);
+    const covers = await shown(page, '.unit-card-cover img');
+    expect(covers[0].src).toBe(orig('unit-1'));      // own photo, original after fallback
+    expect(covers[1].src).toBe(orig('bldg-1'));      // no own photo -> building's first photo
+    expect(requested.some((u) => u.includes('renditions/unit-1/card.webp')), 'the rendition WAS tried first').toBe(true);
+    expect(errors.map((e) => e.message)).toEqual([]);
+  });
+
+  test.describe('mobile', () => {
+    test.use({ viewport: { width: 390, height: 844 } });
+    test('the unit cover displays, and selecting the unit swaps in its own gallery which also falls back per photo', async ({ page }) => {
+      const errors = await openNoRenditions(page);
+      await expect.poll(() => shown(page, '.unit-card-cover img').then((a) => a[0] && a[0].w), { timeout: 8000 }).toBeGreaterThan(0);
+      const box = await page.locator('.unit-card-cover').first().boundingBox();
+      expect(box && box.height).toBeGreaterThan(50);
+      await page.evaluate(() => selectUnitType('own'));
+      await expect.poll(() => shown(page, '.mg-slide img').then((a) => a[0] && a[0].w), { timeout: 8000 }).toBeGreaterThan(0);
+      const slides = await shown(page, '.mg-slide img');
+      expect(slides[0].src).toBe(orig('unit-1'));
+      expect(errors.map((e) => e.message)).toEqual([]);
+    });
+  });
+
+  test.describe('desktop gallery for the selected unit', () => {
+    test.use({ viewport: { width: 1280, height: 900 } });
+    test('the hero and thumbnails show the unit photos through the original after each rendition 404', async ({ page }) => {
+      const errors = await openNoRenditions(page);
+      await page.evaluate(() => selectUnitType('own'));
+      await expect.poll(() => shown(page, '#dg-hero-img').then((a) => a[0] && a[0].w), { timeout: 8000 }).toBeGreaterThan(0);
+      expect((await shown(page, '#dg-hero-img'))[0].src).toBe(orig('unit-1'));
+      await page.evaluate(() => document.querySelector('.dg-thumb').scrollIntoView());
+      await expect.poll(() => shown(page, '.dg-thumb img').then((a) => a.length > 0 && a.every((i) => i.w > 0)), { timeout: 8000 }).toBe(true);
+      // switching to the second unit photo repoints the fallback to THAT original
+      await page.evaluate(() => syncDesktopHero(1, document.querySelectorAll('.dg-thumb')[1] || null));
+      await expect.poll(() => shown(page, '#dg-hero-img').then((a) => a[0].src), { timeout: 8000 }).toBe(orig('unit-2'));
+      expect(errors.map((e) => e.message)).toEqual([]);
+    });
+  });
+});
