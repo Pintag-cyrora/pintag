@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 // backfill-renditions.mjs — one-time, resumable generation of delivery
-// renditions for images on ACTIVE listings.
+// renditions for images on ACTIVE listings: the property gallery
+// (properties.images, via the property_images registry) AND every unit
+// type's own gallery (unit_types.images). The first backfill covered only
+// the registry, which is synced from properties.images alone, so unit photos
+// uploaded before renditions shipped had no rendition object and the public
+// unit cards requested a 404. Re-running this script is what generates them.
 //
 // WHY A NODE RUNNER AND NOT AN ADMIN-PAGE BUTTON. ~550 images x 4 encodes is
 // tens of minutes of work. Tying that to a browser tab staying open makes the
@@ -85,16 +90,42 @@ const fmt = (b) => `${(b / 1024 / 1024).toFixed(1)} MB`;
 // are excluded HERE rather than filtered later, so nothing outside the publicly
 // delivered set can ever be written. The JOIN to storage.objects also drops any
 // registry row whose object is missing.
+//
+// Two sources, de-duplicated on the object name:
+//   * property_images — the registry of properties.images (building gallery).
+//   * unit_types.images — each unit type's OWN gallery. The registry never
+//     tracks these (its sync trigger is on properties.images only), so they
+//     must be enumerated from the column: a text[] of full public URLs, mapped
+//     back to the object name the same way objectNameFromPublicUrl() does in
+//     the browser (strip the public-bucket prefix and any query string).
 function activeImages() {
+  const PUB = `/storage/v1/object/public/${BUCKET}/`;
   return psql(`
-    SELECT pi.storage_path, COALESCE((o.metadata->>'size')::bigint, 0), p.slug
-    FROM property_images pi
-    JOIN properties p      ON p.id = pi.property_id
-    JOIN storage.objects o ON o.bucket_id = '${BUCKET}' AND o.name = pi.storage_path
-    WHERE pi.status = 'active'
-      AND p.status IN ('active','available')
-      AND pi.storage_path NOT LIKE 'renditions/%'
-    ORDER BY pi.storage_path;`)
+    SELECT storage_path, MAX(size), MIN(slug)
+    FROM (
+      SELECT pi.storage_path AS storage_path, COALESCE((o.metadata->>'size')::bigint, 0) AS size, p.slug AS slug
+      FROM property_images pi
+      JOIN properties p      ON p.id = pi.property_id
+      JOIN storage.objects o ON o.bucket_id = '${BUCKET}' AND o.name = pi.storage_path
+      WHERE pi.status = 'active'
+        AND p.status IN ('active','available')
+        AND pi.storage_path NOT LIKE 'renditions/%'
+      UNION ALL
+      SELECT ui.name AS storage_path, COALESCE((o.metadata->>'size')::bigint, 0) AS size, p.slug AS slug
+      FROM unit_types ut
+      JOIN properties p ON p.id = ut.property_id
+      CROSS JOIN LATERAL (
+        SELECT split_part(substring(img FROM position('${PUB}' IN img) + length('${PUB}')), '?', 1) AS name
+        FROM unnest(COALESCE(ut.images, ARRAY[]::text[])) AS img
+        WHERE position('${PUB}' IN img) > 0
+      ) ui
+      JOIN storage.objects o ON o.bucket_id = '${BUCKET}' AND o.name = ui.name
+      WHERE p.status IN ('active','available')
+        AND ui.name <> ''
+        AND ui.name NOT LIKE 'renditions/%'
+    ) src
+    GROUP BY storage_path
+    ORDER BY storage_path;`)
     .map(([storage_path, size, slug]) =>
       ({ storage_path, size: bytesOf(size, storage_path), slug }));
 }
