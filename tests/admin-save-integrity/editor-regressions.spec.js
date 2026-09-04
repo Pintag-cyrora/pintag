@@ -4,7 +4,7 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
-const { SENTINEL, SENTINEL_ROW, fakeBackend, boot, SAVE, FORM_STATE } = require('./fixtures');
+const { SENTINEL, SENTINEL_ROW, fakeBackend, boot, FILL_NEW_LISTING, ADD_UNIT_TYPE, SAVE, FORM_STATE } = require('./fixtures');
 
 const REAL_CONTACT = { id: 'c-real', role: 'agent', name: 'Souksavanh', phone: '02055512345', whatsapp: '02055512345', party_id: null, is_verified: true, languages: ['lo'] };
 const baseProp = (o) => Object.assign({
@@ -211,4 +211,78 @@ test('a second short-link blur while the first is still resolving: Save waits fo
   await page.waitForTimeout(250);   // first resolution has completed, second still in flight
   await page.evaluate(SAVE);
   expect(patchOf(backend, 'prop-1').body.map_embed_url).toBe('https://www.google.com/maps/place/R2/@17.9,102.6,17z/');
+});
+
+test.describe('second-pass review (2026-09-03)', () => {
+  test('a PENDING sentinel surviving as a demoted extra link is neither shown as a number nor PATCHed on save', async ({ page }) => {
+    const backend = fakeBackend({
+      seedContacts: [REAL_CONTACT, SENTINEL_ROW], seedProperties: [baseProp()],
+      seedPropertyContacts: { 'prop-1': [
+        { sort_order: 0, is_primary: true, contacts: { id: 'c-real', role: 'agent', name: 'Souksavanh', phone: '02055512345', whatsapp: '02055512345', is_verified: true, languages: ['lo'] } },
+        { sort_order: 1, is_primary: false, contacts: { id: SENTINEL, role: 'other', name: SENTINEL_ROW.name, phone: '0000000000', whatsapp: null, is_verified: false, languages: null } },
+      ] },
+    });
+    const errors = await boot(page, backend);
+    await page.evaluate(() => editListing('prop-1'));
+    await expect.poll(() => page.evaluate(() => document.getElementById('f-contact-phone').value)).toBe('02055512345');
+    expect(await page.evaluate(() => [...document.querySelectorAll('#extra-contacts-list .xc-phone')].map((i) => i.value))).toEqual([]);
+    expect(await page.evaluate(() => document.getElementById('contact-shared-note').style.display)).toBe('none');
+    await page.evaluate(SAVE);
+    const s = await page.evaluate(FORM_STATE);
+    expect(s.msgClass, s.msg).toContain('success');
+    expect(backend.count('PATCH', 'contacts', SENTINEL)).toBe(0);
+    expect(backend.state.contacts[SENTINEL]).toEqual(SENTINEL_ROW);
+    expect(errors).toEqual([]);
+  });
+
+  test('"+ Create new owner" is re-entrant: a retry after a partial failure edits the created owner instead of creating another', async ({ page }) => {
+    const backend = fakeBackend({ seedContacts: [REAL_CONTACT], failUnitTypePosts: 1 });
+    const errors = await boot(page, backend);
+    await page.evaluate(() => { showForm(null); });
+    await page.evaluate(FILL_NEW_LISTING);
+    await page.evaluate(() => { document.getElementById('f-contact-role').value = 'agent'; updateOwnerSectionVisibility(); });
+    await page.evaluate(() => { const sel = document.getElementById('f-owner-select'); sel.value = '__new__'; onOwnerSelectChange(); document.getElementById('f-owner-name').value = 'New Owner'; document.getElementById('f-owner-phone').value = '02077700000'; });
+    await page.evaluate(ADD_UNIT_TYPE);
+    await page.evaluate(SAVE);
+    let s = await page.evaluate(FORM_STATE);
+    expect(s.msg).toContain('Unit Types failed');
+    expect(backend.count('POST', 'owners')).toBe(1);
+    const ownerId = Object.keys(backend.state.owners)[0];
+    expect(await page.evaluate(() => document.getElementById('f-owner-select').value)).toBe(ownerId);
+    await page.evaluate(SAVE);
+    s = await page.evaluate(FORM_STATE);
+    expect(s.msgClass, s.msg).toContain('success');
+    expect(backend.count('POST', 'owners'), 'no second owners row').toBe(1);
+    expect(Object.keys(backend.state.owners)).toHaveLength(1);
+    expect(Object.values(backend.state.properties)[0].owner_id).toBe(ownerId);
+    expect(errors).toEqual([]);
+  });
+
+  test('DOM path: a decimal in a numeric field and a decimal price pass native validation and reach the PATCH', async ({ page }) => {
+    const backend = fakeBackend({ seedContacts: [REAL_CONTACT], seedProperties: [baseProp({ sqm: 120 })] });
+    const errors = await boot(page, backend);
+    await page.evaluate(() => editListing('prop-1'));
+    await expect.poll(() => page.evaluate(() => document.getElementById('f-sqm').value)).toBe('120');
+    await page.fill('#f-sqm', '120.5');
+    await page.fill('#f-price-amount', '550.5');
+    await page.click('#submit-btn');   // real submit: constraint validation runs
+    await expect.poll(() => page.evaluate(FORM_STATE).then((s) => s.msgClass)).toContain('success');
+    const body = patchOf(backend, 'prop-1').body;
+    expect(body.sqm).toBe(120.5);
+    expect(body.price_amount).toBe(550.5);
+    expect(errors).toEqual([]);
+  });
+
+  test('publishDraft() itself refuses a draft still on the PENDING sentinel', async ({ page }) => {
+    const backend = fakeBackend({ seedContacts: [SENTINEL_ROW], seedProperties: [baseProp({ id: 'draft-1', workflow_status: 'draft', status: 'draft', contact_id: SENTINEL })] });
+    await boot(page, backend);
+    await page.evaluate(() => editListing('draft-1'));
+    await expect.poll(() => page.evaluate(() => _editingContactId)).toBe(SENTINEL);
+    await page.evaluate(() => publishDraft());
+    const s = await page.evaluate(FORM_STATE);
+    expect(s.msgClass).toContain('error');
+    expect(s.msg).toContain('Buyer Contact');
+    expect(backend.count('PATCH', 'properties', 'draft-1')).toBe(0);
+    expect(backend.state.properties['draft-1'].workflow_status).toBe('draft');
+  });
 });

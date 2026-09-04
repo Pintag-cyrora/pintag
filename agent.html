@@ -313,6 +313,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 <script src="currency.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
+<script src="image-renditions.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
 <script src="tracking.js?v=__ASSET_VERSION__"></script>
 <script src="analytics-tracking.js?v=__ASSET_VERSION__"></script>
@@ -330,14 +331,6 @@ function postEvent(table,body){
   }).catch(function(){});
 }
 const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-interior.png';
-// Sized rendition + fallback for every listing photo on this page, the same
-// composition renderPropertyCard() uses. Previously the full-size originals
-// (~330 kB each) were loaded behind 4:3 thumbnails.
-function setListingImage(img, url, profile){
-  img.src=ptCardImageSrc(url,profile);
-  img.setAttribute('data-pt-original',ptCdnImage(url));
-  img.onerror=function(){ if(!ptImageFallback(this)) this.src=FALLBACK; };
-}
 
 
 function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -363,7 +356,7 @@ function startReel(images){
   slides.forEach(function(src,i){
     var img=document.createElement('img');
     img.className='hero-bg-slide'+(i===0?' active':'');
-    setListingImage(img,src,'hero');img.alt='';img.loading=i===0?'eager':'lazy';
+    ptApplyListingImage(img,src,'hero',FALLBACK);img.alt='';img.loading=i===0?'eager':'lazy';
     reel.appendChild(img);
   });
   if(slides.length<2) return;
@@ -572,7 +565,7 @@ function render(a,listings){
     }
     var imgDiv=document.createElement('div');imgDiv.className='p-img';
     if(thumb){
-      var ti=document.createElement('img');setListingImage(ti,thumb,'card');ti.alt='';
+      var ti=document.createElement('img');ptApplyListingImage(ti,thumb,'card',FALLBACK);ti.alt='';
       ti.loading=i===0?'eager':'lazy';ti.decoding='async';imgDiv.appendChild(ti);
     }
     var tx=document.createElement('span');

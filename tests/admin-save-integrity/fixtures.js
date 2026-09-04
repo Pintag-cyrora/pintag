@@ -15,17 +15,19 @@ function fakeBackend(opts) {
   opts = opts || {};
   const state = {
     requests: [],            // every REST call: { method, table, query, body }
-    properties: {}, contacts: {}, unitTypes: {},
+    properties: {}, contacts: {}, unitTypes: {}, owners: {}, propertyContacts: {},
     seq: 0,
     failUnitTypePosts: opts.failUnitTypePosts || 0,   // first N unit_types POSTs return 500
   };
   (opts.seedProperties || []).forEach((p) => { state.properties[p.id] = { ...p }; });
   (opts.seedContacts   || []).forEach((c) => { state.contacts[c.id]   = { ...c }; });
+  (opts.seedOwners     || []).forEach((o) => { state.owners[o.id]     = { ...o }; });
+  Object.assign(state.propertyContacts, opts.seedPropertyContacts || {});   // { [propertyId]: [{sort_order,is_primary,contacts}] }
 
   const embed = (p) => ({
     ...p,
     contacts: p.contact_id ? (state.contacts[p.contact_id] || null) : null,
-    property_contacts: [],
+    property_contacts: state.propertyContacts[p.id] || [],
     unit_types: [],
   });
 
@@ -75,6 +77,11 @@ function fakeBackend(opts) {
         if (c) Object.assign(c, body);
         return json(200, c ? [c] : []);
       }
+    }
+    if (table === 'owners') {
+      if (method === 'GET') return json(200, Object.values(state.owners));
+      if (method === 'POST') { const id = 'owner-' + (++state.seq); state.owners[id] = { id, ...body }; return json(201, [state.owners[id]]); }
+      if (method === 'PATCH') { const o = state.owners[idEq]; if (o) Object.assign(o, body); return json(200, o ? [o] : []); }
     }
     if (table === 'unit_types') {
       if (method === 'POST') {

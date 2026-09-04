@@ -82,9 +82,12 @@ test.describe('P1 #1 — Smart Import draft on the PENDING sentinel contact', ()
 
     await page.evaluate(() => editListing('draft-1'));
     await expect.poll(() => page.evaluate(() => _editingContactId)).toBe(SENTINEL);
-    // The shared-contact warning is showing and the fork box is deliberately
-    // left unchecked -- the old code took this as "PATCH the shared row".
-    await expect.poll(() => page.evaluate(() => _editingContactSharedCount)).toBe(1);
+    // The sentinel is shared by design, so the "shared by N other listings --
+    // saving updates all of them" warning is NOT shown for it (2026-09-03);
+    // the fork box stays unchecked, which the old code took as "PATCH the
+    // shared row".
+    await expect.poll(() => page.evaluate(() => document.getElementById('f-contact-name').value)).toBe('');
+    expect(await page.evaluate(() => [_editingContactSharedCount, document.getElementById('contact-shared-note').style.display])).toEqual([0, 'none']);
     expect(await page.evaluate(() => document.getElementById('f-contact-fork').checked)).toBe(false);
 
     await page.evaluate(() => {

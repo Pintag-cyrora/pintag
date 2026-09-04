@@ -540,7 +540,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
             <div class="form-group" id="price-field-single">
               <label class="form-label">Price</label>
               <div class="form-grid-3">
-                <input class="form-input" id="f-price-amount" type="number" min="0" placeholder="550000">
+                <input class="form-input" id="f-price-amount" type="number" min="0" step="any" placeholder="550000">
                 <select class="form-select" id="f-price-currency"></select>
                 <select class="form-select" id="f-price-frequency"></select>
               </div>
@@ -549,7 +549,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
             <div class="form-group" id="price-field-sale" style="display:none">
               <label class="form-label">Sale Price</label>
               <div class="form-grid-3">
-                <input class="form-input" id="f-sale-amount" type="number" min="0" placeholder="550000">
+                <input class="form-input" id="f-sale-amount" type="number" min="0" step="any" placeholder="550000">
                 <select class="form-select" id="f-sale-currency"></select>
               </div>
               <p class="form-hint" id="sale-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
@@ -557,7 +557,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
             <div class="form-group" id="price-field-rent" style="display:none">
               <label class="form-label">Rent Price</label>
               <div class="form-grid-3">
-                <input class="form-input" id="f-rent-amount" type="number" min="0" placeholder="1200">
+                <input class="form-input" id="f-rent-amount" type="number" min="0" step="any" placeholder="1200">
                 <select class="form-select" id="f-rent-currency"></select>
                 <select class="form-select" id="f-rent-frequency"></select>
               </div>
@@ -595,10 +595,10 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
               <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="lease-basis" id="lease-basis-total" value="total"> Total for the lease</label>
             </div>
             <div class="form-grid-4">
-              <div class="form-group"><label class="form-label">Daily <span style="color:var(--ink-muted);font-weight:400;">— per day</span></label><input class="form-input" id="f-rent-daily" type="number" min="0" placeholder="e.g. 45"></div>
-              <div class="form-group"><label class="form-label">3 months</label><input class="form-input" id="f-rent-3mo" type="number" min="0" placeholder="e.g. 420"></div>
-              <div class="form-group"><label class="form-label">6 months</label><input class="form-input" id="f-rent-6mo" type="number" min="0" placeholder="e.g. 400"></div>
-              <div class="form-group"><label class="form-label">1 year</label><input class="form-input" id="f-rent-12mo" type="number" min="0" placeholder="e.g. 350"></div>
+              <div class="form-group"><label class="form-label">Daily <span style="color:var(--ink-muted);font-weight:400;">— per day</span></label><input class="form-input" id="f-rent-daily" type="number" min="0" step="any" placeholder="e.g. 45"></div>
+              <div class="form-group"><label class="form-label">3 months</label><input class="form-input" id="f-rent-3mo" type="number" min="0" step="any" placeholder="e.g. 420"></div>
+              <div class="form-group"><label class="form-label">6 months</label><input class="form-input" id="f-rent-6mo" type="number" min="0" step="any" placeholder="e.g. 400"></div>
+              <div class="form-group"><label class="form-label">1 year</label><input class="form-input" id="f-rent-12mo" type="number" min="0" step="any" placeholder="e.g. 350"></div>
             </div>
             <div class="form-hint" id="lease-duration-preview" style="margin-top:10px;"></div>
           </div>
@@ -1396,6 +1396,7 @@ function renderTypedField(f) {
   }
   return `<div class="form-group"><label class="form-label">${esc(f.label.en)}</label>
     <input class="form-input" id="${f.id}" type="${f.kind === 'text' ? 'text' : 'number'}"
+      ${f.kind === 'number' && TYPED_INTEGER_COLUMNS.indexOf(f.column) === -1 ? 'step="any"' : ''}
       ${f.min != null ? `min="${f.min}"` : ''} ${f.max != null ? `max="${f.max}"` : ''}
       ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}>
     </div>`;
@@ -1618,6 +1619,7 @@ async function _resolveMapUrlNow(el) {
       body: JSON.stringify({ url })
     });
     const data = await res.json().catch(() => ({}));
+    if (el.value.trim() !== url) return;   // the field moved on while this was in flight
     if (!res.ok || !data.resolved_url) {
       setMapHint('⚠ Could not expand this short link (' + (data.error || ('HTTP ' + res.status)) +
                  '). It will be saved as-is and the listing will NOT appear on the map. Try again, or paste the full google.com/maps URL.',
@@ -1963,7 +1965,7 @@ function _utLeasePricingFieldsHtml(data) {
     const note = term.perDay ? ' <span style="color:var(--ink-muted);font-weight:400;">— per day</span>' : '';
     return `<div class="ut-field">
           <label>${esc(term.label.en)}${note}</label>
-          <input class="form-input ut-lease-${term.key}" type="number" min="0" value="${esc(String(raw))}" oninput="_utOnLeasePricingChange(this)">
+          <input class="form-input ut-lease-${term.key}" type="number" min="0" step="any" value="${esc(String(raw))}" oninput="_utOnLeasePricingChange(this)">
         </div>`;
   }).join('');
   return `<div class="ut-field ut-field-full">
@@ -2088,7 +2090,7 @@ function addUnitType(data) {
         <div class="ut-field ut-price-single" style="display:${isSor ? 'none' : ''}">
           <label>Price ${isAvailable ? '*' : ''}</label>
           <div class="form-grid-3">
-            <input class="form-input ut-price-amount" type="number" min="0" placeholder="250000" value="${esc(String(priceAmount))}" oninput="_utUpdateSummary(this)">
+            <input class="form-input ut-price-amount" type="number" min="0" step="any" placeholder="250000" value="${esc(String(priceAmount))}" oninput="_utUpdateSummary(this)">
             <select class="form-select ut-price-currency" onchange="_utUpdateSummary(this)">${_priceCurrencyOptionsHtml(priceCurrency)}</select>
             <select class="form-select ut-price-frequency" onchange="_utUpdateSummary(this)">${_priceFrequencyOptionsHtml(priceFrequency)}</select>
           </div>
@@ -2096,14 +2098,14 @@ function addUnitType(data) {
         <div class="ut-field ut-price-sale" style="display:${isSor ? '' : 'none'}">
           <label>Sale Price ${isAvailable ? '*' : ''}</label>
           <div class="form-grid-3">
-            <input class="form-input ut-sale-amount" type="number" min="0" placeholder="250000" value="${esc(String(priceAmount))}" oninput="_utUpdateSummary(this)">
+            <input class="form-input ut-sale-amount" type="number" min="0" step="any" placeholder="250000" value="${esc(String(priceAmount))}" oninput="_utUpdateSummary(this)">
             <select class="form-select ut-sale-currency" onchange="_utUpdateSummary(this)">${_priceCurrencyOptionsHtml(priceCurrency)}</select>
           </div>
         </div>
         <div class="ut-field ut-price-rent" style="display:${isSor ? '' : 'none'}">
           <label>Rent Price ${isAvailable ? '*' : ''}</label>
           <div class="form-grid-3">
-            <input class="form-input ut-rent-amount" type="number" min="0" placeholder="250" value="${esc(String(rentAmount))}" oninput="_utUpdateSummary(this)">
+            <input class="form-input ut-rent-amount" type="number" min="0" step="any" placeholder="250" value="${esc(String(rentAmount))}" oninput="_utUpdateSummary(this)">
             <select class="form-select ut-rent-currency" onchange="_utUpdateSummary(this)">${_priceCurrencyOptionsHtml(rentCurrency)}</select>
             <select class="form-select ut-rent-frequency" onchange="_utUpdateSummary(this)">${_priceFrequencyOptionsHtml(rentFrequency)}</select>
           </div>
@@ -2282,6 +2284,7 @@ function _utRemoveUnitImage(btn, url) {
 }
 async function handleUnitImageUpload(inputEl) {
   const card = inputEl.closest('.ut-card');
+  if (!card) return;
   const files = Array.from(inputEl.files || []);
   inputEl.value = ''; // allow re-selecting the same file again later
   if (!files.length) return;
@@ -2295,6 +2298,9 @@ async function handleUnitImageUpload(inputEl) {
     if (statusEl) { statusEl.style.color = ''; statusEl.textContent = `Uploading ${file.name}… (${completed + 1}/${files.length})`; }
     try {
       const url = await uploadImageFileToStorage(file);
+      // The operator may have opened another listing meanwhile (loadUnitTypes
+      // replaces every card): never write into a detached card.
+      if (!card.isConnected) return;
       // Append to the card's CURRENT gallery, not a snapshot taken before the
       // uploads started: a photo removed, a cover chosen or a second batch
       // finished while these were in flight was silently reverted.
@@ -3460,7 +3466,10 @@ function onOwnerSelectChange() {
   const o = _ownersAll.find(x => x.id === v);
   if (!o) {
     // Linked owner whose row is not loaded (see populateOwnerSelect): nothing
-    // to edit, and the link is preserved untouched on save.
+    // to edit, and the link is preserved untouched on save. The inputs are
+    // cleared so a previous listing's owner can never be PATCHed onto this one.
+    ['f-owner-name','f-owner-phone','f-owner-whatsapp','f-owner-email','f-owner-notes']
+      .forEach(id => { document.getElementById(id).value = ''; });
     fields.style.display = 'none';
     note.textContent = 'Owner details could not be loaded — the existing link is kept as is.';
     return;
@@ -3502,6 +3511,11 @@ async function resolveOwnerId() {
     const created = await sbApi('POST', 'owners', payload);
     const row = Array.isArray(created) ? created[0] : created;
     await loadOwners();
+    // The form must stop saying "create a new owner": a retry after a later
+    // partial failure, or a second Save, POSTed a second owners row and
+    // orphaned the first (the same non-re-entrancy fixed for properties,
+    // contacts and unit types).
+    if (row && row.id) { sel.value = row.id; onOwnerSelectChange(); }
     return row && row.id;
   }
   await sbApi('PATCH', `owners?id=eq.${encodeURIComponent(v)}`, payload);
@@ -4011,7 +4025,14 @@ async function editListing(id, from) {
   document.getElementById('extra-contacts-list').innerHTML = '';
   _removedExtraContactIds = [];
   if (typeof resolveListingContacts === 'function') {
-    _resolvedAll.slice(1).forEach(x => addExtraContact(x));
+    // Everything except the main contact and the PENDING sentinel. A
+    // sentinel link can survive as a demoted extra (the contact_id-only
+    // writers reassign the primary and the invariant trigger keeps the old
+    // link); rendering it made every later save PATCH the sentinel, which
+    // the DB refuses, so "phone numbers failed to save" on every save.
+    // Matching by id (not slice(1)) also stops a main contact linked at a
+    // duplicate sort_order 0 from being re-added as an extra.
+    _resolvedAll.filter(x => x && x.id !== PENDING_CONTACT_ID && !(c && x.id === c.id)).forEach(x => addExtraContact(x));
   }
   document.getElementById('f-contact-role').value     = c ? c.role : 'agent';
   document.getElementById('f-contact-name').value     = c ? (c.name || '') : '';
@@ -4025,7 +4046,7 @@ async function editListing(id, from) {
 
   document.getElementById('contact-shared-note').style.display = 'none';
   _editingContactSharedCount = 0;
-  if (_editingContactId) {
+  if (_editingContactId && !_isPendingContact) {   // the sentinel is shared by design; the note would be false
     try {
       const usage = await sbApi('GET', `properties?contact_id=eq.${_editingContactId}&select=id`);
       _editingContactSharedCount = Array.isArray(usage) ? usage.filter(r => r.id !== id).length : 0;
@@ -4157,6 +4178,7 @@ async function saveExtraContacts(propertyId, primaryContactId) {
   if (primaryContactId) linked.push({ contact_id: primaryContactId, sort_order: 0, is_primary: mainIsPrimary });
 
   for (const r of rows) {
+    if (r.id === PENDING_CONTACT_ID) continue;   // never a person; the DB rejects any UPDATE of it
     const body = { role: 'other', name: r.name, phone: r.phone, whatsapp: r.phone, languages: r.languages };
     let cid = r.id;
     if (cid) {

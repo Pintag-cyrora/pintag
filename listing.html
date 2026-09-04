@@ -1358,7 +1358,7 @@ function updateOGTags(data){
     desc=unavailLead+' '+(SEO_UNAVAILABLE_DESC_SUFFIX[lang]||SEO_UNAVAILABLE_DESC_SUFFIX.en);
   }
   var imgs=Array.isArray(data.images)?data.images.filter(function(u){return u&&typeof u==='string';}):[];
-  var img=imgs[0]||'https://pintag.io/og-preview.jpg';
+  var img=imgs[0]?ptCdnImage(imgs[0]):'https://pintag.io/og-preview.jpg';
   var imgAlt=(OG_IMG_ALT_PREFIX[lang]||OG_IMG_ALT_PREFIX.en)+resolveLangField(data,'title',lang,'Pintag');
   var url=getCanonicalListingUrl(data,lang)||('https://pintag.io/listing.html?lang='+encodeURIComponent(lang));
   function setMeta(sel,val){var el=document.querySelector(sel);if(el)el.setAttribute('content',val);}
@@ -1416,10 +1416,11 @@ async function fetchProperty(slug,id){
     // changed. Non-property-images URLs (agent photos, external, data:) pass
     // through untouched. This one point covers the hero, thumbnails, lightbox,
     // unit cards, and the building strip, which all read these arrays.
-    if(typeof ptCdnImage==='function'){
-      if(Array.isArray(propertyContext.images)) propertyContext.images=propertyContext.images.map(ptCdnImage);
-      if(Array.isArray(propertyContext.unit_types)) propertyContext.unit_types.forEach(function(u){ if(u&&Array.isArray(u.images)) u.images=u.images.map(ptCdnImage); });
-    }
+    // NOT rewritten in memory any more: the arrays keep the ORIGINAL storage
+    // URLs, and every <img> composes rendition-then-CDN through
+    // ptCardImageSrc() (components.js). Rewriting first made
+    // renditionPublicUrl() reject the CDN origin, so with the CDN on this
+    // page would have served full-size originals for every photo.
     // Single-property page — every data-track element here implicitly
     // refers to this listing; tracking.js falls back to this when an
     // element has no explicit data-track-property-id of its own.
@@ -1828,8 +1829,12 @@ function ptSelectContact(index){
 
   // Both WhatsApp buttons -- the desktop one and the mobile sticky bar's,
   // which are on screen together on a phone -- must dial the picked contact.
-  ['pt-wa-primary','pt-wa-mobile'].forEach(function(id){
-    var wa=document.getElementById(id);
+  // ...and every unit card's own Inquire button, which sits on the same
+  // screen: each keeps its pre-filled unit message, only the number and the
+  // attributed contact change.
+  var waButtons=[document.getElementById('pt-wa-primary'),document.getElementById('pt-wa-mobile')]
+    .concat(Array.prototype.slice.call(document.querySelectorAll('.unit-cta[data-contact-id]')));
+  waButtons.forEach(function(wa){
     if(!wa) return;
     var existing=wa.getAttribute('href')||'';
     var q=existing.indexOf('?');
@@ -2037,7 +2042,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
     // already resolved that fallback), same "treat cards like selectable
     // products" ask as Booking.com room cards.
     var coverImg=Array.isArray(resolvedUnit.images)&&resolvedUnit.images.length?resolvedUnit.images[0]:null;
-    var coverHtml=coverImg?'<div class="unit-card-cover"><img src="'+esc(ptImageUrl(coverImg,'card'))+'" alt="" loading="lazy"'+ptImageFallbackAttrs(coverImg)+'></div>':'';
+    var coverHtml=coverImg?'<div class="unit-card-cover"><img src="'+esc(ptCardImageSrc(coverImg,'card'))+'" alt="" loading="lazy"'+ptCardImageFallbackAttrs(coverImg)+'></div>':'';
 
     var ctaHtml='';
     if(cleanPhone){
@@ -2050,8 +2055,8 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
       // No data-track attribute here -- ptContactClick() posts ui_events
       // itself; adding data-track too would double-post (see its header
       // comment in components.js).
-      ctaHtml='<a href="'+esc(waUnitUrl)+'" target="_blank" rel="noopener noreferrer" class="unit-cta" '+
-        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:\''+escJs(_currentContactId)+'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+escJs(unitName)+'\'}})">'+
+      ctaHtml='<a href="'+esc(waUnitUrl)+'" target="_blank" rel="noopener noreferrer" class="unit-cta" data-contact-id="'+escJs(_currentContactId)+'" '+
+        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+escJs(unitName)+'\'}})">'+
         esc(L.unitInquire[lang])+'</a>';
     }
 
@@ -2476,7 +2481,7 @@ function buildMockupLayout(){
     if(_stripImgs.length||_stripAmenities.length){
       var _stripPhotosHtml=_stripImgs.length?(
         '<div class="building-strip-photos">'+_stripImgs.map(function(url){
-          return '<div class="building-strip-photo" data-url="'+esc(url)+'"><img src="'+esc(ptImageUrl(url,'card'))+'" alt="" loading="lazy"'+ptImageFallbackAttrs(url)+'></div>';
+          return '<div class="building-strip-photo" data-url="'+esc(url)+'"><img src="'+esc(ptCardImageSrc(url,'card'))+'" alt="" loading="lazy"'+ptCardImageFallbackAttrs(url)+'></div>';
         }).join('')+'</div>'
       ):'';
       var _stripAmenitiesHtml=_stripAmenities.length?(
@@ -3157,9 +3162,9 @@ function buildDesktopGallery(images){
     if(i<clean.length){
       if(i===maxThumbs-1&&clean.length>maxThumbs){
         var remaining=clean.length-maxThumbs;
-        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(ptImageUrl(clean[i],'thumbnail'))+'" alt="" loading="lazy" decoding="async" data-pt-original="'+esc(clean[i])+'" onerror="if(!ptImageFallback(this))handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
+        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(ptCardImageSrc(clean[i],'thumbnail'))+'" alt="" loading="lazy" decoding="async" data-pt-original="'+esc(ptCdnImage(clean[i]))+'" onerror="if(!ptImageFallback(this))handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
       }else{
-        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(ptImageUrl(clean[i],'thumbnail'))+'" alt="" loading="lazy" decoding="async" data-pt-original="'+esc(clean[i])+'" onerror="if(!ptImageFallback(this))handleImageError(this)"></div>';
+        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(ptCardImageSrc(clean[i],'thumbnail'))+'" alt="" loading="lazy" decoding="async" data-pt-original="'+esc(ptCdnImage(clean[i]))+'" onerror="if(!ptImageFallback(this))handleImageError(this)"></div>';
       }
     }else{
       thumbsHtml+='<div class="dg-thumb" style="cursor:default;opacity:0.12;"><div style="width:100%;height:100%;background:var(--warm-deep);"></div></div>';
@@ -3168,7 +3173,7 @@ function buildDesktopGallery(images){
   return(
     '<div class="desktop-gallery" id="dg-hero-frame" data-track="gallery-hero-image" data-track-type="image" data-track-label="Hero image">'+
     '<div class="dg-hero" id="dg-hero-box">'+
-    '<img src="'+esc(ptImageUrl(clean[0],'hero'))+'" id="dg-hero-img" alt="" decoding="async" data-pt-original="'+esc(clean[0])+'" onerror="if(!ptImageFallback(this))handleImageError(this)">'+
+    '<img src="'+esc(ptCardImageSrc(clean[0],'hero'))+'" id="dg-hero-img" alt="" decoding="async" data-pt-original="'+esc(ptCdnImage(clean[0]))+'" onerror="if(!ptImageFallback(this))handleImageError(this)">'+
     '<span class="dg-coord" id="dg-coord-lbl">01 / '+String(clean.length).padStart(2,'0')+'</span>'+
     '<button class="dg-view-all" id="dg-view-all-btn" data-track="gallery-view-all" data-track-type="button" data-track-label="View all photos">'+
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>'+
@@ -3190,14 +3195,14 @@ function syncDesktopHero(idx,thumbEl){
   if(heroImg){
     if(_heroTimer){clearTimeout(_heroTimer);_heroTimer=null;}
     heroImg.style.opacity='0';
-    var capturedSrc=ptImageUrl(clean[idx],'hero');
+    var capturedSrc=ptCardImageSrc(clean[idx],'hero');
     _heroTimer=setTimeout(function(){
       _heroTimer=null;
       // The on-error fallback must point at THIS photo's original: it was
       // emitted once for photo 1, so a missing rendition swapped the hero
       // back to photo 1 (and blanked it on the next miss, the fallback
       // being once-only).
-      heroImg.setAttribute('data-pt-original',clean[idx]);
+      heroImg.setAttribute('data-pt-original',ptCdnImage(clean[idx]));
       if(heroImg.dataset)delete heroImg.dataset.ptFellBack;
       heroImg.src=capturedSrc;
       if(heroImg.decode){heroImg.decode().then(function(){heroImg.style.opacity='1';}).catch(function(){heroImg.style.opacity='1';});}
@@ -3246,10 +3251,10 @@ function buildMobileGallery(images, statusBadgeHtml){
   // jumpMobileGallerySlide() are all unchanged.
   clean.forEach(function(img,i){
     var near=i<=PT_SLIDE_WINDOW;
-    var slideUrl=ptImageUrl(img,'gallery');
+    var slideUrl=ptCardImageSrc(img,'gallery');
     var srcAttr=near?('src="'+esc(slideUrl)+'"'):('data-src="'+esc(slideUrl)+'"');
     var loading=i===0?'eager':'lazy';
-    slidesHtml+='<div class="mg-slide" data-idx="'+i+'" data-track="gallery-mobile-slide" data-track-type="image" data-track-label="Photo '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img '+srcAttr+' alt="" loading="'+loading+'" decoding="async" data-pt-original="'+esc(img)+'" onerror="if(!ptImageFallback(this))handleImageError(this)"></div>';
+    slidesHtml+='<div class="mg-slide" data-idx="'+i+'" data-track="gallery-mobile-slide" data-track-type="image" data-track-label="Photo '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img '+srcAttr+' alt="" loading="'+loading+'" decoding="async" data-pt-original="'+esc(ptCdnImage(img))+'" onerror="if(!ptImageFallback(this))handleImageError(this)"></div>';
     dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'" data-track="gallery-mobile-dot" data-track-type="dot" data-track-label="Dot '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'></div>';
   });
   var overlayHtml=statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'';
@@ -3364,7 +3369,7 @@ var LB={
     var img=document.getElementById('lb-img');
     if(!img||!this.images.length)return;
     this.idx=((idx%this.images.length)+this.images.length)%this.images.length;
-    var capturedSrc=this.images[this.idx];
+    var capturedSrc=ptCdnImage(this.images[this.idx]);
     if(_lbTimer){clearTimeout(_lbTimer);_lbTimer=null;img.classList.remove('lb-fade');}
     if(animate){
       img.classList.add('lb-fade');
@@ -3374,7 +3379,7 @@ var LB={
     var self=this;
     [this.idx+1,this.idx-1].forEach(function(pi){
       var si=((pi%self.images.length)+self.images.length)%self.images.length;
-      if(si!==self.idx&&self.images[si]){var pre=new Image();pre.src=self.images[si];}
+      if(si!==self.idx&&self.images[si]){var pre=new Image();pre.src=ptCdnImage(self.images[si]);}
     });
   },
   prev:function(){this.show(this.idx-1,true);},
@@ -3411,7 +3416,7 @@ function wireGalleryLightbox(){
   var viewAll=document.getElementById('dg-view-all-btn');
   var images=_currentGalleryImages.filter(function(u){return u&&typeof u==='string';});
   if(!images.length)return;
-  if(viewAll){viewAll.onclick=function(e){e.stopPropagation();LB.open(images,0);};}
+  if(viewAll){viewAll.onclick=function(e){e.stopPropagation();LB.open(images,(_currentHeroIdx>=0&&_currentHeroIdx<images.length)?_currentHeroIdx:0);};}
   document.querySelectorAll('.dg-thumb').forEach(function(thumb,i){
     thumb.onclick=function(e){
       e.stopPropagation();

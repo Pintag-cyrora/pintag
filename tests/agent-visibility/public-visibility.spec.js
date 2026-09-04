@@ -149,6 +149,33 @@ for (const pageFile of ['agents.html', 'agent.html']) {
       expect(errors).toEqual([]);
     });
 
+    test('with renditions ON: portfolio and hero photos are the sized WebP renditions, originals kept as the fallback', async ({ page }) => {
+      // Both production flags on: renditions AND the image CDN.
+      await page.route('**/config.js*', async (r) => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\nwindow.PINTAG.renditionsEnabled = true; window.PINTAG.imageCdn = true;' }); });
+      const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+      await page.route('**/storage/v1/object/public/property-images/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+      const PATH = '/storage/v1/object/public/property-images/';
+      const ORIG = 'https://ebtgoqrywdywuqrvudcp.supabase.co' + PATH + 'photo-1.jpg';
+      const CDN = 'https://img.pintag.io' + PATH;
+      const { errors } = await openWith(page, [listing({ slug: 'a', images: [ORIG] })]);
+      const imgs = await page.evaluate(() => [...document.querySelectorAll('.p-card .p-img img, .hero-img, .hero-bg-slide')].map((i) => ({ cls: i.className, src: i.getAttribute('src'), orig: i.getAttribute('data-pt-original') })));
+      expect(imgs).toHaveLength(2);   // one card thumbnail + the hero (agents.html) / one reel slide (agent.html)
+      imgs.forEach((i) => {
+        expect(i.orig).toBe(CDN + 'photo-1.jpg');
+        expect(i.src).toBe(CDN + 'renditions/photo-1/' + (/hero/.test(i.cls) ? 'hero' : 'card') + '.webp');
+      });
+      expect(errors).toEqual([]);
+    });
+
+    test('an agent card for a party with no slug is inert: no href, no arrow, not a hover invitation', async ({ page }) => {
+      await openWith(page, []);
+      const card = await page.evaluate(() => {
+        const el = renderAgentCard({ id: 'x', type: 'agent', name_en: 'No Slug', name_lo: '', slug: null, is_active: true, is_verified: false, photo_url: null, bio_en: '' }, { layout: 'row', lang: 'lo' });
+        return { tag: el.tagName, href: el.getAttribute('href'), cls: el.className, arrow: !!el.querySelector('.pt-agent-row-arrow'), name: el.textContent.includes('No Slug') };
+      });
+      expect(card).toEqual({ tag: 'DIV', href: null, cls: 'pt-agent-row pt-agent-row-inert', arrow: false, name: true });
+    });
+
     test('portfolio and hero photos are sized renditions with the once-only fallback, not bare originals', async ({ page }) => {
       // Same-origin photo (the page's CSP img-src allows 'self', not arbitrary
       // hosts), so what is asserted is the composition, not the fallback chain

@@ -209,6 +209,15 @@ function ptCardImageSrc(originalUrl, profile) {
 function ptCardImageFallbackAttrs(originalUrl) {
   return ptImageFallbackAttrs(ptCdnImage(originalUrl));
 }
+// Same composition for a DOM <img> built by hand (agents.html / agent.html):
+// sized rendition, CDN-routed original as the once-only fallback, and the
+// page's own placeholder when the original itself is gone.
+function ptApplyListingImage(img, originalUrl, profile, placeholderUrl) {
+  if (!img || !originalUrl) return;
+  img.src = ptCardImageSrc(originalUrl, profile);
+  img.setAttribute('data-pt-original', ptCdnImage(originalUrl));
+  img.onerror = function () { if (!ptImageFallback(this) && placeholderUrl) this.src = placeholderUrl; };
+}
 
 function ptImageFallback(el) {
   if (!el || el.tagName !== 'IMG') return false;
@@ -244,6 +253,7 @@ function ptImageFallback(el) {
 // property images never carry a meaningful query today).
 var PT_IMAGE_CDN_ORIGIN = 'https://img.pintag.io';
 var PT_PROPERTY_IMAGES_PATH = '/storage/v1/object/public/property-images/';
+var PT_RENDITION_PREFIX_PATH = 'renditions/';   // mirrors PT_RENDITION_PREFIX in image-renditions.js
 function ptCdnImage(url) {
   if (!url || typeof url !== 'string') return url;
   var P = (typeof window !== 'undefined') ? window.PINTAG : null;
@@ -272,6 +282,10 @@ function ptCdnImageFallback(el) {
   var src = el.currentSrc || (el.getAttribute && el.getAttribute('src')) || el.src || '';
   var cdnBase = PT_IMAGE_CDN_ORIGIN + PT_PROPERTY_IMAGES_PATH;
   if (src.indexOf(cdnBase) !== 0) return false;               // only OUR CDN property-images
+  // A rendition that is not there yet is not a CDN outage: leave it to the
+  // element's own ptImageFallback (data-pt-original), which lands on the
+  // CDN-routed original; a failure of THAT is what this listener is for.
+  if (src.indexOf(cdnBase + PT_RENDITION_PREFIX_PATH) === 0) return false;
   if (el.dataset && el.dataset.cdnFallback) return false;     // already retried once -> never loop
   var P = (typeof window !== 'undefined') ? window.PINTAG : null;
   if (!P || !P.supabaseUrl) return false;
@@ -380,11 +394,18 @@ function _ptFrequencySuffix(frequency, lang) {
 // "$1,200 / year / month". A bare figure gets the suffix for the row's own
 // rent_period, not an unconditional "/ month".
 var PT_RENT_PERIOD_FREQUENCY = { month: 'monthly', year: 'yearly', week: 'weekly', day: 'daily' };
+var _PT_LEGACY_SUFFIX_RE = /\s*\/\s*(month|year|week|day)s?\s*$/i;
 function _ptLegacyRentText(property, lang) {
   var raw = property && property.rent_price;
   if (!raw) return null;
   var text = String(raw).trim();
-  if (/\/\s*\S+$/.test(text)) return text;   // "… / month", "… / ປີ": already carries its period
+  // A known English suffix (what deriveLegacyPriceFields() writes) is
+  // swapped for the page language's, so a Lao card reads "/ ເດືອນ" instead
+  // of "/ month". Any other text after a "/" ("/ 12 months", "/ ປີ") is
+  // hand-typed and left exactly as written.
+  var known = text.match(_PT_LEGACY_SUFFIX_RE);
+  if (known) return text.slice(0, known.index) + ' ' + _ptFrequencySuffix(PT_RENT_PERIOD_FREQUENCY[known[1].toLowerCase()] || 'monthly', lang);
+  if (/\d[^/]*\/\s*\S/.test(text)) return text;
   var frequency = PT_RENT_PERIOD_FREQUENCY[property.rent_period] || 'monthly';
   return text + ' ' + _ptFrequencySuffix(frequency, lang);
 }
@@ -1159,7 +1180,7 @@ function renderAgentCard(party, opts) {
   var verifiedLabel = PT_VERIFIED_LABEL[lang] || PT_VERIFIED_LABEL.en;
 
   if (opts.layout === 'row') {
-    card.className = 'pt-agent-row';
+    card.className = 'pt-agent-row' + (d.slug ? '' : ' pt-agent-row-inert');
     var rowPortraitInner = d.photo
       ? '<img src="' + _ptEsc(d.photo) + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'' + _ptEscJs(d.initial) + '\'">'
       : _ptEsc(d.initial);
@@ -1173,7 +1194,7 @@ function renderAgentCard(party, opts) {
       '</div>' +
       '<div class="pt-agent-row-meta">' +
         (d.listingCount ? '<span class="pt-agent-row-count">' + d.listingCount + ' ' + (listingsLabel[lang] || listingsLabel.en) + '</span>' : '') +
-        '<span class="pt-agent-row-arrow">&#8594;</span>' +
+        (d.slug ? '<span class="pt-agent-row-arrow">&#8594;</span>' : '') +
       '</div>';
     return card;
   }

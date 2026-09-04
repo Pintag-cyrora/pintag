@@ -207,3 +207,14 @@ test('legacy sale_or_rent: a rent text that already carries its period is left a
   const mixed = { transaction_type: 'sale_or_rent', price_amount: 250000, price_currency: 'USD', rent_price: '$1,200 / year', rent_period: 'year' };
   assert.equal(formatPropertyPrice(mixed, 'en').rentText, '$1,200 / year');
 });
+
+test('legacy sale_or_rent rent leg: the English suffix deriveLegacyPriceFields() wrote is re-localised; hand-typed periods are kept verbatim', () => {
+  const lo = formatPropertyPrice({ transaction_type: 'sale_or_rent', sale_price: '$250,000', rent_price: '$1,200 / month' }, 'lo');
+  assert.equal(lo.rentText, '$1,200 / ເດືອນ', 'not "$1,200 / month" on a Lao card, and never "/ month / ເດືອນ"');
+  const zh = formatPropertyPrice({ transaction_type: 'sale_or_rent', sale_price: '$250,000', rent_price: '$1,200 / year' }, 'zh');
+  assert.equal(zh.rentText, '$1,200 / 年');
+  const typed = formatPropertyPrice({ transaction_type: 'sale_or_rent', sale_price: '$250,000', rent_price: '$1,200 / 12 months', rent_period: 'month' }, 'en');
+  assert.equal(typed.rentText, '$1,200 / 12 months', 'a hand-typed period is not doubled');
+  const kip = formatPropertyPrice({ transaction_type: 'sale_or_rent', sale_price: '₭1B', rent_price: '₭3,000,000/month' }, 'lo');
+  assert.equal(kip.rentText, '₭3,000,000 / ເດືອນ');
+});

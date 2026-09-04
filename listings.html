@@ -724,7 +724,7 @@ function _countPlaceLabel() {
     // Under "All provinces": name the one province when every listing shares
     // it (the common single-city case), otherwise the country.
     var seen = {};
-    (allProperties || []).forEach(function (p) { var k = _listingProvince(p); if (k) seen[k] = true; });
+    (allProperties || []).filter(matchesActiveFilters).forEach(function (p) { var k = _listingProvince(p); if (k) seen[k] = true; });
     var keys = Object.keys(seen);
     if (keys.length !== 1) return { lo: 'ລາວ', en: 'Laos', zh: '老挝' };
     key = keys[0];
@@ -819,7 +819,7 @@ function _resolvedPrice(p) {
   return ptResolveSortPrice(p, legacy);
 }
 function _numericPrice(p) {
-  var r = _resolvedPrice(p);
+  var r = _resolvedPriceForCurrentTx(p);   // the leg the band filter and the map bubble use
   return r.amount != null ? r.amount : null;
 }
 // Price ordering (QA 2026-09-02): a listing with no price goes LAST in both
@@ -1067,6 +1067,11 @@ function renderMap() {
   _activeSlug = null;
 
   var filtered = allProperties.filter(matchesActiveFilters);
+  // The same per-render work the grid does: <html lang>/title/OG for the
+  // current filters + language, and the trending / Best Value signals the
+  // map preview reads (they were only ever derived by renderListings()).
+  updateListingsMetaForFilters();
+  _deriveListingSignals(filtered);
   var unmapped = [];
   var bounds   = [];
 
@@ -1737,31 +1742,24 @@ function updateListingsMetaForFilters() {
   _setListingsMeta('meta[property="og:locale"]', t.locale);
   _setListingsMeta('meta[name="twitter:title"]', title);
   _setListingsMeta('meta[name="twitter:description"]', description);
-  // og:url / canonical deliberately untouched here, and this isn't a gap
-  // to close: filtering never changes the address bar (no ?type=/?tx= is
-  // written to the URL today), so the canonical/og:url value that's
-  // already correct — https://pintag.io/listings.html — stays correct
-  // for every filter state. Repointing canonical at a URL the address bar
-  // doesn't actually show would be the bug, not the fix. If filters ever
-  // start writing to the URL (the same way listing.html's ?unit= deep-link
-  // param does), update canonical/og:url here too, to that real URL.
+  // og:url / canonical deliberately untouched here. Filters DO mirror into
+  // the address bar now (?tx/?type/?province/?district/?price/?sort/?avail/
+  // ?pet/?smoking via replaceState, see _writeFiltersToUrl), but canonical
+  // stays https://pintag.io/listings.html on purpose: every filter state is
+  // a view of the same page, and a crawler landing on a filtered URL should
+  // consolidate to the one indexable listing page rather than split ranking
+  // across every filter permutation.
 }
 
-function renderListings() {
-  // Nothing has loaded yet (first paint, or the load failed and the Retry
-  // state is showing): leave the skeleton / error state in place. Any
-  // filter or language click before data lands used to replace it with a
-  // misleading "No listings found" -- and, after a failure, removed Retry.
-  if (!_listingsLoaded) return;
-  var filtered = allProperties.filter(matchesActiveFilters);
-  var sorted = sortProperties(filtered);
-  updateListingsMetaForFilters();
-
+// Trending score and Best Value, derived for the rows about to be rendered
+// (grid or map) from the FULL dataset's averages. One implementation for both
+// views, so a map preview shows the same badges as the card for the same row.
+function _deriveListingSignals(rows) {
   // Derive trending_score from views_week (stable average from full dataset)
   var _wTotal = 0, _wCount = 0;
   allProperties.forEach(function(p) { if ((p.views_week||0) > 0) { _wTotal += p.views_week; _wCount++; } });
   var _avgW = _wCount > 0 ? _wTotal / _wCount : 0;
-  sorted.forEach(function(p) {
+  rows.forEach(function(p) {
     if (!p.trending_score && _avgW > 0) {
       p.trending_score = Math.round((p.views_week||0) / _avgW * 100);
     }
@@ -1783,11 +1781,25 @@ function renderListings() {
     var arr = _grp[k];
     if (arr.length >= 3) _grpAvg[k] = arr.reduce(function(a,b){return a+b;},0) / arr.length;
   });
-  sorted.forEach(function(p) {
+  rows.forEach(function(p) {
     var np = _resolvedPrice(p).amount || parseNumericPrice(p.price_display);
     var k = (p.district_en||'') + '|' + (p.property_type||'') + '|' + (p.transaction_type||'');
     p._isBestValue = !!(np && _grpAvg[k] && np < _grpAvg[k] * 0.85);
   });
+
+}
+
+function renderListings() {
+  // Nothing has loaded yet (first paint, or the load failed and the Retry
+  // state is showing): leave the skeleton / error state in place. Any
+  // filter or language click before data lands used to replace it with a
+  // misleading "No listings found" -- and, after a failure, removed Retry.
+  if (!_listingsLoaded) return;
+  var filtered = allProperties.filter(matchesActiveFilters);
+  var sorted = sortProperties(filtered);
+  updateListingsMetaForFilters();
+
+  _deriveListingSignals(sorted);
 
   scheduleBehavioralEvents(sorted);
 

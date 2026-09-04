@@ -192,7 +192,17 @@ test.describe('homepage card data', () => {
 
   test('the query embeds unit_types, the contact role and the party name_lo; the cards use them', async ({ page }) => {
     let url = '';
-    await page.route('**/rest/v1/properties**', (r) => { url = r.request().url(); r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([ROW, AGENT_ROW]) }); });
+    // Projects what the query asked for, like PostgREST: a row only carries an
+    // embed / column the select named, so the content assertions below fail
+    // against a query that does not request them (they did pass unchanged).
+    const project = (row, u) => {
+      const out = JSON.parse(JSON.stringify(row));
+      if (!/unit_types\(/.test(u)) delete out.unit_types;
+      if (out.contacts && !/contacts\([^)]*role/.test(u)) delete out.contacts.role;
+      if (out.parties && !/parties\([^)]*name_lo/.test(u)) delete out.parties.name_lo;
+      return out;
+    };
+    await page.route('**/rest/v1/properties**', (r) => { url = decodeURIComponent(r.request().url()); r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([ROW, AGENT_ROW].map((x) => project(x, url))) }); });
     await stubAnalytics(page);
     await page.goto('/index.html?lang=lo');
     await expect(page.locator('#card-grid .pt-card')).toHaveCount(2);

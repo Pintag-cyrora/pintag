@@ -233,6 +233,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 <script src="currency.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
+<script src="image-renditions.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
 <script src="tracking.js?v=__ASSET_VERSION__"></script>
 <script src="analytics-tracking.js?v=__ASSET_VERSION__"></script>
@@ -240,14 +241,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 const SB=window.PINTAG.supabaseUrl;
 const KEY=window.PINTAG.anonKey;
 const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-villa.png';
-// Sized rendition + fallback for every listing photo on this page, the same
-// composition renderPropertyCard() uses. Previously the full-size originals
-// (~330 kB each) were loaded behind 4:3 thumbnails.
-function setListingImage(img, url, profile){
-  img.src=ptCardImageSrc(url,profile);
-  img.setAttribute('data-pt-original',ptCdnImage(url));
-  img.onerror=function(){ if(!ptImageFallback(this)) this.src=FALLBACK; };
-}
 
 const slug=new URLSearchParams(location.search).get('slug');
 
@@ -410,7 +403,7 @@ function render(a,listings){
     card.className='p-card';
     var imgDiv=document.createElement('div');imgDiv.className='p-img';
     if(imgs[0]){
-      var ti=document.createElement('img');setListingImage(ti,imgs[0],'card');ti.alt='';
+      var ti=document.createElement('img');ptApplyListingImage(ti,imgs[0],'card',FALLBACK);ti.alt='';
       ti.loading=i===0?'eager':'lazy';ti.decoding='async';imgDiv.appendChild(ti);
     }
     var tx=document.createElement('span');

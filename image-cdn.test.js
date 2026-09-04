@@ -20,7 +20,7 @@ function extractFn(file, name) {
 }
 
 // The two module-level constants the helpers read, then the real functions.
-vm.runInThisContext("var PT_IMAGE_CDN_ORIGIN='https://img.pintag.io'; var PT_PROPERTY_IMAGES_PATH='/storage/v1/object/public/property-images/';");
+vm.runInThisContext("var PT_IMAGE_CDN_ORIGIN='https://img.pintag.io'; var PT_PROPERTY_IMAGES_PATH='/storage/v1/object/public/property-images/'; var PT_RENDITION_PREFIX_PATH='renditions/';");
 vm.runInThisContext(extractFn('components.js', 'ptCdnImage'));
 vm.runInThisContext(extractFn('components.js', 'ptCdnImageFallback'));
 const { ptCdnImage, ptCdnImageFallback } = globalThis;
@@ -201,4 +201,12 @@ test('renditions on, CDN off: plain Supabase rendition; both off: the original u
   globalThis.window = { PINTAG: { imageCdn: false, renditionsEnabled: false, supabaseUrl: PROD } };
   assert.equal(ptCardImageSrc(PUB + 'a.jpg', 'card'), PUB + 'a.jpg');
   assert.equal(ptCardImageSrc('https://scontent.fbcdn.net/x.jpg', 'card'), 'https://scontent.fbcdn.net/x.jpg');
+});
+
+test('a missing CDN RENDITION is not a CDN outage: the listener defers to the element\'s own ptImageFallback', () => {
+  setCdn(true);
+  const el = { tagName: 'IMG', dataset: {}, currentSrc: CDN + 'renditions/a/card.webp', src: CDN + 'renditions/a/card.webp', getAttribute() { return this.src; }, setAttribute(k, v) { this[k] = v; } };
+  assert.equal(ptCdnImageFallback(el), false);
+  assert.equal(el.src, CDN + 'renditions/a/card.webp', 'untouched');
+  assert.equal(el.dataset.cdnFallback, undefined, 'the once-only marker is not spent on a rendition miss');
 });

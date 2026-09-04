@@ -15,9 +15,12 @@ async function open(page, query, opts) {
   const errs = pageErrors(page); const state = mockRest(page, opts);
   await page.goto('/listings.html' + (query || ''));
   await page.waitForFunction(() => typeof window.setTxFilter === 'function');
-  await page.waitForTimeout(600);
+  await settled(page);
   return { errs, state };
 }
+// Loaded, or failed with the Retry state showing: the two end states a
+// visitor can be in (a fixed sleep here was the one timing-based wait).
+const settled = (page) => page.waitForFunction(() => window._listingsLoaded === true || !!document.getElementById('listings-retry'));
 // Leaflet is not loaded here; stand in for the two map entry points so Map
 // view can be entered without the CDN.
 const STUB_MAP = () => { window.initMap = function () { window._map = {}; }; window.renderMap = function () {}; };
@@ -105,7 +108,7 @@ test.describe('listings.html — filter fixes', () => {
     expect(u.searchParams.get('type')).toBe('villa');
     expect(u.searchParams.get('filter')).toBeNull();
     expect(u.searchParams.get('lang')).toBe('en');
-    await page.reload(); await page.waitForTimeout(800);
+    await page.reload(); await settled(page);
     expect(await slugsShown(page)).toEqual(['villa-both']);
     await page.evaluate(() => setTypeFilter('all', document.querySelector('.filter-btn[data-filter="all"]')));
     expect(new URL(page.url()).searchParams.get('type')).toBeNull();
@@ -188,6 +191,9 @@ test.describe('listings.html — 2026-09-03 search fixes', () => {
     expect(await page.evaluate(() => document.getElementById('map-unmapped').textContent)).toContain('1 of 1 listings');
     await page.evaluate(() => setLang('zh'));
     expect(await page.evaluate(() => document.getElementById('map-unmapped').textContent)).toContain('尚无确切位置');
+    // <html lang>, the tab title and the OG tags follow the language in Map view too
+    expect(await page.evaluate(() => document.documentElement.getAttribute('lang'))).toBe('zh');
+    expect(await page.evaluate(() => document.title)).toMatch(/[\u4e00-\u9fff]/);
     expect(errs).toEqual([]);
   });
 
@@ -237,6 +243,12 @@ test.describe('listings.html — 2026-09-03 search fixes', () => {
     expect(await countText(page)).toBe('1 listings · Luang Prabang');
     await page.evaluate(() => setProvinceFilter('Vientiane Capital'));
     expect(await countText(page)).toBe('4 listings · Vientiane');
+    // Under "All provinces" the suffix names the province of what is SHOWN
+    await page.evaluate(() => setProvinceFilter('all'));
+    await page.evaluate(() => setTypeFilter('land', document.querySelector('.filter-btn[data-filter="land"]')));
+    expect(await countText(page)).toBe('1 listings · Vientiane');
+    await page.evaluate(() => setTypeFilter('all', document.querySelector('.filter-btn[data-filter="all"]')));
+    expect(await countText(page)).toBe('5 listings · Laos');
     await page.evaluate(() => showMapPreview(allProperties.find((p) => p.slug === 'villa-both')));
     expect(await page.evaluate(() => document.getElementById('mp-loc').textContent.trim())).toBe('Luang Prabang, Luang Prabang');
     await page.evaluate(() => showMapPreview(allProperties.find((p) => p.slug === 'house-rent')));
@@ -265,7 +277,7 @@ test.describe('listings.html — 2026-09-03 search fixes', () => {
     await open(page, '?lang=en&tx=for_rent');
     await page.evaluate(() => toggleRentalFilter('pet', document.getElementById('rf-pet')));
     expect(new URL(page.url()).searchParams.get('pet')).toBe('1');
-    await page.reload(); await page.waitForTimeout(800);
+    await page.reload(); await settled(page);
     expect(await page.evaluate(() => [currentPetFriendly, document.getElementById('rf-pet').classList.contains('active')])).toEqual([true, true]);
     await page.evaluate(() => toggleRentalFilter('pet', document.getElementById('rf-pet')));
     expect(new URL(page.url()).searchParams.get('pet')).toBeNull();
@@ -309,4 +321,33 @@ test('the Province select stays visible while a type/price choice narrows invent
   expect(await state()).toEqual({ display: '', opts: ['all', 'Vientiane Capital'] });
   await page.evaluate(() => setTypeFilter('all', document.querySelector('.filter-btn[data-filter="all"]')));
   expect((await state()).opts).toEqual(['all', 'Vientiane Capital', 'Luang Prabang']);
+});
+
+test('DOM path: the real controls drive the same pipeline (select change, chip click, sort change)', async ({ page }) => {
+  const { errs } = await open(page, '?lang=en');
+  await page.selectOption('#province-select', 'Luang Prabang');
+  expect(await slugsShown(page)).toEqual(['villa-both']);
+  await page.selectOption('#province-select', 'all');
+  await page.click('.tx-btn[data-filter="for_sale"]');
+  await page.selectOption('#sort-select', 'price_desc');
+  expect(await slugsShown(page)).toEqual(['villa-both', 'land-sale']);
+  const u = new URL(page.url());
+  expect([u.searchParams.get('tx'), u.searchParams.get('sort')]).toEqual(['for_sale', 'price_desc']);
+  await page.selectOption('#price-select', 's1');   // Under $50k: neither sale listing
+  expect(await slugsShown(page)).toEqual([]);
+  expect(await countText(page)).toContain('0 listings');
+  expect(errs).toEqual([]);
+});
+
+test('price sort under For Rent uses the rent leg of a sale_or_rent listing, like the band and the bubble', async ({ page }) => {
+  await open(page, '?lang=en');
+  const order = await page.evaluate(() => {
+    currentTxFilter = 'for_rent'; currentSort = 'price_asc';
+    return sortProperties([
+      { slug: 'rent-2000', transaction_type: 'for_rent', price_amount: 2000, price_currency: 'USD', market_status: 'available' },
+      { slug: 'sor', transaction_type: 'sale_or_rent', price_amount: 250000, price_currency: 'USD', rent_price_amount: 1200, rent_price_currency: 'USD', market_status: 'available' },
+      { slug: 'rent-850', transaction_type: 'for_rent', price_amount: 850, price_currency: 'USD', market_status: 'available' },
+    ]).map((p) => p.slug);
+  });
+  expect(order).toEqual(['rent-850', 'sor', 'rent-2000']);
 });

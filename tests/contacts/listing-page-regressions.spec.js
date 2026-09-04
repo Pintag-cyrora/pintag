@@ -3,7 +3,7 @@
 const { test, expect } = require('@playwright/test');
 const { contact, BASE, openListing } = require('./fixtures');
 
-const IMG = (n) => 'http://localhost:8973/' + n;
+const IMG = (n) => 'http://localhost:8949/' + n;   // this suite's own static server (playwright.config.js)
 const ROUTED = Object.assign({}, BASE, {
   slug: 'routed', images: [IMG('pintag-hero.png'), IMG('pintag-villa.png'), IMG('pintag-interior.png')],
   contacts: contact({ id: 'legacy', phone: '+856 20 999 9999' }),
@@ -21,19 +21,23 @@ test('the mobile sticky WhatsApp button follows the contact picker, with the pic
   const errors = await openListing(page, ROUTED);
   await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('href', /wa\.me\/856201111111/);
   await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('data-contact-id', 'a');
-  await page.evaluate(() => ptSelectContact(2));   // [legacy embed, a, cc]: the picker lists the legacy row first
+  await page.locator('.contact-picker .cpick-row').nth(2).click();   // [legacy embed, a, cc]: the picker lists the legacy row first
   await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/856203333333/);
   await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('href', /wa\.me\/856203333333/);
   await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('data-contact-id', 'cc');
+  // ...and every unit card's Inquire button on the same screen, keeping its own unit message
+  const unitCtas = await page.evaluate(() => [...document.querySelectorAll('.unit-cta')].map((a) => [a.getAttribute('href'), a.getAttribute('data-contact-id')]));
+  expect(unitCtas.length).toBeGreaterThan(0);
+  unitCtas.forEach(([href, id]) => { expect(href).toMatch(/^https:\/\/wa\.me\/856203333333\?text=/); expect(id).toBe('cc'); });
   expect(await page.evaluate(() => document.getElementById('pt-wa-mobile').getAttribute('onclick'))).toContain("contactId:this.getAttribute('data-contact-id')");
   expect(errors.map((e) => e.message)).toEqual([]);
 });
 
 test('unit-card inquiries are attributed to the RESOLVED contact, not the legacy contacts embed', async ({ page }) => {
   await openListing(page, ROUTED);
-  const onclicks = await page.evaluate(() => [...document.querySelectorAll('.unit-cta')].map((a) => a.getAttribute('onclick')));
-  expect(onclicks.length).toBeGreaterThan(0);
-  onclicks.forEach((oc) => { expect(oc).toContain("contactId:'a'"); expect(oc).not.toContain("contactId:'legacy'"); });
+  const ctas = await page.evaluate(() => [...document.querySelectorAll('.unit-cta')].map((a) => [a.getAttribute('data-contact-id'), a.getAttribute('onclick')]));
+  expect(ctas.length).toBeGreaterThan(0);
+  ctas.forEach(([id, oc]) => { expect(id).toBe('a'); expect(oc).toContain("contactId:this.getAttribute('data-contact-id')"); expect(oc).not.toContain('legacy'); });
 });
 
 test('unit-card covers and building-strip photos carry the rendition fallback like every other image', async ({ page }) => {
@@ -57,6 +61,9 @@ test.describe('desktop gallery', () => {
     await expect(page.locator('#dg-hero-img')).toHaveAttribute('data-pt-original', IMG('pintag-interior.png'));
     await page.evaluate(() => document.getElementById('dg-hero-frame').click());
     expect(await page.evaluate(() => [LB.idx, document.getElementById('lb-overlay').classList.contains('lb-open')])).toEqual([2, true]);
+    // "View all" opens at the photo being shown too, not photo 1
+    await page.evaluate(() => { LB.close(); document.getElementById('dg-view-all-btn').click(); });
+    expect(await page.evaluate(() => LB.idx)).toBe(2);
     // A fallback that already fired for one photo must not disable it for the next
     await page.evaluate(() => { LB.close(); document.getElementById('dg-hero-img').dataset.ptFellBack = '1'; syncDesktopHero(1, null); });
     await page.waitForTimeout(250);
@@ -79,7 +86,7 @@ test.describe('slugless listing opened via ?id=', () => {
       r.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
     });
     await page.goto('/listing.html?id=' + property.id + '&lang=en' + (hash || ''));
-    await page.waitForTimeout(1500);
+    await page.waitForFunction(() => !!document.querySelector('.section-label') || /Property not found|No property selected/.test(document.body.innerText));
     return { errors, slugQueries };
   }
   const NOSLUG = Object.assign({}, BASE, { id: 'p-noslug', slug: null, market_status: 'rented', contacts: contact({ id: 'a' }) });
@@ -159,5 +166,37 @@ test.describe('status copy for sale_or_rent and localised WhatsApp titles', () =
     const statusLinks = hrefs.filter((h) => /ລໍຖ້າ/.test(h));   // the "Join Waiting List" CTA (desktop + mobile)
     expect(statusLinks.length).toBeGreaterThan(0);
     statusLinks.forEach((h) => { expect(h).toContain('ອາພາດເມັນ ລິມແມ່ນ້ຳ'); expect(h).not.toContain('Riverside Apartment'); });
+  });
+});
+
+test.describe('with renditions ON (production): the hero shows a WebP rendition and the lightbox still opens at it', () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+  test('src is the rendition, data-pt-original the original, and the hero click opens the lightbox at the shown photo', async ({ page }) => {
+    // Flip the production-only flag by appending to the real config.js, and
+    // serve every property-images object (originals AND renditions) as a PNG
+    // so what is asserted is the composition, not a fallback firing.
+    // Both production flags on (renditions AND the image CDN): the hero must
+    // be the CDN-routed RENDITION. Rewriting the arrays through the CDN first
+    // (the old pre-map) made renditionPublicUrl() reject the CDN origin, so the
+    // page served full-size originals through the CDN.
+    await page.route('**/config.js*', async (r) => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\nwindow.PINTAG.renditionsEnabled = true; window.PINTAG.imageCdn = true;' }); });
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+    await page.route('**/storage/v1/object/public/property-images/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+    const SB = 'https://ebtgoqrywdywuqrvudcp.supabase.co';   // the dev project config.js resolves on localhost
+    const PATH = '/storage/v1/object/public/property-images/';
+    const orig = (n) => SB + PATH + 'photo-' + n + '.jpg';
+    const cdn = (rest) => 'https://img.pintag.io' + PATH + rest;
+    const errors = await openListing(page, Object.assign({}, BASE, { slug: 'rend', images: [orig(1), orig(2), orig(3)], contacts: contact({ id: 'a' }) }));
+    expect(await page.evaluate(() => window.PINTAG.supabaseUrl)).toBe(SB);
+    await expect(page.locator('#dg-hero-img')).toHaveAttribute('src', cdn('renditions/photo-1/hero.webp'));
+    await expect(page.locator('#dg-hero-img')).toHaveAttribute('data-pt-original', cdn('photo-1.jpg'));
+    await page.evaluate(() => syncDesktopHero(2, document.querySelectorAll('.dg-thumb')[2] || null));
+    await expect(page.locator('#dg-hero-img')).toHaveAttribute('src', cdn('renditions/photo-3/hero.webp'));
+    await page.evaluate(() => document.getElementById('dg-hero-frame').click());
+    expect(await page.evaluate(() => LB.idx)).toBe(2);   // indexOf(rendition src) against originals gave 0 on the old code
+    expect(await page.evaluate(() => document.getElementById('lb-img').getAttribute('src'))).toBe(cdn('photo-3.jpg'));
+    // unit-card cover and the mobile slides compose the same way
+    expect(await page.evaluate(() => document.querySelector('.mg-slide img').getAttribute('src'))).toBe(cdn('renditions/photo-1/gallery.webp'));
+    expect(errors.map((e) => e.message)).toEqual([]);
   });
 });
