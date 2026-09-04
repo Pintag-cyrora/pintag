@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 // backfill-renditions.mjs — one-time, resumable generation of delivery
-// renditions for images on ACTIVE listings.
+// renditions for images on ACTIVE listings: the property gallery
+// (properties.images, via the property_images registry) AND every unit
+// type's own gallery (unit_types.images). The first backfill covered only
+// the registry, which is synced from properties.images alone, so unit photos
+// uploaded before renditions shipped had no rendition object and the public
+// unit cards requested a 404. Re-running this script is what generates them.
 //
 // WHY A NODE RUNNER AND NOT AN ADMIN-PAGE BUTTON. ~550 images x 4 encodes is
 // tens of minutes of work. Tying that to a browser tab staying open makes the
@@ -27,17 +32,31 @@
 //   node scripts/backfill-renditions.mjs --dry-run [--sample N]
 //   node scripts/backfill-renditions.mjs --apply [--batch-size N] [--limit N]
 //
+// CREDENTIALS, and why discovery goes over HTTP rather than the storage schema.
+// The production read-only role deliberately has NO access to the `storage`
+// schema, so `SELECT ... FROM storage.objects` fails with "permission denied
+// for schema storage". Object existence and size are therefore discovered over
+// plain HTTP instead: property-images is a public-read bucket ("Public read
+// property images", migration 20260804150000), so an unauthenticated HEAD
+// returns an object's Content-Length, or 404 when it is not there — the same
+// request a visitor's browser makes for every photo on the site. A dry run
+// consequently needs NO Storage credential at all, which is what lets it run
+// under least privilege AND keeps every write-capable credential out of it.
+//
 // ENV
-//   PINTAG_DB_URL              postgres connection (read-only queries only)
+//   PINTAG_DB_URL              postgres connection. Read-only queries against
+//                              the `public` schema only; no storage-schema grant.
 //   SUPABASE_URL               https://<ref>.supabase.co
-//   SUPABASE_SERVICE_ROLE_KEY  REQUIRED for --apply only
+//   SUPABASE_SERVICE_ROLE_KEY  REQUIRED for --apply only. Writes renditions and
+//                              measures total storage for the ceiling. A dry
+//                              run never needs it.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, statSync, rmSync, mkdirSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const mod = await import('../image-renditions.js');
-const { PT_RENDITION_PROFILES, renditionPath } = mod.default ?? mod;
+const { PT_RENDITION_PROFILES, PT_RENDITION_PREFIX, renditionPath } = mod.default ?? mod;
 
 const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
@@ -83,34 +102,187 @@ const fmt = (b) => `${(b / 1024 / 1024).toFixed(1)} MB`;
 // The active filter is the SAME predicate the public site uses
 // (status in active/available). Drafts, archived, deleted and orphaned objects
 // are excluded HERE rather than filtered later, so nothing outside the publicly
-// delivered set can ever be written. The JOIN to storage.objects also drops any
-// registry row whose object is missing.
-function activeImages() {
+// delivered set can ever be written.
+//
+// Reads the `public` schema ONLY. Whether each object actually exists — what
+// the old JOIN to storage.objects decided — is settled afterwards by
+// headObject(), so no storage-schema grant is required.
+//
+// Two sources, de-duplicated on the object name:
+//   * property_images — the registry of properties.images (building gallery).
+//   * unit_types.images — each unit type's OWN gallery. The registry never
+//     tracks these (its sync trigger is on properties.images only), so they
+//     must be enumerated from the column: a text[] of full public URLs, mapped
+//     back to the object name the same way objectNameFromPublicUrl() does in
+//     the browser (strip the public-bucket prefix and any query string).
+function candidateImages() {
+  const PUB = `/storage/v1/object/public/${BUCKET}/`;
   return psql(`
-    SELECT pi.storage_path, COALESCE((o.metadata->>'size')::bigint, 0), p.slug
-    FROM property_images pi
-    JOIN properties p      ON p.id = pi.property_id
-    JOIN storage.objects o ON o.bucket_id = '${BUCKET}' AND o.name = pi.storage_path
-    WHERE pi.status = 'active'
-      AND p.status IN ('active','available')
-      AND pi.storage_path NOT LIKE 'renditions/%'
-    ORDER BY pi.storage_path;`)
-    .map(([storage_path, size, slug]) =>
-      ({ storage_path, size: bytesOf(size, storage_path), slug }));
+    SELECT storage_path, MIN(slug)
+    FROM (
+      SELECT pi.storage_path AS storage_path, p.slug AS slug
+      FROM property_images pi
+      JOIN properties p ON p.id = pi.property_id
+      WHERE pi.status = 'active'
+        AND p.status IN ('active','available')
+        AND pi.storage_path NOT LIKE 'renditions/%'
+      UNION ALL
+      SELECT ui.name AS storage_path, p.slug AS slug
+      FROM unit_types ut
+      JOIN properties p ON p.id = ut.property_id
+      CROSS JOIN LATERAL (
+        SELECT split_part(substring(img FROM position('${PUB}' IN img) + length('${PUB}')), '?', 1) AS name
+        FROM unnest(COALESCE(ut.images, ARRAY[]::text[])) AS img
+        WHERE position('${PUB}' IN img) > 0
+      ) ui
+      WHERE p.status IN ('active','available')
+        AND ui.name <> ''
+        AND ui.name NOT LIKE 'renditions/%'
+    ) src
+    GROUP BY storage_path
+    ORDER BY storage_path;`)
+    .map(([storage_path, slug]) => ({ storage_path, slug }));
 }
 
-function existingRenditions() {
-  const set = new Set();
-  for (const [name] of psql(
-    `SELECT name FROM storage.objects WHERE bucket_id='${BUCKET}' AND name LIKE 'renditions/%';`)) {
-    set.add(name);
+// HEAD one object on the PUBLIC bucket. No credential is used or needed: this
+// is the same unauthenticated request the site makes for every photo. Returns
+// the object's size, or exists:false on a 404 — which is how both "the
+// original is gone" and "this rendition does not exist yet" are detected.
+async function headObject(objectName) {
+  const res = await withRetry(`head ${objectName}`, async () => {
+    const r = await fetch(publicUrl(objectName), { method: 'HEAD', signal: AbortSignal.timeout(30000) });
+    // A 404 is an ANSWER, not a failure: returned rather than thrown, so
+    // withRetry() does not spend attempts re-asking a settled question.
+    if (!r.ok && r.status !== 404) {
+      const err = new Error(`HEAD ${r.status} ${objectName}`);
+      err.status = r.status;
+      throw err;
+    }
+    return r;
+  });
+  if (res.status === 404) return { exists: false, size: 0 };
+  const len = Number(res.headers.get('content-length'));
+  return { exists: true, size: Number.isFinite(len) ? len : 0 };
+}
+
+// Bounded-concurrency map. Thousands of HEADs one at a time would dominate the
+// run; unbounded would hammer Storage. Results keep the input's order.
+async function mapPool(items, worker, concurrency = 12) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    for (let i = next++; i < items.length; i = next++) out[i] = await worker(items[i]);
+  }));
+  return out;
+}
+
+// The candidate list narrowed to objects that really exist, each carrying its
+// true size — the two things the storage.objects JOIN used to provide.
+async function activeImages() {
+  const rows = candidateImages();
+  const probes = await mapPool(rows, (r) => headObject(r.storage_path));
+  const found = [];
+  const missing = [];
+  rows.forEach((r, i) => (probes[i].exists ? found.push({ ...r, size: probes[i].size }) : missing.push(r.storage_path)));
+  if (missing.length) {
+    // The old JOIN dropped these silently. A listing referencing an image that
+    // is not in Storage is worth saying out loud; repairing it is not this
+    // script's job, so it is reported and skipped.
+    console.log(`  NOTE: ${missing.length} referenced image(s) are not in Storage and are skipped:`);
+    for (const name of missing.slice(0, 10)) console.log(`        ${name}`);
+    if (missing.length > 10) console.log(`        … and ${missing.length - 10} more`);
   }
+  return found;
+}
+
+// Which renditions already exist, established by asking for each one. A 404
+// means "still to generate"; anything present is skipped, so a re-run stays
+// idempotent exactly as before.
+async function existingRenditions(images) {
+  const paths = [];
+  for (const im of images) {
+    for (const profile of Object.keys(PT_RENDITION_PROFILES)) {
+      const path = renditionPath(im.storage_path, profile);
+      if (path) paths.push(path);
+    }
+  }
+  const probes = await mapPool(paths, headObject);
+  const set = new Set();
+  paths.forEach((path, i) => { if (probes[i].exists) set.add(path); });
   return set;
 }
 
-function currentStorageBytes() {
-  const [[bytes]] = psql(`SELECT COALESCE(sum((metadata->>'size')::bigint),0) FROM storage.objects;`);
-  return bytesOf(bytes, 'storage.objects total');
+// Total bytes across ALL buckets — the ceiling's starting point.
+//
+// The storage schema is exact and one query, and is what a full-access
+// connection string run by hand will use. The production read-only role cannot
+// read it, so the fallback measures the same total over the Storage API, which
+// needs the service-role key and is therefore available in apply mode only.
+// Returns null when neither source is available; the caller decides what that
+// means — a dry run reports without a verdict, an apply run refuses to write.
+// The exact, one-query answer — available only to a connection that can read
+// the storage schema. Returns null when the role cannot.
+//
+// Kept as its own function so the no-print rule below is structural: NOTHING
+// here may echo the error, because execFileSync puts the whole command line
+// into its message and that includes the connection string.
+function storageBytesFromDb() {
+  try {
+    const [[bytes]] = psql(`SELECT COALESCE(sum((metadata->>'size')::bigint),0) FROM storage.objects;`);
+    return bytesOf(bytes, 'storage.objects total');
+  } catch (err) {
+    const denied = /permission denied|does not exist|no schema/i.test(String(err && err.message));
+    if (!denied) throw new Error('storage.objects query failed (message suppressed: it quotes the connection string)');
+    return null;
+  }
+}
+
+async function currentStorageBytes() {
+  const fromDb = storageBytesFromDb();
+  if (fromDb != null) return fromDb;
+  console.log('  storage.objects is not readable by this role — expected for the least-privilege role.');
+  if (!SKEY) return null;
+  console.log('  Measuring total storage over the Storage API instead…');
+  try {
+    return await storageApiUsageBytes();
+  } catch (err) {
+    // Returning null rather than throwing keeps the failure a clean, explained
+    // refusal (apply exits 4 below) instead of an unhandled rejection.
+    console.log(`  Storage API measurement failed: ${err && err.message}`);
+    return null;
+  }
+}
+
+// Sum every object in every bucket through the Storage API. Read-only: the
+// verbs are GET (buckets) and POST to the *list* endpoint, which creates
+// nothing.
+async function storageApiUsageBytes() {
+  const auth = { apikey: SKEY, Authorization: `Bearer ${SKEY}` };
+  const buckets = await (await withRetry('list buckets', () => req(`${SB}/storage/v1/bucket`, { headers: auth }))).json();
+  if (!Array.isArray(buckets)) throw new Error('unexpected /storage/v1/bucket response');
+  let total = 0;
+  for (const bucket of buckets) total += await listPrefixBytes(bucket.name || bucket.id, auth, '');
+  return total;
+}
+
+async function listPrefixBytes(bucket, auth, prefix) {
+  const PAGE = 1000;
+  let total = 0;
+  for (let offset = 0; ; offset += PAGE) {
+    const res = await withRetry(`list ${bucket}/${prefix}`, () => req(`${SB}/storage/v1/object/list/${bucket}`, {
+      method: 'POST',
+      headers: { ...auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prefix, limit: PAGE, offset, sortBy: { column: 'name', order: 'asc' } })
+    }));
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) return total;
+    for (const row of rows) {
+      // A folder comes back with a null id and no metadata: recurse into it.
+      if (row.id == null) total += await listPrefixBytes(bucket, auth, `${prefix}${row.name}/`);
+      else total += Number(row.metadata && row.metadata.size) || 0;
+    }
+    if (rows.length < PAGE) return total;
+  }
 }
 
 // ── 4. encode ──────────────────────────────────────────────────────────────
@@ -163,6 +335,14 @@ async function download(objectName, dest) {
 
 // ── 5-6. upload + verify ───────────────────────────────────────────────────
 async function upload(path, filePath) {
+  // Defence in depth AT THE WRITE BOUNDARY. This function is the only thing in
+  // the repository that can overwrite a Storage object, so it re-checks the
+  // destination itself rather than trusting whatever the caller computed: a
+  // path outside renditions/ would overwrite an ORIGINAL photo, which nothing
+  // in this script is ever allowed to do.
+  if (typeof path !== 'string' || !path.startsWith(PT_RENDITION_PREFIX) || path.includes('..')) {
+    throw new Error(`refusing to write outside ${PT_RENDITION_PREFIX}: ${JSON.stringify(path)}`);
+  }
   const body = readFileSync(filePath);
   await withRetry(`upload ${path}`, () => req(`${SB}/storage/v1/object/${BUCKET}/${path}`, {
     method: 'POST',
@@ -194,22 +374,33 @@ const state = existsSync(STATE_FILE)
   : { done: [], failed: {}, bytesWritten: 0 };
 const doneSet = new Set(state.done);
 
-const images   = activeImages();
-const already  = existingRenditions();
+console.log('── DISCOVERY ─────────────────────────────────────────');
+console.log('  Reading listings from the database (public schema only)…');
+const images   = await activeImages();
+console.log(`  Checking which renditions already exist (HEAD, public bucket)…`);
+const already  = await existingRenditions(images);
 const profiles = Object.keys(PT_RENDITION_PROFILES);
 
 const needed = images.filter((im) =>
   !doneSet.has(im.storage_path) &&
   profiles.some((p) => !already.has(renditionPath(im.storage_path, p))));
 
-const baseline = currentStorageBytes();
-console.log('── SCOPE ─────────────────────────────────────────────');
+const baseline = await currentStorageBytes();
+// A write must never be sized against a guess. Without a real baseline the
+// ceiling cannot be enforced, so apply refuses rather than writing blind.
+if (APPLY && baseline == null) {
+  console.error('\n  ABORT: total storage could not be measured, so the storage ceiling cannot be enforced.');
+  console.error('  Nothing was written. Give the run a connection that can read storage.objects,');
+  console.error('  or a SUPABASE_SERVICE_ROLE_KEY that can list buckets over the Storage API.');
+  process.exit(4);
+}
+console.log('\n── SCOPE ─────────────────────────────────────────────');
 console.log(`  active-listing images        : ${images.length}`);
 console.log(`  distinct active listings     : ${new Set(images.map((i) => i.slug)).size}`);
 console.log(`  rendition objects already up : ${already.size}`);
 console.log(`  images still needing work    : ${needed.length}`);
 console.log(`  their originals total        : ${fmt(images.reduce((a, i) => a + i.size, 0))}`);
-console.log(`  CURRENT storage, all buckets : ${fmt(baseline)}`);
+console.log(`  CURRENT storage, all buckets : ${baseline == null ? 'not measurable with dry-run credentials' : fmt(baseline)}`);
 
 const work = LIMIT > 0 ? needed.slice(0, LIMIT) : needed;
 const tmp  = mkdtempSync(join(tmpdir(), 'rend-'));
@@ -238,8 +429,9 @@ for (let i = 0; i < queue.length; i++) {
       const out = join(tmp, `${profile}.webp`);
       const size = encode(src, out, PT_RENDITION_PROFILES[profile].width, PT_RENDITION_PROFILES[profile].quality);
 
-      // Ceiling check on ACTUAL accumulated bytes, before the write.
-      if (baseline + bytes + size > STORAGE_CEILING) {
+      // Ceiling check on ACTUAL accumulated bytes, before the write. baseline
+      // is guaranteed non-null here: apply aborts above when it is unknown.
+      if (baseline != null && baseline + bytes + size > STORAGE_CEILING) {
         console.error(`\n  ABORT: next write reaches ${fmt(baseline + bytes + size)}, over the ${fmt(STORAGE_CEILING)} ceiling.`);
         writeFileSync(STATE_FILE, JSON.stringify({ ...state, done: [...doneSet], bytesWritten: state.bytesWritten + bytes }, null, 2));
         process.exit(3);
@@ -295,10 +487,21 @@ if (srcSizes.length) {
 if (!APPLY) {
   console.log(`\n  PROJECTION for all ${needed.length} images needing work:`);
   console.log(`    additional storage : ${fmt(projected)}`);
-  console.log(`    projected total    : ${fmt(baseline + projected)} of 1024.0 MB limit`);
   console.log(`    ceiling            : ${fmt(STORAGE_CEILING)}`);
-  console.log(`    VERDICT            : ${baseline + projected > STORAGE_CEILING ? 'EXCEEDS CEILING — DO NOT RUN' : 'within ceiling'}`);
+  if (baseline == null) {
+    // Least-privilege dry run: total storage is not readable without a
+    // Storage credential, and inventing one would be worse than saying so.
+    // The guarantee is not weakened — apply measures the real total and
+    // refuses to start without it, then re-checks before every single write.
+    console.log('    projected total    : unknown (total storage needs a Storage credential)');
+    console.log('    VERDICT            : apply measures the real total before it writes, and');
+    console.log('                         aborts at the ceiling; it refuses to start if it cannot.');
+  } else {
+    console.log(`    projected total    : ${fmt(baseline + projected)} of 1024.0 MB limit`);
+    console.log(`    VERDICT            : ${baseline + projected > STORAGE_CEILING ? 'EXCEEDS CEILING — DO NOT RUN' : 'within ceiling'}`);
+  }
 }
 if (Object.keys(state.failed).length) {
-  console.log(`\n  retryable failures   : ${Object.keys(state.failed).length} (recorded in ${STATE_FILE})`);
+  // The state file is only written under --apply; a dry run keeps nothing.
+  console.log(`\n  retryable failures   : ${Object.keys(state.failed).length} ${APPLY ? `(recorded in ${STATE_FILE})` : '(not recorded: --dry-run writes no state file)'}`);
 }

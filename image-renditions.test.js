@@ -186,7 +186,7 @@ test('renditions upload with the long immutable cache, like originals', () => {
   test('the runner reuses the shared contract instead of redefining sizes', () => {
     assert.match(RUNNER, /import\('\.\.\/image-renditions\.js'\)/,
       'profiles and paths must come from the one module');
-    assert.match(RUNNER, /PT_RENDITION_PROFILES, renditionPath/);
+    assert.match(RUNNER, /PT_RENDITION_PROFILES, PT_RENDITION_PREFIX, renditionPath/);
     // No hardcoded widths — those live in image-renditions.js and nowhere else.
     assert.ok(!/\b(200|400|800|1200)\s*[,)]\s*(?!.*resize)/.test(
       RUNNER.split('\n').filter(l => /width:\s*\d/.test(l)).join('\n')),
@@ -201,10 +201,25 @@ test('renditions upload with the long immutable cache, like originals', () => {
 
   test('the runner only ever writes under renditions/', () => {
     // Every upload target is renditionPath(), which is prefixed by construction.
-    assert.match(RUNNER, /const path = renditionPath\(im\.storage_path, profile\)/);
-    assert.match(RUNNER, /await upload\(path, out\)/);
+    // Scoped to the apply loop: the identical assignment inside
+    // existingRenditions() must not be able to satisfy this by accident.
+    const applyLoop = RUNNER.slice(RUNNER.indexOf('for (let i = 0; i < queue.length'));
+    assert.ok(applyLoop.length > 0, 'apply loop not found');
+    assert.match(applyLoop, /const path = renditionPath\(im\.storage_path, profile\)/);
+    assert.match(applyLoop, /await upload\(path, out\)/);
     assert.ok(!/upload\(\s*im\.storage_path/.test(RUNNER),
       'an original path must never be an upload target');
+  });
+
+  test('upload() re-checks its own destination, so a bad caller cannot overwrite an original', () => {
+    // Defence in depth at the one function that can overwrite an object: the
+    // call site being right is not enough, because that is exactly what a
+    // future edit could get wrong.
+    const fn = RUNNER.slice(RUNNER.indexOf('async function upload('));
+    const guard = fn.slice(0, fn.indexOf('const body'));
+    assert.match(guard, /startsWith\(PT_RENDITION_PREFIX\)/);
+    assert.match(guard, /includes\('\.\.'\)/, 'a traversal segment must be refused too');
+    assert.match(guard, /refusing to write outside/);
   });
 
   test('scope is restricted to publicly delivered images', () => {
@@ -213,8 +228,48 @@ test('renditions upload with the long immutable cache, like originals', () => {
     assert.match(RUNNER, /pi\.status = 'active'/);
     assert.match(RUNNER, /storage_path NOT LIKE 'renditions\/%'/,
       'must not treat a rendition as a source image');
-    assert.match(RUNNER, /JOIN storage\.objects/,
-      'joining storage.objects drops registry rows whose object is missing');
+    // Unit-type galleries are enumerated too: the property_images registry is
+    // synced from properties.images only, so unit photos are invisible to it.
+    assert.match(RUNNER, /FROM unit_types ut/,
+      'unit_types.images must be part of discovery, not just the registry');
+  });
+
+  test('discovery works under least privilege: no storage-schema access required', () => {
+    // The production read-only role has no `storage` schema grant, so the
+    // discovery query must read `public` only. Object existence and size come
+    // from unauthenticated HEADs on the PUBLIC bucket instead — the same
+    // request the site makes for every photo.
+    const queries = [...RUNNER.matchAll(/psql\(`([\s\S]*?)`\)/g)].map((m) => m[1]);
+    const discovery = queries.filter((q) => /FROM\s+property_images|FROM\s+unit_types/i.test(q));
+    assert.ok(discovery.length > 0, 'discovery query not found');
+    for (const q of discovery) assert.ok(!/storage\./i.test(q), 'discovery must not read the storage schema:\n' + q);
+    // storage.objects may survive in exactly one place: the OPTIONAL usage
+    // probe, which degrades to the Storage API when the role cannot read it.
+    assert.equal(queries.filter((q) => /storage\.objects/i.test(q)).length, 1);
+
+    const head = RUNNER.slice(RUNNER.indexOf('async function headObject'), RUNNER.indexOf('async function mapPool'));
+    assert.match(head, /method: 'HEAD'/);
+    assert.match(head, /publicUrl\(objectName\)/);
+    assert.ok(!/apikey|Authorization/.test(head), 'a public read must not send a credential');
+    assert.match(head, /r\.status !== 404/, 'a 404 is an answer, not a failure to retry');
+  });
+
+  test('a psql failure never reaches a log: its message quotes the connection string', () => {
+    // execFileSync puts the whole command line into its error message, and
+    // that includes PINTAG_DB_URL. Only these two functions call psql(), and
+    // neither may echo the error.
+    const psqlCalls = (RUNNER.match(/\bpsql\(/g) || []).length;
+    let accounted = 0;
+    for (const name of ['function candidateImages(', 'function storageBytesFromDb(']) {
+      const start = RUNNER.indexOf(name);
+      assert.ok(start > -1, `${name} not found`);
+      const body = RUNNER.slice(start, RUNNER.indexOf('\n}', start));
+      accounted += (body.match(/\bpsql\(/g) || []).length;
+      assert.ok(!/console\.(log|error|warn)\([^)]*err(\s*&&\s*err)?\.message/.test(body),
+        `${name}: a psql error must never be printed`);
+    }
+    assert.equal(psqlCalls - 1, accounted, 'psql() is called only from the two functions audited here');
+    assert.match(RUNNER, /message suppressed/);
   });
 
   test('every query is pinned read-only', () => {
@@ -232,8 +287,11 @@ test('renditions upload with the long immutable cache, like originals', () => {
     // NaN compares false against the ceiling, so a bad parse would disable the
     // storage gate rather than trip it.
     assert.match(RUNNER, /Number\.isFinite\(n\)/);
-    assert.match(RUNNER, /bytesOf\(size, storage_path\)/);
     assert.match(RUNNER, /bytesOf\(bytes, 'storage\.objects total'\)/);
+    // Sizes now come from Content-Length; a header that is not a number must
+    // not become NaN and silently disable the gate.
+    assert.match(RUNNER, /const len = Number\(res\.headers\.get\('content-length'\)\)/);
+    assert.match(RUNNER, /Number\.isFinite\(len\) \? len : 0/);
   });
 
   test('the dry-run sample strides across the whole set', () => {
@@ -252,8 +310,12 @@ test('renditions upload with the long immutable cache, like originals', () => {
 
   test('the storage ceiling is checked against ACTUAL bytes before each write', () => {
     assert.match(RUNNER, /STORAGE_CEILING = 0\.75 \* 1024 \*\* 3/);
-    assert.match(RUNNER, /if \(baseline \+ bytes \+ size > STORAGE_CEILING\)/,
+    assert.match(RUNNER, /if \(baseline != null && baseline \+ bytes \+ size > STORAGE_CEILING\)/,
       'the gate must use accumulated real bytes, not an up-front estimate');
+    // …and a run that cannot measure the baseline must refuse to write at all,
+    // rather than writing with the gate disabled.
+    assert.match(RUNNER, /if \(APPLY && baseline == null\)/);
+    assert.match(RUNNER, /process\.exit\(4\)/);
     // and it must abort BEFORE the upload call, not after
     const gate = RUNNER.indexOf('> STORAGE_CEILING');
     const up   = RUNNER.indexOf('if (APPLY) await upload(');
