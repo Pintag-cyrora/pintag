@@ -111,3 +111,98 @@ test.describe('listing.html attribution for a hidden agent', () => {
     expect(bodyText).toContain('Daeng Somphone');
   });
 });
+
+// ── Portfolio availability badge + WhatsApp button (2026-09-03) ────────────
+// agents.html keyed its badge on the legacy `status` column, which the DB
+// collapses to active/draft/archived, so every sold or rented listing was
+// badged "ວ່າງ" (Available); agent.html showed no badge at all. Both now
+// resolve market_status through listing-status.js. And an agent with no
+// WhatsApp number got a wa.me/?text=... button with no recipient.
+for (const pageFile of ['agents.html', 'agent.html']) {
+  test.describe(pageFile + ' portfolio', () => {
+    const listing = (o) => Object.assign({
+      id: 'p-' + o.slug, slug: o.slug, title_lo: 'ບ້ານ ' + o.slug, title_en: 'House ' + o.slug,
+      price_amount: 500, price_currency: 'USD', price_frequency: 'monthly', district_lo: 'ສີສັດຕະນາກ', district_en: 'Sisattanak',
+      images: [], transaction_type: 'for_rent', is_featured: false, status: 'active', workflow_status: 'active', market_status: 'available',
+    }, o);
+    async function openWith(page, rows, agent) {
+      const seen = {}; const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await mockProfile(page, [agent || AGENT], seen);
+      await page.route('**/rest/v1/properties**', (route) => {
+        seen.props = route.request().url();
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+      });
+      await page.goto('/' + pageFile + '?slug=daeng');
+      await expect(page.locator('#page')).toBeVisible();
+      return { seen, errors };
+    }
+
+    test('sold / rented / reserved listings are badged by market_status, never "ວ່າງ"', async ({ page }) => {
+      const { seen, errors } = await openWith(page, [
+        listing({ slug: 'a', market_status: 'available' }), listing({ slug: 'r', market_status: 'rented' }),
+        listing({ slug: 's', market_status: 'sold', status: 'active' }), listing({ slug: 'v', market_status: 'reserved' }),
+      ]);
+      expect(seen.props).toContain('market_status');
+      const badges = await page.evaluate(() => [...document.querySelectorAll('.p-card .p-status')].map((b) => b.className.replace('p-status ', '') + ':' + b.textContent));
+      expect(badges).toEqual(['p-status-available:ວ່າງ', 'p-status-rented:ເຊົ່າແລ້ວ', 'p-status-sold:ຂາຍແລ້ວ', 'p-status-offer:ຖືກຈອງແລ້ວ']);
+      expect(errors).toEqual([]);
+    });
+
+    test('with renditions ON: portfolio and hero photos are the sized WebP renditions, originals kept as the fallback', async ({ page }) => {
+      // Both production flags on: renditions AND the image CDN.
+      await page.route('**/config.js*', async (r) => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\nwindow.PINTAG.renditionsEnabled = true; window.PINTAG.imageCdn = true;' }); });
+      const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+      await page.route('**/storage/v1/object/public/property-images/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+      const PATH = '/storage/v1/object/public/property-images/';
+      const ORIG = 'https://ebtgoqrywdywuqrvudcp.supabase.co' + PATH + 'photo-1.jpg';
+      const CDN = 'https://img.pintag.io' + PATH;
+      const { errors } = await openWith(page, [listing({ slug: 'a', images: [ORIG] })]);
+      const imgs = await page.evaluate(() => [...document.querySelectorAll('.p-card .p-img img, .hero-img, .hero-bg-slide')].map((i) => ({ cls: i.className, src: i.getAttribute('src'), orig: i.getAttribute('data-pt-original') })));
+      expect(imgs).toHaveLength(2);   // one card thumbnail + the hero (agents.html) / one reel slide (agent.html)
+      imgs.forEach((i) => {
+        expect(i.orig).toBe(CDN + 'photo-1.jpg');
+        expect(i.src).toBe(CDN + 'renditions/photo-1/' + (/hero/.test(i.cls) ? 'hero' : 'card') + '.webp');
+      });
+      expect(errors).toEqual([]);
+    });
+
+    test('an agent card for a party with no slug is inert: no href, no arrow, not a hover invitation', async ({ page }) => {
+      await openWith(page, []);
+      const card = await page.evaluate(() => {
+        const el = renderAgentCard({ id: 'x', type: 'agent', name_en: 'No Slug', name_lo: '', slug: null, is_active: true, is_verified: false, photo_url: null, bio_en: '' }, { layout: 'row', lang: 'lo' });
+        return { tag: el.tagName, href: el.getAttribute('href'), cls: el.className, arrow: !!el.querySelector('.pt-agent-row-arrow'), name: el.textContent.includes('No Slug') };
+      });
+      expect(card).toEqual({ tag: 'DIV', href: null, cls: 'pt-agent-row pt-agent-row-inert', arrow: false, name: true });
+    });
+
+    test('portfolio and hero photos are sized renditions with the once-only fallback, not bare originals', async ({ page }) => {
+      // Same-origin photo (the page's CSP img-src allows 'self', not arbitrary
+      // hosts), so what is asserted is the composition, not the fallback chain
+      // firing on a blocked URL.
+      const PHOTO = 'http://localhost:8956/pintag-hero.png';
+      const { errors } = await openWith(page, [listing({ slug: 'a', images: [PHOTO] })]);
+      const imgs = await page.evaluate(() => [...document.querySelectorAll('.p-card .p-img img, .hero-img, .hero-bg-slide')].map((i) => ({
+        src: i.getAttribute('src'), orig: i.getAttribute('data-pt-original'), fallback: typeof i.onerror === 'function' || /ptImageFallback/.test(i.getAttribute('onerror') || '') })));
+      expect(imgs.length).toBeGreaterThan(0);
+      // renditionsEnabled is production-only, so here src === original; the
+      // data-pt-original + fallback wiring is what proves the shared
+      // composition (ptCardImageSrc) is in use rather than a bare .src.
+      imgs.forEach((i) => { expect(i.orig).toBe(PHOTO); expect(i.src).toBe(PHOTO); expect(i.fallback).toBe(true); });
+      expect(errors).toEqual([]);
+    });
+
+    test('an agent with no WhatsApp number gets no WhatsApp button (not a recipient-less wa.me link)', async ({ page }) => {
+      const { errors } = await openWith(page, [], Object.assign({}, AGENT, { whatsapp: null }));
+      await expect(page.locator('#wa-btn')).toBeHidden();
+      expect(await page.locator('#wa-btn').getAttribute('href')).not.toMatch(/wa\.me\/\?/);
+      expect(errors).toEqual([]);
+    });
+
+    test('an agent WITH a number keeps the normalised wa.me link', async ({ page }) => {
+      await openWith(page, []);
+      await expect(page.locator('#wa-btn')).toBeVisible();
+      await expect(page.locator('#wa-btn')).toHaveAttribute('href', /wa\.me\/8562055500000\?text=/);
+    });
+  });
+}

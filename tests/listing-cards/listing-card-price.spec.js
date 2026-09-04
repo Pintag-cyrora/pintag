@@ -316,8 +316,10 @@ test('FILTER: an occupied listing lands in its real price band', async ({ page }
 
   await page.selectOption('#price-select', 'r1');            // Under $300
   await expect(cardFor(page, 'unavail-unit-price')).toHaveCount(0);  // was waved through before the fix
-  // r1 is {min:null, max:300}, so the $300 listing is inside it — asserted to
-  // pin the inclusive-bound behaviour this change did not touch.
+  // Bands are half-open [min, max) (2026-09-03, matching budget-bands.js's
+  // bandContains): the $300 listing belongs to "$300-600", not "Under $300".
+  await expect(cardFor(page, 'avail-unit-price')).toHaveCount(0);
+  await page.selectOption('#price-select', 'r2');
   await expect(cardFor(page, 'avail-unit-price')).toHaveCount(1);
 
   await page.selectOption('#price-select', 'r4');            // Over $1,000

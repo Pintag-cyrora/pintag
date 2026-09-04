@@ -1,0 +1,111 @@
+name: Frontend Regression Tests
+
+# Runs every root-level node --test suite and every Playwright suite under
+# tests/ that has no workflow of its own. Added 2026-09-03 after
+# tests/contacts had been red for a day without anyone noticing: only four of
+# the fifteen Playwright suites were wired to CI, so a change to components.js
+# could break a page's tests silently. The suites with their own workflow
+# (contact-tracking, csp, intelligence, listing-cards, pricing, rental-pricing,
+# security) keep it; this one covers the rest.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.html'
+      - '*.js'
+      - '*.css'
+      - 'tests/**'
+      - '.github/workflows/frontend-regression-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '*.html'
+      - '*.js'
+      - '*.css'
+      - 'tests/**'
+      - '.github/workflows/frontend-regression-tests.yml'
+  workflow_dispatch:
+
+# Least privilege: reads code and runs tests, nothing else.
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Root unit tests (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      # Every *.test.js at the repo root extracts REAL functions out of the
+      # pages/modules (listings.html, admin.html, components.js, ...) into a
+      # vm, so a renamed helper fails here before it fails in a browser.
+      - name: Root unit suites
+        run: node --test *.test.js
+
+      - name: map-location unit suite
+        working-directory: tests/map-location
+        run: node --test map-location.test.js
+
+      - name: Smart Import prompt unit suite
+        run: node --test tests/smart-import-prompt/*.test.mjs
+
+  playwright:
+    name: ${{ matrix.suite }} (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - admin-province
+          - admin-save-integrity
+          - agent-assignment
+          - agent-visibility
+          - contacts
+          - homepage-i18n
+          - listing-title
+          - listings-filters
+          - listings-visibility
+          - map-location
+          - unit-types
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Install test dependencies
+        working-directory: tests/${{ matrix.suite }}
+        run: npm install
+
+      - name: Install Chromium
+        working-directory: tests/${{ matrix.suite }}
+        run: npx playwright install --with-deps chromium
+
+      # Each suite drives the REAL page from the repo root through its own
+      # static-server.js against a route-level Supabase fake: no network, no
+      # secrets, no auth.
+      - name: Run suite
+        working-directory: tests/${{ matrix.suite }}
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.suite }}-playwright-report
+          path: tests/${{ matrix.suite }}/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore

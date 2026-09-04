@@ -41,7 +41,7 @@ vm.runInThisContext("var VIENTIANE_CAPITAL_DISTRICTS=['Sisattanak','Saysettha','
 vm.runInThisContext("var matchesRentalFilters=function(){return true;};");
 vm.runInThisContext("var isAvailableStatus=function(){return true;};");
 vm.runInThisContext(extractVar('PRICE_BANDS'));
-['_resolvedPrice', '_numericPrice', '_listingProvince', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand', 'matchesActiveFilters']
+['_resolvedPrice', '_resolvedPriceForCurrentTx', '_numericPrice', '_listingProvince', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand', 'matchesActiveFilters']
   .forEach((n) => vm.runInThisContext(extractFn(n)));
 
 function setState(s) { Object.assign(globalThis, s); }
@@ -53,6 +53,32 @@ test('rent band $300–600 includes $450, excludes $700 and $250', () => {
   assert.equal(globalThis.matchesPriceBand(usd(450)), true);
   assert.equal(globalThis.matchesPriceBand(usd(700)), false);
   assert.equal(globalThis.matchesPriceBand(usd(250)), false);
+});
+
+test('bands are half-open [min, max): an edge amount belongs to exactly one band', () => {
+  // $300 ends "Under $300" and starts "$300-600"; an inclusive max put it in both.
+  setState({ currentTxFilter: 'for_rent', currentPriceBand: 'r1' });
+  assert.equal(globalThis.matchesPriceBand(usd(299)), true);
+  assert.equal(globalThis.matchesPriceBand(usd(300)), false);
+  setState({ currentTxFilter: 'for_rent', currentPriceBand: 'r2' });
+  assert.equal(globalThis.matchesPriceBand(usd(300)), true);
+  assert.equal(globalThis.matchesPriceBand(usd(600)), false);
+  setState({ currentTxFilter: 'for_rent', currentPriceBand: 'r4' });
+  assert.equal(globalThis.matchesPriceBand(usd(1000)), true);
+  setState({ currentTxFilter: 'for_sale', currentPriceBand: 's1' });
+  assert.equal(globalThis.matchesPriceBand(usd(50000, { transaction_type: 'for_sale' })), false);
+  setState({ currentTxFilter: 'for_sale', currentPriceBand: 's2' });
+  assert.equal(globalThis.matchesPriceBand(usd(50000, { transaction_type: 'for_sale' })), true);
+});
+
+test('a sale_or_rent listing under For Rent is banded on its rent leg', () => {
+  const villa = { transaction_type: 'sale_or_rent', price_amount: 250000, price_currency: 'USD', rent_price_amount: 1200, rent_price_currency: 'USD', property_type: 'villa', district_en: 'Sisattanak' };
+  setState({ currentTxFilter: 'for_rent', currentPriceBand: 'r4' });
+  assert.equal(globalThis.matchesPriceBand(villa), true);
+  setState({ currentTxFilter: 'for_rent', currentPriceBand: 'r2' });
+  assert.equal(globalThis.matchesPriceBand(villa), false);
+  setState({ currentTxFilter: 'for_sale', currentPriceBand: 's3' });
+  assert.equal(globalThis.matchesPriceBand(villa), true);
 });
 
 test('"Any price" matches every listing', () => {

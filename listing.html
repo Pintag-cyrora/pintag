@@ -713,7 +713,7 @@ function getFomoLines(stats, lang, ctx) {
   // District popularity with transaction context
   if (stats.is_top_district && stats.district) {
     var d = esc(stats.district);
-    if (isSale !== undefined) {
+    if (ctx) {   // isSale is never undefined (ctx && ...), so the generic line below was unreachable
       lines.push({
         lo: 'ນິຍົມ' + (isSale ? 'ຊື້ຂາຍ' : 'ເຊົ່າ') + 'ໃນ ' + d,
         en: 'Popular ' + (isSale ? 'sale' : 'rental') + ' in ' + d,
@@ -811,7 +811,9 @@ function applyMarketTransitionStats(stats, lang, transactionType) {
     return;
   }
   var days = Math.round(stats.median_days);
-  var isSale = transactionType === 'for_sale';
+  // sale_or_rent is bucketed with sales here exactly as getFomoLines() and
+  // listings.html's activity line do; it was told "typically rent within".
+  var isSale = transactionType === 'for_sale' || transactionType === 'sale_or_rent';
   var text = isSale
     ? { lo:'ອະສັງຫາປະເພດນີ້ໂດຍປົກກະຕິຂາຍພາຍໃນ '+days+' ມື້', en:'Homes like this typically sell within '+days+' days', zh:'此类房源通常在 '+days+' 天内售出' }[lang]
     : { lo:'ອະສັງຫາປະເພດນີ້ໂດຍປົກກະຕິເຊົ່າພາຍໃນ '+days+' ມື້', en:'Homes like this typically rent within '+days+' days', zh:'此类房源通常在 '+days+' 天内租出' }[lang];
@@ -1089,7 +1091,10 @@ function getParam(name){
   try{var v=new URLSearchParams(window.location.search).get(name);if(v&&v.trim())return v.trim();}catch(_){}
   var m=RegExp('[?&]'+name+'=([^&]*)').exec(window.location.search);
   if(m&&m[1]){var q=decodeURIComponent(m[1].replace(/\+/g,' ')).trim();if(q)return q;}
-  if(name==='slug'){var h=(window.location.hash||'').replace(/^#/,'').trim();if(h)return decodeURIComponent(h);}
+  // The hash is a slug only when nothing else identifies the listing: on a
+  // ?id= URL it is a same-page anchor (#similar-section after Find Similar),
+  // and reading it as a slug turned a refresh/share into "Property not found".
+  if(name==='slug'&&!/[?&]id=[^&]+/.test(window.location.search)){var h=(window.location.hash||'').replace(/^#/,'').trim();if(h)return decodeURIComponent(h);}
   return null;
 }
 
@@ -1188,7 +1193,7 @@ function handleNotifyMeClick(){
     zh:'您好，这套房源我错过了，有类似的'+typeLabel+'时请通知我。'
   }[lang];
   if(_currentContactPhone){
-    var url='https://wa.me/'+_currentContactPhone+'?text='+encodeURIComponent(msg+' — '+(propertyContext.title_en||''));
+    var url='https://wa.me/'+_currentContactPhone+'?text='+encodeURIComponent(msg+' — '+resolveLangField(propertyContext,'title',lang));
     window.open(url,'_blank','noopener,noreferrer');
   }
   if(typeof postEvent==='function'&&propertyContext.id){
@@ -1353,7 +1358,7 @@ function updateOGTags(data){
     desc=unavailLead+' '+(SEO_UNAVAILABLE_DESC_SUFFIX[lang]||SEO_UNAVAILABLE_DESC_SUFFIX.en);
   }
   var imgs=Array.isArray(data.images)?data.images.filter(function(u){return u&&typeof u==='string';}):[];
-  var img=imgs[0]||'https://pintag.io/og-preview.jpg';
+  var img=imgs[0]?ptCdnImage(imgs[0]):'https://pintag.io/og-preview.jpg';
   var imgAlt=(OG_IMG_ALT_PREFIX[lang]||OG_IMG_ALT_PREFIX.en)+resolveLangField(data,'title',lang,'Pintag');
   var url=getCanonicalListingUrl(data,lang)||('https://pintag.io/listing.html?lang='+encodeURIComponent(lang));
   function setMeta(sel,val){var el=document.querySelector(sel);if(el)el.setAttribute('content',val);}
@@ -1411,10 +1416,11 @@ async function fetchProperty(slug,id){
     // changed. Non-property-images URLs (agent photos, external, data:) pass
     // through untouched. This one point covers the hero, thumbnails, lightbox,
     // unit cards, and the building strip, which all read these arrays.
-    if(typeof ptCdnImage==='function'){
-      if(Array.isArray(propertyContext.images)) propertyContext.images=propertyContext.images.map(ptCdnImage);
-      if(Array.isArray(propertyContext.unit_types)) propertyContext.unit_types.forEach(function(u){ if(u&&Array.isArray(u.images)) u.images=u.images.map(ptCdnImage); });
-    }
+    // NOT rewritten in memory any more: the arrays keep the ORIGINAL storage
+    // URLs, and every <img> composes rendition-then-CDN through
+    // ptCardImageSrc() (components.js). Rewriting first made
+    // renditionPublicUrl() reject the CDN origin, so with the CDN on this
+    // page would have served full-size originals for every photo.
     // Single-property page — every data-track element here implicitly
     // refers to this listing; tracking.js falls back to this when an
     // element has no explicit data-track-property-id of its own.
@@ -1679,7 +1685,7 @@ function renderSimilarGrid(similar){
   var frag=document.createDocumentFragment();
   var idxCounter=1;
   similar.forEach(function(p){
-    if(!p||!p.slug)return;
+    if(!p)return;   // _ptListingHref() links a slugless row through ?id=; dropping it left the "N similar" count contradicting the grid
     var simIdx = p.id ? idxCounter++ : null;
     var card = renderPropertyPreview(p, {
       lang: lang,
@@ -1693,12 +1699,19 @@ function renderSimilarGrid(similar){
   gridEl.innerHTML='';
   gridEl.appendChild(frag);
 
-  var sessionId=getOrCreateSessionId();
-  var impressionRows=similar.filter(function(p){return p&&p.id;}).map(function(p,idx){
-    return {property_id:p.id,event_type:'impression',session_id:sessionId,source:'similar',search_position:idx+1};
-  });
-  if(impressionRows.length) postEvent('listing_events',impressionRows);
+  // setLang() re-renders the same cached result set; the impressions belong
+  // to the fetch, so a lo -> en -> zh toggle must not triple the count that
+  // is the click-through denominator in analytics.
+  if(similar!==_similarImpressionsPostedFor){
+    _similarImpressionsPostedFor=similar;
+    var sessionId=getOrCreateSessionId();
+    var impressionRows=similar.filter(function(p){return p&&p.id;}).map(function(p,idx){
+      return {property_id:p.id,event_type:'impression',session_id:sessionId,source:'similar',search_position:idx+1};
+    });
+    if(impressionRows.length) postEvent('listing_events',impressionRows);
+  }
 }
+var _similarImpressionsPostedFor=null;
 
 function showErrorState(msg){
   var t=document.getElementById('view-target');
@@ -1783,6 +1796,10 @@ function _syncUnitUrlParam(){
 // whichever gallery is actually on screen rather than always reopening the
 // building's photos underneath a unit's swapped-in hero.
 var _currentGalleryImages = [];
+// Index of the photo the desktop hero is showing. The lightbox used to
+// recover it by indexOf(heroImg.src) against the ORIGINAL urls, which never
+// matches once the hero shows a WebP rendition, so it always opened at 0.
+var _currentHeroIdx = 0;
 
 // Rented Listings UX v2, Priority 4 -- the "Notify Me About Similar
 // Properties" waiting-list CTA needs the buyer contact's WhatsApp number,
@@ -1810,14 +1827,21 @@ function ptSelectContact(index){
   // the selection too.
   _currentContactPhone=ptNormalizePhoneDigits(c.whatsapp||c.phone||'');
 
-  var wa=document.getElementById('pt-wa-primary');
-  if(wa){
+  // Both WhatsApp buttons -- the desktop one and the mobile sticky bar's,
+  // which are on screen together on a phone -- must dial the picked contact.
+  // ...and every unit card's own Inquire button, which sits on the same
+  // screen: each keeps its pre-filled unit message, only the number and the
+  // attributed contact change.
+  var waButtons=[document.getElementById('pt-wa-primary'),document.getElementById('pt-wa-mobile')]
+    .concat(Array.prototype.slice.call(document.querySelectorAll('.unit-cta[data-contact-id]')));
+  waButtons.forEach(function(wa){
+    if(!wa) return;
     var existing=wa.getAttribute('href')||'';
     var q=existing.indexOf('?');
     var text=(q>-1)?existing.slice(q):'';
     wa.setAttribute('href', _currentContactPhone?('https://wa.me/'+_currentContactPhone+text):'#');
     wa.setAttribute('data-contact-id', _currentContactId);
-  }
+  });
   var call=document.getElementById('pt-call-primary');
   if(call){
     call.setAttribute('href',ptTelHref(c.phone));
@@ -2018,7 +2042,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
     // already resolved that fallback), same "treat cards like selectable
     // products" ask as Booking.com room cards.
     var coverImg=Array.isArray(resolvedUnit.images)&&resolvedUnit.images.length?resolvedUnit.images[0]:null;
-    var coverHtml=coverImg?'<div class="unit-card-cover"><img src="'+esc(ptImageUrl(coverImg,'card'))+'" alt="" loading="lazy"></div>':'';
+    var coverHtml=coverImg?'<div class="unit-card-cover"><img src="'+esc(ptCardImageSrc(coverImg,'card'))+'" alt="" loading="lazy"'+ptCardImageFallbackAttrs(coverImg)+'></div>':'';
 
     var ctaHtml='';
     if(cleanPhone){
@@ -2031,8 +2055,8 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
       // No data-track attribute here -- ptContactClick() posts ui_events
       // itself; adding data-track too would double-post (see its header
       // comment in components.js).
-      ctaHtml='<a href="'+esc(waUnitUrl)+'" target="_blank" rel="noopener noreferrer" class="unit-cta" '+
-        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:\''+escJs((property.contacts&&property.contacts.id)||'')+'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+escJs(unitName)+'\'}})">'+
+      ctaHtml='<a href="'+esc(waUnitUrl)+'" target="_blank" rel="noopener noreferrer" class="unit-cta" data-contact-id="'+escJs(_currentContactId)+'" '+
+        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+escJs(unitName)+'\'}})">'+
         esc(L.unitInquire[lang])+'</a>';
     }
 
@@ -2119,6 +2143,7 @@ function buildMockupLayout(){
 
   var imagesArray=(selectedUnit?selectedUnit.resolved.images:(Array.isArray(data.images)?data.images:[])).filter(function(u){return u&&typeof u==='string';});
   _currentGalleryImages=imagesArray;
+  _currentHeroIdx=0;
 
   // Description/Features/Amenities also become the SELECTED UNIT's own
   // (already-inherited-from-the-building-when-null) values, same
@@ -2456,7 +2481,7 @@ function buildMockupLayout(){
     if(_stripImgs.length||_stripAmenities.length){
       var _stripPhotosHtml=_stripImgs.length?(
         '<div class="building-strip-photos">'+_stripImgs.map(function(url){
-          return '<div class="building-strip-photo" data-url="'+esc(url)+'"><img src="'+esc(ptImageUrl(url,'card'))+'" alt="" loading="lazy"></div>';
+          return '<div class="building-strip-photo" data-url="'+esc(url)+'"><img src="'+esc(ptCardImageSrc(url,'card'))+'" alt="" loading="lazy"'+ptCardImageFallbackAttrs(url)+'></div>';
         }).join('')+'</div>'
       ):'';
       var _stripAmenitiesHtml=_stripAmenities.length?(
@@ -2679,7 +2704,7 @@ function buildMockupLayout(){
       if(statusCta.action==='find_similar'){
         // Same-page anchor scroll, not a contact action -- data-track is
         // sufficient (no lead_events involved either way).
-        statusCtaHtml='<a href="#similar-section" class="btn-primary" style="justify-content:center;" data-track="status-cta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>';
+        statusCtaHtml='<a href="#similar-section" class="btn-primary" style="justify-content:center;" onclick="scrollToSimilar(event)" data-track="status-cta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>';
       }else{
         // waiting_list/notify_me -- a waitlist ping for an UNAVAILABLE
         // listing, not a live property inquiry (mirrors
@@ -2689,7 +2714,7 @@ function buildMockupLayout(){
         // matches this button's pre-existing behavior (it never called
         // trackLead() either), just now via the shared, audited helper
         // instead of silently omitting a call.
-        var waStatusMsg=encodeURIComponent(statusCta.label+' — '+(data.title_en||''));
+        var waStatusMsg=encodeURIComponent(statusCta.label+' — '+resolveLangField(data,'title',lang));   // localised like every other field
         var waStatusUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waStatusMsg:'#';
         statusCtaHtml='<a href="'+esc(waStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'contact-whatsapp-status-cta\',trackLabel:\''+escJs(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
       }
@@ -3064,12 +3089,12 @@ function buildMockupLayout(){
     // recordLead semantics per branch).
     var mCtaButtonHtml=(typeof statusCta!=='undefined'&&statusCta)
       ? (statusCta.action==='find_similar'
-          ? '<a href="#similar-section" class="mcta-btn" data-track="mcta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>'
+          ? '<a href="#similar-section" class="mcta-btn" onclick="scrollToSimilar(event)" data-track="mcta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>'
           : (function(){
-              var mWaStatusUrl=cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+(data.title_en||''))):'#';
+              var mWaStatusUrl=cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+resolveLangField(data,'title',lang))):'#';
               return '<a href="'+esc(mWaStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'mcta-whatsapp-status\',trackLabel:\''+escJs(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
             })())
-      : '<a href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:\''+escJs(propertyContext&&propertyContext.contacts&&propertyContext.contacts.id||'')+'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
+      : '<a id="pt-wa-mobile" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
       '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+
@@ -3137,9 +3162,9 @@ function buildDesktopGallery(images){
     if(i<clean.length){
       if(i===maxThumbs-1&&clean.length>maxThumbs){
         var remaining=clean.length-maxThumbs;
-        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(ptImageUrl(clean[i],'thumbnail'))+'" alt="" loading="lazy" decoding="async" data-pt-original="'+esc(clean[i])+'" onerror="if(!ptImageFallback(this))handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
+        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(ptCardImageSrc(clean[i],'thumbnail'))+'" alt="" loading="lazy" decoding="async" data-pt-original="'+esc(ptCdnImage(clean[i]))+'" onerror="if(!ptImageFallback(this))handleImageError(this)"><div class="dg-thumb-overflow"><span class="dg-thumb-overflow-n">+'+(remaining+1)+'</span><span class="dg-thumb-overflow-lbl">PHOTOS</span></div></div>';
       }else{
-        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(ptImageUrl(clean[i],'thumbnail'))+'" alt="" loading="lazy" decoding="async" data-pt-original="'+esc(clean[i])+'" onerror="if(!ptImageFallback(this))handleImageError(this)"></div>';
+        thumbsHtml+='<div class="dg-thumb '+cls+'" data-thumb-idx="'+i+'" data-track="gallery-thumbnail" data-track-type="thumbnail" data-track-label="Thumbnail '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img src="'+esc(ptCardImageSrc(clean[i],'thumbnail'))+'" alt="" loading="lazy" decoding="async" data-pt-original="'+esc(ptCdnImage(clean[i]))+'" onerror="if(!ptImageFallback(this))handleImageError(this)"></div>';
       }
     }else{
       thumbsHtml+='<div class="dg-thumb" style="cursor:default;opacity:0.12;"><div style="width:100%;height:100%;background:var(--warm-deep);"></div></div>';
@@ -3148,7 +3173,7 @@ function buildDesktopGallery(images){
   return(
     '<div class="desktop-gallery" id="dg-hero-frame" data-track="gallery-hero-image" data-track-type="image" data-track-label="Hero image">'+
     '<div class="dg-hero" id="dg-hero-box">'+
-    '<img src="'+esc(ptImageUrl(clean[0],'hero'))+'" id="dg-hero-img" alt="" decoding="async" data-pt-original="'+esc(clean[0])+'" onerror="if(!ptImageFallback(this))handleImageError(this)">'+
+    '<img src="'+esc(ptCardImageSrc(clean[0],'hero'))+'" id="dg-hero-img" alt="" decoding="async" data-pt-original="'+esc(ptCdnImage(clean[0]))+'" onerror="if(!ptImageFallback(this))handleImageError(this)">'+
     '<span class="dg-coord" id="dg-coord-lbl">01 / '+String(clean.length).padStart(2,'0')+'</span>'+
     '<button class="dg-view-all" id="dg-view-all-btn" data-track="gallery-view-all" data-track-type="button" data-track-label="View all photos">'+
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>'+
@@ -3163,15 +3188,22 @@ function buildDesktopGallery(images){
 function syncDesktopHero(idx,thumbEl){
   var clean=_currentGalleryImages.filter(function(u){return u&&typeof u==='string';});
   if(!clean[idx])return;
+  _currentHeroIdx=idx;
   var heroImg=document.getElementById('dg-hero-img');
   var coordLbl=document.getElementById('dg-coord-lbl');
   var heroBox=document.getElementById('dg-hero-box');
   if(heroImg){
     if(_heroTimer){clearTimeout(_heroTimer);_heroTimer=null;}
     heroImg.style.opacity='0';
-    var capturedSrc=ptImageUrl(clean[idx],'hero');
+    var capturedSrc=ptCardImageSrc(clean[idx],'hero');
     _heroTimer=setTimeout(function(){
       _heroTimer=null;
+      // The on-error fallback must point at THIS photo's original: it was
+      // emitted once for photo 1, so a missing rendition swapped the hero
+      // back to photo 1 (and blanked it on the next miss, the fallback
+      // being once-only).
+      heroImg.setAttribute('data-pt-original',ptCdnImage(clean[idx]));
+      if(heroImg.dataset)delete heroImg.dataset.ptFellBack;
       heroImg.src=capturedSrc;
       if(heroImg.decode){heroImg.decode().then(function(){heroImg.style.opacity='1';}).catch(function(){heroImg.style.opacity='1';});}
       else{requestAnimationFrame(function(){heroImg.style.opacity='1';});}
@@ -3219,10 +3251,10 @@ function buildMobileGallery(images, statusBadgeHtml){
   // jumpMobileGallerySlide() are all unchanged.
   clean.forEach(function(img,i){
     var near=i<=PT_SLIDE_WINDOW;
-    var slideUrl=ptImageUrl(img,'gallery');
+    var slideUrl=ptCardImageSrc(img,'gallery');
     var srcAttr=near?('src="'+esc(slideUrl)+'"'):('data-src="'+esc(slideUrl)+'"');
     var loading=i===0?'eager':'lazy';
-    slidesHtml+='<div class="mg-slide" data-idx="'+i+'" data-track="gallery-mobile-slide" data-track-type="image" data-track-label="Photo '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img '+srcAttr+' alt="" loading="'+loading+'" decoding="async" data-pt-original="'+esc(img)+'" onerror="if(!ptImageFallback(this))handleImageError(this)"></div>';
+    slidesHtml+='<div class="mg-slide" data-idx="'+i+'" data-track="gallery-mobile-slide" data-track-type="image" data-track-label="Photo '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'><img '+srcAttr+' alt="" loading="'+loading+'" decoding="async" data-pt-original="'+esc(ptCdnImage(img))+'" onerror="if(!ptImageFallback(this))handleImageError(this)"></div>';
     dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'" data-track="gallery-mobile-dot" data-track-type="dot" data-track-label="Dot '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'></div>';
   });
   var overlayHtml=statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'';
@@ -3337,7 +3369,7 @@ var LB={
     var img=document.getElementById('lb-img');
     if(!img||!this.images.length)return;
     this.idx=((idx%this.images.length)+this.images.length)%this.images.length;
-    var capturedSrc=this.images[this.idx];
+    var capturedSrc=ptCdnImage(this.images[this.idx]);
     if(_lbTimer){clearTimeout(_lbTimer);_lbTimer=null;img.classList.remove('lb-fade');}
     if(animate){
       img.classList.add('lb-fade');
@@ -3347,7 +3379,7 @@ var LB={
     var self=this;
     [this.idx+1,this.idx-1].forEach(function(pi){
       var si=((pi%self.images.length)+self.images.length)%self.images.length;
-      if(si!==self.idx&&self.images[si]){var pre=new Image();pre.src=self.images[si];}
+      if(si!==self.idx&&self.images[si]){var pre=new Image();pre.src=ptCdnImage(self.images[si]);}
     });
   },
   prev:function(){this.show(this.idx-1,true);},
@@ -3384,7 +3416,7 @@ function wireGalleryLightbox(){
   var viewAll=document.getElementById('dg-view-all-btn');
   var images=_currentGalleryImages.filter(function(u){return u&&typeof u==='string';});
   if(!images.length)return;
-  if(viewAll){viewAll.onclick=function(e){e.stopPropagation();LB.open(images,0);};}
+  if(viewAll){viewAll.onclick=function(e){e.stopPropagation();LB.open(images,(_currentHeroIdx>=0&&_currentHeroIdx<images.length)?_currentHeroIdx:0);};}
   document.querySelectorAll('.dg-thumb').forEach(function(thumb,i){
     thumb.onclick=function(e){
       e.stopPropagation();
@@ -3395,10 +3427,7 @@ function wireGalleryLightbox(){
   if(frame){
     frame.style.cursor='pointer';
     frame.onclick=function(){
-      var heroImg=document.getElementById('dg-hero-img');
-      var currentSrc=heroImg?heroImg.src:(images[0]||'');
-      var startIdx=images.indexOf(currentSrc);
-      if(startIdx<0)startIdx=0;
+      var startIdx=(_currentHeroIdx>=0&&_currentHeroIdx<images.length)?_currentHeroIdx:0;
       LB.open(images,startIdx);
     };
   }

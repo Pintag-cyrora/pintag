@@ -20,7 +20,7 @@ function extractFn(file, name) {
 }
 
 // The two module-level constants the helpers read, then the real functions.
-vm.runInThisContext("var PT_IMAGE_CDN_ORIGIN='https://img.pintag.io'; var PT_PROPERTY_IMAGES_PATH='/storage/v1/object/public/property-images/';");
+vm.runInThisContext("var PT_IMAGE_CDN_ORIGIN='https://img.pintag.io'; var PT_PROPERTY_IMAGES_PATH='/storage/v1/object/public/property-images/'; var PT_RENDITION_PREFIX_PATH='renditions/';");
 vm.runInThisContext(extractFn('components.js', 'ptCdnImage'));
 vm.runInThisContext(extractFn('components.js', 'ptCdnImageFallback'));
 const { ptCdnImage, ptCdnImageFallback } = globalThis;
@@ -175,4 +175,38 @@ test('fallback: ignores non-IMG elements and missing config', () => {
   assert.equal(ptCdnImageFallback(null), false);
   globalThis.window.PINTAG = { imageCdn: true };    // no supabaseUrl
   assert.equal(ptCdnImageFallback(fakeImg(CDN + 'a.jpg')), false);
+});
+
+// ── Card composition: rendition FIRST, CDN SECOND ─────────────────────────
+// renditionPublicUrl() only recognises the Supabase origin, so CDN-rewriting
+// the original before deriving the rendition returned the full-size original
+// through the CDN and no rendition was ever requested once imageCdn flipped.
+vm.runInThisContext(fs.readFileSync(new URL('./image-renditions.js', import.meta.url), 'utf8'), { filename: 'image-renditions.js' });
+vm.runInThisContext("var PT_IMAGE_PROFILES = { thumbnail: { width: 200 }, card: { width: 400 }, gallery: { width: 800 }, hero: { width: 1200 } };");
+['_ptEsc', 'ptImageUrl', 'ptImageFallbackAttrs', 'ptCardImageSrc', 'ptCardImageFallbackAttrs']
+  .forEach((n) => vm.runInThisContext(extractFn('components.js', n)));
+const { ptCardImageSrc, ptCardImageFallbackAttrs } = globalThis;
+
+test('with the CDN and renditions both on, a card src is the CDN-routed RENDITION and the fallback the CDN-routed original', () => {
+  globalThis.window = { PINTAG: { imageCdn: true, renditionsEnabled: true, supabaseUrl: PROD } };
+  const src = ptCardImageSrc(PUB + '1787301675902-4gcl6e.jpg', 'card');
+  assert.equal(src, CDN + 'renditions/1787301675902-4gcl6e/card.webp');
+  assert.equal(ptCardImageFallbackAttrs(PUB + '1787301675902-4gcl6e.jpg'),
+    ' data-pt-original="' + CDN + '1787301675902-4gcl6e.jpg" onerror="ptImageFallback(this)"');
+});
+
+test('renditions on, CDN off: plain Supabase rendition; both off: the original untouched', () => {
+  globalThis.window = { PINTAG: { imageCdn: false, renditionsEnabled: true, supabaseUrl: PROD } };
+  assert.equal(ptCardImageSrc(PUB + 'a.jpg', 'card'), PUB + 'renditions/a/card.webp');
+  globalThis.window = { PINTAG: { imageCdn: false, renditionsEnabled: false, supabaseUrl: PROD } };
+  assert.equal(ptCardImageSrc(PUB + 'a.jpg', 'card'), PUB + 'a.jpg');
+  assert.equal(ptCardImageSrc('https://scontent.fbcdn.net/x.jpg', 'card'), 'https://scontent.fbcdn.net/x.jpg');
+});
+
+test('a missing CDN RENDITION is not a CDN outage: the listener defers to the element\'s own ptImageFallback', () => {
+  setCdn(true);
+  const el = { tagName: 'IMG', dataset: {}, currentSrc: CDN + 'renditions/a/card.webp', src: CDN + 'renditions/a/card.webp', getAttribute() { return this.src; }, setAttribute(k, v) { this[k] = v; } };
+  assert.equal(ptCdnImageFallback(el), false);
+  assert.equal(el.src, CDN + 'renditions/a/card.webp', 'untouched');
+  assert.equal(el.dataset.cdnFallback, undefined, 'the once-only marker is not spent on a rendition miss');
 });

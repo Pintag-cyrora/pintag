@@ -60,7 +60,7 @@ function extractVar(file, name) {
 }
 vm.runInThisContext("var currentTxFilter='all', currentPriceBand='all', currentSort='featured';");
 vm.runInThisContext(extractVar('listings.html', 'PRICE_BANDS'));
-['_resolvedPrice', '_numericPrice', '_comparePrice', 'formatPriceBubble', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand']
+['_resolvedPrice', '_resolvedPriceForCurrentTx', '_numericPrice', '_comparePrice', 'formatPriceBubble', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand']
   .forEach((n) => vm.runInThisContext(extractFn('listings.html', n)));
 vm.runInThisContext("var _availabilityRank=function(p){return 0;};");
 vm.runInThisContext(extractFn('listings.html', 'sortProperties'));
@@ -486,4 +486,16 @@ test('D9. no legitimate price anywhere → honest "on request", never a made-up 
   const info = formatPropertyPrice(p, 'en');
   assert.equal(info.isPriceOnRequest, true);
   assert.equal(priceText(p), null);
+});
+
+test('B10. SORT: under For Rent a sale_or_rent listing sorts on its RENT leg, the same leg the band and the bubble use', () => {
+  globalThis.currentTxFilter = 'for_rent'; globalThis.currentSort = 'price_asc';
+  const rows = [
+    { slug: 'rent-2000', transaction_type: 'for_rent', price_amount: 2000, price_currency: 'USD', market_status: 'available' },
+    { slug: 'villa-both', transaction_type: 'sale_or_rent', price_amount: 250000, price_currency: 'USD', rent_price_amount: 1200, rent_price_currency: 'USD', market_status: 'available' },
+    { slug: 'rent-850', transaction_type: 'for_rent', price_amount: 850, price_currency: 'USD', market_status: 'available' },
+  ];
+  assert.deepEqual(globalThis.sortProperties(rows).map((p) => p.slug), ['rent-850', 'villa-both', 'rent-2000']);
+  globalThis.currentTxFilter = 'all';
+  assert.deepEqual(globalThis.sortProperties(rows).map((p) => p.slug).indexOf('villa-both'), 2, 'under All the sale leg still applies');
 });

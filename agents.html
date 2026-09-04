@@ -231,7 +231,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 <script src="config.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>
 <script src="currency.js?v=__ASSET_VERSION__"></script>
+<script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
+<script src="image-renditions.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
 <script src="tracking.js?v=__ASSET_VERSION__"></script>
 <script src="analytics-tracking.js?v=__ASSET_VERSION__"></script>
@@ -239,6 +241,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 const SB=window.PINTAG.supabaseUrl;
 const KEY=window.PINTAG.anonKey;
 const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-villa.png';
+
 const slug=new URLSearchParams(location.search).get('slug');
 
 function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -271,7 +274,7 @@ async function load(){
     if(!ag||!ag[0]) throw new Error('Not found');
     var a=ag[0];
     var r2=await fetch(
-      SB+'/rest/v1/properties?managed_by_party_id=eq.'+a.id+'&order=is_featured.desc,created_at.desc&select=slug,title_lo,title_en,price_display,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency,district_lo,district_en,images,transaction_type,is_featured,status',
+      SB+'/rest/v1/properties?managed_by_party_id=eq.'+a.id+'&order=is_featured.desc,created_at.desc&select=slug,title_lo,title_en,price_display,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency,district_lo,district_en,images,transaction_type,is_featured,market_status,workflow_status',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var listings=await r2.json();
     if(!Array.isArray(listings)) listings=[];
@@ -301,7 +304,7 @@ function render(a,listings){
 
   if(heroImg){
     heroEl.innerHTML=
-      '<img class="hero-img" src="'+esc(heroImg)+'" alt="" loading="eager" onerror="this.src=\''+FALLBACK+'\'">'+
+      '<img class="hero-img" src="'+esc(ptCardImageSrc(heroImg,'hero'))+'" alt="" loading="eager" data-pt-original="'+esc(ptCdnImage(heroImg))+'" onerror="if(!ptImageFallback(this))this.src=\''+FALLBACK+'\'">'+
       '<div class="hero-gradient"></div>'+
       '<div class="hero-identity fu fu1">'+
         '<div class="hero-avatar" id="h-av"><div class="hero-avatar-initial">'+initial+'</div></div>'+
@@ -368,8 +371,10 @@ function render(a,listings){
   // WhatsApp — human tone
   var waN=ptNormalizePhoneDigits(a.whatsapp);
   var waM=encodeURIComponent('ສະບາຍດີ '+(a.name_lo||a.name_en||'')+', ຂ້ອຍຢາກສອບຖາມກ່ຽວກັບລາຍການ Pintag ຂອງທ່ານ');
-  var waUrl='https://wa.me/'+waN+'?text='+waM;
-  document.getElementById('wa-btn').href=waUrl;
+  // No number on file -> no button. wa.me/?text=... opens WhatsApp with no
+  // recipient while still counting as a lead.
+  document.getElementById('wa-btn').style.display=waN?'':'none';
+  document.getElementById('wa-btn').href=waN?('https://wa.me/'+waN+'?text='+waM):'#';
   document.getElementById('wa-label').textContent='ຢາກຮູ້ເພີ່ມເຕີມ? ທັກຫາ '+(a.name_lo||a.name_en||'')+'ໄດ້ເລີຍ';
   // Contact tracking -- this page previously loaded none of the tracking
   // stack at all (no session.js/tracking.js/analytics-tracking.js, no
@@ -398,7 +403,7 @@ function render(a,listings){
     card.className='p-card';
     var imgDiv=document.createElement('div');imgDiv.className='p-img';
     if(imgs[0]){
-      var ti=document.createElement('img');ti.src=imgs[0];ti.alt='';
+      var ti=document.createElement('img');ptApplyListingImage(ti,imgs[0],'card',FALLBACK);ti.alt='';
       ti.loading=i===0?'eager':'lazy';ti.decoding='async';imgDiv.appendChild(ti);
     }
     var tx=document.createElement('span');
@@ -406,8 +411,10 @@ function render(a,listings){
     tx.textContent=p.transaction_type==='for_sale'?'ຂາຍ':p.transaction_type==='sale_or_rent'?'ຊື້/ເຊົ່າ':'ເຊົ່າ';imgDiv.appendChild(tx);
     if(p.is_featured){var dot=document.createElement('span');dot.className='p-featured-dot';imgDiv.appendChild(dot);}
     var st=document.createElement('span');
-    var stMap={sold:['p-status-sold','ຂາຍແລ້ວ'],rented:['p-status-rented','ເຊົ່າແລ້ວ'],under_offer:['p-status-offer','ກຳລັງດຳເນີນ']};
-    var stInfo=stMap[p.status]||['p-status-available','ວ່າງ'];
+    // market_status through listing-status.js, the one sanctioned reader.
+    // The legacy `status` column is collapsed to active/draft/archived by the
+    // DB, so keying on it badged every sold or rented listing "ວ່າງ".
+    var stInfo=ptAgentPortfolioBadge(p);
     st.className='p-status '+stInfo[0];st.textContent=stInfo[1];imgDiv.appendChild(st);
     var body=document.createElement('div');body.className='p-body';
     // This page has no language switcher (all hardcoded Lao, e.g. the

@@ -540,7 +540,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
             <div class="form-group" id="price-field-single">
               <label class="form-label">Price</label>
               <div class="form-grid-3">
-                <input class="form-input" id="f-price-amount" type="number" min="0" placeholder="550000">
+                <input class="form-input" id="f-price-amount" type="number" min="0" step="any" placeholder="550000">
                 <select class="form-select" id="f-price-currency"></select>
                 <select class="form-select" id="f-price-frequency"></select>
               </div>
@@ -549,7 +549,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
             <div class="form-group" id="price-field-sale" style="display:none">
               <label class="form-label">Sale Price</label>
               <div class="form-grid-3">
-                <input class="form-input" id="f-sale-amount" type="number" min="0" placeholder="550000">
+                <input class="form-input" id="f-sale-amount" type="number" min="0" step="any" placeholder="550000">
                 <select class="form-select" id="f-sale-currency"></select>
               </div>
               <p class="form-hint" id="sale-range-hint" style="display:none;">Calculated from active Unit Types below — not editable here.</p>
@@ -557,7 +557,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
             <div class="form-group" id="price-field-rent" style="display:none">
               <label class="form-label">Rent Price</label>
               <div class="form-grid-3">
-                <input class="form-input" id="f-rent-amount" type="number" min="0" placeholder="1200">
+                <input class="form-input" id="f-rent-amount" type="number" min="0" step="any" placeholder="1200">
                 <select class="form-select" id="f-rent-currency"></select>
                 <select class="form-select" id="f-rent-frequency"></select>
               </div>
@@ -595,10 +595,10 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
               <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="lease-basis" id="lease-basis-total" value="total"> Total for the lease</label>
             </div>
             <div class="form-grid-4">
-              <div class="form-group"><label class="form-label">Daily <span style="color:var(--ink-muted);font-weight:400;">— per day</span></label><input class="form-input" id="f-rent-daily" type="number" min="0" placeholder="e.g. 45"></div>
-              <div class="form-group"><label class="form-label">3 months</label><input class="form-input" id="f-rent-3mo" type="number" min="0" placeholder="e.g. 420"></div>
-              <div class="form-group"><label class="form-label">6 months</label><input class="form-input" id="f-rent-6mo" type="number" min="0" placeholder="e.g. 400"></div>
-              <div class="form-group"><label class="form-label">1 year</label><input class="form-input" id="f-rent-12mo" type="number" min="0" placeholder="e.g. 350"></div>
+              <div class="form-group"><label class="form-label">Daily <span style="color:var(--ink-muted);font-weight:400;">— per day</span></label><input class="form-input" id="f-rent-daily" type="number" min="0" step="any" placeholder="e.g. 45"></div>
+              <div class="form-group"><label class="form-label">3 months</label><input class="form-input" id="f-rent-3mo" type="number" min="0" step="any" placeholder="e.g. 420"></div>
+              <div class="form-group"><label class="form-label">6 months</label><input class="form-input" id="f-rent-6mo" type="number" min="0" step="any" placeholder="e.g. 400"></div>
+              <div class="form-group"><label class="form-label">1 year</label><input class="form-input" id="f-rent-12mo" type="number" min="0" step="any" placeholder="e.g. 350"></div>
             </div>
             <div class="form-hint" id="lease-duration-preview" style="margin-top:10px;"></div>
           </div>
@@ -1396,6 +1396,7 @@ function renderTypedField(f) {
   }
   return `<div class="form-group"><label class="form-label">${esc(f.label.en)}</label>
     <input class="form-input" id="${f.id}" type="${f.kind === 'text' ? 'text' : 'number'}"
+      ${f.kind === 'number' && TYPED_INTEGER_COLUMNS.indexOf(f.column) === -1 ? 'step="any"' : ''}
       ${f.min != null ? `min="${f.min}"` : ''} ${f.max != null ? `max="${f.max}"` : ''}
       ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}>
     </div>`;
@@ -1472,10 +1473,26 @@ function buildTypedFieldsPayload(typeKey) {
     if (f.kind === 'multi_checkbox') { out[column] = getCheckedKeys(f.id + '-grid'); return; }
     const el = document.getElementById(f.id);
     if (!el) { out[column] = null; return; }
-    out[column] = f.kind === 'number' ? (parseInt(el.value) || null) : (el.value.trim() || null);
+    const raw = el.value.trim();
+    if (raw === '') { out[column] = null; return; }
+    if (f.kind === 'number') {
+      // `parseInt(v) || null` turned a real 0 (a studio's bedrooms, zero
+      // parking) into NULL on every save -- including a load-then-save of an
+      // untouched listing -- and truncated 120.5 sqm to 120. Only the columns
+      // Postgres declares integer are truncated (PostgREST rejects "2.5" for
+      // an integer column outright); numeric columns keep their decimals.
+      const n = Number(raw);
+      if (!Number.isFinite(n)) { out[column] = null; return; }
+      out[column] = TYPED_INTEGER_COLUMNS.indexOf(column) !== -1 ? Math.trunc(n) : n;
+      return;
+    }
+    out[column] = raw;
   });
   return out;
 }
+// The typed-field columns declared `integer` in supabase/migrations (the rest
+// are `numeric`). Kept next to the one writer that needs the distinction.
+const TYPED_INTEGER_COLUMNS = ['bedrooms', 'bathrooms', 'floors', 'year_built', 'parking_spaces'];
 
 // Safe accessor for non-critical read sites (e.g. the AI content helper)
 // that reference typed-field ids which may not currently be rendered for
@@ -1574,7 +1591,20 @@ function reportMapCoords(url) {
   }
 }
 
-async function resolveMapUrl(el) {
+// The in-flight short-link expansion, if any. Save awaits it: the input's
+// blur (which starts the round trip) fires on the way to the Save click, so
+// without this the unexpanded goo.gl link was read and persisted verbatim --
+// the exact pipeline that left 29 of 59 listings unmappable.
+let _mapResolvePromise = null;
+function resolveMapUrl(el) {
+  const p = _resolveMapUrlNow(el).catch(() => {});
+  _mapResolvePromise = p;
+  // Only the LATEST resolution clears the slot: a second blur while the first
+  // is in flight must not leave Save awaiting nothing.
+  p.finally(() => { if (_mapResolvePromise === p) _mapResolvePromise = null; });
+  return p;
+}
+async function _resolveMapUrlNow(el) {
   const url = el.value.trim();
   if (!url) { setMapHint(MAP_HINT_DEFAULT, ''); return; }
 
@@ -1589,6 +1619,7 @@ async function resolveMapUrl(el) {
       body: JSON.stringify({ url })
     });
     const data = await res.json().catch(() => ({}));
+    if (el.value.trim() !== url) return;   // the field moved on while this was in flight
     if (!res.ok || !data.resolved_url) {
       setMapHint('⚠ Could not expand this short link (' + (data.error || ('HTTP ' + res.status)) +
                  '). It will be saved as-is and the listing will NOT appear on the map. Try again, or paste the full google.com/maps URL.',
@@ -1934,7 +1965,7 @@ function _utLeasePricingFieldsHtml(data) {
     const note = term.perDay ? ' <span style="color:var(--ink-muted);font-weight:400;">— per day</span>' : '';
     return `<div class="ut-field">
           <label>${esc(term.label.en)}${note}</label>
-          <input class="form-input ut-lease-${term.key}" type="number" min="0" value="${esc(String(raw))}" oninput="_utOnLeasePricingChange(this)">
+          <input class="form-input ut-lease-${term.key}" type="number" min="0" step="any" value="${esc(String(raw))}" oninput="_utOnLeasePricingChange(this)">
         </div>`;
   }).join('');
   return `<div class="ut-field ut-field-full">
@@ -2059,7 +2090,7 @@ function addUnitType(data) {
         <div class="ut-field ut-price-single" style="display:${isSor ? 'none' : ''}">
           <label>Price ${isAvailable ? '*' : ''}</label>
           <div class="form-grid-3">
-            <input class="form-input ut-price-amount" type="number" min="0" placeholder="250000" value="${esc(String(priceAmount))}" oninput="_utUpdateSummary(this)">
+            <input class="form-input ut-price-amount" type="number" min="0" step="any" placeholder="250000" value="${esc(String(priceAmount))}" oninput="_utUpdateSummary(this)">
             <select class="form-select ut-price-currency" onchange="_utUpdateSummary(this)">${_priceCurrencyOptionsHtml(priceCurrency)}</select>
             <select class="form-select ut-price-frequency" onchange="_utUpdateSummary(this)">${_priceFrequencyOptionsHtml(priceFrequency)}</select>
           </div>
@@ -2067,14 +2098,14 @@ function addUnitType(data) {
         <div class="ut-field ut-price-sale" style="display:${isSor ? '' : 'none'}">
           <label>Sale Price ${isAvailable ? '*' : ''}</label>
           <div class="form-grid-3">
-            <input class="form-input ut-sale-amount" type="number" min="0" placeholder="250000" value="${esc(String(priceAmount))}" oninput="_utUpdateSummary(this)">
+            <input class="form-input ut-sale-amount" type="number" min="0" step="any" placeholder="250000" value="${esc(String(priceAmount))}" oninput="_utUpdateSummary(this)">
             <select class="form-select ut-sale-currency" onchange="_utUpdateSummary(this)">${_priceCurrencyOptionsHtml(priceCurrency)}</select>
           </div>
         </div>
         <div class="ut-field ut-price-rent" style="display:${isSor ? '' : 'none'}">
           <label>Rent Price ${isAvailable ? '*' : ''}</label>
           <div class="form-grid-3">
-            <input class="form-input ut-rent-amount" type="number" min="0" placeholder="250" value="${esc(String(rentAmount))}" oninput="_utUpdateSummary(this)">
+            <input class="form-input ut-rent-amount" type="number" min="0" step="any" placeholder="250" value="${esc(String(rentAmount))}" oninput="_utUpdateSummary(this)">
             <select class="form-select ut-rent-currency" onchange="_utUpdateSummary(this)">${_priceCurrencyOptionsHtml(rentCurrency)}</select>
             <select class="form-select ut-rent-frequency" onchange="_utUpdateSummary(this)">${_priceFrequencyOptionsHtml(rentFrequency)}</select>
           </div>
@@ -2253,6 +2284,7 @@ function _utRemoveUnitImage(btn, url) {
 }
 async function handleUnitImageUpload(inputEl) {
   const card = inputEl.closest('.ut-card');
+  if (!card) return;
   const files = Array.from(inputEl.files || []);
   inputEl.value = ''; // allow re-selecting the same file again later
   if (!files.length) return;
@@ -2261,18 +2293,23 @@ async function handleUnitImageUpload(inputEl) {
     if (statusEl) { statusEl.style.color = '#C0392B'; statusEl.textContent = 'Not signed in — please refresh and log in again.'; }
     return;
   }
-  let images = _utGetUnitImages(card);
   let completed = 0;
   for (const file of files) {
     if (statusEl) { statusEl.style.color = ''; statusEl.textContent = `Uploading ${file.name}… (${completed + 1}/${files.length})`; }
     try {
-      images.push(await uploadImageFileToStorage(file));
+      const url = await uploadImageFileToStorage(file);
+      // The operator may have opened another listing meanwhile (loadUnitTypes
+      // replaces every card): never write into a detached card.
+      if (!card.isConnected) return;
+      // Append to the card's CURRENT gallery, not a snapshot taken before the
+      // uploads started: a photo removed, a cover chosen or a second batch
+      // finished while these were in flight was silently reverted.
+      _utSetUnitImages(card, _utGetUnitImages(card).concat([url]));
       completed++;
     } catch (e) {
       if (statusEl) { statusEl.style.color = '#C0392B'; statusEl.textContent = e.message; }
     }
   }
-  _utSetUnitImages(card, images);
   if (completed && statusEl) {
     statusEl.style.color = '#166534';
     statusEl.textContent = `Uploaded ${completed} of ${files.length}`;
@@ -3361,16 +3398,31 @@ async function loadAnalytics() {
 let _ownersAll = [];
 
 async function loadOwners() {
+  // If the form is already showing a linked owner this loader has not seen
+  // yet (the placeholder <option> from populateOwnerSelect), the details
+  // fields must be filled in once the row arrives -- otherwise they stay
+  // hidden and empty, and Save then refuses with "Owner Name is required".
+  const sel = document.getElementById('f-owner-select');
+  const pendingId = (sel && sel.value && sel.value !== '__new__' && !(_ownersAll || []).some(o => o.id === sel.value)) ? sel.value : null;
   _ownersAll = await sbApi('GET', 'owners?select=id,name,phone,whatsapp,email,notes&order=name.asc').catch(() => []);
   populateOwnerSelect();
+  if (pendingId && sel.value === pendingId && _ownersAll.some(o => o.id === pendingId)) onOwnerSelectChange();
 }
 
 function populateOwnerSelect(selectedId) {
   const sel = document.getElementById('f-owner-select');
   if (!sel) return;
   const current = selectedId !== undefined ? selectedId : sel.value;
+  // Same hazard buildAgentOptions() guards with ensureId: a <select> set to an
+  // id with no matching <option> silently becomes "", and saveListing() then
+  // wrote owner_id NULL -- so a failed/late owners load unlinked the owner
+  // of any listing merely opened and saved. Keep the link renderable.
+  const known = (_ownersAll || []).some(o => o.id === current);
+  const placeholder = (current && current !== '__new__' && !known)
+    ? `<option value="${esc(current)}">Owner on file (details not loaded)</option>` : '';
   sel.innerHTML =
     '<option value="">— No owner on file —</option>' +
+    placeholder +
     (_ownersAll || []).map(o =>
       `<option value="${esc(o.id)}">${esc(o.name)}${o.phone ? ' · ' + esc(o.phone) : ''}</option>`
     ).join('') +
@@ -3412,7 +3464,16 @@ function onOwnerSelectChange() {
     return;
   }
   const o = _ownersAll.find(x => x.id === v);
-  if (!o) return;
+  if (!o) {
+    // Linked owner whose row is not loaded (see populateOwnerSelect): nothing
+    // to edit, and the link is preserved untouched on save. The inputs are
+    // cleared so a previous listing's owner can never be PATCHed onto this one.
+    ['f-owner-name','f-owner-phone','f-owner-whatsapp','f-owner-email','f-owner-notes']
+      .forEach(id => { document.getElementById(id).value = ''; });
+    fields.style.display = 'none';
+    note.textContent = 'Owner details could not be loaded — the existing link is kept as is.';
+    return;
+  }
   document.getElementById('f-owner-name').value     = o.name || '';
   document.getElementById('f-owner-phone').value    = o.phone || '';
   document.getElementById('f-owner-whatsapp').value = o.whatsapp || '';
@@ -3433,6 +3494,9 @@ async function resolveOwnerId() {
   if (!sel) return null;
   const v = sel.value;
   if (!v) return null;
+  // A link to an owner row that was never loaded: keep it, never PATCH it
+  // from empty fields.
+  if (v !== '__new__' && !(_ownersAll || []).some(o => o.id === v)) return v;
   const payload = {
     name:     document.getElementById('f-owner-name').value.trim(),
     phone:    document.getElementById('f-owner-phone').value.trim() || null,
@@ -3447,6 +3511,11 @@ async function resolveOwnerId() {
     const created = await sbApi('POST', 'owners', payload);
     const row = Array.isArray(created) ? created[0] : created;
     await loadOwners();
+    // The form must stop saying "create a new owner": a retry after a later
+    // partial failure, or a second Save, POSTed a second owners row and
+    // orphaned the first (the same non-re-entrancy fixed for properties,
+    // contacts and unit types).
+    if (row && row.id) { sel.value = row.id; onOwnerSelectChange(); }
     return row && row.id;
   }
   await sbApi('PATCH', `owners?id=eq.${encodeURIComponent(v)}`, payload);
@@ -3715,6 +3784,7 @@ function revealFormPanel(titleText, id) {
 // only clears the JS/DOM state that native reset() doesn't reach.
 function resetListingForm() {
   document.getElementById('listing-form').reset();
+  clearImportReviewFlags();
   document.getElementById('nearby-list').innerHTML = '';
   addNearby();
   _buildingRentalTermsValues = {};
@@ -3930,7 +4000,12 @@ async function editListing(id, from) {
   // Buyer Contact: always populate from the linked contacts row (mandatory
   // going forward). Falls back to the sentinel-shaped defaults for listings
   // that predate this field.
-  const c = p.contacts || null;
+  // The PENDING sentinel is "no contact yet", never a person: loading its
+  // placeholder name/phone ("0000000000") into the form satisfied the
+  // publish-time phone check and let saveListing() POST a brand-new contact
+  // carrying the placeholder, so a draft could go live dialling 0000000000.
+  const _isPendingContact = !!(p.contact_id && p.contact_id === PENDING_CONTACT_ID);
+  const c = (_isPendingContact ? null : p.contacts) || null;
   // Internal owner — select the linked owner (if any) and populate its
   // fields via the same handler the manual picker uses, so there is one
   // code path for "show this owner's details".
@@ -3950,17 +4025,28 @@ async function editListing(id, from) {
   document.getElementById('extra-contacts-list').innerHTML = '';
   _removedExtraContactIds = [];
   if (typeof resolveListingContacts === 'function') {
-    _resolvedAll.slice(1).forEach(x => addExtraContact(x));
+    // Everything except the main contact and the PENDING sentinel. A
+    // sentinel link can survive as a demoted extra (the contact_id-only
+    // writers reassign the primary and the invariant trigger keeps the old
+    // link); rendering it made every later save PATCH the sentinel, which
+    // the DB refuses, so "phone numbers failed to save" on every save.
+    // Matching by id (not slice(1)) also stops a main contact linked at a
+    // duplicate sort_order 0 from being re-added as an extra.
+    _resolvedAll.filter(x => x && x.id !== PENDING_CONTACT_ID && !(c && x.id === c.id)).forEach(x => addExtraContact(x));
   }
   document.getElementById('f-contact-role').value     = c ? c.role : 'agent';
   document.getElementById('f-contact-name').value     = c ? (c.name || '') : '';
   document.getElementById('f-contact-phone').value    = c ? (c.phone || '') : '';
   document.getElementById('f-contact-whatsapp').value = c ? (c.whatsapp || '') : '';
   updateOwnerSectionVisibility();
+  // Review flags belong to the listing that produced them: clear whatever a
+  // previous Smart Import left, then re-flag only a still-pending contact.
+  clearImportReviewFlags();
+  if (_isPendingContact) flagContactSectionForReview(true);
 
   document.getElementById('contact-shared-note').style.display = 'none';
   _editingContactSharedCount = 0;
-  if (_editingContactId) {
+  if (_editingContactId && !_isPendingContact) {   // the sentinel is shared by design; the note would be false
     try {
       const usage = await sbApi('GET', `properties?contact_id=eq.${_editingContactId}&select=id`);
       _editingContactSharedCount = Array.isArray(usage) ? usage.filter(r => r.id !== id).length : 0;
@@ -4092,6 +4178,7 @@ async function saveExtraContacts(propertyId, primaryContactId) {
   if (primaryContactId) linked.push({ contact_id: primaryContactId, sort_order: 0, is_primary: mainIsPrimary });
 
   for (const r of rows) {
+    if (r.id === PENDING_CONTACT_ID) continue;   // never a person; the DB rejects any UPDATE of it
     const body = { role: 'other', name: r.name, phone: r.phone, whatsapp: r.phone, languages: r.languages };
     let cid = r.id;
     if (cid) {
@@ -4159,6 +4246,7 @@ async function saveListing(e) {
   // try/catch blocks still handle their specific cases with tailored
   // messages; this outer guard is the backstop for everything else.
   try {
+  if (_mapResolvePromise) await _mapResolvePromise;   // see resolveMapUrl()
   const districtEn = currentDistrictValue();
   const districtMap = DISTRICT_MAP[districtEn] || {};
   const village = document.getElementById('f-village').value.trim();
@@ -4915,7 +5003,7 @@ async function generateAIContent() {
   const statusEl = document.getElementById('ai-gen-status');
   if (!btn) return;
 
-  const districtEn = document.getElementById('f-district').value;
+  const districtEn = currentDistrictValue();   // free-text outside the capital, same as saveListing()
   const village    = document.getElementById('f-village').value.trim();
 
   // Deposit — reuses rental-terms.js's own formatter rather than
@@ -5510,7 +5598,10 @@ async function runSmartImport() {
     // Provenance v2: assemble the import context (source + AI + full raw
     // payload manifest). saveListing() writes it after the listing is saved.
     (function () {
-      const _fb = (importSource === 'facebook') ? (window._importFbData || {}) : {};
+      // importSource is 'facebook_og' for a fetched post (the adapter's own
+      // value); comparing against 'facebook' left every Facebook import's
+      // provenance empty (source_url NULL, no original image URLs).
+      const _fb = fbUrl ? (window._importFbData || {}) : {};
       // Complete original source-image URL set as received (superset of the
       // saved subset) — from the fetched adapter payload, else the FB image map.
       let _origUrls = [];
@@ -5862,6 +5953,16 @@ function applyImportTitles() {
   if (located.title)    document.getElementById('f-title-en').value = located.title;
   if (located.title_lo) document.getElementById('f-title-lo').value = located.title_lo;
   if (located.title_zh) document.getElementById('f-title-zh').value = located.title_zh;
+}
+
+// Smart Import's low-confidence highlights and the amber Buyer Contact
+// outline used to survive into the NEXT listing opened for edit, flagging
+// hand-entered data as AI-suspect. Cleared on every form reset/load.
+function clearImportReviewFlags() {
+  document.querySelectorAll('.field-low-confidence').forEach(el => el.classList.remove('field-low-confidence'));
+  const phoneEl = document.getElementById('f-contact-phone');
+  const section = phoneEl && phoneEl.closest('.form-section');
+  if (section) section.style.outline = '';
 }
 
 // Visually flags the Buyer Contact section amber so staff notices it needs

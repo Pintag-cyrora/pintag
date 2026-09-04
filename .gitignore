@@ -1,2 +1,8 @@
 .env
 .env.*
+
+# Playwright suites under tests/ (per-suite .gitignore files also exist for
+# some; this is the one rule that covers all of them)
+tests/*/node_modules/
+tests/*/playwright-report/
+tests/*/test-results/

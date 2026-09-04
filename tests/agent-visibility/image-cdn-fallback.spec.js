@@ -32,7 +32,7 @@ test('global capture listener swaps a failed CDN <img> to direct Supabase, once'
     window.PINTAG = { supabaseUrl: PROD, imageCdn: true };
     // Define the module constants GLOBALLY (indirect eval below runs in global
     // scope, so the extracted function must find them there — not as locals).
-    (0, eval)("var PT_IMAGE_CDN_ORIGIN='https://img.pintag.io'; var PT_PROPERTY_IMAGES_PATH='/storage/v1/object/public/property-images/';");
+    (0, eval)("var PT_IMAGE_CDN_ORIGIN='https://img.pintag.io'; var PT_PROPERTY_IMAGES_PATH='/storage/v1/object/public/property-images/'; var PT_RENDITION_PREFIX_PATH='renditions/';");
     (0, eval)(fallbackFn);                       // real ptCdnImageFallback
     // Install the SAME global capturing listener production uses.
     document.addEventListener('error', function (e) { ptCdnImageFallback(e.target); }, true);

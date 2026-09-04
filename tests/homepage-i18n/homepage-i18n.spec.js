@@ -171,3 +171,49 @@ test('the active language button reflects the currently-selected language', asyn
   await expect(page.locator('.nav-lang-item[data-lang="lo"]')).not.toHaveClass(/active/);
   await expect(page.locator('.nav-lang-item[data-lang="en"]')).not.toHaveClass(/active/);
 });
+
+// ── Homepage cards get the same embeds as listings.html (2026-09-03) ───────
+// The homepage query selected contacts(name) and parties(type,name_en,
+// photo_url) and no unit_types at all, so the SAME card component rendered
+// "Price on request" for an occupied multi-unit building the search page
+// priced, labelled every owner as a generic "Contact", and showed agents'
+// Latin names on the Lao (default) homepage.
+test.describe('homepage card data', () => {
+  const ROW = {
+    id: 'p-1', slug: 'bldg', status: 'active', workflow_status: 'active', market_status: 'fully_occupied',
+    property_type: 'apartment', transaction_type: 'for_rent', title_lo: 'ອາພາດເມັນ', title_en: 'Apartment', images: [],
+    price_amount: null, price_currency: null, price_frequency: null, district_lo: 'ສີສັດຕະນາກ', district_en: 'Sisattanak',
+    created_at: '2026-08-01T00:00:00Z', is_featured: true,
+    contacts: { role: 'owner', name: 'Mr Li' }, parties: null,
+    unit_types: [{ id: 'u1', sort_order: 0, name_en: 'Studio', price_amount: 350, price_currency: 'USD', price_frequency: 'monthly', is_available: false, available_count: 0, total_units: 4, next_available_date: null }],
+  };
+  const AGENT_ROW = Object.assign({}, ROW, { id: 'p-2', slug: 'agented', market_status: 'available', price_amount: 900, price_currency: 'USD', price_frequency: 'monthly', unit_types: [],
+    contacts: { role: 'agent', name: 'Somchai' }, parties: { type: 'agent', name_en: 'Somchai', name_lo: 'ສົມໄຊ', photo_url: null } });
+
+  test('the query embeds unit_types, the contact role and the party name_lo; the cards use them', async ({ page }) => {
+    let url = '';
+    // Projects what the query asked for, like PostgREST: a row only carries an
+    // embed / column the select named, so the content assertions below fail
+    // against a query that does not request them (they did pass unchanged).
+    const project = (row, u) => {
+      const out = JSON.parse(JSON.stringify(row));
+      if (!/unit_types\(/.test(u)) delete out.unit_types;
+      if (out.contacts && !/contacts\([^)]*role/.test(u)) delete out.contacts.role;
+      if (out.parties && !/parties\([^)]*name_lo/.test(u)) delete out.parties.name_lo;
+      return out;
+    };
+    await page.route('**/rest/v1/properties**', (r) => { url = decodeURIComponent(r.request().url()); r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([ROW, AGENT_ROW].map((x) => project(x, url))) }); });
+    await stubAnalytics(page);
+    await page.goto('/index.html?lang=lo');
+    await expect(page.locator('#card-grid .pt-card')).toHaveCount(2);
+    expect(url).toContain('unit_types(');
+    expect(url).toContain('contacts(role,name)');
+    expect(url).toContain('parties(type,name_en,name_lo,photo_url)');
+    const text = await page.locator('#card-grid').innerText();
+    expect(text).toContain('$350');                 // priced from its unit types, not "Price on request"
+    expect(text).not.toContain('ສອບຖາມລາຄາ');
+    expect(text).toContain('ເຈົ້າຂອງ');             // Owner, not the generic Contact label
+    expect(text).toContain('ສົມໄຊ');                // the agent's Lao name on the Lao homepage
+    expect(text).not.toContain('Somchai');
+  });
+});
