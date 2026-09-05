@@ -31,10 +31,16 @@ export const REPORT_FORMAT_VERSION = '1.1.0';
 // (Today's Story / What Changed Today / Buyer Behaviour / Listings To Watch /
 // Data / Product Issues / Tomorrow's Priorities), a today-vs-yesterday-first
 // comparison hierarchy, an explicit small-sample rule, and a ban on restating
-// standing marketplace composition. Weekly/monthly prompts are unchanged. A
-// major bump because a 1.x daily report answers a materially different
-// question from a 2.x one and the two must not be read as the same artefact.
-export const PROMPT_VERSION = '2.0.0';
+// standing marketplace composition. Weekly/monthly prompts are unchanged.
+// 3.0.0 — Intelligence V2 (Customer Intent): two new optional daily sections
+// (Customer Intent, Unmet Demand & Inventory Opportunities), the
+// CUSTOMER INTENT SEGMENTS / JOURNEY-JOIN CONFIDENCE data blocks, an
+// explicit no-invented-causation rule, and Listings To Watch's guidance
+// extended to reference the two new insight types (low_performing_listing /
+// high_performing_listing). Another major bump for the same reason 2.0.0
+// was: a daily report generated under 2.x asked Gemini a materially
+// different, narrower question than one generated under 3.x.
+export const PROMPT_VERSION = '3.0.0';
 
 // Bump whenever report-validator.js's contradiction/grounding rules change
 // — affects how much to trust "this report passed validation" for a given

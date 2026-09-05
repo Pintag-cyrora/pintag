@@ -627,6 +627,64 @@ async function viewReportById(id) {
   // backfilled — see that migration's comments), and quiet-day/fallback
   // reports never ran a prompt or validator, so those two stay NULL even
   // on new reports. Both cases render "n/a", never a fabricated version.
+  // ── Intelligence V2: Customer Intent + Unmet Demand + Listings To Fix ──
+  // Report-scoped, not a marketplace-wide re-query: "Customer Intent" reads
+  // the segment leaderboard already embedded in THIS report's own
+  // metrics_snapshot (same source as the metric-card grid above); "Unmet
+  // Demand" / "Listings To Fix" read the insights THIS report already
+  // linked (report_insights, fetched once above as `insights` — no second
+  // fetch), matching the existing chip-row/Highlights' own "a report is a
+  // view over what it discussed" convention rather than independently
+  // re-deciding what to show.
+  const fmtSegmentPrice = (band) => {
+    if (!band) return '—';
+    if (band.min != null && band.max != null) return '$' + band.min + '–$' + band.max;
+    if (band.min != null) return '$' + band.min + '+';
+    if (band.max != null) return 'under $' + band.max;
+    return '—';
+  };
+  const segments = Array.isArray(metrics.customer_intent_segments) ? metrics.customer_intent_segments : [];
+  const customerIntentHtml = segments.length
+    ? '<div class="supporting-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">▸ Customer Intent (' + segments.length + ' segment' + (segments.length === 1 ? '' : 's') + ')</div>' +
+      '<div class="supporting-panel"><table class="intent-table"><thead><tr>' +
+        '<th>Segment</th><th>Searches</th><th>Avg results</th><th>Zero-result</th>' +
+        '<th>Impressions</th><th>Clicks</th><th>Leads</th><th>Top price band</th>' +
+      '</tr></thead><tbody>' +
+      segments.slice(0, 10).map((s) =>
+        '<tr><td>' + esc(s.transaction_type) + ' · ' + esc(s.property_type) + ' · ' + esc(s.district) + '</td>' +
+        '<td>' + esc(s.search_count) + '</td><td>' + esc(s.avg_result_count == null ? '—' : s.avg_result_count) + '</td>' +
+        '<td>' + esc(s.zero_result_count) + '</td><td>' + esc(s.impressions) + '</td><td>' + esc(s.clicks) + '</td>' +
+        '<td>' + esc(s.leads_created) + '</td><td>' + esc(fmtSegmentPrice(s.top_price_band)) + '</td></tr>'
+      ).join('') +
+      '</tbody></table></div>'
+    : '';
+
+  const unmetDemand = insights.filter((i) => i.type === 'supply_shortage' && /^unmet_demand\./.test(i.metric_key || ''));
+  const unmetDemandHtml = unmetDemand.length
+    ? '<div class="supporting-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">▸ Unmet Demand &amp; Inventory Opportunities (' + unmetDemand.length + ')</div>' +
+      '<div class="supporting-panel"><div class="dq-panel">' +
+      unmetDemand.map((i) => {
+        const ev = i.evidence || {};
+        const band = ev.top_price_band ? ' — most-searched around ' + esc(fmtSegmentPrice(ev.top_price_band)) : '';
+        return '<div class="dq-row">' + esc(i.title) + band + '</div>';
+      }).join('') +
+      '</div></div>'
+    : '';
+
+  const listingsToFix = insights.filter((i) => i.type === 'low_performing_listing' || i.type === 'high_performing_listing');
+  const listingsToFixHtml = listingsToFix.length
+    ? '<div class="supporting-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">▸ Listings To Fix (' + listingsToFix.length + ')</div>' +
+      '<div class="supporting-panel"><ul class="attention-list">' +
+      listingsToFix.map((i) =>
+        '<li class="attention-item"><div class="attention-body"><div class="attention-title">' + esc(i.title) + '</div></div>' +
+        (i.type === 'low_performing_listing' && i.dimension_property_id
+          ? '<a class="alert-action" href="' + esc('admin.html?edit=' + encodeURIComponent(i.dimension_property_id)) + '" target="_blank" rel="noopener">Edit listing</a>'
+          : '') +
+        '</li>'
+      ).join('') +
+      '</ul></div>'
+    : '';
+
   const verRow = (label, val) => '<div class="dq-row">' + esc(label) + ': ' + esc(val || 'n/a') + '</div>';
   const versionMetadataHtml =
     '<div class="supporting-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">▸ Version metadata</div>' +
@@ -655,6 +713,9 @@ async function viewReportById(id) {
       '<div class="report-body">' + renderMarkdown(report.body_markdown) + '</div>' +
       (metricCards ? '<div class="supporting-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">▸ Supporting data</div>' +
         '<div class="supporting-panel"><div class="metric-grid">' + metricCards + '</div></div>' : '') +
+      customerIntentHtml +
+      unmetDemandHtml +
+      listingsToFixHtml +
       dataQualityHtml +
       versionMetadataHtml +
     '</div>';

@@ -9,23 +9,39 @@
 // trackLead()'s optional session_id field).
 var PINTAG_SESSION_KEY = 'pintag_session_id';
 
+// Cryptographically-sourced UUID v4 — crypto.randomUUID() when available
+// (the common case), otherwise assembled by hand from
+// crypto.getRandomValues() (supported far more broadly than randomUUID()
+// itself, including non-HTTPS contexts in some browsers where randomUUID
+// is withheld). Math.random() is never used: even though session_id
+// carries no authentication/authorization role here — it is a purely
+// client-generated correlation id used only to join search_events/
+// listing_events/lead_events rows for analytics, never a credential —
+// there is no reason to prefer a lower-quality, predictable generator
+// when a secure one is this cheap to use (flagged by CodeQL as insecure
+// randomness; fixed rather than dismissed).
+function generateSecureUUID() {
+  if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  var bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10xx
+  var hex = Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+}
+
 function getOrCreateSessionId() {
   try {
     var existing = sessionStorage.getItem(PINTAG_SESSION_KEY);
     if (existing) return existing;
-    var id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (
-      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        var r = Math.random() * 16 | 0;
-        var v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-      })
-    );
+    var id = generateSecureUUID();
     sessionStorage.setItem(PINTAG_SESSION_KEY, id);
     return id;
   } catch (e) {
-    // sessionStorage unavailable (private browsing edge cases, etc.) —
-    // fall back to a per-call id rather than throwing; events still
-    // insert, they just won't correlate within that session.
+    // sessionStorage or crypto unavailable (private browsing edge cases,
+    // an ancient browser lacking crypto.getRandomValues, etc.) — fail to
+    // null rather than throwing; events still insert, they just won't
+    // correlate within that session.
     return null;
   }
 }

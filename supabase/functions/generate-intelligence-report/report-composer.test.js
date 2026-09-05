@@ -165,6 +165,46 @@ test('buildPrompt tells Gemini never to invent numbers or contradict a significa
   assert.match(prompt, /stable.*baseline.*normal|direction language must match/i);
 });
 
+// ── Intelligence V2: customer intent / journey-join block ────────────────
+test('buildPrompt (daily) includes the customer intent block only when customer_intent_segments is present', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'condo', district: 'Sisattanak', search_count: 12, top_price_band: { min: 500, max: 800 } }];
+  const withSegments = buildPrompt('daily', composed, { customer_intent_segments: segments }, null);
+  const withoutSegments = buildPrompt('daily', composed, { listing_impressions: 10 }, null);
+  assert.ok(withSegments.includes('CUSTOMER INTENT SEGMENTS'));
+  assert.ok(withSegments.includes('Sisattanak'));
+  assert.ok(!withoutSegments.includes('ranked by search volume'), 'the data block itself (not just the always-present heading guidance) must be absent');
+});
+test('buildPrompt (daily) includes journey-join confidence, with a measured match rate, only when journey_join is present', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const jj = { listing_events_total: 10, listing_events_with_session: 9, lead_events_total: 4, lead_events_with_session: 4, lead_events_matched_to_click: 2 };
+  const rawMetrics = { customer_intent_segments: [{ transaction_type: 'for_rent', property_type: 'condo', district: 'Sisattanak', search_count: 5 }], journey_join: jj };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.ok(prompt.includes('JOURNEY-JOIN CONFIDENCE'));
+  assert.ok(prompt.includes('50%'), 'lead_events_matched_to_click(2) / lead_events_with_session(4) = 50%');
+});
+test('buildPrompt never includes the customer intent block for weekly/monthly (sumMetrics does not merge it yet)', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'condo', district: 'Sisattanak', search_count: 12 }];
+  const weekly = buildPrompt('weekly', composed, { customer_intent_segments: segments }, null);
+  const monthly = buildPrompt('monthly', composed, { customer_intent_segments: segments }, null);
+  assert.ok(!weekly.includes('ranked by search volume'));
+  assert.ok(!monthly.includes('ranked by search volume'));
+});
+test('buildPrompt tells Gemini not to state an invented cause beyond what the evidence shows', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /cannot prove|Claim a CAUSE/i);
+});
+test('buildPrompt (daily) mentions the new Customer Intent / Unmet Demand headings and the new insight types', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.ok(prompt.includes('## Customer Intent'));
+  assert.ok(prompt.includes('## Unmet Demand & Inventory Opportunities'));
+  assert.match(prompt, /low_performing_listing/);
+  assert.match(prompt, /high_performing_listing/);
+});
+
 // ── buildReportInsightLinks — the dedup fix ─────────────────────────────
 test('buildReportInsightLinks assigns biggest_story to the highest-priority new/continuing insight', () => {
   const composed = {

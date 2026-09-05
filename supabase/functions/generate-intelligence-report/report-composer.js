@@ -116,6 +116,39 @@ function insightSummaryLine(i) {
   return `- [${i.type}] ${i.title}${dims ? ` (${dims})` : ''} — severity: ${i.severity}, confidence: ${Math.round((i.confidence || 0) * 100)}%, trend: ${i.trend}${i.recommendation ? `, suggested action: ${i.recommendation}` : ''}`;
 }
 
+// Intelligence V2 (Customer Intent / Unmet Demand / Conversion Leaks —
+// product spec §A/§B/§G/§J). customer_intent_segments and journey_join are
+// already INSIDE rawMetricsSummary below (it is the whole day's metrics
+// object, unchanged), but get the same explicit call-out supplyBlock/
+// trendBlock already do — a model asked to find and correctly interpret
+// two specific keys inside one large JSON blob, unprompted, is far less
+// reliable than being told exactly what they mean and how to use them.
+//
+// DAILY ONLY: metrics-utils.js's sumMetrics() (weekly/monthly's
+// rawMetricsSummary) does not merge these two fields across days yet — a
+// deliberate v1 scope decision, not an oversight — so they are simply
+// absent from a weekly/monthly rawMetricsSummary and this returns ''.
+//
+// Segments are (transaction_type, property_type, district) — NOT
+// bedrooms: search_events.bedrooms is a real column but listings.html has
+// no bedroom filter, so it is never populated and is not a real intent
+// signal. top_price_band is the single most-searched price range WITHIN
+// a segment, reported as context, not part of what defines the segment.
+function customerIntentBlock(reportType, rawMetricsSummary) {
+  if (reportType !== 'daily') return '';
+  const segments = rawMetricsSummary && Array.isArray(rawMetricsSummary.customer_intent_segments)
+    ? rawMetricsSummary.customer_intent_segments : null;
+  if (!segments) return '';
+
+  const jj = rawMetricsSummary.journey_join || null;
+  const joinRatePct = (jj && jj.lead_events_with_session > 0)
+    ? Math.round((jj.lead_events_matched_to_click / jj.lead_events_with_session) * 100)
+    : null;
+
+  return `\nCUSTOMER INTENT SEGMENTS (today, pre-computed, ranked by search volume — each is (transaction_type, property_type, district); bedrooms is NEVER part of a segment because it is not a real captured search filter today; top_price_band is the single most-searched price range within that segment, not part of what defines it):\n${JSON.stringify(segments)}\n` +
+    (jj ? `\nJOURNEY-JOIN CONFIDENCE (how much of the search → click → contact chain is actually traceable via a shared session id today — this is a MEASURED rate, not an assumption; treat any segment-level lead/conversion claim above as carrying this same confidence, and say so explicitly when the rate is low rather than presenting the segment's lead counts as certain): ${JSON.stringify(jj)}${joinRatePct !== null ? ` — ${joinRatePct}% of session-attributed contacts today matched back to an earlier click in the same session` : ' — no session-attributed contacts today to measure a rate from'}\n` : '');
+}
+
 export function buildPrompt(reportType, composed, rawMetricsSummary, supply, trendAnalysis) {
   const newBlock = composed.new_insights.length
     ? composed.new_insights.map(insightSummaryLine).join('\n')
@@ -148,6 +181,8 @@ export function buildPrompt(reportType, composed, rawMetricsSummary, supply, tre
     ? `\nTREND ANALYSIS (pre-computed, exact — the ONLY comparisons/percentages you may state; a null value means that comparison genuinely cannot be made yet, say so in words rather than inventing a number):\n${JSON.stringify(trendAnalysis)}\n`
     : '';
 
+  const customerIntentBlockText = customerIntentBlock(reportType, rawMetricsSummary);
+
   const commonRules = `You are writing for Pintag, a real estate marketplace in Vientiane, Laos. You are given a set of insights that deterministic code has ALREADY detected, ranked, and classified as new/continuing/resolved, plus a pre-computed trend analysis — these are the only findings and the only numbers that exist. Your job is strictly to explain, connect, and narrate them clearly.
 
 Do NOT:
@@ -156,17 +191,19 @@ Do NOT:
 - Invent, estimate, or recompute any statistic, percentage, or number not present in the data below
 - State a number without it appearing in the evidence, trend analysis, or raw metrics provided
 - Describe the data as "stable," "back to baseline," or "normal" when the trend analysis or a linked insight shows a statistically significant change in the same section — direction language must match the data
+- Claim a CAUSE for an outcome beyond what the evidence directly shows. "This listing has 40 impressions, 0 leads, and is missing a price" is a fact you may state. "The missing price caused the 0 leads" is a claim this data cannot prove — state the facts side by side and let the reader draw that conclusion, or phrase it as a question ("worth checking whether the missing price is why"), never as a stated cause
 
 You MAY:
 - Explain WHY something might be happening, in plain business terms
 - Connect related insights into one narrative (e.g. a demand spike + a supply shortage in the same district becomes one recruiting recommendation)
 - Reference the raw metrics summary below for period totals
 - Say plainly "not enough data to compare yet" wherever the trend analysis shows null — this is the correct, honest thing to say, not a gap to fill in
+- Use the CUSTOMER INTENT SEGMENTS data (when present) to describe what customers were actually looking for, which segments are underserved (also visible as a [supply_shortage] insight above when severe enough to open one), and which specific listings are worth fixing (also visible as [low_performing_listing]/[high_performing_listing] insights above) — always through the journey-join confidence caveat when discussing lead/conversion counts for a segment
 
 NEW INSIGHTS (🟢):\n${newBlock}\n
 CONTINUING INSIGHTS (🔴):\n${continuingBlock}\n
 RESOLVED INSIGHTS (✅):\n${resolvedBlock}
-${supplyBlock}${trendBlock}
+${supplyBlock}${trendBlock}${customerIntentBlockText}
 RAW METRICS SUMMARY (period totals, safe to cite verbatim):
 ${JSON.stringify(rawMetricsSummary)}
 
@@ -205,12 +242,16 @@ Structure with these markdown headings, in order. OMIT ANY SECTION THAT HAS NO R
 (A short list of the meaningful changes vs yesterday. Not every metric — the ones that matter.)
 ## Buyer Behaviour
 (What users actually DID: searches, listing views, gallery interactions, contacts, leads. Interpretation, not a list of numbers.)
+## Customer Intent
+(From CUSTOMER INTENT SEGMENTS, when present: who was actually looking for what today — the top segment(s) by search volume, in plain language, e.g. "today's strongest demand was renters wanting a condo in Sisattanak, mostly around $500-$800/month." Omit entirely if the segments data is absent, or if every segment's sample is too small to say anything with confidence — say so explicitly rather than presenting a 2-search segment as "the" customer profile.)
+## Unmet Demand & Inventory Opportunities
+(Segments where demand meaningfully exceeds what Pintag currently has to show, or where a high zero-result rate suggests active listings aren't actually matching what's searched — visible above as [supply_shortage] insights with a metric_key starting "unmet_demand.". Frame the same gap two ways when it's worth surfacing: what customers can't find today, and what inventory is worth acquiring next. Omit if none qualify.)
 ## Listings To Watch
-(Only listings that deserve attention today: unusual engagement, high impressions with poor CTR, views but no contacts, missing critical data, a sudden change. Omit the section if none qualify.)
+(Listings that deserve attention today: unusual engagement, high impressions with poor CTR, views but no contacts, missing critical data, a sudden change — including anything surfaced above as a [low_performing_listing] or [high_performing_listing] insight. When a listing is both underperforming AND missing something concrete (price, photos) AND matches today's strongest demand segment, that combination is worth leading with — state the facts together, do not claim the missing field caused the outcome (see the causation rule above). Omit the section if none qualify.)
 ## Data / Product Issues
 (Data-quality and product problems, kept separate from marketplace performance. Omit if none.)
 ## Tomorrow's Priorities
-(2-4 CONCRETE actions, each grounded in evidence that appears above. Name what to look at and why today's data points there. A generic instruction is not an action: "consider optimizing image loading", "investigate further" and "continue monitoring" are all failures unless you say exactly what to investigate and what would settle it. Weak: "Consider optimizing image loading." Strong: "Check the gallery-loading path on the listings receiving unusually high gallery interaction before changing the gallery UX." If today's evidence supports only two actions, give two.)`,
+(2-4 CONCRETE actions, each grounded in evidence that appears above — including, when relevant, an unmet-demand segment worth sourcing inventory for, or a specific listing to fix. Name what to look at and why today's data points there. A generic instruction is not an action: "consider optimizing image loading", "investigate further" and "continue monitoring" are all failures unless you say exactly what to investigate and what would settle it. Weak: "Consider optimizing image loading." Strong: "Check the gallery-loading path on the listings receiving unusually high gallery interaction before changing the gallery UX." If today's evidence supports only two actions, give two.)`,
     weekly: `Write a WEEKLY INTELLIGENCE REPORT. Compare this week to the previous week; highlight TRENDS, not just totals. Structure with these markdown headings:
 # Executive Summary
 ## What Changed This Week

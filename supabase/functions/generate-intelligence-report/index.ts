@@ -21,6 +21,8 @@
 import { runInsightEngine, DEFAULT_DETECTORS } from './insight-engine.js';
 import { dataQualityDetector } from './data-quality-detector.js';
 import { duplicateListingDetector } from './duplicate-listing-detector.js';
+import { demandSupplyDetector } from './demand-supply-detector.js';
+import { listingPerformanceDetector } from './listing-performance-detector.js';
 import { sumMetrics } from './metrics-utils.js';
 import {
   composeReportInput, buildPrompt, isQuietPeriod, buildQuietDayReport,
@@ -273,18 +275,21 @@ async function fetchCurrentSupply(db: Db): Promise<{ byDistrict: Record<string, 
   return { byDistrict, byType };
 }
 
-// Fetches the columns data-quality-detector.js's and duplicate-listing-
-// detector.js's rule checks need, scoped to actively-shown listings (a
-// draft/sold/inactive listing's data quality is not staff's morning
-// priority the way a live listing's is). Only the columns each rule
-// actually reads — same lean-select convention as fetchCurrentSupply()
-// above.
+// Fetches the columns data-quality-detector.js's, duplicate-listing-
+// detector.js's, and listing-performance-detector.js's rule checks need,
+// scoped to actively-shown listings (a draft/sold/inactive listing's data
+// quality is not staff's morning priority the way a live listing's is).
+// Only the columns each rule actually reads — same lean-select convention
+// as fetchCurrentSupply() above. transaction_type is the one column added
+// for Intelligence V2: listing-performance-detector.js needs it (alongside
+// property_type/district_en, already here) to check whether a listing
+// matches today's #1 customer-intent segment.
 async function fetchDataQualityProperties(db: Db): Promise<any[]> {
   return db.select(
     'properties',
     'select=id,title_en,images,description_en,property_highlight_en,neighborhood_insight_en,' +
     'price_display,price_amount,price_currency,sale_price,rent_price,bedrooms,bathrooms,district_en,village_en,property_type,' +
-    'created_at,view_count&status=in.(active,available)'
+    'transaction_type,created_at,view_count&status=in.(active,available)'
   );
 }
 
@@ -308,7 +313,7 @@ async function runDailyInsightSweep(db: Db, today: DailySnapshot, trailing: Dail
   ]);
   const { toInsert, toUpdate, toResolve } = runInsightEngine(
     today, trailing, openInsights, periodEnd,
-    [...DEFAULT_DETECTORS, dataQualityDetector, duplicateListingDetector],
+    [...DEFAULT_DETECTORS, dataQualityDetector, duplicateListingDetector, demandSupplyDetector, listingPerformanceDetector],
     { properties, propertyIdsWithLeads }
   );
 
