@@ -24,9 +24,10 @@ job), or how long it stays open (the shared lifecycle loop's job, common
 to every detector).
 
 The Intelligence Engine is deliberately built so **new detectors can be
-added without changing existing ones**. Today there are two detectors
-(`zScoreDetector`, `dataQualityDetector`). The architecture below is
-written so that remains true as more are added.
+added without changing existing ones**. Today there are five detectors
+(`zScoreDetector`, `dataQualityDetector`, `duplicateListingDetector`,
+`demandSupplyDetector`, `listingPerformanceDetector`). The architecture
+below is written so that remains true as more are added.
 
 ## Detection Pipeline
 
@@ -166,14 +167,14 @@ run, trying each registered detector in turn:
 - **Typical evidence payload:** `{ today, mean, stddev, z, direction }` —
   see Evidence Schema below.
 
-**Not yet implemented:** `supply_shortage`, `high_performing_listing`,
-`low_performing_listing`, and `price_trend` exist in the database's
-allowed `type` values but have no detector producing them yet. Each
-needs a genuinely different detector shape than z-score-vs-baseline
-(cross-sectional percentile comparison, a demand/supply ratio, a
-historical price series) — they are documented here as known gaps, not
-as bugs, and are natural candidates for the "Adding a Detector" checklist
-below.
+**Not yet implemented:** `price_trend` exists in the database's allowed
+`type` values but has no detector producing it yet — it would need a
+historical price series shape, genuinely different from every detector
+below. `supply_shortage`, `high_performing_listing`, and
+`low_performing_listing` were the same kind of documented gap until
+Intelligence V2 (see `demandSupplyDetector` and `listingPerformanceDetector`
+below), which is exactly the "natural candidate for the Adding a Detector
+checklist" this note originally pointed at.
 
 ### `dataQualityDetector`
 
@@ -285,6 +286,98 @@ below.
   edited bedrooms/bathrooms/price so they now read as distinct unit
   variants).
 
+### `demandSupplyDetector`
+
+- **Key:** `demand_supply`
+- **Purpose:** Intelligence V2's answer to "where does demand exceed
+  supply?" — flags a `(transaction_type, property_type, district)` search
+  segment as unmet demand when today's active matching inventory can't
+  plausibly satisfy today's search volume for it. Added in
+  `demand-supply-detector.js`.
+- **Shape: rule-based (a ratio crossing a fixed threshold), not
+  z-score.** Same category as `dataQualityDetector` — there is no
+  meaningful "this segment's 30-day trailing mean demand/supply ratio" to
+  compare against yet (`customer_intent_segments` is new), so this reads
+  a ratio against a fixed threshold rather than a statistical baseline.
+  Confidence is always `1.0`; severity scales with how many of the two
+  triggers below fire and with raw search volume.
+- **Metrics used:** `context.todaySnapshot.metrics.customer_intent_segments`
+  (array, always present — `[]` on a quiet day) and
+  `context.todaySnapshot.metrics.active_inventory.by_segment` (a
+  `"transaction_type|property_type|district" → count` map, present only
+  when this snapshot is the single most-recently-finalized day — see
+  `point_in_time_supply_snapshot()`). No new `extraContext` fetch: both
+  fields are added directly to `intelligence_daily_metrics()`'s existing
+  jsonb output by `20260905000000_intelligence_customer_intent.sql`.
+- **Triggers** (either qualifies a segment as unmet demand; a segment
+  under `MIN_SEARCH_SAMPLE` (5) searches that day is never flagged — too
+  small a sample to call "demand"):
+
+  | Trigger | Condition |
+  |---|---|
+  | `supply_deficit` | matching active inventory `<` `SUPPLY_DEFICIT_RATIO` (0.5) × search count |
+  | `high_zero_result_rate` | zero-result searches ÷ search count `≥` `HIGH_ZERO_RESULT_RATE` (0.3) |
+
+  Severity is `high` when both triggers fire, or when search count `≥ 20`
+  (comfortably past the minimum sample); otherwise `medium`.
+- **Insight type produced:** `supply_shortage`, with `metric_key` shaped
+  `unmet_demand.<transaction_type>|<property_type>|<district>` (a plain
+  `text` column, not CHECK-constrained — see the `metric_key` note under
+  `dataQualityDetector` above).
+- **`reevaluate`:** re-parses the segment key from `metric_key`, looks it
+  up in today's `customer_intent_segments`, and resolves as no-longer-
+  significant if either the segment had zero searches today at all (not
+  present in the array — a real "no longer measurable today" case) or its
+  triggers no longer fire.
+- **Deliberately excludes bedrooms and exact price bands** from the
+  segment key: `search_events.bedrooms` is a real column that is never
+  populated (listings.html has no bedroom filter), and exact price-band
+  matching would require duplicating `budget-bands.js`'s currency-specific
+  band boundaries into SQL for no proven benefit yet. A disclosed, deliberate
+  scope decision (see the migration's header comment), not a silent gap.
+
+### `listingPerformanceDetector`
+
+- **Key:** `listing_performance`
+- **Purpose:** Intelligence V2's "Listings To Fix" — flags a listing with
+  real traffic and zero leads (worth investigating), and its cheap,
+  symmetric complement, a listing with an unusually high click-through
+  rate (informational, nothing to fix). Added in
+  `listing-performance-detector.js`.
+- **Shape: rule-based** (leaderboard membership plus a data-quality/segment
+  cross-check), same category as `dataQualityDetector`. Confidence is
+  always `1.0`.
+- **Metrics used:** two leaderboards `intelligence_daily_metrics()`
+  already computes every day —
+  `context.todaySnapshot.metrics.impressions_no_leads` (listings with
+  `≥5` impressions and zero leads that day) and
+  `context.todaySnapshot.metrics.top_listings_by_ctr` (listings with `≥5`
+  impressions, ranked by CTR) — plus `context.properties`, the same
+  `extraContext.properties` fetch `dataQualityDetector` already uses
+  (`fetchDataQualityProperties()`, extended with one column,
+  `transaction_type`, so a listing can be matched against a demand
+  segment). No new fetch function.
+- **Low-performing severity:** `high` when the listing is missing its
+  price, missing photos, or matches today's #1 demand segment (by search
+  count — `customer_intent_segments` is already sorted `search_count`
+  DESC, so `segments[0]` is the top segment); `medium` otherwise. A
+  listing that's exactly what today's strongest demand wants and still
+  isn't converting is worth flagging even with clean data quality.
+- **High-performing floor:** only leaderboard rows with CTR `≥
+  HIGH_CTR_FLOOR` (0.15) qualify — the leaderboard itself is already
+  floored at `≥5` impressions, so this is the extra bar for "genuinely
+  high", not noise. Severity is fixed `low` (informational — kept low so
+  it never crowds out an actionable finding).
+- **Insight types produced:** `low_performing_listing` (`metric_key`:
+  `listing_performance.low.<property_id>`) and `high_performing_listing`
+  (`metric_key`: `listing_performance.high.<property_id>`).
+- **`reevaluate`:** resolves when the property is no longer present in
+  the current tracked-status fetch (same as `dataQualityDetector`).
+  Otherwise re-checks whether the property is still on today's matching
+  leaderboard (`impressions_no_leads` for `low_performing_listing`,
+  `top_listings_by_ctr` at-or-above the CTR floor for
+  `high_performing_listing`).
+
 ## Evidence Schema
 
 `evidence` is intentionally detector-specific — there is no shared schema
@@ -345,6 +438,69 @@ produces):
 - `duplicate_of` — every other property id sharing this listing's
   normalized title, at detection time. A listing in a group of 3 lists
   the other 2 ids here.
+
+**`demandSupplyDetector`'s evidence shape:**
+
+```json
+{
+  "transaction_type": "sale",
+  "property_type": "villa",
+  "district": "Sisattanak",
+  "search_count": 24,
+  "avg_result_count": 3,
+  "zero_result_count": 9,
+  "supply_count": 2,
+  "reasons": ["supply_deficit", "high_zero_result_rate"],
+  "top_price_band": { "min": 150000, "max": 250000 }
+}
+```
+
+- `transaction_type` / `property_type` / `district` — the segment key,
+  spelled out (also encoded into `metric_key` and `dimensionDistrict`/
+  `dimensionPropertyType`, kept here too for the same self-contained-audit-
+  trail reason `dataQualityDetector`'s `property_id` is).
+- `search_count` / `avg_result_count` / `zero_result_count` — this
+  segment's raw search stats for the day.
+- `supply_count` — matching active listings at evaluation time; `null`
+  when this snapshot isn't the most-recently-finalized day (no
+  `active_inventory.by_segment` to read).
+- `reasons` — which trigger(s) fired (see the table above); always at
+  least one non-empty entry for a finding to exist at all.
+- `top_price_band` — this segment's most-searched price band, or `null`
+  when unavailable; same `{ min, max }` shape `customer_intent_segments`
+  itself uses (either bound may be `null` for an open-ended band).
+
+**`listingPerformanceDetector`'s evidence shape** (low-performing):
+
+```json
+{
+  "property_id": "b6b1e6b2-...",
+  "impressions": 18,
+  "leads": 0,
+  "missing_price": false,
+  "missing_photos": true,
+  "matches_top_segment": true
+}
+```
+
+(high-performing):
+
+```json
+{
+  "property_id": "b6b1e6b2-...",
+  "impressions": 40,
+  "clicks": 9,
+  "ctr": 0.225
+}
+```
+
+- `property_id` — the listing this insight is about; also on
+  `dimensionPropertyId`.
+- `impressions` / `leads` (low) or `impressions` / `clicks` / `ctr`
+  (high) — the leaderboard row's own numbers, unmodified.
+- `missing_price` / `missing_photos` / `matches_top_segment`
+  (low-performing only) — which severity-driving conditions were true at
+  detection time.
 
 Any future detector should document its own evidence shape in this same
 section when it's added, following the same worked-example format —

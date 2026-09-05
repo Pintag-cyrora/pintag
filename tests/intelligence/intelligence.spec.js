@@ -4,7 +4,7 @@
 // this suite never needs real credentials or network access.
 const { test, expect } = require('@playwright/test');
 const { installSupabaseMocks } = require('./mock-supabase');
-const { makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight, makeListingsNeedingAttentionInsights, makeValidationFallbackReport } = require('./fixtures');
+const { makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight, makeListingsNeedingAttentionInsights, makeValidationFallbackReport, makeIntelligenceV2Insights, makeIntelligenceV2ReportInsights } = require('./fixtures');
 
 async function login(page) {
   // Privileged pages now gate on the shared admin-auth.js module (single admin,
@@ -174,6 +174,79 @@ test.describe('Overview tab', () => {
     await expect(page.locator('.dq-fallback-banner')).toContainText('AI narrative failed validation');
     await expect(page.locator('.dq-fallback-banner')).toContainText('baseline');
     await expect(page.locator('.confidence-pill')).toHaveText('Low confidence');
+  });
+
+  test('Intelligence V2: Customer Intent panel renders the segment leaderboard', async ({ page }) => {
+    const insights = { ...makeInsights(), ...makeIntelligenceV2Insights() };
+    const reportInsights = [...makeReportInsights(), ...makeIntelligenceV2ReportInsights()];
+    await installSupabaseMocks(page, { reports: makeReports(), insights, reportInsights });
+    await login(page);
+    await page.click('.history-table tbody tr:nth-child(2)'); // r-2, carries customer_intent_segments
+    await page.waitForTimeout(150);
+
+    const toggle = page.locator('.supporting-toggle', { hasText: 'Customer Intent' });
+    await expect(toggle).toHaveText('▸ Customer Intent (2 segments)');
+    await toggle.click();
+    const panel = toggle.locator('xpath=following-sibling::*[1]');
+    await expect(panel).toHaveClass(/open/);
+    await expect(panel.locator('table.intent-table tbody tr')).toHaveCount(2);
+    await expect(panel).toContainText('sale · villa · Sisattanak');
+    await expect(panel).toContainText('$150000–$250000');
+    await expect(panel).toContainText('rent · apartment · Chanthabouly');
+    await expect(panel).toContainText('under $500');
+  });
+
+  test('Intelligence V2: Unmet Demand & Inventory Opportunities panel lists supply_shortage insights linked to this report', async ({ page }) => {
+    const insights = { ...makeInsights(), ...makeIntelligenceV2Insights() };
+    const reportInsights = [...makeReportInsights(), ...makeIntelligenceV2ReportInsights()];
+    await installSupabaseMocks(page, { reports: makeReports(), insights, reportInsights });
+    await login(page);
+    await page.click('.history-table tbody tr:nth-child(2)'); // r-2
+
+    const toggle = page.locator('.supporting-toggle', { hasText: 'Unmet Demand' });
+    await expect(toggle).toHaveText('▸ Unmet Demand & Inventory Opportunities (1)');
+    await toggle.click();
+    const panel = toggle.locator('xpath=following-sibling::*[1]');
+    await expect(panel).toHaveClass(/open/);
+    await expect(panel).toContainText('Unmet demand: sale villa in Sisattanak');
+    await expect(panel).toContainText('most-searched around $150000–$250000');
+  });
+
+  test('Intelligence V2: Listings To Fix panel lists low/high performing insights, with an Edit link only for low-performing', async ({ page }) => {
+    const insights = { ...makeInsights(), ...makeIntelligenceV2Insights() };
+    const reportInsights = [...makeReportInsights(), ...makeIntelligenceV2ReportInsights()];
+    await installSupabaseMocks(page, { reports: makeReports(), insights, reportInsights });
+    await login(page);
+    await page.click('.history-table tbody tr:nth-child(2)'); // r-2
+
+    const toggle = page.locator('.supporting-toggle', { hasText: 'Listings To Fix' });
+    await expect(toggle).toHaveText('▸ Listings To Fix (2)');
+    await toggle.click();
+    const panel = toggle.locator('xpath=following-sibling::*[1]');
+    await expect(panel).toHaveClass(/open/);
+    await expect(panel).toContainText('Low performing: Hillside Villa');
+    await expect(panel).toContainText('High performing: Riverside Condo');
+
+    const items = panel.locator('.attention-item');
+    await expect(items).toHaveCount(2);
+    const lowItem = panel.locator('.attention-item', { hasText: 'Low performing' });
+    await expect(lowItem.locator('a.alert-action')).toHaveText('Edit listing');
+    await expect(lowItem.locator('a.alert-action')).toHaveAttribute('href', 'admin.html?edit=p-6');
+    const highItem = panel.locator('.attention-item', { hasText: 'High performing' });
+    await expect(highItem.locator('a.alert-action')).toHaveCount(0);
+  });
+
+  test('Intelligence V2: panels are absent (no crash) for a report with no customer-intent data or linked V2 insights', async ({ page }) => {
+    const insights = { ...makeInsights(), ...makeIntelligenceV2Insights() };
+    const reportInsights = [...makeReportInsights(), ...makeIntelligenceV2ReportInsights()];
+    await installSupabaseMocks(page, { reports: makeReports(), insights, reportInsights });
+    await login(page);
+    // r-3 (the default latest report) has neither customer_intent_segments
+    // nor any linked supply_shortage/low_performing_listing/high_performing_listing insight.
+    await expect(page.locator('.report-title')).toHaveText('Quiet day, nothing notable');
+    await expect(page.locator('.supporting-toggle', { hasText: 'Customer Intent' })).toHaveCount(0);
+    await expect(page.locator('.supporting-toggle', { hasText: 'Unmet Demand' })).toHaveCount(0);
+    await expect(page.locator('.supporting-toggle', { hasText: 'Listings To Fix' })).toHaveCount(0);
   });
 
   test('Section 4: Generate Daily shows loading then success and refreshes the page', async ({ page }) => {

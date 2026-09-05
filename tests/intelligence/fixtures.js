@@ -24,7 +24,15 @@ function makeReports() {
       status: 'generated', error_message: null,
       executive_summary: 'A significant demand spike was detected in Sisattanak district.',
       body_markdown: '# Executive Summary\nA significant demand spike was detected in Sisattanak district.\n\n## Biggest Story\nSearches for Sisattanak villas jumped **240%** versus the 30-day baseline.',
-      metrics_snapshot: { listing_impressions: 500, listing_clicks: 60, listing_views: 45, listing_ctr: 0.12, whatsapp_clicks: 9, call_clicks: 3, leads_created: 9, leads_closed: 2, sessions_total: 260 },
+      metrics_snapshot: {
+        listing_impressions: 500, listing_clicks: 60, listing_views: 45, listing_ctr: 0.12, whatsapp_clicks: 9, call_clicks: 3, leads_created: 9, leads_closed: 2, sessions_total: 260,
+        // Intelligence V2: segment leaderboard, ranked by search_count DESC
+        // (same ordering intelligence_daily_metrics()'s seg_json produces).
+        customer_intent_segments: [
+          { transaction_type: 'sale', property_type: 'villa', district: 'Sisattanak', search_count: 24, avg_result_count: 3, zero_result_count: 9, impressions: 40, clicks: 12, leads_created: 1, top_price_band: { min: 150000, max: 250000 } },
+          { transaction_type: 'rent', property_type: 'apartment', district: 'Chanthabouly', search_count: 8, avg_result_count: 12, zero_result_count: 0, impressions: 55, clicks: 20, leads_created: 3, top_price_band: { min: null, max: 500 } },
+        ],
+      },
       mentioned_districts: ['Sisattanak'], mentioned_property_types: ['villa'],
       data_confidence: 'high',
       validation: {
@@ -149,8 +157,57 @@ function makeListingsNeedingAttentionInsights() {
   };
 }
 
+// Intelligence V2 fixtures: one of each new insight type, all linked to r-2
+// (which carries the matching customer_intent_segments above) -- Unmet
+// Demand & Listings To Fix, unlike Customer Intent, are insight-driven
+// (intelligence.js filters the report's OWN linked insights), not read
+// straight off metrics_snapshot.
+function makeIntelligenceV2Insights() {
+  return {
+    'ins-2': {
+      id: 'ins-2', type: 'supply_shortage', severity: 'high', confidence: 1, metric_key: 'unmet_demand.sale|villa|Sisattanak',
+      dimension_district: 'Sisattanak', dimension_property_type: 'villa', dimension_property_id: null,
+      title: 'Unmet demand: sale villa in Sisattanak (24 searches, 2 matching active listings)',
+      summary: 'Unmet demand: sale villa in Sisattanak (24 searches, 2 matching active listings)',
+      evidence: {
+        transaction_type: 'sale', property_type: 'villa', district: 'Sisattanak',
+        search_count: 24, avg_result_count: 3, zero_result_count: 9, supply_count: 2,
+        reasons: ['supply_deficit', 'high_zero_result_rate'], top_price_band: { min: 150000, max: 250000 },
+      },
+      recommendation: null, trend: 'emerging', first_seen: isoDaysAgo(1), last_seen: isoDaysAgo(1), resolved_at: null,
+    },
+    'ins-3': {
+      id: 'ins-3', type: 'low_performing_listing', severity: 'high', confidence: 1, metric_key: 'listing_performance.low.p-6',
+      dimension_district: 'Sisattanak', dimension_property_type: 'villa', dimension_property_id: 'p-6',
+      title: 'Low performing: Hillside Villa (18 impressions, 0 leads)',
+      summary: 'Low performing: Hillside Villa (18 impressions, 0 leads)',
+      evidence: { property_id: 'p-6', impressions: 18, leads: 0, missing_price: false, missing_photos: true, matches_top_segment: true },
+      recommendation: null, trend: 'emerging', first_seen: isoDaysAgo(1), last_seen: isoDaysAgo(1), resolved_at: null,
+      properties: { title_en: 'Hillside Villa' },
+    },
+    'ins-4': {
+      id: 'ins-4', type: 'high_performing_listing', severity: 'low', confidence: 1, metric_key: 'listing_performance.high.p-7',
+      dimension_district: null, dimension_property_type: null, dimension_property_id: 'p-7',
+      title: 'High performing: Riverside Condo (22% CTR, 40 impressions)',
+      summary: 'High performing: Riverside Condo (22% CTR, 40 impressions)',
+      evidence: { property_id: 'p-7', impressions: 40, clicks: 9, ctr: 0.22 },
+      recommendation: null, trend: 'emerging', first_seen: isoDaysAgo(1), last_seen: isoDaysAgo(1), resolved_at: null,
+      properties: { title_en: 'Riverside Condo' },
+    },
+  };
+}
+
+function makeIntelligenceV2ReportInsights() {
+  return [
+    { report_id: 'r-2', insight_id: 'ins-2', role: 'mentioned' },
+    { report_id: 'r-2', insight_id: 'ins-3', role: 'mentioned' },
+    { report_id: 'r-2', insight_id: 'ins-4', role: 'mentioned' },
+  ];
+}
+
 module.exports = {
   makeReports, makeInsights, makeReportInsights, makeLeads, makeDataQualityInsight,
   makeListingsNeedingAttentionInsights, makeValidationFallbackReport,
+  makeIntelligenceV2Insights, makeIntelligenceV2ReportInsights,
   isoDaysAgo, isoDateTimeHoursAgo, NOW,
 };

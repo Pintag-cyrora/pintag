@@ -140,11 +140,21 @@ Gemini's output.
 ## Adding a detector
 
 A `Detector` is `{ key, detect(context) -> RawFinding[], reevaluate?(insight, context) -> {stillSignificant} | null }`,
-defined in `insight-engine.js`. `context` is `{ todaySnapshot, trailingSnapshots }`.
-`runInsightEngine()` accepts an array of detectors (default:
-`DEFAULT_DETECTORS`, currently just `zScoreDetector`) and merges every
+defined in `insight-engine.js` (or a sibling module, for a detector
+substantial enough to warrant its own file — see `data-quality-detector.js`,
+`duplicate-listing-detector.js`, `demand-supply-detector.js`, and
+`listing-performance-detector.js`). `context` is
+`{ todaySnapshot, trailingSnapshots, ...extraContext }`.
+`runInsightEngine()` accepts an array of detectors and merges every
 detector's findings before running the shared lifecycle logic — that
-logic has no idea which detector produced a given finding.
+logic has no idea which detector produced a given finding. `DEFAULT_DETECTORS`
+(just `zScoreDetector`) is the bare default when `runInsightEngine()` is
+called with no detectors argument; `index.ts`'s daily sweep actually runs
+five — `[...DEFAULT_DETECTORS, dataQualityDetector, duplicateListingDetector,
+demandSupplyDetector, listingPerformanceDetector]` — so `DEFAULT_DETECTORS`
+names a fallback list, not the full production roster. See
+`docs/intelligence/DETECTOR_ARCHITECTURE.md`'s Detector Catalog for what
+each one does.
 
 To add a new detector:
 1. Write an object satisfying the `Detector` interface.
@@ -160,14 +170,16 @@ open insight's `metric_key`), that insight force-resolves the next time
 it's not re-matched — treat that as "this metric is no longer tracked,"
 not a bug.
 
-Four insight `type`s are already declared in the migration's CHECK
-constraint but have no detector behind them yet: `supply_shortage`,
-`high_performing_listing`, `low_performing_listing`, `price_trend`. Each
-needs a genuinely different detector shape (cross-sectional/percentile,
-demand-vs-supply ratio, cross-sectional, and blocked on price-history
-data not existing yet, respectively) — not a `TRACKED_SCALAR_METRICS`
-entry. This is expected, not an oversight; implement them as new
-detectors when they're actually needed.
+`price_trend` is declared in the migration's CHECK constraint but has no
+detector behind it yet — it's blocked on price-history data not existing
+yet, not a `TRACKED_SCALAR_METRICS` entry. This is expected, not an
+oversight; implement it as a new detector when it's actually needed.
+`supply_shortage`, `high_performing_listing`, and `low_performing_listing`
+were the same kind of documented gap until Intelligence V2 added
+`demandSupplyDetector` (a demand-vs-supply ratio, `supply_shortage`) and
+`listingPerformanceDetector` (a leaderboard-membership check, the other
+two) — see `docs/intelligence/DETECTOR_ARCHITECTURE.md` for their full
+catalog entries.
 
 ## Database Invariants
 
@@ -293,6 +305,21 @@ Any future flow metric follows the first pattern (add to
 future stock/current-state metric follows the second (its own function,
 merged only at `v_end`) — this split is now the standing rule for adding
 BI metrics, not a one-off decision.
+
+`20260905000000_intelligence_customer_intent.sql` (Intelligence V2) added
+one field of each kind, following this same split rather than introducing
+a third bucket: `customer_intent_segments` (a per-`(transaction_type,
+property_type, district)` search-segment leaderboard — a flow metric,
+computed inside `intelligence_daily_metrics()`, safely re-derivable for
+any past date) and `active_inventory.by_segment` (a `"tx|type|district" →
+count` map — a stock metric, added to `point_in_time_supply_snapshot()`
+and merged only for the single most-recently-finalized day, exactly like
+`active_inventory`'s existing fields). The segment key deliberately
+excludes bedrooms (`search_events.bedrooms` is a real column that is
+never populated — listings.html has no bedroom filter) and exact price
+bands (would require duplicating `budget-bands.js`'s currency-specific
+band boundaries into SQL) — both additive changes only, no existing field
+renamed or reinterpreted, so `SNAPSHOT_SCHEMA_VERSION` was not bumped.
 
 ## Version Metadata
 

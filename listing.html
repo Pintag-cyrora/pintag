@@ -843,6 +843,21 @@ function incrementView(listingId) {
     headers: { 'Content-Type': 'application/json', 'apikey': SEC_KEY, 'Authorization': 'Bearer ' + SEC_KEY },
     body: JSON.stringify({ p_listing_id: listingId })
   }).catch(function(){});
+  // listing_events.event_type='view', session-stamped -- the Intelligence
+  // layer's schema and intelligence_daily_metrics() have expected this row
+  // since 20260715010000_behavioral_events.sql (event_type CHECK already
+  // allows 'view'; the metrics SQL already reads it), but nothing ever
+  // inserted it: increment_listing_view() above only bumps
+  // properties.view_count/views_week, a lifetime aggregate with no
+  // session_id and no per-day breakdown. Without this row, "detail view"
+  // is invisible to search->impression->click->view->contact funnel
+  // analysis and the listing_views-derived metrics (search_to_view_
+  // conversion, view_to_contact_conversion, top_listings_by_views) are
+  // silently always zero. This is the one new event this page posts, not
+  // a second tracking system -- everything downstream already existed.
+  if (typeof postEvent === 'function' && typeof getOrCreateSessionId === 'function') {
+    postEvent('listing_events', { property_id: listingId, event_type: 'view', session_id: getOrCreateSessionId(), source: 'detail_page' });
+  }
 }
 
 // ── State ──────────────────────────────────────────────────────────

@@ -16,9 +16,10 @@ const supply = { byDistrict: { Sisattanak: 42, Saysettha: 31 }, byType: { apartm
 const trends = { searches: { today: 12, vs_yesterday: -0.37, vs_7day: 0.08 } };
 const daily = () => buildPrompt('daily', composed, { views: 100 }, supply, trends);
 
-test('the daily briefing asks for the new six-section structure, in order', () => {
+test('the daily briefing asks for the eight-section structure, in order (Intelligence V2 added Customer Intent + Unmet Demand)', () => {
   const p = daily();
   const want = ["# Today's Story", '## What Changed Today', '## Buyer Behaviour',
+                '## Customer Intent', '## Unmet Demand & Inventory Opportunities',
                 '## Listings To Watch', '## Data / Product Issues', "## Tomorrow's Priorities"];
   let at = -1;
   for (const h of want) {
@@ -162,9 +163,15 @@ test('the JSON output contract is unchanged', () => {
 });
 
 test('version metadata records the change', () => {
-  assert.equal(PROMPT_VERSION, '2.0.0', 'a 1.x daily report answers a different question');
+  // 3.0.0 (Intelligence V2, Customer Intent) supersedes 2.0.0 (this file's
+  // original briefing rewrite) for the same reason 2.0.0 superseded 1.x: a
+  // daily report generated under the new prompt answers a materially
+  // different question and must not be read as the same artefact.
+  assert.equal(PROMPT_VERSION, '3.0.0', 'a 2.x daily report answers a different question from a 3.x one');
   assert.equal(VALIDATOR_VERSION, '1.1.0');
-  // Untouched layers must NOT have been bumped — the analytics did not change.
+  // Untouched layers must NOT have been bumped — the analytics did not
+  // change meaning (new fields were appended, not reinterpreted) and
+  // report-validator.js's rule set is untouched by Intelligence V2.
   assert.equal(SNAPSHOT_SCHEMA_VERSION, '1.1.0');
   assert.equal(REPORT_FORMAT_VERSION, '1.1.0');
 });
