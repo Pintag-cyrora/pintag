@@ -18,7 +18,7 @@ import fs from 'node:fs';
 for (const f of ['currency.js', 'terminology.js', 'unit-availability.js', 'listing-status.js', 'components.js']) {
   vm.runInThisContext(fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8'), { filename: f });
 }
-const { ptResolveFomoOverlay, getOverlayStatusWord, formatPropertyPrice } = globalThis;
+const { ptResolveFomoOverlay, getOverlayStatusWord, formatPropertyPrice, _ptIsUnavailableNow } = globalThis;
 
 const property = (o) => Object.assign({
   transaction_type: 'for_rent', market_status: 'available', workflow_status: 'active',
@@ -137,4 +137,99 @@ test('getOverlayStatusWord returns null for a status with no overlay word (e.g. 
 test('an available listing with no unit inventory data at all gets no overlay (the honest default)', () => {
   const p = property({ market_status: 'available', unit_types: [] });
   assert.equal(ptResolveFomoOverlay(p, 'en'), null);
+});
+
+// ═══ REGRESSION: stale market_status must not survive a genuine unit-level ═══
+// ═══ availability change (production bug — a reopened unit stayed dark) ═════
+//
+// admin.html's per-unit Available checkbox (saveUnitTypes()) writes ONLY the
+// unit_types table; nothing anywhere keeps properties.market_status in sync
+// with it. _ptIsUnavailableNow() must therefore treat unit rows as
+// authoritative for occupancy-shaped statuses in BOTH directions — reopening
+// a unit must clear a stale 'fully_occupied'/'rented'/'reserved', and closing
+// every unit must produce 'fully_occupied' even while market_status still
+// says 'available' (the pre-existing, already-correct direction).
+
+test('REOPEN: market_status stuck on fully_occupied + the unit is closed → still unavailable (starting state)', () => {
+  const p = property({
+    market_status: 'fully_occupied',
+    unit_types: [unit({ id: 'u1', is_available: false, available_count: 0 })],
+  });
+  // Both signals agree it's closed -- market_status's own reason is kept,
+  // not downgraded to a generic unit-derived one (nothing to override yet).
+  assert.deepEqual(_ptIsUnavailableNow(p), { unavailable: true, market: 'fully_occupied', source: 'market_status' });
+  assert.deepEqual(ptResolveFomoOverlay(p, 'en'), { tone: 'unavailable', text: 'Fully Booked' });
+});
+
+test('REOPEN: the SAME listing, only the unit flipped to available (market_status left untouched) → FOMO disappears, listing resolves available', () => {
+  const p = property({
+    market_status: 'fully_occupied',   // ← never touched by the unit save, exactly like production
+    unit_types: [unit({ id: 'u1', is_available: true, available_count: 2 })],
+  });
+  assert.deepEqual(_ptIsUnavailableNow(p), { unavailable: false, market: 'fully_occupied', source: 'unit_types' });
+  assert.equal(ptResolveFomoOverlay(p, 'en'), null);
+});
+
+test('CLOSE: market_status available + units available → no FOMO (starting state)', () => {
+  const p = property({
+    market_status: 'available',
+    unit_types: [unit({ id: 'u1', is_available: true, available_count: 3 })],
+  });
+  assert.deepEqual(_ptIsUnavailableNow(p), { unavailable: false, market: 'available', source: 'unit_types' });
+  assert.equal(ptResolveFomoOverlay(p, 'en'), null);
+});
+
+test('CLOSE: the SAME listing, the unit flipped to closed (market_status left untouched) → resolves fully_occupied, FOMO appears', () => {
+  const p = property({
+    market_status: 'available',   // ← never touched by the unit save
+    unit_types: [unit({ id: 'u1', is_available: false, available_count: 0 })],
+  });
+  assert.deepEqual(_ptIsUnavailableNow(p), { unavailable: true, market: 'fully_occupied', source: 'unit_types' });
+  assert.deepEqual(ptResolveFomoOverlay(p, 'en'), { tone: 'unavailable', text: 'Fully Booked' });
+});
+
+test('a stale RESERVED market_status does not hide a listing that has a genuinely available unit', () => {
+  const p = property({
+    market_status: 'reserved',
+    unit_types: [unit({ id: 'u1', is_available: true, available_count: 1 })],
+  });
+  assert.equal(_ptIsUnavailableNow(p).unavailable, false);
+  // Still a real scarcity signal (1 left), just never the dark "unavailable" scrim.
+  const overlay = ptResolveFomoOverlay(p, 'en');
+  assert.notEqual(overlay && overlay.tone, 'unavailable');
+});
+
+test('a stale RENTED market_status does not hide a listing that has a genuinely available unit', () => {
+  const p = property({
+    market_status: 'rented',
+    unit_types: [unit({ id: 'u1', is_available: true, available_count: 4 })],
+  });
+  assert.equal(_ptIsUnavailableNow(p).unavailable, false);
+  assert.equal(ptResolveFomoOverlay(p, 'en'), null);
+});
+
+test('SOLD still overrides an available unit — a property-wide fact, never a per-unit one', () => {
+  const p = property({
+    market_status: 'sold',
+    unit_types: [unit({ id: 'u1', is_available: true, available_count: 4 })],
+  });
+  assert.deepEqual(_ptIsUnavailableNow(p), { unavailable: true, market: 'sold', source: 'market_status' });
+  assert.deepEqual(ptResolveFomoOverlay(p, 'en'), { tone: 'unavailable', text: 'Sold' });
+});
+
+test('OFF_MARKET still overrides an available unit — a property-wide fact, never a per-unit one', () => {
+  const p = property({
+    market_status: 'off_market',
+    unit_types: [unit({ id: 'u1', is_available: true, available_count: 4 })],
+  });
+  assert.deepEqual(_ptIsUnavailableNow(p), { unavailable: true, market: 'off_market', source: 'market_status' });
+  assert.deepEqual(ptResolveFomoOverlay(p, 'en'), { tone: 'unavailable', text: 'Off Market' });
+});
+
+test('a property with NO unit rows still respects market_status exactly as before (no unit data to consult)', () => {
+  const rented = property({ market_status: 'rented', unit_types: [] });
+  assert.deepEqual(_ptIsUnavailableNow(rented), { unavailable: true, market: 'rented', source: 'market_status' });
+
+  const available = property({ market_status: 'available', unit_types: [] });
+  assert.deepEqual(_ptIsUnavailableNow(available), { unavailable: false, market: 'available', source: null });
 });
