@@ -331,7 +331,7 @@ const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-interior.png';
 
 async function load(){
   try{
-    var r1=await fetch(SB+'/rest/v1/parties?type=eq.agent&order=created_at.asc&select=id,slug,name_lo,name_en,photo_url,bio_lo,bio_en,is_verified',
+    var r1=await fetch(SB+'/rest/v1/parties?type=eq.agent&is_active=eq.true&order=created_at.asc&select=id,slug,name_lo,name_en,photo_url,bio_lo,bio_en,is_verified',
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY}});
     var agents=await r1.json();
     if(!Array.isArray(agents)) agents=[];

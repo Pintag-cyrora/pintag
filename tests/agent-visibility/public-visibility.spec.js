@@ -206,3 +206,64 @@ for (const pageFile of ['agents.html', 'agent.html']) {
     });
   });
 }
+
+test.describe('for-agents.html "meet our agents" roster', () => {
+  // The roster (renderRoster()) is a separate public showcase from
+  // agents.html/agent.html's own profile pages above -- it previously
+  // queried parties WITHOUT is_active, so a hidden agent's name/photo could
+  // still surface here even though their own profile 404s. Pins the same
+  // is_active=eq.true rule for this query too.
+  function mockRoster(page, rows, seen) {
+    return page.route('**/rest/v1/parties**', (route) => {
+      seen.url = route.request().url();
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+    });
+  }
+  function mockRosterListings(page) {
+    return page.route('**/rest/v1/properties**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  }
+  // for-agents.html's static hero <img> falls back to a pintag-cyrora.github.io
+  // URL on error, via an inline onerror handler that re-triggers itself if
+  // that fallback ALSO fails to load -- harmless with real network (github.io
+  // resolves), but an unmocked external host has no route to fulfill it here,
+  // so the browser's 'load' event never settles. A tiny real PNG response
+  // breaks that loop without touching for-agents.html itself.
+  const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  function mockHeroImage(page) {
+    return page.route('https://pintag-cyrora.github.io/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }));
+  }
+
+  test('fetches the roster filtered by is_active=eq.true', async ({ page }) => {
+    const seen = {};
+    await mockRoster(page, [AGENT], seen);
+    await mockRosterListings(page);
+    await mockHeroImage(page);
+    await page.goto('/for-agents.html');
+    await expect(page.locator('#page')).toBeVisible();
+    expect(seen.url, 'the roster query must exclude hidden agents').toContain('is_active=eq.true');
+  });
+
+  test('a visible agent appears in the roster', async ({ page }) => {
+    const seen = {};
+    await mockRoster(page, [AGENT], seen);
+    await mockRosterListings(page);
+    await mockHeroImage(page);
+    await page.goto('/for-agents.html');
+    await expect(page.locator('#page')).toBeVisible();
+    await expect(page.locator('#roster-list')).toContainText('ແດງ');
+  });
+
+  test('a hidden agent (filtered out by the query) does not appear in the roster', async ({ page }) => {
+    const seen = {};
+    // is_active=eq.true means a hidden agent comes back as [] from the query
+    // -- mirrors the "hidden agent shows not-found" tests above.
+    await mockRoster(page, [], seen);
+    await mockRosterListings(page);
+    await mockHeroImage(page);
+    await page.goto('/for-agents.html');
+    await expect(page.locator('#page')).toBeVisible();
+    await expect(page.locator('#roster-list')).not.toContainText('ແດງ');
+  });
+});

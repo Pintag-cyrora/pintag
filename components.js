@@ -602,6 +602,38 @@ function ptResolveListingFomo(property, lang) {
   return null;
 }
 
+// ptResolveFomoOverlay(property, lang) -- the Agoda-style PHOTO overlay
+// decision: what (if anything) to show directly on top of the photo, as
+// opposed to ptResolveListingFomo()'s text line under it. Composition only --
+// reuses the exact same two resolvers every other FOMO/status surface reads
+// (_ptIsUnavailableNow, ptResolveListingFomo), never a new status question.
+//
+// TWO TONES, deliberately different treatments:
+//   'unavailable' -- sold/rented/reserved/fully_occupied/off_market. A real
+//     booking is gone; the full dark scrim + bold status word is honest
+//     scarcity ("you missed this"), and the photo must stay visible under it
+//     (see the CSS: this is a translucent scrim, never an opaque block).
+//   'scarce'      -- STILL AVAILABLE, but ptResolveListingFomo() already
+//     found a real last_one/scarce signal (an actual available_count, never
+//     fabricated). Rendered as a ribbon, not a scrim -- a bookable listing's
+//     photo must never look "gone" the way an unavailable one correctly does.
+// Returns null when neither applies -- most listings get no photo overlay
+// at all, which is the correct, honest default.
+function ptResolveFomoOverlay(property, lang) {
+  lang = lang || 'en';
+  var avail = (typeof _ptIsUnavailableNow === 'function') ? _ptIsUnavailableNow(property) : null;
+  if (avail && avail.unavailable) {
+    var word = (typeof getOverlayStatusWord === 'function') ? getOverlayStatusWord(avail.market, lang) : null;
+    if (!word) return null;
+    return { tone: 'unavailable', text: word };
+  }
+  var fomo = ptResolveListingFomo(property, lang);
+  if (fomo && (fomo.kind === 'last_one' || fomo.kind === 'scarce')) {
+    return { tone: 'scarce', text: fomo.text };
+  }
+  return null;
+}
+
 // ptBuildUnitPriceText(property, resolvedUnit, lang) / ptResolveUnitTypesPrice()
 // -- the unit-type price fallback, shared by the CARD and the DETAIL page.
 //
@@ -1017,8 +1049,19 @@ function renderPropertyCard(property, opts) {
 
   var pinSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>';
 
+  // FOMO PHOTO OVERLAY -- the big, Agoda-style treatment ON the photo itself,
+  // separate from the small corner status chip (opts.statusBadgeHtml above)
+  // and the text line under the price (fomoHtml above). See
+  // ptResolveFomoOverlay()'s own header for the two-tone rule.
+  var fomoOverlay = (typeof ptResolveFomoOverlay === 'function') ? ptResolveFomoOverlay(p, lang) : null;
+  var fomoOverlayHtml = fomoOverlay
+    ? (fomoOverlay.tone === 'unavailable'
+        ? '<div class="pt-fomo-overlay pt-fomo-overlay-unavailable"><span class="pt-fomo-overlay-word">' + _ptEsc(fomoOverlay.text) + '</span></div>'
+        : '<div class="pt-fomo-overlay pt-fomo-overlay-scarce"><span class="pt-fomo-ribbon">' + _ptEsc(fomoOverlay.text) + '</span></div>')
+    : '';
+
   card.innerHTML =
-    '<div class="pt-card-img">' + imgHtml +
+    '<div class="pt-card-img">' + imgHtml + fomoOverlayHtml +
       '<div class="pt-ov-tl">' + badgeHtml + overlayTl + '</div>' +
       (heartHtml ? '<div class="pt-ov-tr">' + heartHtml + '</div>' : '') +
       (opts.photoCountHtml ? '<div class="pt-ov-br">' + opts.photoCountHtml + '</div>' : '') +

@@ -104,7 +104,19 @@ const FIXTURES = [
   // Real scarcity, for the FOMO axis.
   property({ slug: 'one-left', market_status: 'available',
              price_amount: 600, price_currency: 'USD', price_frequency: 'monthly',
-             unit_types: [unit({ id: 'c1', price_amount: 600, price_currency: 'USD', price_frequency: 'monthly', available_count: 1 })] })
+             unit_types: [unit({ id: 'c1', price_amount: 600, price_currency: 'USD', price_frequency: 'monthly', available_count: 1 })] }),
+  // FOMO photo overlay fixtures.
+  property({ slug: 'overlay-sold', market_status: 'sold',
+             price_amount: 180000, price_currency: 'USD', price_frequency: null,
+             images: ['https://example.com/overlay-sold.jpg'] }),
+  property({ slug: 'overlay-reserved', market_status: 'reserved',
+             price_amount: 700, price_currency: 'USD', price_frequency: 'monthly' }),
+  // Partial multi-unit availability -- must NEVER read as fully booked.
+  property({ slug: 'overlay-partial', market_status: 'available',
+             price_amount: 500, price_currency: 'USD', price_frequency: 'monthly',
+             unit_types: [
+               unit({ id: 'part-open-1', available_count: 8, total_units: 10 }),
+             ] })
 ];
 
 async function openListings(page, query) {
@@ -431,4 +443,70 @@ test('PROD: one unit still open → no suffix and no closure claim', async ({ pa
   await expect(card.locator('.pt-card-price')).toContainText('$350');
   await expect(card.locator('.pt-card-next-available')).toHaveCount(0);
   await expect(card).not.toContainText('Fully occupied');
+});
+
+// ── FOMO PHOTO OVERLAY (Agoda-style scarcity treatment) ─────────────────
+// The dark scrim + big status word sits ON the photo (.pt-card-img), a
+// separate element from the small corner badge and the text line under the
+// price -- both of which these fixtures already exercise above. The price
+// must remain visible in every case (ptResolveFomoOverlay never touches it).
+
+test('AVAILABLE listing → no photo overlay at all, normal photo', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'avail-prop-price');
+  await expect(card.locator('.pt-fomo-overlay')).toHaveCount(0);
+});
+
+test('RENTED → "Just Rented" dark-scrim overlay, price still visible', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'unavail-prop-price');
+  await expect(card.locator('.pt-fomo-overlay-unavailable')).toBeVisible();
+  await expect(card.locator('.pt-fomo-overlay-word')).toHaveText('Just Rented');
+  await expect(card.locator('.pt-card-price')).toContainText('$500');
+});
+
+test('FULLY OCCUPIED (multi-unit, all units closed) → "Fully Booked" overlay, price still visible', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'unavail-unit-price');
+  await expect(card.locator('.pt-fomo-overlay-word')).toHaveText('Fully Booked');
+  await expect(card.locator('.pt-card-price')).toContainText('$380');
+});
+
+test('SOLD → "Sold" overlay, price still visible', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'overlay-sold');
+  await expect(card.locator('.pt-fomo-overlay-word')).toHaveText('Sold');
+  await expect(card.locator('.pt-card-price')).toContainText('$180,000');
+});
+
+test('RESERVED → "Reserved" overlay, price still visible', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'overlay-reserved');
+  await expect(card.locator('.pt-fomo-overlay-word')).toHaveText('Reserved');
+  await expect(card.locator('.pt-card-price')).toContainText('$700');
+});
+
+test('PARTIAL multi-unit availability (8 of 10 open) → NOT fully booked, no dark overlay at all', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'overlay-partial');
+  await expect(card.locator('.pt-fomo-overlay-unavailable')).toHaveCount(0);
+  await expect(card.locator('.pt-fomo-overlay-word')).toHaveCount(0);
+});
+
+test('ONLY 1 LEFT (real available_count) → scarce ribbon, NOT the dark "unavailable" scrim', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'one-left');
+  await expect(card.locator('.pt-fomo-overlay-unavailable')).toHaveCount(0);
+  await expect(card.locator('.pt-fomo-ribbon')).toContainText(/only 1 left/i);
+  await expect(card.locator('.pt-card-price')).toContainText('$600');
+});
+
+test('the photo itself is still visible under an unavailable overlay (a scrim, never an opaque block)', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'overlay-sold');
+  // The scrim is a CSS background on a separate absolutely-positioned div,
+  // not a modification of the <img> itself -- the photo element is present
+  // and visible underneath it.
+  await expect(card.locator('.pt-card-img img')).toBeVisible();
+  await expect(card.locator('.pt-fomo-overlay-unavailable')).toBeVisible();
 });

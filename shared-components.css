@@ -101,6 +101,33 @@ html[lang="lo"] .pt-card.pt-featured .pt-card-title{line-height:1.45;}
 .pt-ov-br{position:absolute;bottom:12px;right:12px;z-index:2;}
 .pt-ov-bl{position:absolute;bottom:12px;left:12px;z-index:2;}
 
+/* ─── FOMO PHOTO OVERLAY — Agoda-style scarcity treatment directly on the
+   photo. Shared by the card grid (components.js's renderPropertyCard) and
+   the listing detail hero/gallery (listing.html, which links this same
+   stylesheet) -- one definition, not a per-page copy. Backed entirely by
+   real availability data (see ptResolveFomoOverlay(), components.js);
+   never invented. z-index sits ABOVE the photo but BELOW the existing
+   corner badges/heart button (.pt-ov-*, z-index:2/.pt-badge-*, z-index:3),
+   so those stay usable exactly as before. pointer-events:none throughout --
+   the overlay must never block the card's own click-through.
+     .pt-fomo-overlay-unavailable — sold/rented/reserved/fully_occupied/
+       off_market: a translucent dark scrim (~40%) + one bold centered
+       uppercase word. The photo must stay clearly visible underneath --
+       this is deliberately a scrim, never a solid block color.
+     .pt-fomo-overlay-scarce — STILL AVAILABLE, but a real last-one/scarce
+       signal exists (ptResolveListingFomo()). A corner ribbon, not a scrim:
+       a bookable listing's photo must never read as "gone" the way an
+       unavailable one correctly does. */
+.pt-fomo-overlay{position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:14px;pointer-events:none;}
+.pt-fomo-overlay-unavailable{background:rgba(10,14,16,0.42);}
+.pt-fomo-overlay-word{color:#fff;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;line-height:1.2;text-shadow:0 2px 10px rgba(0,0,0,0.35);font-size:clamp(17px,4.2vw,26px);}
+.pt-fomo-overlay-scarce{align-items:flex-start;justify-content:flex-start;padding:0;}
+.pt-fomo-ribbon{background:var(--pt-amber);color:#fff;font-weight:700;font-size:10.5px;letter-spacing:0.05em;text-transform:uppercase;padding:6px 12px;border-radius:0 0 var(--pt-r-card) 0;box-shadow:var(--pt-shadow-badge);}
+@media(max-width:800px){
+  .pt-fomo-overlay-word{font-size:clamp(14px,5vw,20px);}
+  .pt-fomo-ribbon{font-size:9.5px;padding:5px 10px;}
+}
+
 .pt-heart-btn{
   width:28px;height:28px;background:var(--pt-overlay-bg);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
