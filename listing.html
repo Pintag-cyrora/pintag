@@ -345,6 +345,15 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .prop-status-rented{background:#C2410C;}
 .prop-status-offer{background:#1D4ED8;}
 .mg-status-wrap{position:absolute;top:12px;right:12px;z-index:4;pointer-events:none;}
+/* FOMO photo overlay (.pt-fomo-overlay, shared-components.css) inside the
+   mobile gallery: .mobile-gallery's own height also includes .mg-dots below
+   the photo, so the shared component's default inset:0 would stretch the
+   scrim over the dots row too. Sized to exactly one slide instead (mirrors
+   .mg-slide's own aspect-ratio), which is also why this lives outside
+   .mg-track (a horizontally scrolling container) -- fixed here, it stays
+   over whichever photo is currently in view rather than scrolling away
+   with it. */
+.mobile-gallery .pt-fomo-overlay{inset:auto;top:0;left:0;right:0;aspect-ratio:4/3;z-index:3;}
 /* Unavailable-listing notice — near the top of the page, right under the
    status badge. Links straight to the Similar Properties section: the
    whole point is to redirect a buyer toward something they can still get,
@@ -2200,8 +2209,20 @@ function buildMockupLayout(){
   // status in that case, exactly like v1 did).
   var statusChangeDateText=(typeof formatStatusChangeDate==='function')?formatStatusChangeDate(data.market_status_changed_at,lang):null;
   var statusBadgeHtml=getStatusBadgeHtml(listingStatusResolved.market,lang,statusChangeDateText);
-  var desktopGalleryMarkup=buildDesktopGallery(imagesArray);
-  var mobileGalleryMarkup=buildMobileGallery(imagesArray,statusBadgeHtml);
+  // FOMO PHOTO OVERLAY (Agoda-style) -- same resolver the listing card uses
+  // (ptResolveFomoOverlay, components.js), so the card and this detail page
+  // can never disagree about whether/what to show on the photo itself. This
+  // is a THIRD, separate treatment from statusBadgeHtml (the small pill
+  // above) and the conversion panel below -- see shared-components.css's
+  // .pt-fomo-overlay family (listing.html links that stylesheet already).
+  var fomoOverlay=(typeof ptResolveFomoOverlay==='function')?ptResolveFomoOverlay(data,lang):null;
+  var fomoOverlayHtml=fomoOverlay
+    ? (fomoOverlay.tone==='unavailable'
+        ? '<div class="pt-fomo-overlay pt-fomo-overlay-unavailable"><span class="pt-fomo-overlay-word">'+esc(fomoOverlay.text)+'</span></div>'
+        : '<div class="pt-fomo-overlay pt-fomo-overlay-scarce"><span class="pt-fomo-ribbon">'+esc(fomoOverlay.text)+'</span></div>')
+    : '';
+  var desktopGalleryMarkup=buildDesktopGallery(imagesArray,fomoOverlayHtml);
+  var mobileGalleryMarkup=buildMobileGallery(imagesArray,statusBadgeHtml,fomoOverlayHtml);
 
   // ── Rented Listings UX v2, Priority 3/4/8 — conversion panel + waiting-
   // list CTA, near the top of the page, right under the status badge. This
@@ -3167,9 +3188,10 @@ function wireBuildingStrip(){
 }
 
 // ── buildDesktopGallery ──────────────────────────────────────────
-function buildDesktopGallery(images){
+function buildDesktopGallery(images,fomoOverlayHtml){
+  fomoOverlayHtml=fomoOverlayHtml||'';
   var clean=(Array.isArray(images)?images:[]).filter(function(u){return u&&typeof u==='string';});
-  if(!clean.length)return '<div class="desktop-gallery"><div class="dg-hero"><div class="sim-no-img"></div></div></div>';
+  if(!clean.length)return '<div class="desktop-gallery"><div class="dg-hero">'+fomoOverlayHtml+'<div class="sim-no-img"></div></div></div>';
   var thumbsHtml='';
   var maxThumbs=5;
   for(var i=0;i<maxThumbs;i++){
@@ -3189,6 +3211,7 @@ function buildDesktopGallery(images){
     '<div class="desktop-gallery" id="dg-hero-frame" data-track="gallery-hero-image" data-track-type="image" data-track-label="Hero image">'+
     '<div class="dg-hero" id="dg-hero-box">'+
     '<img src="'+esc(ptCardImageSrc(clean[0],'hero'))+'" id="dg-hero-img" alt="" decoding="async" data-pt-original="'+esc(ptCdnImage(clean[0]))+'" onerror="if(!ptImageFallback(this))handleImageError(this)">'+
+    fomoOverlayHtml+
     '<span class="dg-coord" id="dg-coord-lbl">01 / '+String(clean.length).padStart(2,'0')+'</span>'+
     '<button class="dg-view-all" id="dg-view-all-btn" data-track="gallery-view-all" data-track-type="button" data-track-label="View all photos">'+
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>'+
@@ -3250,9 +3273,10 @@ function hydrateMobileSlides(idx){
   }
 }
 
-function buildMobileGallery(images, statusBadgeHtml){
+function buildMobileGallery(images, statusBadgeHtml, fomoOverlayHtml){
+  fomoOverlayHtml=fomoOverlayHtml||'';
   var clean=(Array.isArray(images)?images:[]).filter(function(u){return u&&typeof u==='string';});
-  if(!clean.length)return '<div class="mobile-gallery">'+(statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'')+'<div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
+  if(!clean.length)return '<div class="mobile-gallery">'+(statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'')+fomoOverlayHtml+'<div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
   var slidesHtml='',dotsHtml='';
   // WINDOWED LOADING (cached-egress fix). Every slide used to carry a real
   // src, so a 44-photo listing queued 44 full-resolution originals. lazy is
@@ -3273,7 +3297,7 @@ function buildMobileGallery(images, statusBadgeHtml){
     dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'" data-track="gallery-mobile-dot" data-track-type="dot" data-track-label="Dot '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'></div>';
   });
   var overlayHtml=statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'';
-  return '<div class="mobile-gallery">'+overlayHtml+'<div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
+  return '<div class="mobile-gallery">'+overlayHtml+fomoOverlayHtml+'<div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
 }
 
 function jumpMobileGallerySlide(idx){var t=document.getElementById('mg-track-el');if(!t)return;hydrateMobileSlides(idx);t.scrollTo({left:idx*t.offsetWidth,behavior:'smooth'});}

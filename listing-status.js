@@ -184,6 +184,44 @@ function getUnavailableNoticeText(marketStatus, lang) {
   return lead + ' ' + trailer;
 }
 
+// ── FOMO Photo Overlay (Agoda-style scarcity treatment) ─────────────────
+// getOverlayStatusWord(marketStatus, lang) -- the short, bold word for the
+// full-photo dark-scrim overlay on an unavailable listing's photo (the
+// card grid and the detail hero/gallery). A THIRD surface for the same
+// `market` value resolveListingStatus() already produces, distinct from:
+//   getMarketStatusLabel()      -- the plain badge label ("Rented")
+//   ptResolveListingFomo() (components.js) -- the composed sentence
+//                                  ("Just rented — see similar")
+// This is deliberately its own short vocabulary (not a case-transform of
+// either) because the overlay word has to read at a glance from across a
+// room, not as a label or a sentence fragment.
+//
+// Reuses this file's own existing Lao/Chinese wording (MARKET_STATUS_LABELS)
+// rather than inventing new translations for reserved/fully_occupied/
+// off_market -- only rented/sold get a punchier English word ("Just
+// Rented"/"Sold" vs the plain "Rented"/"Sold" badge label); the Lao/Chinese
+// text is identical to the existing label for those two either way, since a
+// literal "ຫາກໍ່..." ("just...") phrasing already exists in
+// ptResolveListingFomo()'s missed-kind text and is reused here rather than
+// invented twice.
+//
+// CSS text-transform:uppercase does the visual "ALL CAPS" styling at the
+// call site -- a no-op on caseless Lao/Chinese script, so this function
+// itself never needs per-language casing logic.
+var OVERLAY_STATUS_WORD = {
+  rented:         { en: 'Just Rented',  lo: 'ຫາກໍ່ຖືກເຊົ່າ',    zh: '刚被租出' },
+  sold:           { en: 'Sold',         lo: 'ຂາຍແລ້ວ',          zh: '已售出'   },
+  reserved:       { en: 'Reserved',     lo: 'ຖືກຈອງແລ້ວ',       zh: '已预订'   },
+  fully_occupied: { en: 'Fully Booked', lo: 'ເຕັມແລ້ວ',         zh: '已满租'   },
+  off_market:     { en: 'Off Market',   lo: 'ຖອນອອກຈາກຕະຫຼາດ',  zh: '已下架'   }
+};
+function getOverlayStatusWord(marketStatus, lang) {
+  lang = lang || 'en';
+  var W = OVERLAY_STATUS_WORD[marketStatus];
+  if (!W) return null;
+  return W[lang] || W.en;
+}
+
 // ── Rented Listings UX v2, Priority 2 ("Rented Date") ───────────────────
 // formatStatusChangeDate(dateStr, lang, nowMs) -- turns a REAL
 // properties.market_status_changed_at timestamp (see migration

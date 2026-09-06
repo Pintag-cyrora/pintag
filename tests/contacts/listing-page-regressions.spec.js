@@ -276,3 +276,76 @@ test.describe('unit photos without a rendition object still display (renditions 
     });
   });
 });
+
+// ── FOMO PHOTO OVERLAY (Agoda-style scarcity treatment) — detail page hero ──
+// Same resolver (ptResolveFomoOverlay, components.js) the listing card uses,
+// so the card and this detail page can never disagree about what shows on
+// the photo. Desktop and mobile render two separate DOM subtrees
+// (.desktop-gallery / .mobile-gallery, toggled by a CSS media query, not
+// conditionally rendered) -- both need their own check.
+test.describe('FOMO photo overlay (detail page hero)', () => {
+  const withPhoto = (o) => Object.assign({}, BASE, { images: [IMG('pintag-hero.png')] }, o);
+
+  test('AVAILABLE listing → no overlay on the desktop hero', async ({ page }) => {
+    const errors = await openListing(page, withPhoto({ slug: 'fomo-available', market_status: 'available' }));
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay')).toHaveCount(0);
+    expect(errors.map((e) => e.message)).toEqual([]);
+  });
+
+  test('RENTED → "Just Rented" dark-scrim overlay on the DESKTOP hero, photo still visible', async ({ page }) => {
+    await openListing(page, withPhoto({ slug: 'fomo-rented', market_status: 'rented' }));
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-word')).toHaveText('Just Rented');
+    await expect(page.locator('#dg-hero-img')).toBeVisible();
+    // Price stays visible alongside the overlay -- never suppressed by it.
+    await expect(page.locator('.price-block')).toContainText('$500');
+  });
+
+  test('SOLD → "Sold" overlay on the MOBILE gallery, photo still visible', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openListing(page, withPhoto({ slug: 'fomo-sold-m', market_status: 'sold', price_frequency: null }));
+    await expect(page.locator('.mobile-gallery')).toBeVisible();
+    await expect(page.locator('.mobile-gallery .pt-fomo-overlay-word')).toHaveText('Sold');
+    await expect(page.locator('.mobile-gallery .mg-track img').first()).toBeVisible();
+  });
+
+  test('FULLY OCCUPIED (multi-unit, all units closed, market_status untouched) → "Fully Booked" overlay on desktop', async ({ page }) => {
+    const p = withPhoto({
+      slug: 'fomo-occupied', market_status: 'available',
+      unit_types: [
+        { id: 'u1', name_en: 'Studio', is_available: false, available_count: 0, sort_order: 0, images: [] },
+        { id: 'u2', name_en: '1BR', is_available: false, available_count: 0, sort_order: 1, images: [] },
+      ],
+    });
+    await openListing(page, p);
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-word')).toHaveText('Fully Booked');
+  });
+
+  test('RESERVED → "Reserved" overlay on desktop', async ({ page }) => {
+    await openListing(page, withPhoto({ slug: 'fomo-reserved', market_status: 'reserved' }));
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-word')).toHaveText('Reserved');
+  });
+
+  test('PARTIAL multi-unit availability (8 of 10 open) → NOT fully booked, no overlay', async ({ page }) => {
+    const p = withPhoto({
+      slug: 'fomo-partial', market_status: 'available',
+      unit_types: [{ id: 'u1', name_en: 'Studio', is_available: true, available_count: 8, total_units: 10, sort_order: 0, images: [] }],
+    });
+    await openListing(page, p);
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-unavailable')).toHaveCount(0);
+  });
+
+  test('ONLY 1 UNIT LEFT (real available_count) → scarce ribbon, not the dark scrim', async ({ page }) => {
+    const p = withPhoto({
+      slug: 'fomo-lastone', market_status: 'available',
+      unit_types: [{ id: 'u1', name_en: 'Studio', is_available: true, available_count: 1, sort_order: 0, images: [] }],
+    });
+    await openListing(page, p);
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-unavailable')).toHaveCount(0);
+    await expect(page.locator('.desktop-gallery .pt-fomo-ribbon')).toContainText(/only 1 left/i);
+  });
+
+  test('Lao language → the overlay word is real Lao text, not left in English', async ({ page }) => {
+    await openListing(page, withPhoto({ slug: 'fomo-lo', market_status: 'sold' }), 'lo');
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-word')).toHaveText('ຂາຍແລ້ວ');
+  });
+});
