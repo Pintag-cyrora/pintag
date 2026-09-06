@@ -279,13 +279,28 @@ test('PROD-6. ONE unit still open → no suffix, and no unavailable line', () =>
   assert.ok(!f || f.kind !== 'missed', 'must not claim unavailable while a unit is open');
 });
 
-test('PROD-7. an explicit market_status still wins when it says unavailable', () => {
-  // Widening the gate must not weaken it: a listing marked rented stays rented
-  // even if a unit row was left switched on.
+test('PROD-7. a REOPENED unit clears a stale "rented" market_status (production bug fix)', () => {
+  // This inverts what this test used to assert ("a listing marked rented
+  // stays rented even if a unit row was left switched on"). That was
+  // exactly the production bug: admin.html's per-unit Available checkbox
+  // (saveUnitTypes()) never touches properties.market_status, so a unit
+  // reopened at the unit level had no way to clear a stale reserved/rented/
+  // fully_occupied market_status, and the listing stayed stuck showing the
+  // unavailable/FOMO treatment forever. _ptIsUnavailableNow() now treats
+  // unit rows as authoritative for these three occupancy-shaped statuses in
+  // BOTH directions -- see components.js.
   const p = prodShape({ market_status: 'rented' });
   p.unit_types[0].is_available = true;
   p.unit_types[0].available_count = 3;
-  assert.equal(ptResolveListingFomo(p, 'en').text, 'Just rented — see similar');
+  const f = ptResolveListingFomo(p, 'en');
+  assert.ok(!f || f.kind !== 'missed', 'a genuinely open unit must clear a stale rented market_status');
+});
+
+test('PROD-7b. SOLD still wins even with a unit row left switched on -- a property-wide fact, never a per-unit one', () => {
+  const p = prodShape({ market_status: 'sold' });
+  p.unit_types[0].is_available = true;
+  p.unit_types[0].available_count = 3;
+  assert.equal(ptResolveListingFomo(p, 'en').text, 'Just sold — see similar');
 });
 
 test('PROD-8. no unit types → falls back to market_status exactly as before', () => {

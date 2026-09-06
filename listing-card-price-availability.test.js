@@ -165,7 +165,12 @@ test('FOMO: unavailable listings get factual "missed it" messaging', () => {
 });
 
 test('FOMO: an unavailable listing is never given scarcity urgency', () => {
-  const p = { market_status: 'rented', unit_types: [unit({ available_count: 1 })] };
+  // 'sold' is a property-wide fact (unlike reserved/rented/fully_occupied,
+  // it is never overridable by a unit row -- see _ptIsUnavailableNow()), so
+  // this listing is genuinely unavailable even though a unit_types row
+  // still claims 1 available. Confirms the invariant survives regardless
+  // of a stray/stale unit count.
+  const p = { market_status: 'sold', unit_types: [unit({ available_count: 1 })] };
   const f = ptResolveListingFomo(p, 'en');
   assert.equal(f.kind, 'missed');
   assert.notEqual(f.tone, 'urgent');

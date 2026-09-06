@@ -452,11 +452,38 @@ function _ptHasOpenUnit(property) {
 // they exist; market_status answers for everything else. Returns the reason so
 // a caller can label a unit-derived closure correctly ('fully_occupied') rather
 // than reaching for market_status, which in that case still says 'available'.
+//
+// A genuinely OPEN unit outranks market_status for occupancy-shaped statuses
+// (reserved/rented/fully_occupied) -- not just the "close" direction the
+// comment above originally described. admin.html's per-unit Available
+// checkbox (saveUnitTypes()) never touches properties.market_status, and
+// nothing else in this codebase keeps the two in sync either; a listing
+// reopened at the unit level while market_status is still stuck on one of
+// those three must read as available again, or it stays stuck showing the
+// FOMO/unavailable treatment forever. sold/off_market are different in kind
+// -- they describe the PROPERTY leaving the market entirely, not a per-unit
+// occupancy fact -- so an open unit can never override them.
+//
+// When the units AGREE the listing is closed (no open unit) and market_status
+// ALSO already says unavailable, market_status's own (possibly more specific)
+// reason is kept rather than downgraded to the generic unit-derived
+// 'fully_occupied' -- the two signals aren't in conflict there, so there is
+// nothing to override.
+var _UNIT_OVERRIDABLE_MARKET_STATUSES = ['reserved', 'rented', 'fully_occupied'];
 function _ptIsUnavailableNow(property) {
   var status = (typeof resolveListingStatus === 'function') ? resolveListingStatus(property) : null;
   if (!status) return null;
+
+  var hasOpen = _ptHasOpenUnit(property);
+  if (hasOpen === true) {
+    if (!status.isPubliclyAvailable && _UNIT_OVERRIDABLE_MARKET_STATUSES.indexOf(status.market) === -1) {
+      return { unavailable: true, market: status.market, source: 'market_status' };
+    }
+    return { unavailable: false, market: status.market, source: 'unit_types' };
+  }
+
   if (!status.isPubliclyAvailable) return { unavailable: true, market: status.market, source: 'market_status' };
-  if (_ptHasOpenUnit(property) === false) return { unavailable: true, market: 'fully_occupied', source: 'unit_types' };
+  if (hasOpen === false) return { unavailable: true, market: 'fully_occupied', source: 'unit_types' };
   return { unavailable: false, market: status.market, source: null };
 }
 
