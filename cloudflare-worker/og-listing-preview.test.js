@@ -143,6 +143,88 @@ test('buildOgFields: an unavailable listing gets a localized status suffix in ev
   assert.match(buildOgFields(row, 'zh').title, /已出租/);
 });
 
+// ── PRICING (audit: "listing link preview must include price") ──────────
+// buildOgFields()'s description leads with a price + neighborhood line (see
+// that function's own comment) via formatPriceLine() -- a hand-port of
+// components.js's formatPropertyPrice()/ptResolveUnitTypesPriceEntry()/
+// ptBuildUnitPriceText()/_ptLegacyRentText(), since this Worker can't import
+// a browser file. These tests cover every pricing shape that function
+// handles, proving the crawler-visible og:description actually contains the
+// expected price for each -- not just that SOME description exists.
+test('PRICING A: structured rental -> amount + localized frequency suffix', () => {
+  const row = Object.assign({}, ROW); // base fixture is already for_rent, $1,200/month
+  assert.match(buildOgFields(row, 'en').desc, /^\$1,200 \/ month/);
+  assert.match(buildOgFields(row, 'lo').desc, /^\$1,200 \/ ເດືອນ/);
+  assert.match(buildOgFields(row, 'zh').desc, /^\$1,200 \/ 月/);
+});
+
+test('PRICING B: structured sale -> amount only, no frequency suffix', () => {
+  const row = Object.assign({}, ROW, {
+    transaction_type: 'for_sale', price_amount: 250000, price_currency: 'USD', price_frequency: null,
+  });
+  const desc = buildOgFields(row, 'en').desc;
+  assert.match(desc, /^\$250,000/);
+  assert.doesNotMatch(desc, /\/ month/);
+});
+
+test('PRICING C: structured sale-or-rent -> BOTH legs, sale amount + rent amount/localized suffix', () => {
+  const row = Object.assign({}, ROW, {
+    transaction_type: 'sale_or_rent',
+    price_amount: 250000, price_currency: 'USD',
+    rent_price_amount: 1200, rent_price_currency: 'USD', rent_price_frequency: 'monthly',
+  });
+  assert.match(buildOgFields(row, 'en').desc, /^\$250,000 · \$1,200 \/ month/);
+  assert.match(buildOgFields(row, 'lo').desc, /^\$250,000 · \$1,200 \/ ເດືອນ/);
+  assert.match(buildOgFields(row, 'zh').desc, /^\$250,000 · \$1,200 \/ 月/);
+});
+
+test('PRICING D: no property-level price, but unit_types has real pricing -> cheapest unit\'s price (no invented "from" prefix)', () => {
+  const row = Object.assign({}, ROW, {
+    transaction_type: 'for_rent', price_amount: null, price_display: null,
+    unit_types: [
+      { price_amount: 450, price_currency: 'USD', price_frequency: 'monthly' },
+      { price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' }, // cheaper -- must win
+    ],
+  });
+  assert.match(buildOgFields(row, 'en').desc, /^\$300 \/ month/);
+  assert.match(buildOgFields(row, 'lo').desc, /^\$300 \/ ເດືອນ/);
+  assert.match(buildOgFields(row, 'zh').desc, /^\$300 \/ 月/);
+  assert.doesNotMatch(buildOgFields(row, 'en').desc, /from/i);
+});
+
+test('PRICING D2: sale-or-rent unit_types pricing resolves both legs per unit, cheapest overall wins', () => {
+  const row = Object.assign({}, ROW, {
+    transaction_type: 'sale_or_rent', price_amount: null, price_display: null,
+    unit_types: [
+      { price_amount: 300000, price_currency: 'USD', rent_price_amount: 1500, rent_price_currency: 'USD', rent_price_frequency: 'monthly' },
+      { price_amount: 200000, price_currency: 'USD', rent_price_amount: 1000, rent_price_currency: 'USD', rent_price_frequency: 'monthly' },
+    ],
+  });
+  assert.match(buildOgFields(row, 'en').desc, /^\$200,000 · \$1,000 \/ month/);
+});
+
+test('PRICING E: legacy sale_price + rent_price text (no structured columns) -> both legs, localized suffix derived from rent_period', () => {
+  const row = Object.assign({}, ROW, {
+    transaction_type: 'sale_or_rent', price_amount: null, rent_price_amount: null,
+    sale_price: '$250,000', rent_price: '$1,200', rent_period: 'month',
+  });
+  assert.match(buildOgFields(row, 'en').desc, /^\$250,000 · \$1,200 \/ month/);
+  assert.match(buildOgFields(row, 'lo').desc, /^\$250,000 · \$1,200 \/ ເດືອນ/);
+});
+
+test('PRICING F: legacy price_display text -> existing "/month" stripped and re-localized, not duplicated', () => {
+  const row = Object.assign({}, ROW, { price_amount: null, price_display: '$800 / month' });
+  assert.match(buildOgFields(row, 'en').desc, /^\$800 \/ month(?! \/ month)/);
+  assert.match(buildOgFields(row, 'lo').desc, /^\$800 \/ ເດືອນ/);
+});
+
+test('PRICING G: no property-level price, no unit_types -> localized "Price on request", never blank', () => {
+  const row = Object.assign({}, ROW, { price_amount: null, price_display: null, unit_types: [] });
+  assert.match(buildOgFields(row, 'en').desc, /^Price on request/);
+  assert.match(buildOgFields(row, 'lo').desc, /^ສອບຖາມລາຄາ/);
+  assert.match(buildOgFields(row, 'zh').desc, /^价格面议/);
+});
+
 test('rewriteListingHead: real listing.html fixture, ?lang=lo/en/zh each produce the correctly localized <title>/og:title/og:description/og:locale/html[lang]', async () => {
   const cases = [
     { lang: 'lo', title: 'ວິນລ່າຮິມແມ່ນ້ຳ', desc: 'ວິນລ່າກວ້າງຂວາງຢູ່ຮິມແມ່ນ້ຳຂອງ', locale: 'lo_LA' },
@@ -168,6 +250,24 @@ test('rewriteListingHead: real listing.html fixture, ?lang=lo/en/zh each produce
     // HTML serializer must write attribute values).
     assert.match(html, new RegExp(`<meta property="og:url" content="https://pintag\\.io/listing\\.html\\?slug=riverside-villa&amp;lang=${c.lang}">`), `[${c.lang}] og:url carries the same lang`);
   }
+});
+
+test('rewriteListingHead END-TO-END: the actual generated og:description (and meta description) contains the expected price for the two previously-missing cases', async () => {
+  const sorRow = Object.assign({}, ROW, {
+    transaction_type: 'sale_or_rent',
+    price_amount: 250000, price_currency: 'USD',
+    rent_price_amount: 1200, rent_price_currency: 'USD', rent_price_frequency: 'monthly',
+  });
+  const sorHtml = await (await rewriteListingHead(LISTING_FIXTURE, sorRow, 'en', sorRow.slug)).text();
+  assert.match(sorHtml, /<meta property="og:description" content="\$250,000 · \$1,200 \/ month/, 'SOR: og:description carries BOTH legs');
+  assert.match(sorHtml, /<meta name="description" content="\$250,000 · \$1,200 \/ month/, 'SOR: meta description matches og:description');
+
+  const unitRow = Object.assign({}, ROW, {
+    transaction_type: 'for_rent', price_amount: null, price_display: null,
+    unit_types: [{ price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' }],
+  });
+  const unitHtml = await (await rewriteListingHead(LISTING_FIXTURE, unitRow, 'en', unitRow.slug)).text();
+  assert.match(unitHtml, /<meta property="og:description" content="\$300 \/ month/, 'unit_types fallback: og:description carries the cheapest unit price');
 });
 
 test('rewriteListingHead: the three languages produce genuinely different output for the same row (no silent Lao collapse)', async () => {
