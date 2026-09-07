@@ -666,6 +666,45 @@ function postEvent(table, body) {
   }).catch(function(){});
 }
 
+// ── "Back to Listings" restoration hand-off ─────────────────────────
+// listings.html writes one sessionStorage entry (pt_listings_restore_v1,
+// see its own _ptSaveListingsRestoreState()) the instant a card is
+// clicked -- filter/sort signature, how many cards to re-render, scroll
+// position, which listing was opened, AND the exact query string Listings
+// was showing at that moment. This page only ADDS the "Back to Listings"
+// link's href to what that entry is used for; it never writes, deletes, or
+// otherwise owns that entry -- listings.html's own load-time logic still
+// does that (one-shot consume), independently of this function ever
+// running.
+//
+// Read-only peek, and only trusted when its propertyKey matches the SLUG
+// OR ID this exact page was navigated to (taken straight from this page's
+// own URL, synchronously, before any data fetch) -- so a visitor who
+// arrived at THIS listing from WhatsApp/Facebook/Google/a bookmark (no
+// entry at all), or who is viewing a DIFFERENT listing than whatever the
+// entry happened to be written for (an intervening navigation elsewhere,
+// same tab), leaves the link exactly as it already is in the markup: a
+// plain, safe <a href="listings.html">. No history.back(), no new
+// navigation mechanism -- only this one link's href, only when it's
+// provably the same click that brought the visitor here.
+function _ptFixBackToListingsLink() {
+  try {
+    var raw = sessionStorage.getItem('pt_listings_restore_v1');
+    if (!raw) return;
+    var state = JSON.parse(raw);
+    if (!state || !state.propertyKey || typeof state.listingsUrl !== 'string') return;
+    if (state.listingsUrl && state.listingsUrl.charAt(0) !== '?') return;
+    var q = new URLSearchParams(window.location.search);
+    var mySlug = q.get('slug');
+    var myId = q.get('id');
+    var myKey = mySlug ? ('slug:' + mySlug) : (myId ? ('id:' + myId) : null);
+    if (!myKey || myKey !== state.propertyKey) return;
+    var link = document.querySelector('a.back-to-listings');
+    if (link) link.setAttribute('href', 'listings.html' + state.listingsUrl);
+  } catch (e) {}
+}
+_ptFixBackToListingsLink();
+
 // ── Social proof feature flags ─────────────────────────────────────
 var SHOW_PUBLIC_VIEWS      = true;
 var SHOW_PUBLIC_INQUIRIES  = true;

@@ -1336,6 +1336,131 @@ function _writeFiltersToUrl() {
   } catch (e) {}
 }
 
+// ── LISTINGS SCROLL/CURSOR RESTORATION (sessionStorage) ───────────────────
+// "Back to Listings" (listing.html) and Similar Properties links are plain
+// <a href="listings.html"> -- a real navigation, not history.back() -- so
+// they work for a visitor who arrived at a listing straight from an outside
+// link with no listings.html history entry at all. That means every return
+// trip is a genuine reload: the filter/sort survive (they live in the URL,
+// above), but which page of the infinite-scroll grid was showing and where
+// the visitor had scrolled to do not -- both were plain in-memory state
+// local to the old page. This block restores exactly that gap, without
+// touching how filters/sort are read from or written to the URL.
+//
+// Deliberately sessionStorage, not localStorage: this is "where was I in
+// this browsing session," not a durable preference, and it must not leak
+// into a different tab or a future day's visit.
+//
+// One-shot by construction: _ptConsumeListingsRestoreState() deletes the
+// stored entry the instant it reads it, whether or not the entry ends up
+// being used (signature mismatch, or none at all) -- so a plain refresh of
+// listings.html (no listing visited in between) can never re-trigger a
+// restore, and a filter/sort change before returning is silently ignored
+// rather than snapping the visitor back to a position that no longer
+// corresponds to what's on screen.
+var PT_LISTINGS_RESTORE_KEY = 'pt_listings_restore_v1';
+
+// The filter/sort signature: every URL param _writeFiltersToUrl() manages,
+// EXCLUDING `lang` (switching language must never invalidate a restore) and
+// canonicalised (sorted keys) so param order can never cause a false
+// mismatch. Reused for both the save (before leaving) and the read (after
+// returning) side, so "did anything filter/sort-relevant change" is always
+// answered the same way the URL itself already answers it -- no second,
+// independently-maintained notion of "current filters".
+function _ptListingsSignature() {
+  try {
+    var q = new URLSearchParams(window.location.search);
+    q.delete('lang');
+    var keys = [];
+    q.forEach(function(_, k) { if (keys.indexOf(k) === -1) keys.push(k); });
+    keys.sort();
+    return keys.map(function(k) { return k + '=' + q.get(k); }).join('&');
+  } catch (e) { return ''; }
+}
+
+// Called from a card's click handler (buildCard(), below) -- synchronous,
+// so it completes before the browser's default navigation for the same
+// click begins. Never wired to scroll/beforeunload/unload/pagehide: those
+// either fire far too often (scroll) or are unreliable/discouraged for
+// storage writes and would still fire on a same-tab reload with no listing
+// ever opened, which must NOT count as "returning from a listing".
+//
+// `listingsUrl` (the full query string, INCLUDING lang -- unlike
+// _ptListingsSignature(), which deliberately strips it for the separate
+// "did filters/sort change" comparison) is this same entry's second
+// purpose: listing.html's own bootstrap (see its _ptFixBackToListingsLink())
+// reads this exact key -- read-only, never deleting it, that stays this
+// page's own job -- to point its "Back to Listings" link at the precise
+// page the visitor actually came from, ONLY when its own propertyKey
+// matches the listing currently open. One entry, one write, both jobs --
+// no second sessionStorage key, no new navigation mechanism.
+function _ptSaveListingsRestoreState(p, idx) {
+  try {
+    var key = (p && p.slug) ? ('slug:' + p.slug) : ((p && p.id) ? ('id:' + p.id) : null);
+    sessionStorage.setItem(PT_LISTINGS_RESTORE_KEY, JSON.stringify({
+      signature: _ptListingsSignature(),
+      cursor: idx + 1,                              // enough pages to include the clicked card
+      scrollY: window.scrollY || window.pageYOffset || 0,
+      propertyKey: key,
+      listingsUrl: window.location.search || ''
+    }));
+  } catch (e) {}
+}
+
+// Populates the module-level _ptPendingRestore* vars renderListings() reads
+// on its first (load-time) call. Must run after _readFiltersFromUrl() so
+// the URL -- and therefore _ptListingsSignature() -- already reflects
+// whatever filters this navigation actually carried.
+var _ptPendingRestoreCursor = 0;
+var _ptPendingRestoreScrollY = 0;
+var _ptPendingRestorePropertyKey = null;
+function _ptConsumeListingsRestoreState() {
+  try {
+    var raw = sessionStorage.getItem(PT_LISTINGS_RESTORE_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(PT_LISTINGS_RESTORE_KEY);   // one-shot: consumed either way
+    var state = JSON.parse(raw);
+    if (!state || state.signature !== _ptListingsSignature()) return;   // filters/sort changed -- stale
+    if (!(state.cursor > 0)) return;
+    _ptPendingRestoreCursor = state.cursor;
+    _ptPendingRestoreScrollY = state.scrollY || 0;
+    _ptPendingRestorePropertyKey = state.propertyKey || null;
+  } catch (e) {}
+}
+
+// Runs after the cards up to the restored cursor are already in the DOM
+// (called once, from renderListings(), right after that initial batch is
+// appended) -- never called before the cards exist, and never a bare
+// window.scrollTo() call at load time. requestAnimationFrame defers past
+// the layout pass for the just-appended nodes so their real positions are
+// known. Prefers scrolling the exact previously-opened card into view
+// (matched by the same slug/id the card's own href already carries -- no
+// new DOM attribute needed); falls back to the raw scrollY only if that
+// card can't be found (e.g. it no longer matches the current result set).
+function _ptRestoreScrollPosition(container, propertyKey, scrollY) {
+  requestAnimationFrame(function () {
+    var target = null;
+    var m = propertyKey && /^(slug|id):(.+)$/.exec(propertyKey);
+    if (m) {
+      var re = m[1] === 'slug' ? /[?&]slug=([^&]+)/ : /[?&]id=([^&]+)/;
+      var anchors = container.querySelectorAll('a[href]');
+      for (var i = 0; i < anchors.length; i++) {
+        var hm = re.exec(anchors[i].getAttribute('href') || '');
+        if (hm && decodeURIComponent(hm[1]) === m[2]) { target = anchors[i]; break; }
+      }
+    }
+    if (target) target.scrollIntoView({ block: 'center' });
+    else if (scrollY > 0) window.scrollTo(0, scrollY);
+    // Test-synchronization signal only (mirrors the existing
+    // window._listingsLoaded convention) -- lets a test wait
+    // deterministically for "restoration actually ran" instead of guessing
+    // a fixed delay, which risked coinciding with the grid's own organic
+    // IntersectionObserver and producing a false pass. Not read by any
+    // product code.
+    window._ptRestoreApplied = true;
+  });
+}
+
 function setTxFilter(filter, btn) {
   currentTxFilter = filter;
   document.querySelectorAll('.tx-btn').forEach(function(b){ b.classList.remove('active'); });
@@ -1843,6 +1968,18 @@ function renderListings() {
   var PT_PAGE_SIZE = 12;
   var _ptCursor = 0;
 
+  // Consumed once per renderListings() call, right where the progressive
+  // render pipeline starts -- never reapplied to a later infinite-scroll
+  // page within this same render, nor to a later renderListings() call
+  // triggered by a filter/sort click (only loadListings()'s one call after
+  // the initial fetch can ever have populated these).
+  var _ptRestoreCursorForThisRender = _ptPendingRestoreCursor;
+  var _ptRestoreScrollYForThisRender = _ptPendingRestoreScrollY;
+  var _ptRestorePropertyKeyForThisRender = _ptPendingRestorePropertyKey;
+  _ptPendingRestoreCursor = 0;
+  _ptPendingRestoreScrollY = 0;
+  _ptPendingRestorePropertyKey = null;
+
   function buildCard(p, idx) {
     var isFeaturedCard = p.is_featured && !featuredUsed;
     if (isFeaturedCard) featuredUsed = true;
@@ -1886,6 +2023,7 @@ function renderListings() {
       } : null,
       onClick: p.id ? function() {
         postEvent('listing_events', { property_id: p.id, event_type: 'click', session_id: getOrCreateSessionId(), source: 'search', search_position: idx + 1 });
+        _ptSaveListingsRestoreState(p, idx);
       } : null
     });
 
@@ -1899,7 +2037,17 @@ function renderListings() {
     var sentinel = document.getElementById('pt-grid-sentinel');
     if (sentinel && sentinel.parentNode) sentinel.parentNode.removeChild(sentinel);
 
-    var end = Math.min(_ptCursor + PT_PAGE_SIZE, sorted.length);
+    // On a restored load, the FIRST page renders enough cards to include
+    // the one the visitor had opened (per _ptSaveListingsRestoreState(),
+    // cursor = the clicked card's index + 1) instead of just PT_PAGE_SIZE --
+    // otherwise _ptRestoreScrollPosition() below would have nothing to
+    // scroll to yet. _ptRestoreCursorForThisRender is a plain local capture
+    // (see above), so this only ever fires on this render's first page.
+    var pageSize = (_ptCursor === 0 && _ptRestoreCursorForThisRender > PT_PAGE_SIZE)
+      ? Math.min(_ptRestoreCursorForThisRender, sorted.length)
+      : PT_PAGE_SIZE;
+
+    var end = Math.min(_ptCursor + pageSize, sorted.length);
     for (var i = _ptCursor; i < end; i++) container.appendChild(buildCard(sorted[i], i));
     _ptCursor = end;
 
@@ -1925,6 +2073,10 @@ function renderListings() {
   }
 
   renderNextPage();
+
+  if (_ptRestoreCursorForThisRender > 0) {
+    _ptRestoreScrollPosition(container, _ptRestorePropertyKeyForThisRender, _ptRestoreScrollYForThisRender);
+  }
 }
 
 function updateSortLabels() {
@@ -1996,6 +2148,7 @@ function updateFiltersFade() {
 // correct from the very first render.
 applyPintagLang(resolvePintagLang());
 _readFiltersFromUrl();
+_ptConsumeListingsRestoreState();
 
 loadListings();
 
