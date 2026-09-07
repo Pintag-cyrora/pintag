@@ -57,18 +57,178 @@ const FREQUENCY_SUFFIX = {
 };
 const PRICE_ON_REQUEST = { lo: 'ສອບຖາມລາຄາ', en: 'Price on request', zh: '价格面议' };
 
+// ── Pricing (ported from components.js/currency.js) ─────────────────────
+// This Worker is a separate Cloudflare deploy that can't import a browser
+// file, so the functions below are a careful, field-for-field port of
+// formatPropertyPrice()/ptResolveUnitTypesPriceEntry()/
+// ptResolveUnitTypesPrice()/ptBuildUnitPriceText()/_ptLegacyRentText()/
+// _ptTransactionKind() (components.js) and formatMoney() (currency.js) --
+// same precedence, same branches, same fallback order. Keep in sync by hand
+// whenever any of those functions change, same convention already used
+// above for OG_LOCALE/HOME_META_I18N/MARKET_STATUS_LABEL/etc.
+
+// Mirrors currency.js's formatMoney(amount, currency): whole-number,
+// thousands-separated, currency-symbol-prefixed. CURRENCY_SYMBOL (above)
+// already matches currency.js's CURRENCIES map value-for-value.
+function formatMoneyEdge(amount, currency) {
+  const n = Number(amount);
+  if (amount == null || isNaN(n)) return null;
+  const symbol = CURRENCY_SYMBOL[currency] || '$';
+  return symbol + Math.round(n).toLocaleString('en-US');
+}
+
+function transactionKind(transactionType) {
+  if (transactionType === 'sale_or_rent') return 'sor';
+  if (transactionType === 'for_sale' || transactionType === 'sale') return 'sale';
+  return 'rent';
+}
+
+// Mirrors components.js's _ptLegacyRentText(property, lang) -- the rent leg
+// of a LEGACY sale_or_rent row that has no structured rent_price_amount yet.
+const RENT_PERIOD_FREQUENCY = { month: 'monthly', year: 'yearly', week: 'weekly', day: 'daily' };
+const LEGACY_SUFFIX_RE = /\s*\/\s*(month|year|week|day)s?\s*$/i;
+function legacyRentText(row, lang) {
+  const raw = row && row.rent_price;
+  if (!raw) return null;
+  const text = String(raw).trim();
+  const known = text.match(LEGACY_SUFFIX_RE);
+  if (known) {
+    const suffix = FREQUENCY_SUFFIX[RENT_PERIOD_FREQUENCY[known[1].toLowerCase()] || 'monthly'] || FREQUENCY_SUFFIX.monthly;
+    return text.slice(0, known.index) + ' ' + (suffix[lang] || suffix.en);
+  }
+  if (/\d[^/]*\/\s*\S/.test(text)) return text;
+  const suffix = FREQUENCY_SUFFIX[RENT_PERIOD_FREQUENCY[row.rent_period] || 'monthly'] || FREQUENCY_SUFFIX.monthly;
+  return text + ' ' + (suffix[lang] || suffix.en);
+}
+
+// Mirrors terminology.js's resolveUnitType(): a unit_types row's own value
+// wins, falling back to the building's (property-level) column when the
+// unit's own is null/undefined -- pricing-relevant columns only (this
+// Worker has no use for the rest of that function's fields).
+function resolveUnitPriceFields(row, unit) {
+  function pick(col) {
+    const v = unit[col];
+    return v !== null && v !== undefined ? v : row[col];
+  }
+  return {
+    priceDisplay: pick('price_display'),
+    salePrice: pick('sale_price'),
+    rentPrice: pick('rent_price'),
+    rentPeriod: pick('rent_period'),
+    priceAmount: pick('price_amount'),
+    priceCurrency: pick('price_currency'),
+    priceFrequency: pick('price_frequency'),
+    rentPriceAmount: pick('rent_price_amount'),
+    rentPriceCurrency: pick('rent_price_currency'),
+    rentPriceFrequency: pick('rent_price_frequency'),
+  };
+}
+
+// Mirrors components.js's ptBuildUnitPriceText(property, resolved, lang).
+function buildUnitPriceText(row, resolved, lang) {
+  const isSorUnit = row.transaction_type === 'sale_or_rent';
+  if (isSorUnit) {
+    const parts = [];
+    if (resolved.priceAmount != null || resolved.rentPriceAmount != null) {
+      if (resolved.priceAmount != null) parts.push(formatMoneyEdge(resolved.priceAmount, resolved.priceCurrency));
+      if (resolved.rentPriceAmount != null) {
+        const suffix = FREQUENCY_SUFFIX[resolved.rentPriceFrequency] || FREQUENCY_SUFFIX.monthly;
+        parts.push(formatMoneyEdge(resolved.rentPriceAmount, resolved.rentPriceCurrency) + ' ' + (suffix[lang] || suffix.en));
+      }
+    } else if (resolved.salePrice || resolved.rentPrice) {
+      const period = resolved.rentPeriod || 'month';
+      const periodLabel = {
+        month: FREQUENCY_SUFFIX.monthly,
+        year: { lo: '/ ປີ', en: '/ year', zh: '/ 年' },
+        day: { lo: '/ ວັນ', en: '/ day', zh: '/ 天' },
+      };
+      if (resolved.salePrice) parts.push(resolved.salePrice);
+      if (resolved.rentPrice) {
+        const label = periodLabel[period] || FREQUENCY_SUFFIX.monthly;
+        parts.push(resolved.rentPrice + (label[lang] || label.en));
+      }
+    }
+    return parts.length ? parts.join(' · ') : null;
+  }
+  if (resolved.priceAmount != null) {
+    const text = formatMoneyEdge(resolved.priceAmount, resolved.priceCurrency);
+    if (row.transaction_type !== 'for_rent') return text;
+    const suffix = FREQUENCY_SUFFIX[resolved.priceFrequency] || FREQUENCY_SUFFIX.monthly;
+    return text + ' ' + (suffix[lang] || suffix.en);
+  }
+  return resolved.priceDisplay || null;
+}
+
+// Mirrors components.js's ptResolveUnitTypesPriceEntry()/
+// ptResolveUnitTypesPrice(): the CHEAPEST resolvable unit's own price text
+// (no "from" prefix is added by the canonical implementation either -- this
+// intentionally does not invent one). property-level price is nulled out
+// on save for e.g. a fully-occupied multi-unit building, so this is the
+// fallback the crawler-visible description needs whenever there is no
+// property-level price to show but real unit_types pricing exists.
+function resolveUnitTypesPrice(row, lang) {
+  const units = Array.isArray(row.unit_types) ? row.unit_types : [];
+  if (!units.length) return null;
+  let best = null;
+  for (const unit of units) {
+    const resolved = resolveUnitPriceFields(row, unit);
+    const text = buildUnitPriceText(row, resolved, lang);
+    if (!text) continue;
+    let amt = null;
+    if (resolved.priceAmount != null) amt = resolved.priceAmount;
+    else if (resolved.rentPriceAmount != null) amt = resolved.rentPriceAmount;
+    if (best === null || (amt != null && (best.amount == null || amt < best.amount))) {
+      best = { amount: amt, text };
+    }
+  }
+  return best ? best.text : null;
+}
+
+// Mirrors components.js's formatPropertyPrice() precedence exactly:
+// structured single price -> structured/legacy sale-or-rent dual price ->
+// legacy price_display text -> unit_types fallback -> "Price on request".
 function formatPriceLine(row, lang) {
+  const kind = transactionKind(row.transaction_type);
+
+  if (kind === 'sor') {
+    const hasStructuredSor = row.price_amount != null || row.rent_price_amount != null;
+    if (hasStructuredSor) {
+      const saleText = row.price_amount != null ? formatMoneyEdge(row.price_amount, row.price_currency) : row.sale_price || null;
+      const rentText =
+        row.rent_price_amount != null
+          ? (() => {
+              const suffix = FREQUENCY_SUFFIX[row.rent_price_frequency] || FREQUENCY_SUFFIX.monthly;
+              return formatMoneyEdge(row.rent_price_amount, row.rent_price_currency) + ' ' + (suffix[lang] || suffix.en);
+            })()
+          : legacyRentText(row, lang);
+      const parts = [saleText, rentText].filter(Boolean);
+      if (parts.length) return parts.join(' · ');
+    } else if (row.sale_price || row.rent_price) {
+      const parts = [row.sale_price || null, legacyRentText(row, lang)].filter(Boolean);
+      if (parts.length) return parts.join(' · ');
+    }
+    // Neither leg has any data at all (structured or legacy) -- fall
+    // through to the single-price path below, matching
+    // formatPropertyPrice()'s own documented behavior for this case.
+  }
+
   if (row.price_amount != null) {
-    const symbol = CURRENCY_SYMBOL[row.price_currency] || '$';
-    const amount = symbol + Math.round(Number(row.price_amount)).toLocaleString('en-US');
-    const isRent = row.transaction_type === 'for_rent' || row.transaction_type === 'sale_or_rent';
-    if (!isRent) return amount;
+    const moneyText = formatMoneyEdge(row.price_amount, row.price_currency);
+    if (kind !== 'rent') return moneyText;
     const suffix = FREQUENCY_SUFFIX[row.price_frequency] || FREQUENCY_SUFFIX.monthly;
-    return amount + ' ' + (suffix[lang] || suffix.en);
+    return moneyText + ' ' + (suffix[lang] || suffix.en);
   }
-  if (row.price_display) {
-    return String(row.price_display).replace(/\s*\/\s*(ເດືອນ|month|mo|月)\s*/i, '').trim() || null;
+
+  const raw = (row.price_display || '').replace(/\s*\/\s*(ເດືອນ|month|mo|月)\s*/i, '').trim();
+  if (raw) {
+    if (kind !== 'rent') return raw;
+    const suffix = FREQUENCY_SUFFIX.monthly;
+    return raw + ' ' + (suffix[lang] || suffix.en);
   }
+
+  const unitText = resolveUnitTypesPrice(row, lang);
+  if (unitText) return unitText;
+
   return PRICE_ON_REQUEST[lang] || PRICE_ON_REQUEST.en;
 }
 
@@ -123,13 +283,21 @@ const DEFAULT_SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvbGFkaGNsamJwYmhucm1tcGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTE4NDQsImV4cCI6MjA5MTgyNzg0NH0.z1K8CqRFPIqiC7Gvfv1GekcQLIIkLodgyOksio1Upn0';
 
+// Pricing columns mirror exactly what components.js's formatPropertyPrice()/
+// ptResolveUnitTypesPriceEntry()/resolveUnitType() (terminology.js) read, at
+// both the property level and the unit_types level -- see resolvePriceLine()
+// below, which ports that same precedence. Nothing here is invented: every
+// column exists because one of those functions reads it.
 const LISTING_COLUMNS = [
   'slug', 'title_en', 'title_lo', 'title_zh',
   'description_en', 'description_lo', 'description_zh',
   'property_highlight', 'property_highlight_en', 'property_highlight_zh',
-  'images', 'market_status',
-  'price_amount', 'price_currency', 'price_frequency', 'price_display', 'transaction_type',
+  'images', 'market_status', 'transaction_type',
+  'price_amount', 'price_currency', 'price_frequency', 'price_display',
+  'rent_price_amount', 'rent_price_currency', 'rent_price_frequency',
+  'sale_price', 'rent_price', 'rent_period',
   'district_en', 'district_lo', 'district_zh',
+  'unit_types(price_display,sale_price,rent_price,rent_period,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency)',
 ].join(',');
 
 // Mirrors listing-status.js's LISTING_UNAVAILABLE_MARKET_STATUSES /
