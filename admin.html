@@ -212,6 +212,7 @@ body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-size:1
 .ut-rt-status-pill.ut-rt-default{color:var(--ink-muted);}
 .ut-rt-status-pill.ut-rt-override{color:var(--gold,#b8860b);font-weight:600;}
 .ut-rt-override-btn{border:1px solid var(--border);background:var(--white);border-radius:4px;padding:4px 10px;font-size:11px;color:var(--teal);cursor:pointer;flex-shrink:0;}
+.ut-clear-date-btn{border:1px solid var(--border);background:var(--white);border-radius:4px;padding:4px 10px;font-size:11px;color:var(--teal);cursor:pointer;flex-shrink:0;}
 .ut-rt-fields{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);}
 .ut-lease-basis-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-muted);}
 .ut-lease-basis-row .form-select{flex:0 0 auto;width:auto;}
@@ -2205,7 +2206,7 @@ function addUnitType(data) {
           <label>Next Available Date <span style="color:var(--ink-muted);font-weight:400;">— shown when Available Count is 0</span></label>
           <div class="ut-date-row">
             <input class="form-input ut-next-available-date" type="date" value="${nextAvailableDate}" oninput="_utOnAvailabilityFieldChange(this)">
-            <button type="button" class="ut-rt-override-btn ut-clear-date-btn" onclick="_utClearNextAvailableDate(this)">Clear</button>
+            <button type="button" class="ut-clear-date-btn" onclick="_utClearNextAvailableDate(this)">Clear</button>
           </div>
         </div>
         <div class="ut-field ut-field-full">
