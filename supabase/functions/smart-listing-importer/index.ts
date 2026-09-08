@@ -301,7 +301,7 @@ function buildPrompt(description: string, imageCount: number): string {
     ? `
 TASK B — ANALYZE THE PHOTOS (you can see them; describe only what is actually visible).
 First, OBSERVE the property across ALL photos and let it inform TASK A and the title/description — note what you can genuinely see:
-- property-type cues (villa, house, apartment, townhouse, land, commercial)
+- property-type cues (villa, house, apartment, townhouse, row_rooms, land, commercial) — row_rooms is basic/simple residential rooms in a row, each typically rented out separately; do NOT confuse it with townhouse (a full multi-floor family home) or commercial (retail/shophouse)
 - rooms visibly present, and how many of each (living, dining, kitchen, bedrooms, bathrooms) — count only what is actually shown
 - kitchen and living areas, and built-in fixtures
 - furniture and appliances actually pictured (e.g. sofa, dining set, bed, wardrobe, refrigerator, air-conditioning unit, water heater, stove)
@@ -357,7 +357,8 @@ LANGUAGE RULES — follow exactly:
 4. title_lo and title_zh are REQUIRED — never return null for these fields. Always translate the English title into authentic Lao script and Simplified Chinese.
 
 Valid districts (use exact spelling or null): ${DISTRICTS.join(', ')}
-Valid property_type values: house, villa, apartment, townhouse, land, commercial
+Valid property_type values: house, villa, apartment, townhouse, row_rooms, land, commercial
+  row_rooms = basic/simple residential rooms or units arranged in a row, typically rented out separately to different tenants — distinct from townhouse (a full multi-floor family home) and from commercial (retail/shophouse)
 Valid property_style values: modern, luxury, minimalist, family, colonial, resort, investment
 Valid transaction_type values: for_sale, for_rent
 Valid furnished values: fully, partially, unfurnished
