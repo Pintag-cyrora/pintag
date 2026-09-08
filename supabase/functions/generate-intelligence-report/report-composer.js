@@ -14,7 +14,7 @@ export const CANONICAL_DISTRICTS = [
   'Hadxaifong', 'Saysettha', 'Naxaithong',
 ];
 export const CANONICAL_PROPERTY_TYPES = [
-  'house', 'townhouse', 'villa', 'apartment', 'condo', 'commercial', 'land',
+  'house', 'townhouse', 'villa', 'row_rooms', 'apartment', 'condo', 'commercial', 'land',
 ];
 
 const MAX_DISCUSSED_INSIGHTS = 8;

@@ -58,6 +58,14 @@ var PROPERTY_TYPES = {
   house:      {en:'House',      lo:'ເຮືອນ',        zh:'独栋别墅'},
   townhouse:  {en:'Townhouse',  lo:'ທາວເຮົາສ໌',    zh:'联排别墅'},
   villa:      {en:'Villa',      lo:'ວິນລ່າ',        zh:'别墅'},
+  // ຫ້ອງແຖວ: basic/simple residential rooms or units arranged in a row,
+  // typically individual residential units rented out separately.
+  // Deliberately distinct from townhouse/rowhouse (ທາວເຮົາສ໌, a full
+  // multi-floor family home) and from commercial/shophouse (ຕຶກແຖວ,
+  // ground-floor-retail + residential-above). Do not conflate these three.
+  // zh label is a first-pass placeholder (出租房, "rental room(s)") —
+  // flagged for native-speaker review before this ships broadly.
+  row_rooms:  {en:'Row Rooms',  lo:'ຫ້ອງແຖວ',       zh:'出租房'},
   apartment:  {en:'Apartment',  lo:'ອາພາດເມັນ',    zh:'公寓'},
   condo:      {en:'Condo',      lo:'ຄອນໂດ',        zh:'公寓楼'},
   commercial: {en:'Commercial', lo:'ອາຄານພານິດ',   zh:'商业地产'},
@@ -194,6 +202,16 @@ var PROPERTY_TYPE_FIELDS = {
     _amenitiesRef(['ac','fan','water_heater','furnished','bed','wardrobe','kitchen','fridge','stove','dining_table','washing_machine','parking','pool','gym','security','cctv','pets_allowed','balcony','rooftop','solar','generator','bbq','garden'])
   ],
 
+  // Row Rooms (ຫ້ອງແຖວ): same field schema as townhouse (Phase 1 scope,
+  // no bespoke minimal schema invented) — see the file-level PHASE 1
+  // comment above.
+  row_rooms: [
+    _bedrooms(), _bathrooms(), _sqm({en:'Building Size (sqm)',lo:'ຂະໜາດອາຄານ (ຕາລາງແມັດ)',zh:'建筑面积(平方米)'}),
+    _sqmLand(), _floors(), _yearBuilt(), _parkingSpaces(), _furnished(),
+    _featuresRef(['garden','balcony','security','smart_home','pet_friendly','ac','european_kitchen','living_room','walk_in_closet','storage_room','water_pump','covered_parking']),
+    _amenitiesRef(['ac','fan','water_heater','furnished','bed','wardrobe','kitchen','fridge','stove','dining_table','washing_machine','parking','security','cctv','pets_allowed','balcony','generator'])
+  ],
+
   apartment: [
     _bedrooms(), _bathrooms(), _sqm({en:'Unit Size (sqm)',lo:'ຂະໜາດຫ້ອງ (ຕາລາງແມັດ)',zh:'单元面积(平方米)'}),
     _yearBuilt(), _parkingSpaces(), _furnished(),
@@ -270,6 +288,17 @@ var PROPERTY_TYPE_DISPLAY = {
   ],
 
   villa: [
+    {field:'f-bedrooms',       icon:'🛏️', card:true,  priority:true},
+    {field:'f-bathrooms',      icon:'🛁', card:true,  priority:true},
+    {field:'f-sqm',            icon:'📐', card:true,  priority:true},
+    {field:'f-sqm-land',       icon:'⬛', card:false, priority:true},
+    {field:'f-parking-spaces', icon:'🚗', card:false, priority:true},
+    {field:'f-furnished',      icon:'🛋️', card:false, priority:true},
+    {field:'f-floors',         icon:'🏢', card:false, priority:false},
+    {field:'f-year-built',     icon:'📅', card:false, priority:false}
+  ],
+
+  row_rooms: [
     {field:'f-bedrooms',       icon:'🛏️', card:true,  priority:true},
     {field:'f-bathrooms',      icon:'🛁', card:true,  priority:true},
     {field:'f-sqm',            icon:'📐', card:true,  priority:true},
