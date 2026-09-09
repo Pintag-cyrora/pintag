@@ -348,4 +348,57 @@ test.describe('FOMO photo overlay (detail page hero)', () => {
     await openListing(page, withPhoto({ slug: 'fomo-lo', market_status: 'sold' }), 'lo');
     await expect(page.locator('.desktop-gallery .pt-fomo-overlay-word')).toHaveText('ຂາຍແລ້ວ');
   });
+
+  // ── Next-Available date, stacked as a subordinate second line ──────────
+  // Reuses ptResolveNextAvailable/_formatAvailabilityDate verbatim (same
+  // resolver the card grid uses above) -- no new date format, no new wording.
+
+  test('FULLY OCCUPIED with a future Available-From date → the DESKTOP hero overlay carries the date underneath the status', async ({ page }) => {
+    await openListing(page, withPhoto({ slug: 'fomo-date-future', market_status: 'fully_occupied', available_from: '2099-09-15' }));
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-word')).toHaveText('Fully Booked');
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-date')).toHaveText('Available 15 Sep 2099');
+    await expect(page.locator('.price-block')).toContainText('$500');
+  });
+
+  test('FULLY OCCUPIED with a future Available-From date → the MOBILE gallery overlay carries the same date', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openListing(page, withPhoto({ slug: 'fomo-date-future-m', market_status: 'fully_occupied', available_from: '2099-09-15' }));
+    await expect(page.locator('.mobile-gallery')).toBeVisible();
+    await expect(page.locator('.mobile-gallery .pt-fomo-overlay-word')).toHaveText('Fully Booked');
+    await expect(page.locator('.mobile-gallery .pt-fomo-overlay-date')).toHaveText('Available 15 Sep 2099');
+  });
+
+  test('SOLD with no Available-From date on file → desktop hero overlay renders, no date line', async ({ page }) => {
+    await openListing(page, withPhoto({ slug: 'fomo-date-none', market_status: 'sold' }));
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-word')).toHaveText('Sold');
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-date')).toHaveCount(0);
+  });
+
+  test('RENTED with a stale/past Available-From date → desktop hero overlay renders, no date line', async ({ page }) => {
+    await openListing(page, withPhoto({ slug: 'fomo-date-past', market_status: 'rented', available_from: '2020-01-03' }));
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-word')).toHaveText('Just Rented');
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-date')).toHaveCount(0);
+  });
+
+  test('AVAILABLE listing with a future Available-From date → no overlay at all on either gallery', async ({ page }) => {
+    await openListing(page, withPhoto({ slug: 'fomo-date-avail-future', market_status: 'available', available_from: '2099-09-15' }));
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay')).toHaveCount(0);
+    await expect(page.locator('.mobile-gallery .pt-fomo-overlay')).toHaveCount(0);
+  });
+
+  test('ONLY 1 UNIT LEFT (scarce ribbon) never carries a date line', async ({ page }) => {
+    const p = withPhoto({
+      slug: 'fomo-date-scarce', market_status: 'available',
+      unit_types: [{ id: 'u1', name_en: 'Studio', is_available: true, available_count: 1, sort_order: 0, images: [] }],
+    });
+    await openListing(page, p);
+    await expect(page.locator('.desktop-gallery .pt-fomo-ribbon')).toContainText(/only 1 left/i);
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-date')).toHaveCount(0);
+  });
+
+  test('Lao language → the date line is real Lao wording, not left in English', async ({ page }) => {
+    await openListing(page, withPhoto({ slug: 'fomo-date-lo', market_status: 'fully_occupied', available_from: '2099-09-15' }), 'lo');
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-word')).toHaveText('ເຕັມແລ້ວ');
+    await expect(page.locator('.desktop-gallery .pt-fomo-overlay-date')).toHaveText('ວ່າງ 15 ກ.ຍ 2099');
+  });
 });

@@ -629,11 +629,12 @@ function ptResolveListingFomo(property, lang) {
   return null;
 }
 
-// ptResolveFomoOverlay(property, lang) -- the Agoda-style PHOTO overlay
+// ptResolveFomoOverlay(property, lang, nowIso?) -- the Agoda-style PHOTO overlay
 // decision: what (if anything) to show directly on top of the photo, as
 // opposed to ptResolveListingFomo()'s text line under it. Composition only --
-// reuses the exact same two resolvers every other FOMO/status surface reads
-// (_ptIsUnavailableNow, ptResolveListingFomo), never a new status question.
+// reuses the exact same resolvers every other FOMO/status surface reads
+// (_ptIsUnavailableNow, ptResolveListingFomo, ptResolveNextAvailable), never a
+// new status question and never a new date/precedence rule of its own.
 //
 // TWO TONES, deliberately different treatments:
 //   'unavailable' -- sold/rented/reserved/fully_occupied/off_market. A real
@@ -646,13 +647,27 @@ function ptResolveListingFomo(property, lang) {
 //     photo must never look "gone" the way an unavailable one correctly does.
 // Returns null when neither applies -- most listings get no photo overlay
 // at all, which is the correct, honest default.
-function ptResolveFomoOverlay(property, lang) {
+//
+// dateText -- an 'unavailable' overlay's optional second line, directly on
+// the photo underneath the status word (e.g. "ເຕັມແລ້ວ" / "ວ່າງ 25 ກ.ຍ
+// 2026"). Sourced ENTIRELY from ptResolveNextAvailable() -- same resolver,
+// same wording, same date formatting, same earliest-across-unit_types/
+// available_from precedence, and the same stale/malformed-date filtering
+// already used everywhere else next to price. No new date logic lives here.
+// Deliberately omitted (not set to null) when there's no valid future date,
+// so the returned object's shape for every listing without one is byte-
+// identical to before this field existed -- existing callers/tests that
+// assert.deepEqual({tone, text}) must keep passing unchanged.
+function ptResolveFomoOverlay(property, lang, nowIso) {
   lang = lang || 'en';
   var avail = (typeof _ptIsUnavailableNow === 'function') ? _ptIsUnavailableNow(property) : null;
   if (avail && avail.unavailable) {
     var word = (typeof getOverlayStatusWord === 'function') ? getOverlayStatusWord(avail.market, lang) : null;
     if (!word) return null;
-    return { tone: 'unavailable', text: word };
+    var result = { tone: 'unavailable', text: word };
+    var nextAvail = (typeof ptResolveNextAvailable === 'function') ? ptResolveNextAvailable(property, lang, nowIso) : null;
+    if (nextAvail && nextAvail.text) result.dateText = nextAvail.text;
+    return result;
   }
   var fomo = ptResolveListingFomo(property, lang);
   if (fomo && (fomo.kind === 'last_one' || fomo.kind === 'scarce')) {
@@ -1083,7 +1098,8 @@ function renderPropertyCard(property, opts) {
   var fomoOverlay = (typeof ptResolveFomoOverlay === 'function') ? ptResolveFomoOverlay(p, lang) : null;
   var fomoOverlayHtml = fomoOverlay
     ? (fomoOverlay.tone === 'unavailable'
-        ? '<div class="pt-fomo-overlay pt-fomo-overlay-unavailable"><span class="pt-fomo-overlay-word">' + _ptEsc(fomoOverlay.text) + '</span></div>'
+        ? '<div class="pt-fomo-overlay pt-fomo-overlay-unavailable"><span class="pt-fomo-overlay-word">' + _ptEsc(fomoOverlay.text) + '</span>' +
+          (fomoOverlay.dateText ? '<span class="pt-fomo-overlay-date">' + _ptEsc(fomoOverlay.dateText) + '</span>' : '') + '</div>'
         : '<div class="pt-fomo-overlay pt-fomo-overlay-scarce"><span class="pt-fomo-ribbon">' + _ptEsc(fomoOverlay.text) + '</span></div>')
     : '';
 

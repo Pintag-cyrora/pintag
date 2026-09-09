@@ -2257,7 +2257,8 @@ function buildMockupLayout(){
   var fomoOverlay=(typeof ptResolveFomoOverlay==='function')?ptResolveFomoOverlay(data,lang):null;
   var fomoOverlayHtml=fomoOverlay
     ? (fomoOverlay.tone==='unavailable'
-        ? '<div class="pt-fomo-overlay pt-fomo-overlay-unavailable"><span class="pt-fomo-overlay-word">'+esc(fomoOverlay.text)+'</span></div>'
+        ? '<div class="pt-fomo-overlay pt-fomo-overlay-unavailable"><span class="pt-fomo-overlay-word">'+esc(fomoOverlay.text)+'</span>'+
+          (fomoOverlay.dateText?'<span class="pt-fomo-overlay-date">'+esc(fomoOverlay.dateText)+'</span>':'')+'</div>'
         : '<div class="pt-fomo-overlay pt-fomo-overlay-scarce"><span class="pt-fomo-ribbon">'+esc(fomoOverlay.text)+'</span></div>')
     : '';
   var desktopGalleryMarkup=buildDesktopGallery(imagesArray,fomoOverlayHtml);
