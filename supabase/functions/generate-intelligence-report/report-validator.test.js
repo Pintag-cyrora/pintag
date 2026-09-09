@@ -101,6 +101,58 @@ test('validateReportContent: quiet composed input (no insights) with no percenta
   assert.equal(result.ok, true);
 });
 
+// ── "# What Happened" — PROMPT_VERSION 4.0.0's new headline heading ─────
+test('validateReportContent: recognises "# What Happened" (v4.0.0) as the headline section for direction-contradiction, same as the old "# Today\'s Story"', () => {
+  const composed = composedWith([bigStoryInsight()]);
+  const gemini = {
+    executive_summary: 'Marketplace activity returned to baseline today.',
+    body_markdown: '# What Happened\nSearch activity was stable and within its normal range today.\n## What It Means\nSomething else entirely.',
+  };
+  const result = validateReportContent(gemini, composed, {}, {});
+  assert.equal(result.ok, false, 'stable language under the new headline heading must still be checked against a real |z|>=2.5 spike');
+  assert.match(result.issues.join(' '), /baseline|stable/i);
+});
+test('validateReportContent: a report using "# What Happened" that legitimately matches the data direction still passes', () => {
+  const composed = composedWith([bigStoryInsight()]);
+  const gemini = {
+    executive_summary: 'Total searches surged 1500% today compared to the 30-day average.',
+    body_markdown: '# What Happened\nSearches jumped sharply, up 1500% vs. the recent baseline.',
+  };
+  const result = validateReportContent(gemini, composed, {}, {});
+  assert.equal(result.ok, true);
+});
+
+// ── checkUnsupportedCausation — the mechanical backstop for the prompt's ──
+// ── no-invented-causation rule (report-composer.js commonRules) ──────────
+test('validateReportContent: flags an unhedged "caused by" claim anywhere in body_markdown, not just the headline sections', () => {
+  const composed = composedWith([]);
+  const gemini = {
+    executive_summary: 'A quiet day overall.',
+    body_markdown: '# What Happened\nNothing major today.\n## What Needs Attention\nThe missing price is caused by an admin error and is why this listing has 0 leads.',
+  };
+  const result = validateReportContent(gemini, composed, {}, {});
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(' '), /unhedged cause-and-effect/i);
+});
+test('validateReportContent: does NOT flag a causal phrase when the same sentence also carries a hedge word ("hypothesis", "worth checking")', () => {
+  const composed = composedWith([]);
+  const gemini = {
+    executive_summary: 'A quiet day overall.',
+    body_markdown: '# What Happened\nNothing major today.\n## What Needs Attention\nThe missing price is the reason for the 0 leads, though this is just a hypothesis worth checking.',
+  };
+  const result = validateReportContent(gemini, composed, {}, {});
+  assert.equal(result.ok, true);
+});
+test('validateReportContent: does NOT flag ordinary prose that happens to contain "why" without an unhedged causal phrase', () => {
+  const composed = composedWith([]);
+  const gemini = {
+    executive_summary: 'A quiet day overall.',
+    body_markdown: '# What Happened\nHere is why today was quiet: traffic was low across the board.',
+  };
+  const result = validateReportContent(gemini, composed, {}, {});
+  assert.equal(result.ok, true);
+});
+
 // ── buildValidationFallbackReport ────────────────────────────────────────
 test('buildValidationFallbackReport: produces a plain, labeled report with no invented prose', () => {
   const composed = {

@@ -8,6 +8,7 @@
 // insight-engine.js / metrics-utils.js.
 
 import { priorityScore } from './insight-engine.js';
+import { dataConfidenceLabel } from './trend-calculator.js';
 
 export const CANONICAL_DISTRICTS = [
   'Chanthabouly', 'Sikhottabong', 'Xaythany', 'Sisattanak',
@@ -111,9 +112,25 @@ export function buildQuietDayReport(reportType, period) {
   };
 }
 
+// Sample-size confidence for a listing-performance insight (low_performing/
+// high_performing_listing carry an `impressions` count in evidence — see
+// listing-performance-detector.js). Reuses dataConfidenceLabel() verbatim
+// (trend-calculator.js) — the same <10/<30/<100/100+ bands already used
+// everywhere else a sample size needs banding — rather than inventing a
+// second confidence concept. This is distinct from `confidence` above,
+// which is the DETECTOR's certainty that the fact is true (fixed at 1.0 for
+// every rule-based detector); this is "how much weight the SAMPLE can bear",
+// which is what tells Gemini whether it may diagnose the listing at all or
+// must say "Insufficient data to determine performance" instead.
+function sampleConfidenceNote(i) {
+  const impressions = i.evidence && typeof i.evidence.impressions === 'number' ? i.evidence.impressions : null;
+  if (impressions === null) return '';
+  return `, sample size: ${impressions} impressions (${dataConfidenceLabel(impressions)} confidence)`;
+}
+
 function insightSummaryLine(i) {
   const dims = [i.dimension_district, i.dimension_property_type].filter(Boolean).join('/');
-  return `- [${i.type}] ${i.title}${dims ? ` (${dims})` : ''} — severity: ${i.severity}, confidence: ${Math.round((i.confidence || 0) * 100)}%, trend: ${i.trend}${i.recommendation ? `, suggested action: ${i.recommendation}` : ''}`;
+  return `- [${i.type}] ${i.title}${dims ? ` (${dims})` : ''} — severity: ${i.severity}, confidence: ${Math.round((i.confidence || 0) * 100)}%${sampleConfidenceNote(i)}, trend: ${i.trend}${i.recommendation ? `, suggested action: ${i.recommendation}` : ''}`;
 }
 
 // Intelligence V2 (Customer Intent / Unmet Demand / Conversion Leaks —
@@ -190,15 +207,24 @@ Do NOT:
 - Decide what's significant
 - Invent, estimate, or recompute any statistic, percentage, or number not present in the data below
 - State a number without it appearing in the evidence, trend analysis, or raw metrics provided
+- State a percentage without ALSO stating the underlying values it was computed from, using the exact figures already given. When today's move against a SMALL baseline is very large (roughly 5x or more), lead with the absolute difference and a multiplier instead of a percentage — e.g. "180 vs 15 yesterday (+165 interactions; 12× yesterday)" reads better than "+1100% vs yesterday" on the same numbers, because a huge percentage on a tiny baseline is the least informative way to say it. Still give the 30-day comparison as its own figure, e.g. "180 vs ~23 30-day average (+~683%)" — a percentage against a larger, steadier baseline is fine to state once the raw values sit right next to it. Never let a percentage be the most prominent thing in a sentence when a tiny baseline is what's driving its size
 - Describe the data as "stable," "back to baseline," or "normal" when the trend analysis or a linked insight shows a statistically significant change in the same section — direction language must match the data
-- Claim a CAUSE for an outcome beyond what the evidence directly shows. "This listing has 40 impressions, 0 leads, and is missing a price" is a fact you may state. "The missing price caused the 0 leads" is a claim this data cannot prove — state the facts side by side and let the reader draw that conclusion, or phrase it as a question ("worth checking whether the missing price is why"), never as a stated cause
+- Claim a CAUSE for an outcome beyond what the evidence directly shows. "This listing has 40 impressions, 0 leads, and is missing a price" is a fact you may state. "The missing price caused the 0 leads" is a claim this data cannot prove — state the facts side by side and phrase the connection as a hedged possibility ("may indicate", "worth checking whether"), never as a stated cause. Same discipline for behavioural claims: never state "users aren't contacting because they lack information" as fact — write "high gallery engagement combined with limited contact activity may indicate users want more information before contacting; this is a hypothesis and should be monitored" instead
+- Treat a small sample as proof of a problem. A listing with few impressions and 0 leads is a signal to investigate, not evidence it is failing. When a listing's sample size is below "moderate" confidence (see the sample-size note next to its evidence below), do not diagnose it — write "Insufficient data to determine performance" and move on
 
 You MAY:
-- Explain WHY something might be happening, in plain business terms
+- Explain WHY something might be happening, in plain business terms, ALWAYS as a hedged possibility unless the data makes it a plain fact
 - Connect related insights into one narrative (e.g. a demand spike + a supply shortage in the same district becomes one recruiting recommendation)
 - Reference the raw metrics summary below for period totals
 - Say plainly "not enough data to compare yet" wherever the trend analysis shows null — this is the correct, honest thing to say, not a gap to fill in
 - Use the CUSTOMER INTENT SEGMENTS data (when present) to describe what customers were actually looking for, which segments are underserved (also visible as a [supply_shortage] insight above when severe enough to open one), and which specific listings are worth fixing (also visible as [low_performing_listing]/[high_performing_listing] insights above) — always through the journey-join confidence caveat when discussing lead/conversion counts for a segment
+
+CONFIDENCE LABELS — every INTERPRETIVE or diagnostic statement (a conclusion, an explanation, "this might mean X") must carry exactly one of these three tags. A plain factual metric or comparison ("Gallery interactions: 180 today vs 15 yesterday") never gets a tag — tags are for what you conclude FROM the facts, never for the facts themselves:
+🟢 CONFIRMED — directly supported by the data, no interpretive leap
+🟡 LIKELY — a strong, reasonable conclusion the available data supports, but not proven beyond doubt
+⚪ HYPOTHESIS — a plausible explanation the data cannot yet confirm; say explicitly what would need to be true, or what to monitor, to confirm or rule it out
+
+GALLERY INTERACTIONS — today's analytics measure a marketplace-wide total, and the trend analysis can compare it to yesterday/7-day/30-day averages, but they do NOT break gallery interactions down by which listing, which photo, or how many distinct users generated them. When gallery engagement is worth discussing, state what the aggregate trend actually shows, and say plainly that today's data cannot show which listings or how many users drove it — do not guess. You MAY compare the gallery-engagement trend against the listing-views and WhatsApp-click trends already given (e.g. "gallery engagement rose while WhatsApp clicks stayed flat") since both are real figures in the trend analysis, not a guess.
 
 NEW INSIGHTS (🟢):\n${newBlock}\n
 CONTINUING INSIGHTS (🔴):\n${continuingBlock}\n
@@ -210,9 +236,9 @@ ${JSON.stringify(rawMetricsSummary)}
 Canonical districts: ${CANONICAL_DISTRICTS.join(', ')}. Canonical property types: ${CANONICAL_PROPERTY_TYPES.join(', ')}.`;
 
   const structureByType = {
-    daily: `Write a DAILY INTELLIGENCE BRIEFING for the founder. It must be readable in UNDER 60 SECONDS. Keep it UNDER 350 WORDS — that is a ceiling, not a target, and there is NO minimum. If today's evidence supports a strong 150-word briefing, write 150 words and stop. Never add a sentence to reach a length. This is a briefing about TODAY, not a market report.
+    daily: `Write a DAILY INTELLIGENCE REPORT for the founder — a decision-making report, not an analytics dump. It must be readable in UNDER 60 SECONDS. Keep it UNDER 350 WORDS — that is a ceiling, not a target, and there is NO minimum. If today's evidence supports a strong 150-word report, write 150 words and stop. Never add a sentence to reach a length. This is a report about TODAY, not a market report.
 
-It answers exactly four things: what happened today, what changed, what matters, and what to do next.
+A busy property/operations manager should finish this in under a minute and know: what changed, what matters, what might be wrong, and what should I do. Every sentence belongs in exactly one of the five sections below — facts in their place, interpretation in its place, never blended into the same sentence.
 
 ONE STORY, NOT FIVE. The insights below are already ranked; the FIRST new-or-continuing insight is the day's story and everything else is supporting detail. Do not open with a survey of every metric, and do not present several competing "biggest stories". Where two signals are really one story, CONNECT them rather than reporting them separately — e.g. "Gallery engagement remains unusually strong, but today's users are not progressing to contact" is one story about conversion, not a browsing story plus a lead story.
 
@@ -220,11 +246,13 @@ COMPARISON HIERARCHY — use in this order:
 1. TODAY vs YESTERDAY is the primary comparison. Lead with it.
 2. The 7-day average is SECONDARY context, for saying whether today's move is part of a pattern.
 3. The 30-day average ONLY when it reveals a genuinely significant anomaly. Do not walk every metric through all three baselines — that is what makes this read like a monthly report.
+For any metric you compare, prefer showing it as Today | Yesterday | 30-day avg | Change (a short markdown table is fine when 3+ metrics are worth comparing this way) over a bare percentage sentence — the reader should never have to trust an unexplained percentage.
 
 SMALL SAMPLES — a percentage is not automatically a finding. When the underlying counts are small (roughly single digits), say so in words instead of leading with the percentage: 1 to 2 events is +100% and usually means nothing. Reserve percentage-led statements for metrics with real volume. A ZERO IS ONLY AS INTERESTING AS THE TRAFFIC AROUND IT. Judge it against the same day's views, clicks and searches, and do NOT treat every zero-lead day as a critical problem:
 - 0 leads with little or no traffic: no conclusion to draw. Say that, or leave it out.
 - 0 leads with meaningful listing views or clicks: a real conversion problem, and worth leading with.
 - 0 leads with strong gallery engagement: possible conversion friction between browsing and contacting — worth investigating, stated as a question rather than a verdict.
+A listing insight's evidence line may carry a sample size and confidence band (e.g. "sample size: 6 impressions (low confidence)"). Below "moderate" confidence, do not diagnose the listing — write "Insufficient data to determine performance" and move on.
 
 DO NOT NARRATE STANDING MARKETPLACE FACTS. Specifically, do NOT describe:
 - current district inventory composition
@@ -233,25 +261,19 @@ DO NOT NARRATE STANDING MARKETPLACE FACTS. Specifically, do NOT describe:
 - total inventory
 These are the same most days and are NOT news. Mention one only when it materially changed or when it is needed to explain a change. Avoid openers like "The marketplace currently...", "Sisattanak currently holds...", "Apartments continue to be...".
 
-WRITE LIKE THIS: "Search activity fell 37% today but remains above the 7-day average." / "Gallery engagement rose again today, suggesting users are actively exploring listing photos." / "Despite strong gallery engagement, no leads were created today — this is the biggest conversion question to investigate." / "Five active listings are still missing prices and should be fixed."
+WRITE LIKE THIS: "Search activity fell 37% today (12 vs 19 yesterday) but remains above the 7-day average of 9." / "Gallery interactions: 180 vs 15 yesterday (+165 interactions; 12× yesterday); 180 vs ~23 30-day average (+~683%)." / "🟡 LIKELY: today's gallery engagement combined with flat WhatsApp clicks suggests users are browsing more without a matching rise in contacts — worth monitoring, not yet a confirmed conversion problem." / "Five active listings are still missing prices and should be fixed. 🟢 CONFIRMED."
 
 Structure with these markdown headings, in order. OMIT ANY SECTION THAT HAS NO REAL CONTENT TODAY — do not pad, and never write "nothing to report" under a heading:
-# Today's Story
-(1-3 sentences: the single most important thing that happened today.)
-## What Changed Today
-(A short list of the meaningful changes vs yesterday. Not every metric — the ones that matter.)
-## Buyer Behaviour
-(What users actually DID: searches, listing views, gallery interactions, contacts, leads. Interpretation, not a list of numbers.)
-## Customer Intent
-(From CUSTOMER INTENT SEGMENTS, when present: who was actually looking for what today — the top segment(s) by search volume, in plain language, e.g. "today's strongest demand was renters wanting a condo in Sisattanak, mostly around $500-$800/month." Omit entirely if the segments data is absent, or if every segment's sample is too small to say anything with confidence — say so explicitly rather than presenting a 2-search segment as "the" customer profile.)
-## Unmet Demand & Inventory Opportunities
-(Segments where demand meaningfully exceeds what Pintag currently has to show, or where a high zero-result rate suggests active listings aren't actually matching what's searched — visible above as [supply_shortage] insights with a metric_key starting "unmet_demand.". Frame the same gap two ways when it's worth surfacing: what customers can't find today, and what inventory is worth acquiring next. Omit if none qualify.)
-## Listings To Watch
-(Listings that deserve attention today: unusual engagement, high impressions with poor CTR, views but no contacts, missing critical data, a sudden change — including anything surfaced above as a [low_performing_listing] or [high_performing_listing] insight. When a listing is both underperforming AND missing something concrete (price, photos) AND matches today's strongest demand segment, that combination is worth leading with — state the facts together, do not claim the missing field caused the outcome (see the causation rule above). Omit the section if none qualify.)
-## Data / Product Issues
-(Data-quality and product problems, kept separate from marketplace performance. Omit if none.)
-## Tomorrow's Priorities
-(2-4 CONCRETE actions, each grounded in evidence that appears above — including, when relevant, an unmet-demand segment worth sourcing inventory for, or a specific listing to fix. Name what to look at and why today's data points there. A generic instruction is not an action: "consider optimizing image loading", "investigate further" and "continue monitoring" are all failures unless you say exactly what to investigate and what would settle it. Weak: "Consider optimizing image loading." Strong: "Check the gallery-loading path on the listings receiving unusually high gallery interaction before changing the gallery UX." If today's evidence supports only two actions, give two.)`,
+# What Happened
+(PURE FACTS ONLY — no interpretation, no confidence tags. The day's key metrics and any change vs yesterday worth naming, e.g. "Gallery interactions: 180 vs 15 yesterday (+165 interactions; 12× yesterday); 180 vs ~23 30-day average (+~683%). 87 searches today vs 62 yesterday." A comparison table (Today | Yesterday | 30-day avg | Change) is welcome here for 3+ metrics. 1-3 sentences, still fact-only.)
+## What Users Are Doing
+(Behaviour, still stated as facts, not conclusions: searches, listing views, gallery interactions, WhatsApp/call clicks, leads. Include, from CUSTOMER INTENT SEGMENTS when present, what customers actually searched for today in plain language, e.g. "today's strongest demand was renters wanting a condo in Sisattanak, mostly around $500-$800/month" — omit this if every segment's sample is too small to say anything with confidence, and say so explicitly rather than presenting a 2-search segment as "the" customer profile. Numbers and comparisons only — save the "why" for What It Means.)
+## What It Means
+(Interpretation ONLY, and ONLY here — every sentence in this section carries a 🟢/🟡/⚪ confidence tag per the CONFIDENCE LABELS rule above. Connect the facts above into a story about buyer behaviour, conversion, or demand; separate what's confirmed from what's a hypothesis. When gallery interactions are part of the story, follow the GALLERY INTERACTIONS rule above — say what the trend shows and say plainly what today's data cannot show.)
+## What Needs Attention
+(Specific listings, data-quality problems, or unusual behaviour worth a look — including anything surfaced above as a [low_performing_listing], [high_performing_listing] or [data_quality] insight, and segments where demand meaningfully exceeds supply ([supply_shortage] insights with a metric_key starting "unmet_demand."). State the facts (impressions, leads, what's missing) plainly; when you connect a data gap to an outcome, tag it 🟡 LIKELY or ⚪ HYPOTHESIS per the causation rule above — never state the gap as the proven cause. Respect the small-sample rule: a listing below "moderate" confidence gets "Insufficient data to determine performance," not a diagnosis. Omit the section if none qualify.)
+## Recommended Actions
+(2-4 CONCRETE actions the Pintag team can actually take today, each grounded in evidence that appears above. For each action, cover: what to do, why (the evidence and confidence tag it rests on), which listing or data point it relates to, and what to monitor afterward — e.g. "Complete the missing location data for [listing]. 🟡 LIKELY data-quality issue — 16 impressions, 0 leads. Monitor: impressions, views and contacts over the next 7 days." A generic instruction is not an action: "consider optimizing image loading", "investigate further" and "continue monitoring" are all failures unless you say exactly what to investigate, on which listing or segment, and what would settle it. Weak: "Consider optimizing image loading." Strong: "Complete the missing location data on the listing with 16 impressions and 0 leads today, then track impressions, views and contacts over the next week to see whether visibility improves." If today's evidence supports only two actions, give two.)`,
     weekly: `Write a WEEKLY INTELLIGENCE REPORT. Compare this week to the previous week; highlight TRENDS, not just totals. Structure with these markdown headings:
 # Executive Summary
 ## What Changed This Week
