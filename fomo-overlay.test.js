@@ -28,6 +28,10 @@ const property = (o) => Object.assign({
 const unit = (o) => Object.assign(
   { id: 'u1', name_en: 'Unit', is_available: true, available_count: 1, total_units: null }, o);
 
+// Fixed "today" for the date-on-the-overlay tests below, same convention as
+// next-available.test.js -- deterministic, never depends on the real clock.
+const TODAY = '2026-08-19';
+
 // ═══ The required scenarios ═════════════════════════════════════════════
 
 test('available (plain listing, no unit types) → no overlay at all', () => {
@@ -232,4 +236,67 @@ test('a property with NO unit rows still respects market_status exactly as befor
 
   const available = property({ market_status: 'available', unit_types: [] });
   assert.deepEqual(_ptIsUnavailableNow(available), { unavailable: false, market: 'available', source: null });
+});
+
+// ═══ Next-available DATE on the photo overlay (dateText) ═══════════════════
+// The overlay's status word ("ເຕັມແລ້ວ") can carry a second, subordinate line
+// with the listing's next-available date -- sourced ENTIRELY from the
+// existing ptResolveNextAvailable() (same resolver the price-area "Available
+// {date}" text already uses), never a new date/precedence/staleness rule.
+
+test('(a) unavailable + a genuine future date on file → dateText is included, using the existing "Available {date}" wording', () => {
+  const p = property({ market_status: 'fully_occupied', available_from: '2026-09-25' });
+  const overlay = ptResolveFomoOverlay(p, 'en', TODAY);
+  assert.equal(overlay.tone, 'unavailable');
+  assert.equal(overlay.text, 'Fully Booked');
+  assert.equal(overlay.dateText, 'Available 25 Sep 2026', 'same text ptResolveNextAvailable() itself produces -- no new wording');
+});
+
+test('(a) same scenario, Lao — reuses the existing short "ວ່າງ" label and existing date convention, not a new translation/format', () => {
+  const p = property({ market_status: 'fully_occupied', available_from: '2026-09-25' });
+  const overlay = ptResolveFomoOverlay(p, 'lo', TODAY);
+  assert.equal(overlay.text, 'ເຕັມແລ້ວ');
+  assert.equal(overlay.dateText, 'ວ່າງ 25 ກ.ຍ 2026');
+});
+
+test('(a) the date can come from unit_types.next_available_date too (earliest across units, same precedence as ptResolveNextAvailable)', () => {
+  const p = property({
+    market_status: 'available', // untouched by the unit save, exactly like production
+    unit_types: [
+      unit({ id: 'a', is_available: false, available_count: 0, next_available_date: '2026-10-01' }),
+      unit({ id: 'b', is_available: false, available_count: 0, next_available_date: '2026-09-25' }),
+    ],
+  });
+  const overlay = ptResolveFomoOverlay(p, 'en', TODAY);
+  assert.equal(overlay.tone, 'unavailable');
+  assert.equal(overlay.dateText, 'Available 25 Sep 2026', 'the EARLIEST of the two unit dates wins');
+});
+
+test('(b) unavailable + NO date on file → return-object shape is unchanged (no dateText key at all, not dateText: null)', () => {
+  const p = property({ market_status: 'sold' });
+  const overlay = ptResolveFomoOverlay(p, 'en', TODAY);
+  assert.deepEqual(overlay, { tone: 'unavailable', text: 'Sold' }, 'byte-identical to the pre-existing shape');
+  assert.equal('dateText' in overlay, false);
+});
+
+test('(c) unavailable + a STALE/past date on file → dateText is omitted, never a past date shown', () => {
+  const p = property({ market_status: 'fully_occupied', available_from: '2020-01-03' });
+  const overlay = ptResolveFomoOverlay(p, 'en', TODAY);
+  assert.deepEqual(overlay, { tone: 'unavailable', text: 'Fully Booked' });
+  assert.equal('dateText' in overlay, false);
+});
+
+test('(d) currently AVAILABLE + a future date on file → no overlay at all (never a bare date with no status word)', () => {
+  const p = property({ market_status: 'available', available_from: '2026-09-25', unit_types: [] });
+  assert.equal(ptResolveFomoOverlay(p, 'en', TODAY), null);
+});
+
+test('a scarce-tone overlay (still available) never carries dateText -- that field is exclusive to the unavailable scrim', () => {
+  const p = property({
+    market_status: 'available',
+    unit_types: [unit({ id: 'a', is_available: true, available_count: 1, next_available_date: '2026-09-25' })],
+  });
+  const overlay = ptResolveFomoOverlay(p, 'en', TODAY);
+  assert.equal(overlay.tone, 'scarce');
+  assert.equal('dateText' in overlay, false);
 });

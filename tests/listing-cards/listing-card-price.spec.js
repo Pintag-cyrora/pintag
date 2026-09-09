@@ -116,7 +116,17 @@ const FIXTURES = [
              price_amount: 500, price_currency: 'USD', price_frequency: 'monthly',
              unit_types: [
                unit({ id: 'part-open-1', available_count: 8, total_units: 10 }),
-             ] })
+             ] }),
+  // FOMO overlay + Next-Available date, stacked as a subordinate second line.
+  property({ slug: 'overlay-date-future', market_status: 'fully_occupied',
+             price_amount: 420, price_currency: 'USD', price_frequency: 'monthly',
+             available_from: '2099-09-15' }),
+  property({ slug: 'overlay-date-past', market_status: 'rented',
+             price_amount: 480, price_currency: 'USD', price_frequency: 'monthly',
+             available_from: '2020-01-03' }),
+  property({ slug: 'overlay-date-avail-future', market_status: 'available',
+             price_amount: 350, price_currency: 'USD', price_frequency: 'monthly',
+             available_from: '2099-09-15' })
 ];
 
 async function openListings(page, query) {
@@ -509,4 +519,69 @@ test('the photo itself is still visible under an unavailable overlay (a scrim, n
   // and visible underneath it.
   await expect(card.locator('.pt-card-img img')).toBeVisible();
   await expect(card.locator('.pt-fomo-overlay-unavailable')).toBeVisible();
+});
+
+// ── FOMO OVERLAY + NEXT-AVAILABLE DATE (subordinate second line on the photo) ──
+// ptResolveFomoOverlay reuses ptResolveNextAvailable/_formatAvailabilityDate
+// verbatim -- no new date format, no new wording. This suite runs under the
+// mobile (iPhone 13) viewport by default; a `desktop viewport` block below
+// re-checks the same fixtures at desktop width.
+
+test('FULLY OCCUPIED with a future Available-From date -> the overlay carries the date as a subordinate second line', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'overlay-date-future');
+  await expect(card.locator('.pt-fomo-overlay-word')).toHaveText('Fully Booked');
+  await expect(card.locator('.pt-fomo-overlay-date')).toHaveText('Available 15 Sep 2099');
+  await expect(card.locator('.pt-card-price')).toContainText('$420');
+});
+
+test('SOLD with no Available-From date on file -> overlay renders, no date line at all', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'overlay-sold');
+  await expect(card.locator('.pt-fomo-overlay-word')).toHaveText('Sold');
+  await expect(card.locator('.pt-fomo-overlay-date')).toHaveCount(0);
+});
+
+test('RENTED with a stale/past Available-From date -> overlay renders, no date line (never claims a past date is upcoming)', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'overlay-date-past');
+  await expect(card.locator('.pt-fomo-overlay-word')).toHaveText('Just Rented');
+  await expect(card.locator('.pt-fomo-overlay-date')).toHaveCount(0);
+});
+
+test('AVAILABLE listing with a future Available-From date -> no overlay at all, never a bare date with no status', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'overlay-date-avail-future');
+  await expect(card.locator('.pt-fomo-overlay')).toHaveCount(0);
+  await expect(card.locator('.pt-fomo-overlay-date')).toHaveCount(0);
+});
+
+test('the date line stays visually subordinate to (a separate element from) the main status word', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'overlay-date-future');
+  await expect(card.locator('.pt-fomo-overlay-word')).toHaveText('Fully Booked');
+  await expect(card.locator('.pt-fomo-overlay-date')).not.toHaveText(/Fully Booked/);
+});
+
+test('ONLY 1 LEFT (scarce ribbon) never carries a date line -- the date only applies to the unavailable scrim', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'one-left');
+  await expect(card.locator('.pt-fomo-overlay-date')).toHaveCount(0);
+});
+
+test.describe('desktop viewport', () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+
+  test('FULLY OCCUPIED with a future Available-From date -> the date line still renders at desktop width', async ({ page }) => {
+    await openListings(page);
+    const card = cardFor(page, 'overlay-date-future');
+    await expect(card.locator('.pt-fomo-overlay-word')).toHaveText('Fully Booked');
+    await expect(card.locator('.pt-fomo-overlay-date')).toHaveText('Available 15 Sep 2099');
+  });
+
+  test('SOLD with no date on file -> still no date line at desktop width', async ({ page }) => {
+    await openListings(page);
+    const card = cardFor(page, 'overlay-sold');
+    await expect(card.locator('.pt-fomo-overlay-date')).toHaveCount(0);
+  });
 });
