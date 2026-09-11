@@ -377,6 +377,14 @@ function transactionLabel(transactionType, lang) {
 // price_frequency (yearly/weekly/daily/negotiable were silently ignored).
 var PT_PER_MONTH = { lo:'/ ເດືອນ', en:'/ month', zh:'/ 月' };
 var PT_PRICE_ON_REQUEST = { lo:'ສອບຖາມລາຄາ', en:'Price on request', zh:'价格面议' };
+// Prefix shown on a multi-unit listing's card price when its unit types
+// genuinely differ (see ptResolveUnitPriceVariance()) -- "From $300" rather
+// than a bare "$300" that silently hides a pricier unit. zh:'起' is placed
+// as a PREFIX here for consistency with en/lo ("From $300" / "ເລີ່ມຕົ້ນ $300"),
+// though Chinese real-estate listings more idiomatically SUFFIX this word
+// ("3,000,000起"); flagged for native-speaker review, same as 出租房 was
+// flagged for row_rooms, rather than guessed at silently.
+var PT_FROM_PRICE_PREFIX = { lo:'ເລີ່ມຕົ້ນ', en:'From', zh:'起' };
 var PT_FREQUENCY_SUFFIX = {
   monthly:    { lo:'/ ເດືອນ',      en:'/ month', zh:'/ 月' },
   yearly:     { lo:'/ ປີ',         en:'/ year',  zh:'/ 年' },
@@ -771,6 +779,61 @@ function ptResolveUnitTypesPrice(property, lang) {
   return best ? best.text : null;
 }
 
+// ptResolveUnitPriceVariance(property) -- does this multi-unit listing
+// genuinely have DIFFERENT unit-type prices, such that the single number
+// the card would otherwise show (property.price_amount, or the cheapest-unit
+// fallback below) is actually a MINIMUM across variants, not a plain price?
+// Universal across every property type that can carry unit_types -- not
+// row_rooms-specific, since the same UX gap (a Fan Room at ₭3,000,000/month
+// vs an AC Room at ₭4,000,000/month showing only "₭3,000,000" with no
+// indication a pricier unit exists) applies equally to any multi-unit
+// building (apartment, condo, row_rooms, ...).
+//
+// Returns null (safe default -- caller keeps today's plain single-price
+// display, no "From") unless ALL of:
+//   - 2+ unit types resolve to a numeric price_amount
+//   - every one of those shares the SAME currency -- no cross-currency
+//     min/max. ptResolveUnitTypesPriceEntry()'s own "cheapest" comparison
+//     above already has a latent cross-currency limitation (a raw amount
+//     compare with no conversion); this function deliberately refuses to
+//     compound that into a user-facing "From" claim rather than silently
+//     comparing e.g. LAK and USD amounts as if they were the same unit.
+//   - every one of those shares the SAME price_frequency -- mirrors
+//     admin.html's own _utComputeRange()/_utRangeHint() precedent exactly:
+//     frequencies.length === 1 ? frequencies[0] : null, i.e. a mixed-
+//     frequency building gets no frequency claim at all rather than a
+//     misleading one.
+//   - the resolved amounts are not all identical (nothing to flag when
+//     every unit costs the same)
+// sale_or_rent is out of scope: formatPropertyPrice()'s isSor branch never
+// participates in this numeric comparison (it renders saleText/rentText from
+// the property's own sale/rent columns, not from unit-type variance), so
+// this function returns null for it rather than reasoning about a
+// combination the rest of the pipeline doesn't handle yet.
+function ptResolveUnitPriceVariance(property) {
+  if (!property || property.transaction_type === 'sale_or_rent') return null;
+  var units = Array.isArray(property.unit_types) ? property.unit_types : [];
+  if (units.length < 2 || typeof resolveUnitType !== 'function') return null;
+
+  var amounts = [];
+  var currency = null, frequency = null, mixedCurrency = false, mixedFrequency = false;
+  for (var i = 0; i < units.length; i++) {
+    var resolved = resolveUnitType(property, units[i]);
+    if (resolved.priceAmount == null) continue;
+    amounts.push(resolved.priceAmount);
+    if (currency === null) currency = resolved.priceCurrency;
+    else if (resolved.priceCurrency !== currency) mixedCurrency = true;
+    if (frequency === null) frequency = resolved.priceFrequency;
+    else if (resolved.priceFrequency !== frequency) mixedFrequency = true;
+  }
+  if (amounts.length < 2 || mixedCurrency || mixedFrequency) return null;
+
+  var min = Math.min.apply(null, amounts), max = Math.max.apply(null, amounts);
+  if (min === max) return null; // every resolvable unit costs the same -- nothing to communicate
+
+  return { min: min, max: max, currency: currency, frequency: frequency };
+}
+
 // ptResolveSortPrice(property) -- the numeric price key for SORTING and
 // PRICE-BAND FILTERING, resolved through the same precedence the card uses:
 // structured property column -> cheapest unit type -> legacy display text.
@@ -828,7 +891,20 @@ function formatPropertyPrice(property, lang) {
   if (property.price_amount != null) {
     var moneyText = formatMoney(property.price_amount, property.price_currency);
     var showUnit = kind === 'rent';
-    return { isSor: false, singleText: moneyText, unitText: showUnit ? _ptFrequencySuffix(property.price_frequency, lang) : null, isPriceOnRequest: false };
+    // "From $X" when this multi-unit listing's own unit types genuinely
+    // differ in price (same currency, same frequency) -- see
+    // ptResolveUnitPriceVariance()'s own header comment for the exact
+    // conditions. property.price_amount is already the correct actionable
+    // number to show (admin's syncPricingMode() keeps it in sync with the
+    // cheapest active unit) -- this only decides whether to qualify it,
+    // never recomputes or overrides it.
+    var variance = ptResolveUnitPriceVariance(property);
+    return {
+      isSor: false, singleText: moneyText,
+      unitText: showUnit ? _ptFrequencySuffix(property.price_frequency, lang) : null,
+      isPriceOnRequest: false,
+      fromLabel: variance ? PT_FROM_PRICE_PREFIX[lang] || PT_FROM_PRICE_PREFIX.en : null
+    };
   }
 
   // Legacy fallback -- unbackfilled row. "month" must be tried before "mo"
@@ -843,7 +919,11 @@ function formatPropertyPrice(property, lang) {
     // and any future surface all recover the price identically.
     var unitText = ptResolveUnitTypesPrice(property, lang);
     if (unitText) {
-      return { isSor: false, singleText: unitText, unitText: null, isPriceOnRequest: false, priceSource: 'unit_type' };
+      var fallbackVariance = ptResolveUnitPriceVariance(property);
+      return {
+        isSor: false, singleText: unitText, unitText: null, isPriceOnRequest: false, priceSource: 'unit_type',
+        fromLabel: fallbackVariance ? PT_FROM_PRICE_PREFIX[lang] || PT_FROM_PRICE_PREFIX.en : null
+      };
     }
     return { isSor: false, singleText: null, isPriceOnRequest: true, requestText: PT_PRICE_ON_REQUEST[lang] };
   }
@@ -1037,7 +1117,9 @@ function renderPropertyCard(property, opts) {
   } else if (price.isPriceOnRequest) {
     priceHtml = '<p class="pt-card-price-req">' + _ptEsc(price.requestText) + '</p>';
   } else {
-    priceHtml = '<p class="pt-card-price">' + _ptEsc(price.singleText) + (price.unitText ? ' <span class="pt-card-price-unit">' + _ptEsc(price.unitText) + '</span>' : '') + '</p>';
+    priceHtml = '<p class="pt-card-price">' +
+      (price.fromLabel ? '<span class="pt-card-price-from">' + _ptEsc(price.fromLabel) + '</span> ' : '') +
+      _ptEsc(price.singleText) + (price.unitText ? ' <span class="pt-card-price-unit">' + _ptEsc(price.unitText) + '</span>' : '') + '</p>';
   }
   // "$450 / month · Available 15 Sep 2026" -- a compact inline suffix on the
   // PRICE paragraph itself, not another block, so the card does not grow a line.

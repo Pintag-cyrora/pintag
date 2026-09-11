@@ -160,6 +160,10 @@ html[lang="lo"] .pt-card.pt-featured .pt-card-title{line-height:1.45;}
 .pt-card-price{font-size:var(--pt-fs-price);font-weight:500;color:var(--pt-ink);letter-spacing:-0.01em;margin-bottom:14px;}
 .pt-card.pt-featured .pt-card-price{font-size:24px;font-weight:400;letter-spacing:-0.02em;margin-bottom:20px;}
 .pt-card-price-unit{font-size:var(--pt-fs-body);font-weight:400;color:var(--pt-ink-muted);}
+/* "From" prefix on a multi-unit listing whose unit types genuinely differ
+   in price (ptResolveUnitPriceVariance() in components.js) -- quieter than
+   the price itself, same treatment as .pt-card-price-unit's suffix. */
+.pt-card-price-from{font-size:var(--pt-fs-body);font-weight:400;color:var(--pt-ink-muted);}
 /* Secondary daily rate, shown under the headline price when a rental also
    offers a per-day rate (lease-pricing.js). Deliberately quieter than
    .pt-card-price -- it supplements the main rent, never replaces it. */
