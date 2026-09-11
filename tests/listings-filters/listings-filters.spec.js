@@ -101,17 +101,34 @@ test.describe('listings.html — filter fixes', () => {
   });
 
   test('filter changes are mirrored into the address bar (refresh/share keeps them)', async ({ page }) => {
+    // Uses 'land' (not 'villa') as the example type filter — the Villa
+    // quick-filter button was removed from the property-type filter row
+    // (2026-09-11); 'land' still has its own button and remains a clean,
+    // single-transaction-type fixture (land-sale) to exercise the same
+    // address-bar-mirroring mechanism this test is actually about.
     await open(page, '?lang=en&filter=for_sale');
-    await page.evaluate(() => setTypeFilter('villa', document.querySelector('.filter-btn[data-filter="villa"]')));
+    await page.evaluate(() => setTypeFilter('land', document.querySelector('.filter-btn[data-filter="land"]')));
     const u = new URL(page.url());
     expect(u.searchParams.get('tx')).toBe('for_sale');
-    expect(u.searchParams.get('type')).toBe('villa');
+    expect(u.searchParams.get('type')).toBe('land');
     expect(u.searchParams.get('filter')).toBeNull();
     expect(u.searchParams.get('lang')).toBe('en');
     await page.reload(); await settled(page);
-    expect(await slugsShown(page)).toEqual(['villa-both']);
+    expect(await slugsShown(page)).toEqual(['land-sale']);
     await page.evaluate(() => setTypeFilter('all', document.querySelector('.filter-btn[data-filter="all"]')));
     expect(new URL(page.url()).searchParams.get('type')).toBeNull();
+  });
+
+  test('the Villa quick-filter button no longer exists in the property-type filter row (removed 2026-09-11); existing villa-type listings remain otherwise fully filterable/sortable/browsable under "All Types"', async ({ page }) => {
+    await open(page, '?lang=en');
+    expect(await page.evaluate(() => document.querySelector('.filter-btn[data-filter="villa"]'))).toBeNull();
+    // A deep link to the removed filter is safely ignored (never a thrown
+    // error, never a silent crash) -- currentTypeFilter stays 'all' because
+    // setTypeFilter() is only reachable through an existing .filter-btn (see
+    // the ?type= deep-link guard in listings.html), so every listing shows,
+    // including the villa-type fixture.
+    await open(page, '?lang=en&type=villa');
+    expect(await slugsShown(page)).toContain('villa-both');
   });
 
   test('a failed fetch: header is not stuck on Loading, Retry exists and works, later clicks do not throw', async ({ page }) => {

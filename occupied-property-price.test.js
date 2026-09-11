@@ -499,3 +499,112 @@ test('B10. SORT: under For Rent a sale_or_rent listing sorts on its RENT leg, th
   globalThis.currentTxFilter = 'all';
   assert.deepEqual(globalThis.sortProperties(rows).map((p) => p.slug).indexOf('villa-both'), 2, 'under All the sale leg still applies');
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// E. "FROM" PRICE — a multi-unit listing's card price gets a localized
+// "From" qualifier when its unit types genuinely differ (same currency, same
+// frequency, different amounts). Universal across property type -- NOT
+// row_rooms-specific -- see ptResolveUnitPriceVariance()'s header comment.
+// ══════════════════════════════════════════════════════════════════════════
+
+// The exact scenario from the product report: a row_rooms listing with a
+// Fan Room at ₭3,000,000/month and an AC Room at ₭4,000,000/month. Admin's
+// syncPricingMode() would already have written price_amount=3,000,000 (the
+// min across active units) -- this fixture models that post-save state.
+const fanAcRowRooms = () => ({
+  id: 'rr1', slug: 'row-rooms-fan-ac', transaction_type: 'for_rent', property_type: 'row_rooms',
+  market_status: 'available', price_amount: 3000000, price_currency: 'LAK', price_frequency: 'monthly', price_display: null,
+  unit_types: [
+    unitRow({ id: 'fan', name_en: 'Fan Room', price_amount: 3000000, price_currency: 'LAK', price_frequency: 'monthly' }),
+    unitRow({ id: 'ac', name_en: 'AC Room', price_amount: 4000000, price_currency: 'LAK', price_frequency: 'monthly' }),
+  ]
+});
+
+test('E1. row_rooms Fan/AC example: the card price gets a "From" qualifier, still showing the correct min price', () => {
+  const info = formatPropertyPrice(fanAcRowRooms(), 'en');
+  assert.equal(info.singleText, '₭3,000,000');
+  assert.equal(info.unitText, '/ month');
+  assert.equal(info.fromLabel, 'From');
+});
+
+test('E2. localized "From" wording -- en/lo/zh', () => {
+  assert.equal(formatPropertyPrice(fanAcRowRooms(), 'en').fromLabel, 'From');
+  assert.equal(formatPropertyPrice(fanAcRowRooms(), 'lo').fromLabel, 'ເລີ່ມຕົ້ນ');
+  assert.equal(formatPropertyPrice(fanAcRowRooms(), 'zh').fromLabel, '起');
+});
+
+test('E3. universal, not row_rooms-specific: the SAME behaviour applies to apartment/condo multi-unit buildings', () => {
+  const apt = fanAcRowRooms();
+  apt.property_type = 'apartment';
+  apt.unit_types[0].name_en = 'Studio'; apt.unit_types[1].name_en = '1BR';
+  assert.equal(formatPropertyPrice(apt, 'en').fromLabel, 'From');
+});
+
+test('E4. identical unit prices -> no "From", unchanged plain display', () => {
+  const p = fanAcRowRooms();
+  p.unit_types[1].price_amount = 3000000; // AC room now costs the same as Fan room
+  const info = formatPropertyPrice(p, 'en');
+  assert.equal(info.singleText, '₭3,000,000');
+  assert.equal(info.fromLabel, null);
+});
+
+test('E5. only one unit type on file -> no "From" (nothing to compare against)', () => {
+  const p = fanAcRowRooms();
+  p.unit_types = [p.unit_types[0]];
+  assert.equal(formatPropertyPrice(p, 'en').fromLabel, null);
+});
+
+test('E6. mixed CURRENCY across unit types -> existing safe behaviour, no "From" (never compares across currencies)', () => {
+  const p = fanAcRowRooms();
+  p.unit_types[1].price_currency = 'USD'; // AC room priced in USD, Fan room in LAK
+  const info = formatPropertyPrice(p, 'en');
+  assert.equal(info.fromLabel, null);
+  assert.equal(info.singleText, '₭3,000,000', 'the displayed number itself is untouched by this change');
+});
+
+test('E7. mixed FREQUENCY across unit types -> existing safe behaviour, no "From" (never implies a false comparison)', () => {
+  const p = fanAcRowRooms();
+  p.unit_types[1].price_frequency = 'yearly'; // AC room quoted yearly, Fan room monthly
+  const info = formatPropertyPrice(p, 'en');
+  assert.equal(info.fromLabel, null);
+});
+
+test('E8. sale_or_rent is unchanged -- the isSor branch never carries a fromLabel', () => {
+  const p = fanAcRowRooms();
+  p.transaction_type = 'sale_or_rent';
+  p.rent_price_amount = 1500; p.rent_price_currency = 'USD'; p.rent_price_frequency = 'monthly';
+  const info = formatPropertyPrice(p, 'en');
+  assert.equal(info.isSor, true);
+  assert.equal(info.fromLabel, undefined, 'the sale_or_rent branch never sets fromLabel at all');
+});
+
+test('E9. the fully-occupied unit-type-fallback path (property.price_amount null) also gets "From" when its units genuinely differ', () => {
+  // Mirrors legacyOccupied() above (B1-B4) but with same-currency/frequency,
+  // differently-priced units, exercising the OTHER branch that resolves a
+  // single price from unit types (priceSource: 'unit_type').
+  const p = {
+    id: 'p2', slug: 'occupied-fan-ac', transaction_type: 'for_rent', property_type: 'row_rooms',
+    market_status: 'fully_occupied', price_amount: null, price_currency: null, price_frequency: null, price_display: null,
+    unit_types: [
+      unitRow({ id: 'fan', name_en: 'Fan Room', is_available: false, available_count: 0, price_amount: 3000000, price_currency: 'LAK', price_frequency: 'monthly' }),
+      unitRow({ id: 'ac', name_en: 'AC Room', is_available: false, available_count: 0, price_amount: 4000000, price_currency: 'LAK', price_frequency: 'monthly' }),
+    ]
+  };
+  const info = formatPropertyPrice(p, 'en');
+  assert.equal(info.priceSource, 'unit_type');
+  assert.equal(info.singleText, '₭3,000,000 / month', 'the cheapest-unit fallback text is untouched');
+  assert.equal(info.fromLabel, 'From');
+});
+
+test('E10. ptResolveUnitPriceVariance() returns the exact min/max/currency/frequency, or null when it should not apply', () => {
+  assert.deepEqual(globalThis.ptResolveUnitPriceVariance(fanAcRowRooms()),
+    { min: 3000000, max: 4000000, currency: 'LAK', frequency: 'monthly' });
+  assert.equal(globalThis.ptResolveUnitPriceVariance({ transaction_type: 'for_rent', unit_types: [] }), null);
+  assert.equal(globalThis.ptResolveUnitPriceVariance(null), null);
+  const sor = fanAcRowRooms(); sor.transaction_type = 'sale_or_rent';
+  assert.equal(globalThis.ptResolveUnitPriceVariance(sor), null, 'sale_or_rent is out of scope');
+});
+
+// DOM-rendered markup (renderPropertyCard() calls document.createElement, so
+// it needs a real browser, not this file's Node/vm harness) is covered by
+// Playwright in tests/listing-cards/listing-card-price.spec.js instead.

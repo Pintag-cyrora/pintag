@@ -1,5 +1,5 @@
 // Report Validator — the layer between Gemini's narrative output and what
-// actually gets persisted. Two independent checks, both purely mechanical
+// actually gets persisted. Three independent checks, all purely mechanical
 // (no AI, no judgment calls):
 //
 //  1. Direction contradiction: does the narrative's own wording agree with
@@ -10,8 +10,12 @@
 //     appear somewhere in the data it was given? A number that doesn't
 //     trace back to evidence/trend/metrics is an invented number, which
 //     the whole pipeline exists to prevent.
+//  3. Unsupported causation: does the narrative state an unhedged "X caused
+//     Y" claim without a hedge word in the same sentence? The prompt asks
+//     for "may indicate"/"worth checking whether" instead of a stated
+//     cause — this is the mechanical backstop for that rule.
 //
-// Neither check understands English prose in any deep sense — both are
+// None of the checks understand English prose in any deep sense — all are
 // keyword/regex-based on purpose. That's a deliberate, disclosed
 // limitation (see validateReportContent's own comment): a cheap, reliable
 // mechanical check that catches the specific failure modes named in the
@@ -41,11 +45,16 @@ function headlineSections(bodyMarkdown, executiveSummary) {
   const bm = bodyMarkdown || '';
   const bigStoryMatch = bm.match(/##\s*Biggest Story\s*\n([\s\S]*?)(?=\n##|\n#|$)/i);
   if (bigStoryMatch) parts.push(bigStoryMatch[1]);
-  // The daily briefing leads with "# Today's Story" instead of
-  // "# Executive Summary / ## Biggest Story". Same role, so it is checked the
-  // same way. Both forms are recognised: historical reports generated under
-  // PROMPT_VERSION <= 1.1.0 still use the old headings and must keep
+  // Prompt v4.0.0 leads the daily report with "# What Happened" instead of
+  // "# Today's Story" (which itself replaced "# Executive Summary /
+  // ## Biggest Story"). Same role every time, so it is checked the same
+  // way. All forms stay recognised: historical reports generated under an
+  // older PROMPT_VERSION still use their own heading and must keep
   // validating identically.
+  else if (/#\s*What Happened/i.test(bm)) {
+    const whatMatch = bm.match(/#\s*What Happened\s*\n([\s\S]*?)(?=\n##|\n#|$)/i);
+    if (whatMatch) parts.push(whatMatch[1]);
+  }
   else if (/#\s*Today['’]s Story/i.test(bm)) {
     const todayMatch = bm.match(/#\s*Today['’]s Story\s*\n([\s\S]*?)(?=\n##|\n#|$)/i);
     if (todayMatch) parts.push(todayMatch[1]);
@@ -162,8 +171,44 @@ function checkNumberGrounding(bodyMarkdown, executiveSummary, composed, trends, 
   return `Narrative states percentage(s) ${[...new Set(ungrounded)].join('%, ')}% that do not correspond to any figure in the evidence, trend analysis, or raw metrics provided.`;
 }
 
-// validateReportContent — runs both checks, returns a plain issues list
-// (empty = passed). Called on Gemini's parsed output only; the
+// Check 3: unsupported causation. The prompt (report-composer.js's
+// commonRules) explicitly forbids stating a CAUSE the evidence cannot
+// prove -- "the missing price caused the 0 leads" is exactly the failure
+// mode named in the product spec, as opposed to the correct "may indicate"/
+// "worth checking whether" hedge. This mirrors UP_WORDS/DOWN_WORDS/
+// STABLE_WORDS above: a small, deliberately conservative keyword list
+// operating per-sentence, not real language understanding -- a sentence
+// gets flagged only when it contains an unhedged causal phrase AND no
+// hedge word anywhere in that same sentence.
+// Deliberately excludes broader phrasing like "is why" -- "here is why
+// today was quiet: traffic was low" is ordinary explanatory prose, not
+// necessarily the unproven-cause failure mode this check exists to catch,
+// and including it would false-positive constantly. Only strong,
+// unambiguous cause-and-effect phrasing is listed.
+const CAUSATION_PHRASES = ['caused by', 'is causing', 'is the cause of', 'directly caused', 'is the reason for'];
+const CAUSATION_HEDGES = ['may', 'might', 'could', 'possibly', 'likely', 'hypothesis', 'worth checking', 'worth investigating', 'suggests', 'may indicate', 'not enough evidence', 'unclear whether', 'question'];
+
+// Splits on sentence-ending punctuation or a blank line -- good enough for
+// per-sentence keyword scoping without a real sentence parser (same
+// deliberate simplicity as the rest of this module).
+function splitSentences(text) {
+  return (text || '').split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
+}
+
+function checkUnsupportedCausation(bodyMarkdown) {
+  const offenders = [];
+  splitSentences(bodyMarkdown).forEach((sentence) => {
+    const lower = sentence.toLowerCase();
+    if (!CAUSATION_PHRASES.some((p) => lower.includes(p))) return;
+    if (CAUSATION_HEDGES.some((h) => lower.includes(h))) return; // hedged in the same sentence -- not a violation
+    offenders.push(sentence.trim());
+  });
+  if (!offenders.length) return null;
+  return `Narrative states an unhedged cause-and-effect claim the data cannot prove: "${offenders[0]}"${offenders.length > 1 ? ` (and ${offenders.length - 1} more)` : ''}. Rephrase as a hedged hypothesis (e.g. "may indicate", "worth checking whether") or state the facts side by side without asserting causation.`;
+}
+
+// validateReportContent — runs all three checks, returns a plain issues
+// list (empty = passed). Called on Gemini's parsed output only; the
 // deterministic quiet-day/fallback paths never reach this (they're
 // correct by construction, nothing to validate).
 export function validateReportContent(gemini, composed, trends, rawMetricsSummary) {
@@ -176,6 +221,9 @@ export function validateReportContent(gemini, composed, trends, rawMetricsSummar
 
   const numIssue = checkNumberGrounding(bm, es, composed, trends, rawMetricsSummary);
   if (numIssue) issues.push(numIssue);
+
+  const causationIssue = checkUnsupportedCausation(bm);
+  if (causationIssue) issues.push(causationIssue);
 
   return { ok: issues.length === 0, issues };
 }

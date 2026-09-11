@@ -126,13 +126,15 @@ test('buildPrompt embeds the canonical lists and the report-type-specific struct
   const prompt = buildPrompt('daily', composed, { listing_impressions: 100 }, null);
   assert.ok(prompt.includes(CANONICAL_DISTRICTS[0]));
   assert.ok(prompt.includes(CANONICAL_PROPERTY_TYPES[0]));
-  // The daily report is now a BRIEFING (PROMPT_VERSION 2.0.0): "Today's Story"
-  // replaced "Executive Summary / Biggest Story", and the old marketplace-
-  // composition sections are gone. See daily-briefing.test.mjs for the full
-  // structure contract.
-  assert.ok(prompt.includes('DAILY INTELLIGENCE BRIEFING'));
-  assert.ok(prompt.includes("# Today's Story"));
+  // The daily report is now a five-section Facts->Actions report
+  // (PROMPT_VERSION 4.0.0): "# What Happened" replaced "# Today's Story"
+  // (which itself replaced "Executive Summary / Biggest Story"), and the old
+  // marketplace-composition sections are gone. See daily-briefing.test.js
+  // for the full structure contract.
+  assert.ok(prompt.includes('DAILY INTELLIGENCE REPORT'));
+  assert.ok(prompt.includes('# What Happened'));
   assert.ok(!prompt.includes('## Biggest Story'));
+  assert.ok(!prompt.includes("# Today's Story"));
 });
 test('buildPrompt selects the weekly/monthly structure correctly', () => {
   const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
@@ -196,11 +198,89 @@ test('buildPrompt tells Gemini not to state an invented cause beyond what the ev
   const prompt = buildPrompt('daily', composed, {}, null);
   assert.match(prompt, /cannot prove|Claim a CAUSE/i);
 });
-test('buildPrompt (daily) mentions the new Customer Intent / Unmet Demand headings and the new insight types', () => {
+
+// ── Intelligence: facts vs interpretation, confidence labels, sample size ──
+test('buildPrompt defines the three confidence tags and reserves them for interpretation, never plain facts', () => {
   const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
   const prompt = buildPrompt('daily', composed, {}, null);
-  assert.ok(prompt.includes('## Customer Intent'));
-  assert.ok(prompt.includes('## Unmet Demand & Inventory Opportunities'));
+  assert.match(prompt, /🟢 CONFIRMED/);
+  assert.match(prompt, /🟡 LIKELY/);
+  assert.match(prompt, /⚪ HYPOTHESIS/);
+  assert.match(prompt, /never gets a tag/);
+});
+test('buildPrompt requires the raw values behind every stated percentage', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /State a percentage without ALSO stating the underlying values/);
+  assert.match(prompt, /180 vs ~23 30-day average/);
+  assert.match(prompt, /12× yesterday/, 'a very large move against a small baseline should prefer a multiplier over a bare percentage');
+});
+test('buildPrompt tells Gemini a small sample is a signal to investigate, never proof of failure', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /Treat a small sample as proof of a problem/);
+  assert.match(prompt, /Insufficient data to determine performance/);
+});
+test('buildPrompt is explicit that gallery interactions cannot be attributed to specific listings or users with today\'s data', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /do NOT break gallery interactions down by which listing/);
+  assert.match(prompt, /say plainly that today's data cannot show which listings or how many users drove it/);
+});
+test('buildPrompt (daily) restructures around the five-section Facts->Actions skeleton, in order', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  const want = ['# What Happened', '## What Users Are Doing', '## What It Means', '## What Needs Attention', '## Recommended Actions'];
+  let at = -1;
+  want.forEach((h) => {
+    const i = prompt.indexOf(h);
+    assert.ok(i > -1, 'missing section: ' + h);
+    assert.ok(i > at, 'out of order: ' + h);
+    at = i;
+  });
+});
+
+// ── insightSummaryLine — sample-size confidence for listing-performance insights ──
+test('insightSummaryLine (via buildPrompt) appends a sample-size confidence band for a listing-performance insight', () => {
+  const lowSample = {
+    id: 'lp-1', type: 'low_performing_listing', severity: 'high', confidence: 1, trend: 'emerging',
+    metric_key: 'listing_performance.low.p1', title: 'Low performing: X (6 impressions, 0 leads)',
+    dimension_district: null, dimension_property_type: null,
+    evidence: { property_id: 'p1', impressions: 6, leads: 0 },
+  };
+  const composed = { new_insights: [lowSample], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /sample size: 6 impressions \(low confidence\)/);
+});
+test('insightSummaryLine omits the sample-size note for insights with no impressions field (e.g. a z-score insight)', () => {
+  // "sample size:" also appears in the daily structure's own static
+  // instructional text (explaining the convention), so this checks the
+  // insight's OWN summary line specifically, not the prompt as a whole.
+  const zscore = {
+    id: 'z-1', type: 'search_trend', severity: 'medium', confidence: 0.5, trend: 'emerging',
+    metric_key: 'search.total', title: 'Searches up 40% vs. 30-day average',
+    dimension_district: null, dimension_property_type: null,
+    evidence: { today: 40, mean: 28, stddev: 5, z: 2.4, direction: 'up' },
+  };
+  const composed = { new_insights: [zscore], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  const lineStart = prompt.indexOf('[search_trend] Searches up 40%');
+  assert.ok(lineStart > -1, 'the insight summary line must be present');
+  const lineEnd = prompt.indexOf('\n', lineStart);
+  const line = prompt.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+  assert.ok(!line.includes('sample size:'), 'a z-score insight has no impressions field, so its own line must not fabricate one');
+});
+test('buildPrompt (daily) still guides Gemini to use customer intent / unmet demand data and the new insight types, now inside the five-section structure', () => {
+  // PROMPT_VERSION 4.0.0 folded the old standalone "## Customer Intent" /
+  // "## Unmet Demand & Inventory Opportunities" headings into guidance
+  // within "What Users Are Doing" / "What Needs Attention" -- the content
+  // guidance must survive even though the dedicated headings are gone.
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.ok(!prompt.includes('## Customer Intent'));
+  assert.ok(!prompt.includes('## Unmet Demand & Inventory Opportunities'));
+  assert.match(prompt, /CUSTOMER INTENT SEGMENTS/);
+  assert.match(prompt, /unmet_demand\./);
   assert.match(prompt, /low_performing_listing/);
   assert.match(prompt, /high_performing_listing/);
 });

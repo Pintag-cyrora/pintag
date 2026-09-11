@@ -126,7 +126,39 @@ const FIXTURES = [
              available_from: '2020-01-03' }),
   property({ slug: 'overlay-date-avail-future', market_status: 'available',
              price_amount: 350, price_currency: 'USD', price_frequency: 'monthly',
-             available_from: '2099-09-15' })
+             available_from: '2099-09-15' }),
+  // "From" price -- multi-unit variance labeling. Universal across property
+  // type, NOT row_rooms-specific (E3 proves the apartment case too).
+  property({ slug: 'from-price-row-rooms', property_type: 'row_rooms', market_status: 'available',
+             price_amount: 3000000, price_currency: 'LAK', price_frequency: 'monthly',
+             unit_types: [
+               unit({ id: 'fan', name_en: 'Fan Room', price_amount: 3000000, price_currency: 'LAK', price_frequency: 'monthly' }),
+               unit({ id: 'ac', name_en: 'AC Room', price_amount: 4000000, price_currency: 'LAK', price_frequency: 'monthly' }),
+             ] }),
+  property({ slug: 'from-price-apartment', property_type: 'apartment', market_status: 'available',
+             price_amount: 300, price_currency: 'USD', price_frequency: 'monthly',
+             unit_types: [
+               unit({ id: 'studio', name_en: 'Studio', price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' }),
+               unit({ id: '1br', name_en: '1BR', price_amount: 500, price_currency: 'USD', price_frequency: 'monthly' }),
+             ] }),
+  property({ slug: 'from-price-identical', market_status: 'available',
+             price_amount: 400, price_currency: 'USD', price_frequency: 'monthly',
+             unit_types: [
+               unit({ id: 'u1', price_amount: 400, price_currency: 'USD', price_frequency: 'monthly' }),
+               unit({ id: 'u2', price_amount: 400, price_currency: 'USD', price_frequency: 'monthly' }),
+             ] }),
+  property({ slug: 'from-price-mixed-currency', market_status: 'available',
+             price_amount: 300, price_currency: 'USD', price_frequency: 'monthly',
+             unit_types: [
+               unit({ id: 'u1', price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' }),
+               unit({ id: 'u2', price_amount: 4000000, price_currency: 'LAK', price_frequency: 'monthly' }),
+             ] }),
+  property({ slug: 'from-price-mixed-frequency', market_status: 'available',
+             price_amount: 300, price_currency: 'USD', price_frequency: 'monthly',
+             unit_types: [
+               unit({ id: 'u1', price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' }),
+               unit({ id: 'u2', price_amount: 3000, price_currency: 'USD', price_frequency: 'yearly' }),
+             ] })
 ];
 
 async function openListings(page, query) {
@@ -330,9 +362,10 @@ test('SORT: an occupied listing sorts on its unit-type price, not as 0', async (
 });
 
 test('FILTER: an occupied listing lands in its real price band', async ({ page }) => {
-  await openListings(page);
+  const errs = await openListings(page);
   await page.click('.tx-btn[data-filter="for_rent"]');
   await page.selectOption('#price-select', 'r2');            // $300–600
+  await revealAllCards(page);
   await expect(cardFor(page, 'unavail-unit-price')).toHaveCount(1);
   await expect(cardFor(page, 'unavail-unit-price').locator('.pt-card-price')).toContainText('$380');
 
@@ -342,12 +375,14 @@ test('FILTER: an occupied listing lands in its real price band', async ({ page }
   // bandContains): the $300 listing belongs to "$300-600", not "Under $300".
   await expect(cardFor(page, 'avail-unit-price')).toHaveCount(0);
   await page.selectOption('#price-select', 'r2');
+  await revealAllCards(page);
   await expect(cardFor(page, 'avail-unit-price')).toHaveCount(1);
 
   await page.selectOption('#price-select', 'r4');            // Over $1,000
   await expect(cardFor(page, 'unavail-unit-price')).toHaveCount(0);
 
   await page.selectOption('#price-select', 'all');
+  await revealAllCards(page);
   await expect(cardFor(page, 'unavail-unit-price')).toHaveCount(1);
 });
 
@@ -584,4 +619,57 @@ test.describe('desktop viewport', () => {
     const card = cardFor(page, 'overlay-sold');
     await expect(card.locator('.pt-fomo-overlay-date')).toHaveCount(0);
   });
+});
+
+// ── "FROM" PRICE (multi-unit variance labeling) ─────────────────────────
+// Universal across property type -- explicitly NOT row_rooms-only. A
+// row_rooms listing with a Fan Room and an AC Room at different prices is
+// the reported case, but an apartment/condo building with differently-priced
+// unit types has the exact same "hides the pricier unit" problem.
+
+test('row_rooms with a Fan Room ($3,000,000) and an AC Room ($4,000,000, same currency/frequency) -> card shows "From" + the min price', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'from-price-row-rooms');
+  await expect(card.locator('.pt-card-price-from')).toHaveText('From');
+  await expect(card.locator('.pt-card-price')).toContainText('₭3,000,000');
+});
+
+test('the SAME "From" behaviour applies to an apartment multi-unit building -- not row_rooms-specific', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'from-price-apartment');
+  await expect(card.locator('.pt-card-price-from')).toHaveText('From');
+  await expect(card.locator('.pt-card-price')).toContainText('$300');
+});
+
+test('identical unit prices -> no "From", plain price display unchanged', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'from-price-identical');
+  await expect(card.locator('.pt-card-price-from')).toHaveCount(0);
+  await expect(card.locator('.pt-card-price')).toContainText('$400');
+});
+
+test('mixed CURRENCY across unit types -> no "From" (never compares across currencies), price unchanged', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'from-price-mixed-currency');
+  await expect(card.locator('.pt-card-price-from')).toHaveCount(0);
+  await expect(card.locator('.pt-card-price')).toContainText('$300');
+});
+
+test('mixed FREQUENCY across unit types -> no "From" (never implies a false comparison), price unchanged', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'from-price-mixed-frequency');
+  await expect(card.locator('.pt-card-price-from')).toHaveCount(0);
+  await expect(card.locator('.pt-card-price')).toContainText('$300');
+});
+
+test('Lao language -> the "From" label is real Lao wording, not left in English', async ({ page }) => {
+  await openListings(page, '?lang=lo');
+  const card = cardFor(page, 'from-price-row-rooms');
+  await expect(card.locator('.pt-card-price-from')).toHaveText('ເລີ່ມຕົ້ນ');
+});
+
+test('Chinese language -> the "From" label is real Chinese wording, not left in English', async ({ page }) => {
+  await openListings(page, '?lang=zh');
+  const card = cardFor(page, 'from-price-row-rooms');
+  await expect(card.locator('.pt-card-price-from')).toHaveText('起');
 });
