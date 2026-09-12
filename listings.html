@@ -552,6 +552,10 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
         <span class="fc-label lo-i">ລາຄາ</span><span class="fc-label en-i">Price</span><span class="fc-label zh-i">价格</span>
         <select class="fc-select" id="price-select" onchange="setPriceFilter(this.value)" data-track="filter-price" data-track-type="select" data-track-label="Filter: Price"><option value="all">Any price</option></select>
       </label>
+      <label class="fc-field">
+        <span class="fc-label lo-i">ຫ້ອງນອນ</span><span class="fc-label en-i">Bedrooms</span><span class="fc-label zh-i">卧室</span>
+        <select class="fc-select" id="bedroom-select" onchange="setBedroomFilter(this.value)" data-track="filter-bedrooms" data-track-type="select" data-track-label="Filter: Bedrooms"><option value="all">Any</option></select>
+      </label>
     </div>
   </div>
 </div>
@@ -665,6 +669,7 @@ let currentSmokingAllowed = false;
 let currentProvinceFilter = 'all';
 let currentDistrictFilter = 'all';
 let currentPriceBand = 'all';
+let currentBedroomFilter = 'all';
 
 // "Available Only" excludes sold/rented/reserved/off_market/fully_occupied —
 // must read market_status via the canonical resolveListingStatus()
@@ -1255,6 +1260,7 @@ async function loadListings() {
     populateProvinceOptions();
     populateDistrictOptions();
     renderPriceOptions();
+    renderBedroomOptions();
     renderListings();
     // The populate/renderPriceOptions calls above may have reset a URL value
     // with no inventory (a stale province, a band from the other Rent/Sale
@@ -1311,6 +1317,7 @@ function _readFiltersFromUrl() {
   if (q.get('province')) currentProvinceFilter = q.get('province');
   if (q.get('district')) currentDistrictFilter = q.get('district');
   if (q.get('price')) currentPriceBand = q.get('price');
+  if (q.get('beds')) currentBedroomFilter = q.get('beds');
   var sort = q.get('sort');
   var sortSel = document.getElementById('sort-select');
   if (sort && sortSel && Array.from(sortSel.options).some(function(o){ return o.value === sort; })) {
@@ -1328,6 +1335,7 @@ function _writeFiltersToUrl() {
     set('province', currentProvinceFilter, 'all');
     set('district', currentDistrictFilter, 'all');
     set('price', currentPriceBand, 'all');
+    set('beds', currentBedroomFilter, 'all');
     set('sort', currentSort, 'newest');
     set('avail', currentAvailOnly ? 'available' : '', '');
     set('pet', currentPetFriendly ? '1' : '', '');
@@ -1579,6 +1587,58 @@ function _resolvedPriceForCurrentTx(p) {
   }
   return _resolvedPrice(p);
 }
+
+// ── Bedroom Count filter ──────────────────────────────────────────────────
+// properties.bedrooms directly -- the SAME column getCardFacts()/
+// _buildFactItem() (terminology.js) already reads to show the bedroom count
+// on a card, unresolved against unit_types. A specific band therefore never
+// disagrees with what the card itself displays. Land listings carry
+// bedrooms:null (terminology.js's PHASE 1 scope deliberately gives Land no
+// bedrooms field) and so never match a specific band -- only "Any" -- the
+// same "never hide a listing for a dimension it genuinely doesn't have"
+// contract matchesPriceBand() already follows for an unpriced listing.
+// Not transaction-aware (unlike PRICE_BANDS): a bedroom count means the same
+// thing under Rent, Sale, or All, so this is one flat list, not one per tx.
+var BEDROOM_BANDS = [
+  {key:'all', min:null, max:null, label:{lo:'ທັງໝົດ',        en:'Any',           zh:'不限'}},
+  {key:'1',   min:1,    max:1,    label:{lo:'1 ຫ້ອງນອນ',      en:'1 bedroom',     zh:'1 卧室'}},
+  {key:'2',   min:2,    max:2,    label:{lo:'2 ຫ້ອງນອນ',      en:'2 bedrooms',    zh:'2 卧室'}},
+  {key:'3',   min:3,    max:3,    label:{lo:'3 ຫ້ອງນອນ',      en:'3 bedrooms',    zh:'3 卧室'}},
+  {key:'4',   min:4,    max:4,    label:{lo:'4 ຫ້ອງນອນ',      en:'4 bedrooms',    zh:'4 卧室'}},
+  {key:'5plus', min:5,  max:null, label:{lo:'5+ ຫ້ອງນອນ',     en:'5+ bedrooms',   zh:'5+ 卧室'}}
+];
+function currentBedroomBandDef() {
+  for (var i = 0; i < BEDROOM_BANDS.length; i++) { if (BEDROOM_BANDS[i].key === currentBedroomFilter) return BEDROOM_BANDS[i]; }
+  return BEDROOM_BANDS[0];
+}
+function matchesBedroomFilter(p) {
+  var band = currentBedroomBandDef();
+  if (band.min == null && band.max == null) return true;   // Any
+  var v = p.bedrooms;
+  if (v == null) return false;                             // Land etc. -- no bedrooms field at all, never claims a specific count
+  if (band.max == null) return v >= band.min;               // 5+
+  return v === band.min;                                    // exact count (1-4)
+}
+// Rebuild the Bedrooms dropdown in the current language, preserving the
+// selected band. Unlike renderPriceOptions(), the option SET never changes
+// (bedroom bands are not transaction-aware), so this only needs to run on
+// initial load and on a language switch -- never from setTxFilter()/
+// setTypeFilter()/etc.
+function renderBedroomOptions() {
+  var sel = document.getElementById('bedroom-select');
+  if (!sel) return;
+  var lang = getCurrentLang();
+  // A crafted/stale ?beds= value (read unvalidated in _readFiltersFromUrl,
+  // same convention as ?price=) is reset here, once the real option set
+  // exists to validate against -- never left silently invalid.
+  if (!BEDROOM_BANDS.some(function(b){ return b.key === currentBedroomFilter; })) currentBedroomFilter = 'all';
+  sel.innerHTML = BEDROOM_BANDS.map(function(b){ return '<option value="' + b.key + '">' + esc(b.label[lang] || b.label.en) + '</option>'; }).join('');
+  sel.value = currentBedroomFilter;
+}
+function setBedroomFilter(val) {
+  currentBedroomFilter = val;
+  _applyFilterChange();
+}
 // The ONE predicate BOTH views (grid + map) filter through, so a dimension can
 // never apply to one view but not the other.
 function matchesActiveFilters(p, opts) {
@@ -1596,6 +1656,7 @@ function matchesActiveFilters(p, opts) {
   if (!_ignoreProvince && currentProvinceFilter !== 'all' && _listingProvince(p) !== currentProvinceFilter) return false;
   if (!_ignoreDistrict && currentDistrictFilter !== 'all' && (p.district_en || p.district || '') !== currentDistrictFilter) return false;
   if (!matchesPriceBand(p)) return false;
+  if (!matchesBedroomFilter(p)) return false;
   return true;
 }
 function setDistrictFilter(val) {
@@ -1747,6 +1808,7 @@ function scheduleBehavioralEvents(sorted) {
   _searchEventTimer = setTimeout(function() {
     var sessionId = getOrCreateSessionId();
     var _band = currentPriceBandDef();
+    var _bedBand = currentBedroomBandDef();
     postEvent('search_events', {
       session_id: sessionId,
       district: currentDistrictFilter === 'all' ? null : currentDistrictFilter,
@@ -1754,6 +1816,15 @@ function scheduleBehavioralEvents(sorted) {
       transaction_type: currentTxFilter === 'all' ? null : currentTxFilter,
       price_min: _band.min,
       price_max: _band.max,
+      // The band's own min (same value the filter itself matches on -- see
+      // matchesBedroomFilter()), not a separately-invented representation.
+      // "5plus" sends 5, exactly like price_min/price_max already store the
+      // BAND's bounds rather than a literal typed number. null for "Any" --
+      // this is the same column INTELLIGENCE_ARCHITECTURE.md/report-composer.js
+      // document as "never populated... not a real captured search filter
+      // today"; this is what starts populating it, additively, no other
+      // event field touched.
+      bedrooms: currentBedroomFilter === 'all' ? null : _bedBand.min,
       result_count: sorted.length
     });
     if (!sorted.length) return;
@@ -2110,6 +2181,7 @@ function setLang(lang, btn) {
   populateProvinceOptions();
   populateDistrictOptions();
   renderPriceOptions();
+  renderBedroomOptions();
   // The visible surface must be the one repainted: in Map view a grid
   // re-render left the "N of M listings have no exact location" notice, the
   // count and an open preview in the previous language.

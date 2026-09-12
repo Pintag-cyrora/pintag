@@ -23,6 +23,16 @@ function extractVar(name) {
   for (; i < src.length; i++) { if (src[i] === '{') depth++; else if (src[i] === '}') { depth--; if (depth === 0) { i++; break; } } }
   return src.slice(start, i) + ';';
 }
+// Same as extractVar() but for an array literal (`var NAME = [...]`) --
+// BEDROOM_BANDS is a flat list, not the {key: {...}} shape PRICE_BANDS uses
+// (bedroom bands are not transaction-aware, so there's only ever one set).
+function extractArrayVar(name) {
+  const src = fs.readFileSync(new URL('./listings.html', import.meta.url), 'utf8');
+  const start = src.indexOf('var ' + name + ' = [');
+  let i = src.indexOf('[', start), depth = 0;
+  for (; i < src.length; i++) { if (src[i] === '[') depth++; else if (src[i] === ']') { depth--; if (depth === 0) { i++; break; } } }
+  return src.slice(start, i) + ';';
+}
 
 // Collaborators the extracted functions read. _resolvedPrice/_numericPrice are
 // the REAL ones now rather than a stub, because they resolve through
@@ -32,7 +42,7 @@ for (const f of ['currency.js', 'terminology.js', 'components.js']) {
   vm.runInThisContext(fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8'), { filename: f });
 }
 globalThis.window = globalThis;
-vm.runInThisContext("var currentTxFilter='all', currentTypeFilter='all', currentAvailOnly=false, currentDistrictFilter='all', currentPriceBand='all', currentProvinceFilter='all';");
+vm.runInThisContext("var currentTxFilter='all', currentTypeFilter='all', currentAvailOnly=false, currentDistrictFilter='all', currentPriceBand='all', currentProvinceFilter='all', currentBedroomFilter='all';");
 // The province axis joined matchesActiveFilters(). Load the REAL registry and
 // the REAL _listingProvince() rather than stubbing them, so these tests keep
 // exercising the shipped predicate.
@@ -41,7 +51,8 @@ vm.runInThisContext("var VIENTIANE_CAPITAL_DISTRICTS=['Sisattanak','Saysettha','
 vm.runInThisContext("var matchesRentalFilters=function(){return true;};");
 vm.runInThisContext("var isAvailableStatus=function(){return true;};");
 vm.runInThisContext(extractVar('PRICE_BANDS'));
-['_resolvedPrice', '_resolvedPriceForCurrentTx', '_numericPrice', '_listingProvince', 'currentPriceBands', 'currentPriceBandDef', 'matchesPriceBand', 'matchesActiveFilters']
+vm.runInThisContext(extractArrayVar('BEDROOM_BANDS'));
+['_resolvedPrice', '_resolvedPriceForCurrentTx', '_numericPrice', '_listingProvince', 'currentPriceBands', 'currentPriceBandDef', 'currentBedroomBandDef', 'matchesPriceBand', 'matchesBedroomFilter', 'matchesActiveFilters']
   .forEach((n) => vm.runInThisContext(extractFn(n)));
 
 function setState(s) { Object.assign(globalThis, s); }
@@ -122,4 +133,57 @@ test('district + price + type compose (AND)', () => {
   assert.equal(globalThis.matchesActiveFilters(usd(450, { district_en: 'Sisattanak', property_type: 'house', transaction_type: 'for_rent' })), false);
   // right district/type but out-of-band price -> excluded
   assert.equal(globalThis.matchesActiveFilters(usd(900, { district_en: 'Sisattanak', property_type: 'apartment', transaction_type: 'for_rent' })), false);
+});
+
+// ── Bedroom Count filter ──────────────────────────────────────────────────
+test('"Any" matches every bedroom count, including null (Land)', () => {
+  setState({ currentBedroomFilter: 'all' });
+  assert.equal(globalThis.matchesBedroomFilter(usd(500, { bedrooms: 1 })), true);
+  assert.equal(globalThis.matchesBedroomFilter(usd(500, { bedrooms: 5 })), true);
+  assert.equal(globalThis.matchesBedroomFilter({ bedrooms: null }), true);
+});
+
+test('each exact band (1-4) matches only that count', () => {
+  for (const n of [1, 2, 3, 4]) {
+    setState({ currentBedroomFilter: String(n) });
+    assert.equal(globalThis.matchesBedroomFilter({ bedrooms: n }), true, n + ' should match its own band');
+    assert.equal(globalThis.matchesBedroomFilter({ bedrooms: n - 1 }), false, (n - 1) + ' should not match the ' + n + ' band');
+    assert.equal(globalThis.matchesBedroomFilter({ bedrooms: n + 1 }), false, (n + 1) + ' should not match the ' + n + ' band');
+  }
+});
+
+test('"5plus" catches exactly 5 and everything above, never 4', () => {
+  setState({ currentBedroomFilter: '5plus' });
+  assert.equal(globalThis.matchesBedroomFilter({ bedrooms: 5 }), true);
+  assert.equal(globalThis.matchesBedroomFilter({ bedrooms: 6 }), true);
+  assert.equal(globalThis.matchesBedroomFilter({ bedrooms: 12 }), true, 'an unusually large building must still match, not just 5-6');
+  assert.equal(globalThis.matchesBedroomFilter({ bedrooms: 4 }), false);
+});
+
+test('bedrooms:null (Land, per terminology.js PHASE 1 scope) never matches a SPECIFIC band, only "Any"', () => {
+  for (const key of ['1', '2', '3', '4', '5plus']) {
+    setState({ currentBedroomFilter: key });
+    assert.equal(globalThis.matchesBedroomFilter({ bedrooms: null }), false, 'band ' + key + ' must exclude a bedrooms:null listing');
+  }
+  setState({ currentBedroomFilter: 'all' });
+  assert.equal(globalThis.matchesBedroomFilter({ bedrooms: null }), true, '"Any" must still include it');
+});
+
+test('currentBedroomBandDef() falls back to "all" for an unrecognised/crafted key', () => {
+  setState({ currentBedroomFilter: 'not-a-real-key' });
+  const def = globalThis.currentBedroomBandDef();
+  assert.equal(def.key, 'all');
+  assert.equal(globalThis.matchesBedroomFilter({ bedrooms: null }), true);
+});
+
+test('bedroom filter composes (AND) with district + price + type in matchesActiveFilters()', () => {
+  setState({ currentTxFilter: 'for_rent', currentTypeFilter: 'apartment', currentDistrictFilter: 'Sisattanak', currentPriceBand: 'r2', currentBedroomFilter: '2', currentAvailOnly: false });
+  const base = { district_en: 'Sisattanak', property_type: 'apartment', transaction_type: 'for_rent' };
+  assert.equal(globalThis.matchesActiveFilters(usd(450, Object.assign({}, base, { bedrooms: 2 }))), true);
+  // everything else right, but wrong bedroom count -> excluded
+  assert.equal(globalThis.matchesActiveFilters(usd(450, Object.assign({}, base, { bedrooms: 3 }))), false);
+  // a Land listing (bedrooms: null) with a specific bedroom filter active -> excluded
+  assert.equal(globalThis.matchesActiveFilters(usd(450, Object.assign({}, base, { bedrooms: null }))), false);
+  setState({ currentBedroomFilter: 'all' });
+  assert.equal(globalThis.matchesActiveFilters(usd(450, Object.assign({}, base, { bedrooms: null }))), true, '"Any" must let the same Land-shaped row back in');
 });

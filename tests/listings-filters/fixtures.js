@@ -39,9 +39,18 @@ const ROWS = [
         province_en: 'Luang Prabang', province_lo: 'ຫຼວງພະບາງ', province_zh: '琅勃拉邦', district_en: 'Luang Prabang', district_lo: null, district_zh: null }),
 ];
 
+// `rows` override: bedroom-filter.spec.js brings its own small, dedicated
+// fixture set (1/3/5/6-bedroom + a null/Land row) rather than appending to
+// the shared ROWS array above -- this file's own tests assert EXACT counts
+// and EXACT sort orders across all of ROWS (e.g. "5 listings", a specific
+// price_asc ordering of all 5 slugs), so adding more rows here would mean
+// hand-updating every one of those pre-existing assertions instead of
+// actually testing anything new. Defaults to ROWS so every existing caller
+// is unaffected.
 function mockRest(page, opts) {
   opts = opts || {};
   const state = { calls: [], fail: !!opts.fail };
+  const rows = opts.rows || ROWS;
   page.route('**/cdn.jsdelivr.net/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: 'window.supabase={createClient:function(){return {auth:{getSession:async()=>({data:{session:null}}),getUser:async()=>({data:{user:{}}}),onAuthStateChange:function(){return {data:{subscription:{unsubscribe:function(){}}}};}}};}};' }));
   page.route('**/unpkg.com/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: '' }));
   page.route('**/fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
@@ -55,8 +64,8 @@ function mockRest(page, opts) {
     if (t.startsWith('rpc/')) return json({});
     if (t === 'properties') {
       const slug = (u.searchParams.get('slug') || '').replace(/^eq\./, '');
-      if (slug) return json(ROWS.filter((x) => x.slug === slug));
-      return json(ROWS);
+      if (slug) return json(rows.filter((x) => x.slug === slug));
+      return json(rows);
     }
     if (t === 'parties') return json([PARTY]);
     return json([]);
@@ -64,4 +73,4 @@ function mockRest(page, opts) {
   return state;
 }
 
-module.exports = { PORT, ROWS, PARTY, CONTACT_LOCAL, CONTACT_INTL, CONTACT_THAI, mockRest };
+module.exports = { PORT, ROWS, PARTY, CONTACT_LOCAL, CONTACT_INTL, CONTACT_THAI, row, mockRest };
