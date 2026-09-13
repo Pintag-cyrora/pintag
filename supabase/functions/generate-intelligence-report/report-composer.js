@@ -147,9 +147,16 @@ function insightSummaryLine(i) {
 // absent from a weekly/monthly rawMetricsSummary and this returns ''.
 //
 // Segments are (transaction_type, property_type, district) — NOT
-// bedrooms: search_events.bedrooms is a real column but listings.html has
-// no bedroom filter, so it is never populated and is not a real intent
-// signal. top_price_band is the single most-searched price range WITHIN
+// bedrooms: bedrooms is deliberately never part of the segment key (adding
+// it would fragment every segment). listings.html's Bedroom Count filter
+// (Any/1/2/3/4/5+) DOES now genuinely populate search_events.bedrooms, so
+// each segment additionally carries top_bedroom_count (the single
+// most-searched bedroom value in that segment — a plurality/mode, which
+// can be null when "Any"/no-preference was itself the most common search)
+// and bedroom_sample_size (how many of the segment's searches actually
+// carried a bedroom preference, i.e. excludes "Any" — deliberately NOT the
+// same as search_count, which would overstate how much bedroom signal
+// exists). top_price_band is the single most-searched price range WITHIN
 // a segment, reported as context, not part of what defines the segment.
 function customerIntentBlock(reportType, rawMetricsSummary) {
   if (reportType !== 'daily') return '';
@@ -162,7 +169,7 @@ function customerIntentBlock(reportType, rawMetricsSummary) {
     ? Math.round((jj.lead_events_matched_to_click / jj.lead_events_with_session) * 100)
     : null;
 
-  return `\nCUSTOMER INTENT SEGMENTS (today, pre-computed, ranked by search volume — each is (transaction_type, property_type, district); bedrooms is NEVER part of a segment because it is not a real captured search filter today; top_price_band is the single most-searched price range within that segment, not part of what defines it):\n${JSON.stringify(segments)}\n` +
+  return `\nCUSTOMER INTENT SEGMENTS (today, pre-computed, ranked by search volume — each is (transaction_type, property_type, district); bedrooms is NEVER part of what defines a segment; top_price_band is the single most-searched price range within that segment, not part of what defines it either. Each segment also carries top_bedroom_count and bedroom_sample_size: top_bedroom_count is the single most-searched bedroom value for that segment (a MODE/PLURALITY, not a majority, and it can be null when "Any"/no-preference was itself the most common search — that is a real, legitimate finding, not missing data); bedroom_sample_size is how many searches in that segment actually specified a bedroom count, separate from and always ≤ the segment's search_count. NEVER state or imply a bedroom preference for a segment unless bedroom_sample_size is at least 10 — below that, say plainly that there is not yet enough bedroom-specific data for that segment, do not name a number. Even at or above 10, phrase it as "the most common bedroom count searched for was N" or similar plurality language, never as "users prefer N bedrooms" or "most users want N bedrooms" (a plurality is not a majority unless the data itself shows one). This is DEMAND-side data only — never say or imply anything about how many N-bedroom listings are actually available; bedroom is not a dimension the current supply/inventory data is segmented by):\n${JSON.stringify(segments)}\n` +
     (jj ? `\nJOURNEY-JOIN CONFIDENCE (how much of the search → click → contact chain is actually traceable via a shared session id today — this is a MEASURED rate, not an assumption; treat any segment-level lead/conversion claim above as carrying this same confidence, and say so explicitly when the rate is low rather than presenting the segment's lead counts as certain): ${JSON.stringify(jj)}${joinRatePct !== null ? ` — ${joinRatePct}% of session-attributed contacts today matched back to an earlier click in the same session` : ' — no session-attributed contacts today to measure a rate from'}\n` : '');
 }
 
@@ -267,7 +274,7 @@ Structure with these markdown headings, in order. OMIT ANY SECTION THAT HAS NO R
 # What Happened
 (PURE FACTS ONLY — no interpretation, no confidence tags. The day's key metrics and any change vs yesterday worth naming, e.g. "Gallery interactions: 180 vs 15 yesterday (+165 interactions; 12× yesterday); 180 vs ~23 30-day average (+~683%). 87 searches today vs 62 yesterday." A comparison table (Today | Yesterday | 30-day avg | Change) is welcome here for 3+ metrics. 1-3 sentences, still fact-only.)
 ## What Users Are Doing
-(Behaviour, still stated as facts, not conclusions: searches, listing views, gallery interactions, WhatsApp/call clicks, leads. Include, from CUSTOMER INTENT SEGMENTS when present, what customers actually searched for today in plain language, e.g. "today's strongest demand was renters wanting a condo in Sisattanak, mostly around $500-$800/month" — omit this if every segment's sample is too small to say anything with confidence, and say so explicitly rather than presenting a 2-search segment as "the" customer profile. Numbers and comparisons only — save the "why" for What It Means.)
+(Behaviour, still stated as facts, not conclusions: searches, listing views, gallery interactions, WhatsApp/call clicks, leads. Include, from CUSTOMER INTENT SEGMENTS when present, what customers actually searched for today in plain language, e.g. "today's strongest demand was renters wanting a condo in Sisattanak, mostly around $500-$800/month" — omit this if every segment's sample is too small to say anything with confidence, and say so explicitly rather than presenting a 2-search segment as "the" customer profile. Where a segment's bedroom_sample_size is at least 10, you may add the most-searched bedroom count to the same sentence as a plurality, e.g. "...mostly around $500-$800/month, most often searching for 2 bedrooms" — never below that sample size, and never phrase it as a majority or as what users "prefer". Numbers and comparisons only — save the "why" for What It Means.)
 ## What It Means
 (Interpretation ONLY, and ONLY here — every sentence in this section carries a 🟢/🟡/⚪ confidence tag per the CONFIDENCE LABELS rule above. Connect the facts above into a story about buyer behaviour, conversion, or demand; separate what's confirmed from what's a hypothesis. When gallery interactions are part of the story, follow the GALLERY INTERACTIONS rule above — say what the trend shows and say plainly what today's data cannot show.)
 ## What Needs Attention
