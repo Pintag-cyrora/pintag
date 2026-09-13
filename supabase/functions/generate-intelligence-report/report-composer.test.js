@@ -193,6 +193,78 @@ test('buildPrompt never includes the customer intent block for weekly/monthly (s
   assert.ok(!weekly.includes('ranked by search volume'));
   assert.ok(!monthly.includes('ranked by search volume'));
 });
+
+// ── Intelligence: bedroom intent (top_bedroom_count / bedroom_sample_size) ──
+test('buildPrompt (daily): a segment with a clear bedroom majority is passed through verbatim, with the sample-size guard present', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{
+    transaction_type: 'for_rent', property_type: 'condo', district: 'Sisattanak',
+    search_count: 40, top_price_band: { min: 500, max: 800 },
+    top_bedroom_count: 2, bedroom_sample_size: 32,
+  }];
+  const prompt = buildPrompt('daily', composed, { customer_intent_segments: segments }, null);
+  assert.ok(prompt.includes('"top_bedroom_count":2'));
+  assert.ok(prompt.includes('"bedroom_sample_size":32'));
+  assert.match(prompt, /bedroom_sample_size is at least 10/);
+});
+
+test('buildPrompt (daily): a mostly-null/no-preference segment reports top_bedroom_count:null as a legitimate finding, not missing data', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{
+    transaction_type: 'for_rent', property_type: 'apartment', district: 'Chanthabouly',
+    search_count: 50, top_bedroom_count: null, bedroom_sample_size: 15,
+  }];
+  const prompt = buildPrompt('daily', composed, { customer_intent_segments: segments }, null);
+  assert.ok(prompt.includes('"top_bedroom_count":null'));
+  assert.match(prompt, /legitimate finding, not missing data/);
+});
+
+test('buildPrompt (daily): the prompt forbids majority language for a near-even split -- only mode/plurality phrasing is allowed', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  // 11 out of 25 bedroom-specific searches named "3" -- a plurality, nowhere
+  // near a majority. The composer does not compute this split itself (that
+  // lives in the SQL DISTINCT ON ... ORDER BY cnt DESC); it must simply never
+  // let the prompt claim more than the data (a bare top_bedroom_count +
+  // bedroom_sample_size) can support.
+  const segments = [{
+    transaction_type: 'for_sale', property_type: 'house', district: 'Xaythany',
+    search_count: 25, top_bedroom_count: 3, bedroom_sample_size: 25,
+  }];
+  const prompt = buildPrompt('daily', composed, { customer_intent_segments: segments }, null);
+  assert.match(prompt, /MODE\/PLURALITY, not a majority/);
+  assert.match(prompt, /never as "users prefer N bedrooms"/);
+});
+
+test('buildPrompt (daily): low bedroom_sample_size still passes the segment through, with the <10 guard instructing "not yet enough data"', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{
+    transaction_type: 'for_rent', property_type: 'condo', district: 'Sisattanak',
+    search_count: 12, top_bedroom_count: 2, bedroom_sample_size: 3,
+  }];
+  const prompt = buildPrompt('daily', composed, { customer_intent_segments: segments }, null);
+  assert.ok(prompt.includes('"bedroom_sample_size":3'));
+  assert.match(prompt, /not yet enough bedroom-specific data/);
+});
+
+test('buildPrompt (daily): never makes a supply-side bedroom-availability claim in the prompt guidance', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'condo', district: 'Sisattanak', search_count: 12, top_bedroom_count: 2, bedroom_sample_size: 12 }];
+  const prompt = buildPrompt('daily', composed, { customer_intent_segments: segments }, null);
+  assert.match(prompt, /DEMAND-side data only/);
+  assert.match(prompt, /not a dimension the current supply\/inventory data is segmented by/);
+});
+
+test('buildPrompt (daily): backward-compatible with older customer_intent_segments lacking top_bedroom_count/bedroom_sample_size entirely', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  // Shape produced by the PRE-bedroom migration -- no top_bedroom_count/
+  // bedroom_sample_size keys at all, not just null values.
+  const segments = [{ transaction_type: 'for_rent', property_type: 'condo', district: 'Sisattanak', search_count: 12, top_price_band: { min: 500, max: 800 } }];
+  assert.doesNotThrow(() => buildPrompt('daily', composed, { customer_intent_segments: segments }, null));
+  const prompt = buildPrompt('daily', composed, { customer_intent_segments: segments }, null);
+  assert.ok(prompt.includes('CUSTOMER INTENT SEGMENTS'));
+  assert.ok(prompt.includes('Sisattanak'));
+  assert.ok(!prompt.includes('"top_bedroom_count"'), 'the guidance text mentions the field name, but the DATA itself must not fabricate one for old-shaped segments');
+});
 test('buildPrompt tells Gemini not to state an invented cause beyond what the evidence shows', () => {
   const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
   const prompt = buildPrompt('daily', composed, {}, null);

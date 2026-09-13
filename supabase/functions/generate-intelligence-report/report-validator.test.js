@@ -94,6 +94,45 @@ test('validateReportContent: a percentage grounded in the raw metrics summary (n
   assert.equal(result.ok, true);
 });
 
+// ── number grounding: customer_intent_segments' new bedroom fields ────────
+// collectKnownNumbers()'s walk() is already fully generic over nested
+// objects AND arrays (Object.values on an array yields its elements), so
+// customer_intent_segments (an array of segment objects) already lets a
+// narrative ground a number against ANY scalar field inside a segment --
+// including the new top_bedroom_count/bedroom_sample_size added by the
+// bedroom-intent migration. This locks that in as a regression: no
+// report-validator.js change was needed for the new fields to be groundable.
+test('validateReportContent: a number matching a segment\'s bedroom_sample_size (nested inside customer_intent_segments) grounds successfully', () => {
+  const composed = composedWith([]);
+  const rawMetricsSummary = {
+    customer_intent_segments: [
+      { transaction_type: 'for_rent', property_type: 'condo', district: 'Sisattanak', search_count: 40, top_bedroom_count: 2, bedroom_sample_size: 32 },
+    ],
+  };
+  const gemini = {
+    executive_summary: 'Bedroom-specific demand data was 32% as large as total segment searches today.',
+    body_markdown: '# Executive Summary\n32% of segment searches carried a bedroom preference.\n## Biggest Story\nNothing else notable.',
+  };
+  const result = validateReportContent(gemini, composed, {}, rawMetricsSummary);
+  assert.equal(result.ok, true);
+});
+
+test('validateReportContent: a percentage with no match anywhere -- including in customer_intent_segments\' bedroom fields -- is still flagged', () => {
+  const composed = composedWith([]);
+  const rawMetricsSummary = {
+    customer_intent_segments: [
+      { transaction_type: 'for_rent', property_type: 'condo', district: 'Sisattanak', search_count: 40, top_bedroom_count: 2, bedroom_sample_size: 32 },
+    ],
+  };
+  const gemini = {
+    executive_summary: 'An incredible 777% of searches wanted a specific bedroom count today.',
+    body_markdown: '# Executive Summary\nUp 777%.\n## Biggest Story\nA huge, unprecedented spike.',
+  };
+  const result = validateReportContent(gemini, composed, {}, rawMetricsSummary);
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(' '), /777/);
+});
+
 test('validateReportContent: quiet composed input (no insights) with no percentages at all passes trivially', () => {
   const composed = composedWith([]);
   const gemini = { executive_summary: 'A quiet day.', body_markdown: '# Executive Summary\nA quiet day. Nothing notable happened.' };
