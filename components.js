@@ -329,6 +329,10 @@ function _ptListingHref(p) {
 var PT_SAVE_LABEL = { lo:'ບັນທຶກລາຍການ', en:'Save listing', zh:'收藏房源' };
 var PT_UNSAVE_LABEL = { lo:'ເອົາອອກຈາກທີ່ບັນທຶກ', en:'Remove from saved', zh:'取消收藏' };
 var PT_NO_PHOTO_LABEL = { lo:'ບໍ່ມີຮູບພາບ', en:'No photo available', zh:'暂无照片' };
+// Card gallery arrows (2+ images only) -- lo/zh flagged for native-speaker
+// review, same convention as PT_FROM_PRICE_PREFIX's Chinese prefix note.
+var PT_PREV_PHOTO_LABEL = { lo:'ຮູບກ່ອນໜ້າ', en:'Previous photo', zh:'上一张照片' };
+var PT_NEXT_PHOTO_LABEL = { lo:'ຮູບຕໍ່ໄປ', en:'Next photo', zh:'下一张照片' };
 
 function _ptApplyDataTrack(el, dataTrack) {
   if (!dataTrack) return;
@@ -1046,12 +1050,41 @@ function renderPropertyCard(property, opts) {
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
   if (opts.onClick) card.addEventListener('click', opts.onClick);
 
-  var title = _ptEsc(p['title_' + lang] || p.title_en || '');
+  var rawTitle = p['title_' + lang] || p.title_en || '';
+  var title = _ptEsc(rawTitle);
   var district = _ptEsc(p['district_' + lang] || p.district_en || '');
   var images = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
   var imgHtml = images.length
     ? '<img src="' + _ptEsc(ptCardImageSrc(images[0], 'card')) + '" alt="' + title + '" loading="lazy"' + ptCardImageFallbackAttrs(images[0]) + '>'
     : '<div class="pt-card-no-img" role="img" aria-label="' + _ptEsc(PT_NO_PHOTO_LABEL[lang] || PT_NO_PHOTO_LABEL.en) + '"></div>';
+
+  // GALLERY ARROWS -- only when there is more than one photo to cycle through.
+  // Plain <button>s (not part of the .pt-card <a>'s own navigation), tracked
+  // via the existing declarative data-track convention (tracking.js's global
+  // delegate on document.body picks these up automatically into ui_events --
+  // no manual postEvent call needed here). data-track-property-id is written
+  // literally with the hyphenated attribute name tracking.js actually reads
+  // (getAttribute('data-track-property-id')) -- NOT via _ptApplyDataTrack's
+  // camelCase `propertyId` key, which setAttribute lowercases to
+  // "data-track-propertyid" (no hyphen) and so tracking.js never sees; that
+  // mismatch is a separate, pre-existing latent gap in the card's own
+  // top-level dataTrack usage elsewhere, left untouched here since fixing it
+  // is outside this task's scope.
+  var galleryArrowsHtml = '';
+  if (images.length > 1) {
+    var prevLabel = _ptEsc(PT_PREV_PHOTO_LABEL[lang] || PT_PREV_PHOTO_LABEL.en);
+    var nextLabel = _ptEsc(PT_NEXT_PHOTO_LABEL[lang] || PT_NEXT_PHOTO_LABEL.en);
+    var propIdAttr = p.id ? ' data-track-property-id="' + _ptEsc(p.id) + '"' : '';
+    galleryArrowsHtml =
+      '<button type="button" class="pt-card-arrow pt-card-arrow-prev" aria-label="' + prevLabel + '"' +
+        ' data-track="listing-card-photo-prev" data-track-type="button" data-track-label="' + prevLabel + '"' + propIdAttr + '>' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>' +
+      '</button>' +
+      '<button type="button" class="pt-card-arrow pt-card-arrow-next" aria-label="' + nextLabel + '"' +
+        ' data-track="listing-card-photo-next" data-track-type="button" data-track-label="' + nextLabel + '"' + propIdAttr + '>' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>' +
+      '</button>';
+  }
 
   var overlayTl = (opts.statusBadgeHtml || '') + (opts.extraOverlayHtml || '');
   var badgeHtml = opts.showTransactionBadge ? renderTransactionBadge(p.transaction_type, lang).outerHTML : '';
@@ -1186,7 +1219,7 @@ function renderPropertyCard(property, opts) {
     : '';
 
   card.innerHTML =
-    '<div class="pt-card-img">' + imgHtml + fomoOverlayHtml +
+    '<div class="pt-card-img">' + imgHtml + fomoOverlayHtml + galleryArrowsHtml +
       '<div class="pt-ov-tl">' + badgeHtml + overlayTl + '</div>' +
       (heartHtml ? '<div class="pt-ov-tr">' + heartHtml + '</div>' : '') +
       (opts.photoCountHtml ? '<div class="pt-ov-br">' + opts.photoCountHtml + '</div>' : '') +
@@ -1219,6 +1252,36 @@ function renderPropertyCard(property, opts) {
         heartBtn.setAttribute('aria-pressed', String(isNowSaved));
         heartBtn.setAttribute('aria-label', (isNowSaved ? PT_UNSAVE_LABEL : PT_SAVE_LABEL)[lang] || (isNowSaved ? PT_UNSAVE_LABEL : PT_SAVE_LABEL).en);
       }
+    });
+  }
+
+  // GALLERY ARROWS wiring -- cycles which photo the card's <img> shows,
+  // wrapping at both ends. preventDefault()+stopPropagation() on each
+  // button's own click, exactly like ptToggleSave() above, so an arrow
+  // click never opens the listing (the <a>'s navigation) nor fires the
+  // card's own opts.onClick (a bubble-phase listener on an ANCESTOR of
+  // these buttons, so stopping propagation here keeps it from ever
+  // running). This does NOT block tracking.js's ui_events data-track
+  // delegate: that listener is registered on document.body in the
+  // CAPTURE phase, which already runs before the event reaches this
+  // button, so it fires regardless of this handler's stopPropagation().
+  if (images.length > 1) {
+    var galleryImg = card.querySelector('.pt-card-img > img');
+    var galleryIdx = 0;
+    var showGalleryImage = function(idx) {
+      galleryIdx = ((idx % images.length) + images.length) % images.length;
+      galleryImg.setAttribute('src', ptCardImageSrc(images[galleryIdx], 'card'));
+      galleryImg.setAttribute('alt', rawTitle);
+      galleryImg.setAttribute('data-pt-original', ptCdnImage(images[galleryIdx]));
+      delete galleryImg.dataset.ptFellBack;   // re-arm the once-only fallback for the newly shown photo
+    };
+    card.querySelector('.pt-card-arrow-prev').addEventListener('click', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      showGalleryImage(galleryIdx - 1);
+    });
+    card.querySelector('.pt-card-arrow-next').addEventListener('click', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      showGalleryImage(galleryIdx + 1);
     });
   }
   return card;

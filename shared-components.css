@@ -148,6 +148,24 @@ html[lang="lo"] .pt-card.pt-featured .pt-card-title{line-height:1.45;}
 .pt-heart-btn.pt-saved svg{stroke:#D94040;fill:#D94040;}
 .pt-heart-btn svg{transition:stroke 0.15s,fill 0.15s;}
 
+/* Card gallery arrows -- cycle a card's photo without opening the listing.
+   Always visible (not hover-revealed) on both desktop and mobile, same
+   overlay-circle treatment as .pt-heart-btn for visual consistency, but
+   vertically centered at the image's left/right edge rather than a corner. */
+.pt-card-arrow{
+  position:absolute;top:50%;transform:translateY(-50%);
+  width:28px;height:28px;background:var(--pt-overlay-bg);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border-radius:var(--pt-r-round);border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--pt-ink);z-index:2;
+  transition:background var(--pt-transition-fast);
+}
+.pt-card-arrow:hover,.pt-card-arrow:focus-visible{background:var(--pt-overlay-bg-hover);}
+.pt-card-arrow:focus-visible{outline:2px solid var(--pt-teal);outline-offset:2px;}
+.pt-card-arrow-prev{left:8px;}
+.pt-card-arrow-next{right:8px;}
+
 .pt-card-body{padding:18px 20px 20px;}
 .pt-card.pt-featured .pt-card-body{padding:36px 40px;display:flex;flex-direction:column;justify-content:center;}
 .pt-card-tag{font-size:var(--pt-fs-label);font-weight:400;letter-spacing:0.1em;text-transform:uppercase;color:var(--pt-teal);margin-bottom:8px;opacity:0.85;}
