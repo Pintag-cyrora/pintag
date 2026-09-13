@@ -70,6 +70,20 @@ let pass = 0, fail = 0;
 const ok  = (m) => { console.log('  PASS  ' + m); pass++; };
 const bad = (m, d) => { console.log('  FAIL  ' + m + (d ? '\n      → ' + d : '')); fail++; };
 
+// Diagnostics only — never affects pass/fail. Prints enough per-fetch signal
+// to tell a stale CDN-cached response apart from a Cloudflare/WAF block:
+// HTTP status, cf-cache-status (HIT/MISS/EXPIRED/DYNAMIC — a HIT proves
+// Cloudflare's cache served this, not origin), cf-ray (correlates this exact
+// response with a Cloudflare dashboard log entry), age/cache-control, server,
+// and whether a redirect changed the final URL actually fetched.
+function diag(label, res) {
+  if (!res) { console.log(`      [diag] ${label}: no response object (network-level failure, see error above)`); return; }
+  const h = (name) => res.headers.get(name) || 'none';
+  console.log(`      [diag] ${label}: status=${res.status} url=${res.url} redirected=${res.redirected} ` +
+    `cf-cache-status=${h('cf-cache-status')} cf-ray=${h('cf-ray')} age=${h('age')} ` +
+    `cache-control=${h('cache-control')} server=${h('server')}`);
+}
+
 console.log('==============================================================');
 console.log(' XSS fix — proven against the LIVE production pages');
 console.log(' Site: ' + SITE);
@@ -80,9 +94,11 @@ for (const page of ['listing.html', 'admin.html']) {
   let src;
   try {
     const res = await fetch(`${SITE}/${page}`, { redirect: 'follow' });
+    diag(page, res);
     if (!res.ok) { bad(`${page} fetch returned HTTP ${res.status}`); continue; }
     src = await res.text();
   } catch (e) {
+    diag(page, null);
     bad(`${page} could not be fetched`, String(e.message || e)); continue;
   }
 

@@ -33,6 +33,28 @@ warn() { printf '  WARN  %s\n      → %s\n' "$1" "${2:-}"; WARN=$((WARN+1)); }
 
 CURL=(curl -sS --max-time 25 -H "apikey: ${SUPABASE_ANON_KEY}")
 
+# ── Diagnostics only — never affects PASS/FAIL/WARN ─────────────────────────
+# Prints, for one fetch against ${SITE_URL}, enough signal to tell a stale
+# CDN-cached response apart from a Cloudflare/WAF block: the HTTP status line,
+# cf-cache-status (HIT/MISS/EXPIRED/DYNAMIC — a HIT proves Cloudflare's cache
+# served this, not origin), cf-ray (correlates this exact response with a
+# Cloudflare dashboard log entry), age/cache-control (how long a cached copy
+# has been served), and server (distinguishes Cloudflare from a raw GitHub
+# Pages/Fastly response). Does not change what is asserted anywhere below —
+# it only prints extra lines using headers already captured for other checks.
+diag() {
+  local label="$1" hdrs="$2"
+  local status cache_status ray age cache_control server
+  status="$(printf '%s' "$hdrs" | head -1 | tr -d '\r')"
+  cache_status="$(printf '%s' "$hdrs" | grep -i '^cf-cache-status:' | head -1 | tr -d '\r' | cut -d: -f2- | sed 's/^ *//')"
+  ray="$(printf '%s' "$hdrs" | grep -i '^cf-ray:' | head -1 | tr -d '\r' | cut -d: -f2- | sed 's/^ *//')"
+  age="$(printf '%s' "$hdrs" | grep -i '^age:' | head -1 | tr -d '\r' | cut -d: -f2- | sed 's/^ *//')"
+  cache_control="$(printf '%s' "$hdrs" | grep -i '^cache-control:' | head -1 | tr -d '\r' | cut -d: -f2- | sed 's/^ *//')"
+  server="$(printf '%s' "$hdrs" | grep -i '^server:' | head -1 | tr -d '\r' | cut -d: -f2- | sed 's/^ *//')"
+  printf '      [diag] %-24s status=%-20s cf-cache-status=%-8s cf-ray=%-22s age=%-6s cache-control=%-20s server=%s\n' \
+    "$label" "${status:-(no headers captured)}" "${cache_status:-none}" "${ray:-none}" "${age:-none}" "${cache_control:-none}" "${server:-none}"
+}
+
 echo "=============================================================="
 echo " Pintag production verification — HTTP surface"
 echo " Supabase: ${SUPABASE_URL}"
@@ -222,6 +244,7 @@ done
 echo
 echo "8. HEADERS — transport and framing protections on ${SITE_URL}"
 hdrs="$(curl -sSI --max-time 25 "${SITE_URL}/listing.html" 2>/dev/null || true)"
+diag "listing.html (HEAD)" "$hdrs"
 has() { grep -qi "^$1:" <<< "$hdrs"; }
 if [ -z "$hdrs" ]; then
   warn "could not fetch headers from ${SITE_URL}" "site unreachable from this runner"
@@ -245,6 +268,7 @@ fi
 # headers if a zone-wide Transform Rule exists (docs/CSP.md). Check it directly
 # rather than assuming the listing.html result generalises.
 ahdrs="$(curl -sSI --max-time 25 "${SITE_URL}/admin.html" 2>/dev/null || true)"
+diag "admin.html (HEAD)" "$ahdrs"
 if [ -z "$ahdrs" ]; then
   warn "could not fetch headers for admin.html" "cannot confirm zone-wide header coverage"
 else
@@ -261,7 +285,13 @@ else
 fi
 
 # The page-level CSP is delivered as a meta tag (GitHub Pages cannot set headers).
-page="$(curl -sS --max-time 25 "${SITE_URL}/listing.html" 2>/dev/null || true)"
+# -D writes response headers to a side file — the body captured into $page is
+# byte-for-byte what a plain `curl -sS` would have captured before this change;
+# the header file only adds diagnostic signal for the same response.
+page_hdrs_file="$(mktemp)"
+page="$(curl -sS -D "$page_hdrs_file" --max-time 25 "${SITE_URL}/listing.html" 2>/dev/null || true)"
+page_hdrs="$(cat "$page_hdrs_file" 2>/dev/null || true)"; rm -f "$page_hdrs_file"
+diag "listing.html (GET body)" "$page_hdrs"
 if grep -qi 'http-equiv="Content-Security-Policy"' <<< "$page"; then
   if grep -qi 'connect-src' <<< "$page"; then
     ok "deployed listing.html carries the CSP meta tag (connect-src present)"
@@ -281,7 +311,10 @@ else
   bad "listing.html on ${SITE_URL} has NO escJs()" \
       "the deployed build predates the XSS fix — F-02 is still live"
 fi
-admin_page="$(curl -sS --max-time 25 "${SITE_URL}/admin.html" 2>/dev/null || true)"
+admin_page_hdrs_file="$(mktemp)"
+admin_page="$(curl -sS -D "$admin_page_hdrs_file" --max-time 25 "${SITE_URL}/admin.html" 2>/dev/null || true)"
+admin_page_hdrs="$(cat "$admin_page_hdrs_file" 2>/dev/null || true)"; rm -f "$admin_page_hdrs_file"
+diag "admin.html (GET body)" "$admin_page_hdrs"
 if grep -q 'escJs(p.title_en' <<< "$admin_page"; then
   ok "admin.html on ${SITE_URL} escapes the listing title for the JS context (F-01 fix deployed)"
 elif [ -z "$admin_page" ]; then
