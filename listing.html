@@ -1829,6 +1829,18 @@ function selectUnitType(id){
   selectedUnitTypeId = (selectedUnitTypeId===id) ? null : id;
   _syncUnitUrlParam();
   try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on unit select',e);}
+  // The units section sits well below the gallery/price, so picking one
+  // (or toggling back to the overview via the same handler) must bring the
+  // visitor back up to see what just changed -- otherwise the unit card
+  // visibly updates/highlights but the visitor is left staring at the units
+  // list, unaware the gallery/price above already swapped. Deliberately
+  // window.scrollTo(0), not scrollIntoView() on a gallery element: the
+  // gallery markup is split into two CSS-toggled variants (mobile-first in
+  // source order, desktop in .hero-right) with no single id valid on both,
+  // and <nav> is position:fixed (never in flow), so scrolling to the very
+  // top of the document already reproduces the exact same view a visitor
+  // lands on when the page first loads.
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
 // Keeps the address bar's ?unit= param in sync with the current selection
