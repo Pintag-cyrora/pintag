@@ -50,6 +50,69 @@ test('unit-card covers and building-strip photos carry the rendition fallback li
   await expect(strip).toHaveAttribute('data-pt-original', IMG('pintag-hero.png'));
 });
 
+// ── Unit selection scrolls back to the gallery/top ──────────────────────
+// Reported UX bug: tapping a unit lower on the page correctly swapped the
+// gallery/price to that unit (buildMockupLayout() already did this), but
+// left the visitor stranded at the units section with no indication
+// anything above had changed. selectUnitType() now calls
+// window.scrollTo({top:0,behavior:'smooth'}) after the re-render.
+test.describe('unit selection scrolls back to the gallery/top', () => {
+  test('clicking a unit from a scrolled-down position scrolls back to the top, and the selected unit is still correctly rendered', async ({ page }) => {
+    await openListing(page, ROUTED);
+    const unitCard = page.locator('.unit-card').first();   // u1 (Studio, sort_order 0)
+
+    // Get down to where a real visitor would be when they tap a unit card.
+    await unitCard.scrollIntoViewIfNeeded();
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+
+    await unitCard.click();
+
+    // window.scrollTo({behavior:'smooth'}) animates -- poll until it settles.
+    await expect.poll(() => page.evaluate(() => window.scrollY), { timeout: 3000 }).toBeLessThan(5);
+
+    // Not just bounced back to 0 and forgotten -- the unit selection itself
+    // is still exactly right after the scroll: state, selected styling, and
+    // the swapped-in gallery image all agree on 'u1'.
+    expect(await page.evaluate(() => selectedUnitTypeId)).toBe('u1');
+    await expect(unitCard).toHaveClass(/unit-card-selected/);
+    await expect(page.locator('#dg-hero-img')).toHaveAttribute('data-pt-original', IMG('pintag-balcony.png'));
+  });
+
+  test('toggling back to the overview (clicking the same unit again) also scrolls back to the top', async ({ page }) => {
+    await openListing(page, ROUTED);
+    const unitCard = page.locator('.unit-card').first();
+    await unitCard.click();                        // select it first, from the top
+    await expect(unitCard).toHaveClass(/unit-card-selected/);
+
+    await unitCard.scrollIntoViewIfNeeded();
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+
+    await unitCard.click();                        // toggle OFF -- back to the building overview
+
+    await expect.poll(() => page.evaluate(() => window.scrollY), { timeout: 3000 }).toBeLessThan(5);
+    expect(await page.evaluate(() => selectedUnitTypeId)).toBeNull();
+    await expect(unitCard).not.toHaveClass(/unit-card-selected/);
+    await expect(page.locator('#dg-hero-img')).toHaveAttribute('data-pt-original', IMG('pintag-hero.png'));   // the building's own image again
+  });
+
+  test.describe('mobile viewport', () => {
+    test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+    test('unit selection scrolls back to the top on mobile too', async ({ page }) => {
+      await openListing(page, ROUTED);
+      const unitCard = page.locator('.unit-card').first();
+      await unitCard.scrollIntoViewIfNeeded();
+      expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+
+      await unitCard.click();
+
+      await expect.poll(() => page.evaluate(() => window.scrollY), { timeout: 3000 }).toBeLessThan(5);
+      expect(await page.evaluate(() => selectedUnitTypeId)).toBe('u1');
+      await expect(unitCard).toHaveClass(/unit-card-selected/);
+    });
+  });
+});
+
 test.describe('desktop gallery', () => {
   test.use({ viewport: { width: 1280, height: 900 } });
 
