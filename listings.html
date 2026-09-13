@@ -124,6 +124,11 @@ nav{
 .fc-select{font-family:inherit;font-size:14px;padding:9px 12px;min-height:42px;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--white);color:var(--ink);cursor:pointer;max-width:230px;}
 .fc-select:focus-visible{outline:2px solid var(--teal);outline-offset:1px;}
 @media(max-width:640px){.filter-bar-row3{gap:10px;}.fc-field{flex:1 1 46%;min-width:0;}.fc-select{flex:1;max-width:none;}}
+/* List/Map toggle: still lives in .filter-bar-row3 (with District/Price/
+   Bedrooms), but flex-basis:100% on an already flex-wrap:wrap row forces it
+   onto its own full-width line every time, at every width -- not incidental
+   wrapping. */
+.filter-bar-row3 .view-toggle{flex-basis:100%;margin-left:0;}
 
 /* Rent/Sale — the primary, highest-priority control on this page. Visually
    dominant (larger buttons, teal fill on active) so it reads as the first
@@ -284,7 +289,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
   .trust-strip{gap:14px;}
 
   /* Second filter-bar row wraps for one-handed reach: scrollable type
-     pills get their own line, status/sort/view controls share the next. */
+     pills get their own line, status/sort controls share the next. */
   .filter-bar-row.filter-bar-row2{flex-wrap:wrap;row-gap:8px;}
   .filter-bar-row2 .filters-wrap{flex:1 1 100%;order:1;}
   .filter-bar-row2 .filter-sep{display:none;}
@@ -292,7 +297,6 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
   .filter-bar-row2 .rental-filters{order:3;}
   .filter-bar-row2 #rental-filters-sep{display:none !important;}
   .filter-bar-row2 .sort-select{order:4;flex:1;min-width:0;}
-  .filter-bar-row2 .view-toggle{order:5;margin-left:0;}
 }
 @media(max-width:500px){
   .listings-grid{
@@ -531,16 +535,6 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
         <option value="price_asc"  data-lo="ລາຄາ: ຕ່ຳ→ສູງ"  data-en="Price: Low→High" data-zh="价格: 低→高">ລາຄາ: ຕ່ຳ→ສູງ</option>
         <option value="price_desc" data-lo="ລາຄາ: ສູງ→ຕ່ຳ"  data-en="Price: High→Low" data-zh="价格: 高→低">ລາຄາ: ສູງ→ຕ່ຳ</option>
       </select>
-      <div class="view-toggle">
-        <button class="vt-btn active" id="btn-list" onclick="showListView()" data-track="view-toggle-list" data-track-type="toggle" data-track-label="View: List">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          <span class="lo-i">ລາຍການ</span><span class="en-i">List</span><span class="zh-i">列表</span>
-        </button>
-        <button class="vt-btn" id="btn-map" onclick="showMapView()" data-track="view-toggle-map" data-track-type="toggle" data-track-label="View: Map">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-          <span class="lo-i">ແຜນທີ່</span><span class="en-i">Map</span><span class="zh-i">地图</span>
-        </button>
-      </div>
     </div>
     <div class="filter-bar-row filter-bar-row3">
       <label class="fc-field">
@@ -556,6 +550,19 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
         <span class="fc-label lo-i">ຫ້ອງນອນ</span><span class="fc-label en-i">Bedrooms</span><span class="fc-label zh-i">卧室</span>
         <select class="fc-select" id="bedroom-select" onchange="setBedroomFilter(this.value)" data-track="filter-bedrooms" data-track-type="select" data-track-label="Filter: Bedrooms"><option value="all">Any</option></select>
       </label>
+      <!-- Its own full-width line underneath District/Price/Bedrooms via
+           flex-basis:100% on a row that's already flex-wrap:wrap (see
+           .filter-bar-row3 .view-toggle below) -- not incidental wrapping. -->
+      <div class="view-toggle">
+        <button class="vt-btn active" id="btn-list" onclick="showListView()" data-track="view-toggle-list" data-track-type="toggle" data-track-label="View: List">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="lo-i">ລາຍການ</span><span class="en-i">List</span><span class="zh-i">列表</span>
+        </button>
+        <button class="vt-btn" id="btn-map" onclick="showMapView()" data-track="view-toggle-map" data-track-type="toggle" data-track-label="View: Map">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+          <span class="lo-i">ແຜນທີ່</span><span class="en-i">Map</span><span class="zh-i">地图</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>

@@ -368,3 +368,59 @@ test('price sort under For Rent uses the rent leg of a sale_or_rent listing, lik
   });
   expect(order).toEqual(['rent-850', 'sor', 'rent-2000']);
 });
+
+// ── List/Map toggle relocated into .filter-bar-row3, own full-width line ──
+test.describe('List/Map toggle: moved into filter-bar-row3, still fully functional', () => {
+  test('the toggle now lives in .filter-bar-row3 (with District/Price/Bedrooms), not .filter-bar-row2', async ({ page }) => {
+    await open(page, '?lang=en');
+    expect(await page.evaluate(() => {
+      const toggle = document.querySelector('.view-toggle');
+      return {
+        inRow3: !!toggle.closest('.filter-bar-row3'),
+        inRow2: !!toggle.closest('.filter-bar-row2'),
+        siblingIds: [...toggle.parentElement.children].map((el) => el.id || el.className),
+      };
+    })).toEqual({
+      inRow3: true, inRow2: false,
+      siblingIds: ['fc-field', 'fc-field', 'fc-field', 'view-toggle'],
+    });
+  });
+
+  test('the toggle renders on its own full-width line, visually underneath District/Price/Bedrooms', async ({ page }) => {
+    await open(page, '?lang=en');
+    const boxes = await page.evaluate(() => {
+      const rect = (sel) => document.querySelector(sel).getBoundingClientRect();
+      return { price: rect('#price-select'), toggle: rect('.view-toggle') };
+    });
+    // "Underneath", not incidentally wrapped alongside: the toggle's row
+    // starts below the bottom of the Price select, and spans from the far
+    // left of the filter bar (flex-basis:100% forced its own line).
+    expect(boxes.toggle.top).toBeGreaterThanOrEqual(boxes.price.bottom);
+    expect(boxes.toggle.left).toBeLessThan(boxes.price.left);
+  });
+
+  test('List/Map still switch views correctly via a real click on the relocated buttons (functionality unaffected by the DOM move)', async ({ page }) => {
+    const { errs } = await open(page, '?lang=en');
+    await page.evaluate(FAKE_LEAFLET);
+    await page.click('#btn-map');
+    expect(await page.evaluate(() => document.getElementById('btn-map').classList.contains('active'))).toBe(true);
+    expect(await page.evaluate(() => document.getElementById('btn-list').classList.contains('active'))).toBe(false);
+    expect(await page.evaluate(() => getComputedStyle(document.getElementById('map-wrap')).display)).not.toBe('none');
+    await page.click('#btn-list');
+    expect(await page.evaluate(() => document.getElementById('btn-list').classList.contains('active'))).toBe(true);
+    expect(await page.evaluate(() => document.getElementById('btn-map').classList.contains('active'))).toBe(false);
+    expect(await slugsShown(page)).toHaveLength(5);
+    expect(errs).toEqual([]);
+  });
+
+  test('click tracking attributes on List/Map are unchanged after the move', async ({ page }) => {
+    await open(page, '?lang=en');
+    expect(await page.evaluate(() => {
+      const attrs = (id) => { const el = document.getElementById(id); return { track: el.dataset.track, type: el.dataset.trackType, label: el.dataset.trackLabel }; };
+      return { list: attrs('btn-list'), map: attrs('btn-map') };
+    })).toEqual({
+      list: { track: 'view-toggle-list', type: 'toggle', label: 'View: List' },
+      map: { track: 'view-toggle-map', type: 'toggle', label: 'View: Map' },
+    });
+  });
+});
