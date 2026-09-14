@@ -117,6 +117,17 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 .back-link:hover{color:var(--teal);}
 .hero-location{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--teal);margin-bottom:14px;}
 .info-title{font-size:clamp(26px,2.4vw,46px);font-weight:500;color:var(--ink);letter-spacing:-0.025em;line-height:1.12;margin-bottom:12px;overflow-wrap:anywhere;}
+/* Location/map — moved to sit directly under the title (was the third
+   .detail-grid column, far down the page). Lives inside .hero-left so it
+   naturally renders right after <h1 class="info-title"> in BOTH desktop's
+   plain source order and mobile's flex `order` hierarchy below -- the
+   400px hero-left column width is a deliberate side effect: it keeps the
+   300px-tall map at a compact, readable size instead of stretching it
+   across the wider .detail-wrap container. .map-frame/.map-open-link/
+   .nearby-list/.section-label styling is untouched (see the "Detail 3-col"
+   section further down) -- this class only adds the outer spacing that a
+   grid gap used to provide. */
+.hero-map-section{margin-bottom:24px;}
 /* property highlight subtitle — renders from data.property_highlight */
 .property-highlight{font-size:13px;font-weight:400;color:var(--ink-muted);line-height:1.65;margin-bottom:20px;}
 .tx-badge{display:inline-block;padding:3px 11px;border:1px solid rgba(45,140,140,0.28);border-radius:20px;font-size:10.5px;font-weight:400;color:var(--teal);background:rgba(45,140,140,0.04);margin-bottom:24px;width:fit-content;letter-spacing:0.02em;}
@@ -245,9 +256,11 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .btn-wa:hover{background:var(--wa-hover);transform:translateY(-1px);box-shadow:0 4px 16px rgba(35,107,107,0.22);}
 .btn-call{background:transparent;color:var(--ink-soft);border:1px solid var(--border-strong);}
 .btn-call:hover{background:var(--warm);color:var(--ink);transform:translateY(-1px);}
-/* Detail 3-col */
+/* Detail 2-col — was 3-col (Overview/Features/Location) until the Location
+   column (map + nearby places) moved into .hero-left, directly under the
+   title; see .hero-map-section above. */
 .detail-wrap{max-width:1200px;margin:0 auto;padding:60px 48px 0;background:var(--white);}
-.detail-grid{display:grid;grid-template-columns:1.8fr 1fr 0.9fr;gap:56px;padding-bottom:48px;border-bottom:1px solid var(--border);}
+.detail-grid{display:grid;grid-template-columns:1.8fr 1fr;gap:56px;padding-bottom:48px;border-bottom:1px solid var(--border);}
 .detail-grid > div:first-child{max-width:760px;padding-top:72px;}
 .section-label{font-size:11px;font-weight:500;color:#6A8490;margin-bottom:18px;letter-spacing:0.1em;text-transform:uppercase;display:block;}
 .body-narrative{font-size:16px;color:var(--ink-soft);line-height:1.95;white-space:pre-line;letter-spacing:0.005em;max-width:680px;}
@@ -432,10 +445,17 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
   .hero-section{grid-template-columns:1fr;min-height:auto;}
   .hero-right,.desktop-gallery{display:none;}
   .mobile-gallery{display:block;}
-  /* Mobile info hierarchy: Price, then Title, then Location, then Facts —
-     reordered from desktop's Title-first reading order via flex `order`,
-     scoped to this breakpoint only. Every child keeps the exact same
-     markup/desktop styling; only their visual sequence changes here. */
+  /* Mobile info hierarchy: Price, then Title, then the Location/Map
+     section, then the remaining Facts — reordered from desktop's
+     Title-first reading order via flex `order`, scoped to this breakpoint
+     only. Every child keeps the exact same markup/desktop styling; only
+     their visual sequence changes here. .hero-map-section sits at order:6,
+     directly after .info-title (order:5), so the map is the first thing a
+     mobile visitor sees after the title — never pushed below price/specs/
+     CTAs, which is why it lives inside this same reordered flex column
+     rather than as a plain sibling after .hero-section (a sibling there
+     would land after ALL of this column's content, order values only
+     reorder children within their own flex container). */
   .hero-left{
     padding:20px 16px 18px;border-right:none;border-bottom:1px solid var(--border-mid);
     display:flex;flex-direction:column;
@@ -445,12 +465,13 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
   .hero-left #sp-badges{order:3;}
   .hero-left .sp-metrics-row{order:4;}
   .hero-left .info-title{order:5;}
-  .hero-left .property-highlight{order:6;}
-  .hero-left .hero-location{order:7;}
-  .hero-left .spec-grid{order:8;}
-  .hero-left .highlight-pills{order:10;}
-  .hero-left .sidebar-insight{order:11;}
-  .hero-left .left-actions{order:12;}
+  .hero-left .hero-map-section{order:6;margin-bottom:18px;}
+  .hero-left .property-highlight{order:7;}
+  .hero-left .hero-location{order:8;}
+  .hero-left .spec-grid{order:9;}
+  .hero-left .highlight-pills{order:11;}
+  .hero-left .sidebar-insight{order:12;}
+  .hero-left .left-actions{order:13;}
   /* Amenity icons (position 6 in the mobile hierarchy) — shown here,
      ahead of Contact/Agent/Description; the identical row still renders
      in its original desktop spot inside the Overview column (hidden below
@@ -534,7 +555,7 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
   .hero-section{grid-template-columns:340px 1fr;}
   .agent-band{padding:22px 32px;gap:20px;}
   .detail-wrap{padding:40px 32px 0;}
-  .detail-grid{grid-template-columns:1.6fr 1fr 0.9fr;gap:36px;}
+  .detail-grid{grid-template-columns:1.6fr 1fr;gap:36px;}
   .similar-section{padding:36px 32px 48px;}
   .similar-grid{grid-template-columns:repeat(2,1fr);}
   .media-section{padding:32px 32px;}
@@ -2966,8 +2987,13 @@ function buildMockupLayout(){
     nearbyHtml+='</div>';
   }
 
+  // Rendered directly under the title inside .hero-left (see
+  // .hero-map-section in the <style> block above) -- no longer a
+  // .detail-grid column. mapHtml/nearbyHtml/gmapsHref/coords above are
+  // completely unchanged; only where this finished string gets
+  // concatenated into `layout` below has moved.
   var locationColHtml=(
-    '<div>'+
+    '<div class="hero-map-section">'+
     '<span class="section-label">'+L.location[lang]+'</span>'+
     mapHtml+
     nearbyHtml+
@@ -3124,6 +3150,11 @@ function buildMockupLayout(){
     '<a href="listings.html" class="back-link">'+I.back+' <span class="lo-i">ກັບຄືນ</span><span class="en-i">Back</span><span class="zh-i">返回</span></a>'+
     '<p class="hero-location">'+I.pin+' '+locationLabel+'</p>'+
     '<h1 class="info-title">'+resolvedTitle+'</h1>'+
+    // Location/map — moved directly under the title (was the third
+    // .detail-grid column further down the page). See .hero-map-section
+    // in the <style> block and the mobile `order:6` rule that keeps it
+    // here (not pushed below price/specs/CTAs) on small screens too.
+    locationColHtml+
     propertyHighlightHtml+
     '<div class="hero-badges-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
     '<span class="tx-badge'+(isSor?' tx-badge-sor':'')+'" style="margin-bottom:0;">'+esc(typeBadgeText)+'</span>'+
@@ -3159,7 +3190,6 @@ function buildMockupLayout(){
     '<div class="detail-grid">'+
     overviewColHtml+
     featuresColHtml+
-    locationColHtml+
     '</div></div>'+
     mediaHtml+
     cinematicBreakHtml
