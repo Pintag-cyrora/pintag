@@ -11,17 +11,13 @@ const CONTENT_TYPES = { '.html': 'text/html', '.js': 'application/javascript', '
 
 const server = http.createServer((req, res) => {
   const urlPath = req.url.split('?')[0];
-  const requested = path.normalize(urlPath === '/' ? '/index.html' : urlPath);
-  const filePath = path.resolve(ROOT, '.' + requested);
-  // req.url is attacker-controlled input to this local dev/test server.
-  // path.relative() + checking for a ".." prefix / an absolute result is
-  // the standard recognized guard against it resolving outside ROOT
-  // (CWE-22) -- a plain startsWith() prefix check on the resolved path is
-  // not reliably recognized as a sanitizing barrier by static analysis.
-  const rel = path.relative(ROOT, filePath);
-  if (rel === '' ? false : rel.startsWith('..') || path.isAbsolute(rel)) {
-    res.writeHead(400); res.end('bad path'); return;
-  }
+  // req.url is attacker-controlled input to this local dev/test server
+  // (CWE-22, path traversal). Reject any ".." segment in the raw request
+  // path itself, before it is ever joined with ROOT -- the canonical guard
+  // for this exact pattern.
+  if (urlPath.includes('..')) { res.writeHead(400); res.end('bad path'); return; }
+  const requested = urlPath === '/' ? '/index.html' : urlPath;
+  const filePath = path.join(ROOT, requested);
   fs.readFile(filePath, (err, data) => {
     // Never echo the requested path back in the response body (CWE-79,
     // reflected XSS) -- a generic message carries no attacker-controlled
