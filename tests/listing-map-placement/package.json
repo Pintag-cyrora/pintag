@@ -1,0 +1,7 @@
+{
+  "name": "pintag-listing-map-placement-tests",
+  "private": true,
+  "description": "Proves the property map (Google Maps embed + Open in Google Maps + Nearby Places, all previously the third .detail-grid column far down the page) now renders directly under the title on listing.html -- on both desktop and mobile -- and that everything about it besides its position (coordinates/marker, tracking, localization, unit-selection re-render, responsive sizing, CSP) is unchanged.",
+  "scripts": { "test": "playwright test" },
+  "devDependencies": { "@playwright/test": "1.56.1" }
+}
