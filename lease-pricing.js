@@ -22,8 +22,10 @@
 // 2. Display order comes from LEASE_TERMS' array order (shortest commitment
 //    first: daily → monthly → 3 → 6 → 12). Never re-sort in a consumer.
 //
-// 3. resolveLeasePricing() is the ONLY public read API. No code outside this
-//    file may read properties/unit_types.rent_price_daily/_3mo/_6mo/_12mo or
+// 3. resolveLeasePricing() is the ONLY public read API (resolveCheapest-
+//    ComparableTerm() is the one sanctioned helper built on top of it, per
+//    this same rule's own instruction below). No code outside this file may
+//    read properties/unit_types.rent_price_daily/_3mo/_6mo/_12mo or
 //    lease_price_basis directly — not admin.html, not listing.html, not an
 //    edge function. A future helper must call resolveLeasePricing() and read
 //    its `.terms`, never re-open the columns as a shortcut.
@@ -297,6 +299,35 @@ function buildLeasePricingLines(resolved, lang) {
 // false, so nothing new appears on the ~all listings that have no tiers.
 function hasLeaseTermPricing(property, unitType) {
   return resolveLeasePricing(property, unitType).hasTiers;
+}
+
+// resolveCheapestComparableTerm(resolved) — for a customer-first HEADLINE
+// price (a listing card, or the price-block fallback when there is no base
+// rent at all), NOT for the full breakdown: among resolved.terms, find the
+// one with the lowest amount, excluding 'daily' (rule 9 — a per-day rate is
+// never comparable to a per-month/whole-lease figure, so it must never win a
+// numeric minimum against them). Every remaining term shares the same
+// `basis`, so comparing their raw amounts is valid without any arithmetic
+// (rule 7) -- this never converts a total into a monthly figure or back.
+//
+// `hasVariance` mirrors components.js's ptResolveUnitPriceVariance(): true
+// only when at least two comparable terms actually differ, so a listing
+// with just one tier configured shows that figure plainly, without a
+// misleading "From" prefix implying a range that doesn't exist.
+//
+// Returns null when there is nothing comparable to show (no tiers, or only
+// a daily rate).
+function resolveCheapestComparableTerm(resolved) {
+  if (!resolved || !resolved.terms || !resolved.terms.length) return null;
+  var comparable = resolved.terms.filter(function (t) { return !t.isPerDay; });
+  if (!comparable.length) return null;
+  var cheapest = comparable[0];
+  var distinctAmounts = {};
+  for (var i = 0; i < comparable.length; i++) {
+    distinctAmounts[comparable[i].amount] = true;
+    if (comparable[i].amount < cheapest.amount) cheapest = comparable[i];
+  }
+  return { term: cheapest, hasVariance: Object.keys(distinctAmounts).length > 1 };
 }
 
 // buildLeasePricingPayload(values, basis) — the ONLY write path (rule 3),
