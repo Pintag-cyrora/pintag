@@ -428,6 +428,21 @@ async function fetchSessionData(sessionId) {
   return { uiRows: uiRows, searchRows: searchRows, listingRows: listingRows, leadEventRows: leadEventRows, leadsRows: leadsRows, propertyMap: propertyMap };
 }
 
+// The public root ("/", index.html) now 301-redirects to listings.html
+// (customer-first homepage strategy — see the Cloudflare Worker's isHome
+// branch), so a real visitor's first page in a session is 'listings.html',
+// not 'index.html' -- recognize either as the homepage entry when it's the
+// first page of the session. index.html is kept in this check for
+// historical rows and for the (should-be-rare) case the Worker fails open
+// to the unmodified origin.
+function pageMarkerDisplay(page, isFirst) {
+  var isHomeEntry = isFirst && (page === 'index.html' || page === 'listings.html');
+  return {
+    icon: isHomeEntry ? '🏠' : '📄',
+    title: (isHomeEntry ? 'Homepage opened' : 'Opened ' + page) + ' (inferred)'
+  };
+}
+
 // ── Merge into one chronological timeline ───────────────────────────
 function buildTimeline(data) {
   var ctx = { propertyMap: data.propertyMap };
@@ -475,10 +490,10 @@ function buildTimeline(data) {
     }
   });
   var merged = collapsed.concat(markers.map(function(m, idx) {
+    var display = pageMarkerDisplay(m.page, m.isFirst);
     return {
       id: 'page-marker:' + idx, ts: m.ts, table: null, category: 'page', categoryLabel: 'Page',
-      icon: (m.page === 'index.html' && m.isFirst) ? '🏠' : '📄',
-      title: ((m.page === 'index.html' && m.isFirst) ? 'Homepage opened' : 'Opened ' + m.page) + ' (inferred)',
+      icon: display.icon, title: display.title,
       subtitle: null, propertyId: null, sessionId: null, raw: null, isPageMarker: true, detailFields: []
     };
   }));

@@ -15,8 +15,11 @@
 // to patch just the <head> meta/link tags and <html lang>, streaming
 // everything else — markup, CSS, client JS — straight through untouched.
 // Real users still get the fully-functional page; only the crawler-visible
-// <head> differs, and only for /listing.html, /listings.html, and
-// /index.html (or "/") requests -- see the fetch handler below.
+// <head> differs, and only for /listing.html and /listings.html requests --
+// see the fetch handler below. "/" and /index.html are a separate, simpler
+// case: customer-first homepage strategy, they now 301-redirect straight to
+// /listings.html rather than being fetched/rewritten at all (see the isHome
+// branch below).
 //
 // DISCLOSURE: production (pintag.io) already has a Cloudflare-level setup
 // generating a WhatsApp preview for listing URLs today, per a comment found
@@ -246,6 +249,12 @@ const OG_LOCALE = { lo: 'lo_LA', en: 'en_US', zh: 'zh_CN' };
 // today (see that file's updateListingsMetaForFilters() comment), so a
 // crawler visiting a bare /listings.html request has no filter state to
 // read in the first place — only the unfiltered default applies.
+//
+// HOME_META_I18N is currently unused by the live fetch() routing below (see
+// the isHome branch: "/" and /index.html now redirect to /listings.html
+// instead of being rewritten) — kept, and still covered by its own direct
+// unit test, so index.html's OG rewriting is ready to reinstate the moment
+// the product revisits homepage strategy, without re-deriving this copy.
 const HOME_META_I18N = {
   lo: {
     title: 'Pintag — ຄົ້ນຫາອະສັງຫາລິມະຊັບທົ່ວລາວ',
@@ -672,17 +681,32 @@ export default {
       }
     }
 
-    // index.html (including a bare "/" request) and listings.html: no
-    // per-property data needed, just the resolved language's static
-    // trilingual copy — but still worth guarding with the same
-    // never-break-the-real-page try/catch as the listing.html path.
+    // Customer-first homepage strategy: "/" and "/index.html" now redirect
+    // straight to "/listings.html", preserving the full query string
+    // (?lang=, filters, anything else a visitor arrived with) untouched. A
+    // real HTTP 301 — not a client-side redirect — gives crawlers, social
+    // previewers, and browsers all correct, link-equity-preserving
+    // semantics, and this branch never needs to fetch origin at all.
+    // index.html itself is left completely unchanged in the repo (dormant,
+    // not deleted, not rewritten) for whenever the product revisits giving
+    // agents/sellers homepage prominence, e.g. once agent login ships.
+    // MAINTENANCE_MODE is checked above this block, so a maintenance
+    // window still returns the 503 here rather than redirecting into a
+    // (also 503'd) listings page — this branch is unreached in that case.
     const isHome = path === '/' || path === '/index.html' || path.endsWith('/index.html');
+    if (isHome) {
+      return withSecurityHeaders(Response.redirect(`https://pintag.io/listings.html${url.search}`, 301));
+    }
+
+    // listings.html: no per-property data needed, just the resolved
+    // language's static trilingual copy — but still worth guarding with the
+    // same never-break-the-real-page try/catch as the listing.html path.
     const isListings = path === '/listings.html' || path.endsWith('/listings.html');
-    if (isHome || isListings) {
+    if (isListings) {
       const origin = await fetch(request);
       const lang = resolveLang(url.searchParams.get('lang'));
       try {
-        return withSecurityHeaders(withNoStore(await rewriteGenericHead(origin, lang, isHome ? HOME_META_I18N : LISTINGS_META_I18N)));
+        return withSecurityHeaders(withNoStore(await rewriteGenericHead(origin, lang, LISTINGS_META_I18N)));
       } catch (err) {
         return withSecurityHeaders(origin);
       }
