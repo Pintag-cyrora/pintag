@@ -13,8 +13,18 @@
 <title>Pintag · OG Preview Generator</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Noto+Sans+Lao:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+/* Phetsarath -- self-hosted Lao display font (SIL OFL 1.1; copyright
+   Ministry of Posts and Telecommunications, Laos; designer Danh Hong --
+   see fonts/OFL.txt for the full license text and required notice).
+   Inserted into the EXISTING DM Sans / Noto Sans Lao / Noto Sans SC
+   stack below, never replacing it: CSS font-family fallback is per-glyph,
+   so Latin/Chinese text keeps resolving to DM Sans/Noto Sans SC exactly
+   as before -- only Lao codepoints (which DM Sans has no glyphs for) now
+   fall through to this font before reaching Noto Sans Lao. */
+@font-face{font-family:'Phetsarath';src:url('fonts/phetsarath-regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap;}
+@font-face{font-family:'Phetsarath';src:url('fonts/phetsarath-bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap;}
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;background:#111C1C;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:20px;padding:32px 16px;}
+body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;background:#111C1C;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:20px;padding:32px 16px;}
 canvas{max-width:100%;border-radius:6px;box-shadow:0 24px 80px rgba(0,0,0,0.6);}
 .actions{display:flex;gap:12px;align-items:center;}
 .btn{padding:11px 28px;background:#2D8C8C;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background 0.15s;}

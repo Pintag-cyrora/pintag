@@ -17,6 +17,16 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
+/* Phetsarath -- self-hosted Lao display font (SIL OFL 1.1; copyright
+   Ministry of Posts and Telecommunications, Laos; designer Danh Hong --
+   see fonts/OFL.txt for the full license text and required notice).
+   Inserted into the EXISTING DM Sans / Noto Sans Lao / Noto Sans SC
+   stack below, never replacing it: CSS font-family fallback is per-glyph,
+   so Latin/Chinese text keeps resolving to DM Sans/Noto Sans SC exactly
+   as before -- only Lao codepoints (which DM Sans has no glyphs for) now
+   fall through to this font before reaching Noto Sans Lao. */
+@font-face{font-family:'Phetsarath';src:url('fonts/phetsarath-regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap;}
+@font-face{font-family:'Phetsarath';src:url('fonts/phetsarath-bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap;}
 
 *{
   margin:0;
@@ -67,7 +77,7 @@
 </div>
 body{
   background:var(--bg);
-  font-family:"Noto Sans Lao",sans-serif;
+  font-family:"Phetsarath","Noto Sans Lao",sans-serif;
   color:var(--text);
   -webkit-font-smoothing:antialiased;
 }
@@ -135,7 +145,7 @@ body{
 .rt-row .form-label{display:block;margin-bottom:10px;font-size:15px;font-weight:600;}
 .rt-row select,.rt-row input[type=text],.rt-row input[type=number]{
   border:1px solid var(--line);background:#fff;border-radius:18px;
-  padding:14px;font-size:15px;font-family:"Noto Sans Lao",sans-serif;outline:none;
+  padding:14px;font-size:15px;font-family:"Phetsarath","Noto Sans Lao",sans-serif;outline:none;
 }
 .rt-field-money,.rt-field-utility{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
 .rt-field-included-amount{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:center;}
@@ -156,7 +166,7 @@ body{
   border-radius:18px;
   padding:16px;
   font-size:16px;
-  font-family:"Noto Sans Lao",sans-serif;
+  font-family:"Phetsarath","Noto Sans Lao",sans-serif;
   outline:none;
 }
 
@@ -212,7 +222,7 @@ body{
   border-radius:18px;
   padding:18px;
   font-size:16px;
-  font-family:"Noto Sans Lao",sans-serif;
+  font-family:"Phetsarath","Noto Sans Lao",sans-serif;
   font-weight:700;
   cursor:pointer;
 }
