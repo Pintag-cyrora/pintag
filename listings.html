@@ -42,6 +42,16 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <style>
+/* Phetsarath -- self-hosted Lao display font (SIL OFL 1.1; copyright
+   Ministry of Posts and Telecommunications, Laos; designer Danh Hong --
+   see fonts/OFL.txt for the full license text and required notice).
+   Inserted into the EXISTING DM Sans / Noto Sans Lao / Noto Sans SC
+   stack below, never replacing it: CSS font-family fallback is per-glyph,
+   so Latin/Chinese text keeps resolving to DM Sans/Noto Sans SC exactly
+   as before -- only Lao codepoints (which DM Sans has no glyphs for) now
+   fall through to this font before reaching Noto Sans Lao. */
+@font-face{font-family:'Phetsarath';src:url('fonts/phetsarath-regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap;}
+@font-face{font-family:'Phetsarath';src:url('fonts/phetsarath-bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap;}
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
   --teal:#2D8C8C;--teal-light:#38A8A8;--teal-mark:rgba(45,140,140,0.18);
@@ -53,7 +63,7 @@
 
 /* ─── BODY — topographic atmosphere ─────────────────────────────────── */
 body{
-  font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;font-weight:400;font-size:14px;line-height:1.7;
+  font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;font-weight:400;font-size:14px;line-height:1.7;
   background-color:var(--warm);
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='500'%3E%3Cpath d='M0 40C200 30 600 50 800 40M0 110C200 100 600 120 800 110M0 180C200 170 600 190 800 180M0 250C200 240 600 260 800 250M0 320C200 310 600 330 800 320M0 390C200 380 600 400 800 390M0 460C200 450 600 470 800 460' fill='none' stroke='%231A2024' stroke-width='0.4' stroke-opacity='0.032'/%3E%3C/svg%3E");
   background-repeat:repeat;background-size:800px 500px;
@@ -81,7 +91,7 @@ nav{
 .nav-wordmark{font-size:16px;font-weight:500;color:var(--ink);letter-spacing:-0.01em;}
 .nav-right{display:flex;align-items:center;gap:10px;}
 .lang-switcher{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;}
-.lang-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;letter-spacing:0.02em;}
+.lang-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;letter-spacing:0.02em;}
 .lang-btn.active{background:var(--ink);color:#fff;}
 .nav-home{font-size:12px;font-weight:400;color:var(--ink-muted);text-decoration:none;letter-spacing:0.03em;}
 .nav-home:hover{color:var(--teal);}
@@ -138,7 +148,7 @@ nav{
   flex:1;font-size:13px;font-weight:500;padding:11px 16px;
   border-radius:3px;
   border:1px solid var(--border-mid);background:var(--white);color:var(--ink-soft);
-  cursor:pointer;transition:all 0.2s;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;
+  cursor:pointer;transition:all 0.2s;font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;
   letter-spacing:0.01em;text-align:center;
 }
 .tx-btn.active{background:var(--teal);color:#fff;border-color:var(--teal);box-shadow:0 2px 10px rgba(45,140,140,0.25);}
@@ -164,7 +174,7 @@ nav{
   border-radius:2px;
   border:1px solid var(--border);background:transparent;color:var(--ink-muted);
   cursor:pointer;white-space:nowrap;transition:all 0.2s;
-  font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;flex-shrink:0;letter-spacing:0.02em;
+  font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;flex-shrink:0;letter-spacing:0.02em;
 }
 .filter-btn.active{background:var(--ink);color:#fff;border-color:var(--ink);}
 .filter-btn:hover:not(.active){background:rgba(26,32,36,0.04);border-color:rgba(26,32,36,0.15);}
@@ -183,7 +193,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 /* All Listings / Available Only — a visible status toggle in its own
    control, not a pill buried inside .filters. */
 .avail-toggle{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;flex-shrink:0;}
-.avail-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;white-space:nowrap;letter-spacing:0.02em;}
+.avail-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;white-space:nowrap;letter-spacing:0.02em;}
 .avail-btn.active{background:var(--ink);color:#fff;}
 .avail-btn:hover:not(.active){background:rgba(26,32,36,0.06);}
 
@@ -197,7 +207,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
   border-radius:2px;display:inline-flex;align-items:center;gap:4px;
   border:1px solid var(--border);background:transparent;color:var(--ink-muted);
   cursor:pointer;white-space:nowrap;transition:all 0.2s;
-  font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;letter-spacing:0.02em;
+  font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;letter-spacing:0.02em;
 }
 .rf-btn.active{background:var(--teal);color:#fff;border-color:var(--teal);}
 .rf-btn:hover:not(.active){background:rgba(45,140,140,0.06);border-color:rgba(45,140,140,0.28);}
@@ -205,7 +215,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
   font-size:11px;font-weight:400;padding:5px 24px 5px 10px;
   border-radius:2px;
   border:1px solid var(--border);background:transparent;color:var(--ink-muted);
-  cursor:pointer;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;flex-shrink:0;
+  cursor:pointer;font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;flex-shrink:0;
   appearance:none;-webkit-appearance:none;letter-spacing:0.02em;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238C9598' stroke-width='1.5'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:right 9px center;
@@ -308,7 +318,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 
 /* ── VIEW TOGGLE ──────────────────────────────────── */
 .view-toggle{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;flex-shrink:0;margin-left:8px;}
-.vt-btn{font-size:11px;font-weight:400;padding:4px 12px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;display:flex;align-items:center;gap:5px;letter-spacing:0.02em;}
+.vt-btn{font-size:11px;font-weight:400;padding:4px 12px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;display:flex;align-items:center;gap:5px;letter-spacing:0.02em;}
 .vt-btn.active{background:var(--ink);color:#fff;}
 .vt-btn:hover:not(.active){background:rgba(26,32,36,0.06);}
 
@@ -325,13 +335,13 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 .pt-cluster{background:var(--teal,#0f766e);color:#fff;border-radius:999px;font-weight:600;
   display:flex;align-items:center;justify-content:center;box-shadow:0 1px 6px rgba(0,0,0,.3);
   font-family:'DM Sans',sans-serif;}
-.leaflet-container{font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif!important;}
+.leaflet-container{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif!important;}
 
 /* ── PRICE BUBBLES ────────────────────────────────── */
 .price-bubble{
   background:var(--white);border:1.5px solid rgba(26,32,36,0.18);border-radius:20px;
   padding:5px 10px;font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;
-  box-shadow:0 2px 8px rgba(0,0,0,0.10);cursor:pointer;font-family:'DM Sans','Noto Sans Lao','Noto Sans SC',sans-serif;
+  box-shadow:0 2px 8px rgba(0,0,0,0.10);cursor:pointer;font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;
   transition:background 0.15s,color 0.15s,box-shadow 0.15s,transform 0.15s;user-select:none;
 }
 .price-bubble:hover{background:var(--ink);color:#fff;border-color:transparent;box-shadow:0 4px 16px rgba(0,0,0,0.20);transform:scale(1.07);}

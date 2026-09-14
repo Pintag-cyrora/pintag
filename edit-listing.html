@@ -17,6 +17,16 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
+/* Phetsarath -- self-hosted Lao display font (SIL OFL 1.1; copyright
+   Ministry of Posts and Telecommunications, Laos; designer Danh Hong --
+   see fonts/OFL.txt for the full license text and required notice).
+   Inserted into the EXISTING DM Sans / Noto Sans Lao / Noto Sans SC
+   stack below, never replacing it: CSS font-family fallback is per-glyph,
+   so Latin/Chinese text keeps resolving to DM Sans/Noto Sans SC exactly
+   as before -- only Lao codepoints (which DM Sans has no glyphs for) now
+   fall through to this font before reaching Noto Sans Lao. */
+@font-face{font-family:'Phetsarath';src:url('fonts/phetsarath-regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap;}
+@font-face{font-family:'Phetsarath';src:url('fonts/phetsarath-bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap;}
 
 *{
   margin:0;
@@ -36,7 +46,7 @@
 }
 
 body{
-  font-family:'Noto Sans Lao',sans-serif;
+  font-family:'Phetsarath','Noto Sans Lao',sans-serif;
   background:var(--bg);
   color:var(--text);
   padding:24px 16px 120px;
