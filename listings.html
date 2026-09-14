@@ -93,8 +93,18 @@ nav{
 .lang-switcher{display:flex;gap:2px;background:rgba(26,32,36,0.05);border:1px solid var(--border);border-radius:3px;padding:3px;}
 .lang-btn{font-size:11px;font-weight:400;padding:4px 10px;border:none;background:transparent;color:var(--ink-muted);cursor:pointer;border-radius:2px;transition:all 0.2s;font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;letter-spacing:0.02em;}
 .lang-btn.active{background:var(--ink);color:#fff;}
-.nav-home{font-size:12px;font-weight:400;color:var(--ink-muted);text-decoration:none;letter-spacing:0.03em;}
-.nav-home:hover{color:var(--teal);}
+
+/* ─── FOOTER ─────────────────────────────────────────────────────────────
+   listings.html is now the public entry page (see the Cloudflare Worker's
+   "/" -> "/listings.html" redirect), so agent/seller functionality is no
+   longer reachable via index.html's nav from here. This single small
+   footer link is the one remaining discoverable path -- deliberately not a
+   primary CTA (no nav placement, no visual weight), per the product
+   decision to keep the public root customer-first for now. */
+.pt-footer{padding:16px 48px;border-top:1px solid var(--border);display:flex;justify-content:center;}
+.pt-footer-link{font-size:11.5px;color:var(--ink-muted);text-decoration:none;letter-spacing:0.02em;}
+.pt-footer-link:hover{color:var(--teal);}
+@media(max-width:700px){.pt-footer{padding:14px 16px;}}
 
 /* ─── PAGE HEADER ────────────────────────────────────────────────────── */
 .page-header{background:var(--white);border-bottom:1px solid var(--border);padding:36px 48px 0;}
@@ -400,7 +410,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 <body>
 
 <nav>
-  <a href="index.html" class="nav-logo">
+  <a href="/" class="nav-logo">
     <svg width="26" height="22" viewBox="0 0 46 38" fill="none" shape-rendering="geometricPrecision">
       <circle cx="11" cy="10" r="8.5" fill="#38A8A8"/>
       <circle cx="27" cy="14" r="3.5" fill="#1C2B32"/>
@@ -413,7 +423,6 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
       <button class="lang-btn" data-lang="en" onclick="setLang('en',this)">EN</button>
       <button class="lang-btn" data-lang="zh" onclick="setLang('zh',this)">中文</button>
     </div>
-    <a href="index.html" class="nav-home">← <span class="lo-i">ໜ້າຫຼັກ</span><span class="en-i">Home</span><span class="zh-i">首页</span></a>
   </div>
 </nav>
 
@@ -619,6 +628,14 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
     <div class="pt-card" aria-hidden="true"><div class="pt-card-img pt-loading"></div><div class="pt-card-body"><div class="pt-skel-line" style="width:40%"></div><div class="pt-skel-line" style="width:84%"></div><div class="pt-skel-line" style="width:62%"></div></div></div>
   </div>
 </div>
+
+<footer class="pt-footer">
+  <a href="for-agents.html" class="pt-footer-link" data-track="footer-for-agents-link" data-track-type="cta" data-track-label="Footer — For Agents">
+    <span class="lo-i">ສຳລັບຕົວແທນ</span>
+    <span class="en-i">For Agents</span>
+    <span class="zh-i">经纪人</span>
+  </a>
+</footer>
 
 <script src="config.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>

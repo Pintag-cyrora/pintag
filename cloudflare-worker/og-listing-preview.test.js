@@ -44,7 +44,7 @@ import { FakeHTMLRewriter } from './test/html-rewriter-polyfill.js';
 // static import above still works correctly.
 globalThis.HTMLRewriter = FakeHTMLRewriter;
 
-import {
+import ogWorker, {
   resolveLang,
   buildOgFields,
   rewriteListingHead,
@@ -334,6 +334,147 @@ test('withNoStore: forces Cache-Control: no-store, preserving status/body/other 
   assert.equal(out.status, 200);
   assert.equal(out.headers.get('content-type'), 'text/html');
   assert.equal(out.headers.get('cache-control'), 'no-store');
+});
+
+// ── Customer-first homepage redirect ("/" and "/index.html" -> /listings.html) ──
+// These exercise the REAL default-exported fetch() handler end-to-end
+// (unlike the tests above, which call rewriteListingHead()/
+// rewriteGenericHead() directly), since the redirect and maintenance-mode
+// short-circuits live in fetch() itself, before any HTMLRewriter step. Both
+// only ever touch real Request/Response objects (never HTMLRewriter), so
+// they don't need the FakeHTMLRewriter polyfill and can call ogWorker.fetch()
+// directly.
+function fakeCtx() { return {}; }
+
+test('fetch(): "/" redirects 301 to /listings.html with no query string', async () => {
+  const res = await ogWorker.fetch(new Request('https://pintag.io/'), {}, fakeCtx());
+  assert.equal(res.status, 301);
+  assert.equal(res.headers.get('location'), 'https://pintag.io/listings.html');
+});
+
+test('fetch(): "/index.html" redirects 301 to /listings.html with no query string', async () => {
+  const res = await ogWorker.fetch(new Request('https://pintag.io/index.html'), {}, fakeCtx());
+  assert.equal(res.status, 301);
+  assert.equal(res.headers.get('location'), 'https://pintag.io/listings.html');
+});
+
+test('fetch(): "/" and "/index.html" redirects preserve ?lang=lo/en/zh exactly', async () => {
+  for (const p of ['/', '/index.html']) {
+    for (const lang of ['lo', 'en', 'zh']) {
+      const res = await ogWorker.fetch(new Request(`https://pintag.io${p}?lang=${lang}`), {}, fakeCtx());
+      assert.equal(res.status, 301, `${p}?lang=${lang}`);
+      assert.equal(res.headers.get('location'), `https://pintag.io/listings.html?lang=${lang}`, `${p}?lang=${lang}`);
+    }
+  }
+});
+
+test('fetch(): redirect preserves a full listing-filter query string exactly, byte for byte, param order included', async () => {
+  const qs = '?lang=en&tx=for_rent&type=apartment&beds=2&price=500-1000&district=Sisattanak&sort=newest';
+  const resRoot = await ogWorker.fetch(new Request(`https://pintag.io/${qs}`), {}, fakeCtx());
+  assert.equal(resRoot.status, 301);
+  assert.equal(resRoot.headers.get('location'), `https://pintag.io/listings.html${qs}`);
+
+  const resIndex = await ogWorker.fetch(new Request(`https://pintag.io/index.html${qs}`), {}, fakeCtx());
+  assert.equal(resIndex.status, 301);
+  assert.equal(resIndex.headers.get('location'), `https://pintag.io/listings.html${qs}`);
+});
+
+test('fetch(): the redirect response still carries the shared SECURITY_HEADERS, not just plain pass-through responses', async () => {
+  const res = await ogWorker.fetch(new Request('https://pintag.io/'), {}, fakeCtx());
+  assert.equal(res.headers.get('x-frame-options'), 'DENY');
+  assert.equal(res.headers.get('strict-transport-security'), 'max-age=31536000; includeSubDomains; preload');
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+});
+
+test('fetch(): the isHome redirect branch never fetches origin (no network call for "/" or "/index.html")', async () => {
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async (...args) => { called = true; return originalFetch(...args); };
+  try {
+    await ogWorker.fetch(new Request('https://pintag.io/?lang=en'), {}, fakeCtx());
+    await ogWorker.fetch(new Request('https://pintag.io/index.html'), {}, fakeCtx());
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(called, false, 'fetch(request) must not be called for the isHome redirect branch');
+});
+
+// ── Existing fail-open behavior on other routes, unaffected by the redirect change ──
+test('fetch(): "/listing.html" with no slug still falls open to the unmodified origin response (existing behavior, untouched by the homepage redirect)', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('<html>real origin, no slug</html>', {
+    status: 200,
+    headers: { 'content-type': 'text/html' },
+  });
+  try {
+    const res = await ogWorker.fetch(new Request('https://pintag.io/listing.html'), {}, fakeCtx());
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), '<html>real origin, no slug</html>');
+    assert.equal(res.headers.get('x-frame-options'), 'DENY'); // still security-headered
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('fetch(): an unrelated path (static asset) still passes straight through with security headers, unaffected by the redirect/maintenance changes', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('body{color:red}', {
+    status: 200,
+    headers: { 'content-type': 'text/css' },
+  });
+  try {
+    const res = await ogWorker.fetch(new Request('https://pintag.io/shared-components.css'), {}, fakeCtx());
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), 'body{color:red}');
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ── MAINTENANCE_MODE still 503s "/" and "/index.html" instead of redirecting ──
+// MAINTENANCE_MODE is a hardcoded module-level `const` (deliberately -- see
+// its own comment in og-listing-preview.js: flipping it is a one-line,
+// reviewable commit, not an env var toggle), so it can't be flipped on the
+// already-imported module from outside. To actually exercise the
+// MAINTENANCE_MODE=true branch against the REAL shipped source (not a
+// reimplementation of the check), this loads a second, independent instance
+// of the module with just that one literal patched -- same "test the real
+// extracted source" discipline as xss-inline-handlers.test.js's extractFn(),
+// applied at module granularity instead of function granularity.
+async function loadWorkerWithMaintenanceMode(enabled) {
+  const src = fs.readFileSync(path.join(__dirname, 'og-listing-preview.js'), 'utf8');
+  const marker = 'const MAINTENANCE_MODE = false;';
+  assert.ok(src.includes(marker), 'MAINTENANCE_MODE flag not found in its expected literal form -- update this test helper to match');
+  const patched = src.replace(marker, `const MAINTENANCE_MODE = ${enabled};`);
+  const mod = await import('data:text/javascript,' + encodeURIComponent(patched));
+  return mod.default;
+}
+
+test('fetch(): MAINTENANCE_MODE=true returns 503 (noindex,nofollow) for "/" and "/index.html" instead of redirecting to /listings.html', async () => {
+  const worker = await loadWorkerWithMaintenanceMode(true);
+  for (const p of ['/', '/index.html']) {
+    const res = await worker.fetch(new Request(`https://pintag.io${p}?lang=en`), {}, fakeCtx());
+    assert.equal(res.status, 503, p);
+    assert.notEqual(res.headers.get('location'), 'https://pintag.io/listings.html', p);
+    const body = await res.text();
+    assert.match(body, /noindex,nofollow/, p);
+  }
+});
+
+test('fetch(): MAINTENANCE_MODE=true still 503s /listings.html and /listing.html too (the whole public-browsing surface, unchanged by this feature)', async () => {
+  const worker = await loadWorkerWithMaintenanceMode(true);
+  for (const p of ['/listings.html', '/listing.html?slug=x']) {
+    const res = await worker.fetch(new Request(`https://pintag.io${p}`), {}, fakeCtx());
+    assert.equal(res.status, 503, p);
+  }
+});
+
+test('fetch(): MAINTENANCE_MODE=false (the currently shipped state) redirects "/" normally -- confirms the flag genuinely gates the 503, not a hardcoded response', async () => {
+  const worker = await loadWorkerWithMaintenanceMode(false);
+  const res = await worker.fetch(new Request('https://pintag.io/'), {}, fakeCtx());
+  assert.equal(res.status, 301);
+  assert.equal(res.headers.get('location'), 'https://pintag.io/listings.html');
 });
 
 function escapeRe(s) {
