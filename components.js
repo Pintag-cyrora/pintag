@@ -840,7 +840,8 @@ function ptResolveUnitPriceVariance(property) {
 
 // ptResolveSortPrice(property) -- the numeric price key for SORTING and
 // PRICE-BAND FILTERING, resolved through the same precedence the card uses:
-// structured property column -> cheapest unit type -> legacy display text.
+// structured property column -> cheapest unit type -> cheapest comparable
+// lease term -> legacy display text.
 //
 // The unit-type step matters for rows saved by an admin build that predates
 // the _utPriceEntries() fix, which nulled properties.price_amount whenever
@@ -857,6 +858,17 @@ function ptResolveSortPrice(property, parseLegacy) {
   var unit = ptResolveUnitTypesPriceEntry(property, 'en');
   if (unit && unit.amount != null) {
     return { amount: unit.amount, currency: unit.currency || null };
+  }
+  // Same lease-term fallback as formatPropertyPrice()'s display-time
+  // headline (rule 3 in lease-pricing.js: resolveLeasePricing() is the only
+  // reader of the raw columns) -- a listing priced only via its 3/6/12-month
+  // tiers must sort/filter by that same cheapest tier, not as priceless.
+  if (typeof resolveLeasePricing === 'function') {
+    var leaseResolved = resolveLeasePricing(property, null);
+    if (leaseResolved.hasTiers) {
+      var cheapestTerm = resolveCheapestComparableTerm(leaseResolved);
+      if (cheapestTerm) return { amount: cheapestTerm.term.amount, currency: leaseResolved.currency || null };
+    }
   }
   if (typeof parseLegacy === 'function') {
     var legacy = parseLegacy(property.price_display);
@@ -928,6 +940,32 @@ function formatPropertyPrice(property, lang) {
         isSor: false, singleText: unitText, unitText: null, isPriceOnRequest: false, priceSource: 'unit_type',
         fromLabel: fallbackVariance ? PT_FROM_PRICE_PREFIX[lang] || PT_FROM_PRICE_PREFIX.en : null
       };
+    }
+    // NEXT LAST RESORT: the listing may be priced only via its 3/6/12-month
+    // lease terms (lease-pricing.js), with no base rent at all -- customer-
+    // first presentation shows the cheapest comparable tier ("From $X") here
+    // rather than falsely claiming no price exists; the full 3/6/12-month
+    // breakdown still renders separately wherever a page already shows it
+    // (see resolveLeasePricing()/buildLeasePricingLines() call sites), this
+    // only supplies a real HEADLINE price instead of "Price on request".
+    // Feature-detected: components.js also runs on pages that never load
+    // lease-pricing.js, where this is simply skipped, unchanged from before.
+    // resolveLeasePricing() is that file's only public read API (rule 3) --
+    // this never reads rent_price_3mo/6mo/12mo directly.
+    if (typeof resolveLeasePricing === 'function') {
+      var leaseResolved = resolveLeasePricing(property, null);
+      if (leaseResolved.hasTiers) {
+        var cheapestTerm = resolveCheapestComparableTerm(leaseResolved);
+        if (cheapestTerm) {
+          var leaseText = formatLeaseTermAmount(cheapestTerm.term, leaseResolved.currency, lang);
+          if (leaseText) {
+            return {
+              isSor: false, singleText: leaseText, unitText: null, isPriceOnRequest: false, priceSource: 'lease_tier',
+              fromLabel: cheapestTerm.hasVariance ? (PT_FROM_PRICE_PREFIX[lang] || PT_FROM_PRICE_PREFIX.en) : null
+            };
+          }
+        }
+      }
     }
     return { isSor: false, singleText: null, isPriceOnRequest: true, requestText: PT_PRICE_ON_REQUEST[lang] };
   }
