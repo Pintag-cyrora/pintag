@@ -166,6 +166,32 @@ env:
   #     production — admin.html's save path sends province_en/_lo/_zh, and
   #     PostgREST rejects an unknown column with PGRST204, which would break
   #     saving ANY listing.
+  # 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql — reviewed
+  # and authorized deliberately (PR #92). Privileges only, no schema/data change:
+  #   * Revokes the implicit default-to-PUBLIC EXECUTE grant (same root cause
+  #     20260818000000 fixed for five other functions) from two functions
+  #     confirmed reachable by anon in production: _ops_raise_alert() and
+  #     pintag_sync_property_images(). Grants authenticated back explicitly, so
+  #     that role's access is unchanged. No function body, RLS policy, or any
+  #     other function's grants are touched.
+  #   * Neither function has an internal identity check by design — both are
+  #     meant to be called only from inside their own SECURITY DEFINER trigger
+  #     functions, never directly by a client. A repository-wide search of
+  #     every .rpc() call site found zero legitimate direct callers.
+  #   * REVOKE/GRANT are idempotent by construction (a privilege that is
+  #     already absent/held stays that way), and each statement is wrapped in
+  #     DO ... EXCEPTION WHEN undefined_function, so a database missing either
+  #     function (e.g. dev) is skipped rather than aborting.
+  #   * Validated against a throwaway PostgreSQL 16 cluster seeded with both
+  #     functions' real pre-fix bodies plus all three real trigger functions
+  #     that call them (tests/security/regression/run-ops-alert-and-image-
+  #     sync-pg.sh): anon denied direct EXECUTE on both (17 assertions, all
+  #     pass), authenticated confirmed preserved, and — the point of the
+  #     validation — all three trigger chains (mass-delete guard, mass-
+  #     soft-delete alert, image-registry sync) still fire correctly under a
+  #     non-owner role afterward, because a SECURITY DEFINER function's
+  #     internal calls run as its OWNER, unaffected by a revoke naming a
+  #     different role. Migration applies cleanly twice (idempotency).
   EXPECTED_MIGRATIONS: |
     20260813000000
     20260817000000
@@ -176,7 +202,8 @@ env:
     20260820000000
     20260822000000
     20260823000000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql'
+    20260915000000
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
