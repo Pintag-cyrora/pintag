@@ -166,6 +166,66 @@ env:
   #     production — admin.html's save path sends province_en/_lo/_zh, and
   #     PostgREST rejects an unknown column with PGRST204, which would break
   #     saving ANY listing.
+  # 20260901000000_protect_pending_contact_sentinel.sql — reviewed and
+  # authorized deliberately. Why it is safe:
+  #   * Adds one BEFORE UPDATE trigger on contacts (plain plpgsql, not
+  #     SECURITY DEFINER) that rejects any UPDATE targeting the shared
+  #     PENDING sentinel contact row. It does not touch INSERT or DELETE, so
+  #     the seed (ON CONFLICT DO NOTHING) and admin.html's self-heal keep
+  #     working unchanged. No table, column, view, policy, or grant is
+  #     created or altered.
+  #   * No production data is written by this migration — it only ever
+  #     REJECTS a future UPDATE statement; it performs none itself.
+  #   * Validated against a scratch database:
+  #     tests/db/pending-contact-sentinel.test.sql (7 assertions — sentinel
+  #     insertable, repeated seed is a no-op, a direct UPDATE of the
+  #     sentinel is rejected, a single-column UPDATE is rejected, the
+  #     sentinel's content is unchanged after the rejected writes, an
+  #     ORDINARY contact stays fully editable, and a bulk UPDATE that would
+  #     have swept the sentinel in is rejected as a whole statement).
+  #   * This is a defense-in-depth backstop underneath an already-shipped
+  #     application-level fix in admin.html's saveListing() — applying it
+  #     closes the DB-layer gap the 2026-09-01 data-integrity audit found.
+  # 20260905000000_intelligence_customer_intent.sql — reviewed and
+  # authorized deliberately. Why it is safe:
+  #   * CREATE OR REPLACE on two EXISTING, already anon-reachable functions —
+  #     point_in_time_supply_snapshot() (adds an active_inventory.by_segment
+  #     breakdown) and intelligence_daily_metrics() (adds
+  #     customer_intent_segments and journey_join to its output). No new
+  #     table or column; no RLS policy or grant is touched. CREATE OR
+  #     REPLACE FUNCTION does not reset a function's existing privileges, so
+  #     this migration cannot change who can call either function — only
+  #     what they compute when called.
+  #   * Both functions are LANGUAGE sql STABLE — pure read/aggregation
+  #     queries. Zero INSERT/UPDATE/DELETE anywhere in the file.
+  #   * MUST be applied for the already-deployed generate-intelligence-report
+  #     edge function to work correctly — demand-supply-detector.js and
+  #     listing-performance-detector.js already read customer_intent_segments
+  #     / journey_join off daily_metrics_snapshot.metrics (shipped in
+  #     "feat: add customer intent intelligence v2"), so until this is
+  #     applied that already-live code is reading fields production does not
+  #     yet compute.
+  #   * MUST be applied BEFORE 20260912000000 below — see that entry.
+  # 20260912000000_intelligence_bedroom_intent.sql — reviewed and authorized
+  # deliberately. Why it is safe:
+  #   * CREATE OR REPLACE on the SAME intelligence_daily_metrics() function
+  #     again, adding top_bedroom_count / bedroom_sample_size per customer-
+  #     intent segment. Reads search_events.bedrooms, a column that already
+  #     exists (added by 20260715010000_behavioral_events.sql, long before
+  #     this migration) and is already populated by listings.html's Bedroom
+  #     Count filter. No new table/column/policy/grant; same LANGUAGE sql
+  #     STABLE, zero-write shape as 20260905000000.
+  #   * TIMESTAMP ORDER MUST BE PRESERVED: this file's body is the complete,
+  #     self-contained function definition (a superset of 20260905000000's),
+  #     but it is described as extending "customer_intent_segments (added by
+  #     20260905000000)" and both are pending together in this same batch.
+  #     `supabase db push` applies migrations in timestamp order, so
+  #     20260905000000 MUST be applied first (901 → 905 → 912) — do not
+  #     reorder EXPECTED_MIGRATIONS or apply these out of sequence.
+  #   * Same "already-deployed code depends on this" situation as
+  #     20260905000000 — the same edge function already reads
+  #     top_bedroom_count/bedroom_sample_size (shipped in "feat: add bedroom
+  #     intent to intelligence report").
   # 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql — reviewed
   # and authorized deliberately (PR #92). Privileges only, no schema/data change:
   #   * Revokes the implicit default-to-PUBLIC EXECUTE grant (same root cause
@@ -202,8 +262,11 @@ env:
     20260820000000
     20260822000000
     20260823000000
+    20260901000000
+    20260905000000
+    20260912000000
     20260915000000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql'
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
