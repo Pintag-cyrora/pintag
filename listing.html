@@ -141,6 +141,15 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .price-lak{font-size:11px;color:var(--ink-muted);margin-top:4px;font-variant-numeric:tabular-nums;}
 .price-deposit{font-size:13px;color:var(--ink-muted);margin-top:6px;}
 .price-inquire{font-size:14px;font-weight:400;color:var(--ink-muted);}
+/* Lease-term breakdown — moved to sit directly under .price-block (was a
+   secondary block in the Overview column, far down the page). Display-only:
+   no selector/dropdown/click action, purely explains what the headline
+   price (the cheapest tier, see components.js formatPropertyPrice()) is
+   quoted against. Deliberately tight spacing and no divider/border, unlike
+   .amenity-row's default treatment elsewhere on this page, so it reads as
+   part of the price block rather than a distant standalone section. */
+.hero-lease-pricing{margin:10px 0 20px;display:flex;flex-direction:column;gap:4px;}
+.hero-lease-pricing-line{font-size:13px;color:var(--ink-muted);line-height:1.5;}
 /* Shown ALONGSIDE the price (never replacing it) for a sold/rented/reserved/
    fully-occupied/off-market listing -- the original asking price stays the
    headline number, this is a secondary line explaining why it's no longer
@@ -445,33 +454,37 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
   .hero-section{grid-template-columns:1fr;min-height:auto;}
   .hero-right,.desktop-gallery{display:none;}
   .mobile-gallery{display:block;}
-  /* Mobile info hierarchy: Price, then Title, then the Location/Map
-     section, then the remaining Facts — reordered from desktop's
-     Title-first reading order via flex `order`, scoped to this breakpoint
-     only. Every child keeps the exact same markup/desktop styling; only
-     their visual sequence changes here. .hero-map-section sits at order:6,
-     directly after .info-title (order:5), so the map is the first thing a
-     mobile visitor sees after the title — never pushed below price/specs/
-     CTAs, which is why it lives inside this same reordered flex column
-     rather than as a plain sibling after .hero-section (a sibling there
-     would land after ALL of this column's content, order values only
-     reorder children within their own flex container). */
+  /* Mobile info hierarchy: Price, then its lease-term breakdown, then
+     Title, then the Location/Map section, then the remaining Facts —
+     reordered from desktop's Title-first reading order via flex `order`,
+     scoped to this breakpoint only. Every child keeps the exact same
+     markup/desktop styling; only their visual sequence changes here.
+     .hero-lease-pricing sits at order:2, directly after .price-block
+     (order:1), so the breakdown always immediately follows the price it
+     explains. .hero-map-section sits at order:7, directly after
+     .info-title (order:6), so the map is the first thing a mobile visitor
+     sees after the title — never pushed below price/specs/CTAs, which is
+     why both live inside this same reordered flex column rather than as a
+     plain sibling after .hero-section (a sibling there would land after
+     ALL of this column's content, order values only reorder children
+     within their own flex container). */
   .hero-left{
     padding:20px 16px 18px;border-right:none;border-bottom:1px solid var(--border-mid);
     display:flex;flex-direction:column;
   }
   .hero-left .price-block{order:1;}
-  .hero-left .hero-badges-row{order:2;}
-  .hero-left #sp-badges{order:3;}
-  .hero-left .sp-metrics-row{order:4;}
-  .hero-left .info-title{order:5;}
-  .hero-left .hero-map-section{order:6;margin-bottom:18px;}
-  .hero-left .property-highlight{order:7;}
-  .hero-left .hero-location{order:8;}
-  .hero-left .spec-grid{order:9;}
-  .hero-left .highlight-pills{order:11;}
-  .hero-left .sidebar-insight{order:12;}
-  .hero-left .left-actions{order:13;}
+  .hero-left .hero-lease-pricing{order:2;margin:8px 0 16px;}
+  .hero-left .hero-badges-row{order:3;}
+  .hero-left #sp-badges{order:4;}
+  .hero-left .sp-metrics-row{order:5;}
+  .hero-left .info-title{order:6;}
+  .hero-left .hero-map-section{order:7;margin-bottom:18px;}
+  .hero-left .property-highlight{order:8;}
+  .hero-left .hero-location{order:9;}
+  .hero-left .spec-grid{order:10;}
+  .hero-left .highlight-pills{order:12;}
+  .hero-left .sidebar-insight{order:13;}
+  .hero-left .left-actions{order:14;}
   /* Amenity icons (position 6 in the mobile hierarchy) — shown here,
      ahead of Contact/Agent/Description; the identical row still renders
      in its original desktop spot inside the Overview column (hidden below
@@ -2530,6 +2543,15 @@ function buildMockupLayout(){
   // hasTiers gates the whole block: a listing with only a flat monthly rent —
   // which is every listing that predates this feature — renders nothing at
   // all, exactly as before.
+  //
+  // Rendered directly under .price-block inside .hero-left (see the
+  // .hero-lease-pricing rule in the <style> block and the `layout`
+  // assembly below) -- display-only, no selector/dropdown/click action;
+  // purely explains what duration the headline (cheapest-tier) price is
+  // quoted against. Uses its own .hero-lease-pricing/-line classes, not
+  // .amenity-row/.amenity-item (still used by rentalTermsHtml above, which
+  // stays in the Overview column), so its spacing reads as part of the
+  // price block rather than a distant standalone section.
   var leasePricingHtml='';
   if(typeof resolveLeasePricing==='function'){
     var _lpResolved=resolveLeasePricing(data,selectedUnit?selectedUnit.raw:null);
@@ -2537,9 +2559,9 @@ function buildMockupLayout(){
       var _lpLines=buildLeasePricingLines(_lpResolved,lang);
       if(_lpLines.length){
         leasePricingHtml=(
-          '<div class="amenity-row" data-track="lease-pricing-section" data-track-type="section" data-track-label="Lease-term pricing section" style="flex-direction:column;align-items:flex-start;gap:8px;">'+
-          '<span class="section-label" style="margin:0;">'+esc(L.leaseTermPricing[lang])+'</span>'+
-          _lpLines.map(function(line){return '<div class="amenity-item" style="width:100%;">'+esc(line)+'</div>';}).join('')+
+          '<div class="hero-lease-pricing" data-track="lease-pricing-section" data-track-type="section" data-track-label="Lease-term pricing section">'+
+          '<span class="section-label" style="margin:0 0 8px;">'+esc(L.leaseTermPricing[lang])+'</span>'+
+          _lpLines.map(function(line){return '<div class="hero-lease-pricing-line">'+esc(line)+'</div>';}).join('')+
           '</div>'
         );
       }
@@ -2867,13 +2889,15 @@ function buildMockupLayout(){
     lang
   );
 
+  // leasePricingHtml is NOT included here -- it now renders directly under
+  // .price-block inside .hero-left (see the `layout` assembly below), not
+  // in this Overview column. Built above regardless of where it lands.
   var overviewColHtml=(
     '<div>'+
     '<span class="section-label">'+L.overview[lang]+'</span>'+
     '<p class="body-narrative">'+resolvedDesc+'</p>'+
     amenityRowHtml+
     pdetailHtml+
-    leasePricingHtml+
     rentalTermsHtml+
     priceHistoryHtml+
     '</div>'
@@ -3152,7 +3176,7 @@ function buildMockupLayout(){
     '<h1 class="info-title">'+resolvedTitle+'</h1>'+
     // Location/map — moved directly under the title (was the third
     // .detail-grid column further down the page). See .hero-map-section
-    // in the <style> block and the mobile `order:6` rule that keeps it
+    // in the <style> block and the mobile `order:7` rule that keeps it
     // here (not pushed below price/specs/CTAs) on small screens too.
     locationColHtml+
     propertyHighlightHtml+
@@ -3164,6 +3188,11 @@ function buildMockupLayout(){
     '<div id="sp-badges" class="sp-badges-row"></div>'+
     viewingUnitBannerHtml+
     '<div class="price-block">'+resolvedPriceHtml+'</div>'+
+    // Lease-term breakdown — directly under the price it explains. See
+    // .hero-lease-pricing in the <style> block and the mobile `order:2`
+    // rule that keeps it here (immediately after price-block's order:1)
+    // on small screens too.
+    leasePricingHtml+
     '<div class="market-insight" id="market-insight" style="display:none;">'+
     '<p class="market-insight-title">'+esc({lo:'ຂໍ້ມູນຕະຫຼາດ',en:'Market Insight',zh:'市场洞察'}[lang])+'</p>'+
     '<p class="market-insight-line" id="market-insight-days" style="display:none;"></p>'+

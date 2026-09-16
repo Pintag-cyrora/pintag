@@ -1,0 +1,7 @@
+{
+  "name": "pintag-lease-pricing-placement-tests",
+  "private": true,
+  "description": "Proves the display-only 3/6/12-month lease-term pricing breakdown (previously a separate block deep in the Overview column) now renders directly under the headline .price-block, inside .hero-left, on both desktop and mobile -- immediately after the price, not still duplicated in Overview -- while the cheapest-tier headline price (PR #91) and all other pricing behavior are unchanged.",
+  "scripts": { "test": "playwright test" },
+  "devDependencies": { "@playwright/test": "1.56.1" }
+}
