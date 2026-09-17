@@ -33,6 +33,7 @@ import { computeAllTrends, dataConfidenceLabel, pctChange } from './trend-calcul
 import { validateReportContent, buildValidationFallbackReport } from './report-validator.js';
 import { SNAPSHOT_SCHEMA_VERSION, REPORT_FORMAT_VERSION, PROMPT_VERSION, VALIDATOR_VERSION } from './versions.js';
 import { parseRpcBody } from './rest-body.js';
+import { vientianeDateString, addDays, resolvePeriod } from './date-boundary.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -103,38 +104,13 @@ async function requireStaffOrService(req: Request): Promise<string | null> {
 }
 
 // ── Date helpers ─────────────────────────────────────────────────────────
-function toISODate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-function addDays(iso: string, delta: number): string {
-  const d = new Date(iso + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + delta);
-  return toISODate(d);
-}
-function yesterdayUTC(): string {
-  return addDays(toISODate(new Date()), -1);
-}
+// vientianeDateString/addDays/resolvePeriod now live in date-boundary.js --
+// the Intelligence reporting calendar is Asia/Vientiane, not UTC (see that
+// module's header for why, and 20260918000000_intelligence_vientiane_calendar.sql
+// for the matching SQL-side conversion). Kept here only as the ReportType
+// alias resolvePeriod's callers still use.
 
 type ReportType = 'daily' | 'weekly' | 'monthly';
-
-function resolvePeriod(reportType: ReportType, periodEndOverride?: string): { start: string; end: string } {
-  if (reportType === 'daily') {
-    const end = periodEndOverride || yesterdayUTC();
-    return { start: end, end };
-  }
-  if (reportType === 'weekly') {
-    const end = periodEndOverride || yesterdayUTC();
-    return { start: addDays(end, -6), end };
-  }
-  // monthly: normalize to the calendar month containing the reference date
-  // (defaults to yesterday, so a run on the 1st reports the month that just
-  // ended), full first-to-last-day range.
-  const ref = periodEndOverride || yesterdayUTC();
-  const refDate = new Date(ref + 'T00:00:00Z');
-  const start = toISODate(new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1)));
-  const end = toISODate(new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 0)));
-  return { start, end };
-}
 
 // ── Supabase REST helpers (service-role key, bypasses RLS) ─────────────────
 class Db {
@@ -581,8 +557,8 @@ Deno.serve(async (req) => {
     try {
       await db.insert('intelligence_reports', [{
         report_type: reportType,
-        period_start: period.start || toISODate(new Date()),
-        period_end: period.end || toISODate(new Date()),
+        period_start: period.start || vientianeDateString(new Date()),
+        period_end: period.end || vientianeDateString(new Date()),
         status: 'failed',
         error_message: message,
       }], false);
