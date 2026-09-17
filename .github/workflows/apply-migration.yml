@@ -252,6 +252,26 @@ env:
   #     non-owner role afterward, because a SECURITY DEFINER function's
   #     internal calls run as its OWNER, unaffected by a revoke naming a
   #     different role. Migration applies cleanly twice (idempotency).
+  # 20260918000000_intelligence_vientiane_calendar.sql — reviewed and
+  # authorized deliberately (PR #96). Calendar-interpretation only, no
+  # schema/data change:
+  #   * CREATE OR REPLACE on intelligence_daily_metrics()/
+  #     ensure_daily_metrics_snapshot() only. Every calendar-day-bucketing
+  #     cast (created_at/updated_at/removed_at/status_changed_at::date,
+  #     CURRENT_DATE) is replaced with the explicit
+  #     `(<col> AT TIME ZONE 'Asia/Vientiane')::date` idiom. Pure
+  #     instant/duration expressions (EXTRACT(day FROM a - b), instant
+  #     ordering, generate_series over already-`date` params) are untouched.
+  #   * Does not change the database's own TimeZone GUC, any table schema,
+  #     any RLS policy, or any function's privileges — only how these two
+  #     functions interpret existing timestamptz columns for reporting.
+  #   * Does not modify, delete, or backfill existing daily_metrics_snapshot
+  #     rows (still INSERT ... ON CONFLICT DO NOTHING, unchanged).
+  #   * Validated against a throwaway PostgreSQL 16 cluster (tests/security/
+  #     regression/run-intelligence-vientiane-calendar-pg.sh): 20 assertions
+  #     covering the exact UTC/Vientiane boundary, a month boundary, a
+  #     leap-year boundary, and the finalization cutoff, all pass; migration
+  #     applies cleanly twice (idempotent).
   EXPECTED_MIGRATIONS: |
     20260813000000
     20260817000000
@@ -266,7 +286,8 @@ env:
     20260905000000
     20260912000000
     20260915000000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql'
+    20260918000000
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql + 20260918000000_intelligence_vientiane_calendar.sql'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
