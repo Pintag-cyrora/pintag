@@ -80,12 +80,23 @@ active.
 ### The three scheduled jobs
 
 **Timing note, stated explicitly because it is easy to get wrong twice:**
-`resolvePeriod()` in `index.ts` computes "yesterday" via `yesterdayUTC()`,
-which reads the UTC calendar date *at invocation time*. A cron firing at
-23:00 UTC would resolve to the wrong (one day too early) period — this
-was caught and corrected before it ever shipped. The schedule below fires
-just after UTC midnight instead, so "yesterday" always means the day that
-actually just ended.
+`resolvePeriod()` in `index.ts` computes "yesterday" via
+`date-boundary.js`'s `yesterdayVientiane()`, which reads the **Asia/Vientiane**
+calendar date *at invocation time* (see
+`20260918000000_intelligence_vientiane_calendar.sql` — Pintag is a
+Laos-based business, so the report's calendar is Vientiane, not UTC, even
+though this cron itself still runs on a UTC clock and the database's own
+`TimeZone` setting stays UTC). The schedule below still fires at 00:05 UTC
+(07:05 Vientiane) — unchanged by that migration, and still correct: a UTC
+day used to need firing within 5 minutes of UTC midnight to avoid resolving
+"yesterday" one day too early (the 23:00 UTC mistake this note originally
+warned about). Under the Vientiane boundary the same firing time has *more*
+margin, not less — Vientiane midnight (17:00 UTC the previous day) has
+already passed a full 7 hours before this cron fires at 00:05 UTC, so
+"yesterday" (Vientiane) is unambiguously the complete, already-finalized
+previous Vientiane day by the time any of these three jobs run. No cron
+schedule change was needed for the calendar fix; only this note's
+justification changed.
 
 ```sql
 -- Daily, 00:05 UTC
