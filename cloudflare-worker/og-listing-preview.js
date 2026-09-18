@@ -418,6 +418,14 @@ function buildOgFields(row, lang, supabaseUrl = DEFAULT_SUPABASE_URL) {
   const images = Array.isArray(row.images) ? row.images.filter((u) => typeof u === 'string' && u) : [];
   const rawImage = images[0] || null;
   const image = rawImage ? ogRenditionUrl(rawImage, supabaseUrl) : DEFAULT_OG_IMAGE;
+  // og:image:type must match whatever `image` actually resolved to -- a
+  // WebP rendition (ogRenditionUrl() above) needs image/webp, while the
+  // original photo, a non-Storage image, or DEFAULT_OG_IMAGE are all JPEG
+  // (see admin.html's canvas.toBlob(..., 'image/jpeg') on the original
+  // upload path, and DEFAULT_OG_IMAGE's own .jpg extension). Keyed off the
+  // resolved URL's own extension rather than "did ogRenditionUrl rewrite
+  // it" so this can never drift out of sync with what `image` really is.
+  const imageContentType = image.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
   const imageAlt = (OG_IMG_ALT_PREFIX[lang] || OG_IMG_ALT_PREFIX.en) + titleBase;
   // Rented Listings UX: never 404/redirect a sold/rented/etc. listing, and
   // never let the crawler-visible title/description keep silently claiming
@@ -432,7 +440,7 @@ function buildOgFields(row, lang, supabaseUrl = DEFAULT_SUPABASE_URL) {
     const leadText = (lead && (lead[lang] || lead.en)) || (statusLabel && (statusLabel[lang] || statusLabel.en)) || '';
     desc = `${leadText} ${UNAVAILABLE_DESC_SUFFIX[lang] || UNAVAILABLE_DESC_SUFFIX.en}`.trim();
   }
-  return { title: `${title} · Pintag`, desc, image, imageAlt, hasZh: !!row.title_zh };
+  return { title: `${title} · Pintag`, desc, image, imageContentType, imageAlt, hasZh: !!row.title_zh };
 }
 
 function canonicalUrl(slug, lang) {
@@ -510,7 +518,7 @@ function escapeAttr(s) {
 }
 
 async function rewriteListingHead(response, row, lang, slug, supabaseUrl = DEFAULT_SUPABASE_URL) {
-  const { title, desc, image, imageAlt, hasZh } = buildOgFields(row, lang, supabaseUrl);
+  const { title, desc, image, imageContentType, imageAlt, hasZh } = buildOgFields(row, lang, supabaseUrl);
   const url = canonicalUrl(slug, lang);
   const enUrl = canonicalUrl(slug, 'en');
   const loUrl = canonicalUrl(slug, 'lo');
@@ -522,6 +530,7 @@ async function rewriteListingHead(response, row, lang, slug, supabaseUrl = DEFAU
     .on('meta[property="og:title"]', new AttrSetter('content', title))
     .on('meta[property="og:description"]', new AttrSetter('content', desc))
     .on('meta[property="og:image"]', new AttrSetter('content', image))
+    .on('meta[property="og:image:type"]', new AttrSetter('content', imageContentType))
     .on('meta[property="og:image:alt"]', new AttrSetter('content', imageAlt))
     .on('meta[property="og:locale"]', new AttrSetter('content', OG_LOCALE[lang] || OG_LOCALE.lo))
     .on('meta[property="og:url"]', new AttrSetter('content', url))
