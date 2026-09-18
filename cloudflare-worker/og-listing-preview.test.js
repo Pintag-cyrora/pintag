@@ -306,6 +306,63 @@ test('rewriteListingHead: called without a supabaseUrl argument still works (def
   assert.match(html, /<meta property="og:image" content="https:\/\/example\.com\/photo1\.jpg">/);
 });
 
+// ── OG:IMAGE:TYPE regression (PR #98 shipped a WebP og:image but never
+// updated the co-located og:image:type, which listing.html's static <head>
+// hardcodes to "image/jpeg" -- so a WebP rendition was advertised as JPEG,
+// producing exactly the Facebook Sharing Debugger error this fixes:
+// "could not be processed as an image because it has an invalid content
+// type"). imageContentType is derived from the RESOLVED `image` URL's own
+// extension (not from "did ogRenditionUrl rewrite it"), so it can never
+// disagree with what og:image actually points to. Every case below asserts
+// BOTH og:image and og:image:type together, since the type is only
+// meaningful in relation to the image it describes. ────────────────────────
+test('buildOgFields: WebP hero rendition -> imageContentType is image/webp', () => {
+  const row = Object.assign({}, ROW, {
+    images: [`${SUPABASE_URL}/storage/v1/object/public/property-images/1787301675902-4gcl6e.jpg`],
+  });
+  const { image, imageContentType } = buildOgFields(row, 'en', SUPABASE_URL);
+  assert.equal(image, `${SUPABASE_URL}/storage/v1/object/public/property-images/renditions/1787301675902-4gcl6e/hero.webp`);
+  assert.equal(imageContentType, 'image/webp');
+});
+
+test('buildOgFields: JPEG original/fallback (non-Supabase image, rendition rewrite does not apply) -> imageContentType is image/jpeg', () => {
+  // ROW.images[0] is 'https://example.com/photo1.jpg' -- ogRenditionUrl()
+  // leaves it unchanged, so og:image is a real JPEG and must be labeled so.
+  const { image, imageContentType } = buildOgFields(ROW, 'en', SUPABASE_URL);
+  assert.equal(image, 'https://example.com/photo1.jpg');
+  assert.equal(imageContentType, 'image/jpeg');
+});
+
+test('buildOgFields: no listing image -> DEFAULT_OG_IMAGE, imageContentType is image/jpeg', () => {
+  const row = Object.assign({}, ROW, { images: [] });
+  const { image, imageContentType } = buildOgFields(row, 'en', SUPABASE_URL);
+  assert.equal(image, 'https://pintag.io/og-preview.jpg');
+  assert.equal(imageContentType, 'image/jpeg');
+});
+
+test('rewriteListingHead END-TO-END: WebP hero rendition -> og:image AND og:image:type both reflect image/webp', async () => {
+  const row = Object.assign({}, ROW, {
+    images: [`${SUPABASE_URL}/storage/v1/object/public/property-images/1787301675902-4gcl6e.jpg`],
+  });
+  const html = await (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text();
+  const expectedImage = `${SUPABASE_URL}/storage/v1/object/public/property-images/renditions/1787301675902-4gcl6e/hero.webp`;
+  assert.match(html, new RegExp(`<meta property="og:image" content="${escapeRe(expectedImage)}">`));
+  assert.match(html, /<meta property="og:image:type" content="image\/webp">/);
+});
+
+test('rewriteListingHead END-TO-END: JPEG original/fallback -> og:image AND og:image:type both reflect image/jpeg', async () => {
+  const html = await (await rewriteListingHead(LISTING_FIXTURE, ROW, 'en', ROW.slug, SUPABASE_URL)).text();
+  assert.match(html, /<meta property="og:image" content="https:\/\/example\.com\/photo1\.jpg">/);
+  assert.match(html, /<meta property="og:image:type" content="image\/jpeg">/);
+});
+
+test('rewriteListingHead END-TO-END: no listing image -> DEFAULT_OG_IMAGE with og:image:type still image/jpeg', async () => {
+  const row = Object.assign({}, ROW, { images: [] });
+  const html = await (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text();
+  assert.match(html, /<meta property="og:image" content="https:\/\/pintag\.io\/og-preview\.jpg">/);
+  assert.match(html, /<meta property="og:image:type" content="image\/jpeg">/);
+});
+
 test('rewriteListingHead: real listing.html fixture, ?lang=lo/en/zh each produce the correctly localized <title>/og:title/og:description/og:locale/html[lang]', async () => {
   const cases = [
     { lang: 'lo', title: 'ວິນລ່າຮິມແມ່ນ້ຳ', desc: 'ວິນລ່າກວ້າງຂວາງຢູ່ຮິມແມ່ນ້ຳຂອງ', locale: 'lo_LA' },
