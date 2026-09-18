@@ -52,7 +52,10 @@ import ogWorker, {
   HOME_META_I18N,
   LISTINGS_META_I18N,
   withNoStore,
+  ogRenditionUrl,
 } from './og-listing-preview.js';
+
+const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -223,6 +226,84 @@ test('PRICING G: no property-level price, no unit_types -> localized "Price on r
   assert.match(buildOgFields(row, 'en').desc, /^Price on request/);
   assert.match(buildOgFields(row, 'lo').desc, /^ສອບຖາມລາຄາ/);
   assert.match(buildOgFields(row, 'zh').desc, /^价格面议/);
+});
+
+// ── OG IMAGE (audit: "og:image must be a rendition, not the full-resolution original") ──
+// buildOgFields()'s image field used to be the raw images[0] entry -- the
+// full-resolution original Supabase Storage object. It now runs through
+// ogRenditionUrl() (a hand-port of image-renditions.js's
+// renditionPublicUrl()/objectNameFromPublicUrl() for the 'hero' 1200px
+// profile only), so a crawler-visible OG preview loads a small WebP instead
+// of the original photo. These tests cover the URL-rewrite logic directly
+// and through buildOgFields()/rewriteListingHead(), including every case
+// that must NOT be rewritten (the DEFAULT_OG_IMAGE fallback, a non-Supabase
+// URL, and a URL that is already a rendition).
+test('ogRenditionUrl: a real property-images Storage URL becomes the hero (1200px) rendition', () => {
+  const original = `${SUPABASE_URL}/storage/v1/object/public/property-images/1787301675902-4gcl6e.jpg`;
+  assert.equal(
+    ogRenditionUrl(original, SUPABASE_URL),
+    `${SUPABASE_URL}/storage/v1/object/public/property-images/renditions/1787301675902-4gcl6e/hero.webp`
+  );
+});
+
+test('ogRenditionUrl: strips the extension before deriving the rendition stem (case preserved, extension dropped)', () => {
+  const original = `${SUPABASE_URL}/storage/v1/object/public/property-images/Photo.JPEG`;
+  assert.equal(
+    ogRenditionUrl(original, SUPABASE_URL),
+    `${SUPABASE_URL}/storage/v1/object/public/property-images/renditions/Photo/hero.webp`
+  );
+});
+
+test('ogRenditionUrl: a non-Supabase URL (agent-hosted photo, external CDN) is left completely unchanged', () => {
+  const external = 'https://example.com/photo1.jpg';
+  assert.equal(ogRenditionUrl(external, SUPABASE_URL), external);
+});
+
+test('ogRenditionUrl: a URL that is already a rendition is left unchanged (never double-rewrites)', () => {
+  const already = `${SUPABASE_URL}/storage/v1/object/public/property-images/renditions/foo/card.webp`;
+  assert.equal(ogRenditionUrl(already, SUPABASE_URL), already);
+});
+
+test('ogRenditionUrl: missing url/supabaseUrl falls back safely instead of throwing', () => {
+  assert.equal(ogRenditionUrl(null, SUPABASE_URL), null);
+  assert.equal(ogRenditionUrl('https://example.com/x.jpg', null), 'https://example.com/x.jpg');
+});
+
+test('buildOgFields: a real Storage image is rewritten to its hero rendition, not the full-resolution original', () => {
+  const row = Object.assign({}, ROW, {
+    images: [`${SUPABASE_URL}/storage/v1/object/public/property-images/1787301675902-4gcl6e.jpg`],
+  });
+  const { image } = buildOgFields(row, 'en', SUPABASE_URL);
+  assert.equal(image, `${SUPABASE_URL}/storage/v1/object/public/property-images/renditions/1787301675902-4gcl6e/hero.webp`);
+});
+
+test('buildOgFields: a non-Supabase listing image is passed through unchanged (existing fixture, no supabaseUrl arg needed)', () => {
+  // ROW.images[0] is 'https://example.com/photo1.jpg' -- confirms the
+  // default supabaseUrl parameter doesn't change any pre-existing test's
+  // expected output.
+  const { image } = buildOgFields(ROW, 'en');
+  assert.equal(image, 'https://example.com/photo1.jpg');
+});
+
+test('buildOgFields: no listing image at all still falls back to DEFAULT_OG_IMAGE, untouched by the rendition rewrite', () => {
+  const row = Object.assign({}, ROW, { images: [] });
+  const { image } = buildOgFields(row, 'en', SUPABASE_URL);
+  assert.equal(image, 'https://pintag.io/og-preview.jpg');
+});
+
+test('rewriteListingHead END-TO-END: og:image and twitter:image both carry the hero rendition URL, not the original', async () => {
+  const row = Object.assign({}, ROW, {
+    images: [`${SUPABASE_URL}/storage/v1/object/public/property-images/1787301675902-4gcl6e.jpg`],
+  });
+  const html = await (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text();
+  const expected = `${SUPABASE_URL}/storage/v1/object/public/property-images/renditions/1787301675902-4gcl6e/hero.webp`;
+  assert.match(html, new RegExp(`<meta property="og:image" content="${escapeRe(expected)}">`));
+  assert.match(html, new RegExp(`<meta name="twitter:image" content="${escapeRe(expected)}">`));
+});
+
+test('rewriteListingHead: called without a supabaseUrl argument still works (default param), matching prior call sites', async () => {
+  const html = await (await rewriteListingHead(LISTING_FIXTURE, ROW, 'en', ROW.slug)).text();
+  assert.match(html, /<meta property="og:image" content="https:\/\/example\.com\/photo1\.jpg">/);
 });
 
 test('rewriteListingHead: real listing.html fixture, ?lang=lo/en/zh each produce the correctly localized <title>/og:title/og:description/og:locale/html[lang]', async () => {

@@ -366,11 +366,41 @@ function pick(row, ...keys) {
   return null;
 }
 
+// ── OG image: an existing rendition, not the full-resolution original ───────
+// Mirrors image-renditions.js's renditionPublicUrl()/objectNameFromPublicUrl()
+// for the single profile this Worker needs ('hero', 1200px -- matches
+// components.js's PT_IMAGE_PROFILES.hero, the largest existing rendition and
+// the closest to social platforms' recommended OG image width). Hand-ported
+// rather than imported, same "separate Cloudflare deploy, can't import a
+// browser file" convention as the rest of this file's duplicated vocabulary
+// (image-renditions.js also carries browser-only canvas/Image generation
+// code this Worker has no use for) -- keep in sync by hand if that file's
+// path scheme ever changes.
+//
+// Falls back to the original URL whenever it isn't one of this project's own
+// public property-images objects (agent-hosted photos, already a rendition,
+// anything unrecognized) -- same "delivery always degrades to the original"
+// rule image-renditions.js documents; this Worker has no onerror-style
+// fallback available to a crawler, so a missing rendition is a pre-existing,
+// accepted risk shared with components.js's own ptImageUrl(), not a new one.
+const OG_IMAGE_PROFILE = 'hero';
+const RENDITION_PREFIX = 'renditions/';
+const RENDITION_BUCKET = 'property-images';
+function ogRenditionUrl(originalUrl, supabaseUrl) {
+  if (!originalUrl || typeof originalUrl !== 'string' || !supabaseUrl) return originalUrl;
+  const base = `${supabaseUrl}/storage/v1/object/public/${RENDITION_BUCKET}/`;
+  if (!originalUrl.startsWith(base)) return originalUrl; // not our Storage object -- leave untouched
+  const name = originalUrl.slice(base.length).split('?')[0];
+  if (!name || name.startsWith(RENDITION_PREFIX)) return originalUrl; // already a rendition
+  const stem = name.replace(/\.[A-Za-z0-9]+$/, '');
+  return stem ? `${base}${RENDITION_PREFIX}${stem}/${OG_IMAGE_PROFILE}.webp` : originalUrl;
+}
+
 // Same fallback order as listing.html's updateOGTags(): the requested
 // language's own value, then English, then Lao — "fall back to English if a
 // translation is missing," per the product spec, with Lao as the ultimate
 // catch-all since every listing is guaranteed to have Lao content.
-function buildOgFields(row, lang) {
+function buildOgFields(row, lang, supabaseUrl = DEFAULT_SUPABASE_URL) {
   const titleBase = pick(row, `title_${lang}`, 'title_en', 'title_lo') || 'Pintag Property';
   const highlight =
     pick(row, `property_highlight_${lang}`, 'property_highlight_en', 'property_highlight') ||
@@ -386,7 +416,8 @@ function buildOgFields(row, lang) {
   const priceLocLine = [priceLine, districtLine].filter(Boolean).join(' · ');
   let desc = priceLocLine ? `${priceLocLine} — ${highlight}` : highlight;
   const images = Array.isArray(row.images) ? row.images.filter((u) => typeof u === 'string' && u) : [];
-  const image = images[0] || DEFAULT_OG_IMAGE;
+  const rawImage = images[0] || null;
+  const image = rawImage ? ogRenditionUrl(rawImage, supabaseUrl) : DEFAULT_OG_IMAGE;
   const imageAlt = (OG_IMG_ALT_PREFIX[lang] || OG_IMG_ALT_PREFIX.en) + titleBase;
   // Rented Listings UX: never 404/redirect a sold/rented/etc. listing, and
   // never let the crawler-visible title/description keep silently claiming
@@ -408,8 +439,15 @@ function canonicalUrl(slug, lang) {
   return `https://pintag.io/listing.html?slug=${encodeURIComponent(slug)}&lang=${encodeURIComponent(lang)}`;
 }
 
+// Shared by fetchListing() (the REST call) and the OG image rendition URL, so
+// both agree on the same Supabase origin, including if it's ever rotated via
+// the SUPABASE_URL Worker secret.
+function resolveSupabaseUrl(env) {
+  return (env && env.SUPABASE_URL) || DEFAULT_SUPABASE_URL;
+}
+
 async function fetchListing(env, slug) {
-  const supabaseUrl = env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseUrl = resolveSupabaseUrl(env);
   const anonKey = env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
   const url =
     `${supabaseUrl}/rest/v1/properties?slug=eq.${encodeURIComponent(slug)}` +
@@ -471,8 +509,8 @@ function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-async function rewriteListingHead(response, row, lang, slug) {
-  const { title, desc, image, imageAlt, hasZh } = buildOgFields(row, lang);
+async function rewriteListingHead(response, row, lang, slug, supabaseUrl = DEFAULT_SUPABASE_URL) {
+  const { title, desc, image, imageAlt, hasZh } = buildOgFields(row, lang, supabaseUrl);
   const url = canonicalUrl(slug, lang);
   const enUrl = canonicalUrl(slug, 'en');
   const loUrl = canonicalUrl(slug, 'lo');
@@ -673,7 +711,9 @@ export default {
       if (!row) return withSecurityHeaders(origin);
 
       try {
-        return withSecurityHeaders(withNoStore(await rewriteListingHead(origin, row, lang, slug)));
+        return withSecurityHeaders(
+          withNoStore(await rewriteListingHead(origin, row, lang, slug, resolveSupabaseUrl(env)))
+        );
       } catch (err) {
         // HTMLRewriter failure of any kind — never let a preview-generation
         // bug break the actual page for a real visitor.
@@ -738,4 +778,5 @@ export {
   withNoStore,
   withSecurityHeaders,
   SECURITY_HEADERS,
+  ogRenditionUrl,
 };
