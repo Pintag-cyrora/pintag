@@ -53,9 +53,29 @@ import ogWorker, {
   LISTINGS_META_I18N,
   withNoStore,
   ogRenditionUrl,
+  renditionExists,
 } from './og-listing-preview.js';
 
 const SUPABASE_URL = 'https://eoladhcljbpbhnrmmpev.supabase.co';
+
+// Stubs the global `fetch` that renditionExists()'s HEAD check calls, for
+// exactly the duration of `fn`, always restoring the real fetch afterward --
+// same try/finally discipline as this file's other globalThis.fetch stubs
+// (see the MAINTENANCE_MODE/isHome tests below). `responder` receives the
+// same (url, init) args a real fetch call would.
+async function withStubbedFetch(responder, fn) {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return responder(url, init);
+  };
+  try {
+    return { result: await fn(), calls };
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -291,12 +311,15 @@ test('buildOgFields: no listing image at all still falls back to DEFAULT_OG_IMAG
   assert.equal(image, 'https://pintag.io/og-preview.jpg');
 });
 
-test('rewriteListingHead END-TO-END: og:image and twitter:image both carry the hero rendition URL, not the original', async () => {
+test('rewriteListingHead END-TO-END: og:image and twitter:image both carry the hero rendition URL, not the original (rendition confirmed to exist)', async () => {
   const row = Object.assign({}, ROW, {
     images: [`${SUPABASE_URL}/storage/v1/object/public/property-images/1787301675902-4gcl6e.jpg`],
   });
-  const html = await (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text();
   const expected = `${SUPABASE_URL}/storage/v1/object/public/property-images/renditions/1787301675902-4gcl6e/hero.webp`;
+  const { result: html } = await withStubbedFetch(
+    () => new Response(null, { status: 200 }),
+    async () => (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text()
+  );
   assert.match(html, new RegExp(`<meta property="og:image" content="${escapeRe(expected)}">`));
   assert.match(html, new RegExp(`<meta name="twitter:image" content="${escapeRe(expected)}">`));
 });
@@ -340,27 +363,139 @@ test('buildOgFields: no listing image -> DEFAULT_OG_IMAGE, imageContentType is i
   assert.equal(imageContentType, 'image/jpeg');
 });
 
-test('rewriteListingHead END-TO-END: WebP hero rendition -> og:image AND og:image:type both reflect image/webp', async () => {
+test('rewriteListingHead END-TO-END: WebP hero rendition -> og:image AND og:image:type both reflect image/webp, when the rendition is confirmed to exist', async () => {
   const row = Object.assign({}, ROW, {
     images: [`${SUPABASE_URL}/storage/v1/object/public/property-images/1787301675902-4gcl6e.jpg`],
   });
-  const html = await (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text();
   const expectedImage = `${SUPABASE_URL}/storage/v1/object/public/property-images/renditions/1787301675902-4gcl6e/hero.webp`;
+  const { result: html, calls } = await withStubbedFetch(
+    () => new Response(null, { status: 200 }),
+    async () => (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text()
+  );
   assert.match(html, new RegExp(`<meta property="og:image" content="${escapeRe(expectedImage)}">`));
   assert.match(html, /<meta property="og:image:type" content="image\/webp">/);
+  // Bounded: exactly one existence check, a HEAD against the rendition URL
+  // itself -- never more, never against anything else.
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].init && calls[0].init.method, 'HEAD');
+  assert.equal(calls[0].url, expectedImage);
 });
 
-test('rewriteListingHead END-TO-END: JPEG original/fallback -> og:image AND og:image:type both reflect image/jpeg', async () => {
-  const html = await (await rewriteListingHead(LISTING_FIXTURE, ROW, 'en', ROW.slug, SUPABASE_URL)).text();
+test('rewriteListingHead END-TO-END: JPEG original/fallback (non-Supabase image) -> og:image AND og:image:type both reflect image/jpeg, and the existence check never runs', async () => {
+  const { result: html, calls } = await withStubbedFetch(
+    () => { throw new Error('fetch must not be called for a non-Supabase image'); },
+    async () => (await rewriteListingHead(LISTING_FIXTURE, ROW, 'en', ROW.slug, SUPABASE_URL)).text()
+  );
   assert.match(html, /<meta property="og:image" content="https:\/\/example\.com\/photo1\.jpg">/);
   assert.match(html, /<meta property="og:image:type" content="image\/jpeg">/);
+  assert.equal(calls.length, 0);
 });
 
-test('rewriteListingHead END-TO-END: no listing image -> DEFAULT_OG_IMAGE with og:image:type still image/jpeg', async () => {
+test('rewriteListingHead END-TO-END: no listing image -> DEFAULT_OG_IMAGE with og:image:type still image/jpeg, and the existence check never runs', async () => {
   const row = Object.assign({}, ROW, { images: [] });
-  const html = await (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text();
+  const { result: html, calls } = await withStubbedFetch(
+    () => { throw new Error('fetch must not be called when there is no listing image'); },
+    async () => (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text()
+  );
   assert.match(html, /<meta property="og:image" content="https:\/\/pintag\.io\/og-preview\.jpg">/);
   assert.match(html, /<meta property="og:image:type" content="image\/jpeg">/);
+  assert.equal(calls.length, 0);
+});
+
+test('rewriteListingHead END-TO-END: an image that is already a rendition path -> unchanged, and the existence check never runs', async () => {
+  // Defensive case: images[0] itself already looks like a rendition object
+  // (shouldn't happen in real data, but ogRenditionUrl() guards against
+  // double-rewriting it) -- isRendition is false here since ogRenditionUrl()
+  // returns it unchanged, so there's nothing new to verify.
+  const already = `${SUPABASE_URL}/storage/v1/object/public/property-images/renditions/foo/card.webp`;
+  const row = Object.assign({}, ROW, { images: [already] });
+  const { result: html, calls } = await withStubbedFetch(
+    () => { throw new Error('fetch must not be called for a path that is already a rendition'); },
+    async () => (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text()
+  );
+  assert.match(html, new RegExp(`<meta property="og:image" content="${escapeRe(already)}">`));
+  assert.equal(calls.length, 0);
+});
+
+// ── RENDITION EXISTENCE (audit: "production confirmed the affected
+// listing's hero rendition does not exist -- og-listing-preview.js has no
+// equivalent to components.js's <img onerror> fallback, so a crawler got a
+// dead .webp URL"). renditionExists() is a one-shot HEAD check; a non-2xx
+// response (Supabase's own public endpoint returns 400, not 404, for a
+// missing object -- see scripts/backfill-renditions.mjs) or a thrown
+// network error both fall back to the ORIGINAL photo, never a second
+// attempt at the rendition and never a check against the fallback itself. ──
+test('rewriteListingHead END-TO-END: rendition MISSING (404) -> falls back to the original JPEG, with the correct og:image:type', async () => {
+  const row = Object.assign({}, ROW, {
+    images: [`${SUPABASE_URL}/storage/v1/object/public/property-images/1787301675902-4gcl6e.jpg`],
+  });
+  const { result: html, calls } = await withStubbedFetch(
+    () => new Response(null, { status: 404 }),
+    async () => (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text()
+  );
+  assert.match(html, new RegExp(`<meta property="og:image" content="${escapeRe(row.images[0])}">`));
+  assert.match(html, /<meta property="og:image:type" content="image\/jpeg">/);
+  // Bounded: the miss is not retried, and the fallback is not itself checked.
+  assert.equal(calls.length, 1);
+});
+
+test('rewriteListingHead END-TO-END: rendition responds with a non-2xx status other than 404 (e.g. Supabase\'s own 400-for-missing) -> still falls back', async () => {
+  const row = Object.assign({}, ROW, {
+    images: [`${SUPABASE_URL}/storage/v1/object/public/property-images/1787301675902-4gcl6e.jpg`],
+  });
+  const { result: html } = await withStubbedFetch(
+    () => new Response(null, { status: 400 }),
+    async () => (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text()
+  );
+  assert.match(html, new RegExp(`<meta property="og:image" content="${escapeRe(row.images[0])}">`));
+  assert.match(html, /<meta property="og:image:type" content="image\/jpeg">/);
+});
+
+test('rewriteListingHead END-TO-END: the existence check throwing (network error/timeout) falls back safely instead of crashing the rewrite', async () => {
+  const row = Object.assign({}, ROW, {
+    images: [`${SUPABASE_URL}/storage/v1/object/public/property-images/1787301675902-4gcl6e.jpg`],
+  });
+  const { result: html } = await withStubbedFetch(
+    () => { throw new Error('simulated network failure'); },
+    async () => (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text()
+  );
+  assert.match(html, new RegExp(`<meta property="og:image" content="${escapeRe(row.images[0])}">`));
+  assert.match(html, /<meta property="og:image:type" content="image\/jpeg">/);
+});
+
+test('rewriteListingHead END-TO-END: exact reported production scenario -- original 1789726891032-qvvc4q.jpg, hero rendition missing -> the original is emitted, not a dead .webp link', async () => {
+  const original = `${SUPABASE_URL}/storage/v1/object/public/property-images/1789726891032-qvvc4q.jpg`;
+  const row = Object.assign({}, ROW, { slug: 'modern-fully-furnished-studio-apartment-in-ban-xieng-nhuen-c-026903', images: [original] });
+  const { result: html } = await withStubbedFetch(
+    () => new Response(null, { status: 400 }), // storage.objects has no renditions/1789726891804-ntvwdc/* rows -- confirmed in production
+    async () => (await rewriteListingHead(LISTING_FIXTURE, row, 'en', row.slug, SUPABASE_URL)).text()
+  );
+  assert.match(html, new RegExp(`<meta property="og:image" content="${escapeRe(original)}">`));
+  assert.doesNotMatch(html, /renditions\//);
+  assert.match(html, /<meta property="og:image:type" content="image\/jpeg">/);
+});
+
+test('renditionExists: true for a 2xx HEAD response', async () => {
+  const { result } = await withStubbedFetch(() => new Response(null, { status: 200 }), () => renditionExists('https://example.com/x.webp'));
+  assert.equal(result, true);
+});
+
+test('renditionExists: false for a non-2xx HEAD response (404, 400, and 500 alike)', async () => {
+  for (const status of [404, 400, 500]) {
+    const { result } = await withStubbedFetch(() => new Response(null, { status }), () => renditionExists('https://example.com/x.webp'));
+    assert.equal(result, false, `status ${status}`);
+  }
+});
+
+test('renditionExists: false (not a thrown error) when fetch itself throws', async () => {
+  const { result } = await withStubbedFetch(() => { throw new Error('boom'); }, () => renditionExists('https://example.com/x.webp'));
+  assert.equal(result, false);
+});
+
+test('renditionExists: issues a HEAD request, not a GET (never downloads the image bytes)', async () => {
+  const { calls } = await withStubbedFetch(() => new Response(null, { status: 200 }), () => renditionExists('https://example.com/x.webp'));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].init.method, 'HEAD');
 });
 
 test('rewriteListingHead: real listing.html fixture, ?lang=lo/en/zh each produce the correctly localized <title>/og:title/og:description/og:locale/html[lang]', async () => {
