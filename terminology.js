@@ -410,12 +410,19 @@ function _buildFactItem(typeKey, entry, row, lang) {
 }
 
 // Compact facts for cards (search results, homepage, similar listings).
+// Falls back to a unit-types-derived bedroom/bathroom fact (see
+// _cardMultiUnitFact() below, defined alongside resolveUnitType()) only
+// when the building's own field is null -- every other fact (sqm, floors,
+// ...) and every already-populated bedrooms/bathrooms value is completely
+// unaffected. getDetailFacts() below deliberately does NOT get this
+// fallback: its own Available Units section (listing.html) already shows
+// each unit's own real, always-populated bed/bath, so it needs none.
 function getCardFacts(typeKey, row, lang) {
   var entries = PROPERTY_TYPE_DISPLAY[typeKey] || [];
   var out = [];
   for (var i = 0; i < entries.length; i++) {
     if (!entries[i].card) continue;
-    var item = _buildFactItem(typeKey, entries[i], row, lang);
+    var item = _buildFactItem(typeKey, entries[i], row, lang) || _cardMultiUnitFact(typeKey, entries[i], row, lang);
     if (item) out.push(item);
   }
   return out;
@@ -556,4 +563,121 @@ function resolveUnitType(property, unitType) {
     availableCount: unitType.available_count,
     sortOrder:      unitType.sort_order
   };
+}
+
+// ── Multi-Unit Buildings: card-only bedroom/bathroom fallback ───────────────
+// Unit Types fully capture bed/bath per variant -- admin.html requires both
+// on every unit type card before a listing can publish -- but nothing
+// requires the BUILDING-level properties.bedrooms/bathrooms once Unit Types
+// exist, so that field can be null even on a published multi-unit listing.
+// The card had no fallback for that (it read the building column directly),
+// so it could show a price with zero size/room context at all. This is the
+// resolver + formatter pair that fixes that, used only by getCardFacts()
+// above -- see that function's own comment for why getDetailFacts() does
+// not get it.
+//
+// A genuinely varied building (Studio, 1BR and 2BR units together) must
+// never collapse to one representative unit (cheapest/first/etc.) -- that
+// would misstate the building either way. resolveUnitTypesFieldRange()
+// returns the real min/max instead; formatBedBathCount() is what turns that
+// into a range when the values differ, or a single value when they agree.
+
+// resolveUnitTypesFieldRange(property, field) -- the min/max of ONE numeric
+// unit_types field ('bedrooms' or 'bathrooms'), resolved through
+// resolveUnitType() so a unit type that hasn't overridden the building's own
+// value still counts correctly (never reads unitType[field] directly, same
+// rule every other unit-type consumer in this file follows). Field-agnostic
+// on purpose -- called once per field rather than duplicating this loop for
+// bedrooms and again for bathrooms. Returns structured data only --
+// {hasValue, min, max} -- never text or HTML; see formatBedBathCount() for
+// the presentation step, kept as a deliberately separate function.
+function resolveUnitTypesFieldRange(property, field) {
+  var units = (property && Array.isArray(property.unit_types)) ? property.unit_types : [];
+  var min = null, max = null, hasValue = false;
+  for (var i = 0; i < units.length; i++) {
+    var v = resolveUnitType(property, units[i])[field];
+    if (v === null || v === undefined) continue;
+    hasValue = true;
+    if (min === null || v < min) min = v;
+    if (max === null || v > max) max = v;
+  }
+  return { hasValue: hasValue, min: min, max: max };
+}
+
+// Reuses listing.html's own customer-facing wording (its L.unitBeds/
+// L.unitBaths, used by the Available Units section and the selected-unit
+// spec panel) rather than this file's admin-form labels ("Bedrooms"/
+// "Bathrooms", _bedrooms()/_bathrooms() above) -- the card is customer-
+// facing, so it gets the customer-facing words. Keep in sync by hand if
+// listing.html's copy ever changes. Lao and Chinese are invariant regardless
+// of count (matching listings.html's own BEDROOM_BANDS: "1 ຫ້ອງນອນ", "2
+// ຫ້ອງນອນ", ...); only English distinguishes singular/plural.
+var CARD_BED_BATH_WORDS = {
+  bed:  { en: { one: 'bed',  other: 'beds' },  lo: 'ຫ້ອງນອນ', zh: '卧室' },
+  bath: { en: { one: 'bath', other: 'baths' }, lo: 'ຫ້ອງນ້ຳ', zh: '浴室' }
+};
+// "Studio" -- the real-estate-standard synonym for zero bedrooms (same
+// concept parseUnitTypeTitle() already recognizes in reverse, see that
+// function's own comment above). No existing customer-facing Lao/Chinese
+// wording for this concept exists anywhere in the codebase (admins only ever
+// type the English word "Studio" as a unit type's own name), so these two
+// follow the same real-estate loanword convention this codebase already
+// uses for other borrowed property terms (PROPERTY_TYPE_DISPLAY's own
+// "Condo" -> ຄອນໂດ, "Apartment" -> ອາພາດເມັນ).
+var CARD_STUDIO_LABEL = { en: 'Studio', lo: 'ສະຕູດິໂອ', zh: '开间' };
+
+// formatBedBathCount(min, max, lang, kind) -- turns a resolveUnitTypesFieldRange()
+// result into the exact string a card should show. kind is 'bed' or 'bath'.
+// Conceptually mirrors currency.js's formatMoneyRange() -- collapse to a
+// single value when min === max, an en dash between the two sides when they
+// differ -- but owns none of that function's logic; this is its own,
+// bed/bath-specific formatter (currency.js stays currency-only).
+//
+// Bedrooms only: 0 renders as "Studio" (CARD_STUDIO_LABEL), never "0
+// bed(s)" -- a uniform Studio building shows bare "Studio" with no trailing
+// word, and a Studio-to-N range shows "Studio" only on the low side (the
+// high side of a real range is never 0). Bathrooms have no such synonym
+// (the task this implements deliberately does not invent one), so a
+// bathroom value of 0 -- were it ever to occur -- prints as a plain "0".
+//
+// English pluralizes by the larger (or only) number: a uniform "1" or a
+// range whose high side is 1 gets the singular word ("1 bed", "Studio–1
+// bed"); everything else is plural ("2 beds", "Studio–2 beds", "1–2 beds").
+function formatBedBathCount(min, max, lang, kind) {
+  if (min == null || max == null) return null;
+  var words = CARD_BED_BATH_WORDS[kind];
+  if (!words) return null;
+  var studioCapable = kind === 'bed';
+
+  function sideText(n) {
+    if (studioCapable && n === 0) return CARD_STUDIO_LABEL[lang] || CARD_STUDIO_LABEL.en;
+    return String(n);
+  }
+  var word = (lang === 'en') ? words.en[max === 1 ? 'one' : 'other'] : (words[lang] || words.en.other);
+
+  if (min === max) {
+    // A uniform Studio (0) never gets a trailing word -- "Studio", not
+    // "Studio bed(s)"/"ສະຕູດິໂອ ຫ້ອງນອນ".
+    if (studioCapable && min === 0) return sideText(0);
+    return sideText(min) + ' ' + word;
+  }
+  return sideText(min) + '–' + sideText(max) + ' ' + word;
+}
+
+// _cardMultiUnitFact(typeKey, entry, row, lang) -- the getCardFacts() hook.
+// Only fires for the bedrooms/bathrooms entries, and only when the
+// building's own column is null (0 is a real, valid single-listing Studio,
+// never treated as "missing"). Returns the same {icon, label, value} shape
+// _buildFactItem() does, so getCardFacts() can use either interchangeably;
+// `value` is a plain formatted string, never HTML -- the card's own
+// rendering (components.js) is what wraps it in markup, unchanged.
+function _cardMultiUnitFact(typeKey, entry, row, lang) {
+  var column = entry.field === 'f-bedrooms' ? 'bedrooms' : entry.field === 'f-bathrooms' ? 'bathrooms' : null;
+  if (!column || (row && row[column] != null)) return null;
+  var range = resolveUnitTypesFieldRange(row, column);
+  if (!range.hasValue) return null;
+  var text = formatBedBathCount(range.min, range.max, lang, column === 'bedrooms' ? 'bed' : 'bath');
+  if (!text) return null;
+  var fieldDef = _findFieldDef(typeKey, entry.field);
+  return { icon: entry.icon, label: (fieldDef && (fieldDef.label[lang] || fieldDef.label.en)) || '', value: text };
 }

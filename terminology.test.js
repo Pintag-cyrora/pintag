@@ -13,7 +13,10 @@ import fs from 'node:fs';
 const terminologySrc = fs.readFileSync(new URL('./terminology.js', import.meta.url), 'utf8');
 vm.runInThisContext(terminologySrc, { filename: 'terminology.js' });
 
-const { parseUnitTypeTitle, PROPERTY_TYPES, PROPERTY_TYPE_FIELDS, PROPERTY_TYPE_DISPLAY } = globalThis;
+const {
+  parseUnitTypeTitle, PROPERTY_TYPES, PROPERTY_TYPE_FIELDS, PROPERTY_TYPE_DISPLAY,
+  resolveUnitTypesFieldRange, formatBedBathCount, getCardFacts,
+} = globalThis;
 
 // The exact bug report this suite covers: a unit type named "2 Bedroom 1
 // Bath" was rejected by the publish validator because the structured
@@ -99,4 +102,132 @@ test('row_rooms is never conflated with townhouse, commercial, or villa', () => 
 test('row_rooms has a form field schema and a customer-facing display schema, same shape as its siblings', () => {
   assert.ok(Array.isArray(PROPERTY_TYPE_FIELDS.row_rooms) && PROPERTY_TYPE_FIELDS.row_rooms.length > 0);
   assert.ok(Array.isArray(PROPERTY_TYPE_DISPLAY.row_rooms) && PROPERTY_TYPE_DISPLAY.row_rooms.length > 0);
+});
+
+// ── Multi-Unit Buildings: card bedroom/bathroom fallback ────────────────────
+// Production audit: 17 active/available multi-unit listings, 4 with null
+// building-level bedrooms/bathrooms -- and real unit-type configurations
+// genuinely vary (Studio-2BR, Studio-1BR, 1BR-2BR), so the card must never
+// collapse a varied building to one representative unit (cheapest/first/
+// etc.) -- only a true min-max range, or a single value when they agree.
+function unit(bedrooms, bathrooms) {
+  return { id: 'u-' + bedrooms + '-' + bathrooms + '-' + Math.random(), name_en: 'Unit', bedrooms: bedrooms, bathrooms: bathrooms };
+}
+function multiUnitProperty(overrides) {
+  return Object.assign({ property_type: 'apartment', bedrooms: null, bathrooms: null, unit_types: [] }, overrides);
+}
+function bedroomFact(facts) { return facts.filter(function(f) { return f.icon === '🛏️'; })[0] || null; }
+function bathroomFact(facts) { return facts.filter(function(f) { return f.icon === '🛁'; })[0] || null; }
+
+test('resolveUnitTypesFieldRange: unit type inheritance through resolveUnitType() -- a null unit-type value inherits the BUILDING\'s own value, not "no data"', () => {
+  var property = multiUnitProperty({
+    bedrooms: 2, // the building has its own default
+    unit_types: [unit(null, 1), unit(3, 2)], // first unit inherits bedrooms:2 from the building
+  });
+  var range = resolveUnitTypesFieldRange(property, 'bedrooms');
+  assert.deepEqual(range, { hasValue: true, min: 2, max: 3 });
+});
+
+test('formatBedBathCount: Lao/English/Chinese formatting, uniform value, range, and Studio', () => {
+  assert.equal(formatBedBathCount(1, 1, 'en', 'bed'), '1 bed');
+  assert.equal(formatBedBathCount(2, 2, 'en', 'bed'), '2 beds');
+  assert.equal(formatBedBathCount(1, 2, 'en', 'bed'), '1–2 beds');
+  assert.equal(formatBedBathCount(0, 0, 'en', 'bed'), 'Studio');
+  assert.equal(formatBedBathCount(0, 2, 'en', 'bed'), 'Studio–2 beds');
+  assert.equal(formatBedBathCount(1, 2, 'en', 'bath'), '1–2 baths');
+
+  assert.equal(formatBedBathCount(1, 1, 'lo', 'bed'), '1 ຫ້ອງນອນ');
+  assert.equal(formatBedBathCount(1, 2, 'lo', 'bed'), '1–2 ຫ້ອງນອນ');
+  assert.equal(formatBedBathCount(0, 0, 'lo', 'bed'), 'ສະຕູດິໂອ');
+  assert.equal(formatBedBathCount(0, 2, 'lo', 'bed'), 'ສະຕູດິໂອ–2 ຫ້ອງນອນ');
+  assert.equal(formatBedBathCount(1, 2, 'lo', 'bath'), '1–2 ຫ້ອງນ້ຳ');
+
+  assert.equal(formatBedBathCount(1, 1, 'zh', 'bed'), '1 卧室');
+  assert.equal(formatBedBathCount(1, 2, 'zh', 'bed'), '1–2 卧室');
+  assert.equal(formatBedBathCount(0, 0, 'zh', 'bed'), '开间');
+  assert.equal(formatBedBathCount(0, 2, 'zh', 'bed'), '开间–2 卧室');
+  assert.equal(formatBedBathCount(1, 2, 'zh', 'bath'), '1–2 浴室');
+});
+
+test('getCardFacts: property-level bedrooms/bathrooms take precedence over unit_types, even when unit types vary', () => {
+  var property = multiUnitProperty({
+    bedrooms: 2, bathrooms: 1,
+    unit_types: [unit(0, 1), unit(1, 1), unit(2, 2)], // varied -- must NOT override the building's own "2"/"1"
+  });
+  var facts = getCardFacts('apartment', property, 'en');
+  assert.equal(bedroomFact(facts).value, 2);
+  assert.equal(bathroomFact(facts).value, 1);
+});
+
+test('getCardFacts: a populated bedrooms:0 (a real single-listing Studio) is never treated as missing', () => {
+  var property = multiUnitProperty({ bedrooms: 0, bathrooms: 1, unit_types: [unit(3, 2)] });
+  var facts = getCardFacts('apartment', property, 'en');
+  assert.equal(bedroomFact(facts).value, 0); // the building's own value, not the unit type's 3
+});
+
+test('getCardFacts: missing property bedrooms + uniform unit types -> "1 bed"', () => {
+  var property = multiUnitProperty({ bathrooms: 1, unit_types: [unit(1, 1), unit(1, 1), unit(1, 1)] });
+  assert.equal(bedroomFact(getCardFacts('apartment', property, 'en')).value, '1 bed');
+});
+
+test('getCardFacts: missing property bedrooms + varied unit types (1BR-2BR) -> "1-2 beds"', () => {
+  var property = multiUnitProperty({ bathrooms: 1, unit_types: [unit(1, 1), unit(2, 2)] });
+  assert.equal(bedroomFact(getCardFacts('apartment', property, 'en')).value, '1–2 beds');
+});
+
+test('getCardFacts: Studio-only unit types -> "Studio"', () => {
+  var property = multiUnitProperty({ bathrooms: 1, unit_types: [unit(0, 1), unit(0, 1)] });
+  assert.equal(bedroomFact(getCardFacts('apartment', property, 'en')).value, 'Studio');
+});
+
+test('getCardFacts: Studio-1BR unit types -> "Studio-1 bed"', () => {
+  var property = multiUnitProperty({ bathrooms: 1, unit_types: [unit(0, 1), unit(1, 1)] });
+  assert.equal(bedroomFact(getCardFacts('apartment', property, 'en')).value, 'Studio–1 bed');
+});
+
+test('getCardFacts: Studio-2BR unit types -> "Studio-2 beds"', () => {
+  var property = multiUnitProperty({ bathrooms: 1, unit_types: [unit(0, 1), unit(1, 1), unit(2, 2)] });
+  assert.equal(bedroomFact(getCardFacts('apartment', property, 'en')).value, 'Studio–2 beds');
+});
+
+test('getCardFacts: missing property bathrooms + uniform unit types -> "1 bath"', () => {
+  var property = multiUnitProperty({ bedrooms: 1, unit_types: [unit(1, 1), unit(1, 1)] });
+  assert.equal(bathroomFact(getCardFacts('apartment', property, 'en')).value, '1 bath');
+});
+
+test('getCardFacts: missing property bathrooms + varied unit types -> "1-2 baths"', () => {
+  var property = multiUnitProperty({ bedrooms: 1, unit_types: [unit(1, 1), unit(1, 2)] });
+  assert.equal(bathroomFact(getCardFacts('apartment', property, 'en')).value, '1–2 baths');
+});
+
+test('getCardFacts: no usable unit-type data -> the fact is omitted entirely, exactly like today', () => {
+  assert.equal(bedroomFact(getCardFacts('apartment', multiUnitProperty({ unit_types: [] }), 'en')), null);
+  assert.equal(bedroomFact(getCardFacts('apartment', multiUnitProperty({ unit_types: [unit(null, null)] }), 'en')), null);
+  assert.equal(bedroomFact(getCardFacts('apartment', multiUnitProperty({}), 'en')), null); // no unit_types key at all
+});
+
+test('getCardFacts: a missing bedroom value never suppresses an available bathroom value, and vice versa', () => {
+  var bedMissingOnly = multiUnitProperty({ bathrooms: 2, unit_types: [unit(1, 1), unit(2, 1)] });
+  var bedFacts = getCardFacts('apartment', bedMissingOnly, 'en');
+  assert.equal(bedroomFact(bedFacts).value, '1–2 beds');
+  assert.equal(bathroomFact(bedFacts).value, 2); // untouched building value, independently present
+
+  var bathMissingOnly = multiUnitProperty({ bedrooms: 3, unit_types: [unit(1, 1), unit(1, 2)] });
+  var bathFacts = getCardFacts('apartment', bathMissingOnly, 'en');
+  assert.equal(bedroomFact(bathFacts).value, 3); // untouched building value, independently present
+  assert.equal(bathroomFact(bathFacts).value, '1–2 baths');
+});
+
+test('getCardFacts: no regression -- a normal single-unit listing (no unit_types at all) is completely unaffected', () => {
+  var property = { property_type: 'apartment', bedrooms: 3, bathrooms: 2, sqm: 85 };
+  var facts = getCardFacts('apartment', property, 'en');
+  assert.equal(bedroomFact(facts).value, 3);
+  assert.equal(bathroomFact(facts).value, 2);
+  assert.equal(facts.filter(function(f) { return f.icon === '📐'; })[0].value, 85);
+});
+
+test('getCardFacts: no regression -- a property type with no bedrooms/bathrooms fields (e.g. land) is unaffected', () => {
+  var facts = getCardFacts('land', { property_type: 'land', sqm_land: 500, unit_types: [unit(2, 1)] }, 'en');
+  assert.equal(bedroomFact(facts), null);
+  assert.equal(bathroomFact(facts), null);
 });
