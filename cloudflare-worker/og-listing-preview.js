@@ -380,9 +380,10 @@ function pick(row, ...keys) {
 // Falls back to the original URL whenever it isn't one of this project's own
 // public property-images objects (agent-hosted photos, already a rendition,
 // anything unrecognized) -- same "delivery always degrades to the original"
-// rule image-renditions.js documents; this Worker has no onerror-style
-// fallback available to a crawler, so a missing rendition is a pre-existing,
-// accepted risk shared with components.js's own ptImageUrl(), not a new one.
+// rule image-renditions.js documents. Unlike components.js's ptImageUrl(),
+// a crawler has no <img onerror> to recover on a 404 -- renditionExists()
+// below is this Worker's own equivalent: a one-shot existence check before
+// a constructed rendition URL is ever handed to og:image.
 const OG_IMAGE_PROFILE = 'hero';
 const RENDITION_PREFIX = 'renditions/';
 const RENDITION_BUCKET = 'property-images';
@@ -394,6 +395,34 @@ function ogRenditionUrl(originalUrl, supabaseUrl) {
   if (!name || name.startsWith(RENDITION_PREFIX)) return originalUrl; // already a rendition
   const stem = name.replace(/\.[A-Za-z0-9]+$/, '');
   return stem ? `${base}${RENDITION_PREFIX}${stem}/${OG_IMAGE_PROFILE}.webp` : originalUrl;
+}
+
+// Renditions are generated best-effort at UPLOAD TIME (image-renditions.js's
+// own header: "a missing rendition must show the photo, never a broken
+// image") and the only backfill for anything that slipped through is a
+// manual, infrequently-run workflow -- so a just-uploaded or just-reordered
+// listing photo can genuinely have no rendition object yet. This checks,
+// once, before a constructed rendition URL is ever used as og:image.
+//
+// HEAD, not GET: the smallest request that answers "does this exist"
+// without downloading the image bytes. This deployment's public Storage
+// endpoint returns 400 (not 404) for a missing object on both GET and HEAD
+// (see scripts/backfill-renditions.mjs's own documented finding) -- res.ok
+// (2xx-only) already treats any non-2xx as "missing" without needing to
+// special-case which status that turns out to be.
+//
+// Bounded and single-shot: exactly one HEAD request, a short timeout, no
+// retries, and the fallback path (the original photo) is never itself
+// existence-checked -- a crawler request can never turn into more than one
+// extra round trip. A network error/timeout is treated the same as a
+// non-2xx response: the safe default is always "fall back to the original."
+async function renditionExists(url) {
+  try {
+    const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(2500) });
+    return res.ok;
+  } catch (_err) {
+    return false;
+  }
 }
 
 // Same fallback order as listing.html's updateOGTags(): the requested
@@ -418,6 +447,14 @@ function buildOgFields(row, lang, supabaseUrl = DEFAULT_SUPABASE_URL) {
   const images = Array.isArray(row.images) ? row.images.filter((u) => typeof u === 'string' && u) : [];
   const rawImage = images[0] || null;
   const image = rawImage ? ogRenditionUrl(rawImage, supabaseUrl) : DEFAULT_OG_IMAGE;
+  // True only when ogRenditionUrl() actually rewrote a real listing image
+  // into a rendition URL -- false for the no-image/DEFAULT_OG_IMAGE case, a
+  // non-Supabase image, or a path that was already a rendition (in every one
+  // of those, ogRenditionUrl() returns the input unchanged). This is exactly
+  // the set of cases rewriteListingHead() below should -- and should only --
+  // run renditionExists() against, and the ONLY case where `rawImage` (the
+  // pre-rendition fallback) is both non-null and different from `image`.
+  const isRendition = rawImage != null && image !== rawImage;
   // og:image:type must match whatever `image` actually resolved to -- a
   // WebP rendition (ogRenditionUrl() above) needs image/webp, while the
   // original photo, a non-Storage image, or DEFAULT_OG_IMAGE are all JPEG
@@ -425,6 +462,9 @@ function buildOgFields(row, lang, supabaseUrl = DEFAULT_SUPABASE_URL) {
   // upload path, and DEFAULT_OG_IMAGE's own .jpg extension). Keyed off the
   // resolved URL's own extension rather than "did ogRenditionUrl rewrite
   // it" so this can never drift out of sync with what `image` really is.
+  // (This is the OPTIMISTIC type, assuming the rendition exists;
+  // rewriteListingHead() corrects it to image/jpeg if renditionExists()
+  // says otherwise.)
   const imageContentType = image.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
   const imageAlt = (OG_IMG_ALT_PREFIX[lang] || OG_IMG_ALT_PREFIX.en) + titleBase;
   // Rented Listings UX: never 404/redirect a sold/rented/etc. listing, and
@@ -440,7 +480,7 @@ function buildOgFields(row, lang, supabaseUrl = DEFAULT_SUPABASE_URL) {
     const leadText = (lead && (lead[lang] || lead.en)) || (statusLabel && (statusLabel[lang] || statusLabel.en)) || '';
     desc = `${leadText} ${UNAVAILABLE_DESC_SUFFIX[lang] || UNAVAILABLE_DESC_SUFFIX.en}`.trim();
   }
-  return { title: `${title} · Pintag`, desc, image, imageContentType, imageAlt, hasZh: !!row.title_zh };
+  return { title: `${title} · Pintag`, desc, image, imageContentType, imageAlt, hasZh: !!row.title_zh, rawImage, isRendition };
 }
 
 function canonicalUrl(slug, lang) {
@@ -518,7 +558,21 @@ function escapeAttr(s) {
 }
 
 async function rewriteListingHead(response, row, lang, slug, supabaseUrl = DEFAULT_SUPABASE_URL) {
-  const { title, desc, image, imageContentType, imageAlt, hasZh } = buildOgFields(row, lang, supabaseUrl);
+  const fields = buildOgFields(row, lang, supabaseUrl);
+  const { title, desc, imageAlt, hasZh } = fields;
+  let image = fields.image;
+  let imageContentType = fields.imageContentType;
+  // Verify the rendition actually exists before ever advertising it as
+  // og:image -- see renditionExists()'s own comment. Skipped entirely
+  // (fields.isRendition is false) for a non-Supabase image, the
+  // no-image/DEFAULT_OG_IMAGE fallback, or a path that was already a
+  // rendition -- none of those are a rendition URL this Worker constructed,
+  // so there is nothing new to verify. The fallback (the original photo,
+  // always JPEG) is never itself existence-checked.
+  if (fields.isRendition && !(await renditionExists(image))) {
+    image = fields.rawImage;
+    imageContentType = 'image/jpeg';
+  }
   const url = canonicalUrl(slug, lang);
   const enUrl = canonicalUrl(slug, 'en');
   const loUrl = canonicalUrl(slug, 'lo');
@@ -788,4 +842,5 @@ export {
   withSecurityHeaders,
   SECURITY_HEADERS,
   ogRenditionUrl,
+  renditionExists,
 };
