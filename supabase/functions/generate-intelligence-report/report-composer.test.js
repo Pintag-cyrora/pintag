@@ -357,6 +357,186 @@ test('buildPrompt (daily) still guides Gemini to use customer intent / unmet dem
   assert.match(prompt, /high_performing_listing/);
 });
 
+// ── Demand -> Supply -> Gap rework (v5.0.0) -- product spec items 1-12 ──────
+
+// item 1: FACT/SIGNAL/HYPOTHESIS/ACTION vocabulary
+test('buildPrompt defines the FACT/SIGNAL/HYPOTHESIS/ACTION vocabulary and gives the exact user-reported before/after example', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /FACT vs SIGNAL vs HYPOTHESIS vs ACTION/);
+  assert.match(prompt, /Wrong: "Users are not finding the information they need\."/);
+  assert.match(prompt, /FACT — "25 impressions and 0 leads\."/);
+  assert.match(prompt, /Missing price, amenity, or rental-term information may be reducing contact intent/);
+});
+
+// item 10: evidence hierarchy for actions
+test('buildPrompt defines the 5-tier EVIDENCE HIERARCHY FOR ACTIONS, in priority order', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  const hierarchyIdx = prompt.indexOf('EVIDENCE HIERARCHY FOR ACTIONS');
+  assert.ok(hierarchyIdx > -1);
+  const order = ['Inventory acquisition', 'Listing optimization', 'Data correction', 'Tracking investigation', 'Monitor'];
+  let at = hierarchyIdx;
+  order.forEach((tier) => {
+    const i = prompt.indexOf(tier, at);
+    assert.ok(i > at, 'evidence hierarchy tier out of order or missing: ' + tier);
+    at = i;
+  });
+});
+
+// items 2-3-4-5: new Demand & Supply section and its DEMAND -> SUPPLY -> GAP data block
+test('buildPrompt (daily) new "## Demand & Supply" section wires the DEMAND -> SUPPLY -> GAP data block, using real numbers only', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'apartment', district: 'Sisattanak', search_count: 40, impressions: 80 }];
+  const rawMetrics = { customer_intent_segments: segments, active_inventory: { available_by_segment: { 'for_rent|apartment|Sisattanak': 2 } } };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.match(prompt, /## Demand & Supply/);
+  assert.match(prompt, /DEMAND -> SUPPLY -> GAP/);
+  assert.match(prompt, /"status":"gap_strong"/);
+  assert.match(prompt, /"supply_count":2/);
+  assert.match(prompt, /POTENTIAL INVENTORY GAP/);
+});
+
+// item 12 / REQUIRED 3 & 12: never fabricate a gap when supply is unknown for the day
+test('REQUIRED: demandSupplyBlock never fabricates a gap when active_inventory/available_by_segment is entirely absent -- every row reads insufficient_data', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'apartment', district: 'Sisattanak', search_count: 40, impressions: 80 }];
+  const prompt = buildPrompt('daily', composed, { customer_intent_segments: segments }, null);
+  assert.match(prompt, /DEMAND -> SUPPLY -> GAP/);
+  assert.match(prompt, /"status":"insufficient_data"/);
+  assert.ok(!prompt.includes('"status":"gap_strong"'));
+  assert.ok(!prompt.includes('"status":"gap_potential"'));
+  assert.ok(!prompt.includes('"status":"adequate"'));
+});
+test('demandSupplyBlock is entirely absent when there are no customer_intent_segments at all (nothing to rank)', () => {
+  // "DEMAND -> SUPPLY -> GAP" also names the data block in the always-present
+  // "## Demand & Supply" static instructions (same pattern as CUSTOMER INTENT
+  // SEGMENTS), so this checks for the DATA block's own JSON keys instead.
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, { listing_impressions: 50 }, null);
+  assert.ok(!prompt.includes('"demand_confidence"'), 'the data block itself must be absent when there are no segments');
+});
+
+// item 5 (bedroom demand+supply) and item 11: backward-compatible when bedroom-intent data is absent
+test('REQUIRED: existing reports keep working when bedroom-intent data (top_bedroom_count/bedroom_sample_size) is entirely absent -- no bedroom block, no throw', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'apartment', district: 'Sisattanak', search_count: 40, impressions: 80 }];
+  assert.doesNotThrow(() => buildPrompt('daily', composed, { customer_intent_segments: segments }, null));
+  const prompt = buildPrompt('daily', composed, { customer_intent_segments: segments }, null);
+  // "BEDROOM-LEVEL DEMAND -> SUPPLY" also names the block in the always-present
+  // static instructions, so check for the data block's own JSON key instead.
+  assert.ok(!prompt.includes('"bedroom_bucket"'));
+});
+test('bedroom-level demand+supply block appears only when a segment has a real bedroom plurality and enough sample', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{
+    transaction_type: 'for_rent', property_type: 'apartment', district: 'Sisattanak',
+    search_count: 40, impressions: 80, top_bedroom_count: 2, bedroom_sample_size: 20,
+  }];
+  const rawMetrics = { customer_intent_segments: segments, active_inventory: { available_by_bedroom_segment: { 'for_rent|Sisattanak|2': 4 } } };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.match(prompt, /BEDROOM-LEVEL DEMAND -> SUPPLY/);
+  assert.match(prompt, /"bedroom_bucket":"2"/);
+  assert.match(prompt, /"supply_count":4/);
+});
+
+// item 6 / REQUIRED 4 & 5: listing opportunity classification
+test('REQUIRED: a low_performing_listing insight with enough exposure (>=10 impressions) gets a "REVIEW NOW" listing-opportunity tag -- a listing-optimization candidate', () => {
+  const highExposure = {
+    id: 'lp-1', type: 'low_performing_listing', severity: 'high', confidence: 1, trend: 'emerging',
+    metric_key: 'listing_performance.low.p1', title: 'Low performing: X (40 impressions, 0 leads)',
+    dimension_district: null, dimension_property_type: null,
+    evidence: { property_id: 'p1', impressions: 40, leads: 0 },
+  };
+  const composed = { new_insights: [highExposure], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /listing opportunity: REVIEW NOW \(enough exposure to justify an audit\)/);
+});
+test('REQUIRED: a low_performing_listing insight with too little exposure (<10 impressions) gets a "MONITOR ONLY" tag, never a diagnosis', () => {
+  const lowExposure = {
+    id: 'lp-2', type: 'low_performing_listing', severity: 'medium', confidence: 1, trend: 'emerging',
+    metric_key: 'listing_performance.low.p2', title: 'Low performing: Y (6 impressions, 0 leads)',
+    dimension_district: null, dimension_property_type: null,
+    evidence: { property_id: 'p2', impressions: 6, leads: 0 },
+  };
+  const composed = { new_insights: [lowExposure], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /listing opportunity: MONITOR ONLY \(exposure too low to justify changes yet\)/);
+});
+test('a high_performing_listing insight never gets a listing-opportunity tag (informational only, not an audit candidate)', () => {
+  const highPerformer = {
+    id: 'hp-1', type: 'high_performing_listing', severity: 'low', confidence: 1, trend: 'stable',
+    metric_key: 'listing_performance.high.p3', title: 'High performing: Z (20% CTR, 40 impressions)',
+    dimension_district: null, dimension_property_type: null,
+    evidence: { property_id: 'p3', impressions: 40, clicks: 8, ctr: 0.2 },
+  };
+  const composed = { new_insights: [highPerformer], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  // "listing opportunity" also appears in the always-present static
+  // instructions, so isolate the insight's OWN summary line specifically.
+  const lineStart = prompt.indexOf('[high_performing_listing]');
+  assert.ok(lineStart > -1);
+  const lineEnd = prompt.indexOf('\n', lineStart);
+  const line = prompt.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+  assert.ok(!line.includes('listing opportunity:'));
+});
+
+// item 8: missing listing information surfaces as a data-quality flag
+test('REQUIRED: a [data_quality] insight (missing listing information) is surfaced in the report, distinctly from behavioural findings', () => {
+  const dq = {
+    id: 'dq-1', type: 'data_quality', severity: 'high', confidence: 1, trend: 'emerging',
+    metric_key: 'missing_price', title: 'Missing price: Untitled listing',
+    dimension_district: 'Sisattanak', dimension_property_type: 'apartment',
+    evidence: { rule: 'missing_price', property_id: 'p9' },
+  };
+  const composed = { new_insights: [dq], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /\[data_quality\]/);
+  assert.match(prompt, /### Data Quality/);
+});
+
+// item 9 / REQUIRED: suspicious gallery-interaction drop -> data/tracking warning
+test('REQUIRED: a gallery-interaction drop to near-zero while listing impressions stay active triggers the SUSPICIOUS METRIC CHECK, framed as a possible tracking issue, not a confirmed behavioural finding', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const trends = { gallery_events: { today: 0, yesterday: 80, avg_7d: 60, avg_30d: 50 } };
+  const rawMetrics = { listing_impressions: 120 };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null, trends);
+  assert.match(prompt, /SUSPICIOUS METRIC CHECK — GALLERY TRACKING/);
+  assert.match(prompt, /gallery interactions fell from 80 yesterday to 0 today/);
+  assert.match(prompt, /⚠️ DATA CHECK/);
+  assert.match(prompt, /Do not present it as a confirmed behavioural finding/);
+});
+test('the gallery suspicious-metric check does NOT fire when impressions dropped too (an ordinary quiet day, not suspicious)', () => {
+  // "SUSPICIOUS METRIC CHECK" also names the block in the always-present
+  // static "### Data Quality" instructions, so check for the dynamic block's
+  // own instantiated text (real numbers) instead of the bare heading.
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const trends = { gallery_events: { today: 0, yesterday: 80, avg_7d: 60, avg_30d: 50 } };
+  const rawMetrics = { listing_impressions: 2 };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null, trends);
+  assert.ok(!prompt.includes('gallery interactions fell from'));
+});
+test('the gallery suspicious-metric check does NOT fire on an ordinary, non-near-zero gallery count', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const trends = { gallery_events: { today: 45, yesterday: 80, avg_7d: 60, avg_30d: 50 } };
+  const rawMetrics = { listing_impressions: 120 };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null, trends);
+  assert.ok(!prompt.includes('gallery interactions fell from'));
+});
+
+// item 7 / REQUIRED 10: the exact reported bug -- WhatsApp clicks:1, Leads:1 must
+// never produce a stated "0% match rate between clicks and leads"
+test('REQUIRED: a 1-sample journey-join population never states a percentage, and the prompt scopes it as a different population from whatsapp_clicks/leads_created', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'apartment', district: 'Sisattanak', search_count: 12 }];
+  const jj = { listing_events_total: 3, listing_events_with_session: 3, lead_events_total: 1, lead_events_with_session: 1, lead_events_matched_to_click: 0 };
+  const rawMetrics = { customer_intent_segments: segments, journey_join: jj, whatsapp_clicks: 1, leads_created: 1 };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.ok(!prompt.includes('0% of'), 'must not state a percentage computed from a 1-sample journey-join population');
+  assert.match(prompt, /too few to state a meaningful percentage/);
+  assert.match(prompt, /NEVER describe this rate as "a match rate between clicks and leads"/);
+});
+
 // ── buildReportInsightLinks — the dedup fix ─────────────────────────────
 test('buildReportInsightLinks assigns biggest_story to the highest-priority new/continuing insight', () => {
   const composed = {

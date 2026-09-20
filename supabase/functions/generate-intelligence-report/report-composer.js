@@ -9,6 +9,7 @@
 
 import { priorityScore } from './insight-engine.js';
 import { dataConfidenceLabel } from './trend-calculator.js';
+import { buildDemandSupplyRows, buildBedroomDemandSupplyRows } from './demand-supply-gap.js';
 
 export const CANONICAL_DISTRICTS = [
   'Chanthabouly', 'Sikhottabong', 'Xaythany', 'Sisattanak',
@@ -128,9 +129,35 @@ function sampleConfidenceNote(i) {
   return `, sample size: ${impressions} impressions (${dataConfidenceLabel(impressions)} confidence)`;
 }
 
+// Listing Opportunity classification (product spec item 6): instead of
+// leaving "is this listing worth auditing, or is there just not enough
+// data yet" to Gemini's judgment, this is computed deterministically from
+// the SAME impressions sample-size band sampleConfidenceNote already
+// exposes -- a low_performing_listing insight only ever reaches this
+// pipeline once it has >=5 impressions (impressions_no_leads is floored at
+// that in SQL), so "REVIEW NOW" vs "MONITOR ONLY" is really "does this
+// listing clear the existing 'moderate' confidence bar or not", reusing
+// dataConfidenceLabel rather than a second threshold. Deliberately does
+// NOT attempt a three-way split into "high exposure" vs "high engagement"
+// buckets: gallery interactions (the only real engagement signal) are not
+// attributable to a specific listing (see the GALLERY INTERACTIONS rule
+// below), so a per-listing "engagement" bucket would have to be invented
+// from data that doesn't exist for it. high_performing_listing is already
+// informational-only (severity fixed 'low' upstream) and does not need an
+// opportunity tag of its own.
+function listingOpportunityTag(i) {
+  if (i.type !== 'low_performing_listing') return '';
+  const impressions = i.evidence && typeof i.evidence.impressions === 'number' ? i.evidence.impressions : null;
+  if (impressions === null) return '';
+  const enoughExposure = dataConfidenceLabel(impressions) !== 'low';
+  return enoughExposure
+    ? ', listing opportunity: REVIEW NOW (enough exposure to justify an audit)'
+    : ', listing opportunity: MONITOR ONLY (exposure too low to justify changes yet)';
+}
+
 function insightSummaryLine(i) {
   const dims = [i.dimension_district, i.dimension_property_type].filter(Boolean).join('/');
-  return `- [${i.type}] ${i.title}${dims ? ` (${dims})` : ''} — severity: ${i.severity}, confidence: ${Math.round((i.confidence || 0) * 100)}%${sampleConfidenceNote(i)}, trend: ${i.trend}${i.recommendation ? `, suggested action: ${i.recommendation}` : ''}`;
+  return `- [${i.type}] ${i.title}${dims ? ` (${dims})` : ''} — severity: ${i.severity}, confidence: ${Math.round((i.confidence || 0) * 100)}%${sampleConfidenceNote(i)}${listingOpportunityTag(i)}, trend: ${i.trend}${i.recommendation ? `, suggested action: ${i.recommendation}` : ''}`;
 }
 
 // Intelligence V2 (Customer Intent / Unmet Demand / Conversion Leaks —
@@ -158,6 +185,21 @@ function insightSummaryLine(i) {
 // same as search_count, which would overstate how much bedroom signal
 // exists). top_price_band is the single most-searched price range WITHIN
 // a segment, reported as context, not part of what defines the segment.
+// Below this many session-attributed contacts, a "% matched back to a
+// click" figure is a ratio over a near-nothing denominator (1/1 = 100%,
+// 0/1 = 0%) — exactly as unstable as a percentage over a tiny baseline
+// anywhere else in this pipeline (see trend-calculator.js's own
+// MIN_BASELINE_FOR_PCT=3, same value, same reasoning). This is the fix for
+// the reported bug: "WhatsApp clicks: 1, Leads: 1" produced "a 0% match
+// rate between clicks and leads" — a join-rate computed from
+// lead_events_with_session=1 stated as if it were a stable, meaningful
+// percentage, AND conflated with the unrelated whatsapp_clicks/
+// leads_created totals it was never computed from. Exported so
+// report-validator.js can enforce the same threshold as a mechanical
+// backstop (checkMatchRateSmallSample) rather than duplicating a second,
+// possibly-drifting number.
+export const MIN_JOURNEY_SAMPLE_FOR_RATE = 3;
+
 function customerIntentBlock(reportType, rawMetricsSummary) {
   if (reportType !== 'daily') return '';
   const segments = rawMetricsSummary && Array.isArray(rawMetricsSummary.customer_intent_segments)
@@ -165,12 +207,67 @@ function customerIntentBlock(reportType, rawMetricsSummary) {
   if (!segments) return '';
 
   const jj = rawMetricsSummary.journey_join || null;
-  const joinRatePct = (jj && jj.lead_events_with_session > 0)
+  const joinRatePct = (jj && jj.lead_events_with_session >= MIN_JOURNEY_SAMPLE_FOR_RATE)
     ? Math.round((jj.lead_events_matched_to_click / jj.lead_events_with_session) * 100)
     : null;
 
   return `\nCUSTOMER INTENT SEGMENTS (today, pre-computed, ranked by search volume — each is (transaction_type, property_type, district); bedrooms is NEVER part of what defines a segment; top_price_band is the single most-searched price range within that segment, not part of what defines it either. Each segment also carries top_bedroom_count and bedroom_sample_size: top_bedroom_count is the single most-searched bedroom value for that segment (a MODE/PLURALITY, not a majority, and it can be null when "Any"/no-preference was itself the most common search — that is a real, legitimate finding, not missing data); bedroom_sample_size is how many searches in that segment actually specified a bedroom count, separate from and always ≤ the segment's search_count. NEVER state or imply a bedroom preference for a segment unless bedroom_sample_size is at least 10 — below that, say plainly that there is not yet enough bedroom-specific data for that segment, do not name a number. Even at or above 10, phrase it as "the most common bedroom count searched for was N" or similar plurality language, never as "users prefer N bedrooms" or "most users want N bedrooms" (a plurality is not a majority unless the data itself shows one). This is DEMAND-side data only — never say or imply anything about how many N-bedroom listings are actually available; bedroom is not a dimension the current supply/inventory data is segmented by):\n${JSON.stringify(segments)}\n` +
-    (jj ? `\nJOURNEY-JOIN CONFIDENCE (how much of the search → click → contact chain is actually traceable via a shared session id today — this is a MEASURED rate, not an assumption; treat any segment-level lead/conversion claim above as carrying this same confidence, and say so explicitly when the rate is low rather than presenting the segment's lead counts as certain): ${JSON.stringify(jj)}${joinRatePct !== null ? ` — ${joinRatePct}% of session-attributed contacts today matched back to an earlier click in the same session` : ' — no session-attributed contacts today to measure a rate from'}\n` : '');
+    (jj ? `\nJOURNEY-JOIN CONFIDENCE (how much of the search → click → contact chain is actually traceable via a shared session id today — this is a MEASURED rate, not an assumption; treat any segment-level lead/conversion claim above as carrying this same confidence, and say so explicitly when the rate is low rather than presenting the segment's lead counts as certain. IMPORTANT — POPULATION: this rate's population is ONLY today's session-attributed contacts (lead_events_with_session below); it is a DIFFERENT, smaller population than the raw whatsapp_clicks/leads_created totals in the raw metrics summary, which count every contact regardless of session-tracking. NEVER describe this rate as "a match rate between clicks and leads" or otherwise conflate it with those totals — always name it as the journey/tracking traceability rate, and state which population (how many session-attributed contacts) it was computed from): ${JSON.stringify(jj)}${joinRatePct !== null ? ` — ${joinRatePct}% of ${jj.lead_events_with_session} session-attributed contact(s) today matched back to an earlier click in the same session` : ` — only ${jj ? jj.lead_events_with_session : 0} session-attributed contact(s) today, too few to state a meaningful percentage; say plainly "not enough session-attributed contacts yet to measure traceability" instead of a percentage`}\n` : '');
+}
+
+// Deterministic check for product spec item 8 — a gallery-interaction drop
+// to near-zero should not be silently narrated as a behavioural finding
+// when the traffic that would normally produce it (listing impressions)
+// is still flowing, because that specific combination is also consistent
+// with a broken tracking event. This is a DETECTION, not an
+// interpretation: it only fires on the exact suspicious shape (today's
+// gallery count near zero, yesterday's was real, and today's impressions
+// are still meaningfully active) — an ordinary, unremarkable gallery count
+// never triggers this block, so the GALLERY INTERACTIONS rule elsewhere in
+// commonRules still governs the normal case.
+const GALLERY_NEAR_ZERO_FLOOR = 2;
+const GALLERY_PRIOR_MEANINGFUL_FLOOR = 10;
+const IMPRESSIONS_STILL_ACTIVE_FLOOR = 10;
+
+function galleryTrackingCheck(trendAnalysis, rawMetricsSummary) {
+  const g = trendAnalysis && trendAnalysis.gallery_events;
+  if (!g || typeof g.today !== 'number' || typeof g.yesterday !== 'number') return '';
+  if (g.today > GALLERY_NEAR_ZERO_FLOOR || g.yesterday < GALLERY_PRIOR_MEANINGFUL_FLOOR) return '';
+  const impressions = rawMetricsSummary && typeof rawMetricsSummary.listing_impressions === 'number'
+    ? rawMetricsSummary.listing_impressions : null;
+  if (impressions === null || impressions < IMPRESSIONS_STILL_ACTIVE_FLOOR) return '';
+  return `\nSUSPICIOUS METRIC CHECK — GALLERY TRACKING (deterministic; this is not your judgment call to make): gallery interactions fell from ${g.yesterday} yesterday to ${g.today} today while listing impressions remained active today (${impressions}). A near-total drop in one engagement metric while the traffic that would normally produce it kept flowing may reflect a genuine behavioural change, but is equally consistent with a tracking/analytics problem (a broken event, a code change). In the Data Quality section you MUST surface this explicitly as "⚠️ DATA CHECK", name both possibilities, and say that tracking should be verified before this is treated as a confirmed behavioural signal. Do not present it as a confirmed behavioural finding anywhere in the report, and do not restate it elsewhere as a plain fact without this same caveat.\n`;
+}
+
+// Demand -> Supply -> Gap (product spec items 2-5) — wires
+// demand-supply-gap.js's pure ranking/classification functions into the
+// prompt, the same way customerIntentBlock already wires
+// customer_intent_segments in: real numbers, pre-ranked and
+// pre-classified, Gemini narrates but never (re)computes a gap
+// classification itself. Daily-only for the same reason customerIntentBlock
+// is (sumMetrics() does not merge customer_intent_segments/active_inventory
+// across days). active_inventory.available_by_segment/
+// available_by_bedroom_segment (20260920000000_intelligence_demand_supply_
+// gap.sql) are present only for the single most-recently-finalized day —
+// when absent, buildDemandSupplyRows/buildBedroomDemandSupplyRows already
+// degrade every row to supply_count=null/status="insufficient_data" rather
+// than fabricating a number, so this block still safely renders demand
+// alone on any other day.
+function demandSupplyBlock(reportType, rawMetricsSummary) {
+  if (reportType !== 'daily') return '';
+  const segments = rawMetricsSummary && Array.isArray(rawMetricsSummary.customer_intent_segments)
+    ? rawMetricsSummary.customer_intent_segments : null;
+  if (!segments || !segments.length) return '';
+
+  const activeInventory = rawMetricsSummary.active_inventory || {};
+  const bySegmentSupply = activeInventory.available_by_segment || null;
+  const byBedroomSupply = activeInventory.available_by_bedroom_segment || null;
+
+  const rows = buildDemandSupplyRows(segments, bySegmentSupply);
+  const bedroomRows = buildBedroomDemandSupplyRows(segments, byBedroomSupply);
+
+  return `\nDEMAND -> SUPPLY -> GAP (today, pre-computed and pre-classified — ranked by search volume; each row is (transaction_type, property_type, district). demand_confidence is HIGH/MEDIUM/LOW — a segment with fewer than 5 searches is always LOW, not a real demand signal yet; do not name a "strongest demand segment" if every row is LOW. supply_count is genuinely bookable matching inventory right now (market_status=available AND workflow_status=active), or null when today is not the single most-recently-finalized day — never invent a number when supply_count is null. status is exactly one of: "adequate" (no gap — say nothing further), "gap_potential" (🟡 POTENTIAL GAP), "gap_strong" (🔴 POTENTIAL INVENTORY GAP — the strongest signal this data can support), "insufficient_data" (⚪ not enough searches or supply unknown — NEVER call this a confirmed gap of any kind). Use these exact status values to choose your gap language; never upgrade "gap_potential" to a confirmed shortage, and never call an "insufficient_data" row a gap):\n${JSON.stringify(rows)}\n` +
+    (bedroomRows.length ? `\nBEDROOM-LEVEL DEMAND -> SUPPLY (only segments with at least 10 bedroom-specific searches and a real bedroom plurality — bedroom_bucket "0" means Studio, "4+" collapses 4-or-more bedrooms; phrase bedroom_sample_size language as a plurality per the CUSTOMER INTENT SEGMENTS rule above, never as a majority or a stated preference; same status/gap vocabulary as above):\n${JSON.stringify(bedroomRows)}\n` : '');
 }
 
 export function buildPrompt(reportType, composed, rawMetricsSummary, supply, trendAnalysis) {
@@ -206,6 +303,8 @@ export function buildPrompt(reportType, composed, rawMetricsSummary, supply, tre
     : '';
 
   const customerIntentBlockText = customerIntentBlock(reportType, rawMetricsSummary);
+  const demandSupplyBlockText = demandSupplyBlock(reportType, rawMetricsSummary);
+  const galleryCheckText = galleryTrackingCheck(trendAnalysis, rawMetricsSummary);
 
   const commonRules = `You are writing for Pintag, a real estate marketplace in Vientiane, Laos. You are given a set of insights that deterministic code has ALREADY detected, ranked, and classified as new/continuing/resolved, plus a pre-computed trend analysis — these are the only findings and the only numbers that exist. Your job is strictly to explain, connect, and narrate them clearly.
 
@@ -231,21 +330,35 @@ CONFIDENCE LABELS — every INTERPRETIVE or diagnostic statement (a conclusion, 
 🟡 LIKELY — a strong, reasonable conclusion the available data supports, but not proven beyond doubt
 ⚪ HYPOTHESIS — a plausible explanation the data cannot yet confirm; say explicitly what would need to be true, or what to monitor, to confirm or rule it out
 
+FACT vs SIGNAL vs HYPOTHESIS vs ACTION — every sentence you write is exactly one of these four kinds, and must never present a weaker kind as a stronger one:
+- FACT: a measured number or plain observation ("25 impressions and 0 leads today"). Never tagged.
+- SIGNAL: an observation with real evidentiary support behind it — a 🟢 CONFIRMED or 🟡 LIKELY conclusion.
+- HYPOTHESIS: a plausible, unproven explanation — always ⚪ HYPOTHESIS, always naming what would need to be true to confirm it.
+- ACTION: a concrete instruction, stated only in "Recommended Actions" / "What Pintag Should Do".
+Do NOT collapse a HYPOTHESIS into a FACT. Wrong: "Users are not finding the information they need." Right, as three separate statements: FACT — "25 impressions and 0 leads." / ⚪ HYPOTHESIS — "Missing price, amenity, or rental-term information may be reducing contact intent." / ACTION — "Monitor lead conversion over the next 7 days."
+
+EVIDENCE HIERARCHY FOR ACTIONS — every action you propose (in "Recommended Actions" and "What Pintag Should Do") must be justified by exactly one of these, and you must prefer the first evidence type on this list that genuinely applies today; never propose "monitor" when stronger evidence already justifies a more specific action:
+1. Inventory acquisition — a demand segment (or bedroom segment) above shows a "gap_strong"/"gap_potential" status: measurable demand with insufficient matching supply.
+2. Listing optimization — a listing carries "listing opportunity: REVIEW NOW": sufficient exposure (impressions) but poor conversion.
+3. Data correction — a [data_quality] insight or a Data Quality-section finding shows listing/analytics data is incomplete or inconsistent.
+4. Tracking investigation — a SUSPICIOUS METRIC CHECK block above, or another metric behaving in a way the data itself flags as unexpected.
+5. Monitor — none of the above apply with enough evidence; say so honestly rather than inventing a stronger action. Never recommend editing or auditing a listing for "low performance" when its evidence shows insufficient exposure ("listing opportunity: MONITOR ONLY") — that is the reserved case for tier 5, not tier 2.
+
 GALLERY INTERACTIONS — today's analytics measure a marketplace-wide total, and the trend analysis can compare it to yesterday/7-day/30-day averages, but they do NOT break gallery interactions down by which listing, which photo, or how many distinct users generated them. When gallery engagement is worth discussing, state what the aggregate trend actually shows, and say plainly that today's data cannot show which listings or how many users drove it — do not guess. You MAY compare the gallery-engagement trend against the listing-views and WhatsApp-click trends already given (e.g. "gallery engagement rose while WhatsApp clicks stayed flat") since both are real figures in the trend analysis, not a guess.
 
 NEW INSIGHTS (🟢):\n${newBlock}\n
 CONTINUING INSIGHTS (🔴):\n${continuingBlock}\n
 RESOLVED INSIGHTS (✅):\n${resolvedBlock}
-${supplyBlock}${trendBlock}${customerIntentBlockText}
+${supplyBlock}${trendBlock}${customerIntentBlockText}${demandSupplyBlockText}${galleryCheckText}
 RAW METRICS SUMMARY (period totals, safe to cite verbatim):
 ${JSON.stringify(rawMetricsSummary)}
 
 Canonical districts: ${CANONICAL_DISTRICTS.join(', ')}. Canonical property types: ${CANONICAL_PROPERTY_TYPES.join(', ')}.`;
 
   const structureByType = {
-    daily: `Write a DAILY INTELLIGENCE REPORT for the founder — a decision-making report, not an analytics dump. It must be readable in UNDER 60 SECONDS. Keep it UNDER 350 WORDS — that is a ceiling, not a target, and there is NO minimum. If today's evidence supports a strong 150-word report, write 150 words and stop. Never add a sentence to reach a length. This is a report about TODAY, not a market report.
+    daily: `Write a DAILY INTELLIGENCE REPORT for the founder — a decision-making report, not an analytics dump. It must be readable in UNDER 90 SECONDS. Keep it UNDER 500 WORDS — that is a ceiling, not a target, and there is NO minimum. If today's evidence supports a strong 150-word report, write 150 words and stop. Never add a sentence to reach a length. This is a report about TODAY, not a market report. The ceiling moved from 350 to 500 words specifically to make room for the Demand & Supply / Listing Opportunities / Data Quality sections below — it is still a ceiling to be undercut whenever the evidence is thin, not a target to fill.
 
-A busy property/operations manager should finish this in under a minute and know: what changed, what matters, what might be wrong, and what should I do. Every sentence belongs in exactly one of the five sections below — facts in their place, interpretation in its place, never blended into the same sentence.
+A busy property/operations manager should finish this in under two minutes and know: what changed, what matters, do we have enough inventory for what people want, what might be wrong, and what should I do. Every sentence belongs in exactly one of the sections below — facts in their place, interpretation in its place, never blended into the same sentence.
 
 ONE STORY, NOT FIVE. The insights below are already ranked; the FIRST new-or-continuing insight is the day's story and everything else is supporting detail. Do not open with a survey of every metric, and do not present several competing "biggest stories". Where two signals are really one story, CONNECT them rather than reporting them separately — e.g. "Gallery engagement remains unusually strong, but today's users are not progressing to contact" is one story about conversion, not a browsing story plus a lead story.
 
@@ -275,12 +388,20 @@ Structure with these markdown headings, in order. OMIT ANY SECTION THAT HAS NO R
 (PURE FACTS ONLY — no interpretation, no confidence tags. The day's key metrics and any change vs yesterday worth naming, e.g. "Gallery interactions: 180 vs 15 yesterday (+165 interactions; 12× yesterday); 180 vs ~23 30-day average (+~683%). 87 searches today vs 62 yesterday." A comparison table (Today | Yesterday | 30-day avg | Change) is welcome here for 3+ metrics. 1-3 sentences, still fact-only.)
 ## What Users Are Doing
 (Behaviour, still stated as facts, not conclusions: searches, listing views, gallery interactions, WhatsApp/call clicks, leads. Include, from CUSTOMER INTENT SEGMENTS when present, what customers actually searched for today in plain language, e.g. "today's strongest demand was renters wanting a condo in Sisattanak, mostly around $500-$800/month" — omit this if every segment's sample is too small to say anything with confidence, and say so explicitly rather than presenting a 2-search segment as "the" customer profile. Where a segment's bedroom_sample_size is at least 10, you may add the most-searched bedroom count to the same sentence as a plurality, e.g. "...mostly around $500-$800/month, most often searching for 2 bedrooms" — never below that sample size, and never phrase it as a majority or as what users "prefer". Numbers and comparisons only — save the "why" for What It Means.)
+## Demand & Supply
+(Uses the DEMAND -> SUPPLY -> GAP data block above, when present — pre-ranked and pre-classified real numbers; you never compute a gap classification yourself. For the strongest 1-3 demand segments (by search_count), state the segment, its demand_confidence as 🟢 HIGH / 🟡 MEDIUM / ⚪ LOW (LOW means too few searches to call it demand at all — do not name a "strongest demand segment" if every row is LOW), its supply_count (or "supply data not available for today" when null — never invent a number), and its gap status exactly as given: "gap_strong" -> 🔴 POTENTIAL INVENTORY GAP, "gap_potential" -> 🟡 POTENTIAL GAP, "adequate" -> no gap language at all, "insufficient_data" -> ⚪ not enough data to call this a gap. NEVER upgrade "gap_potential" to a confirmed shortage, and NEVER call an "insufficient_data" row a gap of any kind. When the BEDROOM-LEVEL DEMAND -> SUPPLY block is present, you may add one sentence naming the strongest bedroom-specific demand+supply pairing (e.g. "2-bedroom rentals are the strongest measurable bedroom demand in Sisattanak; current matching supply: 4 available listings"), phrased as a plurality per the bedroom rule above, tagged with the same gap vocabulary. Omit this entire section if the data block above is absent or every row is "insufficient_data".)
 ## What It Means
 (Interpretation ONLY, and ONLY here — every sentence in this section carries a 🟢/🟡/⚪ confidence tag per the CONFIDENCE LABELS rule above. Connect the facts above into a story about buyer behaviour, conversion, or demand; separate what's confirmed from what's a hypothesis. When gallery interactions are part of the story, follow the GALLERY INTERACTIONS rule above — say what the trend shows and say plainly what today's data cannot show.)
 ## What Needs Attention
-(Specific listings, data-quality problems, or unusual behaviour worth a look — including anything surfaced above as a [low_performing_listing], [high_performing_listing] or [data_quality] insight, and segments where demand meaningfully exceeds supply ([supply_shortage] insights with a metric_key starting "unmet_demand."). State the facts (impressions, leads, what's missing) plainly; when you connect a data gap to an outcome, tag it 🟡 LIKELY or ⚪ HYPOTHESIS per the causation rule above — never state the gap as the proven cause. Respect the small-sample rule: a listing below "moderate" confidence gets "Insufficient data to determine performance," not a diagnosis. Omit the section if none qualify.)
+(Specific listings, data-quality problems, or unusual behaviour worth a look — including anything surfaced above as a [low_performing_listing], [high_performing_listing] or [data_quality] insight, and segments where demand meaningfully exceeds supply ([supply_shortage] insights with a metric_key starting "unmet_demand."). State the facts (impressions, leads, what's missing) plainly; when you connect a data gap to an outcome, tag it 🟡 LIKELY or ⚪ HYPOTHESIS per the causation rule above — never state the gap as the proven cause. Respect the small-sample rule: a listing below "moderate" confidence gets "Insufficient data to determine performance," not a diagnosis. Break this section into the two labeled parts below; omit either (or the whole section) if nothing qualifies.
+### Listing Opportunities
+Each [low_performing_listing] insight above carries a deterministic "listing opportunity" tag — REVIEW NOW (enough exposure to justify an audit) or MONITOR ONLY (exposure too low to justify changes yet). Group your mentions by that tag: lead with REVIEW NOW listings, stating impressions/leads plainly and, if evidenced (missing_price/missing_photos/matches_top_segment in its evidence), a 🟡 LIKELY or ⚪ HYPOTHESIS reason. For MONITOR ONLY listings, note briefly that there isn't enough exposure yet to diagnose them — do not recommend changing one.
+### Data Quality
+List data-quality problems separately from user-behaviour findings: any [data_quality] insight above (missing price, photos, description, location, neighborhood insight, stale listings, no leads yet), plus a "⚠️ DATA CHECK" line whenever a SUSPICIOUS METRIC CHECK block is present above — state it as a possible tracking/data-quality issue to verify, exactly as that block instructs, never as a confirmed behavioural change. Never blend a data-quality fact with a behavioural interpretation in the same sentence.)
 ## Recommended Actions
-(2-4 CONCRETE actions the Pintag team can actually take today, each grounded in evidence that appears above. For each action, cover: what to do, why (the evidence and confidence tag it rests on), which listing or data point it relates to, and what to monitor afterward — e.g. "Complete the missing location data for [listing]. 🟡 LIKELY data-quality issue — 16 impressions, 0 leads. Monitor: impressions, views and contacts over the next 7 days." A generic instruction is not an action: "consider optimizing image loading", "investigate further" and "continue monitoring" are all failures unless you say exactly what to investigate, on which listing or segment, and what would settle it. Weak: "Consider optimizing image loading." Strong: "Complete the missing location data on the listing with 16 impressions and 0 leads today, then track impressions, views and contacts over the next week to see whether visibility improves." If today's evidence supports only two actions, give two.)`,
+(2-4 CONCRETE actions the Pintag team can actually take today, each grounded in evidence that appears above and ordered by the EVIDENCE HIERARCHY FOR ACTIONS rule above — an available inventory-acquisition action outranks a listing-optimization one, which outranks a data-correction one, and so on. For each action, cover: what to do, why (the evidence and confidence tag it rests on, and which hierarchy tier it is), which listing, segment or data point it relates to, and what to monitor afterward — e.g. "Complete the missing location data for [listing]. 🟡 LIKELY data-quality issue — 16 impressions, 0 leads. Monitor: impressions, views and contacts over the next 7 days." A generic instruction is not an action: "consider optimizing image loading", "investigate further" and "continue monitoring" are all failures unless you say exactly what to investigate, on which listing or segment, and what would settle it. Weak: "Consider optimizing image loading." Strong: "Complete the missing location data on the listing with 16 impressions and 0 leads today, then track impressions, views and contacts over the next week to see whether visibility improves." If today's evidence supports only two actions, give two.)
+## What Pintag Should Do
+(The executive-level distillation of the same evidence above: UP TO 3 concrete actions, ranked by the EVIDENCE HIERARCHY FOR ACTIONS rule — prioritize acquiring more listings in a demonstrated demand gap, then improving specific high-exposure listings, then fixing listing data, then investigating a tracking/analytics anomaly, then monitoring emerging demand. These may restate the strongest 1-3 actions from "Recommended Actions" at a company-priority level rather than inventing new ones. Do NOT use a generic recommendation like "continue monitoring" here unless today's evidence is genuinely insufficient for anything stronger — say so plainly if that's the case rather than padding to reach 3.)`,
     weekly: `Write a WEEKLY INTELLIGENCE REPORT. Compare this week to the previous week; highlight TRENDS, not just totals. Structure with these markdown headings:
 # Executive Summary
 ## What Changed This Week

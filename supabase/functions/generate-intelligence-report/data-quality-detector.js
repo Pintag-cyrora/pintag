@@ -65,6 +65,15 @@ function isMissingPrice(property) {
 function isMissingLocation(property) {
   return !(property.district_en && property.district_en.trim()) || !(property.village_en && property.village_en.trim());
 }
+// bedrooms=0 is a real, meaningful value (a Studio — see the bedroom-bucketing
+// discipline in 20260920000000_intelligence_demand_supply_gap.sql), so only
+// null/undefined count as "missing"; a real zero must never be flagged.
+function isMissingBedrooms(property) {
+  return property.bedrooms == null;
+}
+function isMissingPropertyType(property) {
+  return !(property.property_type && property.property_type.trim());
+}
 function isStaleListing(property, now) {
   if (!property.created_at) return false;
   const ageDays = daysSince(property.created_at, now);
@@ -88,6 +97,8 @@ const RULES = [
   { metricKey: 'missing_ai_highlight', check: (p) => isMissingAiHighlight(p), title: (p) => `Missing AI highlight: ${p.title_en || 'Untitled listing'}`, severity: 'medium' },
   { metricKey: 'missing_ai_description', check: (p) => isMissingAiDescription(p), title: (p) => `Missing description: ${p.title_en || 'Untitled listing'}`, severity: 'medium' },
   { metricKey: 'missing_location', check: (p) => isMissingLocation(p), title: (p) => `Missing location: ${p.title_en || 'Untitled listing'}`, severity: 'medium' },
+  { metricKey: 'missing_bedrooms', check: (p) => isMissingBedrooms(p), title: (p) => `Missing bedroom count: ${p.title_en || 'Untitled listing'}`, severity: 'medium' },
+  { metricKey: 'missing_property_type', check: (p) => isMissingPropertyType(p), title: (p) => `Missing property type: ${p.title_en || 'Untitled listing'}`, severity: 'high' },
   { metricKey: 'missing_neighborhood_insight', check: (p) => isMissingNeighborhoodInsight(p), title: (p) => `Missing neighborhood insight: ${p.title_en || 'Untitled listing'}`, severity: 'low' },
   { metricKey: 'stale_listing', check: (p, now) => isStaleListing(p, now), title: (p) => `Stale listing: ${p.title_en || 'Untitled listing'}`, severity: 'medium' },
   { metricKey: 'no_leads', check: (p, now, ctx) => isNoLeads(p, now, ctx && ctx.propertyIdsWithLeads), title: (p) => `No leads yet: ${p.title_en || 'Untitled listing'}`, severity: 'medium' },
@@ -159,5 +170,6 @@ export {
   TRACKED_STATUSES, STALE_DAYS_THRESHOLD, STALE_VIEW_THRESHOLD,
   isMissingPhotos, isMissingAiHighlight, isMissingAiDescription,
   isMissingNeighborhoodInsight, isMissingPrice, isMissingLocation,
+  isMissingBedrooms, isMissingPropertyType,
   isStaleListing, isNoLeads,
 };
