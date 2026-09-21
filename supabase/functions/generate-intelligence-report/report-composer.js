@@ -10,6 +10,7 @@
 import { priorityScore } from './insight-engine.js';
 import { dataConfidenceLabel } from './trend-calculator.js';
 import { buildDemandSupplyRows, buildBedroomDemandSupplyRows } from './demand-supply-gap.js';
+import { buildInventoryOpportunities } from './inventory-opportunity.js';
 
 export const CANONICAL_DISTRICTS = [
   'Chanthabouly', 'Sikhottabong', 'Xaythany', 'Sisattanak',
@@ -270,6 +271,28 @@ function demandSupplyBlock(reportType, rawMetricsSummary) {
     (bedroomRows.length ? `\nBEDROOM-LEVEL DEMAND -> SUPPLY (only segments with at least 10 bedroom-specific searches and a real bedroom plurality — bedroom_bucket "0" means Studio, "4+" collapses 4-or-more bedrooms; phrase bedroom_sample_size language as a plurality per the CUSTOMER INTENT SEGMENTS rule above, never as a majority or a stated preference; same status/gap vocabulary as above):\n${JSON.stringify(bedroomRows)}\n` : '');
 }
 
+// Inventory Acquisition Intelligence — wires inventory-opportunity.js's
+// buildInventoryOpportunities into the prompt for the "## Inventory
+// Opportunities" section. Daily-only, same reason as demandSupplyBlock
+// (customer_intent_segments/active_inventory aren't merged across days
+// yet). Needs `composed` (already a buildPrompt parameter) for the
+// emerging/persistent read against the same new/continuing/resolved
+// insight lists the NEW/CONTINUING/RESOLVED INSIGHTS blocks above already
+// display — this module never queries anything itself.
+function inventoryOpportunitiesBlock(reportType, rawMetricsSummary, composed) {
+  if (reportType !== 'daily') return '';
+  const segments = rawMetricsSummary && Array.isArray(rawMetricsSummary.customer_intent_segments)
+    ? rawMetricsSummary.customer_intent_segments : null;
+  if (!segments || !segments.length) return '';
+
+  const activeInventory = rawMetricsSummary.active_inventory || {};
+  const bySegmentSupply = activeInventory.available_by_segment || null;
+  const rows = buildInventoryOpportunities(segments, bySegmentSupply, composed);
+  if (!rows.length) return '';
+
+  return `\nINVENTORY OPPORTUNITIES (today, pre-computed and pre-classified from the SAME demand/supply data as DEMAND -> SUPPLY -> GAP above — you never compute a classification or a target yourself). classification is exactly one of:\n"acquire_high" -> 🔴 HIGH-PRIORITY OPPORTUNITY — strong demand (gap_strong), HIGH demand_confidence, AND demand_trend "persistent" (this segment's unmet-demand insight has stayed open across more than one day — never award this tier to a demand_trend of "emerging", no matter how strong today's single reading looks: a one-day spike is not yet a confirmed opportunity).\n"acquire_potential" -> 🟡 POTENTIAL OPPORTUNITY — a real gap (gap_strong or gap_potential) that does not yet meet every acquire_high condition (e.g. demand_trend is still "emerging", or demand_confidence is only MEDIUM).\n"optimize" -> matching supply is ALREADY adequate for this segment but it is not converting (real impressions, zero leads). This is NEVER an acquisition opportunity — say explicitly that supply already exists and the issue is conversion, pointing to Listing Opportunities / Recommended Actions instead. Do not propose acquiring more inventory for an "optimize" row under any circumstance.\n"insufficient_data" -> ⚪ Insufficient evidence — monitor only. Say plainly why (too small a sample, or supply unknown for today) and do not name a gap or an opportunity.\nEach row also carries: search_count/impressions/demand_confidence (facts about demand), supply_count (matching bookable inventory, or null when unknown for today), bedroom_count (a concrete bedroom target ONLY when the segment's bedroom sample cleared the same >=10 floor the CUSTOMER INTENT SEGMENTS rule above uses — null means do not name a bedroom count at all), and top_price_band ({min,max} in USD, the site's actual search-filter currency — omit price from any target when it is null, never invent one; when only one of min/max is present phrase it as "$X or above"/"up to $Y", when both are present phrase it as "$X-$Y").\n${JSON.stringify(rows)}\n`;
+}
+
 export function buildPrompt(reportType, composed, rawMetricsSummary, supply, trendAnalysis) {
   const newBlock = composed.new_insights.length
     ? composed.new_insights.map(insightSummaryLine).join('\n')
@@ -304,6 +327,7 @@ export function buildPrompt(reportType, composed, rawMetricsSummary, supply, tre
 
   const customerIntentBlockText = customerIntentBlock(reportType, rawMetricsSummary);
   const demandSupplyBlockText = demandSupplyBlock(reportType, rawMetricsSummary);
+  const inventoryOpportunitiesBlockText = inventoryOpportunitiesBlock(reportType, rawMetricsSummary, composed);
   const galleryCheckText = galleryTrackingCheck(trendAnalysis, rawMetricsSummary);
 
   const commonRules = `You are writing for Pintag, a real estate marketplace in Vientiane, Laos. You are given a set of insights that deterministic code has ALREADY detected, ranked, and classified as new/continuing/resolved, plus a pre-computed trend analysis — these are the only findings and the only numbers that exist. Your job is strictly to explain, connect, and narrate them clearly.
@@ -338,18 +362,18 @@ FACT vs SIGNAL vs HYPOTHESIS vs ACTION — every sentence you write is exactly o
 Do NOT collapse a HYPOTHESIS into a FACT. Wrong: "Users are not finding the information they need." Right, as three separate statements: FACT — "25 impressions and 0 leads." / ⚪ HYPOTHESIS — "Missing price, amenity, or rental-term information may be reducing contact intent." / ACTION — "Monitor lead conversion over the next 7 days."
 
 EVIDENCE HIERARCHY FOR ACTIONS — every action you propose (in "Recommended Actions" and "What Pintag Should Do") must be justified by exactly one of these, and you must prefer the first evidence type on this list that genuinely applies today; never propose "monitor" when stronger evidence already justifies a more specific action:
-1. Inventory acquisition — a demand segment (or bedroom segment) above shows a "gap_strong"/"gap_potential" status: measurable demand with insufficient matching supply.
-2. Listing optimization — a listing carries "listing opportunity: REVIEW NOW": sufficient exposure (impressions) but poor conversion.
+1. Inventory acquisition — an INVENTORY OPPORTUNITIES row above is classified "acquire_high" or "acquire_potential" (equivalently, a demand/bedroom segment shows a "gap_strong"/"gap_potential" status with enough demand confidence and, for the top tier, a "persistent" demand_trend): measurable demand with insufficient matching supply.
+2. Listing optimization — a listing carries "listing opportunity: REVIEW NOW", OR an INVENTORY OPPORTUNITIES row is classified "optimize" (matching supply already exists; the segment simply isn't converting): sufficient exposure but poor conversion — never propose acquiring more inventory for an "optimize" row.
 3. Data correction — a [data_quality] insight or a Data Quality-section finding shows listing/analytics data is incomplete or inconsistent.
 4. Tracking investigation — a SUSPICIOUS METRIC CHECK block above, or another metric behaving in a way the data itself flags as unexpected.
-5. Monitor — none of the above apply with enough evidence; say so honestly rather than inventing a stronger action. Never recommend editing or auditing a listing for "low performance" when its evidence shows insufficient exposure ("listing opportunity: MONITOR ONLY") — that is the reserved case for tier 5, not tier 2.
+5. Monitor — none of the above apply with enough evidence; say so honestly rather than inventing a stronger action. Never recommend editing or auditing a listing for "low performance" when its evidence shows insufficient exposure ("listing opportunity: MONITOR ONLY"), and never recommend acquisition for an INVENTORY OPPORTUNITIES row classified "insufficient_data" — both are the reserved case for tier 5.
 
 GALLERY INTERACTIONS — today's analytics measure a marketplace-wide total, and the trend analysis can compare it to yesterday/7-day/30-day averages, but they do NOT break gallery interactions down by which listing, which photo, or how many distinct users generated them. When gallery engagement is worth discussing, state what the aggregate trend actually shows, and say plainly that today's data cannot show which listings or how many users drove it — do not guess. You MAY compare the gallery-engagement trend against the listing-views and WhatsApp-click trends already given (e.g. "gallery engagement rose while WhatsApp clicks stayed flat") since both are real figures in the trend analysis, not a guess.
 
 NEW INSIGHTS (🟢):\n${newBlock}\n
 CONTINUING INSIGHTS (🔴):\n${continuingBlock}\n
 RESOLVED INSIGHTS (✅):\n${resolvedBlock}
-${supplyBlock}${trendBlock}${customerIntentBlockText}${demandSupplyBlockText}${galleryCheckText}
+${supplyBlock}${trendBlock}${customerIntentBlockText}${demandSupplyBlockText}${inventoryOpportunitiesBlockText}${galleryCheckText}
 RAW METRICS SUMMARY (period totals, safe to cite verbatim):
 ${JSON.stringify(rawMetricsSummary)}
 
@@ -390,6 +414,8 @@ Structure with these markdown headings, in order. OMIT ANY SECTION THAT HAS NO R
 (Behaviour, still stated as facts, not conclusions: searches, listing views, gallery interactions, WhatsApp/call clicks, leads. Include, from CUSTOMER INTENT SEGMENTS when present, what customers actually searched for today in plain language, e.g. "today's strongest demand was renters wanting a condo in Sisattanak, mostly around $500-$800/month" — omit this if every segment's sample is too small to say anything with confidence, and say so explicitly rather than presenting a 2-search segment as "the" customer profile. Where a segment's bedroom_sample_size is at least 10, you may add the most-searched bedroom count to the same sentence as a plurality, e.g. "...mostly around $500-$800/month, most often searching for 2 bedrooms" — never below that sample size, and never phrase it as a majority or as what users "prefer". Numbers and comparisons only — save the "why" for What It Means.)
 ## Demand & Supply
 (Uses the DEMAND -> SUPPLY -> GAP data block above, when present — pre-ranked and pre-classified real numbers; you never compute a gap classification yourself. For the strongest 1-3 demand segments (by search_count), state the segment, its demand_confidence as 🟢 HIGH / 🟡 MEDIUM / ⚪ LOW (LOW means too few searches to call it demand at all — do not name a "strongest demand segment" if every row is LOW), its supply_count (or "supply data not available for today" when null — never invent a number), and its gap status exactly as given: "gap_strong" -> 🔴 POTENTIAL INVENTORY GAP, "gap_potential" -> 🟡 POTENTIAL GAP, "adequate" -> no gap language at all, "insufficient_data" -> ⚪ not enough data to call this a gap. NEVER upgrade "gap_potential" to a confirmed shortage, and NEVER call an "insufficient_data" row a gap of any kind. When the BEDROOM-LEVEL DEMAND -> SUPPLY block is present, you may add one sentence naming the strongest bedroom-specific demand+supply pairing (e.g. "2-bedroom rentals are the strongest measurable bedroom demand in Sisattanak; current matching supply: 4 available listings"), phrased as a plurality per the bedroom rule above, tagged with the same gap vocabulary. Omit this entire section if the data block above is absent or every row is "insufficient_data".)
+## Inventory Opportunities
+(Uses the INVENTORY OPPORTUNITIES data block above, when present — the SAME segments as Demand & Supply, additionally classified into a concrete acquisition decision; you never compute a classification or a target yourself. For each row classified "acquire_high", write a 🔴 HIGH-PRIORITY OPPORTUNITY: name the segment (property type, bedroom_count when not null, transaction type, district), state the demand fact and the supply fact side by side, then a line "Acquisition opportunity: additional matching inventory." and a concrete "Target acquisition: <district> · <property type> · <bedroom_count>-bedroom (or omit if null) · Rental/Sale · <price band from top_price_band, phrased per the rule above, or omitted entirely if null>." For "acquire_potential" rows, write the same shape under a 🟡 POTENTIAL OPPORTUNITY heading — and if demand_trend is "emerging", say explicitly that this is a newly-observed gap worth confirming over the next few days, not yet a confirmed opportunity. For "optimize" rows, do NOT propose acquiring inventory: state plainly that matching supply already exists and the segment simply isn't converting, and point to Listing Opportunities / Recommended Actions instead. For "insufficient_data" rows, write "⚪ Insufficient evidence — monitor only" with the specific reason (small sample, or supply unknown today) — never a gap or an opportunity. Lead with the strongest row (already ranked); 1-3 opportunities is plenty. Omit this entire section if the data block above is absent.)
 ## What It Means
 (Interpretation ONLY, and ONLY here — every sentence in this section carries a 🟢/🟡/⚪ confidence tag per the CONFIDENCE LABELS rule above. Connect the facts above into a story about buyer behaviour, conversion, or demand; separate what's confirmed from what's a hypothesis. When gallery interactions are part of the story, follow the GALLERY INTERACTIONS rule above — say what the trend shows and say plainly what today's data cannot show.)
 ## What Needs Attention

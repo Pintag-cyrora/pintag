@@ -91,7 +91,34 @@ export const REPORT_FORMAT_VERSION = '1.1.0';
 // materially narrower question — no demand/supply/gap analysis, no
 // deterministic listing-opportunity or data-quality-check surfacing — than
 // one generated under 5.x.
-export const PROMPT_VERSION = '5.0.0';
+// 6.0.0 — Inventory Acquisition Intelligence: a new "## Inventory
+// Opportunities" section (between "## Demand & Supply" and "## What It
+// Means") wires inventory-opportunity.js's buildInventoryOpportunities into
+// the prompt via a new INVENTORY OPPORTUNITIES data block. Each demand
+// segment is classified into exactly one of four deterministic tiers —
+// "acquire_high" (🔴 HIGH-PRIORITY: gap_strong status + HIGH demand
+// confidence + a "persistent" demand_trend, i.e. the segment's unmet-demand
+// insight has stayed open across more than one day, so a one-day spike can
+// never reach this tier), "acquire_potential" (🟡 POTENTIAL: a real gap that
+// doesn't yet meet every acquire_high condition), "optimize" (matching
+// supply is already adequate but the segment isn't converting — explicitly
+// NEVER an acquisition recommendation, redirected to Listing Opportunities/
+// Recommended Actions instead), and "insufficient_data" (⚪: too small a
+// sample, demand confidence too low, or supply unknown for today — never a
+// named gap). Each opportunity row also carries a concrete acquisition
+// target when the evidence supports it: district/property type/transaction
+// type (always), a bedroom count (only when the segment's bedroom sample
+// clears the same >=10 floor the existing bedroom-intent rule uses), and a
+// price band (top_price_band verbatim, in USD — the site's actual
+// search-filter currency — never invented when null). The EVIDENCE
+// HIERARCHY FOR ACTIONS rule (5.0.0) now explicitly maps its tier 1
+// (inventory acquisition) and tier 2 (listing optimization) to these same
+// classifications, so the two tiers and the new section can never disagree.
+// A daily report generated under 5.x asked Gemini a materially narrower
+// question — demand/supply gaps were shown, but never turned into a
+// concrete, confidence-gated, trend-aware acquisition recommendation — than
+// one generated under 6.x.
+export const PROMPT_VERSION = '6.0.0';
 
 // Bump whenever report-validator.js's contradiction/grounding rules change
 // — affects how much to trust "this report passed validation" for a given
