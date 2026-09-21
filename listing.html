@@ -2165,7 +2165,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
 
     var ctaHtml='';
     if(cleanPhone){
-      var waUnitMsg=encodeURIComponent(buildUnitWhatsAppMessage(property,unitName,priceText,p.resolved,lang,resolvedUnit.bedrooms,L.unitBeds[lang]));
+      var waUnitMsg=encodeURIComponent(buildUnitWhatsAppMessage(property,unitName,priceText,p.resolved,lang,resolvedUnit.bedrooms,L.unitBeds[lang],getCanonicalListingUrl(property,lang)));
       var waUnitUrl='https://wa.me/'+cleanPhone+'?text='+waUnitMsg;
       // stopPropagation: the card itself is also a click target (selects
       // this unit, see below) — without this, clicking the CTA while the
@@ -2715,12 +2715,17 @@ function buildMockupLayout(){
   var waDistrictRaw=data['district_'+lang] || data.district_en || '';
   var waLocation=resolvedVillage ? (resolvedVillage+', '+waDistrictRaw) : waDistrictRaw;
   var waCanonicalUrl=getCanonicalListingUrl(data);
+  // Raw (unescaped) title for the WhatsApp text itself -- resolvedTitle
+  // above is esc()'d for HTML display, wrong for a plain-text message that
+  // is itself encodeURIComponent()'d before going into the wa.me URL.
+  var waPropertyName=resolveLangField(data,'title',lang);
   // waMessageText is the un-encoded template output — kept as its own
   // variable (rather than encoding inline) so the per-unit CTAs in the
   // Available Units section below can append a unit name to the same
   // base message before encoding, without duplicating the template logic.
   var waMessageText=waCanonicalUrl
     ? fillTemplate(WA_MESSAGE_TEMPLATES[lang]||WA_MESSAGE_TEMPLATES.en, {
+        PROPERTY_NAME: waPropertyName,
         CANONICAL_LISTING_URL: waCanonicalUrl
       })
     : fillTemplate(WA_MESSAGE_TEMPLATES_FALLBACK[lang]||WA_MESSAGE_TEMPLATES_FALLBACK.en, {
@@ -2739,7 +2744,7 @@ function buildMockupLayout(){
   if(selectedUnit){
     var _selUnitNameForWa=selectedUnit.resolved.name[lang]||selectedUnit.resolved.name.en||'';
     var _selPriceForWa=buildUnitPriceText(data,selectedUnit.resolved,lang);
-    waMessageText=buildUnitWhatsAppMessage(data,_selUnitNameForWa,_selPriceForWa,selectedUnit.availability,lang,selectedUnit.resolved.bedrooms,L.unitBeds[lang]);
+    waMessageText=buildUnitWhatsAppMessage(data,_selUnitNameForWa,_selPriceForWa,selectedUnit.availability,lang,selectedUnit.resolved.bedrooms,L.unitBeds[lang],waCanonicalUrl);
   }
   var waMessage=encodeURIComponent(waMessageText);
   var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
@@ -3456,17 +3461,17 @@ var WA_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
 // Pre-filled WhatsApp contact message, per language. {{PLACEHOLDER}} tokens
 // (filled via fillTemplate(), see above) rather than string concatenation.
 //
-// Primary template: kept short — just a greeting/interest line plus the
-// canonical listing URL. Production's existing Cloudflare setup already
-// generates the rich WhatsApp link preview (image/title/description) for
-// that URL, so the message itself doesn't need to restate the property's
-// type/location/reference; the preview card carries that. Requires a real
-// slug — see WA_MESSAGE_TEMPLATES_FALLBACK below for when one isn't
-// available.
+// Primary template: a short greeting/interest line, then an explicit
+// "Property: <name>" line and the canonical listing URL -- so whoever
+// receives the WhatsApp message can open the exact listing immediately,
+// even though production's Cloudflare setup already generates a rich link
+// preview (image/title/description) for that URL on its own. Requires a
+// real slug — see WA_MESSAGE_TEMPLATES_FALLBACK below for when one isn't
+// available (that path has no canonical URL to link at all).
 var WA_MESSAGE_TEMPLATES={
-  lo:'ສະບາຍດີ,\n\nຂ້ອຍສົນໃຈຊັບສິນນີ້. ຂໍລາຍລະອຽດເພີ່ມແນ່.\n\n{{CANONICAL_LISTING_URL}}',
-  en:'Hello,\n\nI\'m interested in this property. Could you provide more details?\n\n{{CANONICAL_LISTING_URL}}',
-  zh:'您好，\n\n我对这处房产很感兴趣，请提供更多详细信息。\n\n{{CANONICAL_LISTING_URL}}'
+  lo:'ສະບາຍດີ,\n\nຂ້ອຍສົນໃຈຊັບສິນນີ້. ຂໍລາຍລະອຽດເພີ່ມແນ່.\n\nຊັບສິນ: {{PROPERTY_NAME}}\n{{CANONICAL_LISTING_URL}}',
+  en:'Hello,\n\nI\'m interested in this property. Could you provide more details?\n\nProperty: {{PROPERTY_NAME}}\n{{CANONICAL_LISTING_URL}}',
+  zh:'您好，\n\n我对这处房产很感兴趣，请提供更多详细信息。\n\n房源: {{PROPERTY_NAME}}\n{{CANONICAL_LISTING_URL}}'
 };
 
 // Fallback template: used only when getCanonicalListingUrl() returns null
@@ -3505,19 +3510,43 @@ var WA_UNIT_PRICE_ON_REQUEST={lo:'ລາຄາຕິດຕໍ່ສອບຖາ�
 // (defined once, near the unit card facts) rather than a second copy of
 // that three-language dictionary here -- one source of truth for the word
 // "Beds"/"ຫ້ອງນອນ"/"卧室" across the unit card and this message.
-function buildUnitWhatsAppMessage(property, unitName, priceText, availabilityResolved, lang, bedrooms, bedroomsLabel){
+//
+// canonicalUrl (getCanonicalListingUrl(property, lang), the SAME builder
+// the property-level template uses -- never a second URL scheme) and the
+// optional specificUnitLabel (a specific physical unit identifier, e.g.
+// "Unit 203" -- always undefined today, since no per-unit selection UI
+// exists yet; see 20260921000000_lead_unit_attribution.sql's unit_id
+// comment) are appended as a structured, language-neutral breadcrumb below
+// the localized greeting sentence: "Property — Unit Type[ — Unit]" / then
+// "Bedrooms — Price" / then the clickable link -- so the recipient can
+// open the exact listing even if the greeting sentence above is edited or
+// deleted in WhatsApp. Every line is omitted, never fabricated, when its
+// underlying value is unavailable (no bedrooms/price known, no slug to
+// link).
+function buildUnitWhatsAppMessage(property, unitName, priceText, availabilityResolved, lang, bedrooms, bedroomsLabel, canonicalUrl, specificUnitLabel){
   var propertyName=resolveLangField(property,'title',lang);
   var priceStr=priceText||(WA_UNIT_PRICE_ON_REQUEST[lang]||WA_UNIT_PRICE_ON_REQUEST.en);
   var availLine=(availabilityResolved&&availabilityResolved.status==='available')
     ? (WA_UNIT_AVAILABLE_QUESTION[lang]||WA_UNIT_AVAILABLE_QUESTION.en)
     : (availabilityResolved ? formatAvailabilityDisplay(availabilityResolved,lang) : '');
   var unitLabel=(bedrooms!=null&&bedroomsLabel)?((unitName||'')+' ('+bedrooms+' '+bedroomsLabel+')'):(unitName||'');
-  return fillTemplate(WA_UNIT_MESSAGE_TEMPLATES[lang]||WA_UNIT_MESSAGE_TEMPLATES.en, {
+  var greeting=fillTemplate(WA_UNIT_MESSAGE_TEMPLATES[lang]||WA_UNIT_MESSAGE_TEMPLATES.en, {
     UNIT_NAME: unitLabel,
     PROPERTY_NAME: propertyName,
     PRICE: priceStr,
     AVAILABILITY_LINE: availLine
   });
+
+  var headParts=[propertyName, unitName||unitLabel];
+  if(specificUnitLabel) headParts.push(specificUnitLabel);
+  var breadcrumbLines=[headParts.join(' — ')];
+  var factParts=[];
+  if(bedrooms!=null && bedroomsLabel) factParts.push(bedrooms+' '+bedroomsLabel);
+  if(priceStr) factParts.push(priceStr);
+  if(factParts.length) breadcrumbLines.push(factParts.join(' — '));
+  if(canonicalUrl) breadcrumbLines.push(canonicalUrl);
+
+  return greeting+'\n\n'+breadcrumbLines.join('\n');
 }
 
 // ── Lightbox ─────────────────────────────────────────────────────

@@ -101,6 +101,95 @@ test.describe('listing.html contact CTAs (mocked Supabase)', () => {
     expect(posts.lead_events[0].unit_id).toBe(null);
   });
 
+  // ── Clickable property link in the prefilled WhatsApp message ───────────
+  // The link must survive in the message text itself (never rely on the
+  // buyer keeping the auto-generated text) while the structured
+  // property_id/unit_type_id/unit_id attribution (PR #104) stays entirely
+  // independent of that text -- both requirements verified together below.
+
+  // REQUIRED 1/6/8: property-level CTA includes the canonical property
+  // link (built from the real slug via getCanonicalListingUrl(), never a
+  // hard-coded URL), AND the structured attribution is unaffected.
+  test('REQUIRED 1/6/8: the property-level WhatsApp message includes a clickable Property: line + the canonical listing URL, and unit_type_id stays null', async ({ page }) => {
+    await stubNavigator(page);
+    const posts = await mockRestAndCollect(page, activeProp({ slug: 'test-active', title_en: 'Nice Apartment' }));
+    await page.goto('/listing.html?slug=test-active&lang=en');
+    await page.waitForTimeout(600);
+    const href = await page.locator('.btn-wa.btn-primary').getAttribute('href');
+    const msg = decodeURIComponent(href.split('?text=')[1]);
+    expect(msg).toContain('Property: Nice Apartment');
+    expect(msg).toContain('https://pintag.io/listing.html?slug=test-active&lang=en');
+    await page.click('.btn-wa.btn-primary');
+    await page.waitForTimeout(300);
+    expect(posts.lead_events[0].property_id ?? posts.lead_events[0].listing_id).toBeTruthy();
+    expect(posts.lead_events[0].unit_type_id).toBe(null);
+  });
+
+  // REQUIRED 2/6/8: a unit-type CTA's message includes the SAME canonical
+  // property link (not a unit-specific URL -- there is no per-unit page),
+  // and unit_type_id attribution is unaffected by the link being added.
+  test('REQUIRED 2/6/8: a unit-type CTA\'s message includes the property link, and unit_type_id attribution is unchanged', async ({ page }) => {
+    await stubNavigator(page);
+    const posts = await mockRestAndCollect(page, activeProp({
+      id: 'p-link-unit', slug: 'test-link-unit', title_en: 'River Apartment',
+      unit_types: [
+        { id: 'room-type-a', name_en: 'Room Type A', bedrooms: 2, bathrooms: 1, sqm: 45, price_amount: 400, price_currency: 'USD', price_frequency: 'monthly', images: [] },
+        { id: 'room-type-b', name_en: 'Room Type B', bedrooms: 1, bathrooms: 1, sqm: 32, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly', images: [] },
+      ],
+    }));
+    await page.goto('/listing.html?slug=test-link-unit&lang=en');
+    await page.waitForTimeout(600);
+    const card = page.locator('.unit-cta').first();
+    const href = await card.getAttribute('href');
+    const msg = decodeURIComponent(href.split('?text=')[1]);
+    expect(msg).toContain('River Apartment — Room Type A');
+    expect(msg).toContain('2 Beds — $400 / month');
+    expect(msg).toContain('https://pintag.io/listing.html?slug=test-link-unit&lang=en');
+    await card.click();
+    await page.waitForTimeout(300);
+    expect(posts.lead_events[0].unit_type_id).toBe('room-type-a');
+  });
+
+  // REQUIRED 4: the Lao-language message also includes the (language-
+  // neutral) canonical link -- proving the link survives regardless of
+  // page language, via the same existing localization system.
+  test('REQUIRED 4: the Lao unit-type message also includes the canonical property link', async ({ page }) => {
+    await stubNavigator(page);
+    await mockRestAndCollect(page, activeProp({
+      id: 'p-link-lo', slug: 'test-link-lo', title_en: 'River Apartment', title_lo: 'ອາພາດເມັນ ริเวอร์',
+      unit_types: [
+        { id: 'room-type-a', name_en: 'Room Type A', name_lo: 'ຫ້ອງປະເພດ A', bedrooms: 2, bathrooms: 1, sqm: 45, price_amount: 400, price_currency: 'USD', price_frequency: 'monthly', images: [] },
+        { id: 'room-type-b', name_en: 'Room Type B', name_lo: 'ຫ້ອງປະເພດ B', bedrooms: 1, bathrooms: 1, sqm: 32, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly', images: [] },
+      ],
+    }));
+    await page.goto('/listing.html?slug=test-link-lo&lang=lo');
+    await page.waitForTimeout(600);
+    const href = await page.locator('.unit-cta').first().getAttribute('href');
+    const msg = decodeURIComponent(href.split('?text=')[1]);
+    expect(msg).toContain('https://pintag.io/listing.html?slug=test-link-lo&lang=lo');
+  });
+
+  // REQUIRED 3: specific-unit CTA (unit_id) includes the property link too.
+  // No UI exists yet to select an individual physical unit (see PR #104 --
+  // unit_id has no backing table until Phase 3), so this exercises
+  // buildUnitWhatsAppMessage() -- the real, shipped function -- directly
+  // in-page with a specific-unit label, proving the mechanism is already
+  // correct and forward-compatible.
+  test('REQUIRED 3: buildUnitWhatsAppMessage(), given a specific-unit label, includes Property — Unit Type — Unit AND the property link', async ({ page }) => {
+    await stubNavigator(page);
+    await mockRestAndCollect(page, activeProp({ slug: 'test-specific-unit', title_en: 'River Apartment' }));
+    await page.goto('/listing.html?slug=test-specific-unit&lang=en');
+    await page.waitForTimeout(600);
+    const msg = await page.evaluate(() => buildUnitWhatsAppMessage(
+      propertyContext, 'Room Type A', '$400 / month',
+      { status: 'available' }, 'en', 2, 'Beds',
+      getCanonicalListingUrl(propertyContext, 'en'), 'Unit 203'
+    ));
+    expect(msg).toContain('River Apartment — Room Type A — Unit 203');
+    expect(msg).toContain('2 Beds — $400 / month');
+    expect(msg).toContain('https://pintag.io/listing.html?slug=test-specific-unit&lang=en');
+  });
+
   test('desktop Call button: 1 ui_events + 1 lead_events, event_type=call_click', async ({ page }) => {
     await stubNavigator(page);
     const posts = await mockRestAndCollect(page, activeProp());
