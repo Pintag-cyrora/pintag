@@ -5,7 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   dataQualityDetector, isMissingPhotos, isMissingAiHighlight, isMissingAiDescription,
-  isMissingNeighborhoodInsight, isMissingPrice, isMissingLocation, isStaleListing, isNoLeads,
+  isMissingNeighborhoodInsight, isMissingPrice, isMissingLocation,
+  isMissingBedrooms, isMissingPropertyType, isStaleListing, isNoLeads,
   STALE_DAYS_THRESHOLD,
 } from './data-quality-detector.js';
 import { runInsightEngine } from './insight-engine.js';
@@ -17,7 +18,7 @@ function property(overrides) {
     id: 'p-1', title_en: 'Test Listing', images: ['https://x/1.jpg'],
     description_en: 'A lovely home.', property_highlight_en: 'A great highlight.',
     neighborhood_insight_en: 'A quiet, leafy street.', price_display: '$500,000',
-    district_en: 'Sisattanak', village_en: 'Thongkang', property_type: 'villa',
+    district_en: 'Sisattanak', village_en: 'Thongkang', property_type: 'villa', bedrooms: 2,
     created_at: '2026-07-01T00:00:00Z', view_count: 10,
     ...overrides,
   };
@@ -54,6 +55,17 @@ test('isMissingLocation: true when either district or village is blank', () => {
   assert.equal(isMissingLocation(property({ district_en: null })), true);
   assert.equal(isMissingLocation(property({ village_en: null })), true);
   assert.equal(isMissingLocation(property({ district_en: 'Sisattanak', village_en: 'Thongkang' })), false);
+});
+test('isMissingBedrooms: true only when bedrooms is null/undefined — a real Studio (0) is NOT missing', () => {
+  assert.equal(isMissingBedrooms(property({ bedrooms: null })), true);
+  assert.equal(isMissingBedrooms(property({ bedrooms: undefined })), true);
+  assert.equal(isMissingBedrooms(property({ bedrooms: 0 })), false);
+  assert.equal(isMissingBedrooms(property({ bedrooms: 3 })), false);
+});
+test('isMissingPropertyType: true when property_type is blank or absent', () => {
+  assert.equal(isMissingPropertyType(property({ property_type: null })), true);
+  assert.equal(isMissingPropertyType(property({ property_type: '  ' })), true);
+  assert.equal(isMissingPropertyType(property({ property_type: 'apartment' })), false);
 });
 test('isStaleListing: false when younger than the threshold regardless of views', () => {
   const recentlyCreated = new Date(NOW);
@@ -116,6 +128,16 @@ test('detect does not flag no_leads when the property id is present in propertyI
   const metricKeys = findings.map((f) => f.metricKey);
   assert.ok(!metricKeys.includes('no_leads'));
   assert.ok(metricKeys.includes('stale_listing')); // view_count still below the floor -- a separate condition
+});
+test('detect flags missing_bedrooms and missing_property_type as their own findings, and never flags a real Studio (bedrooms=0)', () => {
+  const noBedrooms = property({ id: 'no-bed-1', bedrooms: null });
+  const noType = property({ id: 'no-type-1', property_type: '' });
+  const studio = property({ id: 'studio-1', bedrooms: 0 });
+  const findings = dataQualityDetector.detect({ properties: [noBedrooms, noType, studio], now: NOW });
+  assert.ok(findings.some((f) => f.dimensionPropertyId === 'no-bed-1' && f.metricKey === 'missing_bedrooms'));
+  assert.ok(findings.some((f) => f.dimensionPropertyId === 'no-type-1' && f.metricKey === 'missing_property_type'));
+  assert.ok(!findings.some((f) => f.dimensionPropertyId === 'studio-1' && f.metricKey === 'missing_bedrooms'),
+    'a genuine Studio (bedrooms=0) must never be flagged as missing');
 });
 test('detect returns nothing when properties list is empty or absent', () => {
   assert.deepEqual(dataQualityDetector.detect({ properties: [], now: NOW }), []);

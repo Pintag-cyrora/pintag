@@ -30,6 +30,20 @@ test('the daily report asks for the five-section Facts->Actions structure, in or
   }
 });
 
+test('v5.0.0: the new Demand & Supply / Listing Opportunities / Data Quality / What Pintag Should Do sections appear, in order, around the original five', () => {
+  const p = daily();
+  const want = ['# What Happened', '## What Users Are Doing', '## Demand & Supply',
+                '## What It Means', '## What Needs Attention', '### Listing Opportunities',
+                '### Data Quality', '## Recommended Actions', '## What Pintag Should Do'];
+  let at = -1;
+  for (const h of want) {
+    const i = p.indexOf(h);
+    assert.ok(i > -1, 'missing section: ' + h);
+    assert.ok(i > at, 'out of order: ' + h);
+    at = i;
+  }
+});
+
 test('the OLD daily sections are gone', () => {
   const p = daily();
   for (const dead of ['## Marketplace', '## Property Performance', '## Product Insights',
@@ -55,7 +69,7 @@ test('customer intent / unmet demand guidance survives inside the new sections, 
 
 test('every sentence lives in exactly one section -- facts, then behaviour, then interpretation, then attention, then actions', () => {
   const p = daily();
-  assert.match(p, /Every sentence belongs in exactly one of the five sections below/);
+  assert.match(p, /Every sentence belongs in exactly one of the sections below/);
   assert.match(p, /facts in their place, interpretation in its place, never blended into the same sentence/);
   assert.match(p, /PURE FACTS ONLY — no interpretation, no confidence tags/);
   assert.match(p, /Interpretation ONLY, and ONLY here/);
@@ -157,11 +171,13 @@ test('supply composition is background for DAILY and narrative for weekly/monthl
 
 test('length is a CEILING with no minimum — a short strong briefing is correct', () => {
   const p = daily();
-  assert.match(p, /UNDER 60 SECONDS/);
-  assert.match(p, /UNDER 350 WORDS — that is a ceiling, not a target, and there is NO minimum/);
+  assert.match(p, /UNDER 90 SECONDS/);
+  assert.match(p, /UNDER 500 WORDS — that is a ceiling, not a target, and there is NO minimum/);
   assert.match(p, /Never add a sentence to reach a length/);
   // A floor would invite padding, which is the opposite of the goal: a 150-word
-  // briefing backed by evidence beats a padded 300-word one.
+  // briefing backed by evidence beats a padded 300-word one. The ceiling moved
+  // from 350 to 500 (v5.0.0) specifically to make room for the new Demand &
+  // Supply / Listing Opportunities / Data Quality content — still a ceiling.
   assert.ok(!/200-350/.test(p), 'no lower bound may be stated');
   assert.ok(!/300-600 words/.test(p), 'the old daily length target must be gone');
 });
@@ -184,7 +200,8 @@ test('the final section demands concrete, evidence-grounded actions, each with w
   assert.match(p, /A generic instruction is not an action/);
   assert.match(p, /Complete the missing location data on the listing with 16 impressions and 0 leads today/);
   assert.match(p, /grounded in evidence that appears above/);
-  assert.match(p, /what to do, why .* which listing or data point it relates to, and what to monitor afterward/);
+  assert.match(p, /what to do, why .* which listing, segment or data point it relates to, and what to monitor afterward/);
+  assert.match(p, /ordered by the EVIDENCE HIERARCHY FOR ACTIONS rule above/);
   // And the count must follow the evidence, not the heading.
   assert.match(p, /If today's evidence supports only two actions, give two/);
 });
@@ -240,16 +257,15 @@ test('the JSON output contract is unchanged', () => {
 });
 
 test('version metadata records the change', () => {
-  // 4.0.0 (Intelligence + Decision-Making rework) supersedes 3.0.0 (Customer
-  // Intent) for the same reason every prior major bump did: a daily report
-  // generated under the new prompt answers a materially different question
-  // (five fixed sections, confidence-tagged interpretation, sample-size
-  // honesty, gallery-attribution honesty) and must not be read as the same
-  // artefact as one generated under 3.x.
-  assert.equal(PROMPT_VERSION, '4.0.0', 'a 3.x daily report answers a different question from a 4.x one');
-  // 1.2.0: headlineSections() also recognises "# What Happened", plus the
-  // new checkUnsupportedCausation() check -- see report-validator.js.
-  assert.equal(VALIDATOR_VERSION, '1.2.0');
+  // 5.0.0 (Demand -> Supply -> Gap rework) supersedes 4.0.0 for the same
+  // reason every prior major bump did: a daily report generated under the
+  // new prompt answers a materially different question (demand/supply/gap
+  // analysis, deterministic listing-opportunity and data-quality-check
+  // surfacing, an evidence-hierarchy-ordered action list) and must not be
+  // read as the same artefact as one generated under 4.x.
+  assert.equal(PROMPT_VERSION, '5.0.0', 'a 4.x daily report answers a different question from a 5.x one');
+  // 1.3.0: new checkMatchRateSmallSample() check -- see report-validator.js.
+  assert.equal(VALIDATOR_VERSION, '1.3.0');
   // Untouched layers must NOT have been bumped — the analytics did not
   // change meaning (no field renamed/removed/reinterpreted) and
   // intelligence_reports' own row shape is unchanged by this rework.

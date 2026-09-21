@@ -64,7 +64,34 @@ export const REPORT_FORMAT_VERSION = '1.1.0';
 // disclose that today's data cannot attribute engagement to specific
 // listings or users. A daily report generated under 3.x asked Gemini a
 // materially different, narrower question than one generated under 4.x.
-export const PROMPT_VERSION = '4.0.0';
+// 5.0.0 — Demand -> Supply -> Gap rework: two new top-level sections,
+// "## Demand & Supply" (the DEMAND -> SUPPLY -> GAP / BEDROOM-LEVEL DEMAND ->
+// SUPPLY data blocks, wiring demand-supply-gap.js's ranked/classified rows —
+// HIGH/MEDIUM/LOW demand confidence, adequate/gap_potential/gap_strong/
+// insufficient_data gap status) and "## What Pintag Should Do" (up to 3
+// evidence-ranked actions), plus two new labeled subsections inside
+// "## What Needs Attention" — "### Listing Opportunities" (a deterministic
+// REVIEW NOW / MONITOR ONLY tag per low_performing_listing insight, see
+// listingOpportunityTag()) and "### Data Quality" (data-quality insights kept
+// separate from behavioural findings, plus a "⚠️ DATA CHECK" line whenever
+// the new SUSPICIOUS METRIC CHECK block fires — see galleryTrackingCheck()).
+// New rules: an explicit FACT/SIGNAL/HYPOTHESIS/ACTION vocabulary formalizes
+// the existing 🟢/🟡/⚪-tag convention; Recommended Actions and What Pintag
+// Should Do must follow the EVIDENCE HIERARCHY FOR ACTIONS (inventory
+// acquisition > listing optimization > data correction > tracking
+// investigation > monitor); the JOURNEY-JOIN CONFIDENCE match/traceability
+// rate now carries a minimum-sample guard (MIN_JOURNEY_SAMPLE_FOR_RATE=3,
+// same reasoning as trend-calculator.js's MIN_BASELINE_FOR_PCT) and explicit
+// population-scoping language, fixing the reported "0% match rate between
+// clicks and leads" bug (a 1-sample ratio stated as if stable, and conflated
+// with the separate whatsapp_clicks/leads_created totals). The word ceiling
+// moved from 350 to 500 (a disclosed, deliberate tradeoff for the added
+// sections) and the "five sections" framing became "the sections below" (no
+// longer a fixed count). A daily report generated under 4.x asked Gemini a
+// materially narrower question — no demand/supply/gap analysis, no
+// deterministic listing-opportunity or data-quality-check surfacing — than
+// one generated under 5.x.
+export const PROMPT_VERSION = '5.0.0';
 
 // Bump whenever report-validator.js's contradiction/grounding rules change
 // — affects how much to trust "this report passed validation" for a given
@@ -81,4 +108,10 @@ export const PROMPT_VERSION = '4.0.0';
 // the mechanical enforcement of the pipeline's existing no-invented-
 // causation prompt rule, on the same cheap/keyword-based philosophy as the
 // two existing checks.
-export const VALIDATOR_VERSION = '1.2.0';
+// 1.3.0 — New fourth check, checkMatchRateSmallSample(): flags a stated
+// journey-join match/traceability percentage anywhere in body_markdown when
+// rawMetricsSummary.journey_join.lead_events_with_session is below
+// MIN_JOURNEY_SAMPLE_FOR_RATE (report-composer.js) — a defense-in-depth
+// backstop for the prompt-level fix to the reported "0% match rate between
+// clicks and leads" bug (see PROMPT_VERSION 5.0.0's note).
+export const VALIDATOR_VERSION = '1.3.0';

@@ -192,6 +192,40 @@ test('validateReportContent: does NOT flag ordinary prose that happens to contai
   assert.equal(result.ok, true);
 });
 
+// ── checkMatchRateSmallSample — the fix for "WhatsApp clicks: 1, Leads: 1" ──
+// ── producing "a 0% match rate between clicks and leads" ───────────────────
+test('validateReportContent: flags a stated match/traceability percentage when the session-attributed sample is too small (the reported bug)', () => {
+  const composed = composedWith([]);
+  const rawMetricsSummary = { journey_join: { lead_events_with_session: 1, lead_events_matched_to_click: 0 } };
+  const gemini = {
+    executive_summary: 'A quiet day overall.',
+    body_markdown: '# What Happened\nA quiet day.\n## What It Means\nToday showed a 0% match rate between clicks and leads.',
+  };
+  const result = validateReportContent(gemini, composed, {}, rawMetricsSummary);
+  assert.equal(result.ok, false);
+  assert.match(result.issues.join(' '), /too small a sample/i);
+});
+test('validateReportContent: does NOT flag a match-rate statement when the session-attributed sample is large enough', () => {
+  const composed = composedWith([]);
+  const rawMetricsSummary = { journey_join: { lead_events_with_session: 10, lead_events_matched_to_click: 5 } };
+  const gemini = {
+    executive_summary: 'A quiet day overall.',
+    body_markdown: '# What Happened\nA quiet day.\n## What It Means\n50% of session-attributed contacts matched back to a click today.',
+  };
+  const result = validateReportContent(gemini, composed, {}, rawMetricsSummary);
+  assert.equal(result.ok, true);
+});
+test('validateReportContent: does NOT flag an unrelated percentage in the same small-sample report when it never uses the word "match"', () => {
+  const composed = composedWith([]);
+  const rawMetricsSummary = { journey_join: { lead_events_with_session: 1, lead_events_matched_to_click: 0 }, listing_ctr: 0.5 };
+  const gemini = {
+    executive_summary: 'A quiet day overall.',
+    body_markdown: '# What Happened\nThe listing click-through rate held at 50% today.',
+  };
+  const result = validateReportContent(gemini, composed, {}, rawMetricsSummary);
+  assert.equal(result.ok, true);
+});
+
 // ── buildValidationFallbackReport ────────────────────────────────────────
 test('buildValidationFallbackReport: produces a plain, labeled report with no invented prose', () => {
   const composed = {

@@ -24,8 +24,20 @@
 // possible; false positives are guarded against by only flagging strong,
 // unambiguous keyword clashes (see UP_WORDS/DOWN_WORDS/STABLE_WORDS).
 //
+//  4. Match-rate small-sample: does the narrative state a journey-join
+//     traceability percentage ("X% matched") while the underlying
+//     session-attributed sample is too small for that percentage to mean
+//     anything? Defense-in-depth companion to the fix at the source
+//     (report-composer.js's customerIntentBlock now guards this at
+//     MIN_JOURNEY_SAMPLE_FOR_RATE before ever handing Gemini a number) —
+//     catches the case where the narrative states a rate anyway (a stale
+//     prompt, a hallucinated figure) rather than trusting the prompt fix
+//     alone.
+//
 // Plain JS, same dual-runtime (Deno + node unit tests) rationale as every
 // other module in this pipeline.
+
+import { MIN_JOURNEY_SAMPLE_FOR_RATE } from './report-composer.js';
 
 const UP_WORDS = ['increase', 'increasing', 'increased', 'up ', 'spike', 'spiked', 'surge', 'surged', 'jump', 'jumped', 'grew', 'growth', 'rose', 'rising', 'higher', 'climb', 'climbed', 'soar', 'soared'];
 const DOWN_WORDS = ['decrease', 'decreasing', 'decreased', 'down ', 'decline', 'declined', 'declining', 'drop', 'dropped', 'fell', 'falling', 'plunge', 'plunged', 'fewer', 'lower', 'slump', 'slumped'];
@@ -207,7 +219,28 @@ function checkUnsupportedCausation(bodyMarkdown) {
   return `Narrative states an unhedged cause-and-effect claim the data cannot prove: "${offenders[0]}"${offenders.length > 1 ? ` (and ${offenders.length - 1} more)` : ''}. Rephrase as a hedged hypothesis (e.g. "may indicate", "worth checking whether") or state the facts side by side without asserting causation.`;
 }
 
-// validateReportContent — runs all three checks, returns a plain issues
+// Check 4: match-rate small sample. journey_join.lead_events_with_session is
+// the exact population the JOURNEY-JOIN CONFIDENCE percentage is computed
+// from (see report-composer.js's customerIntentBlock) — below
+// MIN_JOURNEY_SAMPLE_FOR_RATE that percentage is noise (1/1 = 100%, 0/1 =
+// 0%), which is exactly the reported bug ("WhatsApp clicks: 1, Leads: 1"
+// producing "a 0% match rate between clicks and leads"). The prompt itself
+// no longer states a percentage below that floor, so this only fires if
+// Gemini states one anyway (a stale/cached prompt, a hallucinated figure).
+// Deliberately keyed on the word "match" specifically (not every
+// percentage), since a narrative is allowed to state OTHER small-sample
+// percentages elsewhere as long as they don't claim to be this rate.
+function checkMatchRateSmallSample(bodyMarkdown, rawMetricsSummary) {
+  const jj = rawMetricsSummary && rawMetricsSummary.journey_join;
+  if (!jj || typeof jj.lead_events_with_session !== 'number') return null;
+  if (jj.lead_events_with_session >= MIN_JOURNEY_SAMPLE_FOR_RATE) return null;
+
+  const offender = splitSentences(bodyMarkdown).find((s) => /match(?:ed|ing|es)?\b/i.test(s) && /-?\d+(?:\.\d+)?\s?%/.test(s));
+  if (!offender) return null;
+  return `Narrative states a match/traceability percentage ("${offender.trim()}") while only ${jj.lead_events_with_session} session-attributed contact(s) exist today — too small a sample to state a rate. This should be described as "not enough data to measure traceability" instead, and must never be conflated with the separate, larger whatsapp_clicks/leads_created totals.`;
+}
+
+// validateReportContent — runs all four checks, returns a plain issues
 // list (empty = passed). Called on Gemini's parsed output only; the
 // deterministic quiet-day/fallback paths never reach this (they're
 // correct by construction, nothing to validate).
@@ -224,6 +257,9 @@ export function validateReportContent(gemini, composed, trends, rawMetricsSummar
 
   const causationIssue = checkUnsupportedCausation(bm);
   if (causationIssue) issues.push(causationIssue);
+
+  const matchRateIssue = checkMatchRateSmallSample(bm, rawMetricsSummary);
+  if (matchRateIssue) issues.push(matchRateIssue);
 
   return { ok: issues.length === 0, issues };
 }
