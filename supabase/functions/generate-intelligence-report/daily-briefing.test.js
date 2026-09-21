@@ -30,11 +30,11 @@ test('the daily report asks for the five-section Facts->Actions structure, in or
   }
 });
 
-test('v5.0.0: the new Demand & Supply / Listing Opportunities / Data Quality / What Pintag Should Do sections appear, in order, around the original five', () => {
+test('v6.0.0: the new Demand & Supply / Inventory Opportunities / Listing Opportunities / Data Quality / What Pintag Should Do sections appear, in order, around the original five', () => {
   const p = daily();
   const want = ['# What Happened', '## What Users Are Doing', '## Demand & Supply',
-                '## What It Means', '## What Needs Attention', '### Listing Opportunities',
-                '### Data Quality', '## Recommended Actions', '## What Pintag Should Do'];
+                '## Inventory Opportunities', '## What It Means', '## What Needs Attention',
+                '### Listing Opportunities', '### Data Quality', '## Recommended Actions', '## What Pintag Should Do'];
   let at = -1;
   for (const h of want) {
     const i = p.indexOf(h);
@@ -257,14 +257,15 @@ test('the JSON output contract is unchanged', () => {
 });
 
 test('version metadata records the change', () => {
-  // 5.0.0 (Demand -> Supply -> Gap rework) supersedes 4.0.0 for the same
+  // 6.0.0 (Inventory Acquisition Intelligence) supersedes 5.0.0 for the same
   // reason every prior major bump did: a daily report generated under the
-  // new prompt answers a materially different question (demand/supply/gap
-  // analysis, deterministic listing-opportunity and data-quality-check
-  // surfacing, an evidence-hierarchy-ordered action list) and must not be
-  // read as the same artefact as one generated under 4.x.
-  assert.equal(PROMPT_VERSION, '5.0.0', 'a 4.x daily report answers a different question from a 5.x one');
+  // new prompt answers a materially different question (demand/supply gaps
+  // are now turned into confidence-gated, trend-aware acquisition targets)
+  // and must not be read as the same artefact as one generated under 5.x.
+  assert.equal(PROMPT_VERSION, '6.0.0', 'a 5.x daily report answers a different question from a 6.x one');
   // 1.3.0: new checkMatchRateSmallSample() check -- see report-validator.js.
+  // Unchanged this round -- Inventory Acquisition Intelligence adds no new
+  // mechanical validation rule.
   assert.equal(VALIDATOR_VERSION, '1.3.0');
   // Untouched layers must NOT have been bumped — the analytics did not
   // change meaning (no field renamed/removed/reinterpreted) and

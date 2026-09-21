@@ -537,6 +537,89 @@ test('REQUIRED: a 1-sample journey-join population never states a percentage, an
   assert.match(prompt, /NEVER describe this rate as "a match rate between clicks and leads"/);
 });
 
+// ── Inventory Acquisition Intelligence (v6.0.0) ──────────────────────────
+
+test('buildPrompt (daily) new "## Inventory Opportunities" section sits between "## Demand & Supply" and "## What It Means"', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  const demandIdx = prompt.indexOf('## Demand & Supply');
+  const inventoryIdx = prompt.indexOf('## Inventory Opportunities');
+  const meansIdx = prompt.indexOf('## What It Means');
+  assert.ok(demandIdx > -1 && inventoryIdx > demandIdx && meansIdx > inventoryIdx);
+});
+
+test('REQUIRED: an acquire_high row renders the INVENTORY OPPORTUNITIES data block with the 🔴 HIGH-PRIORITY tier instructions', () => {
+  const composed = {
+    new_insights: [],
+    continuing_insights: [{ id: 'i1', type: 'supply_shortage', metric_key: 'unmet_demand.for_rent|apartment|Sisattanak' }],
+    resolved_insights: [],
+  };
+  const segments = [{
+    transaction_type: 'for_rent', property_type: 'apartment', district: 'Sisattanak',
+    search_count: 40, impressions: 80, leads_created: 0,
+    top_bedroom_count: 2, bedroom_sample_size: 20, top_price_band: { min: 500, max: 800 },
+  }];
+  const rawMetrics = { customer_intent_segments: segments, active_inventory: { available_by_segment: { 'for_rent|apartment|Sisattanak': 2 } } };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.match(prompt, /INVENTORY OPPORTUNITIES/);
+  assert.match(prompt, /"classification":"acquire_high"/);
+  assert.match(prompt, /"bedroom_count":2/);
+  assert.match(prompt, /HIGH-PRIORITY OPPORTUNITY/);
+  assert.match(prompt, /never award this tier to a demand_trend of "emerging"/);
+});
+
+test('an emerging (day-1) gap never reaches acquire_high, even with a strong ratio and HIGH confidence', () => {
+  const composed = { new_insights: [{ id: 'i1', type: 'supply_shortage', metric_key: 'unmet_demand.for_rent|apartment|Sisattanak' }], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'apartment', district: 'Sisattanak', search_count: 40, impressions: 80, leads_created: 0 }];
+  const rawMetrics = { customer_intent_segments: segments, active_inventory: { available_by_segment: { 'for_rent|apartment|Sisattanak': 2 } } };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.match(prompt, /"classification":"acquire_potential"/);
+  assert.ok(!prompt.includes('"classification":"acquire_high"'));
+});
+
+test('REQUIRED: adequate supply + zero leads renders an "optimize" row with explicit do-not-acquire instructions', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'condo', district: 'Saysettha', search_count: 40, impressions: 60, leads_created: 0 }];
+  const rawMetrics = { customer_intent_segments: segments, active_inventory: { available_by_segment: { 'for_rent|condo|Saysettha': 40 } } };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.match(prompt, /"classification":"optimize"/);
+  assert.match(prompt, /do NOT propose acquiring inventory/);
+  assert.match(prompt, /NEVER an acquisition opportunity/);
+});
+
+test('an insufficient-sample segment renders an "insufficient_data" row, never a named gap', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_sale', property_type: 'house', district: 'Xaythany', search_count: 3, impressions: 5, leads_created: 0 }];
+  const rawMetrics = { customer_intent_segments: segments, active_inventory: { available_by_segment: {} } };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.match(prompt, /"classification":"insufficient_data"/);
+  assert.match(prompt, /Insufficient evidence — monitor only/);
+});
+
+test('the INVENTORY OPPORTUNITIES block is entirely absent when there are no customer_intent_segments, and never throws', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  assert.doesNotThrow(() => buildPrompt('daily', composed, { listing_impressions: 50 }, null));
+  const prompt = buildPrompt('daily', composed, { listing_impressions: 50 }, null);
+  assert.ok(!prompt.includes('"classification"'));
+});
+
+test('backward compatible: old-shaped segments (no bedroom/price-band fields) and adequate supply everywhere produce no INVENTORY OPPORTUNITIES rows, without throwing', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'apartment', district: 'Sisattanak', search_count: 40, impressions: 80, leads_created: 5 }];
+  const rawMetrics = { customer_intent_segments: segments, active_inventory: { available_by_segment: { 'for_rent|apartment|Sisattanak': 40 } } };
+  assert.doesNotThrow(() => buildPrompt('daily', composed, rawMetrics, null));
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.ok(!prompt.includes('"classification"'));
+});
+
+test('the EVIDENCE HIERARCHY references the new acquire/optimize classifications for tiers 1 and 2', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, {}, null);
+  assert.match(prompt, /"acquire_high" or "acquire_potential"/);
+  assert.match(prompt, /classified "optimize"/);
+  assert.match(prompt, /never recommend acquisition for an INVENTORY OPPORTUNITIES row classified "insufficient_data"/);
+});
+
 // ── buildReportInsightLinks — the dedup fix ─────────────────────────────
 test('buildReportInsightLinks assigns biggest_story to the highest-priority new/continuing insight', () => {
   const composed = {
