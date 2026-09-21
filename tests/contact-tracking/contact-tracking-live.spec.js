@@ -84,6 +84,23 @@ test.describe('listing.html contact CTAs (mocked Supabase)', () => {
     expect(posts.lead_events[0].agent_id).toBe('party-1');
   });
 
+  // REQUIRED 1: property-level WhatsApp CTA -> no unit_type_id. A listing
+  // with no unit types at all (activeProp()'s default unit_types: []) is
+  // the exact case the reported bug did NOT break -- this is the "existing
+  // property-level leads continue working" guard (REQUIRED 7), pinned as
+  // its own assertion so a future regression here fails loudly.
+  test('REQUIRED 1/7: a plain (no unit types) listing\'s WhatsApp lead carries unit_type_id: null', async ({ page }) => {
+    await stubNavigator(page);
+    const posts = await mockRestAndCollect(page, activeProp());
+    await page.goto('/listing.html?slug=test-active&lang=en');
+    await page.waitForTimeout(600);
+    await page.click('.btn-wa.btn-primary');
+    await page.waitForTimeout(300);
+    expect(posts.lead_events.length).toBe(1);
+    expect(posts.lead_events[0].unit_type_id).toBe(null);
+    expect(posts.lead_events[0].unit_id).toBe(null);
+  });
+
   test('desktop Call button: 1 ui_events + 1 lead_events, event_type=call_click', async ({ page }) => {
     await stubNavigator(page);
     const posts = await mockRestAndCollect(page, activeProp());
@@ -129,6 +146,104 @@ test.describe('listing.html contact CTAs (mocked Supabase)', () => {
       expect(posts.lead_events.length).toBe(1);
       expect(posts.lead_events[0].listing_id).toBe('p-units');
     }
+  });
+
+  // REQUIRED 2/3: a unit-type CTA carries the CANONICAL unit_types.id, not
+  // just the visible unit name -- and the resulting WhatsApp message
+  // (decoded from the href, since window.open is stubbed) names the unit
+  // type and its bedroom count, matching Room Type A/2BR/$400 from the
+  // report. REQUIRED 10: a second, distinct unit type on the SAME listing
+  // remains distinguishable by its own unit_type_id.
+  test('REQUIRED 2/3/4/10: each unit card\'s Inquire button attributes its OWN unit_type_id, and the prefilled message names that unit type + bedroom count', async ({ page }) => {
+    await stubNavigator(page);
+    const posts = await mockRestAndCollect(page, activeProp({
+      id: 'p-units2', slug: 'test-units2',
+      title_en: 'River Apartment',
+      unit_types: [
+        { id: 'room-type-a', name_en: 'Room Type A', bedrooms: 2, bathrooms: 1, sqm: 45, price_amount: 400, price_currency: 'USD', price_frequency: 'monthly', images: [] },
+        { id: 'room-type-b', name_en: 'Room Type B', bedrooms: 1, bathrooms: 1, sqm: 32, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly', images: [] },
+      ],
+    }));
+    await page.goto('/listing.html?slug=test-units2&lang=en');
+    await page.waitForTimeout(600);
+    const cards = page.locator('.unit-cta');
+    expect(await cards.count()).toBeGreaterThanOrEqual(2);
+
+    const firstHref = await cards.nth(0).getAttribute('href');
+    await cards.nth(0).click();
+    await page.waitForTimeout(300);
+    expect(posts.lead_events[0].unit_type_id).toBe('room-type-a');
+    const firstMsg = decodeURIComponent(firstHref.split('?text=')[1]);
+    expect(firstMsg).toContain('Room Type A');
+    expect(firstMsg).toContain('2 Beds'); // bedroom count identifies the unit type, not just its free-text name
+    expect(firstMsg).toContain('River Apartment');
+
+    const secondHref = await cards.nth(1).getAttribute('href');
+    await cards.nth(1).click();
+    await page.waitForTimeout(300);
+    expect(posts.lead_events[1].unit_type_id).toBe('room-type-b');
+    expect(posts.lead_events[1].unit_type_id).not.toBe(posts.lead_events[0].unit_type_id);
+    const secondMsg = decodeURIComponent(secondHref.split('?text=')[1]);
+    expect(secondMsg).toContain('Room Type B');
+    expect(secondMsg).toContain('1 Beds');
+  });
+
+  // REQUIRED 5: the Lao template also names the unit type + bedroom count
+  // (using the existing localization system, not a hard-coded English
+  // string) -- and REQUIRED 6: the attribution (unit_type_id) never
+  // changes when the DISPLAYED name does, proving the CTA never depended
+  // on hard-coding a unit name into the payload.
+  test('REQUIRED 5/6: the Lao-language prefilled message also names the unit type, and unit_type_id is unaffected by the page language', async ({ page }) => {
+    await stubNavigator(page);
+    const posts = await mockRestAndCollect(page, activeProp({
+      id: 'p-units-lo', slug: 'test-units-lo',
+      // 2+ unit types, so the multi-card layout renders (a single unit type
+      // without total_units folds into the no-cards building-overview
+      // layout -- see buildAvailableUnitsSection()'s rawUnits.length===1
+      // branch).
+      unit_types: [
+        { id: 'room-type-a', name_en: 'Room Type A', name_lo: 'ຫ້ອງປະເພດ A', bedrooms: 2, bathrooms: 1, sqm: 45, price_amount: 400, price_currency: 'USD', price_frequency: 'monthly', images: [] },
+        { id: 'room-type-b', name_en: 'Room Type B', name_lo: 'ຫ້ອງປະເພດ B', bedrooms: 1, bathrooms: 1, sqm: 32, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly', images: [] },
+      ],
+    }));
+    await page.goto('/listing.html?slug=test-units-lo&lang=lo');
+    await page.waitForTimeout(600);
+    const card = page.locator('.unit-cta').first();
+    const href = await card.getAttribute('href');
+    await card.click();
+    await page.waitForTimeout(300);
+    expect(posts.lead_events[0].unit_type_id).toBe('room-type-a');
+    const msg = decodeURIComponent(href.split('?text=')[1]);
+    expect(msg).toContain('ຫ້ອງປະເພດ A');
+    expect(msg).toContain('ຫ້ອງນອນ'); // the Lao word for bedrooms, from the same L.unitBeds dictionary the unit card facts use
+  });
+
+  // REQUIRED 8: selecting a unit-type card also re-points the MAIN
+  // WhatsApp button (not just that card's own inline CTA) at the same
+  // unit_type_id -- the fix applies to both CTA sites the report named.
+  test('REQUIRED 8: selecting a unit card also attributes the MAIN WhatsApp button to that unit_type_id', async ({ page }) => {
+    await stubNavigator(page);
+    const posts = await mockRestAndCollect(page, activeProp({
+      id: 'p-units-main', slug: 'test-units-main',
+      // available_count: 1 -- resolveUnitAvailability() reads a missing
+      // available_count as 0 open units, which would make the WHOLE
+      // listing read as fully_occupied and swap the main WhatsApp button
+      // for the waiting-list status CTA instead -- not what this test is
+      // exercising.
+      unit_types: [
+        { id: 'room-type-a', name_en: 'Room Type A', bedrooms: 2, bathrooms: 1, sqm: 45, price_amount: 400, price_currency: 'USD', price_frequency: 'monthly', available_count: 1, images: [] },
+        { id: 'room-type-b', name_en: 'Room Type B', bedrooms: 1, bathrooms: 1, sqm: 32, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly', available_count: 1, images: [] },
+      ],
+    }));
+    await page.goto('/listing.html?slug=test-units-main&lang=en');
+    await page.waitForTimeout(600);
+    // Select the unit card itself (not its inline CTA) -- selectUnitType().
+    await page.locator('.unit-card').first().click();
+    await page.waitForTimeout(300);
+    await page.click('.btn-wa.btn-primary');
+    await page.waitForTimeout(300);
+    expect(posts.lead_events.length).toBe(1);
+    expect(posts.lead_events[0].unit_type_id).toBe('room-type-a');
   });
 
   test('unavailable-listing waitlist WhatsApp CTA (desktop): ui_events fires, lead_events does NOT (recordLead:false)', async ({ page }) => {

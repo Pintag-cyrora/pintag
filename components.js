@@ -1674,6 +1674,16 @@ function renderShareButton(opts) {
 //   listingId / partyId / contactId: same three FK fields trackLead() /
 //     lead_events always carried -- omit any that don't apply (e.g. an
 //     agent-profile contact has no listingId; see agent.html/agents.html).
+//   unitTypeId: the unit_types row this CTA originated from (the canonical
+//     id, never its display name), when the click came from a unit card's
+//     own Inquire button or the main CTA after a unit was selected. Omit
+//     for a general, building-level inquiry -- lead_events.unit_type_id
+//     then stores null, exactly the current behavior for every listing
+//     without unit types.
+//   unitId: reserved for a future individual physical unit (Multi-Unit
+//     Buildings Phase 3) -- no backing table exists yet, so no caller in
+//     this codebase passes it today. See 20260921000000_lead_unit_
+//     attribution.sql.
 //   recordLead: default true. Set false for a WhatsApp click that is NOT a
 //     property inquiry in the "Total Leads" sense -- e.g. the Rented
 //     Listings waiting-list/notify-me CTA for an unavailable listing, which
@@ -1761,6 +1771,12 @@ function ptContactClick(opts) {
       listing_id: opts.listingId || null,
       agent_id: opts.partyId || null,
       contact_id: opts.contactId || null,
+      // The unit_types row (canonical id, never its display name) the CTA
+      // originated from -- null for a general, building-level inquiry.
+      // unit_id has no backing table yet (see 20260921000000_lead_unit_
+      // attribution.sql) -- every caller passes null until one exists.
+      unit_type_id: opts.unitTypeId || null,
+      unit_id: opts.unitId || null,
       event_type: opts.channel === 'whatsapp' ? 'whatsapp_click' : 'call_click',
       user_agent: navigator.userAgent,
       referrer: document.referrer || null,
