@@ -2165,7 +2165,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
 
     var ctaHtml='';
     if(cleanPhone){
-      var waUnitMsg=encodeURIComponent(buildUnitWhatsAppMessage(property,unitName,priceText,p.resolved,lang));
+      var waUnitMsg=encodeURIComponent(buildUnitWhatsAppMessage(property,unitName,priceText,p.resolved,lang,resolvedUnit.bedrooms,L.unitBeds[lang],getCanonicalListingUrl(property,lang)));
       var waUnitUrl='https://wa.me/'+cleanPhone+'?text='+waUnitMsg;
       // stopPropagation: the card itself is also a click target (selects
       // this unit, see below) — without this, clicking the CTA while the
@@ -2175,7 +2175,11 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
       // itself; adding data-track too would double-post (see its header
       // comment in components.js).
       ctaHtml='<a href="'+esc(waUnitUrl)+'" target="_blank" rel="noopener noreferrer" class="unit-cta" data-contact-id="'+escJs(_currentContactId)+'" '+
-        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+escJs(unitName)+'\'}})">'+
+        // unitTypeId is this card's own u.id (the unit_types row), never the
+        // display name -- the canonical identifier lead_events.unit_type_id
+        // stores, so renaming this unit type later never invalidates the
+        // attribution (see 20260921000000_lead_unit_attribution.sql).
+        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(u.id||'')+'\',trackId:\'unit-inquire-whatsapp\',trackLabel:\'Inquire unit\',trackMeta:{unit:\''+escJs(unitName)+'\'}})">'+
         esc(L.unitInquire[lang])+'</a>';
     }
 
@@ -2711,12 +2715,17 @@ function buildMockupLayout(){
   var waDistrictRaw=data['district_'+lang] || data.district_en || '';
   var waLocation=resolvedVillage ? (resolvedVillage+', '+waDistrictRaw) : waDistrictRaw;
   var waCanonicalUrl=getCanonicalListingUrl(data);
+  // Raw (unescaped) title for the WhatsApp text itself -- resolvedTitle
+  // above is esc()'d for HTML display, wrong for a plain-text message that
+  // is itself encodeURIComponent()'d before going into the wa.me URL.
+  var waPropertyName=resolveLangField(data,'title',lang);
   // waMessageText is the un-encoded template output — kept as its own
   // variable (rather than encoding inline) so the per-unit CTAs in the
   // Available Units section below can append a unit name to the same
   // base message before encoding, without duplicating the template logic.
   var waMessageText=waCanonicalUrl
     ? fillTemplate(WA_MESSAGE_TEMPLATES[lang]||WA_MESSAGE_TEMPLATES.en, {
+        PROPERTY_NAME: waPropertyName,
         CANONICAL_LISTING_URL: waCanonicalUrl
       })
     : fillTemplate(WA_MESSAGE_TEMPLATES_FALLBACK[lang]||WA_MESSAGE_TEMPLATES_FALLBACK.en, {
@@ -2735,7 +2744,7 @@ function buildMockupLayout(){
   if(selectedUnit){
     var _selUnitNameForWa=selectedUnit.resolved.name[lang]||selectedUnit.resolved.name.en||'';
     var _selPriceForWa=buildUnitPriceText(data,selectedUnit.resolved,lang);
-    waMessageText=buildUnitWhatsAppMessage(data,_selUnitNameForWa,_selPriceForWa,selectedUnit.availability,lang);
+    waMessageText=buildUnitWhatsAppMessage(data,_selUnitNameForWa,_selPriceForWa,selectedUnit.availability,lang,selectedUnit.resolved.bedrooms,L.unitBeds[lang],waCanonicalUrl);
   }
   var waMessage=encodeURIComponent(waMessageText);
   var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
@@ -2798,7 +2807,7 @@ function buildMockupLayout(){
                       '</div>';
   }
 
-  var callBtn=(contact&&contact.phone)?'<a id="pt-call-primary" data-contact-id="'+escJs(contact.id||'')+'" href="'+esc(ptTelHref(contact.phone))+'" class="btn-primary btn-call" onclick="ptContactClick({channel:\'call\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'contact-phone\',trackLabel:\'Call\'})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  var callBtn=(contact&&contact.phone)?'<a id="pt-call-primary" data-contact-id="'+escJs(contact.id||'')+'" href="'+esc(ptTelHref(contact.phone))+'" class="btn-primary btn-call" onclick="ptContactClick({channel:\'call\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'contact-phone\',trackLabel:\'Call\'})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
   var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
     '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
@@ -2811,7 +2820,7 @@ function buildMockupLayout(){
     // the href and the lead attribution when the buyer picks another number.
     // contactId comes from the RESOLVED primary, not propertyContext.contacts,
     // so the tracked contact and the dialled number can never disagree.
-    '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'contact-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+    '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'contact-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
     callBtn+
     '</div></div>'
   );
@@ -3251,7 +3260,7 @@ function buildMockupLayout(){
               var mWaStatusUrl=cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+resolveLangField(data,'title',lang))):'#';
               return '<a href="'+esc(mWaStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'mcta-whatsapp-status\',trackLabel:\''+escJs(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
             })())
-      : '<a id="pt-wa-mobile" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
+      : '<a id="pt-wa-mobile" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
       '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+
@@ -3452,17 +3461,17 @@ var WA_SVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
 // Pre-filled WhatsApp contact message, per language. {{PLACEHOLDER}} tokens
 // (filled via fillTemplate(), see above) rather than string concatenation.
 //
-// Primary template: kept short — just a greeting/interest line plus the
-// canonical listing URL. Production's existing Cloudflare setup already
-// generates the rich WhatsApp link preview (image/title/description) for
-// that URL, so the message itself doesn't need to restate the property's
-// type/location/reference; the preview card carries that. Requires a real
-// slug — see WA_MESSAGE_TEMPLATES_FALLBACK below for when one isn't
-// available.
+// Primary template: a short greeting/interest line, then an explicit
+// "Property: <name>" line and the canonical listing URL -- so whoever
+// receives the WhatsApp message can open the exact listing immediately,
+// even though production's Cloudflare setup already generates a rich link
+// preview (image/title/description) for that URL on its own. Requires a
+// real slug — see WA_MESSAGE_TEMPLATES_FALLBACK below for when one isn't
+// available (that path has no canonical URL to link at all).
 var WA_MESSAGE_TEMPLATES={
-  lo:'ສະບາຍດີ,\n\nຂ້ອຍສົນໃຈຊັບສິນນີ້. ຂໍລາຍລະອຽດເພີ່ມແນ່.\n\n{{CANONICAL_LISTING_URL}}',
-  en:'Hello,\n\nI\'m interested in this property. Could you provide more details?\n\n{{CANONICAL_LISTING_URL}}',
-  zh:'您好，\n\n我对这处房产很感兴趣，请提供更多详细信息。\n\n{{CANONICAL_LISTING_URL}}'
+  lo:'ສະບາຍດີ,\n\nຂ້ອຍສົນໃຈຊັບສິນນີ້. ຂໍລາຍລະອຽດເພີ່ມແນ່.\n\nຊັບສິນ: {{PROPERTY_NAME}}\n{{CANONICAL_LISTING_URL}}',
+  en:'Hello,\n\nI\'m interested in this property. Could you provide more details?\n\nProperty: {{PROPERTY_NAME}}\n{{CANONICAL_LISTING_URL}}',
+  zh:'您好，\n\n我对这处房产很感兴趣，请提供更多详细信息。\n\n房源: {{PROPERTY_NAME}}\n{{CANONICAL_LISTING_URL}}'
 };
 
 // Fallback template: used only when getCanonicalListingUrl() returns null
@@ -3493,18 +3502,51 @@ var WA_UNIT_MESSAGE_TEMPLATES={
 var WA_UNIT_AVAILABLE_QUESTION={lo:'ຍັງມີຢູ່ບໍ?',en:'Is it still available?',zh:'请问还有吗？'};
 var WA_UNIT_PRICE_ON_REQUEST={lo:'ລາຄາຕິດຕໍ່ສອບຖາມ',en:'price on request',zh:'价格面议'};
 
-function buildUnitWhatsAppMessage(property, unitName, priceText, availabilityResolved, lang){
+// bedrooms/bedroomsLabel identify the unit type in the message itself (not
+// just its free-text name) -- e.g. "Room Type A (2 Beds)" -- per the
+// lead-attribution fix's requirement that the WhatsApp text name the unit
+// type even when its display name alone doesn't convey bedroom count.
+// bedroomsLabel is the CALLER's own already-resolved L.unitBeds[lang]
+// (defined once, near the unit card facts) rather than a second copy of
+// that three-language dictionary here -- one source of truth for the word
+// "Beds"/"ຫ້ອງນອນ"/"卧室" across the unit card and this message.
+//
+// canonicalUrl (getCanonicalListingUrl(property, lang), the SAME builder
+// the property-level template uses -- never a second URL scheme) and the
+// optional specificUnitLabel (a specific physical unit identifier, e.g.
+// "Unit 203" -- always undefined today, since no per-unit selection UI
+// exists yet; see 20260921000000_lead_unit_attribution.sql's unit_id
+// comment) are appended as a structured, language-neutral breadcrumb below
+// the localized greeting sentence: "Property — Unit Type[ — Unit]" / then
+// "Bedrooms — Price" / then the clickable link -- so the recipient can
+// open the exact listing even if the greeting sentence above is edited or
+// deleted in WhatsApp. Every line is omitted, never fabricated, when its
+// underlying value is unavailable (no bedrooms/price known, no slug to
+// link).
+function buildUnitWhatsAppMessage(property, unitName, priceText, availabilityResolved, lang, bedrooms, bedroomsLabel, canonicalUrl, specificUnitLabel){
   var propertyName=resolveLangField(property,'title',lang);
   var priceStr=priceText||(WA_UNIT_PRICE_ON_REQUEST[lang]||WA_UNIT_PRICE_ON_REQUEST.en);
   var availLine=(availabilityResolved&&availabilityResolved.status==='available')
     ? (WA_UNIT_AVAILABLE_QUESTION[lang]||WA_UNIT_AVAILABLE_QUESTION.en)
     : (availabilityResolved ? formatAvailabilityDisplay(availabilityResolved,lang) : '');
-  return fillTemplate(WA_UNIT_MESSAGE_TEMPLATES[lang]||WA_UNIT_MESSAGE_TEMPLATES.en, {
-    UNIT_NAME: unitName||'',
+  var unitLabel=(bedrooms!=null&&bedroomsLabel)?((unitName||'')+' ('+bedrooms+' '+bedroomsLabel+')'):(unitName||'');
+  var greeting=fillTemplate(WA_UNIT_MESSAGE_TEMPLATES[lang]||WA_UNIT_MESSAGE_TEMPLATES.en, {
+    UNIT_NAME: unitLabel,
     PROPERTY_NAME: propertyName,
     PRICE: priceStr,
     AVAILABILITY_LINE: availLine
   });
+
+  var headParts=[propertyName, unitName||unitLabel];
+  if(specificUnitLabel) headParts.push(specificUnitLabel);
+  var breadcrumbLines=[headParts.join(' — ')];
+  var factParts=[];
+  if(bedrooms!=null && bedroomsLabel) factParts.push(bedrooms+' '+bedroomsLabel);
+  if(priceStr) factParts.push(priceStr);
+  if(factParts.length) breadcrumbLines.push(factParts.join(' — '));
+  if(canonicalUrl) breadcrumbLines.push(canonicalUrl);
+
+  return greeting+'\n\n'+breadcrumbLines.join('\n');
 }
 
 // ── Lightbox ─────────────────────────────────────────────────────

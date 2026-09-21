@@ -611,9 +611,14 @@ async function initDashboard(){
   document.getElementById('welcome-name').innerText =
     `Welcome back, ${agent.name_en || 'Agent'}`;
 
+  // unit_types(*) embedded so renderLeadsTable() can resolve which unit
+  // type a lead's unit_type_id refers to (name/bedrooms/price) without a
+  // second per-lead query -- same RLS grant ("Party manage own unit_types")
+  // that already lets this agent read/write their own properties' unit
+  // types in admin.html.
   const { data: properties, error } = await supabaseClient
     .from('properties')
-    .select('*')
+    .select('*,unit_types(*)')
     .eq('managed_by_party_id', agent.id)
     .order('created_at', { ascending:false });
 
@@ -785,7 +790,7 @@ async function loadLeads(agentId, properties) {
     // filter here means every channel counts, matching leads itself.
     const [{ data: leads, error: leadsErr }, { data: events, error: eventsErr }] = await Promise.all([
       supabaseClient.from('leads')
-        .select('id,property_id,status,customer_name,customer_phone,contact_method,created_at,updated_at')
+        .select('id,property_id,status,customer_name,customer_phone,contact_method,created_at,updated_at,unit_type_id,unit_id')
         .eq('party_id', agentId)
         .order('created_at', { ascending: false }),
       supabaseClient.from('lead_events')
@@ -828,6 +833,50 @@ function renderLeadStatusTiles(leads) {
 // as a plain badge — the decision is made, nothing left to click.
 var NON_TERMINAL_STATUSES = ['new','contacted','viewing_scheduled','negotiating'];
 
+// Resolves just enough of a unit type (name/bedrooms/price) for the leads
+// table's breadcrumb below -- NOT the full resolveUnitType() inheritance
+// resolver (terminology.js, not loaded on this page, and built for the
+// public multi-language listing page's needs, not this English-only
+// internal table). Falls back to the property's own bedrooms/price when
+// the unit type's own field is null, matching resolveUnitType()'s "null
+// means inherit the building's value" rule for just these two fields.
+// Returns null when unitTypeId is absent (a general, building-level lead --
+// no breadcrumb, unchanged row) OR when the unit type row can no longer be
+// found (deleted since the lead was created) -- either way the lead itself
+// still renders normally, it just loses the extra breadcrumb line.
+function resolveLeadUnitSummary(property, unitTypeId) {
+  if (!unitTypeId || !property || !Array.isArray(property.unit_types)) return null;
+  var ut = property.unit_types.find(function(u) { return u.id === unitTypeId; });
+  if (!ut) return null;
+  var name = ut.name_en || 'Unit';
+  var bedrooms = ut.bedrooms != null ? ut.bedrooms : property.bedrooms;
+  var priceText = null;
+  if (ut.price_amount != null) priceText = formatMoney(ut.price_amount, ut.price_currency) + (ut.price_frequency ? ' ' + _ptFrequencySuffix(ut.price_frequency, 'en') : '');
+  else if (ut.rent_price_amount != null) priceText = formatMoney(ut.rent_price_amount, ut.rent_price_currency) + ' ' + _ptFrequencySuffix(ut.rent_price_frequency, 'en');
+  else if (ut.price_display) priceText = ut.price_display;
+  else if (ut.rent_price) priceText = ut.rent_price;
+  else if (property.price_amount != null) priceText = formatMoney(property.price_amount, property.price_currency);
+  else if (property.price_display) priceText = property.price_display;
+  return { name: name, bedrooms: bedrooms, priceText: priceText };
+}
+
+// The breadcrumb itself -- "→ Room Type A / → Unit 203 / → 2 bedrooms /
+// → $400/month", one line per known fact, never a fabricated one (a null
+// bedrooms/priceText simply omits that line). unit_id has no backing
+// table yet (see 20260921000000_lead_unit_attribution.sql) so the "Unit
+// 203" line never renders today -- the branch exists so a future Phase 3
+// units table needs no further change here.
+function buildLeadUnitBreadcrumbHtml(l, property) {
+  var summary = resolveLeadUnitSummary(property, l.unit_type_id);
+  if (!summary) return '';
+  var lines = [esc(summary.name)];
+  if (l.unit_id) lines.push('Unit ' + esc(String(l.unit_id)));
+  if (summary.bedrooms != null) lines.push(summary.bedrooms + ' bedroom' + (summary.bedrooms === 1 ? '' : 's'));
+  if (summary.priceText) lines.push(esc(summary.priceText));
+  return '<div class="lead-unit-breadcrumb" style="font-size:12px;color:var(--muted);margin-top:2px;">' +
+    lines.map(function(t) { return '→ ' + t; }).join('<br>') + '</div>';
+}
+
 function renderLeadsTable(leads, propMap) {
   var tbody = document.getElementById('lead-tbody');
   if (!leads.length) {
@@ -836,7 +885,7 @@ function renderLeadsTable(leads, propMap) {
   }
   tbody.innerHTML = leads.map(function(l) {
     var p = propMap[l.property_id];
-    var title = p ? esc(p.title_en || p.title_lo || '—') : '—';
+    var title = (p ? esc(p.title_en || p.title_lo || '—') : '—') + buildLeadUnitBreadcrumbHtml(l, p);
     var customer = l.customer_name ? esc(l.customer_name) : '<span style="color:var(--muted)">—</span>';
     var created = new Date(l.created_at).toLocaleDateString();
     var updated = new Date(l.updated_at).toLocaleDateString();

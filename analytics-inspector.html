@@ -378,6 +378,7 @@ function normalizeLeadEvent(row, ctx) {
     propertyId: row.listing_id || null, sessionId: row.session_id, raw: row,
     detailFields: [
       ['Event Type', row.event_type], ['Listing ID', row.listing_id], ['Agent ID', row.agent_id],
+      ['Unit Type ID', row.unit_type_id], ['Unit ID', row.unit_id],
       ['Referrer', row.referrer], ['User Agent', row.user_agent]
     ]
   };
@@ -390,6 +391,7 @@ function normalizeLead(row) {
     propertyId: row.property_id || null, sessionId: null, raw: row,
     detailFields: [
       ['Lead ID', row.id], ['Property ID', row.property_id], ['Party ID', row.party_id],
+      ['Unit Type ID', row.unit_type_id], ['Unit ID', row.unit_id],
       ['Status', row.status], ['Contact Method', row.contact_method],
       ['Customer Name', row.customer_name], ['Customer Phone', row.customer_phone],
       ['Notes', row.notes], ['Updated At', row.updated_at]
