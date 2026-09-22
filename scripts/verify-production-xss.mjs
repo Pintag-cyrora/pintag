@@ -23,6 +23,22 @@ import vm from 'node:vm';
 
 const SITE = process.env.SITE_URL || 'https://pintag.io';
 
+// Node's global fetch() sends no User-Agent/Accept by default, which several
+// WAF/bot-management layers (Cloudflare among them) treat differently from a
+// request carrying a normal client identity — observed directly in CI: the
+// curl-based HTTP probe (scripts/verify-production-http.sh) fetches these
+// exact same two pages successfully seconds earlier in the same job, while
+// this script's bare fetch() got HTTP 403 for both. The fix is a real,
+// self-identifying client identity (not a spoofed browser UA — this is a
+// read-only verification bot, not an attempt to look like a human or evade
+// bot protection), sent consistently on every request this script makes, so
+// its behaviour is deterministic rather than depending on whatever a bare
+// fetch() defaults to.
+const VERIFIER_HEADERS = {
+  'User-Agent': 'Pintag-Production-Security-Verifier/1.0 (+https://github.com/Pintag-cyrora/pintag; read-only XSS-fix verification)',
+  'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8',
+};
+
 // Attacker-controlled text reaches these fields via Smart Import, the Facebook
 // adapter and AI generation — which is why they are the ones under test.
 const PAYLOADS = [
@@ -79,7 +95,7 @@ for (const page of ['listing.html', 'admin.html']) {
   console.log('\n' + page);
   let src;
   try {
-    const res = await fetch(`${SITE}/${page}`, { redirect: 'follow' });
+    const res = await fetch(`${SITE}/${page}`, { redirect: 'follow', headers: VERIFIER_HEADERS });
     if (!res.ok) { bad(`${page} fetch returned HTTP ${res.status}`); continue; }
     src = await res.text();
   } catch (e) {

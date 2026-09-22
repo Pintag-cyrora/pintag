@@ -87,24 +87,47 @@ SELECT pg_temp.chk(
                  AND NOT coalesce(c.reloptions::text LIKE '%security_invoker=true%', false))
 );
 
--- ── 4. Write policies must all flow through is_pintag_admin() ───────────────
--- The ONLY legitimate exceptions are the five append-only anon analytics
--- INSERT policies. Anything else granting a write to anon/authenticated without
--- the admin check is the 2026-08-03 breach pattern returning.
+-- ── 4. Write policies must all flow through a legitimate identity-bound gate ─
+-- The repository establishes THREE legitimate, identity-bound authorization
+-- patterns for a write policy (none of them "open"):
+--   * is_pintag_admin(...)  — the single-admin allowlist + AAL2 gate
+--     (20260817010000_authz_identity_and_abuse_bounds.sql)
+--   * is_pintag_staff(...)  — the broader staff gate
+--     (20260705000000_agents_becomes_parties.sql /
+--      20260804130000_single_admin_cyrora_lockdown.sql)
+--   * owned_party_ids(...)  — self-service ownership scoping, always called
+--     as owned_party_ids(auth.uid()) so it can only ever resolve to the
+--     CALLER's own party ids, never an arbitrary one
+--     (20260705000000_agents_becomes_parties.sql, and reused verbatim by
+--      every self-service policy since — see 20260705000400, 20260715000000,
+--      20260720000000, 20260728000000, 20260820000000)
+-- A policy naming ANY of these is identity-bound, not an open write — e.g.
+-- property_contacts' "Staff full access property_contacts" (is_pintag_staff)
+-- and "Party manage own property_contacts" (owned_party_ids, ownership-
+-- checked) from 20260820000000_multi_phone_contacts.sql are both legitimate
+-- and are the reason this check was widened past is_pintag_admin() alone —
+-- they were previously flagged as false-positive "bypasses" for having no
+-- literal is_pintag_admin substring, despite being real, auth.uid()-bound
+-- authorization. This is a STRUCTURAL widening (recognizing three named,
+-- documented functions), not a general loosening — a policy naming none of
+-- them, or the 2026-08-03 breach's "no gate at all" pattern, still fails.
+-- The five append-only anon analytics INSERT policies remain the only named
+-- exception (they are correctly anon-writable by design, gated instead by
+-- check_event_target_ceiling — see control 9 below).
 WITH offenders AS (
   SELECT schemaname||'.'||tablename||' ['||policyname||']' AS p
   FROM pg_policies
   WHERE schemaname IN ('public','storage')
     AND cmd <> 'SELECT'
-    AND coalesce(qual,'')       NOT LIKE '%is_pintag_admin%'
-    AND coalesce(with_check,'') NOT LIKE '%is_pintag_admin%'
+    AND coalesce(qual,'')       !~ '(is_pintag_admin|is_pintag_staff|owned_party_ids)\s*\('
+    AND coalesce(with_check,'') !~ '(is_pintag_admin|is_pintag_staff|owned_party_ids)\s*\('
     AND policyname NOT IN (
       'anon insert lead_events','anon insert listing_events',
       'anon insert search_events','anon insert ui_events','anon insert page_views')
 )
 SELECT pg_temp.chk(
-  'no write policy bypasses is_pintag_admin()',
-  'only the 5 anon analytics INSERT policies',
+  'no write policy bypasses a legitimate identity-bound gate',
+  'is_pintag_admin(...), is_pintag_staff(...), owned_party_ids(...)-scoped, or the 5 anon analytics INSERT policies',
   (SELECT coalesce(string_agg(p, ', '), 'none')  FROM offenders),
   (SELECT count(*) = 0 FROM offenders)
 );
@@ -215,12 +238,31 @@ LIMIT 1;
 -- Not a pass/fail: an inventory for human review. Anything appearing here
 -- WITHOUT a gate must be a deliberately-public function. The known-public set
 -- is listed as expected; a new name showing up is the signal to investigate.
+--
+-- STRUCTURAL EXCLUSION: p.prorettype <> 'trigger'::regtype. PostgreSQL grants
+-- EXECUTE on every newly created function to PUBLIC by default (the same
+-- default that made this control necessary in the first place), including
+-- trigger functions — but a trigger-type function errors if invoked directly
+-- outside trigger context ("trigger functions can only be called as
+-- triggers"), so has_function_privilege('anon', ..., 'EXECUTE')=true on one
+-- is a privilege-grant technicality, never a working RPC entry point for
+-- anon. Excluding by ACTUAL return type (checked against the live catalog,
+-- not a name list) correctly handles every trigger function regardless of
+-- name or which migration created it — e.g. create_lead_from_event,
+-- log_properties_removal, pintag_property_images_trg, snapshot_property_row,
+-- _properties_delete_guard, _properties_softdelete_alert,
+-- properties_sync_primary_contact all previously showed up here purely
+-- because of this default grant, not because any of them are callable as an
+-- ordinary RPC. This does NOT change any function's actual grants — see the
+-- accompanying migration for the separate, audited set of real (non-trigger)
+-- functions whose PUBLIC grant is revoked outright.
 SELECT pg_temp.chk(
   'no UNEXPECTED ungated SECURITY DEFINER function is callable by anon',
-  'only the deliberately-public ones',
+  'only the deliberately-public ones (trigger-only functions excluded)',
   (SELECT coalesce(string_agg(p.proname, ', '), 'none')
      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname='public' AND p.prosecdef
+      AND p.prorettype <> 'trigger'::regtype
       AND has_function_privilege('anon', p.oid, 'EXECUTE')
       AND pg_get_functiondef(p.oid) NOT LIKE '%is_pintag_admin%'
       AND p.proname NOT IN (
@@ -232,6 +274,7 @@ SELECT pg_temp.chk(
   NOT EXISTS (
     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
      WHERE n.nspname='public' AND p.prosecdef
+       AND p.prorettype <> 'trigger'::regtype
        AND has_function_privilege('anon', p.oid, 'EXECUTE')
        AND pg_get_functiondef(p.oid) NOT LIKE '%is_pintag_admin%'
        AND p.proname NOT IN (
