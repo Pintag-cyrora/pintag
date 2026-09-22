@@ -10,6 +10,7 @@
 import { priorityScore } from './insight-engine.js';
 import { dataConfidenceLabel } from './trend-calculator.js';
 import { buildDemandSupplyRows, buildBedroomDemandSupplyRows } from './demand-supply-gap.js';
+import { buildUnitTypeDemandRows } from './unit-type-demand.js';
 
 export const CANONICAL_DISTRICTS = [
   'Chanthabouly', 'Sikhottabong', 'Xaythany', 'Sisattanak',
@@ -270,6 +271,28 @@ function demandSupplyBlock(reportType, rawMetricsSummary) {
     (bedroomRows.length ? `\nBEDROOM-LEVEL DEMAND -> SUPPLY (only segments with at least 10 bedroom-specific searches and a real bedroom plurality — bedroom_bucket "0" means Studio, "4+" collapses 4-or-more bedrooms; phrase bedroom_sample_size language as a plurality per the CUSTOMER INTENT SEGMENTS rule above, never as a majority or a stated preference; same status/gap vocabulary as above):\n${JSON.stringify(bedroomRows)}\n` : '');
 }
 
+// Unit-Type Demand (see unit-type-demand.js) — a SEPARATE, finer-grained
+// signal from DEMAND -> SUPPLY -> GAP above: that block is market-wide
+// SEARCH demand against a (transaction_type, property_type, district)
+// bucket; this one is actual WhatsApp/call/lead activity attributed to one
+// SPECIFIC unit_types row (PR #104's unit_type_id), compared against that
+// same row's own available_count. A property-level CTA (unit_type_id null,
+// by construction) can never appear here — this block is never evidence for
+// or against a property-level lead, and vice versa. Daily-only for the same
+// reason customerIntentBlock/demandSupplyBlock are (sumMetrics() does not
+// merge unit_type_demand_segments/active_inventory across days).
+function unitTypeDemandBlock(reportType, rawMetricsSummary) {
+  if (reportType !== 'daily') return '';
+  const segments = rawMetricsSummary && Array.isArray(rawMetricsSummary.unit_type_demand_segments)
+    ? rawMetricsSummary.unit_type_demand_segments : null;
+  if (!segments || !segments.length) return '';
+
+  const availableUnitTypes = (rawMetricsSummary.active_inventory && rawMetricsSummary.active_inventory.available_unit_types) || null;
+  const rows = buildUnitTypeDemandRows(segments, availableUnitTypes);
+
+  return `\nUNIT-TYPE DEMAND -> SUPPLY (today, pre-computed and pre-classified — ranked by total signal (whatsapp_clicks + call_clicks + leads_created) for ONE SPECIFIC unit type within ONE SPECIFIC property, never a market-wide segment. This is a DIFFERENT population from DEMAND -> SUPPLY -> GAP and from CUSTOMER INTENT SEGMENTS above — those are search-based and market-wide; this is actual contact activity on one exact unit_types row, and a property-level lead (no specific unit selected) can never appear here. demand_confidence is HIGH/MEDIUM/LOW — a unit type with fewer than 3 total signals that day is always LOW, not a real demand signal (1-2 total inquiries is noise, not a market preference — NEVER state or imply a preference from a sample this small). available_count is that exact unit type's own current availability when its parent property is genuinely bookable, or null when today is not the single most-recently-finalized day — never invent a number when it is null. status uses the exact same vocabulary as DEMAND -> SUPPLY -> GAP: "adequate" (no gap), "gap_potential" (🟡 POTENTIAL GAP), "gap_strong" (🔴 POTENTIAL INVENTORY GAP), "insufficient_data" (⚪ — NEVER a confirmed gap of any kind). When you mention a unit type, always name its property/district context (e.g. "2-bedroom Room Type A units at [property] in [district]") — never describe it as a market-wide trend, and never merge it with the property-level DEMAND -> SUPPLY -> GAP numbers for the same property, which measure a different thing (searches, not unit-specific contacts):\n${JSON.stringify(rows)}\n`;
+}
+
 export function buildPrompt(reportType, composed, rawMetricsSummary, supply, trendAnalysis) {
   const newBlock = composed.new_insights.length
     ? composed.new_insights.map(insightSummaryLine).join('\n')
@@ -304,6 +327,7 @@ export function buildPrompt(reportType, composed, rawMetricsSummary, supply, tre
 
   const customerIntentBlockText = customerIntentBlock(reportType, rawMetricsSummary);
   const demandSupplyBlockText = demandSupplyBlock(reportType, rawMetricsSummary);
+  const unitTypeDemandBlockText = unitTypeDemandBlock(reportType, rawMetricsSummary);
   const galleryCheckText = galleryTrackingCheck(trendAnalysis, rawMetricsSummary);
 
   const commonRules = `You are writing for Pintag, a real estate marketplace in Vientiane, Laos. You are given a set of insights that deterministic code has ALREADY detected, ranked, and classified as new/continuing/resolved, plus a pre-computed trend analysis — these are the only findings and the only numbers that exist. Your job is strictly to explain, connect, and narrate them clearly.
@@ -349,7 +373,7 @@ GALLERY INTERACTIONS — today's analytics measure a marketplace-wide total, and
 NEW INSIGHTS (🟢):\n${newBlock}\n
 CONTINUING INSIGHTS (🔴):\n${continuingBlock}\n
 RESOLVED INSIGHTS (✅):\n${resolvedBlock}
-${supplyBlock}${trendBlock}${customerIntentBlockText}${demandSupplyBlockText}${galleryCheckText}
+${supplyBlock}${trendBlock}${customerIntentBlockText}${demandSupplyBlockText}${unitTypeDemandBlockText}${galleryCheckText}
 RAW METRICS SUMMARY (period totals, safe to cite verbatim):
 ${JSON.stringify(rawMetricsSummary)}
 
@@ -389,7 +413,7 @@ Structure with these markdown headings, in order. OMIT ANY SECTION THAT HAS NO R
 ## What Users Are Doing
 (Behaviour, still stated as facts, not conclusions: searches, listing views, gallery interactions, WhatsApp/call clicks, leads. Include, from CUSTOMER INTENT SEGMENTS when present, what customers actually searched for today in plain language, e.g. "today's strongest demand was renters wanting a condo in Sisattanak, mostly around $500-$800/month" — omit this if every segment's sample is too small to say anything with confidence, and say so explicitly rather than presenting a 2-search segment as "the" customer profile. Where a segment's bedroom_sample_size is at least 10, you may add the most-searched bedroom count to the same sentence as a plurality, e.g. "...mostly around $500-$800/month, most often searching for 2 bedrooms" — never below that sample size, and never phrase it as a majority or as what users "prefer". Numbers and comparisons only — save the "why" for What It Means.)
 ## Demand & Supply
-(Uses the DEMAND -> SUPPLY -> GAP data block above, when present — pre-ranked and pre-classified real numbers; you never compute a gap classification yourself. For the strongest 1-3 demand segments (by search_count), state the segment, its demand_confidence as 🟢 HIGH / 🟡 MEDIUM / ⚪ LOW (LOW means too few searches to call it demand at all — do not name a "strongest demand segment" if every row is LOW), its supply_count (or "supply data not available for today" when null — never invent a number), and its gap status exactly as given: "gap_strong" -> 🔴 POTENTIAL INVENTORY GAP, "gap_potential" -> 🟡 POTENTIAL GAP, "adequate" -> no gap language at all, "insufficient_data" -> ⚪ not enough data to call this a gap. NEVER upgrade "gap_potential" to a confirmed shortage, and NEVER call an "insufficient_data" row a gap of any kind. When the BEDROOM-LEVEL DEMAND -> SUPPLY block is present, you may add one sentence naming the strongest bedroom-specific demand+supply pairing (e.g. "2-bedroom rentals are the strongest measurable bedroom demand in Sisattanak; current matching supply: 4 available listings"), phrased as a plurality per the bedroom rule above, tagged with the same gap vocabulary. Omit this entire section if the data block above is absent or every row is "insufficient_data".)
+(Uses the DEMAND -> SUPPLY -> GAP data block above, when present — pre-ranked and pre-classified real numbers; you never compute a gap classification yourself. For the strongest 1-3 demand segments (by search_count), state the segment, its demand_confidence as 🟢 HIGH / 🟡 MEDIUM / ⚪ LOW (LOW means too few searches to call it demand at all — do not name a "strongest demand segment" if every row is LOW), its supply_count (or "supply data not available for today" when null — never invent a number), and its gap status exactly as given: "gap_strong" -> 🔴 POTENTIAL INVENTORY GAP, "gap_potential" -> 🟡 POTENTIAL GAP, "adequate" -> no gap language at all, "insufficient_data" -> ⚪ not enough data to call this a gap. NEVER upgrade "gap_potential" to a confirmed shortage, and NEVER call an "insufficient_data" row a gap of any kind. When the BEDROOM-LEVEL DEMAND -> SUPPLY block is present, you may add one sentence naming the strongest bedroom-specific demand+supply pairing (e.g. "2-bedroom rentals are the strongest measurable bedroom demand in Sisattanak; current matching supply: 4 available listings"), phrased as a plurality per the bedroom rule above, tagged with the same gap vocabulary. When the UNIT-TYPE DEMAND -> SUPPLY block is present with at least one row whose demand_confidence is not LOW, you may add up to one sentence naming the single strongest unit-type-level finding, always with its property/district context (e.g. "🟢 2-bedroom Room Type A units at [property] in Sisattanak generated 5 WhatsApp/call/lead signals today against 1 available unit — 🔴 POTENTIAL INVENTORY GAP at the unit level"). This is a DIFFERENT, more specific population than the market-wide DEMAND -> SUPPLY -> GAP numbers above (actual contact activity on one exact unit type, not search volume across a district) — never merge the two into one sentence, never describe a unit-type finding as if it were market-wide, and never mention it at all when every UNIT-TYPE DEMAND -> SUPPLY row is "insufficient_data" or LOW confidence. Omit this entire section if all three data blocks above are absent or every row in each is "insufficient_data".)
 ## What It Means
 (Interpretation ONLY, and ONLY here — every sentence in this section carries a 🟢/🟡/⚪ confidence tag per the CONFIDENCE LABELS rule above. Connect the facts above into a story about buyer behaviour, conversion, or demand; separate what's confirmed from what's a hypothesis. When gallery interactions are part of the story, follow the GALLERY INTERACTIONS rule above — say what the trend shows and say plainly what today's data cannot show.)
 ## What Needs Attention

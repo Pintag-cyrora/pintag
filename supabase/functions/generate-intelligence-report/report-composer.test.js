@@ -580,3 +580,88 @@ test('buildReportInsightLinks ignores insights with no id', () => {
   const links = buildReportInsightLinks(composed);
   assert.equal(links.length, 0);
 });
+
+// ── Unit-Type Demand: "## Demand & Supply" section extended with a new
+// UNIT-TYPE DEMAND -> SUPPLY data block (unit-type-demand.js) ──────────────
+function unitTypeSegment(overrides) {
+  return {
+    unit_type_id: 'ut-a', unit_type_name: 'Room Type A', bedrooms: 2,
+    price_amount: 400, price_currency: 'USD', price_frequency: 'monthly',
+    property_id: 'prop-1', district: 'Sisattanak', transaction_type: 'for_rent',
+    whatsapp_clicks: 4, call_clicks: 0, leads_created: 1,
+    ...overrides,
+  };
+}
+
+test('REQUIRED 8: buildPrompt (daily) wires the UNIT-TYPE DEMAND -> SUPPLY data block with real numbers, correctly classified', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const rawMetrics = {
+    unit_type_demand_segments: [unitTypeSegment({})],
+    active_inventory: { available_unit_types: { 'ut-a': 1 } },
+  };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.match(prompt, /UNIT-TYPE DEMAND -> SUPPLY/);
+  assert.match(prompt, /"unit_type_id":"ut-a"/);
+  assert.match(prompt, /"available_count":1/);
+  // signal_count = 4+0+1 = 5; available=1 -> ratio 0.2 < 0.25 -> gap_strong
+  assert.match(prompt, /"status":"gap_strong"/);
+});
+
+// REQUIRED 3: property-level demand (customer_intent_segments / DEMAND ->
+// SUPPLY -> GAP) and unit-type demand (UNIT-TYPE DEMAND -> SUPPLY) coexist
+// as two structurally separate data blocks, never merged into one.
+test('REQUIRED 3/9: market-wide DEMAND -> SUPPLY -> GAP and UNIT-TYPE DEMAND -> SUPPLY are two separate blocks that do not interfere with each other', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const marketSegments = [{ transaction_type: 'for_rent', property_type: 'apartment', district: 'Sisattanak', search_count: 40, impressions: 80 }];
+  const rawMetrics = {
+    customer_intent_segments: marketSegments,
+    active_inventory: { available_by_segment: { 'for_rent|apartment|Sisattanak': 2 }, available_unit_types: { 'ut-a': 1 } },
+    unit_type_demand_segments: [unitTypeSegment({})],
+  };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  // Existing market-wide block still present and correctly computed --
+  // proves the new field addition did not perturb existing behavior.
+  assert.match(prompt, /DEMAND -> SUPPLY -> GAP/);
+  assert.match(prompt, /"supply_count":2/);
+  // New unit-type block also present, with its own independent numbers.
+  assert.match(prompt, /UNIT-TYPE DEMAND -> SUPPLY/);
+  assert.match(prompt, /"unit_type_id":"ut-a"/);
+});
+
+// REQUIRED 10: existing Intelligence reports remain backward compatible --
+// an older-shaped rawMetricsSummary with no unit_type_demand_segments field
+// at all (as every historical daily_metrics_snapshot row predating this
+// migration looks) must not throw and must simply omit the new block.
+test('REQUIRED 10: buildPrompt stays backward compatible when unit_type_demand_segments is entirely absent from rawMetricsSummary', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const rawMetrics = { listing_impressions: 50, customer_intent_segments: [] };
+  assert.doesNotThrow(() => buildPrompt('daily', composed, rawMetrics, null));
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  // "UNIT-TYPE DEMAND -> SUPPLY" also names the data block in the
+  // always-present "## Demand & Supply" static instructions (same gotcha as
+  // demandSupplyBlock's own absence test above), so check for the DATA
+  // block's own JSON key instead of the heading text.
+  assert.ok(!prompt.includes('"unit_type_id"'), 'the data block must be entirely absent, not an empty/broken one');
+});
+
+test('unitTypeDemandBlock never fabricates a gap when active_inventory/available_unit_types is entirely absent -- reads insufficient_data', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const rawMetrics = { unit_type_demand_segments: [unitTypeSegment({ whatsapp_clicks: 5, call_clicks: 0, leads_created: 0 })] };
+  const prompt = buildPrompt('daily', composed, rawMetrics, null);
+  assert.match(prompt, /UNIT-TYPE DEMAND -> SUPPLY/);
+  assert.match(prompt, /"status":"insufficient_data"/);
+  assert.match(prompt, /"available_count":null/);
+});
+
+test('unitTypeDemandBlock is entirely absent when there are no unit_type_demand_segments at all (empty array)', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const prompt = buildPrompt('daily', composed, { unit_type_demand_segments: [] }, null);
+  assert.ok(!prompt.includes('"unit_type_id"'));
+});
+
+test('unitTypeDemandBlock is daily-only, same as demandSupplyBlock/customerIntentBlock -- absent from weekly/monthly reports', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const rawMetrics = { unit_type_demand_segments: [unitTypeSegment({})] };
+  const weeklyPrompt = buildPrompt('weekly', composed, rawMetrics, null);
+  assert.ok(!weeklyPrompt.includes('UNIT-TYPE DEMAND -> SUPPLY'));
+});
