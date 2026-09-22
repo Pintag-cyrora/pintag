@@ -690,6 +690,19 @@ test('fetch(): "/listing.html" with no slug still falls open to the unmodified o
   }
 });
 
+// Distinguishes the two calls the /listing.html branch's global fetch stub
+// must tell apart (the Supabase REST lookup vs. the GitHub Pages origin
+// fetch) by actual URL host, not a substring check -- `String(request)` on
+// the origin fetch's Request argument is "[object Request]" and correctly
+// fails to parse as a URL, so this never needs a separate isRequest branch.
+function isSupabaseHost(u) {
+  try {
+    return new URL(String(u)).host === new URL(SUPABASE_URL).host;
+  } catch {
+    return false;
+  }
+}
+
 // ── The other two /listing.html origin-fallback paths — same bug class ──
 // (no ?slug was already covered above; these are the remaining ways this
 // branch can fall back to the unmodified origin response instead of a
@@ -697,8 +710,7 @@ test('fetch(): "/listing.html" with no slug still falls open to the unmodified o
 test('fetch(): "/listing.html?slug=..." with no matching row (row not found) falls back to origin AND still carries Cache-Control: no-store', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (u) => {
-    const s = String(u);
-    if (s.includes(SUPABASE_URL)) return new Response('[]', { status: 200 }); // no matching property row
+    if (isSupabaseHost(u)) return new Response('[]', { status: 200 }); // no matching property row
     return new Response('<html>real origin, unknown slug</html>', {
       status: 200,
       headers: { 'content-type': 'text/html' },
@@ -717,8 +729,7 @@ test('fetch(): "/listing.html?slug=..." with no matching row (row not found) fal
 test('fetch(): "/listing.html?slug=..." where the Supabase lookup itself throws (network/parse failure) falls back to origin AND still carries Cache-Control: no-store', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (u) => {
-    const s = String(u);
-    if (s.includes(SUPABASE_URL)) throw new Error('simulated network failure');
+    if (isSupabaseHost(u)) throw new Error('simulated network failure');
     return new Response('<html>real origin, lookup failed</html>', {
       status: 200,
       headers: { 'content-type': 'text/html' },
