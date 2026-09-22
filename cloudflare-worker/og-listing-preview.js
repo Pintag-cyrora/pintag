@@ -557,6 +557,25 @@ function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
+// Bypasses Cloudflare's edge cache for the Worker's OWN same-zone fetch to
+// origin (GitHub Pages) -- a different cache surface from withNoStore()
+// below. withNoStore() only governs whether a cache sitting in front of
+// THIS RESPONSE (what this Worker hands back to the requester) may store
+// it; it says nothing about whether Cloudflare's edge serves a stale,
+// previously-cached copy of the origin's own response to this Worker's
+// `fetch(request)` call in the first place -- and a Worker's fetch() to a
+// URL matching its own zone participates in that zone's ordinary cache
+// layer exactly like ordinary edge traffic does, unless told otherwise.
+// `cacheTtl: 0` is the documented Workers mechanism for "do not cache this
+// particular subrequest" -- the standard Fetch API's `cache` option (e.g.
+// `{ cache: 'no-store' }`) is NOT implemented by the Workers runtime and is
+// silently ignored wherever it's passed, `cf` or not. Found and reasoned
+// through in the 2026-09-22 investigation into why a Cloudflare cache purge
+// of https://pintag.io/listing.html did not change the HTML the production
+// security workflow saw, even after confirming no Cache Rules exist on the
+// zone and after both GitHub Pages and this Worker were freshly redeployed.
+const BYPASS_ORIGIN_CACHE = { cf: { cacheTtl: 0 } };
+
 async function rewriteListingHead(response, row, lang, slug, supabaseUrl = DEFAULT_SUPABASE_URL) {
   const fields = buildOgFields(row, lang, supabaseUrl);
   const { title, desc, imageAlt, hasZh } = fields;
@@ -758,7 +777,7 @@ export default {
     // title/description/image — the original, most involved case.
     if (path === '/listing.html' || path.endsWith('/listing.html')) {
       const slug = url.searchParams.get('slug');
-      const origin = await fetch(request);
+      const origin = await fetch(request, BYPASS_ORIGIN_CACHE);
       // Every response this branch can return — rewritten or a fallback to
       // the unmodified origin — must carry the same Cache-Control: no-store
       // as the rewrite path below. A cache in front of this Worker cannot
@@ -815,7 +834,7 @@ export default {
     // same never-break-the-real-page try/catch as the listing.html path.
     const isListings = path === '/listings.html' || path.endsWith('/listings.html');
     if (isListings) {
-      const origin = await fetch(request);
+      const origin = await fetch(request, BYPASS_ORIGIN_CACHE);
       const lang = resolveLang(url.searchParams.get('lang'));
       try {
         return withSecurityHeaders(withNoStore(await rewriteGenericHead(origin, lang, LISTINGS_META_I18N)));
@@ -826,8 +845,13 @@ export default {
 
     // Everything else (static assets, other pages) passes straight through
     // with no Supabase call and no rewriting — but still gets the security
-    // headers, so an asset on a fronted route is covered too.
-    return withSecurityHeaders(await fetch(request));
+    // headers, so an asset on a fronted route is covered too. Only ever
+    // reached for a request matching one of this Worker's own routes
+    // (wrangler.toml) that isn't "/", /index.html, /listing.html, or
+    // /listings.html -- i.e. still a same-zone fetch that could return an
+    // HTML page, so it gets the same origin-cache bypass as the branches
+    // above rather than being assumed to be a cacheable static asset.
+    return withSecurityHeaders(await fetch(request, BYPASS_ORIGIN_CACHE));
   },
 };
 

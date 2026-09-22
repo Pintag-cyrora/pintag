@@ -672,24 +672,6 @@ test('fetch(): the isHome redirect branch never fetches origin (no network call 
   assert.equal(called, false, 'fetch(request) must not be called for the isHome redirect branch');
 });
 
-// ── Existing fail-open behavior on other routes, unaffected by the redirect change ──
-test('fetch(): "/listing.html" with no slug still falls open to the unmodified origin response, AND now carries Cache-Control: no-store (the fix for the reported stale-production-HTML gap -- this exact path previously shipped no no-store header at all)', async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response('<html>real origin, no slug</html>', {
-    status: 200,
-    headers: { 'content-type': 'text/html' },
-  });
-  try {
-    const res = await ogWorker.fetch(new Request('https://pintag.io/listing.html'), {}, fakeCtx());
-    assert.equal(res.status, 200);
-    assert.equal(await res.text(), '<html>real origin, no slug</html>');
-    assert.equal(res.headers.get('x-frame-options'), 'DENY'); // still security-headered
-    assert.equal(res.headers.get('cache-control'), 'no-store');
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
 // Distinguishes the two calls the /listing.html branch's global fetch stub
 // must tell apart (the Supabase REST lookup vs. the GitHub Pages origin
 // fetch) by actual URL host, not a substring check -- `String(request)` on
@@ -703,62 +685,120 @@ function isSupabaseHost(u) {
   }
 }
 
+// ── Existing fail-open behavior on other routes, unaffected by the redirect change ──
+// Every one of these also proves the 2026-09-22 origin-cache-bypass fix:
+// each fetch(request, ...) call this Worker makes to pull HTML from origin
+// must carry cf: { cacheTtl: 0 } -- separate from, and in addition to,
+// withNoStore() on the RESPONSE this Worker sends back. See
+// og-listing-preview.js's BYPASS_ORIGIN_CACHE comment for why these are two
+// different cache surfaces and why cacheTtl: 0 (not the standard Fetch API's
+// unsupported `cache` option) is the correct mechanism.
+test('fetch(): "/listing.html" with no slug still falls open to the unmodified origin response, carries Cache-Control: no-store, AND the origin fetch bypasses Cloudflare\'s edge cache (cf: { cacheTtl: 0 })', async () => {
+  const { result: res, calls } = await withStubbedFetch(
+    () => new Response('<html>real origin, no slug</html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    }),
+    () => ogWorker.fetch(new Request('https://pintag.io/listing.html'), {}, fakeCtx())
+  );
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), '<html>real origin, no slug</html>');
+  assert.equal(res.headers.get('x-frame-options'), 'DENY'); // still security-headered
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].init.cf, { cacheTtl: 0 });
+});
+
 // ── The other two /listing.html origin-fallback paths — same bug class ──
 // (no ?slug was already covered above; these are the remaining ways this
 // branch can fall back to the unmodified origin response instead of a
 // rewrite, each of which shipped without withNoStore() too).
-test('fetch(): "/listing.html?slug=..." with no matching row (row not found) falls back to origin AND still carries Cache-Control: no-store', async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (u) => {
-    if (isSupabaseHost(u)) return new Response('[]', { status: 200 }); // no matching property row
-    return new Response('<html>real origin, unknown slug</html>', {
-      status: 200,
-      headers: { 'content-type': 'text/html' },
-    });
-  };
-  try {
-    const res = await ogWorker.fetch(new Request('https://pintag.io/listing.html?slug=does-not-exist'), {}, fakeCtx());
-    assert.equal(res.status, 200);
-    assert.equal(await res.text(), '<html>real origin, unknown slug</html>');
-    assert.equal(res.headers.get('cache-control'), 'no-store');
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+test('fetch(): "/listing.html?slug=..." with no matching row (row not found) falls back to origin, stays no-store, AND the origin fetch (not the Supabase lookup) carries cf: { cacheTtl: 0 }', async () => {
+  const { result: res, calls } = await withStubbedFetch(
+    (u) => isSupabaseHost(u)
+      ? new Response('[]', { status: 200 }) // no matching property row
+      : new Response('<html>real origin, unknown slug</html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        }),
+    () => ogWorker.fetch(new Request('https://pintag.io/listing.html?slug=does-not-exist'), {}, fakeCtx())
+  );
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), '<html>real origin, unknown slug</html>');
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  const originCall = calls.find((c) => !isSupabaseHost(c.url));
+  const supabaseCall = calls.find((c) => isSupabaseHost(c.url));
+  assert.ok(originCall && supabaseCall, 'expected exactly one origin call and one Supabase call');
+  assert.deepEqual(originCall.init.cf, { cacheTtl: 0 });
+  assert.deepEqual(supabaseCall.init.cf, { cacheTtl: 300, cacheEverything: true }); // property-data cache UNCHANGED
 });
 
-test('fetch(): "/listing.html?slug=..." where the Supabase lookup itself throws (network/parse failure) falls back to origin AND still carries Cache-Control: no-store', async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (u) => {
-    if (isSupabaseHost(u)) throw new Error('simulated network failure');
-    return new Response('<html>real origin, lookup failed</html>', {
-      status: 200,
-      headers: { 'content-type': 'text/html' },
-    });
-  };
-  try {
-    const res = await ogWorker.fetch(new Request('https://pintag.io/listing.html?slug=whatever'), {}, fakeCtx());
-    assert.equal(res.status, 200);
-    assert.equal(await res.text(), '<html>real origin, lookup failed</html>');
-    assert.equal(res.headers.get('cache-control'), 'no-store');
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+test('fetch(): "/listing.html?slug=..." where the Supabase lookup itself throws (network/parse failure) falls back to origin, stays no-store, AND the origin fetch still carries cf: { cacheTtl: 0 }', async () => {
+  const { result: res, calls } = await withStubbedFetch(
+    (u) => {
+      if (isSupabaseHost(u)) throw new Error('simulated network failure');
+      return new Response('<html>real origin, lookup failed</html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      });
+    },
+    () => ogWorker.fetch(new Request('https://pintag.io/listing.html?slug=whatever'), {}, fakeCtx())
+  );
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), '<html>real origin, lookup failed</html>');
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  const originCall = calls.find((c) => !isSupabaseHost(c.url));
+  assert.ok(originCall, 'expected an origin fetch call');
+  assert.deepEqual(originCall.init.cf, { cacheTtl: 0 });
 });
 
-test('fetch(): an unrelated path (static asset) still passes straight through with security headers, unaffected by the redirect/maintenance changes', async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response('body{color:red}', {
-    status: 200,
-    headers: { 'content-type': 'text/css' },
-  });
-  try {
-    const res = await ogWorker.fetch(new Request('https://pintag.io/shared-components.css'), {}, fakeCtx());
-    assert.equal(res.status, 200);
-    assert.equal(await res.text(), 'body{color:red}');
-    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+// ── The successful rewrite path — the most common real-world case ──
+test('fetch(): "/listing.html?slug=..." with a matching row rewrites the head, stays no-store, the origin fetch bypasses Cloudflare\'s edge cache, AND the Supabase lookup keeps its own deliberate 5-minute cache unchanged', async () => {
+  const { result: res, calls } = await withStubbedFetch(
+    (u) => isSupabaseHost(u)
+      ? new Response(JSON.stringify([ROW]), { status: 200 })
+      : new Response(LISTING_FIXTURE, { status: 200, headers: { 'content-type': 'text/html' } }),
+    () => ogWorker.fetch(new Request(`https://pintag.io/listing.html?slug=${ROW.slug}&lang=en`), {}, fakeCtx())
+  );
+  assert.equal(res.status, 200);
+  const body = await res.text();
+  assert.match(body, /Riverside Villa/); // proves the rewrite actually ran, not a fallback
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  assert.equal(res.headers.get('x-frame-options'), 'DENY');
+  const originCall = calls.find((c) => !isSupabaseHost(c.url));
+  const supabaseCall = calls.find((c) => isSupabaseHost(c.url));
+  assert.ok(originCall && supabaseCall, 'expected exactly one origin call and one Supabase call');
+  assert.deepEqual(originCall.init.cf, { cacheTtl: 0 });
+  assert.deepEqual(supabaseCall.init.cf, { cacheTtl: 300, cacheEverything: true }); // property-data cache UNCHANGED
+});
+
+test('fetch(): "/listings.html" rewrites the generic head per ?lang=, stays no-store, AND the origin fetch bypasses Cloudflare\'s edge cache (cf: { cacheTtl: 0 })', async () => {
+  const { result: res, calls } = await withStubbedFetch(
+    () => new Response(LISTINGS_FIXTURE, { status: 200, headers: { 'content-type': 'text/html' } }),
+    () => ogWorker.fetch(new Request('https://pintag.io/listings.html?lang=en'), {}, fakeCtx())
+  );
+  assert.equal(res.status, 200);
+  const body = await res.text();
+  assert.match(body, /<html lang="en">/);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  assert.equal(res.headers.get('x-frame-options'), 'DENY');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].init.cf, { cacheTtl: 0 });
+});
+
+test('fetch(): an unrelated path (static asset) still passes straight through with security headers, AND its origin fetch also carries cf: { cacheTtl: 0 } (this catch-all branch can serve HTML for "other pages" too, on any route this Worker fronts)', async () => {
+  const { result: res, calls } = await withStubbedFetch(
+    () => new Response('body{color:red}', {
+      status: 200,
+      headers: { 'content-type': 'text/css' },
+    }),
+    () => ogWorker.fetch(new Request('https://pintag.io/shared-components.css'), {}, fakeCtx())
+  );
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), 'body{color:red}');
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].init.cf, { cacheTtl: 0 });
 });
 
 // ── MAINTENANCE_MODE still 503s "/" and "/index.html" instead of redirecting ──
