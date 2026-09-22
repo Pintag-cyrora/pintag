@@ -66,11 +66,6 @@ class FakeElement {
   append(html) { this._appended += html; }
 }
 
-class FakeResponse {
-  constructor(html) { this._html = html; }
-  async text() { return this._html; }
-}
-
 class FakeHTMLRewriter {
   constructor() {
     this._rules = []; // {tag, conds, handler}
@@ -145,8 +140,19 @@ class FakeHTMLRewriter {
       cursor = r.end;
     }
     out += html.slice(cursor);
-    return new FakeResponse(out);
+    // A REAL Response, not a hand-rolled stand-in: og-listing-preview.js's
+    // withNoStore()/withSecurityHeaders() both do `new Response(response.body,
+    // response)` to layer a header onto whatever transform() returns here --
+    // that only works against something with a genuine, readable `.body`
+    // stream, exactly like Cloudflare's real HTMLRewriter.transform() itself
+    // returns in production. Preserves the original response's headers/status
+    // when one was given (the ogWorker.fetch() end-to-end tests care about
+    // this); a bare fixture string (most direct rewriteListingHead() call
+    // sites in this file) has no original response to preserve, so falls
+    // back to Response's own defaults.
+    const init = typeof response === 'string' ? undefined : response;
+    return new Response(out, init);
   }
 }
 
-export { FakeHTMLRewriter, FakeResponse };
+export { FakeHTMLRewriter };
