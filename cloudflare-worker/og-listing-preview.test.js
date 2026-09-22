@@ -673,7 +673,7 @@ test('fetch(): the isHome redirect branch never fetches origin (no network call 
 });
 
 // ── Existing fail-open behavior on other routes, unaffected by the redirect change ──
-test('fetch(): "/listing.html" with no slug still falls open to the unmodified origin response (existing behavior, untouched by the homepage redirect)', async () => {
+test('fetch(): "/listing.html" with no slug still falls open to the unmodified origin response, AND now carries Cache-Control: no-store (the fix for the reported stale-production-HTML gap -- this exact path previously shipped no no-store header at all)', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response('<html>real origin, no slug</html>', {
     status: 200,
@@ -684,6 +684,62 @@ test('fetch(): "/listing.html" with no slug still falls open to the unmodified o
     assert.equal(res.status, 200);
     assert.equal(await res.text(), '<html>real origin, no slug</html>');
     assert.equal(res.headers.get('x-frame-options'), 'DENY'); // still security-headered
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// Distinguishes the two calls the /listing.html branch's global fetch stub
+// must tell apart (the Supabase REST lookup vs. the GitHub Pages origin
+// fetch) by actual URL host, not a substring check -- `String(request)` on
+// the origin fetch's Request argument is "[object Request]" and correctly
+// fails to parse as a URL, so this never needs a separate isRequest branch.
+function isSupabaseHost(u) {
+  try {
+    return new URL(String(u)).host === new URL(SUPABASE_URL).host;
+  } catch {
+    return false;
+  }
+}
+
+// ── The other two /listing.html origin-fallback paths — same bug class ──
+// (no ?slug was already covered above; these are the remaining ways this
+// branch can fall back to the unmodified origin response instead of a
+// rewrite, each of which shipped without withNoStore() too).
+test('fetch(): "/listing.html?slug=..." with no matching row (row not found) falls back to origin AND still carries Cache-Control: no-store', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (u) => {
+    if (isSupabaseHost(u)) return new Response('[]', { status: 200 }); // no matching property row
+    return new Response('<html>real origin, unknown slug</html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    });
+  };
+  try {
+    const res = await ogWorker.fetch(new Request('https://pintag.io/listing.html?slug=does-not-exist'), {}, fakeCtx());
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), '<html>real origin, unknown slug</html>');
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('fetch(): "/listing.html?slug=..." where the Supabase lookup itself throws (network/parse failure) falls back to origin AND still carries Cache-Control: no-store', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (u) => {
+    if (isSupabaseHost(u)) throw new Error('simulated network failure');
+    return new Response('<html>real origin, lookup failed</html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    });
+  };
+  try {
+    const res = await ogWorker.fetch(new Request('https://pintag.io/listing.html?slug=whatever'), {}, fakeCtx());
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), '<html>real origin, lookup failed</html>');
+    assert.equal(res.headers.get('cache-control'), 'no-store');
   } finally {
     globalThis.fetch = originalFetch;
   }

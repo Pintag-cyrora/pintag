@@ -759,7 +759,16 @@ export default {
     if (path === '/listing.html' || path.endsWith('/listing.html')) {
       const slug = url.searchParams.get('slug');
       const origin = await fetch(request);
-      if (!slug) return withSecurityHeaders(origin);
+      // Every response this branch can return — rewritten or a fallback to
+      // the unmodified origin — must carry the same Cache-Control: no-store
+      // as the rewrite path below. A cache in front of this Worker cannot
+      // tell a fallback apart from a rewrite, so leaving any of these
+      // uncovered lets that one path get cached indefinitely (observed in
+      // production: a bare /listing.html request with no ?slug, served
+      // stale HTML long after the origin had already updated) — see
+      // withNoStore()'s own comment for why a cache can't be trusted to
+      // treat these consistently on its own.
+      if (!slug) return withSecurityHeaders(withNoStore(origin));
 
       const lang = resolveLang(url.searchParams.get('lang'));
 
@@ -769,9 +778,9 @@ export default {
       } catch (err) {
         // Network/parse failure talking to Supabase — degrade to the
         // unmodified origin response rather than showing a broken preview.
-        return withSecurityHeaders(origin);
+        return withSecurityHeaders(withNoStore(origin));
       }
-      if (!row) return withSecurityHeaders(origin);
+      if (!row) return withSecurityHeaders(withNoStore(origin));
 
       try {
         return withSecurityHeaders(
@@ -780,7 +789,7 @@ export default {
       } catch (err) {
         // HTMLRewriter failure of any kind — never let a preview-generation
         // bug break the actual page for a real visitor.
-        return withSecurityHeaders(origin);
+        return withSecurityHeaders(withNoStore(origin));
       }
     }
 
