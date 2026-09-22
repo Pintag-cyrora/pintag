@@ -263,7 +263,10 @@ test('version metadata records the change', () => {
   // analysis, deterministic listing-opportunity and data-quality-check
   // surfacing, an evidence-hierarchy-ordered action list) and must not be
   // read as the same artefact as one generated under 4.x.
-  assert.equal(PROMPT_VERSION, '5.0.0', 'a 4.x daily report answers a different question from a 5.x one');
+  // 5.1.0 (Unit-Type Demand) is an additive minor bump on top of that --
+  // a new optional data block plus one added sentence in the existing
+  // "## Demand & Supply" section, not a redefinition of 5.0.0's questions.
+  assert.equal(PROMPT_VERSION, '5.1.0', 'unit-type demand is an additive 5.x minor bump, not a new major question');
   // 1.3.0: new checkMatchRateSmallSample() check -- see report-validator.js.
   assert.equal(VALIDATOR_VERSION, '1.3.0');
   // Untouched layers must NOT have been bumped — the analytics did not
