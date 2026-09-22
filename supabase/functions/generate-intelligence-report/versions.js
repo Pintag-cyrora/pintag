@@ -91,7 +91,17 @@ export const REPORT_FORMAT_VERSION = '1.1.0';
 // materially narrower question — no demand/supply/gap analysis, no
 // deterministic listing-opportunity or data-quality-check surfacing — than
 // one generated under 5.x.
-export const PROMPT_VERSION = '5.0.0';
+// 5.1.0 — Unit-Type Demand: a new UNIT-TYPE DEMAND -> SUPPLY data block
+// (unit-type-demand.js) and one added sentence's worth of guidance inside
+// the existing "## Demand & Supply" section (no new heading) — actual
+// WhatsApp/call/lead activity attributed to one specific unit_types row
+// (PR #104's unit_type_id), compared against that row's own available_count,
+// explicitly kept separate from the market-wide DEMAND -> SUPPLY -> GAP
+// numbers already in that section. A daily report generated under 5.0.x
+// never saw this block at all; one generated under 5.1.0 may additionally
+// narrate a unit-type-level finding when a property has enough of its own
+// unit-specific contact signal to support one.
+export const PROMPT_VERSION = '5.1.0';
 
 // Bump whenever report-validator.js's contradiction/grounding rules change
 // — affects how much to trust "this report passed validation" for a given
