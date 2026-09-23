@@ -704,12 +704,21 @@ const SECURITY_HEADERS = {
   'Permissions-Policy': 'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()',
 };
 
+// TEMPORARY DIAGNOSTIC — 2026-09 route-ownership investigation. Proves,
+// from a real production response's raw headers, whether this Worker is
+// actually the one that produced a given response (as opposed to some
+// other Worker/Cloudflare configuration silently taking precedence on the
+// same route). Purely a marker: no behavior, caching, routing, or content
+// change. Remove once the investigation concludes.
+const DIAGNOSTIC_WORKER_HEADER = ['X-Pintag-Worker', 'og-listing-preview'];
+
 // Apply to any response this Worker returns. Header-only, never touches the
 // body, and safe on a pass-through response (it re-wraps rather than mutating a
 // possibly-immutable header set).
 function withSecurityHeaders(response) {
   const out = new Response(response.body, response);
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
+  out.headers.set(DIAGNOSTIC_WORKER_HEADER[0], DIAGNOSTIC_WORKER_HEADER[1]);
   return out;
 }
 

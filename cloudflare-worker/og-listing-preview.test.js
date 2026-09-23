@@ -659,6 +659,30 @@ test('fetch(): the redirect response still carries the shared SECURITY_HEADERS, 
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
 });
 
+// TEMPORARY DIAGNOSTIC — 2026-09 route-ownership investigation (see
+// withSecurityHeaders()'s own comment). Proves every response this Worker
+// returns carries a marker header, so the real production response for
+// /listing.html can be inspected for it directly.
+test('fetch(): every response this Worker returns carries the temporary X-Pintag-Worker diagnostic header', async () => {
+  const { result: listingRes } = await withStubbedFetch(
+    () => new Response('<html>real origin, no slug</html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    }),
+    () => ogWorker.fetch(new Request('https://pintag.io/listing.html'), {}, fakeCtx())
+  );
+  assert.equal(listingRes.headers.get('x-pintag-worker'), 'og-listing-preview');
+
+  const redirectRes = await ogWorker.fetch(new Request('https://pintag.io/'), {}, fakeCtx());
+  assert.equal(redirectRes.headers.get('x-pintag-worker'), 'og-listing-preview');
+
+  const { result: assetRes } = await withStubbedFetch(
+    () => new Response('body{color:red}', { status: 200, headers: { 'content-type': 'text/css' } }),
+    () => ogWorker.fetch(new Request('https://pintag.io/shared-components.css'), {}, fakeCtx())
+  );
+  assert.equal(assetRes.headers.get('x-pintag-worker'), 'og-listing-preview');
+});
+
 test('fetch(): the isHome redirect branch never fetches origin (no network call for "/" or "/index.html")', async () => {
   const originalFetch = globalThis.fetch;
   let called = false;
