@@ -86,6 +86,25 @@ let pass = 0, fail = 0;
 const ok  = (m) => { console.log('  PASS  ' + m); pass++; };
 const bad = (m, d) => { console.log('  FAIL  ' + m + (d ? '\n      → ' + d : '')); fail++; };
 
+// TEMPORARY DIAGNOSTIC — 2026-09 route-ownership investigation. Purely
+// observational: prints everything the fetch() Response object exposes for a
+// non-2xx listing.html response, so a real CI run can show whether the 403
+// carries a Cloudflare fingerprint (cf-ray, cf-cache-status, a WAF/rate-limit
+// header) or something else (e.g. a GitHub Pages 404-as-403 shape). Does not
+// affect the pass/fail verdict below -- diagnostics only.
+function logNon2xxDiagnostics(page, res) {
+  console.log(`  DIAG  ${page}: non-2xx response diagnostics`);
+  console.log(`      status:    ${res.status} ${res.statusText}`);
+  console.log(`      final URL: ${res.url}`);
+  const headerLines = [...res.headers.entries()].sort(([a], [b]) => a.localeCompare(b));
+  if (headerLines.length === 0) {
+    console.log('      headers:   (none reported)');
+  } else {
+    console.log('      headers:');
+    for (const [name, value] of headerLines) console.log(`        ${name}: ${value}`);
+  }
+}
+
 console.log('==============================================================');
 console.log(' XSS fix — proven against the LIVE production pages');
 console.log(' Site: ' + SITE);
@@ -96,7 +115,11 @@ for (const page of ['listing.html', 'admin.html']) {
   let src;
   try {
     const res = await fetch(`${SITE}/${page}`, { redirect: 'follow', headers: VERIFIER_HEADERS });
-    if (!res.ok) { bad(`${page} fetch returned HTTP ${res.status}`); continue; }
+    if (!res.ok) {
+      if (page === 'listing.html') logNon2xxDiagnostics(page, res);
+      bad(`${page} fetch returned HTTP ${res.status}`);
+      continue;
+    }
     src = await res.text();
   } catch (e) {
     bad(`${page} could not be fetched`, String(e.message || e)); continue;

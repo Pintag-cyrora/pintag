@@ -90,6 +90,54 @@ test('verify-production-xss.mjs sends a real, self-identifying User-Agent and Ac
   }
 });
 
+test('verify-production-xss.mjs prints full response-header diagnostics for a non-2xx listing.html, and stays silent for admin.html', async () => {
+  const server = http.createServer((req, res) => {
+    if (req.url === '/listing.html') {
+      res.writeHead(403, 'Forbidden', {
+        'CF-Ray': '8f00000000000000-SJC',
+        'CF-Cache-Status': 'DYNAMIC',
+        'Cache-Control': 'private, max-age=0',
+        'Age': '0',
+        'Server': 'cloudflare',
+        'Retry-After': '5',
+        'X-RateLimit-Remaining': '0',
+      });
+      res.end('blocked');
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(REAL_ESC_JS_PAGE);
+  });
+  const port = await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+
+  let stdout = '';
+  try {
+    ({ stdout } = await execFileAsync('node', [SCRIPT], {
+      env: { ...process.env, SITE_URL: `http://127.0.0.1:${port}` },
+    }));
+  } catch (e) {
+    // Expected: the script exits non-zero because listing.html 403s.
+    stdout = e.stdout || '';
+  } finally {
+    server.close();
+  }
+
+  assert.match(stdout, /DIAG {2}listing\.html: non-2xx response diagnostics/);
+  assert.match(stdout, /status:\s+403 Forbidden/);
+  assert.match(stdout, new RegExp(`final URL:\\s+http://127\\.0\\.0\\.1:${port}/listing\\.html`));
+  assert.match(stdout, /cf-ray: 8f00000000000000-SJC/);
+  assert.match(stdout, /cf-cache-status: DYNAMIC/);
+  assert.match(stdout, /cache-control: private, max-age=0/);
+  assert.match(stdout, /age: 0/);
+  assert.match(stdout, /server: cloudflare/);
+  assert.match(stdout, /retry-after: 5/);
+  assert.match(stdout, /x-ratelimit-remaining: 0/);
+
+  // admin.html succeeds (200) in this fixture, so it must never trigger the
+  // diagnostic block -- it is scoped to the failing listing.html request only.
+  assert.doesNotMatch(stdout, /DIAG {2}admin\.html/);
+});
+
 test('verify-production-xss.mjs still exits 0 against a page whose real escJs() neutralises every payload', async () => {
   const { server, requests } = await startCapturingServer();
   const port = server.address().port;
