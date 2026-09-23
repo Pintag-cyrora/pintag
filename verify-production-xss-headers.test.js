@@ -21,13 +21,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
-const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'scripts', 'verify-production-xss.mjs');
+const REPO_ROOT = path.dirname(fileURLToPath(import.meta.url));
+const SCRIPT = path.join(REPO_ROOT, 'scripts', 'verify-production-xss.mjs');
+
+// The exact production-identity marker the script itself now requires
+// (scripts/verify-production-xss.mjs's SUPABASE_MARKER, resolved the same
+// way -- from config.prod.js -- so this can never drift from what the
+// script actually checks for). A fixture page missing this is correctly
+// classified UNVERIFIABLE, not evaluated as genuine Pintag HTML -- every
+// fixture below that is meant to represent the REAL deployed page embeds it.
+const SUPABASE_HOST = fs.readFileSync(path.join(REPO_ROOT, 'config.prod.js'), 'utf8')
+  .match(/https:\/\/[a-z0-9]+\.supabase\.co/)[0].replace('https://', '');
 
 // The REAL escJs() shipped in listing.html/admin.html today (copied
 // verbatim, not reimplemented -- see listing.html's own escJs() and its
@@ -48,7 +59,7 @@ const REAL_ESC_JS_SOURCE = [
   '}',
 ].join('\n');
 
-const REAL_ESC_JS_PAGE = `<!doctype html><html><body><script>\n${REAL_ESC_JS_SOURCE}\n</script></body></html>`;
+const REAL_ESC_JS_PAGE = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://${SUPABASE_HOST}"></head><body><script>\n${REAL_ESC_JS_SOURCE}\n</script></body></html>`;
 
 function startCapturingServer() {
   const requests = [];
@@ -161,7 +172,7 @@ test('verify-production-xss.mjs follows a redirect on listing.html (curl-based r
 
   assert.match(stdout, /listing\.html: all \d+ payloads neutralised/,
     'listing.html should have followed the redirect to the real page and passed, not failed on the 302 itself');
-  assert.match(stdout, /RESULT: \d+ passed, 0 failed/);
+  assert.match(stdout, /RESULT: [1-9]\d* passed, 0 failed/);
 });
 
 test('verify-production-xss.mjs still exits 0 against a page whose real escJs() neutralises every payload', async () => {
@@ -171,9 +182,107 @@ test('verify-production-xss.mjs still exits 0 against a page whose real escJs() 
     const { stdout } = await execFileAsync('node', [SCRIPT], {
       env: { ...process.env, SITE_URL: `http://127.0.0.1:${port}` },
     });
-    assert.match(stdout, /RESULT: \d+ passed, 0 failed/, 'expected every payload to be neutralised against the real escJs()');
+    assert.match(stdout, /RESULT: [1-9]\d* passed, 0 failed/, 'expected every payload to be neutralised against the real escJs()');
   } finally {
     server.close();
     void requests;
   }
+});
+
+// Representative of the ACTUAL Cloudflare Managed Challenge captured during
+// the 2026-09 Bot Fight Mode investigation (run 35832585278, CF-Ray
+// a3f7e1758c50c872-DFW): HTTP 403, cf-mitigated: challenge, and a body/CSP
+// that contains none of Pintag's own markers.
+const CHALLENGE_HEADERS = {
+  'Content-Type': 'text/html; charset=UTF-8',
+  'cf-mitigated': 'challenge',
+  'CF-Ray': 'a3f7e1758c50c872-DFW',
+  'Server': 'cloudflare',
+};
+const CHALLENGE_BODY = '<!doctype html><html><head><title>Just a moment...</title></head><body></body></html>';
+
+test('verify-production-xss.mjs classifies a Cloudflare Managed Challenge on listing.html as UNVERIFIABLE, never PASS or FAIL', async () => {
+  const server = http.createServer((req, res) => {
+    if (req.url === '/listing.html') {
+      res.writeHead(403, CHALLENGE_HEADERS);
+      res.end(CHALLENGE_BODY);
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(REAL_ESC_JS_PAGE);
+  });
+  const port = await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+
+  let stdout = '';
+  try {
+    ({ stdout } = await execFileAsync('node', [SCRIPT], {
+      env: { ...process.env, SITE_URL: `http://127.0.0.1:${port}` },
+    }));
+  } finally {
+    server.close();
+  }
+
+  assert.match(stdout, /UNVERIFIABLE {2}listing\.html: Cloudflare Bot Fight Mode prevented direct production HTML retrieval/);
+  assert.match(stdout, /cf-mitigated: challenge/);
+  assert.doesNotMatch(stdout, /FAIL {2}listing\.html/, 'a challenge must never be reported as an XSS-fix failure');
+  assert.doesNotMatch(stdout, /PASS {2}listing\.html/, 'a challenge must never be reported as an XSS-fix pass');
+  // admin.html got genuine HTML and must still run the real payload checks.
+  assert.match(stdout, /PASS {2}admin\.html: all \d+ payloads neutralised/);
+  assert.match(stdout, /RESULT: [1-9]\d* passed, 0 failed, 1 unverifiable/);
+});
+
+test('verify-production-xss.mjs classifies a Cloudflare Managed Challenge on admin.html (Node fetch path) as UNVERIFIABLE too', async () => {
+  const server = http.createServer((req, res) => {
+    if (req.url === '/admin.html') {
+      res.writeHead(403, CHALLENGE_HEADERS);
+      res.end(CHALLENGE_BODY);
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(REAL_ESC_JS_PAGE);
+  });
+  const port = await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+
+  let stdout = '';
+  try {
+    ({ stdout } = await execFileAsync('node', [SCRIPT], {
+      env: { ...process.env, SITE_URL: `http://127.0.0.1:${port}` },
+    }));
+  } finally {
+    server.close();
+  }
+
+  assert.match(stdout, /UNVERIFIABLE {2}admin\.html: Cloudflare Bot Fight Mode prevented direct production HTML retrieval/);
+  assert.doesNotMatch(stdout, /FAIL {2}admin\.html/);
+  assert.doesNotMatch(stdout, /PASS {2}admin\.html/);
+  // listing.html (curl path) got genuine HTML and must still run normally --
+  // proves listing.html and admin.html are classified independently.
+  assert.match(stdout, /PASS {2}listing\.html: all \d+ payloads neutralised/);
+  assert.match(stdout, /RESULT: [1-9]\d* passed, 0 failed, 1 unverifiable/);
+});
+
+test('verify-production-xss.mjs classifies a 2xx response missing the production marker as UNVERIFIABLE, not a false escJs FAIL', async () => {
+  const unrecognizedPage = '<!doctype html><html><head><title>Some other 200</title></head><body>not pintag</body></html>';
+  const server = http.createServer((req, res) => {
+    if (req.url === '/listing.html') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(unrecognizedPage);
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(REAL_ESC_JS_PAGE);
+  });
+  const port = await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+
+  let stdout = '';
+  try {
+    ({ stdout } = await execFileAsync('node', [SCRIPT], {
+      env: { ...process.env, SITE_URL: `http://127.0.0.1:${port}` },
+    }));
+  } finally {
+    server.close();
+  }
+
+  assert.match(stdout, /UNVERIFIABLE {2}listing\.html: response body does not contain the expected production marker/);
+  assert.doesNotMatch(stdout, /has NO escJs\(\)/, 'unrecognized content must never be reported as a missing XSS fix');
 });

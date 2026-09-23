@@ -23,12 +23,30 @@ import vm from 'node:vm';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const execFileAsync = promisify(execFile);
 
 const SITE = process.env.SITE_URL || 'https://pintag.io';
+
+// The same production-identity marker scripts/verify-production-http.sh
+// checks for (the Supabase host embedded in every deployed page's CSP meta
+// tag), read the same way -- from config.prod.js in the checked-out repo,
+// not hardcoded, so it can never drift from what actually gets deployed.
+// Resolved relative to this file (not cwd) so it works regardless of where
+// the script is invoked from.
+function resolveSupabaseMarker() {
+  try {
+    const cfg = readFileSync(new URL('../config.prod.js', import.meta.url), 'utf8');
+    const m = cfg.match(/https:\/\/[a-z0-9]+\.supabase\.co/);
+    return m ? m[0].replace('https://', '') : null;
+  } catch {
+    return null;
+  }
+}
+const SUPABASE_MARKER = resolveSupabaseMarker();
 
 // Node's global fetch() sends no User-Agent/Accept by default, which several
 // WAF/bot-management layers (Cloudflare among them) treat differently from a
@@ -89,9 +107,15 @@ function extractFn(src, name) {
   return src.slice(start, i);
 }
 
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, unverifiableCount = 0;
 const ok  = (m) => { console.log('  PASS  ' + m); pass++; };
 const bad = (m, d) => { console.log('  FAIL  ' + m + (d ? '\n      → ' + d : '')); fail++; };
+// UNVERIFIABLE means this environment could not observe the property -- not
+// that the property held (PASS) and not that it demonstrably doesn't (FAIL).
+// See scripts/verify-production-http.sh for the same distinction and why it
+// exists: a Cloudflare Managed Challenge used to be evaluated as if it were
+// the real page and reported as a false XSS-fix regression.
+const unverifiable = (m, d) => { console.log('  UNVERIFIABLE  ' + m + (d ? '\n      → ' + d : '')); unverifiableCount++; };
 
 // Standard reason phrases HTTP/2 and HTTP/3 responses don't carry on the
 // wire (no reason phrase in those protocols), so curl's captured status line
@@ -178,6 +202,17 @@ async function fetchViaCurl(url, headers) {
 // 403 carries a Cloudflare fingerprint (cf-ray, cf-cache-status, a WAF/rate-
 // limit header) or something else. Does not affect the pass/fail verdict
 // below -- diagnostics only.
+// The reliable, header-based Cloudflare signal -- not fragile body text.
+// Cloudflare documents `cf-mitigated: challenge` as the response header it
+// sets whenever a request is served a Managed/JS/interactive challenge
+// instead of being passed through, independent of status code or body.
+function isCloudflareChallenge(res) {
+  for (const [name, value] of res.headers.entries()) {
+    if (name.toLowerCase() === 'cf-mitigated' && /challenge/i.test(value)) return true;
+  }
+  return false;
+}
+
 function logNon2xxDiagnostics(page, res) {
   console.log(`  DIAG  ${page}: non-2xx response diagnostics`);
   console.log(`      status:    ${res.status} ${res.statusText}`);
@@ -198,19 +233,36 @@ console.log('==============================================================');
 
 for (const page of ['listing.html', 'admin.html']) {
   console.log('\n' + page);
-  let src;
+  let src, res;
   try {
-    const res = page === 'listing.html'
+    res = page === 'listing.html'
       ? await fetchViaCurl(`${SITE}/${page}`, VERIFIER_HEADERS)
       : await fetch(`${SITE}/${page}`, { redirect: 'follow', headers: VERIFIER_HEADERS });
     if (!res.ok) {
       if (page === 'listing.html') logNon2xxDiagnostics(page, res);
-      bad(`${page} fetch returned HTTP ${res.status}`);
+      if (isCloudflareChallenge(res)) {
+        unverifiable(`${page}: Cloudflare Bot Fight Mode prevented direct production HTML retrieval`,
+          `HTTP ${res.status} with cf-mitigated: challenge — this runner's request was blocked before reaching the Worker/origin, so the XSS fix could not be checked against the real page (not a pass, not a fail)`);
+      } else {
+        bad(`${page} fetch returned HTTP ${res.status}`);
+      }
       continue;
     }
     src = await res.text();
   } catch (e) {
     bad(`${page} could not be fetched`, String(e.message || e)); continue;
+  }
+
+  // Defense in depth: a 2xx response that does not carry the production
+  // identity marker (the Supabase host embedded in every deployed page's CSP
+  // meta tag) cannot be positively identified as the real page -- classify
+  // UNVERIFIABLE rather than risk evaluating some other 2xx response (a
+  // proxy error page, a differently-shaped challenge, etc.) as if it were
+  // genuine Pintag HTML and reporting a false "no escJs()" regression.
+  if (SUPABASE_MARKER && !src.includes(SUPABASE_MARKER)) {
+    unverifiable(`${page}: response body does not contain the expected production marker`,
+      `HTTP ${res.status} but the body did not contain "${SUPABASE_MARKER}" — cannot confirm this is genuinely Pintag's deployed page; not evaluating XSS payloads against it`);
+    continue;
   }
 
   const fnSrc = extractFn(src, 'escJs');
@@ -249,6 +301,10 @@ for (const page of ['listing.html', 'admin.html']) {
 }
 
 console.log('\n==============================================================');
-console.log(` RESULT: ${pass} passed, ${fail} failed`);
+console.log(` RESULT: ${pass} passed, ${fail} failed, ${unverifiableCount} unverifiable`);
 console.log('==============================================================');
+// UNVERIFIABLE does not fail the script -- it means this environment could
+// not observe the property, not that the property failed. Workflow-level
+// policy for whether an UNVERIFIABLE-heavy run should still gate deploys is
+// a separate decision, not made here.
 process.exit(fail === 0 ? 0 : 1);
