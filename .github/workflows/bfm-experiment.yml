@@ -1,0 +1,82 @@
+name: BFM experiment (throwaway, read-only)
+
+# Controlled Cloudflare Bot Fight Mode experiment. Lives only on the
+# claude/bfm-experiment branch; never merged. Read-only GETs, no secrets.
+# Each job starts with the exact curl request verify-production-http.sh makes,
+# changes ONE header, and stops at the first challenge (no retries, no loops).
+
+on:
+  push:
+    branches: [claude/bfm-experiment]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bfm-experiment
+  cancel-in-progress: false
+
+env:
+  SITE: https://pintag.io
+  UA: 'Pintag-Production-Security-Verifier/1.0 (+https://github.com/Pintag-cyrora/pintag; read-only XSS-fix verification)'
+  ACCEPT: 'text/html,application/xhtml+xml,*/*;q=0.8'
+
+jobs:
+  probe:
+    name: probe (${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        variant: [baseline, ua_only, accept_only, both]
+    steps:
+      - name: Probe
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -u
+          curl --version | head -1
+          echo "runner egress (www.cloudflare.com trace, not pintag.io):"
+          curl -sS --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -E '^(ip|colo|loc|http|tls)=' || true
+
+          # $1 label, $2 url, rest = extra curl args. Returns 1 if challenged.
+          probe() {
+            local label="$1" url="$2"; shift 2
+            echo; echo "=== $label  $(date -u +%H:%M:%S.%N)  GET $url  extra-args: $*"
+            curl -sS --max-time 25 -D h.txt -o b.html \
+              -w 'status=%{http_code} final_url=%{url_effective} size=%{size_download} http=%{http_version} remote_ip=%{remote_ip}\n' \
+              "$@" "$url" || echo "curl exit $?"
+            echo "--- response headers"; cat h.txt
+            echo "--- body markers"
+            for m in 'function escJs' 'escJs(p.title_en' 'http-equiv="Content-Security-Policy"' 'connect-src' 'challenges.cloudflare.com'; do
+              printf '  %-40s %s\n' "$m" "$(grep -c -- "$m" b.html)"
+            done
+            echo "  <title>: $(grep -o '<title>[^<]*' b.html | head -1)"
+            if grep -qi '^cf-mitigated:' h.txt; then
+              echo ">>> CHALLENGED ($(grep -i '^cf-ray:' h.txt | tr -d '\r')) — stopping this job"; return 1
+            fi
+          }
+
+          L="$SITE/listing.html"; A="$SITE/admin.html"
+          case "$VARIANT" in
+            baseline)
+              probe "A  baseline listing (== http.sh:264)" "$L" || exit 0
+              sleep 3
+              probe "A' baseline admin (== http.sh:284)" "$A" || exit 0 ;;
+            ua_only)
+              probe "A  baseline listing" "$L" || exit 0; sleep 3
+              probe "B  + verifier User-Agent only" "$L" -H "User-Agent: $UA" || exit 0; sleep 3
+              probe "E  baseline again" "$L" || exit 0 ;;
+            accept_only)
+              probe "A  baseline listing" "$L" || exit 0; sleep 3
+              probe "C  + verifier Accept only" "$L" -H "Accept: $ACCEPT" || exit 0; sleep 3
+              probe "E  baseline again" "$L" || exit 0 ;;
+            both)
+              probe "A  baseline listing" "$L" || exit 0; sleep 3
+              probe "D  + verifier User-Agent + Accept" "$L" -H "User-Agent: $UA" -H "Accept: $ACCEPT" || exit 0; sleep 3
+              probe "E  baseline again" "$L" || exit 0 ;;
+          esac
+          echo; echo "=== job finished with no challenge"
+
