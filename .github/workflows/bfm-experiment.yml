@@ -30,7 +30,7 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        variant: [baseline, ua_only, accept_only, both]
+        variant: [markers]
     steps:
       - name: Probe
         env:
@@ -61,6 +61,14 @@ jobs:
 
           L="$SITE/listing.html"; A="$SITE/admin.html"
           case "$VARIANT" in
+            markers)
+              probe "M  single baseline listing, http.sh-equivalent markers" "$L" || true
+              echo "--- exact verify-production-http.sh predicates on this body:"
+              grep -qi 'http-equiv="Content-Security-Policy"' b.html && echo "  CSP-meta check (grep -qi):  WOULD PASS" || echo "  CSP-meta check (grep -qi):  would fail"
+              grep -qi 'connect-src' b.html && echo "  connect-src check (grep -qi): WOULD PASS" || echo "  connect-src check (grep -qi): would fail"
+              grep -q 'function escJs' b.html && echo "  escJs check (grep -q):      WOULD PASS" || echo "  escJs check (grep -q):      would fail"
+              echo "  meta tags in body:"; grep -io '<meta[^>]*>' b.html | head -10
+              exit 0 ;;
             baseline)
               probe "A  baseline listing (== http.sh:264)" "$L" || exit 0
               sleep 3
