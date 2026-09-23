@@ -138,6 +138,32 @@ test('verify-production-xss.mjs prints full response-header diagnostics for a no
   assert.doesNotMatch(stdout, /DIAG {2}admin\.html/);
 });
 
+test('verify-production-xss.mjs follows a redirect on listing.html (curl-based retrieval, -L)', async () => {
+  const server = http.createServer((req, res) => {
+    if (req.url === '/listing.html') {
+      res.writeHead(302, { Location: '/listing-final.html' });
+      res.end();
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(REAL_ESC_JS_PAGE);
+  });
+  const port = await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+
+  let stdout = '';
+  try {
+    ({ stdout } = await execFileAsync('node', [SCRIPT], {
+      env: { ...process.env, SITE_URL: `http://127.0.0.1:${port}` },
+    }));
+  } finally {
+    server.close();
+  }
+
+  assert.match(stdout, /listing\.html: all \d+ payloads neutralised/,
+    'listing.html should have followed the redirect to the real page and passed, not failed on the 302 itself');
+  assert.match(stdout, /RESULT: \d+ passed, 0 failed/);
+});
+
 test('verify-production-xss.mjs still exits 0 against a page whose real escJs() neutralises every payload', async () => {
   const { server, requests } = await startCapturingServer();
   const port = server.address().port;
