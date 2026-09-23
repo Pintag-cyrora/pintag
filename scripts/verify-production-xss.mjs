@@ -20,6 +20,13 @@
 // ============================================================================
 
 import vm from 'node:vm';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+const execFileAsync = promisify(execFile);
 
 const SITE = process.env.SITE_URL || 'https://pintag.io';
 
@@ -86,12 +93,91 @@ let pass = 0, fail = 0;
 const ok  = (m) => { console.log('  PASS  ' + m); pass++; };
 const bad = (m, d) => { console.log('  FAIL  ' + m + (d ? '\n      → ' + d : '')); fail++; };
 
+// Standard reason phrases HTTP/2 and HTTP/3 responses don't carry on the
+// wire (no reason phrase in those protocols), so curl's captured status line
+// has nothing to give us for those cases; Node's own fetch() synthesises the
+// phrase from a lookup table for the same reason, so this reproduces that
+// for diagnostic printing only -- it never affects the pass/fail verdict.
+const STATUS_TEXT_FALLBACK = {
+  400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found',
+  405: 'Method Not Allowed', 429: 'Too Many Requests', 500: 'Internal Server Error',
+  502: 'Bad Gateway', 503: 'Service Unavailable', 504: 'Gateway Timeout',
+};
+
+// 2026-09 route-ownership investigation, next step: production's
+// listing.html consistently gets Cloudflare Bot Fight Mode's
+// `cf-mitigated: challenge` / HTTP 403 when retrieved with Node's own
+// fetch() -- confirmed by scripts/verify-production-xss-headers.test.js's
+// non-2xx diagnostics -- while scripts/verify-production-http.sh's
+// curl-based GET of the exact same URL succeeds, seconds apart, in the same
+// CI job. The two HTTP clients evidently produce a different TLS/HTTP
+// fingerprint that Cloudflare's bot management scores differently; sending
+// the same VERIFIER_HEADERS doesn't change that (the failing fetch() above
+// already sends them). Rather than fight or bypass that control, this reuses
+// the exact mechanism (curl) that already passes it -- scoped to
+// listing.html only, since that's the one page actually being challenged;
+// admin.html keeps using fetch() unchanged.
+//
+// Shells out to the real `curl` binary (already a required tool in this same
+// CI job for verify-production-http.sh) and returns a fetch() Response-like
+// object -- {ok, status, statusText, url, headers.entries(), text()} -- so
+// every line below this call site (escJs() extraction, payload testing,
+// non-2xx diagnostics, pass/fail) is completely unchanged.
+async function fetchViaCurl(url, headers) {
+  const dir = await mkdtemp(path.join(tmpdir(), 'pintag-xss-curl-'));
+  const headerFile = path.join(dir, 'headers.txt');
+  const bodyFile = path.join(dir, 'body.txt');
+  try {
+    const args = ['-sS', '--max-time', '25', '-L', '-D', headerFile, '-o', bodyFile,
+      '-w', '%{http_code} %{url_effective}'];
+    for (const [name, value] of Object.entries(headers)) args.push('-H', `${name}: ${value}`);
+    args.push(url);
+
+    const { stdout } = await execFileAsync('curl', args);
+    const spaceIdx = stdout.indexOf(' ');
+    const status = Number(stdout.slice(0, spaceIdx));
+    const finalUrl = stdout.slice(spaceIdx + 1).trim();
+
+    // -L makes curl dump one header block per hop into the same file; only
+    // the last block (the final response) matters here, same as fetch()'s
+    // res.url/res.headers after redirect: 'follow'.
+    const rawHeaderText = await readFile(headerFile, 'utf8');
+    const blocks = rawHeaderText.split(/\r?\n\r?\n/).filter((b) => b.trim());
+    const lastBlock = blocks[blocks.length - 1] || '';
+    const lines = lastBlock.split(/\r?\n/);
+    const statusLineParts = (lines[0] || '').trim().split(/\s+/);
+    const statusText = statusLineParts.slice(2).join(' ') || STATUS_TEXT_FALLBACK[status] || '';
+
+    const headerMap = new Map();
+    for (const line of lines.slice(1)) {
+      const idx = line.indexOf(':');
+      if (idx === -1) continue;
+      const name = line.slice(0, idx).trim().toLowerCase();
+      const value = line.slice(idx + 1).trim();
+      headerMap.set(name, headerMap.has(name) ? `${headerMap.get(name)}, ${value}` : value);
+    }
+
+    const body = await readFile(bodyFile, 'utf8');
+
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      statusText,
+      url: finalUrl,
+      headers: { entries: () => headerMap.entries() },
+      text: async () => body,
+    };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 // TEMPORARY DIAGNOSTIC — 2026-09 route-ownership investigation. Purely
-// observational: prints everything the fetch() Response object exposes for a
-// non-2xx listing.html response, so a real CI run can show whether the 403
-// carries a Cloudflare fingerprint (cf-ray, cf-cache-status, a WAF/rate-limit
-// header) or something else (e.g. a GitHub Pages 404-as-403 shape). Does not
-// affect the pass/fail verdict below -- diagnostics only.
+// observational: prints everything the Response-like object above exposes
+// for a non-2xx listing.html response, so a real CI run can show whether the
+// 403 carries a Cloudflare fingerprint (cf-ray, cf-cache-status, a WAF/rate-
+// limit header) or something else. Does not affect the pass/fail verdict
+// below -- diagnostics only.
 function logNon2xxDiagnostics(page, res) {
   console.log(`  DIAG  ${page}: non-2xx response diagnostics`);
   console.log(`      status:    ${res.status} ${res.statusText}`);
@@ -114,7 +200,9 @@ for (const page of ['listing.html', 'admin.html']) {
   console.log('\n' + page);
   let src;
   try {
-    const res = await fetch(`${SITE}/${page}`, { redirect: 'follow', headers: VERIFIER_HEADERS });
+    const res = page === 'listing.html'
+      ? await fetchViaCurl(`${SITE}/${page}`, VERIFIER_HEADERS)
+      : await fetch(`${SITE}/${page}`, { redirect: 'follow', headers: VERIFIER_HEADERS });
     if (!res.ok) {
       if (page === 'listing.html') logNon2xxDiagnostics(page, res);
       bad(`${page} fetch returned HTTP ${res.status}`);
