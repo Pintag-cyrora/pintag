@@ -18,7 +18,8 @@
 #   * it never writes, deletes, or modifies anything;
 #   * it prints no tokens, keys, emails, or listing content.
 #
-# Exit code: 0 = every control held. 1 = at least one FAIL.
+# Exit code: 0 = every control held (an UNVERIFIABLE result does not fail the
+# script — see below). 1 = at least one FAIL.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -26,10 +27,18 @@ set -uo pipefail
 : "${SUPABASE_ANON_KEY:?set SUPABASE_ANON_KEY}"
 SITE_URL="${SITE_URL:-https://pintag.io}"
 
-PASS=0; FAIL=0; WARN=0
+PASS=0; FAIL=0; WARN=0; UNVERIFIABLE=0
 ok()   { printf '  PASS  %s\n' "$1"; PASS=$((PASS+1)); }
 bad()  { printf '  FAIL  %s\n      → %s\n' "$1" "${2:-}"; FAIL=$((FAIL+1)); }
 warn() { printf '  WARN  %s\n      → %s\n' "$1" "${2:-}"; WARN=$((WARN+1)); }
+# UNVERIFIABLE — the 2026-09 Bot Fight Mode investigation found Cloudflare
+# Managed Challenges returned to THIS RUNNER carry HSTS/nosniff/a CSP meta
+# tag/etc. of their own, so every header/content check below silently PASSED
+# against the challenge page instead of the real one. UNVERIFIABLE means "this
+# environment could not observe the property" -- distinct from a PASS (the
+# property held) and a FAIL (the property demonstrably does not hold). Never
+# silently folded into either.
+unverifiable() { printf '  UNVERIFIABLE  %s\n      → %s\n' "$1" "${2:-}"; UNVERIFIABLE=$((UNVERIFIABLE+1)); }
 
 CURL=(curl -sS --max-time 25 -H "apikey: ${SUPABASE_ANON_KEY}")
 
@@ -218,81 +227,151 @@ for fn in smart-listing-importer generate-listing-content facebook-listing-fetch
   esac
 done
 
-# ── 8. Security headers on the public site ──────────────────────────────────
+# ── 8/9. HTML surface: headers + XSS-fix content on the real deployed page ──
+#
+# 2026-09 Bot Fight Mode investigation: Cloudflare Managed Challenges served
+# to this runner carry their OWN HSTS,
+# X-Content-Type-Options, Referrer-Policy, X-Frame-Options and even a
+# `<meta http-equiv="Content-Security-Policy">` with a `connect-src` — every
+# check that used to run separately against a bare header dump and a bare
+# body dump PASSED against the challenge page, not the real one, whenever a
+# request was challenged (HTTP 403 + cf-mitigated: challenge). That produced
+# false "escJs() missing" / "CSP not deployed" findings that were actually
+# "Cloudflare didn't let this runner see the page at all".
+#
+# fetch_classified() makes ONE GET per page (headers + body from the SAME
+# response, not two separate requests that could independently be challenged
+# or not) and classifies it before anything below inspects the content:
+#   ok           - 2xx, no cf-mitigated header, body carries the expected
+#                  Pintag marker (the production Supabase host embedded in
+#                  every page's CSP meta tag) -> safe to run content checks.
+#   challenge    - cf-mitigated header present (checked case-insensitively;
+#                  this is Cloudflare's own documented signal for a served
+#                  Managed/JS/interactive challenge, independent of body text).
+#   unrecognized - 2xx but the expected marker is absent -> some other
+#                  response we cannot positively identify as the real page.
+#   error        - non-2xx and not a challenge (real outage/redirect/etc).
+#   empty        - no response at all (network failure).
+# Only "ok" runs the header/content assertions; every other class reports
+# UNVERIFIABLE (or the pre-existing WARN for "empty") and skips them --
+# never PASS, never FAIL.
+SUPABASE_MARKER="$(grep -oE 'https://[a-z0-9]+\.supabase\.co' config.prod.js 2>/dev/null | head -1 | sed -E 's#^https?://##')"
+[ -n "$SUPABASE_MARKER" ] || SUPABASE_MARKER="$(printf '%s' "$SUPABASE_URL" | sed -E 's#^https?://##')"
+
+fetch_classified() {
+  local url="$1" hfile
+  hfile="$(mktemp)"
+  FETCH_BODY="$(curl -sS --max-time 25 -D "$hfile" "$url" 2>/dev/null || true)"
+  FETCH_HEADERS="$(cat "$hfile" 2>/dev/null || true)"
+  rm -f "$hfile"
+  FETCH_STATUS="$(head -1 <<< "$FETCH_HEADERS" | grep -oE '[0-9]{3}' | head -1)"
+  if [ -z "$FETCH_HEADERS" ] && [ -z "$FETCH_BODY" ]; then
+    FETCH_CLASS=empty
+  elif grep -qi '^cf-mitigated:' <<< "$FETCH_HEADERS"; then
+    FETCH_CLASS=challenge
+  elif [ -z "$FETCH_STATUS" ] || [ "${FETCH_STATUS:0:1}" != "2" ]; then
+    FETCH_CLASS=error
+  elif [ -n "$SUPABASE_MARKER" ] && ! grep -qF "$SUPABASE_MARKER" <<< "$FETCH_BODY"; then
+    FETCH_CLASS=unrecognized
+  else
+    FETCH_CLASS=ok
+  fi
+}
+
+fetch_classified "${SITE_URL}/listing.html"
+listing_class="$FETCH_CLASS" listing_status="${FETCH_STATUS:-000}"
+listing_headers="$FETCH_HEADERS" listing_body="$FETCH_BODY"
+
+fetch_classified "${SITE_URL}/admin.html"
+admin_class="$FETCH_CLASS" admin_status="${FETCH_STATUS:-000}"
+admin_headers="$FETCH_HEADERS" admin_body="$FETCH_BODY"
+
+unverifiable_reason() {
+  case "$1" in
+    challenge)    echo "Cloudflare Bot Fight Mode returned a Managed Challenge (HTTP $2, cf-mitigated: challenge) instead of the page — this runner's request was blocked before reaching the Worker/origin, so this property could not be observed" ;;
+    unrecognized) echo "HTTP $2 but the response body did not contain the expected production marker ($SUPABASE_MARKER) — cannot confirm this is genuinely Pintag's deployed page" ;;
+    error)        echo "HTTP $2 — not a Cloudflare challenge, but not a normal page either" ;;
+  esac
+}
+
 echo
 echo "8. HEADERS — transport and framing protections on ${SITE_URL}"
-hdrs="$(curl -sSI --max-time 25 "${SITE_URL}/listing.html" 2>/dev/null || true)"
-has() { grep -qi "^$1:" <<< "$hdrs"; }
-if [ -z "$hdrs" ]; then
-  warn "could not fetch headers from ${SITE_URL}" "site unreachable from this runner"
-else
-  has 'strict-transport-security' && ok "Strict-Transport-Security present" \
-    || bad "Strict-Transport-Security missing" "add via the Cloudflare Transform Rule in docs/CSP.md"
-  has 'x-content-type-options'    && ok "X-Content-Type-Options present" \
-    || bad "X-Content-Type-Options missing" "add via the Cloudflare Transform Rule in docs/CSP.md"
-  has 'referrer-policy'           && ok "Referrer-Policy present" \
-    || bad "Referrer-Policy missing" "add via the Cloudflare Transform Rule in docs/CSP.md"
-  if grep -qiE '^(content-security-policy|x-frame-options):' <<< "$hdrs"; then
-    ok "framing protection present (CSP frame-ancestors or X-Frame-Options)"
-  else
-    bad "no framing protection header" "clickjacking is possible; see docs/CSP.md"
-  fi
-fi
-
+report_headers() {
+  local label="$1" class="$2" status="$3" hdrs="$4"
+  case "$class" in
+    empty) warn "could not fetch headers for $label" "site unreachable from this runner" ;;
+    ok)
+      has() { grep -qi "^$1:" <<< "$hdrs"; }
+      has 'strict-transport-security' && ok "$label: Strict-Transport-Security present" \
+        || bad "$label: Strict-Transport-Security missing" "add via the Cloudflare Transform Rule in docs/CSP.md"
+      has 'x-content-type-options'    && ok "$label: X-Content-Type-Options present" \
+        || bad "$label: X-Content-Type-Options missing" "add via the Cloudflare Transform Rule in docs/CSP.md"
+      has 'referrer-policy'           && ok "$label: Referrer-Policy present" \
+        || bad "$label: Referrer-Policy missing" "add via the Cloudflare Transform Rule in docs/CSP.md"
+      if grep -qiE '^(content-security-policy|x-frame-options):' <<< "$hdrs"; then
+        ok "$label: framing protection present (CSP frame-ancestors or X-Frame-Options)"
+      else
+        bad "$label: no framing protection header" "clickjacking is possible; see docs/CSP.md"
+      fi
+      ;;
+    *) unverifiable "$label: security headers" "$(unverifiable_reason "$class" "$status")" ;;
+  esac
+}
+report_headers "listing.html" "$listing_class" "$listing_status" "$listing_headers"
 # Header COVERAGE matters as much as presence. The Cloudflare Worker fronts only
 # "/", /index.html, /listings.html and /listing.html. admin.html — the highest-
 # value page on the site — is NOT on a Worker route, so it only gets these
 # headers if a zone-wide Transform Rule exists (docs/CSP.md). Check it directly
 # rather than assuming the listing.html result generalises.
-ahdrs="$(curl -sSI --max-time 25 "${SITE_URL}/admin.html" 2>/dev/null || true)"
-if [ -z "$ahdrs" ]; then
-  warn "could not fetch headers for admin.html" "cannot confirm zone-wide header coverage"
-else
-  missing=""
-  for h in strict-transport-security x-content-type-options referrer-policy; do
-    grep -qi "^$h:" <<< "$ahdrs" || missing="$missing $h"
-  done
-  if [ -z "$missing" ]; then
-    ok "admin.html also carries the security headers (coverage is zone-wide, not just the Worker routes)"
-  else
-    bad "admin.html is MISSING security headers:$missing" \
-        "the Worker fronts only 4 public routes; add the zone-wide Transform Rule in docs/CSP.md"
-  fi
-fi
+report_headers "admin.html" "$admin_class" "$admin_status" "$admin_headers"
 
 # The page-level CSP is delivered as a meta tag (GitHub Pages cannot set headers).
-page="$(curl -sS --max-time 25 "${SITE_URL}/listing.html" 2>/dev/null || true)"
-if grep -qi 'http-equiv="Content-Security-Policy"' <<< "$page"; then
-  if grep -qi 'connect-src' <<< "$page"; then
-    ok "deployed listing.html carries the CSP meta tag (connect-src present)"
+echo
+if [ "$listing_class" = "ok" ]; then
+  if grep -qi 'http-equiv="Content-Security-Policy"' <<< "$listing_body"; then
+    if grep -qi 'connect-src' <<< "$listing_body"; then
+      ok "deployed listing.html carries the CSP meta tag (connect-src present)"
+    else
+      warn "CSP meta tag present but has no connect-src" "exfiltration is not contained"
+    fi
   else
-    warn "CSP meta tag present but has no connect-src" "exfiltration is not contained"
+    bad "deployed listing.html carries NO CSP" "the CSP commit is not deployed yet"
   fi
 else
-  bad "deployed listing.html carries NO CSP" "the CSP commit is not deployed yet"
+  unverifiable "listing.html CSP meta tag" "$(unverifiable_reason "$listing_class" "$listing_status")"
 fi
 
 # ── 9. Is the XSS fix actually deployed? (F-01 / F-02) ──────────────────────
 echo
 echo "9. XSS FIX — is the corrected escaping actually live?"
-if grep -q 'function escJs' <<< "$page"; then
-  ok "listing.html on ${SITE_URL} contains escJs() (F-02 fix deployed)"
+if [ "$listing_class" = "ok" ]; then
+  if grep -q 'function escJs' <<< "$listing_body"; then
+    ok "listing.html on ${SITE_URL} contains escJs() (F-02 fix deployed)"
+  else
+    bad "listing.html on ${SITE_URL} has NO escJs()" \
+        "the deployed build predates the XSS fix — F-02 is still live"
+  fi
 else
-  bad "listing.html on ${SITE_URL} has NO escJs()" \
-      "the deployed build predates the XSS fix — F-02 is still live"
+  unverifiable "listing.html escJs() (F-02)" "$(unverifiable_reason "$listing_class" "$listing_status")"
 fi
-admin_page="$(curl -sS --max-time 25 "${SITE_URL}/admin.html" 2>/dev/null || true)"
-if grep -q 'escJs(p.title_en' <<< "$admin_page"; then
-  ok "admin.html on ${SITE_URL} escapes the listing title for the JS context (F-01 fix deployed)"
-elif [ -z "$admin_page" ]; then
-  warn "admin.html not fetchable" "cannot confirm the F-01 fix is deployed"
+
+if [ "$admin_class" = "ok" ]; then
+  if grep -q 'escJs(p.title_en' <<< "$admin_body"; then
+    ok "admin.html on ${SITE_URL} escapes the listing title for the JS context (F-01 fix deployed)"
+  else
+    bad "admin.html on ${SITE_URL} still interpolates the title unsafely" \
+        "the deployed build predates the XSS fix — F-01 is still live"
+  fi
 else
-  bad "admin.html on ${SITE_URL} still interpolates the title unsafely" \
-      "the deployed build predates the XSS fix — F-01 is still live"
+  unverifiable "admin.html escJs(p.title_en) (F-01)" "$(unverifiable_reason "$admin_class" "$admin_status")"
 fi
 
 echo
 echo "=============================================================="
-printf ' RESULT: %s passed, %s failed, %s warning(s)\n' "$PASS" "$FAIL" "$WARN"
+printf ' RESULT: %s passed, %s failed, %s warning(s), %s unverifiable\n' "$PASS" "$FAIL" "$WARN" "$UNVERIFIABLE"
 echo "=============================================================="
+# UNVERIFIABLE does not fail the script -- it means this environment could not
+# observe the property, not that the property failed. Workflow-level policy
+# for whether an UNVERIFIABLE-heavy run should still gate deploys is a
+# separate decision, not made here.
 [ "$FAIL" -eq 0 ]
