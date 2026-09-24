@@ -272,6 +272,45 @@ env:
   #     covering the exact UTC/Vientiane boundary, a month boundary, a
   #     leap-year boundary, and the finalization cutoff, all pass; migration
   #     applies cleanly twice (idempotent).
+  # 20260921010000_revoke_public_execute_analytics_and_ownership_rpcs.sql —
+  # reviewed and authorized deliberately (2026-09-24 read-only production DB
+  # investigation, following up on the 2026-09-21 Verify Production Security
+  # finding). Privileges only, no schema/data change:
+  #   * Revokes the implicit default-to-PUBLIC EXECUTE grant (same root cause
+  #     20260818000000 and 20260915000000 fixed for six other functions) from
+  #     owned_party_ids(uuid), intelligence_daily_metrics(date,date),
+  #     point_in_time_supply_snapshot(), ensure_daily_metrics_snapshot(date,date)
+  #     — the four functions from the "no UNEXPECTED ungated SECURITY DEFINER
+  #     function is callable by anon" control that DO have a repository
+  #     source. owned_party_ids keeps its existing, unmodified GRANT to
+  #     authenticated (20260705000000); the three intelligence functions get
+  #     no anon/authenticated grant at all, since their only real caller
+  #     (generate-intelligence-report) already authenticates with the
+  #     service-role key, which bypasses grants entirely.
+  #   * A repository-wide audit of every `.rpc(...)` call site in every client
+  #     HTML/JS file and every edge function (recorded in the migration file
+  #     itself, and independently reconstructed during the 2026-09-24
+  #     investigation by grepping every call site and every CREATE/GRANT/
+  #     REVOKE statement across `supabase/migrations/*.sql` history) found no
+  #     direct client caller for any of the four: owned_party_ids is called
+  #     only as owned_party_ids(auth.uid()) inside ~20 RLS policy bodies, and
+  #     the three intelligence functions are called only by the service-role
+  #     edge function.
+  #   * REVOKE/GRANT are idempotent by construction, and each statement is
+  #     wrapped in DO ... EXCEPTION WHEN undefined_function, so a database
+  #     missing one of these (e.g. dev) is skipped rather than aborting.
+  #   * Deliberately NOT part of this authorization: is_admin and
+  #     rls_auto_enable, also flagged by the same control but with no
+  #     CREATE FUNCTION statement anywhere in this repository's migration
+  #     history (confirmed again during the 2026-09-24 investigation) — their
+  #     production definition and real caller(s) are unknown from static
+  #     inspection, so they are left for a human to inspect
+  #     (pg_get_functiondef) directly against production before any decision.
+  #     Also deliberately NOT part of this authorization: 20260920000000
+  #     (intelligence_demand_supply_gap) and 20260922000000
+  #     (intelligence_unit_type_demand) — both are separate, unrelated
+  #     feature migrations pending on production and are out of scope for
+  #     this security-only allowlist change; each needs its own review.
   EXPECTED_MIGRATIONS: |
     20260813000000
     20260817000000
@@ -287,7 +326,8 @@ env:
     20260912000000
     20260915000000
     20260918000000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql + 20260918000000_intelligence_vientiane_calendar.sql'
+    20260921010000
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql + 20260918000000_intelligence_vientiane_calendar.sql + 20260921010000_revoke_public_execute_analytics_and_ownership_rpcs.sql'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
