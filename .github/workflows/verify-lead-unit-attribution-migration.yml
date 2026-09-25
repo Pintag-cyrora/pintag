@@ -1,0 +1,308 @@
+name: Verify lead-unit-attribution migration (production, read-only)
+
+# Verifies migration 20260921000000_lead_unit_attribution.sql against the
+# PRODUCTION database and the PRODUCTION PostgREST API — and changes NOTHING.
+#
+# Why this exists: the 2026-09-21 incident review established that
+# components.js has sent lead_events.unit_type_id/unit_id since 2026-09-21,
+# that the migration adding those columns was applied to production on
+# 2026-09-25 (Apply DB Migration run #14), and that a local regression suite
+# (tests/security/regression/run-lead-unit-attribution-pg.sh) proves the
+# trigger logic is correct on a throwaway cluster. What remains unverified is
+# whether PRODUCTION's live PostgREST layer actually recognizes the new
+# columns in its schema cache — a real anon POST would prove it conclusively,
+# but would also create a real, permanent row in the leads CRM table. This
+# workflow proves everything that can be proven WITHOUT that write, and is
+# explicit — not silent — about the one thing it cannot conclusively prove
+# without one.
+#
+# SAFETY MODEL
+#   * Manual only (workflow_dispatch). No push or schedule trigger.
+#   * READ ONLY. Every SQL statement is a SELECT, and the psql session is
+#     additionally pinned with `SET default_transaction_read_only = on`, so a
+#     write would error rather than succeed even if one were introduced by
+#     mistake. Every HTTP call is a GET.
+#   * Creates NO lead, NO lead_events row, NO leads row, and writes NO other
+#     production data. If PostgREST schema-cache recognition cannot be
+#     conclusively established by a GET alone, this workflow reports that
+#     explicitly as unverified rather than performing a POST to find out.
+#   * Never applies, resets, alters, or pushes a migration.
+#   * PRODUCTION ref is read from config.prod.js (the same single source of
+#     truth apply-migration.yml and verify-multi-contact-migration.yml use)
+#     with the same dev-ref tripwire.
+#   * Credentials are the existing SUPABASE_ACCESS_TOKEN / SUPABASE_DB_PASSWORD
+#     repository secrets already used by verify-multi-contact-migration.yml
+#     (same pooler-resolution pattern) — no new credential is introduced.
+#     The anon key is NOT a secret — it is the public key already shipped in
+#     config.prod.js and visible in every browser.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DEV_REF: 'ebtgoqrywdywuqrvudcp'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Resolve PRODUCTION project ref from config.prod.js
+        id: ref
+        run: |
+          set -euo pipefail
+          REF="$(grep -oE 'https://[a-z0-9]+\.supabase\.co' config.prod.js | head -1 | sed -E 's#https://([a-z0-9]+)\.supabase\.co#\1#')"
+          [ -n "$REF" ] || { echo "::error::Could not resolve production ref."; exit 1; }
+          [ "$REF" != "${DEV_REF}" ] || { echo "::error::Resolved ref is DEV. Refusing."; exit 1; }
+          ANON="$(grep -oP "anonKey:\s*'\K[^']+" config.prod.js | head -1)"
+          [ -n "$ANON" ] || { echo "::error::Could not read anonKey from config.prod.js"; exit 1; }
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "anon=$ANON" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Target::PRODUCTION project ref: $REF (read-only)"
+
+      - name: Install psql
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Resolve the pooler endpoint for this project
+        id: pooler
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -euo pipefail
+          # Same resolution logic as verify-multi-contact-migration.yml: ask
+          # the Management API (read-only GET) for this project's real region,
+          # then confirm the candidate host actually answers before using it.
+          REGION=""
+          if [ -n "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            REGION="$(curl -sS -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              https://api.supabase.com/v1/projects \
+              | jq -r --arg ref "$REF" 'if type=="array" then (.[] | select(.id==$ref) | .region) else empty end' \
+              2>/dev/null | head -1 || true)"
+            if [ "$REGION" = "null" ]; then REGION=""; fi
+          fi
+          if [ -n "$REGION" ]; then
+            echo "::notice title=Region::Management API reports region $REGION"
+            CANDIDATES="aws-0-${REGION}.pooler.supabase.com aws-1-${REGION}.pooler.supabase.com"
+          else
+            echo "::warning::Could not resolve the region from the Management API; probing known regions."
+            CANDIDATES=""
+            for r in ap-southeast-1 ap-southeast-2 ap-northeast-1 us-east-1 us-west-1 eu-central-1 eu-west-2; do
+              CANDIDATES="$CANDIDATES aws-0-${r}.pooler.supabase.com aws-1-${r}.pooler.supabase.com"
+            done
+          fi
+          HOST=""
+          for h in $CANDIDATES; do
+            if PGPASSWORD="${{ secrets.SUPABASE_DB_PASSWORD }}" PGCONNECT_TIMEOUT=10 \
+               psql -h "$h" -p 5432 -U "postgres.${REF}" -d postgres -X -t -A \
+                    -c "SELECT 1" >/dev/null 2>&1; then
+              HOST="$h"; break
+            fi
+          done
+          [ -n "$HOST" ] || { echo "::error::No pooler host accepted a connection for ref ${REF}."; exit 1; }
+          echo "host=$HOST" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Pooler::$HOST (session mode, port 5432)"
+
+      - name: Check 1 — lead_events / leads columns exist (SELECT only)
+        id: columns
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          # Set via the connection's startup options rather than an inline
+          # `SET ...;` statement prefixed onto every query: a `SET` executed
+          # as part of a multi-statement -c string prints its own "SET"
+          # command tag even under -t/-A, which would corrupt a psql -t
+          # value meant to be parsed as a single bare number (as q_raw()
+          # below does). PGOPTIONS applies the GUC before any query runs and
+          # emits no output of its own, so -t output stays exactly the
+          # query's own result. Read-only is still enforced identically — a
+          # write still errors, verified before use in this PR.
+          PGOPTIONS: '-c default_transaction_read_only=on'
+          REF: ${{ steps.ref.outputs.ref }}
+          PGHOST_POOLER: ${{ steps.pooler.outputs.host }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::Missing secret SUPABASE_DB_PASSWORD."; exit 1
+          fi
+          q() {
+            psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres \
+                 -v ON_ERROR_STOP=1 -X -A -F ' | ' -c "$1"
+          }
+          q_raw() {
+            psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres \
+                 -v ON_ERROR_STOP=1 -X -A -t -c "$1"
+          }
+
+          echo "── lead_events / leads column existence ───────────────────"
+          q "SELECT table_name, column_name, data_type, is_nullable
+             FROM information_schema.columns
+             WHERE table_schema='public'
+               AND table_name IN ('lead_events','leads')
+               AND column_name IN ('unit_type_id','unit_id')
+             ORDER BY table_name, column_name;"
+
+          MISSING=""
+          for pair in "lead_events:unit_type_id" "lead_events:unit_id" "leads:unit_type_id" "leads:unit_id"; do
+            tbl="${pair%%:*}"; col="${pair##*:}"
+            FOUND="$(q_raw "SELECT count(*) FROM information_schema.columns
+                            WHERE table_schema='public' AND table_name='$tbl' AND column_name='$col';" | tr -d ' ')"
+            if [ "$FOUND" != "1" ]; then
+              MISSING="$MISSING $tbl.$col"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing column(s) in production:$MISSING"
+            exit 1
+          fi
+          echo "PASS — all four columns exist in production: lead_events.unit_type_id, lead_events.unit_id, leads.unit_type_id, leads.unit_id"
+
+      - name: Check 2 — create_lead_from_event() carries the new unit fields (SELECT only)
+        id: function
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PGOPTIONS: '-c default_transaction_read_only=on'
+          REF: ${{ steps.ref.outputs.ref }}
+          PGHOST_POOLER: ${{ steps.pooler.outputs.host }}
+        run: |
+          set -euo pipefail
+          # pg_get_functiondef() is a read-only catalog function — it returns
+          # the function's source text, it does not execute the function.
+          DEF="$(psql -h "$PGHOST_POOLER" -p 5432 -U "postgres.${REF}" -d postgres \
+                 -v ON_ERROR_STOP=1 -X -A -t -c "
+          SELECT pg_get_functiondef(p.oid)
+          FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname='public' AND p.proname='create_lead_from_event';")"
+
+          if [ -z "$DEF" ]; then
+            echo "::error::create_lead_from_event() not found in production."
+            exit 1
+          fi
+
+          echo "$DEF" > /tmp/create_lead_from_event.sql
+          MISSING=""
+          echo "$DEF" | grep -q 'unit_type_id' || MISSING="$MISSING unit_type_id"
+          echo "$DEF" | grep -q 'NEW\.unit_id\|unit_id' || MISSING="$MISSING unit_id"
+          if [ -n "$MISSING" ]; then
+            echo "::error::create_lead_from_event() is missing reference(s) to:$MISSING"
+            echo "── live definition ──"
+            cat /tmp/create_lead_from_event.sql
+            exit 1
+          fi
+          echo "PASS — create_lead_from_event() references both unit_type_id and unit_id."
+          {
+            echo "### create_lead_from_event() — live production definition"
+            echo '```sql'
+            cat /tmp/create_lead_from_event.sql
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check 3 — PostgREST schema-cache recognition (GET only, no INSERT)
+        if: always()
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+          ANON: ${{ steps.ref.outputs.anon }}
+        run: |
+          set -euo pipefail
+          BASE="https://${REF}.supabase.co"
+
+          echo "── 3a. PostgREST OpenAPI schema description (GET /rest/v1/) ──"
+          # The OpenAPI document PostgREST serves at its root is generated
+          # directly from its live schema cache — a column that is not in the
+          # cache cannot appear in this document. Pure GET; reads no rows.
+          curl -sS "${BASE}/rest/v1/" \
+            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" \
+            -H "Accept: application/openapi+json" \
+            -o /tmp/openapi.json -w "HTTP %{http_code}\n"
+
+          if ! jq -e . /tmp/openapi.json >/dev/null 2>&1; then
+            OPENAPI_RESULT='{"lead_events":"UNPARSEABLE","leads":"UNPARSEABLE"}'
+          else
+            OPENAPI_RESULT="$(jq -c '
+              def check(t):
+                (.definitions[t].properties // {}) as $props
+                | if ($props | length) == 0 then "ABSENT_FROM_OPENAPI"
+                  else
+                    ([ "unit_type_id", "unit_id" ] - ($props | keys)) as $missing
+                    | if ($missing | length) == 0 then "OK" else "MISSING:" + ($missing | join(",")) end
+                  end;
+              { lead_events: check("lead_events"), leads: check("leads") }
+            ' /tmp/openapi.json)"
+          fi
+          echo "OpenAPI check result: $OPENAPI_RESULT"
+
+          echo ""
+          echo "── 3b. Corroborating signal: read-only SELECT with limit=0 ──"
+          # A GET is always mapped to a read-only SELECT by PostgREST — this
+          # can return zero rows (e.g. if RLS hides everything from anon) but
+          # can NEVER insert, update, or delete anything. limit=0 additionally
+          # guarantees no row content is ever transferred.
+          HTTP_CODE_LE="$(curl -sS -o /tmp/le_select.json -w '%{http_code}' \
+            "${BASE}/rest/v1/lead_events?select=unit_type_id,unit_id&limit=0" \
+            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}")"
+          echo "lead_events select probe: HTTP $HTTP_CODE_LE"
+          cat /tmp/le_select.json; echo
+
+          HTTP_CODE_L="$(curl -sS -o /tmp/l_select.json -w '%{http_code}' \
+            "${BASE}/rest/v1/leads?select=unit_type_id,unit_id&limit=0" \
+            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}")"
+          echo "leads select probe: HTTP $HTTP_CODE_L"
+          cat /tmp/l_select.json; echo
+
+          # A schema-cache miss is a specific, recognizable PostgREST error
+          # (PGRST204 / "column ... does not exist" / 42703) regardless of
+          # HTTP status. Any OTHER outcome (200 with data or an empty array,
+          # or a permission/RLS-shaped error that does NOT mention a missing
+          # column) means the column IS known to the schema cache — RLS and
+          # table-level grants are a separate question from schema
+          # recognition, and are not what this check is verifying.
+          classify() {
+            local body="$1"
+            if echo "$body" | grep -qiE 'does not exist|PGRST204|42703'; then
+              echo "SCHEMA_CACHE_MISS"
+            else
+              echo "SCHEMA_CACHE_HIT_OR_INCONCLUSIVE_PERMISSION"
+            fi
+          }
+          LE_CLASS="$(classify "$(cat /tmp/le_select.json)")"
+          L_CLASS="$(classify "$(cat /tmp/l_select.json)")"
+          echo "lead_events probe classification: $LE_CLASS"
+          echo "leads probe classification: $L_CLASS"
+
+          {
+            echo "### PostgREST schema-cache check"
+            echo ""
+            echo "- OpenAPI check: \`$OPENAPI_RESULT\`"
+            echo "- lead_events select probe: HTTP $HTTP_CODE_LE, classification \`$LE_CLASS\`"
+            echo "- leads select probe: HTTP $HTTP_CODE_L, classification \`$L_CLASS\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Decisive failure: the OpenAPI doc explicitly lists the table but
+          # is missing a column, OR a select probe hit an unambiguous
+          # schema-cache miss. Either is conclusive WITHOUT a write.
+          if echo "$OPENAPI_RESULT" | grep -q 'MISSING:' || [ "$LE_CLASS" = "SCHEMA_CACHE_MISS" ] || [ "$L_CLASS" = "SCHEMA_CACHE_MISS" ]; then
+            echo "::error::PostgREST's schema cache does NOT recognize the new column(s). See the summary above for exactly which check failed."
+            exit 1
+          fi
+
+          # Decisive success: the OpenAPI doc lists both tables with both
+          # columns present.
+          if echo "$OPENAPI_RESULT" | jq -e '.lead_events == "OK" and .leads == "OK"' >/dev/null 2>&1; then
+            echo "PASS — PostgREST's OpenAPI schema description lists unit_type_id/unit_id on both lead_events and leads: the schema cache recognizes them."
+            exit 0
+          fi
+
+          # Neither a decisive pass nor a decisive fail: say so explicitly,
+          # per instruction, rather than performing a write to find out.
+          echo "::warning::PostgREST schema-cache recognition could NOT be conclusively established by a read-only check alone."
+          echo "UNVERIFIED — what remains unknown: whether PostgREST's schema cache has fully picked up lead_events.unit_type_id/unit_id and leads.unit_type_id/unit_id for INSERT purposes specifically. The OpenAPI document and/or the read-only select probes above were inconclusive (see the classifications above for exactly which signal was ambiguous and why — most likely because anon lacks a SELECT-visible grant or RLS policy on one or both tables, which is an authorization outcome, not evidence about the schema cache). The only fully conclusive test is a real INSERT through the anon-key REST endpoint (or, more surgically, a BEGIN; INSERT ...; ROLLBACK; over a direct psql connection, which this workflow deliberately does not perform because it was not asked to and because a direct SQL INSERT does not exercise the PostgREST layer this check exists to test). Do not treat this warning as a pass."
+          {
+            echo ""
+            echo "**UNVERIFIED**: PostgREST schema-cache recognition of the new columns could not be conclusively established without a write. See the job log for exactly which signal was ambiguous."
+          } >> "$GITHUB_STEP_SUMMARY"
