@@ -34,17 +34,33 @@ name: Apply DB Migration (production)
 #     regardless of the allowlist — the CLI has no "apply up to version X"
 #     flag (checked directly against `supabase db push --help` /
 #     `supabase migration up --help`; neither has one), so this workflow
-#     enforces the boundary itself by controlling what the CLI can see. Three
-#     assertions fail the run closed before anything is touched: (1) the
-#     boundary must equal the highest entry in EXPECTED_MIGRATIONS, (2) every
-#     migration at or below the boundary that exists in the repository must
-#     be named in EXPECTED_MIGRATIONS, (3) the filtered directory itself must
-#     contain nothing above the boundary. A fourth, independent check runs
-#     AFTER the push: it re-queries the remote's own migration history (not
-#     just the pre-push dry-run plan) and fails if anything above the
-#     boundary is now applied. The named allowlist and the boundary are two
-#     independent mechanisms protecting the same property — either one
-#     failing to fire is still caught by the other.
+#     enforces the boundary itself by controlling what the CLI can see.
+#     Assertions fail the run closed before anything is touched: (1) the
+#     boundary must equal the highest entry in EXPECTED_MIGRATIONS, (2) the
+#     filtered work directory itself must contain nothing above the
+#     boundary. (Fixed 2026-09-25, PR #113 follow-up: an earlier version also
+#     required every FILE ON DISK at or below the boundary to be individually
+#     named in EXPECTED_MIGRATIONS — wrong, because supabase/migrations/
+#     contains 56 migrations from before this workflow's named-allowlist
+#     convention existed, already applied to production, never pending, and
+#     never needing a name here. That check refused every real dispatch. The
+#     correct population is PENDING migrations at or below the boundary, and
+#     pending-ness can only be known from the remote — see below.) A third,
+#     independent check runs AFTER the push: it re-queries the remote's own
+#     migration history (not just the pre-push dry-run plan) and fails if
+#     anything above the boundary is now applied.
+#   * "Every migration at or below the boundary that is actually PENDING must
+#     be individually named in EXPECTED_MIGRATIONS" is enforced in "Dry run +
+#     safety gate", against the real dry-run's pending list — which
+#     `supabase db push --dry-run` derives from the linked production
+#     project's own migration-history table, so an already-applied migration
+#     never appears there regardless of whether its file is old or new. That
+#     list is also structurally bounded to <= the boundary (the filtered work
+#     directory contains nothing above it for the dry-run to even consider),
+#     and an explicit assertion re-checks this directly rather than merely
+#     assuming it. The named allowlist and the boundary are two independent
+#     mechanisms protecting the same property — either one failing to fire is
+#     still caught by the other.
 #   * Applies with `supabase db push` (additive migration only).
 #   * NEVER `db reset`, NEVER `--include-seed`, NEVER any destructive flag.
 #   * Verifies afterward with read-only `supabase migration list` + a second
@@ -506,23 +522,29 @@ jobs:
             cp "$f" "$WORKDIR/supabase/migrations/"
           done
 
-          # Invariant 2 — every migration at or below the boundary that
-          # exists in the repository must be individually named in
-          # EXPECTED_MIGRATIONS. Fail closed rather than silently include an
-          # un-reviewed migration just because its version sorts low enough.
-          UNNAMED=""
-          for f in "$WORKDIR"/supabase/migrations/*.sql; do
-            v="$(basename "$f" | grep -oE '^[0-9]{14}')"
-            if ! echo "$AUTHORIZED" | grep -qx "$v"; then
-              UNNAMED="$UNNAMED $v"
-            fi
-          done
-          if [ -n "$UNNAMED" ]; then
-            echo "::error::Migration(s) at or below the boundary exist in the repository but are NOT named in EXPECTED_MIGRATIONS:$UNNAMED. Refusing to build the work directory."
-            exit 1
-          fi
+          # NOTE — deliberately NOT checked here: "every migration file at or
+          # below the boundary must be individually named in
+          # EXPECTED_MIGRATIONS." An earlier version of this step enforced
+          # exactly that and it was wrong — supabase/migrations/ contains 56
+          # migrations (20260622000000 through 20260812000000) that were
+          # applied to production long before this workflow's named-allowlist
+          # convention existed. They are not pending, so they were never
+          # named here and never needed to be — but a static scan of every
+          # FILE ON DISK at or below the boundary cannot tell "already
+          # applied, harmless" apart from "pending, unreviewed", and refused
+          # every real dispatch (run #13, 2026-09-25) even though nothing
+          # unauthorized was actually about to be pushed. The invariant this
+          # workflow actually needs — every PENDING migration at or below the
+          # boundary must be individually named — can only be checked once
+          # the remote's migration history is known, which requires a DB
+          # connection this step does not have. That check runs in "Dry run
+          # + safety gate" below, against the real dry-run's pending list
+          # (which is already boundary-bounded, since the work directory
+          # built here contains nothing above the boundary to report as
+          # pending in the first place) — see that step for where the actual
+          # per-migration authorization is enforced.
 
-          # Invariant 3, verified directly against what was actually copied —
+          # Invariant 2, verified directly against what was actually copied —
           # not merely inferred from the filter above.
           ABOVE_BOUNDARY="$(for f in "$WORKDIR"/supabase/migrations/*.sql; do basename "$f" | grep -oE '^[0-9]{14}'; done | awk -v b="$EXPECTED_MIGRATION_BOUNDARY" '$1>b')"
           if [ -n "$ABOVE_BOUNDARY" ]; then
@@ -581,10 +603,30 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           # Migration versions the dry-run reports as pending (14-digit prefixes).
-          # Bounded to <= EXPECTED_MIGRATION_BOUNDARY by construction, since the
-          # work directory contains nothing above it.
+          # This is the ACTUAL remote-derived pending set — supabase db push
+          # --dry-run queries the linked production project's own migration
+          # history table and reports only what is not yet recorded there, so
+          # an already-applied historical migration (e.g. anything from the
+          # 20260622000000-20260812000000 range, applied long before this
+          # workflow existed) never appears here even though its file is
+          # present in the boundary-filtered work directory. Also bounded to
+          # <= EXPECTED_MIGRATION_BOUNDARY by construction, since that work
+          # directory contains nothing above the boundary for db push to even
+          # consider.
           PENDING="$(grep -oE '[0-9]{14}' dryrun.txt | sort -u || true)"
           echo "Pending versions detected: ${PENDING:-<none>}"
+
+          # Explicit self-check of the boundary invariant, stated in terms of
+          # what is actually pending (the correct population) rather than
+          # merely inferred from how the work directory was built. Should be
+          # unreachable — the work directory cannot contain a file above the
+          # boundary, so the dry-run cannot report one as pending — but this
+          # makes that guarantee an assertion instead of an assumption.
+          PENDING_ABOVE_BOUNDARY="$(echo "$PENDING" | awk -v b="$EXPECTED_MIGRATION_BOUNDARY" '$1>b')"
+          if [ -n "$PENDING_ABOVE_BOUNDARY" ]; then
+            echo "::error::Internal error — a migration above the boundary ($EXPECTED_MIGRATION_BOUNDARY) is reported pending: $(echo $PENDING_ABOVE_BOUNDARY | tr '\n' ' '). This should be structurally impossible — investigate immediately."
+            exit 1
+          fi
 
           if [ -z "$PENDING" ]; then
             echo "already_applied=true" >> "$GITHUB_OUTPUT"
@@ -593,8 +635,14 @@ jobs:
           fi
 
           # Refuse if ANYTHING outside the authorized allowlist is pending.
-          # Unchanged from this workflow's original gate — kept as an
-          # independent check alongside the boundary, not replaced by it.
+          # THIS is where "every migration at or below the boundary must be
+          # individually named in EXPECTED_MIGRATIONS" is actually enforced —
+          # correctly scoped to PENDING migrations only (see the note in
+          # "Build boundary-filtered Supabase work directory" for why a
+          # static, all-repository-files version of this check was wrong and
+          # has been removed). Unchanged in its own logic from this
+          # workflow's original gate — kept as an independent check alongside
+          # the boundary, not replaced by it.
           AUTHORIZED="$(echo "${EXPECTED_MIGRATIONS}" | tr -d ' ' | grep -E '^[0-9]{14}$' | sort -u)"
           echo "Authorized versions: $(echo $AUTHORIZED | tr '\n' ' ')"
           UNEXPECTED="$(comm -23 <(echo "$PENDING" | sort -u) <(echo "$AUTHORIZED"))"
