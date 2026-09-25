@@ -15,14 +15,42 @@ name: Apply DB Migration (production)
 #     be the dev project ref before anything connects.
 #   * Requires you to type "APPLY" at dispatch time (guards against a stray click).
 #   * Runs `supabase db push --dry-run` FIRST and prints the full plan to the log.
-#   * SAFETY GATE: refuses to push unless the ONLY pending migration is the one
-#     this workflow is authorized to apply (EXPECTED_MIGRATIONS below). If the
+#   * SAFETY GATE (named allowlist): refuses to push unless every pending
+#     migration is individually named in EXPECTED_MIGRATIONS below. If the
 #     remote is behind on any other migration, it ABORTS without applying, so
-#     it can never silently apply unrelated migrations.
+#     it can never silently apply unrelated migrations. Unchanged since this
+#     workflow's first version — still the check that runs immediately before
+#     `db push`.
+#   * SAFETY GATE (version boundary — 2026-09-25): EXPECTED_MIGRATION_BOUNDARY
+#     names the highest migration version this run may ever apply. The
+#     "Build boundary-filtered Supabase work directory" step below copies
+#     supabase/config.toml plus ONLY the migration files whose version is <=
+#     the boundary into a fresh directory under $RUNNER_TEMP, and every
+#     `supabase` command from that point on runs against that directory via
+#     `--workdir` — never against this checkout, which is never modified.
+#     A migration file committed with a version above the boundary (e.g. a
+#     future feature migration merged to main before this security fix is
+#     dispatched) is therefore never visible to `supabase db push` at all,
+#     regardless of the allowlist — the CLI has no "apply up to version X"
+#     flag (checked directly against `supabase db push --help` /
+#     `supabase migration up --help`; neither has one), so this workflow
+#     enforces the boundary itself by controlling what the CLI can see. Three
+#     assertions fail the run closed before anything is touched: (1) the
+#     boundary must equal the highest entry in EXPECTED_MIGRATIONS, (2) every
+#     migration at or below the boundary that exists in the repository must
+#     be named in EXPECTED_MIGRATIONS, (3) the filtered directory itself must
+#     contain nothing above the boundary. A fourth, independent check runs
+#     AFTER the push: it re-queries the remote's own migration history (not
+#     just the pre-push dry-run plan) and fails if anything above the
+#     boundary is now applied. The named allowlist and the boundary are two
+#     independent mechanisms protecting the same property — either one
+#     failing to fire is still caught by the other.
 #   * Applies with `supabase db push` (additive migration only).
 #   * NEVER `db reset`, NEVER `--include-seed`, NEVER any destructive flag.
 #   * Verifies afterward with read-only `supabase migration list` + a second
-#     dry-run that must report the target migration as no longer pending.
+#     dry-run that must report the target migration as no longer pending, AND
+#     an independent remote-history check that no migration above the
+#     boundary was applied.
 #
 # One-time setup — two repository secrets (Settings → Secrets and variables →
 # Actions → New repository secret):
@@ -272,6 +300,92 @@ env:
   #     covering the exact UTC/Vientiane boundary, a month boundary, a
   #     leap-year boundary, and the finalization cutoff, all pass; migration
   #     applies cleanly twice (idempotent).
+  # 20260920000000_intelligence_demand_supply_gap.sql — reviewed and
+  # authorized deliberately (2026-09-24/25 production DB migration audit).
+  # Why it is safe:
+  #   * CREATE OR REPLACE on the EXISTING point_in_time_supply_snapshot()
+  #     only, adding two new keys (available_by_segment,
+  #     available_by_bedroom_segment) inside its existing active_inventory
+  #     object. Every existing key is untouched byte-for-byte. No table,
+  #     column, policy, or grant is created or altered.
+  #   * LANGUAGE sql STABLE — a pure read/aggregation query. Zero
+  #     INSERT/UPDATE/DELETE anywhere in the file.
+  #   * Already-deployed edge-function code (demand-supply-gap.js,
+  #     report-composer.js) reads these two keys, but is defensively coded
+  #     and tested for their total absence (report-composer.test.js:
+  #     "demandSupplyBlock never fabricates a gap when active_inventory/
+  #     available_by_segment is entirely absent") — so leaving it unapplied
+  #     degrades a report section gracefully rather than erroring. Not urgent
+  #     on its own; authorized here because it must apply before
+  #     20260921000000/20260921010000/20260922000000 in timestamp order
+  #     regardless.
+  # 20260921000000_lead_unit_attribution.sql — reviewed and authorized
+  # deliberately, and URGENTLY: this migration fixes a live production
+  # incident, not merely a pending feature.
+  #   * Adds nullable unit_type_id (FK to unit_types, ON DELETE SET NULL) and
+  #     unit_id (uuid, no FK yet) columns to lead_events and leads, plus two
+  #     indexes, plus a CREATE OR REPLACE of the create_lead_from_event()
+  #     trigger function to copy both columns through. Purely additive DDL —
+  #     no DROP, no data-rewriting UPDATE/DELETE, no backfill, no type change.
+  #   * PRODUCTION CODE ALREADY DEPENDS ON THIS, RIGHT NOW: commit b0a3572
+  #     (merged via PR #104, deployed by Deploy Production run #294 on
+  #     2026-09-21T06:19:51Z, and live in every deploy since) has
+  #     components.js's ptContactClick() sending unit_type_id/unit_id in
+  #     every lead_events POST. PostgREST rejects an INSERT body naming a
+  #     column that doesn't exist yet with PGRST204, failing the ENTIRE
+  #     insert — and the call site's fire-and-forget `.catch(function(){})`
+  #     only swallows network-level failures, not HTTP error responses, so
+  #     this has been failing completely silently. Confirmed during the
+  #     2026-09-24/25 audit: since this migration has never been applied
+  #     (last apply-migration.yml run was #12 on 2026-09-17, before this
+  #     migration existed), every WhatsApp/Call contact click in production
+  #     has almost certainly failed to create a lead_events row since
+  #     2026-09-21 — meaning create_lead_from_event() never fires and no new
+  #     leads CRM rows have been created either. ui_events tracking (a
+  #     separate POST) is unaffected. Applying this migration is the fix.
+  # 20260921010000_revoke_public_execute_analytics_and_ownership_rpcs.sql —
+  # reviewed and authorized deliberately (2026-09-24 read-only production DB
+  # investigation, following up on the 2026-09-21 Verify Production Security
+  # finding). Privileges only, no schema/data change:
+  #   * Revokes the implicit default-to-PUBLIC EXECUTE grant (same root cause
+  #     20260818000000 and 20260915000000 fixed for six other functions) from
+  #     owned_party_ids(uuid), intelligence_daily_metrics(date,date),
+  #     point_in_time_supply_snapshot(), ensure_daily_metrics_snapshot(date,date)
+  #     — the four functions from the "no UNEXPECTED ungated SECURITY DEFINER
+  #     function is callable by anon" control that DO have a repository
+  #     source. owned_party_ids keeps its existing, unmodified GRANT to
+  #     authenticated (20260705000000); the three intelligence functions get
+  #     no anon/authenticated grant at all, since their only real caller
+  #     (generate-intelligence-report) already authenticates with the
+  #     service-role key, which bypasses grants entirely.
+  #   * A repository-wide audit of every `.rpc(...)` call site in every client
+  #     HTML/JS file and every edge function (recorded in the migration file
+  #     itself, and independently reconstructed during the 2026-09-24
+  #     investigation by grepping every call site and every CREATE/GRANT/
+  #     REVOKE statement across `supabase/migrations/*.sql` history) found no
+  #     direct client caller for any of the four: owned_party_ids is called
+  #     only as owned_party_ids(auth.uid()) inside ~20 RLS policy bodies, and
+  #     the three intelligence functions are called only by the service-role
+  #     edge function.
+  #   * REVOKE/GRANT are idempotent by construction, and each statement is
+  #     wrapped in DO ... EXCEPTION WHEN undefined_function, so a database
+  #     missing one of these (e.g. dev) is skipped rather than aborting.
+  #   * Deliberately NOT part of this authorization: is_admin and
+  #     rls_auto_enable, also flagged by the same control but with no
+  #     CREATE FUNCTION statement anywhere in this repository's migration
+  #     history (confirmed again during the 2026-09-24 investigation) — their
+  #     production definition and real caller(s) are unknown from static
+  #     inspection, so they are left for a human to inspect
+  #     (pg_get_functiondef) directly against production before any decision.
+  #     Deliberately NOT part of this authorization: 20260922000000
+  #     (intelligence_unit_type_demand) — a separate feature migration, and
+  #     structurally blocked anyway (its CREATE OR REPLACE FUNCTION
+  #     intelligence_daily_metrics() body references lead_events.unit_type_id/
+  #     leads.unit_type_id directly, so it cannot even be created until
+  #     20260921000000 has applied). EXPECTED_MIGRATION_BOUNDARY below is set
+  #     to 20260921010000 specifically so this workflow can never reach
+  #     20260922000000, independent of whether it is ever added here by
+  #     mistake — see the boundary mechanism described above.
   EXPECTED_MIGRATIONS: |
     20260813000000
     20260817000000
@@ -287,7 +401,15 @@ env:
     20260912000000
     20260915000000
     20260918000000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql + 20260918000000_intelligence_vientiane_calendar.sql'
+    20260920000000
+    20260921000000
+    20260921010000
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql + 20260918000000_intelligence_vientiane_calendar.sql + 20260920000000_intelligence_demand_supply_gap.sql + 20260921000000_lead_unit_attribution.sql (fixes a live production incident — see review note above) + 20260921010000_revoke_public_execute_analytics_and_ownership_rpcs.sql'
+  # The highest migration version this run may ever apply. Must equal the
+  # highest entry in EXPECTED_MIGRATIONS above — asserted by the "Build
+  # boundary-filtered Supabase work directory" step, which fails closed if
+  # they disagree. See the boundary mechanism described in this file's header.
+  EXPECTED_MIGRATION_BOUNDARY: '20260921010000'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
@@ -351,14 +473,82 @@ jobs:
         with:
           version: latest
 
+      - name: Build boundary-filtered Supabase work directory
+        id: workdir
+        run: |
+          set -euo pipefail
+
+          AUTHORIZED="$(echo "${EXPECTED_MIGRATIONS}" | tr -d ' ' | grep -E '^[0-9]{14}$' | sort -u)"
+
+          # Invariant 1 — the boundary must equal the highest authorized
+          # version. Fail closed if they have drifted apart.
+          HIGHEST_AUTHORIZED="$(echo "$AUTHORIZED" | tail -1)"
+          if [ "$HIGHEST_AUTHORIZED" != "$EXPECTED_MIGRATION_BOUNDARY" ]; then
+            echo "::error::EXPECTED_MIGRATION_BOUNDARY ($EXPECTED_MIGRATION_BOUNDARY) does not match the highest entry in EXPECTED_MIGRATIONS ($HIGHEST_AUTHORIZED). Fix one or the other before dispatching — refusing to build a work directory."
+            exit 1
+          fi
+
+          WORKDIR="$RUNNER_TEMP/supabase-boundary-workdir"
+          mkdir -p "$WORKDIR/supabase/migrations"
+          cp supabase/config.toml "$WORKDIR/supabase/config.toml"
+
+          # Copy only migration files at or below the boundary. The original
+          # checkout (supabase/migrations/ in $GITHUB_WORKSPACE) is never
+          # written to — every command from here on runs against $WORKDIR via
+          # --workdir instead.
+          for f in supabase/migrations/*.sql; do
+            v="$(basename "$f" | grep -oE '^[0-9]{14}')"
+            [ -n "$v" ] || continue
+            if [[ "$v" > "$EXPECTED_MIGRATION_BOUNDARY" ]]; then
+              echo "Excluding $(basename "$f") — version $v is above the boundary ($EXPECTED_MIGRATION_BOUNDARY)"
+              continue
+            fi
+            cp "$f" "$WORKDIR/supabase/migrations/"
+          done
+
+          # Invariant 2 — every migration at or below the boundary that
+          # exists in the repository must be individually named in
+          # EXPECTED_MIGRATIONS. Fail closed rather than silently include an
+          # un-reviewed migration just because its version sorts low enough.
+          UNNAMED=""
+          for f in "$WORKDIR"/supabase/migrations/*.sql; do
+            v="$(basename "$f" | grep -oE '^[0-9]{14}')"
+            if ! echo "$AUTHORIZED" | grep -qx "$v"; then
+              UNNAMED="$UNNAMED $v"
+            fi
+          done
+          if [ -n "$UNNAMED" ]; then
+            echo "::error::Migration(s) at or below the boundary exist in the repository but are NOT named in EXPECTED_MIGRATIONS:$UNNAMED. Refusing to build the work directory."
+            exit 1
+          fi
+
+          # Invariant 3, verified directly against what was actually copied —
+          # not merely inferred from the filter above.
+          ABOVE_BOUNDARY="$(for f in "$WORKDIR"/supabase/migrations/*.sql; do basename "$f" | grep -oE '^[0-9]{14}'; done | awk -v b="$EXPECTED_MIGRATION_BOUNDARY" '$1>b')"
+          if [ -n "$ABOVE_BOUNDARY" ]; then
+            echo "::error::Internal error — a migration above the boundary ($EXPECTED_MIGRATION_BOUNDARY) ended up in the filtered work directory: $ABOVE_BOUNDARY"
+            exit 1
+          fi
+
+          COUNT="$(ls "$WORKDIR"/supabase/migrations/*.sql | wc -l)"
+          echo "workdir=$WORKDIR" >> "$GITHUB_OUTPUT"
+          echo "::notice::Boundary-filtered work directory built at $WORKDIR — $COUNT migration file(s) at or below $EXPECTED_MIGRATION_BOUNDARY. Original checkout is unmodified."
+          {
+            echo ""
+            echo "### Migration boundary"
+            echo ""
+            echo "- Boundary: \`$EXPECTED_MIGRATION_BOUNDARY\`"
+            echo "- Migration files visible to this run: $COUNT (everything above the boundary is excluded from the work directory entirely)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Link to the production project
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           set -euo pipefail
-          echo "Linking to production ref ${{ steps.ref.outputs.ref }} …"
-          supabase link --project-ref "${{ steps.ref.outputs.ref }}"
+          echo "Linking to production ref ${{ steps.ref.outputs.ref }} (boundary-filtered work directory) …"
+          supabase link --workdir "${{ steps.workdir.outputs.workdir }}" --project-ref "${{ steps.ref.outputs.ref }}"
 
       - name: Migration history (before) — read only
         env:
@@ -367,7 +557,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "::group::supabase migration list (before)"
-          supabase migration list
+          supabase migration list --workdir "${{ steps.workdir.outputs.workdir }}"
           echo "::endgroup::"
 
       - name: Dry run + safety gate
@@ -377,8 +567,8 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           set -euo pipefail
-          echo "::group::supabase db push --dry-run"
-          supabase db push --dry-run 2>&1 | tee dryrun.txt
+          echo "::group::supabase db push --dry-run (boundary-filtered work directory)"
+          supabase db push --workdir "${{ steps.workdir.outputs.workdir }}" --dry-run 2>&1 | tee dryrun.txt
           echo "::endgroup::"
 
           {
@@ -391,6 +581,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           # Migration versions the dry-run reports as pending (14-digit prefixes).
+          # Bounded to <= EXPECTED_MIGRATION_BOUNDARY by construction, since the
+          # work directory contains nothing above it.
           PENDING="$(grep -oE '[0-9]{14}' dryrun.txt | sort -u || true)"
           echo "Pending versions detected: ${PENDING:-<none>}"
 
@@ -401,6 +593,8 @@ jobs:
           fi
 
           # Refuse if ANYTHING outside the authorized allowlist is pending.
+          # Unchanged from this workflow's original gate — kept as an
+          # independent check alongside the boundary, not replaced by it.
           AUTHORIZED="$(echo "${EXPECTED_MIGRATIONS}" | tr -d ' ' | grep -E '^[0-9]{14}$' | sort -u)"
           echo "Authorized versions: $(echo $AUTHORIZED | tr '\n' ' ')"
           UNEXPECTED="$(comm -23 <(echo "$PENDING" | sort -u) <(echo "$AUTHORIZED"))"
@@ -419,9 +613,9 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           set -euo pipefail
-          echo "Applying to PRODUCTION ref ${{ steps.ref.outputs.ref }} …"
+          echo "Applying to PRODUCTION ref ${{ steps.ref.outputs.ref }} (boundary-filtered work directory) …"
           echo "::group::supabase db push"
-          supabase db push
+          supabase db push --workdir "${{ steps.workdir.outputs.workdir }}"
           echo "::endgroup::"
           echo "- ✅ applied \`${EXPECTED_MIGRATION_FILE}\` to production (\`${{ steps.ref.outputs.ref }}\`)" >> "$GITHUB_STEP_SUMMARY"
 
@@ -432,11 +626,11 @@ jobs:
         run: |
           set -euo pipefail
           echo "::group::supabase migration list (after)"
-          supabase migration list
+          supabase migration list --workdir "${{ steps.workdir.outputs.workdir }}"
           echo "::endgroup::"
 
-          echo "::group::supabase db push --dry-run (post-apply check)"
-          supabase db push --dry-run 2>&1 | tee dryrun_after.txt
+          echo "::group::supabase db push --dry-run (post-apply check, boundary-filtered work directory)"
+          supabase db push --workdir "${{ steps.workdir.outputs.workdir }}" --dry-run 2>&1 | tee dryrun_after.txt
           echo "::endgroup::"
 
           AUTHORIZED="$(echo "${EXPECTED_MIGRATIONS}" | tr -d ' ' | grep -E '^[0-9]{14}$' | sort -u)"
@@ -447,3 +641,26 @@ jobs:
           fi
           echo "Verified: every authorized migration is applied (no longer pending on production)."
           echo "- ✅ verified applied on production" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify migration boundary was not exceeded (independent remote check)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Independent of the dry-run-based checks above: re-query the
+          # remote's OWN migration history directly and fail if anything
+          # above the boundary is recorded as applied. This is the last line
+          # of defense — it does not trust what this run intended to do, only
+          # what the remote now actually reports.
+          echo "::group::supabase migration list (remote history, boundary check)"
+          supabase migration list --workdir "${{ steps.workdir.outputs.workdir }}" 2>&1 | tee migration_list_boundary_check.txt
+          echo "::endgroup::"
+
+          ABOVE_BOUNDARY="$(grep -oE '[0-9]{14}' migration_list_boundary_check.txt | sort -u | awk -v b="$EXPECTED_MIGRATION_BOUNDARY" '$1>b')"
+          if [ -n "$ABOVE_BOUNDARY" ]; then
+            echo "::error::Migration(s) above the approved boundary ($EXPECTED_MIGRATION_BOUNDARY) are visible in the remote migration history: $(echo $ABOVE_BOUNDARY | tr '\n' ' '). This should be structurally impossible — investigate immediately."
+            exit 1
+          fi
+          echo "Verified: no migration above the boundary ($EXPECTED_MIGRATION_BOUNDARY) is present in the remote's migration history."
+          echo "- ✅ boundary check passed — nothing above \`$EXPECTED_MIGRATION_BOUNDARY\` applied" >> "$GITHUB_STEP_SUMMARY"
