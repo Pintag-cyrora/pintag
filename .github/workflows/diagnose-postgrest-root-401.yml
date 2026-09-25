@@ -1,0 +1,122 @@
+name: Diagnose PostgREST root endpoint 401 (production, read-only)
+
+# Purpose-built, throwaway diagnostic for the HTTP 401 that
+# verify-lead-unit-attribution-migration.yml's Check 3 got when it sent
+# GET /rest/v1/ with `Accept: application/openapi+json` (run #1, 2026-09-25).
+# That run only logged the HTTP status code, never the response body, so the
+# real reason for the 401 is unknown. This workflow answers exactly one
+# question — with evidence — before any decision is made about a
+# write-based verification or a Check 3 redesign:
+#
+#   Does GET /rest/v1/ behave differently depending on the Accept header,
+#   or is the bare root path itself rejected for the anon key regardless?
+#
+# It sends the SAME request Check 3 sent (Variant A) plus one variant with
+# the `Accept: application/openapi+json` header removed, matching every
+# other anon-key call already proven to work elsewhere in this repo
+# (Variant B) — and, unlike Check 3, prints the FULL response headers and
+# body for both, so the actual PostgREST/Kong error message is visible
+# instead of just a status code.
+#
+# SAFETY MODEL
+#   * Manual only (workflow_dispatch). No push or schedule trigger.
+#   * Every request is a plain GET. No SQL, no database connection at all —
+#     this workflow never touches Postgres, only the public PostgREST HTTP
+#     endpoint with the anon key.
+#   * Creates, modifies, or deletes NOTHING. Pure read/observe.
+#   * PRODUCTION ref is read from config.prod.js (the same single source of
+#     truth used by apply-migration.yml, verify-multi-contact-migration.yml,
+#     and verify-lead-unit-attribution-migration.yml) with the same dev-ref
+#     tripwire.
+#   * Uses only the anon key already public in config.prod.js — no secret,
+#     no new credential, no repository secret of any kind is referenced.
+#   * Does not modify verify-lead-unit-attribution-migration.yml or any
+#     other existing workflow/file. This is a standalone, disposable file.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DEV_REF: 'ebtgoqrywdywuqrvudcp'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Resolve PRODUCTION project ref + anon key from config.prod.js
+        id: ref
+        run: |
+          set -euo pipefail
+          REF="$(grep -oE 'https://[a-z0-9]+\.supabase\.co' config.prod.js | head -1 | sed -E 's#https://([a-z0-9]+)\.supabase\.co#\1#')"
+          [ -n "$REF" ] || { echo "::error::Could not resolve production ref."; exit 1; }
+          [ "$REF" != "${DEV_REF}" ] || { echo "::error::Resolved ref is DEV. Refusing."; exit 1; }
+          ANON="$(grep -oP "anonKey:\s*'\K[^']+" config.prod.js | head -1)"
+          [ -n "$ANON" ] || { echo "::error::Could not read anonKey from config.prod.js"; exit 1; }
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "anon=$ANON" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Target::PRODUCTION project ref: $REF (read-only)"
+
+      - name: Probe GET /rest/v1/ with and without the openapi+json Accept header (GET only)
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+          ANON: ${{ steps.ref.outputs.anon }}
+        run: |
+          set -euo pipefail
+          BASE="https://${REF}.supabase.co"
+
+          echo "══ Variant A — reproduces Check 3 exactly: apikey + Bearer + Accept: application/openapi+json ══"
+          HTTP_A="$(curl -sS -D /tmp/A_headers.txt -o /tmp/A_body.json -w '%{http_code}' \
+            "${BASE}/rest/v1/" \
+            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" \
+            -H "Accept: application/openapi+json")"
+          echo "HTTP $HTTP_A"
+          echo "--- response headers ---"
+          cat /tmp/A_headers.txt
+          echo "--- response body ---"
+          cat /tmp/A_body.json; echo
+          echo ""
+
+          echo "══ Variant B — same request, Accept header removed (matches every other working anon-key call in this repo) ══"
+          HTTP_B="$(curl -sS -D /tmp/B_headers.txt -o /tmp/B_body.json -w '%{http_code}' \
+            "${BASE}/rest/v1/" \
+            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}")"
+          echo "HTTP $HTTP_B"
+          echo "--- response headers ---"
+          cat /tmp/B_headers.txt
+          echo "--- response body ---"
+          cat /tmp/B_body.json; echo
+          echo ""
+
+          {
+            echo "### PostgREST root endpoint (/rest/v1/) diagnostic"
+            echo ""
+            echo "| Variant | Accept header | HTTP status |"
+            echo "|---|---|---|"
+            echo "| A | \`application/openapi+json\` | $HTTP_A |"
+            echo "| B | (none — curl default) | $HTTP_B |"
+            echo ""
+            echo "#### Variant A response headers"
+            echo '```'
+            cat /tmp/A_headers.txt
+            echo '```'
+            echo "#### Variant A response body"
+            echo '```json'
+            cat /tmp/A_body.json
+            echo '```'
+            echo "#### Variant B response headers"
+            echo '```'
+            cat /tmp/B_headers.txt
+            echo '```'
+            echo "#### Variant B response body"
+            echo '```json'
+            cat /tmp/B_body.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::notice title=Result::Variant A (with Accept override): HTTP $HTTP_A — Variant B (default Accept): HTTP $HTTP_B"
