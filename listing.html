@@ -579,8 +579,9 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .sp-badge-fire{background:rgba(239,68,68,0.08);color:#DC2626;border:1px solid rgba(239,68,68,0.18);}
 .sp-badge-pop{background:rgba(45,140,140,0.08);color:var(--teal);border:1px solid rgba(45,140,140,0.18);}
 .sp-badge-top{background:rgba(234,179,8,0.08);color:#B45309;border:1px solid rgba(234,179,8,0.22);}
-.sp-metrics-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;}
+.sp-metrics-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
 .sp-metric{display:inline-flex;align-items:center;font-size:11.5px;color:var(--ink-muted);font-weight:400;}
+.sp-metric+.sp-metric::before{content:"· ";margin-right:6px;color:var(--ink-muted);}
 .sp-fomo-agent{margin:0 48px 16px;padding:10px 14px;background:rgba(45,140,140,0.04);border:1px solid rgba(45,140,140,0.10);border-radius:8px;display:flex;flex-direction:column;gap:4px;}
 .sp-fomo-line{font-size:11.5px;color:var(--ink-muted);line-height:1.55;}
 .sp-fomo-line::before{content:"· ";color:var(--teal);}
@@ -763,17 +764,19 @@ var _publicStats = null;
 // RPC round-trip (same pattern as _publicStats above).
 var _marketTransitionStats = null;
 
-function formatViewCount(n) {
-  if (!SHOW_PUBLIC_VIEWS || !n || n < 10) return null;
-  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k views';
-  return n + ' views';
-}
-
-// Rounded inquiry count — hide low numbers, round down to nearest 5
-function formatInquiryCount(n) {
-  if (!SHOW_PUBLIC_INQUIRIES || !n || n < 5) return null;
-  if (n < 10) return '5+ inquiries';
-  return (Math.floor(n / 5) * 5) + '+ inquiries';
+// Exact, ALWAYS-shown view/inquiry counts (0 included, never hidden for
+// being small) -- deliberately distinct from getFomoLines()/sp-badges below,
+// which hide small numbers and round for a marketing "buzz" effect. This one
+// exists so a visitor sees the SAME numbers staff see in admin.html's and
+// dashboard.html's own per-listing "views · leads" columns -- same source
+// public_listing_stats() already aggregates below, no separate counter
+// here. unit is 'views' or 'inquiries'.
+function formatMetricCount(n, unit, lang) {
+  var count = Number(n) || 0;
+  var text = unit === 'views'
+    ? { lo: count + ' ຄັ້ງເບິ່ງ', en: count + ' views',    zh: count + ' 次浏览' }
+    : { lo: count + ' ຕິດຕໍ່',   en: count + ' inquiries', zh: count + ' 次咨询' };
+  return text[lang] || text.en;
 }
 
 function getFomoLines(stats, lang, ctx) {
@@ -823,20 +826,29 @@ function applyPublicStats(stats) {
   if (!stats) return;
   var lang = getCurrentLang();
 
-  // View count pill
+  // View count -- exact, shown even at 0 (SHOW_PUBLIC_VIEWS remains a
+  // hard ops kill-switch; it no longer also hides small non-zero counts).
   var spV = document.getElementById('sp-views');
   if (spV) {
-    var vfmt = formatViewCount(stats.view_count);
-    spV.textContent = vfmt ? '👁 ' + vfmt : '';
-    spV.style.display = vfmt ? 'inline-flex' : 'none';
+    if (SHOW_PUBLIC_VIEWS) {
+      spV.textContent = '👁 ' + formatMetricCount(stats.view_count, 'views', lang);
+      spV.style.display = 'inline-flex';
+    } else {
+      spV.style.display = 'none';
+    }
   }
 
-  // Inquiry count pill
+  // Inquiry count -- exact, shown even at 0. stats.lead_count is the same
+  // per-listing inquiry count admin.html/dashboard.html display (see
+  // public_listing_stats()'s own comment for the source table).
   var spI = document.getElementById('sp-inquiries');
   if (spI) {
-    var ifmt = formatInquiryCount(stats.lead_count);
-    spI.textContent = ifmt ? '📩 ' + ifmt : '';
-    spI.style.display = ifmt ? 'inline-flex' : 'none';
+    if (SHOW_PUBLIC_INQUIRIES) {
+      spI.textContent = '💬 ' + formatMetricCount(stats.lead_count, 'inquiries', lang);
+      spI.style.display = 'inline-flex';
+    } else {
+      spI.style.display = 'none';
+    }
   }
 
   // Popular badges

@@ -1,0 +1,7 @@
+{
+  "name": "pintag-social-proof-metrics-tests",
+  "private": true,
+  "description": "Proves the compact 'Views · Inquiries' social-proof row on listing.html (underneath the price block, before agent info) shows the EXACT view_count/lead_count public_listing_stats() already returns -- never hidden for being small, 0 shown rather than omitted, no rounding/fuzzing -- and is correctly localized in Lao/English/Chinese. No separate counter: everything here asserts against the same RPC response listing.html's loadPublicStats() already fetches.",
+  "scripts": { "test": "playwright test" },
+  "devDependencies": { "@playwright/test": "1.56.1" }
+}
