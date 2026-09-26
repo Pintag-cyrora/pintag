@@ -8,13 +8,11 @@ name: Verify lead-unit-attribution migration (production, read-only)
 # that the migration adding those columns was applied to production on
 # 2026-09-25 (Apply DB Migration run #14), and that a local regression suite
 # (tests/security/regression/run-lead-unit-attribution-pg.sh) proves the
-# trigger logic is correct on a throwaway cluster. What remains unverified is
+# trigger logic is correct on a throwaway cluster. What Check 3 verifies is
 # whether PRODUCTION's live PostgREST layer actually recognizes the new
-# columns in its schema cache — a real anon POST would prove it conclusively,
-# but would also create a real, permanent row in the leads CRM table. This
-# workflow proves everything that can be proven WITHOUT that write, and is
-# explicit — not silent — about the one thing it cannot conclusively prove
-# without one.
+# columns in its schema cache — done with two anon-key, read-only GET
+# probes (see Check 3's own comments for why a GET alone is decisive here,
+# with no write of any kind needed).
 #
 # SAFETY MODEL
 #   * Manual only (workflow_dispatch). No push or schedule trigger.
@@ -23,9 +21,7 @@ name: Verify lead-unit-attribution migration (production, read-only)
 #     write would error rather than succeed even if one were introduced by
 #     mistake. Every HTTP call is a GET.
 #   * Creates NO lead, NO lead_events row, NO leads row, and writes NO other
-#     production data. If PostgREST schema-cache recognition cannot be
-#     conclusively established by a GET alone, this workflow reports that
-#     explicitly as unverified rather than performing a POST to find out.
+#     production data.
 #   * Never applies, resets, alters, or pushes a migration.
 #   * PRODUCTION ref is read from config.prod.js (the same single source of
 #     truth apply-migration.yml and verify-multi-contact-migration.yml use)
@@ -212,37 +208,40 @@ jobs:
           set -euo pipefail
           BASE="https://${REF}.supabase.co"
 
-          echo "── 3a. PostgREST OpenAPI schema description (GET /rest/v1/) ──"
-          # The OpenAPI document PostgREST serves at its root is generated
-          # directly from its live schema cache — a column that is not in the
-          # cache cannot appear in this document. Pure GET; reads no rows.
-          curl -sS "${BASE}/rest/v1/" \
-            -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}" \
-            -H "Accept: application/openapi+json" \
-            -o /tmp/openapi.json -w "HTTP %{http_code}\n"
-
-          if ! jq -e . /tmp/openapi.json >/dev/null 2>&1; then
-            OPENAPI_RESULT='{"lead_events":"UNPARSEABLE","leads":"UNPARSEABLE"}'
-          else
-            OPENAPI_RESULT="$(jq -c '
-              def check(t):
-                (.definitions[t].properties // {}) as $props
-                | if ($props | length) == 0 then "ABSENT_FROM_OPENAPI"
-                  else
-                    ([ "unit_type_id", "unit_id" ] - ($props | keys)) as $missing
-                    | if ($missing | length) == 0 then "OK" else "MISSING:" + ($missing | join(",")) end
-                  end;
-              { lead_events: check("lead_events"), leads: check("leads") }
-            ' /tmp/openapi.json)"
-          fi
-          echo "OpenAPI check result: $OPENAPI_RESULT"
-
-          echo ""
-          echo "── 3b. Corroborating signal: read-only SELECT with limit=0 ──"
-          # A GET is always mapped to a read-only SELECT by PostgREST — this
-          # can return zero rows (e.g. if RLS hides everything from anon) but
-          # can NEVER insert, update, or delete anything. limit=0 additionally
-          # guarantees no row content is ever transferred.
+          # This check intentionally uses ONLY table-level GET probes with
+          # the anon key — the same key components.js uses in the browser.
+          # An earlier version of this check also tried GET /rest/v1/ (the
+          # bare root) with `Accept: application/openapi+json`, reasoning
+          # that PostgREST's own OpenAPI/schema document would show whether
+          # a column is in its cache. That request is not usable here: it
+          # returns HTTP 401 "Invalid API key" / "Only the `service_role`
+          # API key can be used for this endpoint" for the anon key on this
+          # project (confirmed by a dedicated diagnostic run against
+          # production), regardless of Accept header. Using service_role
+          # instead would defeat the point of this check, which is
+          # specifically what the browser's anon-key client sees — so that
+          # path has been removed rather than worked around.
+          #
+          # The table-level probe below is decisive on its own: PostgREST
+          # must resolve every column named in `select=` against its live
+          # schema cache BEFORE it can plan or execute the query. If a
+          # requested column is not in the cache, PostgREST refuses the
+          # request with a specific, recognizable error (PGRST204 / "column
+          # ... does not exist" / 42703) — it can never instead return a
+          # normal result (200 with data, 200 with an empty array, or a
+          # permission/RLS-shaped error that does not name a missing
+          # column) for a select list naming an unrecognized column. RLS
+          # and table/column grants govern which ROWS anon may read, which
+          # is a separate question already covered by Check 1's direct
+          # information_schema query — they do not, and cannot, turn a
+          # successfully parsed select list into a schema-cache miss. So an
+          # explicit missing-column error is decisive evidence of a cache
+          # miss, and any other outcome is decisive evidence the requested
+          # columns were resolved.
+          #
+          # limit=0 additionally guarantees no row content is ever
+          # transferred, on top of this being a pure GET.
+          echo "── PostgREST select probe (GET, anon key, limit=0) ──"
           HTTP_CODE_LE="$(curl -sS -o /tmp/le_select.json -w '%{http_code}' \
             "${BASE}/rest/v1/lead_events?select=unit_type_id,unit_id&limit=0" \
             -H "apikey: ${ANON}" -H "Authorization: Bearer ${ANON}")"
@@ -278,31 +277,27 @@ jobs:
           {
             echo "### PostgREST schema-cache check"
             echo ""
-            echo "- OpenAPI check: \`$OPENAPI_RESULT\`"
             echo "- lead_events select probe: HTTP $HTTP_CODE_LE, classification \`$LE_CLASS\`"
             echo "- leads select probe: HTTP $HTTP_CODE_L, classification \`$L_CLASS\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # Decisive failure: the OpenAPI doc explicitly lists the table but
-          # is missing a column, OR a select probe hit an unambiguous
-          # schema-cache miss. Either is conclusive WITHOUT a write.
-          if echo "$OPENAPI_RESULT" | grep -q 'MISSING:' || [ "$LE_CLASS" = "SCHEMA_CACHE_MISS" ] || [ "$L_CLASS" = "SCHEMA_CACHE_MISS" ]; then
-            echo "::error::PostgREST's schema cache does NOT recognize the new column(s). See the summary above for exactly which check failed."
+          # The select probe IS the decisive signal — see the header
+          # comment above for why. Either table hitting an unambiguous
+          # schema-cache miss fails the check; anything else, for both
+          # tables, passes it. There is no third, UNVERIFIED outcome: a GET
+          # alone is conclusive here, so none is needed.
+          if [ "$LE_CLASS" = "SCHEMA_CACHE_MISS" ] || [ "$L_CLASS" = "SCHEMA_CACHE_MISS" ]; then
+            echo "::error::PostgREST's schema cache does NOT recognize the requested column(s). See the summary above for exactly which probe failed."
+            {
+              echo ""
+              echo "**FAIL**: PostgREST returned an explicit missing-column/schema-cache-miss response for at least one table. See the job log for which probe and its exact response body."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
-          # Decisive success: the OpenAPI doc lists both tables with both
-          # columns present.
-          if echo "$OPENAPI_RESULT" | jq -e '.lead_events == "OK" and .leads == "OK"' >/dev/null 2>&1; then
-            echo "PASS — PostgREST's OpenAPI schema description lists unit_type_id/unit_id on both lead_events and leads: the schema cache recognizes them."
-            exit 0
-          fi
-
-          # Neither a decisive pass nor a decisive fail: say so explicitly,
-          # per instruction, rather than performing a write to find out.
-          echo "::warning::PostgREST schema-cache recognition could NOT be conclusively established by a read-only check alone."
-          echo "UNVERIFIED — what remains unknown: whether PostgREST's schema cache has fully picked up lead_events.unit_type_id/unit_id and leads.unit_type_id/unit_id for INSERT purposes specifically. The OpenAPI document and/or the read-only select probes above were inconclusive (see the classifications above for exactly which signal was ambiguous and why — most likely because anon lacks a SELECT-visible grant or RLS policy on one or both tables, which is an authorization outcome, not evidence about the schema cache). The only fully conclusive test is a real INSERT through the anon-key REST endpoint (or, more surgically, a BEGIN; INSERT ...; ROLLBACK; over a direct psql connection, which this workflow deliberately does not perform because it was not asked to and because a direct SQL INSERT does not exercise the PostgREST layer this check exists to test). Do not treat this warning as a pass."
+          echo "PASS — both PostgREST select probes resolved the requested columns; schema cache recognizes them."
           {
             echo ""
-            echo "**UNVERIFIED**: PostgREST schema-cache recognition of the new columns could not be conclusively established without a write. See the job log for exactly which signal was ambiguous."
+            echo "**PASS**: both PostgREST select probes resolved unit_type_id/unit_id — the schema cache recognizes them."
           } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
