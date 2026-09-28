@@ -548,12 +548,18 @@ function postEvent(table, body) {
   }).catch(function(){});
 }
 
-function postHomepageImpressions(props) {
-  var sessionId = getOrCreateSessionId();
-  var rows = (props || []).filter(function(p){ return p.id; }).map(function(p, idx){
-    return { property_id: p.id, event_type: 'impression', session_id: sessionId, source: 'homepage', search_position: idx + 1 };
+// Card impression attempt -- called by the shared viewport observer
+// (components.js's _ptObserveForImpression) once a card has been >=50%
+// visible for a continuous 500ms. One row per attempt, never batched; the
+// server's 30-minute dedup (check_listing_event_dedup()) decides whether it
+// is actually counted.
+function _ptFireCardImpression(propertyId, source) {
+  postEvent('listing_events', {
+    property_id: propertyId,
+    event_type: 'impression',
+    session_id: getOrCreateSessionId(),
+    source: source
   });
-  if (rows.length) postEvent('listing_events', rows);
 }
 
 (function() {
@@ -673,7 +679,6 @@ async function loadFeatured() {
       .slice(0, 4);
     window._props = data;
     renderCards(data, getCurrentLang());
-    postHomepageImpressions(data);
   } catch(e) {
     document.getElementById('card-grid').innerHTML = '';
   }
@@ -709,6 +714,14 @@ function idxStatusBadgeHtml(p, lang) {
 
 function renderCards(props, lang) {
   const grid = document.getElementById('card-grid');
+  // setLang() re-renders the same cached featured set as brand new nodes --
+  // release each outgoing card from the shared viewport observer first so
+  // its pending dwell timer (if any) is cancelled and the observer doesn't
+  // keep tracking a detached node (same cleanup listing.html's
+  // renderSimilarGrid() does for its own rebuild).
+  Array.prototype.forEach.call(grid.children, function(child){
+    if (typeof _ptReleaseImpressionObserver === 'function') _ptReleaseImpressionObserver(child);
+  });
   grid.innerHTML = '';
   if (!props || !props.length) return;
   const saved = ptGetSavedSet();
@@ -725,7 +738,8 @@ function renderCards(props, lang) {
       dataTrack: {
         track: 'home-featured-card', type: 'card', propertyId: p.id || '',
         label: p['title_' + lang] || p.title_en || '', meta: JSON.stringify({ position: idx + 1 })
-      }
+      },
+      trackImpression: p.id ? { propertyId: p.id, source: 'homepage', onFire: _ptFireCardImpression } : null
     });
     card.setAttribute('data-pid', p.id || '');
     card.setAttribute('data-position', idx + 1);
