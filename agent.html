@@ -340,6 +340,15 @@ function postEvent(table,body){
     keepalive:true
   }).catch(function(){});
 }
+
+// Card impression attempt -- called by the shared viewport observer
+// (components.js's _ptObserveForImpression) once a card has been >=50%
+// visible for a continuous 500ms. One row per attempt, never batched; the
+// server's 30-minute dedup (check_listing_event_dedup()) decides whether it
+// is actually counted.
+function _ptFireCardImpression(propertyId,source){
+  postEvent('listing_events',{property_id:propertyId,event_type:'impression',session_id:getOrCreateSessionId(),source:source});
+}
 const FALLBACK='https://pintag-cyrora.github.io/pintag/pintag-interior.png';
 
 
@@ -604,14 +613,16 @@ function render(a,listings){
       card.addEventListener('click',function(){
         postEvent('listing_events',{property_id:p.id,event_type:'click',session_id:getOrCreateSessionId(),source:'agent_profile',search_position:i+1});
       });
+      // Viewport-based impression: this page never rebuilds the portfolio
+      // grid after this one render() call (no language switcher, no
+      // re-fetch path), so unlike listing.html's Similar Properties carousel
+      // or index.html's featured grid there is no _ptReleaseImpressionObserver
+      // cleanup to do here -- these cards are never discarded and replaced.
+      if(typeof _ptObserveForImpression==='function'){
+        _ptObserveForImpression(card,{propertyId:p.id,source:'agent_profile',onFire:_ptFireCardImpression});
+      }
     }
   });
-
-  var sessionId=getOrCreateSessionId();
-  var impressionRows=listings.filter(function(p){return p&&p.id;}).map(function(p,idx){
-    return {property_id:p.id,event_type:'impression',session_id:sessionId,source:'agent_profile',search_position:idx+1};
-  });
-  if(impressionRows.length) postEvent('listing_events',impressionRows);
 }
 
 load();

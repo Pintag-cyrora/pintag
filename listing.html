@@ -710,6 +710,20 @@ function postEvent(table, body) {
   }).catch(function(){});
 }
 
+// Card impression attempt -- called by the shared viewport observer
+// (components.js's _ptObserveForImpression) once a card has been >=50%
+// visible for a continuous 500ms. One row per attempt, never batched; the
+// server's 30-minute dedup (check_listing_event_dedup()) decides whether it
+// is actually counted.
+function _ptFireCardImpression(propertyId, source) {
+  postEvent('listing_events', {
+    property_id: propertyId,
+    event_type: 'impression',
+    session_id: getOrCreateSessionId(),
+    source: source
+  });
+}
+
 // ── "Back to Listings" restoration hand-off ─────────────────────────
 // listings.html writes one sessionStorage entry (pt_listings_restore_v1,
 // see its own _ptSaveListingsRestoreState()) the instant a card is
@@ -1797,28 +1811,23 @@ function renderSimilarGrid(similar){
     var card = renderPropertyPreview(p, {
       lang: lang,
       dataTrack: p.id ? { track:'similar-property-card', type:'card', propertyId:p.id, label: p['title_'+lang]||p.title_en||'' } : null,
+      trackImpression: p.id ? { propertyId: p.id, source: 'similar', onFire: _ptFireCardImpression } : null,
       onClick: p.id ? function(){
         postEvent('listing_events',{property_id:p.id,event_type:'click',session_id:getOrCreateSessionId(),source:'similar',search_position:simIdx});
       } : null
     });
     frag.appendChild(card);
   });
+  // Discarded on every call (a lo -> en -> zh toggle re-renders the same
+  // cached result set as brand new nodes) -- release each outgoing card
+  // from the shared viewport observer first so its pending dwell timer (if
+  // any) is cancelled and the observer doesn't keep tracking a detached node.
+  Array.prototype.forEach.call(gridEl.children, function(child){
+    if (typeof _ptReleaseImpressionObserver === 'function') _ptReleaseImpressionObserver(child);
+  });
   gridEl.innerHTML='';
   gridEl.appendChild(frag);
-
-  // setLang() re-renders the same cached result set; the impressions belong
-  // to the fetch, so a lo -> en -> zh toggle must not triple the count that
-  // is the click-through denominator in analytics.
-  if(similar!==_similarImpressionsPostedFor){
-    _similarImpressionsPostedFor=similar;
-    var sessionId=getOrCreateSessionId();
-    var impressionRows=similar.filter(function(p){return p&&p.id;}).map(function(p,idx){
-      return {property_id:p.id,event_type:'impression',session_id:sessionId,source:'similar',search_position:idx+1};
-    });
-    if(impressionRows.length) postEvent('listing_events',impressionRows);
-  }
 }
-var _similarImpressionsPostedFor=null;
 
 function showErrorState(msg){
   var t=document.getElementById('view-target');

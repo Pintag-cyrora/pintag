@@ -342,6 +342,119 @@ function _ptApplyDataTrack(el, dataTrack) {
 }
 
 // ---------------------------------------------------------------------------
+// Viewport-based impression tracking (real listing exposure, not "was in
+// the result set" -- see the design writeup this implements). A card counts
+// as an impression ATTEMPT once it is >=50% visible for a continuous 500ms;
+// the attempt is a single, unbatched POST per card. The server's existing
+// 30-minute (session_id, property_id, event_type) dedup
+// (check_listing_event_dedup(), 20260811000000_restore_analytics_insert_
+// protections.sql) remains the SOLE authority on whether that attempt is
+// actually counted -- everything below only decides when to attempt, never
+// whether the attempt "counts".
+//
+// One IntersectionObserver per page (this file loads once per page), driven
+// off real crossings of the 0.5 threshold rather than polling: per the
+// IntersectionObserver spec, a single threshold value fires a new entry on
+// EVERY crossing of that value in either direction (both "became >=50%
+// visible" and "dropped below 50%"), so no separate 0-threshold entry is
+// needed just to detect entering/leaving.
+//
+// Per-element state (WeakMap, mirrors tracking.js's lastFired convention):
+// a pending dwell timer, and a `fired` flag so a card that has already
+// counted an impression is inert for the rest of its DOM lifetime (no
+// re-fire from scrolling it out and back into view).
+//
+// Separately, a short (5s) per-(source,propertyId) cooldown exists ONLY to
+// suppress an obviously-redundant POST *attempt* caused by a DOM rebuild
+// (e.g. a language toggle re-rendering an already-visible card as a brand
+// new element, which IntersectionObserver reports as instantly >=50%
+// visible on observe()). This cooldown is a client-side optimization, NOT
+// part of the impression's semantic definition -- it never decides whether
+// an impression counts, only whether this one obviously-duplicate attempt
+// is worth sending at all. The server's 30-minute dedup is authoritative
+// regardless of this cooldown's value.
+var _ptImpressionObserver = null;
+var _ptImpressionCardState = new WeakMap();   // element -> { timer, fired }
+var _ptImpressionCardOpts = new WeakMap();    // element -> { propertyId, source, onFire }
+var _ptImpressionLastAttempt = {};            // "<source>:<propertyId>" -> ms timestamp
+var PT_IMPRESSION_VISIBLE_RATIO = 0.5;
+var PT_IMPRESSION_DWELL_MS = 500;
+var PT_IMPRESSION_REBUILD_COOLDOWN_MS = 5000;
+
+function _ptImpressionAttemptKey(opts) {
+  return (opts.source || '') + ':' + opts.propertyId;
+}
+
+function _ptAttemptImpression(el) {
+  var opts = _ptImpressionCardOpts.get(el);
+  if (!opts) return;
+  var key = _ptImpressionAttemptKey(opts);
+  var now = Date.now();
+  var last = _ptImpressionLastAttempt[key];
+  if (last && (now - last) < PT_IMPRESSION_REBUILD_COOLDOWN_MS) return;
+  _ptImpressionLastAttempt[key] = now;
+  if (typeof opts.onFire === 'function') opts.onFire(opts.propertyId, opts.source);
+}
+
+function _ptHandleImpressionEntries(entries) {
+  entries.forEach(function (entry) {
+    var el = entry.target;
+    var state = _ptImpressionCardState.get(el) || { timer: null, fired: false };
+    if (state.fired) return;
+    var visible = entry.isIntersecting && entry.intersectionRatio >= PT_IMPRESSION_VISIBLE_RATIO;
+    if (visible) {
+      if (!state.timer) {
+        state.timer = setTimeout(function () {
+          state.timer = null;
+          state.fired = true;
+          _ptAttemptImpression(el);
+        }, PT_IMPRESSION_DWELL_MS);
+      }
+    } else if (state.timer) {
+      clearTimeout(state.timer);
+      state.timer = null;
+    }
+    _ptImpressionCardState.set(el, state);
+  });
+}
+
+function _ptGetImpressionObserver() {
+  if (_ptImpressionObserver) return _ptImpressionObserver;
+  if (typeof IntersectionObserver !== 'function') return null;
+  _ptImpressionObserver = new IntersectionObserver(_ptHandleImpressionEntries, { threshold: [PT_IMPRESSION_VISIBLE_RATIO] });
+  return _ptImpressionObserver;
+}
+
+// _ptObserveForImpression(el, opts) -- opts: { propertyId, source, onFire(propertyId, source) }.
+// onFire is the page's own hook that actually POSTs (each page keeps its
+// own postEvent(), never unified -- see components.js's OWNERSHIP note:
+// this only decides WHEN to call it). Silently does nothing when the
+// browser lacks IntersectionObserver, or opts has no propertyId -- an
+// impression is never counted by falling back to "assume visible".
+function _ptObserveForImpression(el, opts) {
+  if (!opts || !opts.propertyId) return;
+  var io = _ptGetImpressionObserver();
+  if (!io) return;
+  _ptImpressionCardOpts.set(el, opts);
+  _ptImpressionCardState.set(el, { timer: null, fired: false });
+  io.observe(el);
+}
+
+// _ptReleaseImpressionObserver(el) -- call before discarding a card's DOM
+// node (e.g. renderSimilarGrid()'s gridEl.innerHTML='' rebuild) so a
+// detached node's pending timer is cancelled and the observer stops
+// tracking it. listings.html's infinite-scroll grid never removes cards,
+// so it never needs this.
+function _ptReleaseImpressionObserver(el) {
+  var state = _ptImpressionCardState.get(el);
+  if (state && state.timer) clearTimeout(state.timer);
+  var io = _ptGetImpressionObserver();
+  if (io) io.unobserve(el);
+  _ptImpressionCardState.delete(el);
+  _ptImpressionCardOpts.delete(el);
+}
+
+// ---------------------------------------------------------------------------
 // Shared formatters -- so price/transaction-label logic exists exactly once,
 // not once per page (Rule E: "formatting logic should never be duplicated").
 // ---------------------------------------------------------------------------
@@ -1068,6 +1181,10 @@ function renderTransactionBadge(transactionType, lang) {
 //                       activity line, or dashboard.html's stats+actions).
 //   dataTrack          {type, propertyId, label, meta, ...} -> data-track-*
 //                       attributes, page decides its own tracking scheme.
+//   trackImpression    {propertyId, source, onFire(propertyId, source)} --
+//                       registers the card with the shared viewport-
+//                       impression observer (see _ptObserveForImpression
+//                       above); onFire is the page's own postEvent() call.
 //   onClick(event)      click handler on the card itself.
 //   tag                'a' (default) -- a real link to the public listing
 //                       page. 'div' -- a non-navigating container instead,
@@ -1087,6 +1204,7 @@ function renderPropertyCard(property, opts) {
   card.className = 'pt-card' + (opts.isFeatured ? ' pt-featured' : '');
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
   if (opts.onClick) card.addEventListener('click', opts.onClick);
+  if (opts.trackImpression) _ptObserveForImpression(card, opts.trackImpression);
 
   var rawTitle = p['title_' + lang] || p.title_en || '';
   var title = _ptEsc(rawTitle);
@@ -1356,7 +1474,8 @@ function _ptResolveCardContact(p, lang) {
 // Properties, and anywhere a property is referenced alongside other
 // content rather than as a primary grid tile.
 //
-// opts: lang, showSpecs (default true), dataTrack, onClick.
+// opts: lang, showSpecs (default true), dataTrack, trackImpression
+// ({propertyId, source, onFire}, see renderPropertyCard's opts doc), onClick.
 // ---------------------------------------------------------------------------
 function renderPropertyPreview(property, opts) {
   opts = opts || {};
@@ -1368,6 +1487,7 @@ function renderPropertyPreview(property, opts) {
   card.className = 'pt-preview';
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
   if (opts.onClick) card.addEventListener('click', opts.onClick);
+  if (opts.trackImpression) _ptObserveForImpression(card, opts.trackImpression);
 
   var title = _ptEsc(p['title_' + lang] || p.title_en || '');
   var district = _ptEsc(p['district_' + lang] || p.district_en || '');

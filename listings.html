@@ -1861,20 +1861,21 @@ function scheduleBehavioralEvents(sorted) {
       bedrooms: currentBedroomFilter === 'all' ? null : _bedBand.min,
       result_count: sorted.length
     });
-    if (!sorted.length) return;
-    var filtersSnapshot = { tx: currentTxFilter, type: currentTypeFilter, district: currentDistrictFilter, price: currentPriceBand, avail: currentAvailOnly, sort: currentSort };
-    var rows = sorted.filter(function(p){ return p.id; }).map(function(p, idx){
-      return {
-        property_id: p.id,
-        event_type: 'impression',
-        session_id: sessionId,
-        source: 'search',
-        search_position: idx + 1,
-        search_filters: filtersSnapshot
-      };
-    });
-    if (rows.length) postEvent('listing_events', rows);
   }, 500);
+}
+
+// Card impression attempt -- called by the shared viewport observer
+// (components.js's _ptObserveForImpression) once a card has been >=50%
+// visible for a continuous 500ms. One row per attempt, never batched; the
+// server's 30-minute dedup (check_listing_event_dedup()) decides whether it
+// is actually counted.
+function _ptFireCardImpression(propertyId, source) {
+  postEvent('listing_events', {
+    property_id: propertyId,
+    event_type: 'impression',
+    session_id: getOrCreateSessionId(),
+    source: source
+  });
 }
 
 // ── Open Graph / <title> / meta description — static today, structured
@@ -2126,6 +2127,7 @@ function renderListings() {
         track: 'listing-card', type: 'card', propertyId: p.id, label: p['title_'+lang] || p.title_en || '',
         meta: JSON.stringify({ position: idx + 1, featured: !!isFeaturedCard })
       } : null,
+      trackImpression: p.id ? { propertyId: p.id, source: 'search', onFire: _ptFireCardImpression } : null,
       onClick: p.id ? function() {
         postEvent('listing_events', { property_id: p.id, event_type: 'click', session_id: getOrCreateSessionId(), source: 'search', search_position: idx + 1 });
         _ptSaveListingsRestoreState(p, idx);

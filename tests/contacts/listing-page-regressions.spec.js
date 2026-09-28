@@ -194,13 +194,83 @@ test.describe('similar listings', () => {
   const sim = (o) => Object.assign({ id: 'sim-' + o.slug, status: 'active', workflow_status: 'active', market_status: 'available', property_type: 'apartment', transaction_type: 'for_rent', title_en: 'Sim ' + o.slug, images: [], price_amount: 400, price_currency: 'USD', price_frequency: 'monthly', created_at: '2026-08-01T00:00:00Z' }, o);
   const impressions = (posts) => posts.flat().filter((e) => e && e.event_type === 'impression' && e.source === 'similar');
 
-  test('impressions are posted once per result set, not again on every language switch', async ({ page }) => {
+  // Viewport-based impression tracking: a card only attempts an impression
+  // once it has been >=50% visible for a continuous 500ms (see
+  // components.js's _ptObserveForImpression). #similar-section sits below
+  // the fold on a normal listing.html load, so every test here scrolls it
+  // into view first -- these are no longer "posted the instant the fetch
+  // resolves" like the old batch mechanism this replaces.
+
+  test('a similar card attempts exactly one impression per card, once scrolled into view and dwelt 500ms', async ({ page }) => {
     const { posts, errors } = await openWithSimilar(page, [sim({ slug: 'one' }), sim({ slug: 'two' })]);
+    await page.locator('#similar-section').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(700);
     expect(impressions(posts)).toHaveLength(2);
+    expect(errors.map((e) => e.message)).toEqual([]);
+  });
+
+  test('scrolling the similar section out of view before the 500ms dwell completes cancels the attempt', async ({ page }) => {
+    const { posts, errors } = await openWithSimilar(page, [sim({ slug: 'one' })]);
+    await page.locator('#similar-section').scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, 0)); // back away well inside the dwell window
+    await page.waitForTimeout(700);
+    expect(impressions(posts)).toHaveLength(0);
+    expect(errors.map((e) => e.message)).toEqual([]);
+  });
+
+  test('a language toggle rebuild of an already-visible card does not immediately duplicate the attempt (client cooldown)', async ({ page }) => {
+    // This asserts the client-side rebuild cooldown ONLY -- it is an
+    // optimization to avoid an obviously-redundant attempt, never the
+    // semantic definition of an impression (the server's 30-minute dedup
+    // is what actually decides whether an attempt counts; see the next
+    // test, which proves the cooldown is not a permanent block).
+    const { posts, errors } = await openWithSimilar(page, [sim({ slug: 'one' }), sim({ slug: 'two' })]);
+    await page.locator('#similar-section').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(700);
+    expect(impressions(posts)).toHaveLength(2);
+
     await page.evaluate(() => setLang('lo'));
     await page.evaluate(() => setLang('zh'));
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(700); // still well inside the 5s cooldown
     expect(impressions(posts)).toHaveLength(2);
+    expect(errors.map((e) => e.message)).toEqual([]);
+  });
+
+  test('once the client cooldown expires, a still-visible rebuilt card can attempt again (proves the cooldown is not the dedup authority)', async ({ page }) => {
+    const { posts, errors } = await openWithSimilar(page, [sim({ slug: 'one' })]);
+    // Shrink the cooldown for this test only -- components.js declares it as
+    // a plain top-level var, not a module constant, specifically so a real
+    // impression's dwell/threshold behavior can be tested without waiting
+    // out the real 5s in every other test in this file.
+    await page.evaluate(() => { PT_IMPRESSION_REBUILD_COOLDOWN_MS = 50; });
+    await page.locator('#similar-section').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(700);
+    expect(impressions(posts)).toHaveLength(1);
+
+    await page.waitForTimeout(100); // past the shrunk cooldown
+    await page.evaluate(() => setLang('lo')); // rebuilds the still-visible card
+    await page.waitForTimeout(700);
+    expect(impressions(posts).length).toBeGreaterThan(1);
+    expect(errors.map((e) => e.message)).toEqual([]);
+  });
+
+  test('impression tracking does not change or duplicate the similar card\'s existing click tracking', async ({ page }) => {
+    const { posts, errors } = await openWithSimilar(page, [sim({ slug: 'one' })]);
+    await page.locator('#similar-section').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(700);
+    expect(impressions(posts)).toHaveLength(1);
+
+    // The click handler's fetch(keepalive) fires synchronously before the
+    // browser acts on the card's default navigation -- aborting the
+    // navigation request itself (rather than ctrl-clicking) keeps the test
+    // on this page without affecting when the tracking POST is sent.
+    await page.route('**/listing.html*', (r) => r.abort());
+    await page.locator('#similar-grid .pt-preview').first().click();
+    await page.waitForTimeout(200);
+    const clickRows = posts.flat().filter((e) => e && e.event_type === 'click' && e.source === 'similar');
+    expect(clickRows).toHaveLength(1);
+    expect(clickRows[0].property_id).toBe('sim-one');
+    expect(impressions(posts)).toHaveLength(1); // click never adds a second impression attempt
     expect(errors.map((e) => e.message)).toEqual([]);
   });
 
