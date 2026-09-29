@@ -42,6 +42,12 @@ name: "DIAGNOSTIC: Production security drift (is_admin / rls_auto_enable)"
 # fires the one run this diagnostic exists for. workflow_dispatch is kept
 # too, for any later re-run once this is merged. Never scheduled.
 #
+#
+# PHASE 2 (2026-09-29): SQL replaced with a second set of read-only catalog queries, run at the
+# user's explicit request, to verify the ensure_rls event trigger and the is_admin() search_path
+# question before any remediation is proposed. Same guarantees as above: SELECT-only, READ ONLY
+# transaction, shell safety gate, no writes, no secrets printed.
+#
 # This workflow is intentionally temporary: delete it once the findings
 # below have been acted on (REVOKE, ALLOWLIST, or otherwise resolved).
 
@@ -90,116 +96,257 @@ jobs:
 
           BEGIN READ ONLY;
 
-          \echo '================ QUERY 1: FUNCTION CATALOG DETAIL (all schemas, all overloads) ================'
+          \echo '=== P2-0: SESSION - connected role, server version, read-only confirmation ==='
+          SELECT current_user AS connected_role, current_setting('server_version') AS server_version, current_setting('transaction_read_only') AS transaction_read_only;
+
+          \echo '=== P2-0b: ROLE FLAGS ==='
+          SELECT rolname, rolsuper, rolinherit, rolbypassrls, rolcanlogin
+          FROM pg_roles
+          WHERE rolname IN ('postgres','supabase_admin','anon','authenticated','service_role','authenticator','backup_ro')
+          ORDER BY rolname;
+
+          \echo '=== P2-0c: ROLE MEMBERSHIP - the roles that anon, authenticated, service_role and backup_ro are members of ==='
+          SELECT pg_get_userbyid(m.member) AS member_role, pg_get_userbyid(m.roleid) AS belongs_to, m.admin_option
+          FROM pg_auth_members m
+          WHERE m.member IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role','backup_ro'))
+          ORDER BY 1, 2;
+
+          \echo '=== P2-1: EVENT TRIGGERS (all) - exact catalog definition, enabled state, function binding, owner ==='
           SELECT
-            n.nspname                    AS schema,
-            p.proname                    AS function_name,
-            p.oid::text                  AS oid,
-            pg_get_function_identity_arguments(p.oid)    AS args,
-            pg_get_function_result(p.oid)                AS return_type,
-            p.prosecdef                   AS security_definer,
-            pg_get_userbyid(p.proowner)                  AS owner,
-            p.proconfig                   AS config_settings,
-            CASE p.provolatile WHEN 'i' THEN 'IMMUTABLE' WHEN 's' THEN 'STABLE' WHEN 'v' THEN 'VOLATILE' ELSE p.provolatile::text END AS volatility,
-            has_function_privilege('public', p.oid, 'EXECUTE')        AS public_execute,
-            has_function_privilege('anon', p.oid, 'EXECUTE')          AS anon_execute,
-            has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated_execute,
-            has_function_privilege('service_role', p.oid, 'EXECUTE')  AS service_role_execute
-          FROM pg_proc p
-          JOIN pg_namespace n ON n.oid = p.pronamespace
-          WHERE p.proname IN ('is_admin','rls_auto_enable')
-            AND n.nspname NOT IN ('pg_catalog','information_schema')
-            AND n.nspname NOT LIKE 'pg\_toast%'
-          ORDER BY p.proname, n.nspname, p.oid;
+            e.oid::text                              AS evt_oid,
+            e.evtname                                AS name,
+            e.evtevent                               AS fires_on,
+            e.evttags                                AS only_for_tags,
+            e.evtenabled                             AS enabled_code,
+            CASE e.evtenabled
+              WHEN 'O' THEN 'ENABLED (fires in origin/local sessions)'
+              WHEN 'R' THEN 'ENABLED (replica sessions only)'
+              WHEN 'A' THEN 'ENABLED (always)'
+              WHEN 'D' THEN 'DISABLED'
+              ELSE 'unknown' END                     AS enabled_meaning,
+            pg_get_userbyid(e.evtowner)              AS evt_owner,
+            r.rolsuper                               AS owner_is_superuser,
+            e.evtfoid::text                          AS function_oid,
+            e.evtfoid::regprocedure::text            AS function_signature,
+            obj_description(e.oid, 'pg_event_trigger') AS comment
+          FROM pg_event_trigger e
+          JOIN pg_roles r ON r.oid = e.evtowner
+          ORDER BY e.evtname;
 
-          \echo '================ QUERY 1b: COMPLETE FUNCTION DEFINITIONS (pg_get_functiondef) ================'
+          \echo '=== P2-1b: BINDING PROOF - is the event trigger bound to the SAME oid as public.rls_auto_enable ==='
           SELECT
-            n.nspname AS schema,
-            p.proname AS function_name,
-            p.oid::text AS oid,
-            pg_get_functiondef(p.oid) AS definition
-          FROM pg_proc p
+            e.evtname                          AS event_trigger,
+            e.evtfoid::text                    AS bound_function_oid,
+            p.oid::text                        AS rls_auto_enable_oid,
+            (e.evtfoid = p.oid)                AS bound_to_rls_auto_enable,
+            pg_get_userbyid(p.proowner)        AS function_owner,
+            p.prosecdef                        AS security_definer,
+            p.proconfig                        AS function_config,
+            p.prorettype::regtype::text        AS returns,
+            p.proacl::text                     AS raw_acl_now
+          FROM pg_event_trigger e
+          JOIN pg_proc p ON p.oid = e.evtfoid
           JOIN pg_namespace n ON n.oid = p.pronamespace
-          WHERE p.proname IN ('is_admin','rls_auto_enable')
-            AND n.nspname NOT IN ('pg_catalog','information_schema')
-            AND n.nspname NOT LIKE 'pg\_toast%'
-          ORDER BY p.proname, n.nspname, p.oid;
+          WHERE p.proname = 'rls_auto_enable' AND n.nspname = 'public';
 
-          \echo '================ QUERY 2a: WHAT is_admin/rls_auto_enable DEPEND ON (pg_depend, objid = the function) ================'
+          \echo '=== P2-1c: pg_depend rows recorded FOR event triggers ==='
+          SELECT pg_describe_object(d.classid, d.objid, d.objsubid) AS dependent_object, d.deptype,
+                 pg_describe_object(d.refclassid, d.refobjid, d.refobjsubid) AS depends_on
+          FROM pg_depend d
+          WHERE d.classid = 'pg_event_trigger'::regclass
+          ORDER BY 1;
+
+          \echo '=== P2-1d: ACL ENTRIES WITH GRANTOR for both functions (who granted, so who can remove) ==='
           SELECT
-            p.proname AS function_name,
-            pd.deptype,
-            pd.refclassid::regclass AS referenced_catalog,
-            pg_describe_object(pd.refclassid, pd.refobjid, pd.refobjsubid) AS referenced_object
-          FROM pg_depend pd
-          JOIN pg_proc p ON p.oid = pd.objid AND pd.classid = 'pg_proc'::regclass
-          JOIN pg_namespace n ON n.oid = p.pronamespace
-          WHERE p.proname IN ('is_admin','rls_auto_enable')
-            AND n.nspname NOT IN ('pg_catalog','information_schema');
-
-          \echo '================ QUERY 2b: WHAT DEPENDS ON is_admin/rls_auto_enable (would fail if the function were removed) ================'
-          SELECT
-            p.proname AS referenced_function,
-            pd.deptype,
-            pd.classid::regclass AS dependent_catalog,
-            pg_describe_object(pd.classid, pd.objid, pd.objsubid) AS dependent_object
-          FROM pg_depend pd
-          JOIN pg_proc p ON p.oid = pd.refobjid AND pd.refclassid = 'pg_proc'::regclass
-          JOIN pg_namespace n ON n.oid = p.pronamespace
-          WHERE p.proname IN ('is_admin','rls_auto_enable')
-            AND n.nspname NOT IN ('pg_catalog','information_schema');
-
-          \echo '================ QUERY 2c: TRIGGERS whose function is is_admin/rls_auto_enable ================'
-          SELECT t.tgname AS trigger_name, c.relname AS on_table, p.proname AS function_name
-          FROM pg_trigger t
-          JOIN pg_proc p ON p.oid = t.tgfoid
-          JOIN pg_class c ON c.oid = t.tgrelid
-          WHERE p.proname IN ('is_admin','rls_auto_enable') AND NOT t.tgisinternal;
-
-          \echo '================ QUERY 2d: RLS POLICIES referencing these names in USING/WITH CHECK ================'
-          SELECT schemaname, tablename, policyname, cmd, roles, qual, with_check
-          FROM pg_policies
-          WHERE qual ILIKE '%is_admin%' OR with_check ILIKE '%is_admin%'
-             OR qual ILIKE '%rls_auto_enable%' OR with_check ILIKE '%rls_auto_enable%';
-
-          \echo '================ QUERY 2e: VIEWS referencing these function names ================'
-          SELECT n.nspname AS schema, c.relname AS view_name, c.relkind
-          FROM pg_class c
-          JOIN pg_namespace n ON n.oid = c.relnamespace
-          WHERE c.relkind IN ('v','m')
-            AND (pg_get_viewdef(c.oid) ILIKE '%is_admin%' OR pg_get_viewdef(c.oid) ILIKE '%rls_auto_enable%');
-
-          \echo '================ QUERY 2f: EXTENSION MEMBERSHIP (owned by an installed extension?) ================'
-          SELECT
-            n.nspname AS schema, p.proname AS function_name,
-            e.extname AS owning_extension
-          FROM pg_proc p
-          JOIN pg_namespace n ON n.oid = p.pronamespace
-          LEFT JOIN pg_depend d ON d.objid = p.oid AND d.classid = 'pg_proc'::regclass AND d.deptype = 'e'
-          LEFT JOIN pg_extension e ON e.oid = d.refobjid
-          WHERE p.proname IN ('is_admin','rls_auto_enable')
-            AND n.nspname NOT IN ('pg_catalog','information_schema');
-
-          \echo '================ QUERY 3: OTHER FUNCTION BODIES REFERENCING is_admin / rls_auto_enable BY NAME ================'
-          SELECT n.nspname AS schema, p.proname AS calling_function, p.oid::text AS oid
-          FROM pg_proc p
-          JOIN pg_namespace n ON n.oid = p.pronamespace
-          WHERE n.nspname NOT IN ('pg_catalog','information_schema')
-            AND p.proname NOT IN ('is_admin','rls_auto_enable')
-            AND p.prokind = 'f'
-            AND (pg_get_functiondef(p.oid) ILIKE '%is_admin%' OR pg_get_functiondef(p.oid) ILIKE '%rls_auto_enable%');
-
-          \echo '================ QUERY 4: EXPLICIT ACL GRANTS (aclexplode -- who can EXECUTE, and how) ================'
-          SELECT
-            n.nspname AS schema, p.proname AS function_name, p.oid::text AS oid,
-            CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END AS grantee_role,
-            a.privilege_type, a.is_grantable
+            p.proname, p.oid::text AS oid, p.proacl::text AS raw_acl, pg_get_userbyid(p.proowner) AS owner,
+            CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END AS grantee,
+            a.grantor::regrole::text AS grantor, a.privilege_type, a.is_grantable
           FROM pg_proc p
           JOIN pg_namespace n ON n.oid = p.pronamespace
           CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
-          WHERE p.proname IN ('is_admin','rls_auto_enable')
-            AND n.nspname NOT IN ('pg_catalog','information_schema')
-          ORDER BY p.proname, grantee_role, a.privilege_type;
+          WHERE n.nspname = 'public' AND p.proname IN ('is_admin','rls_auto_enable')
+          ORDER BY p.proname, 5;
+
+          \echo '=== P2-2: DEFAULT PRIVILEGES (why newly added functions get broad EXECUTE) ==='
+          SELECT pg_get_userbyid(defaclrole) AS for_role, defaclnamespace::regnamespace::text AS in_schema,
+                 defaclobjtype AS objtype, defaclacl::text AS acl
+          FROM pg_default_acl
+          ORDER BY 1, 2, 3;
+
+          \echo '=== P2-3: VERIFIER CHECK 10 PREDICATE, EXACTLY AS WRITTEN, RUN LIVE (read-only) ==='
+          SELECT
+            p.oid::regprocedure::text AS function,
+            p.prorettype::regtype::text AS returns,
+            has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_can_execute_now,
+            EXISTS (
+              SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) x
+              WHERE x.privilege_type = 'EXECUTE'
+                AND x.grantee <> (SELECT oid FROM pg_roles WHERE rolname = 'anon')
+                AND CASE WHEN x.grantee = 0 THEN false ELSE pg_has_role('anon', x.grantee, 'USAGE') END
+            ) AS anon_keeps_access_via_role_membership
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.prosecdef
+            AND p.prorettype <> 'trigger'::regtype
+            AND has_function_privilege('anon', p.oid, 'EXECUTE')
+            AND pg_get_functiondef(p.oid) NOT LIKE '%is_pintag_admin%'
+            AND p.proname NOT IN (
+              'public_listing_stats','increment_listing_view','market_transition_stats',
+              'is_pintag_admin','is_pintag_staff',
+              'check_lead_rate_limit','check_listing_event_dedup','check_event_target_ceiling',
+              'check_search_event_rate_limit','check_ui_event_rate_limit',
+              'check_page_view_rate_limit','check_listing_event_burst_limit')
+          ORDER BY 1;
+
+          \echo '=== P2-3b: SAME PREDICATE with is_admin and rls_auto_enable excluded - must be 0 rows (no third offender) ==='
+          SELECT p.oid::regprocedure::text AS function
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.prosecdef
+            AND p.prorettype <> 'trigger'::regtype
+            AND has_function_privilege('anon', p.oid, 'EXECUTE')
+            AND pg_get_functiondef(p.oid) NOT LIKE '%is_pintag_admin%'
+            AND p.proname NOT IN (
+              'is_admin','rls_auto_enable',
+              'public_listing_stats','increment_listing_view','market_transition_stats',
+              'is_pintag_admin','is_pintag_staff',
+              'check_lead_rate_limit','check_listing_event_dedup','check_event_target_ceiling',
+              'check_search_event_rate_limit','check_ui_event_rate_limit',
+              'check_page_view_rate_limit','check_listing_event_burst_limit')
+          ORDER BY 1;
+
+          \echo '=== P2-4: every relation named profiles in ANY schema (what is_admin resolves, and shadowing exposure) ==='
+          SELECT n.nspname AS schema, c.relname, c.relkind, pg_get_userbyid(c.relowner) AS owner,
+                 c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced
+          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relname = 'profiles'
+          ORDER BY 1;
+
+          \echo '=== P2-4b: the id and role columns of profiles ==='
+          SELECT n.nspname AS schema, c.relname, a.attname, format_type(a.atttypid, a.atttypmod) AS type, a.attnotnull AS not_null
+          FROM pg_attribute a
+          JOIN pg_class c ON c.oid = a.attrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relname = 'profiles' AND a.attnum > 0 AND NOT a.attisdropped AND a.attname IN ('id','role')
+          ORDER BY 1, 3;
+
+          \echo '=== P2-4c: RLS policies on profiles ==='
+          SELECT schemaname, tablename, policyname, cmd, roles, qual, with_check
+          FROM pg_policies
+          WHERE tablename = 'profiles'
+          ORDER BY 1, 2, 3;
+
+          \echo '=== P2-5: auth.uid() - definition, owner, config ==='
+          SELECT n.nspname AS schema, p.proname, pg_get_function_result(p.oid) AS returns, pg_get_userbyid(p.proowner) AS owner,
+                 p.prosecdef, p.proconfig, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec,
+                 pg_get_functiondef(p.oid) AS definition
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'auth' AND p.proname = 'uid';
+
+          \echo '=== P2-6: who holds which privilege on schemas public and auth (search_path hijack preconditions) ==='
+          SELECT n.nspname AS schema, pg_get_userbyid(n.nspowner) AS owner,
+                 CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END AS grantee, a.privilege_type
+          FROM pg_namespace n
+          CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a
+          WHERE n.nspname IN ('public','auth')
+          ORDER BY 1, 3, 4;
+
+          \echo '=== P2-6b: temporary-table privilege on this database ==='
+          SELECT r AS role, has_database_privilege(r, current_database(), 'TEMP') AS can_make_temp_tables
+          FROM unnest(ARRAY['anon','authenticated','service_role']) AS r;
+
+          \echo '=== P2-7: the CURRENT admin boundary - is_pintag_admin / is_pintag_staff ==='
+          SELECT p.oid::regprocedure::text AS function, p.prosecdef, p.proconfig,
+                 has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec,
+                 has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated_exec
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.proname IN ('is_pintag_admin','is_pintag_staff')
+          ORDER BY 1;
+
+          SELECT count(*) AS policies_referencing_is_pintag_admin
+          FROM pg_policies
+          WHERE qual ILIKE '%is\_pintag\_admin%' OR with_check ILIKE '%is\_pintag\_admin%';
+
+          \echo '=== P2-8: search_path convention across ALL SECURITY DEFINER functions in public (what this codebase already uses) ==='
+          SELECT coalesce(p.proconfig::text, '(unpinned)') AS proconfig, count(*) AS n,
+                 string_agg(p.proname, ', ' ORDER BY p.proname) AS functions
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.prosecdef AND p.prokind = 'f'
+          GROUP BY 1
+          ORDER BY 2 DESC;
+
+          \echo '=== P2-9: EXHAUSTIVE reference scan. Rows for label is_admin = a reference exists; the control label must show hits in every kind that can hold one ==='
+          WITH pats(pat, label) AS (
+            VALUES ('%is\_admin%', 'is_admin'), ('%is\_pintag\_admin%', 'CONTROL is_pintag_admin')
+          ),
+          hits AS (
+            SELECT pt.label, 'column default' AS kind, adrelid::regclass::text AS object
+              FROM pg_attrdef, pats pt WHERE pg_get_expr(adbin, adrelid) ILIKE pt.pat
+            UNION ALL
+            SELECT pt.label, 'constraint', conname
+              FROM pg_constraint, pats pt WHERE pg_get_constraintdef(oid) ILIKE pt.pat
+            UNION ALL
+            SELECT pt.label, 'index', indexrelid::regclass::text
+              FROM pg_index, pats pt WHERE pg_get_indexdef(indexrelid) ILIKE pt.pat
+            UNION ALL
+            SELECT pt.label, 'trigger definition', tgname
+              FROM pg_trigger, pats pt WHERE NOT tgisinternal AND pg_get_triggerdef(oid) ILIKE pt.pat
+            UNION ALL
+            SELECT pt.label, 'rule or view', ev_class::regclass::text
+              FROM pg_rewrite, pats pt WHERE pg_get_ruledef(oid) ILIKE pt.pat
+            UNION ALL
+            SELECT pt.label, 'policy', schemaname || '.' || tablename || '.' || policyname
+              FROM pg_policies, pats pt WHERE coalesce(qual,'') ILIKE pt.pat OR coalesce(with_check,'') ILIKE pt.pat
+            UNION ALL
+            SELECT pt.label, 'function or procedure source (all schemas, all kinds)', n.nspname || '.' || p.proname
+              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace, pats pt
+              WHERE p.prosrc ILIKE pt.pat AND p.proname NOT IN ('is_admin','is_pintag_admin')
+            UNION ALL
+            SELECT pt.label, 'sql-standard function body (prosqlbody)', n.nspname || '.' || p.proname
+              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace, pats pt
+              WHERE p.prosqlbody IS NOT NULL AND p.prosqlbody::text ILIKE pt.pat AND p.proname NOT IN ('is_admin','is_pintag_admin')
+          )
+          SELECT label, kind, count(*) AS hits
+          FROM hits
+          GROUP BY label, kind
+          ORDER BY label DESC, kind;
+
+          \echo '=== P2-9b: scheduled jobs (pg_cron) mentioning is_admin ==='
+          SELECT (to_regclass('cron.job') IS NOT NULL) AS has_cron \gset
+          \if :has_cron
+            SELECT has_table_privilege(current_user, 'cron.job', 'SELECT') AS cron_readable \gset
+            \if :cron_readable
+              SELECT jobid, jobname, left(command, 160) AS command_start FROM cron.job WHERE command ILIKE '%is\_admin%';
+            \else
+              \echo 'cron.job exists but the connected role cannot read it: skipped'
+            \endif
+          \else
+            \echo 'pg_cron is not installed (no cron.job table)'
+          \endif
+
+          \echo '=== P2-10: MIGRATION STATE - applied versions from 20260901000000 onward ==='
+          SELECT (to_regclass('supabase_migrations.schema_migrations') IS NOT NULL) AS has_mig \gset
+          \if :has_mig
+            SELECT has_table_privilege(current_user, 'supabase_migrations.schema_migrations', 'SELECT') AS mig_readable \gset
+            \if :mig_readable
+              SELECT version FROM supabase_migrations.schema_migrations WHERE version >= '20260901000000' ORDER BY version;
+            \else
+              \echo 'schema_migrations exists but the connected role cannot read it: skipped'
+            \endif
+          \else
+            \echo 'supabase_migrations.schema_migrations not found'
+          \endif
+
+          \echo '=== P2-4d: counts only (no identities) - rows in public.profiles and how many carry role admin ==='
+          SELECT (to_regclass('public.profiles') IS NOT NULL) AS profiles_exists \gset
+          \if :profiles_exists
+            SELECT has_table_privilege(current_user, 'public.profiles', 'SELECT') AS profiles_readable \gset
+            \if :profiles_readable
+              SELECT count(*) AS profile_rows, count(*) FILTER (WHERE role = 'admin') AS rows_with_role_admin FROM public.profiles;
+            \else
+              \echo 'public.profiles exists but the connected role cannot read it: count skipped'
+            \endif
+          \else
+            \echo 'public.profiles does not exist'
+          \endif
 
           ROLLBACK;
           SQL_EOF
