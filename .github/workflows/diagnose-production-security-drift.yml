@@ -137,7 +137,7 @@ jobs:
           WHERE p.proname IN ('is_admin','rls_auto_enable')
             AND n.nspname NOT IN ('pg_catalog','information_schema');
 
-          \echo '================ QUERY 2b: WHAT DEPENDS ON is_admin/rls_auto_enable (would break on DROP) ================'
+          \echo '================ QUERY 2b: WHAT DEPENDS ON is_admin/rls_auto_enable (would fail if the function were removed) ================'
           SELECT
             p.proname AS referenced_function,
             pd.deptype,
