@@ -399,9 +399,33 @@ env:
   #     intelligence_daily_metrics() body references lead_events.unit_type_id/
   #     leads.unit_type_id directly, so it cannot even be created until
   #     20260921000000 has applied). EXPECTED_MIGRATION_BOUNDARY below is set
-  #     to 20260921010000 specifically so this workflow can never reach
-  #     20260922000000, independent of whether it is ever added here by
-  #     mistake — see the boundary mechanism described above.
+  #     (now to 20260921020000, see the next entry) specifically so this
+  #     workflow can never reach 20260922000000, independent of whether it is
+  #     ever added here by mistake — see the boundary mechanism described above.
+  # 20260921020000_harden_is_admin_and_rls_auto_enable.sql — reviewed and
+  # authorized deliberately (2026-09-29 read-only production diagnostic, run
+  # 36540763273 and follow-ups, plus the API Gateway log check). This is the
+  # human inspection the 20260921010000 entry above said was still needed for
+  # is_admin and rls_auto_enable. Privileges and one function setting only:
+  #   * public.is_admin(): SET search_path = public, pg_temp (it was unpinned);
+  #     REVOKE EXECUTE FROM PUBLIC and anon; GRANT EXECUTE TO authenticated,
+  #     service_role (already held; a no-op). Legacy pre-breach primitive with
+  #     no policy/view/trigger/function dependency, no caller in any branch or
+  #     history of this repository, and zero requests in the 7 days of API
+  #     Gateway logs this plan retains (is_pintag_admin, as a control, is
+  #     called successfully in that window).
+  #   * public.rls_auto_enable(): REVOKE EXECUTE FROM PUBLIC, anon,
+  #     authenticated. It RETURNS event_trigger, so it cannot be called
+  #     directly, and firing the ensure_rls event trigger performs no
+  #     EXECUTE-ACL check; service_role, backup_ro and its search_path
+  #     (pg_catalog) are left as they are.
+  #   * Idempotent and wrapped in DO ... EXCEPTION WHEN undefined_function.
+  #     Rollback SQL is at the bottom of the migration file.
+  #   * Neither function has a CREATE FUNCTION in this repository's history.
+  #   * Deliberately NOT part of this authorization: 20260922000000, which
+  #     stays above EXPECTED_MIGRATION_BOUNDARY and therefore invisible to
+  #     this workflow. Nothing in scripts/verify-production-security.sql is
+  #     modified or allowlisted.
   EXPECTED_MIGRATIONS: |
     20260813000000
     20260817000000
@@ -420,12 +444,13 @@ env:
     20260920000000
     20260921000000
     20260921010000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql + 20260918000000_intelligence_vientiane_calendar.sql + 20260920000000_intelligence_demand_supply_gap.sql + 20260921000000_lead_unit_attribution.sql (fixes a live production incident — see review note above) + 20260921010000_revoke_public_execute_analytics_and_ownership_rpcs.sql'
+    20260921020000
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql + 20260918000000_intelligence_vientiane_calendar.sql + 20260920000000_intelligence_demand_supply_gap.sql + 20260921000000_lead_unit_attribution.sql (fixes a live production incident — see review note above) + 20260921010000_revoke_public_execute_analytics_and_ownership_rpcs.sql + 20260921020000_harden_is_admin_and_rls_auto_enable.sql'
   # The highest migration version this run may ever apply. Must equal the
   # highest entry in EXPECTED_MIGRATIONS above — asserted by the "Build
   # boundary-filtered Supabase work directory" step, which fails closed if
   # they disagree. See the boundary mechanism described in this file's header.
-  EXPECTED_MIGRATION_BOUNDARY: '20260921010000'
+  EXPECTED_MIGRATION_BOUNDARY: '20260921020000'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 
