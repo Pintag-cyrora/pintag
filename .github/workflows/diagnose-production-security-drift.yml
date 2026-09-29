@@ -1,0 +1,259 @@
+name: "DIAGNOSTIC: Production security drift (is_admin / rls_auto_enable)"
+
+# TEMPORARY, READ-ONLY diagnostic workflow. Created to close the
+# 2026-09-21 / 2026-09-24 unresolved finding in
+# scripts/verify-production-security.sql's "no UNEXPECTED ungated
+# SECURITY DEFINER function is callable by anon" check: is_admin and
+# rls_auto_enable have no CREATE FUNCTION anywhere in this repository's
+# migration history (confirmed by two independent full-repo audits -- see
+# supabase/migrations/20260921010000_revoke_public_execute_analytics_and_ownership_rpcs.sql
+# and this repo's apply-migration.yml, both of which explain the same gap
+# and deliberately leave both functions untouched pending exactly this
+# kind of live-catalog inspection). This workflow inspects their LIVE
+# definitions so a human can decide REVOKE / ALLOWLIST / INVESTIGATE
+# FURTHER with real evidence instead of guessing.
+#
+# SAFETY (all of these are load-bearing, not decorative):
+#   - SELECT / catalog inspection only. No CREATE/ALTER/DROP/GRANT/REVOKE/
+#     INSERT/UPDATE/DELETE/TRUNCATE/COPY/CALL/DO anywhere in the SQL this
+#     workflow runs -- enforced twice: (1) the SQL is embedded directly
+#     below, readable in this diff; (2) a shell-level grep gate aborts the
+#     job if the SQL file ever contains a write/DDL keyword, BEFORE psql
+#     is ever invoked against production.
+#   - The DB session is put into READ ONLY mode (BEGIN READ ONLY) before
+#     any catalog query runs, and a separate step independently confirms
+#     current_setting('transaction_read_only') actually reports 'on'
+#     before the main diagnostic proceeds -- it fails closed if the
+#     connection cannot be made read-only, rather than silently
+#     continuing.
+#   - Reuses the EXISTING production-backup environment and its EXISTING
+#     PINTAG_PROD_DB_URL secret (the same one verify-production-security.yml
+#     and image-integrity.yml already use) -- no new credential is created.
+#   - Never echoes the connection string, a password, or any other secret.
+#     No step touching PINTAG_PROD_DB_URL uses `set -x`. GitHub Actions'
+#     own secret redaction is an additional backstop on top of that.
+#   - Does NOT modify verify-production-security.yml, any migration file,
+#     or any production object. Read-only by construction, not by promise.
+#
+# TRIGGERS: this branch is explicitly NOT to be merged into main yet, and
+# workflow_dispatch only becomes invokable via the GitHub UI/API once a
+# workflow file is registered on the default branch -- so this also runs
+# on a push to this exact branch, which needs no such registration and
+# fires the one run this diagnostic exists for. workflow_dispatch is kept
+# too, for any later re-run once this is merged. Never scheduled.
+#
+# This workflow is intentionally temporary: delete it once the findings
+# below have been acted on (REVOKE, ALLOWLIST, or otherwise resolved).
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/diagnose-is-admin-rls-auto-enable
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-production-security-drift
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Inspect is_admin / rls_auto_enable (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-backup
+    env:
+      PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Verify DB URL secret is present
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Write the diagnostic SQL (SELECT / catalog inspection only)
+        run: |
+          cat > diagnose.sql <<'SQL_EOF'
+          \pset border 2
+          \pset pager off
+          \set ON_ERROR_STOP on
+
+          BEGIN READ ONLY;
+
+          \echo '================ QUERY 1: FUNCTION CATALOG DETAIL (all schemas, all overloads) ================'
+          SELECT
+            n.nspname                                    AS schema,
+            p.proname                                    AS function_name,
+            p.oid::text                                  AS oid,
+            pg_get_function_identity_arguments(p.oid)    AS args,
+            pg_get_function_result(p.oid)                AS return_type,
+            p.prosecdef                                  AS security_definer,
+            pg_get_userbyid(p.proowner)                  AS owner,
+            p.proconfig                                  AS config_settings,
+            CASE p.provolatile WHEN 'i' THEN 'IMMUTABLE' WHEN 's' THEN 'STABLE' WHEN 'v' THEN 'VOLATILE' ELSE p.provolatile::text END AS volatility,
+            has_function_privilege('public', p.oid, 'EXECUTE')        AS public_execute,
+            has_function_privilege('anon', p.oid, 'EXECUTE')          AS anon_execute,
+            has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated_execute,
+            has_function_privilege('service_role', p.oid, 'EXECUTE')  AS service_role_execute
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema')
+            AND n.nspname NOT LIKE 'pg\_toast%'
+          ORDER BY p.proname, n.nspname, p.oid;
+
+          \echo '================ QUERY 1b: COMPLETE FUNCTION DEFINITIONS (pg_get_functiondef) ================'
+          SELECT
+            n.nspname AS schema,
+            p.proname AS function_name,
+            p.oid::text AS oid,
+            pg_get_functiondef(p.oid) AS definition
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema')
+            AND n.nspname NOT LIKE 'pg\_toast%'
+          ORDER BY p.proname, n.nspname, p.oid;
+
+          \echo '================ QUERY 2a: WHAT is_admin/rls_auto_enable DEPEND ON (pg_depend, objid = the function) ================'
+          SELECT
+            p.proname AS function_name,
+            pd.deptype,
+            pd.refclassid::regclass AS referenced_catalog,
+            pg_describe_object(pd.refclassid, pd.refobjid, pd.refobjsubid) AS referenced_object
+          FROM pg_depend pd
+          JOIN pg_proc p ON p.oid = pd.objid AND pd.classid = 'pg_proc'::regclass
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema');
+
+          \echo '================ QUERY 2b: WHAT DEPENDS ON is_admin/rls_auto_enable (would break on DROP) ================'
+          SELECT
+            p.proname AS referenced_function,
+            pd.deptype,
+            pd.classid::regclass AS dependent_catalog,
+            pg_describe_object(pd.classid, pd.objid, pd.objsubid) AS dependent_object
+          FROM pg_depend pd
+          JOIN pg_proc p ON p.oid = pd.refobjid AND pd.refclassid = 'pg_proc'::regclass
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema');
+
+          \echo '================ QUERY 2c: TRIGGERS whose function is is_admin/rls_auto_enable ================'
+          SELECT t.tgname AS trigger_name, c.relname AS on_table, p.proname AS function_name
+          FROM pg_trigger t
+          JOIN pg_proc p ON p.oid = t.tgfoid
+          JOIN pg_class c ON c.oid = t.tgrelid
+          WHERE p.proname IN ('is_admin','rls_auto_enable') AND NOT t.tgisinternal;
+
+          \echo '================ QUERY 2d: RLS POLICIES referencing these names in USING/WITH CHECK ================'
+          SELECT schemaname, tablename, policyname, cmd, roles, qual, with_check
+          FROM pg_policies
+          WHERE qual ILIKE '%is_admin%' OR with_check ILIKE '%is_admin%'
+             OR qual ILIKE '%rls_auto_enable%' OR with_check ILIKE '%rls_auto_enable%';
+
+          \echo '================ QUERY 2e: VIEWS referencing these function names ================'
+          SELECT n.nspname AS schema, c.relname AS view_name, c.relkind
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relkind IN ('v','m')
+            AND (pg_get_viewdef(c.oid) ILIKE '%is_admin%' OR pg_get_viewdef(c.oid) ILIKE '%rls_auto_enable%');
+
+          \echo '================ QUERY 2f: EXTENSION MEMBERSHIP (owned by an installed extension?) ================'
+          SELECT
+            n.nspname AS schema, p.proname AS function_name,
+            e.extname AS owning_extension
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          LEFT JOIN pg_depend d ON d.objid = p.oid AND d.classid = 'pg_proc'::regclass AND d.deptype = 'e'
+          LEFT JOIN pg_extension e ON e.oid = d.refobjid
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema');
+
+          \echo '================ QUERY 3: OTHER FUNCTION BODIES REFERENCING is_admin / rls_auto_enable BY NAME ================'
+          SELECT n.nspname AS schema, p.proname AS calling_function, p.oid::text AS oid
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname NOT IN ('pg_catalog','information_schema')
+            AND p.proname NOT IN ('is_admin','rls_auto_enable')
+            AND (pg_get_functiondef(p.oid) ILIKE '%is_admin%' OR pg_get_functiondef(p.oid) ILIKE '%rls_auto_enable%');
+
+          \echo '================ QUERY 4: EXPLICIT ACL GRANTS (aclexplode -- who can EXECUTE, and how) ================'
+          SELECT
+            n.nspname AS schema, p.proname AS function_name, p.oid::text AS oid,
+            CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END AS grantee_role,
+            a.privilege_type, a.is_grantable
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema')
+          ORDER BY p.proname, grantee_role, a.privilege_type;
+
+          ROLLBACK;
+          SQL_EOF
+          echo "diagnose.sql written ($(wc -l < diagnose.sql) lines)."
+
+      - name: "Safety gate: refuse to run if the SQL contains any write/DDL keyword"
+        run: |
+          set -euo pipefail
+          echo "=========================================================="
+          echo " SAFETY GATE -- scanning diagnose.sql for write operations"
+          echo " before it is ever sent to production."
+          echo "=========================================================="
+          if grep -inE '\b(CREATE|ALTER|DROP|GRANT|REVOKE|INSERT|UPDATE|DELETE|TRUNCATE|COPY|CALL|DO)\b' diagnose.sql; then
+            echo "::error::diagnose.sql contains a write/DDL keyword (matched above). Refusing to run -- this workflow is READ-ONLY by design."
+            exit 1
+          fi
+          echo "OK: no write/DDL keywords found. Proceeding with SELECT/catalog inspection only."
+
+      - name: "Fail closed unless the connection can actually be made READ ONLY"
+        run: |
+          set -euo pipefail
+          RO=$(psql "$PINTAG_PROD_DB_URL" -X -tA -c "BEGIN READ ONLY; SELECT current_setting('transaction_read_only'); ROLLBACK;" | tr -d '[:space:]')
+          echo "transaction_read_only reports: '$RO'"
+          if [ "$RO" != "on" ]; then
+            echo "::error::Could not confirm a READ ONLY transaction against production (got '$RO'). Refusing to proceed."
+            exit 1
+          fi
+          echo "OK: connection confirmed read-only."
+
+      - name: Run diagnostic (SELECT / catalog inspection only)
+        run: |
+          set -euo pipefail
+          echo "=========================================================="
+          echo " READ-ONLY DIAGNOSTIC -- catalog inspection of is_admin and"
+          echo " rls_auto_enable only. No writes. No production changes."
+          echo "=========================================================="
+          psql "$PINTAG_PROD_DB_URL" -v ON_ERROR_STOP=1 -f diagnose.sql 2>&1 | tee diagnostic-report.txt
+
+      - name: Publish findings to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Production security drift diagnostic: is_admin / rls_auto_enable"
+            echo ""
+            echo "Read-only catalog inspection. No writes were made to production."
+            echo ""
+            echo '```'
+            cat diagnostic-report.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload diagnostic report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: is-admin-rls-auto-enable-diagnostic
+          path: diagnostic-report.txt
+          retention-days: 90
