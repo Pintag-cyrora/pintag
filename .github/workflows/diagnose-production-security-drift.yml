@@ -186,6 +186,7 @@ jobs:
           JOIN pg_namespace n ON n.oid = p.pronamespace
           WHERE n.nspname NOT IN ('pg_catalog','information_schema')
             AND p.proname NOT IN ('is_admin','rls_auto_enable')
+            AND p.prokind = 'f'
             AND (pg_get_functiondef(p.oid) ILIKE '%is_admin%' OR pg_get_functiondef(p.oid) ILIKE '%rls_auto_enable%');
 
           \echo '================ QUERY 4: EXPLICIT ACL GRANTS (aclexplode -- who can EXECUTE, and how) ================'
