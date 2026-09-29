@@ -134,6 +134,83 @@ test.describe('desktop gallery', () => {
   });
 });
 
+// ── Mobile gallery prev/next arrows (2026-09-29 UI fix) ─────────────────
+// The inline mobile gallery (.mobile-gallery/.mg-track) had swipe and dots
+// but no click/tap arrows at all -- not a regression, confirmed by reading
+// every commit that ever touched buildMobileGallery(). These tests cover
+// the new .mg-prev/.mg-next buttons: wired to jumpMobileGallerySlide(),
+// correctly disabled/hidden at each end, without touching swipe, dots, or
+// anything on the desktop gallery/lightbox.
+test.describe('mobile gallery navigation arrows', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  async function activeDotIndex(page) {
+    return page.evaluate(() => {
+      var active = document.querySelector('.mg-dot.active');
+      return active ? parseInt(active.getAttribute('data-dot-idx'), 10) : -1;
+    });
+  }
+
+  test('first slide: prev arrow is hidden/disabled, next arrow is enabled and visible', async ({ page }) => {
+    const errors = await openListing(page, ROUTED);
+    await expect(page.locator('.mg-prev')).toBeDisabled();
+    await expect(page.locator('.mg-prev')).not.toBeVisible();   // [disabled]{display:none}
+    await expect(page.locator('.mg-next')).toBeEnabled();
+    await expect(page.locator('.mg-next')).toBeVisible();
+    expect(errors.map((e) => e.message)).toEqual([]);
+  });
+
+  test('tapping next/prev advances jumpMobileGallerySlide() and swaps disabled state at each boundary', async ({ page }) => {
+    await openListing(page, ROUTED);   // 3 images
+    await page.locator('.mg-next').click();
+    await expect.poll(() => activeDotIndex(page), { timeout: 3000 }).toBe(1);
+    await expect(page.locator('.mg-prev')).toBeEnabled();
+    await expect(page.locator('.mg-next')).toBeEnabled();
+
+    await page.locator('.mg-next').click();
+    await expect.poll(() => activeDotIndex(page), { timeout: 3000 }).toBe(2);   // last of 3
+    await expect(page.locator('.mg-prev')).toBeEnabled();
+    await expect(page.locator('.mg-next')).toBeDisabled();
+    await expect(page.locator('.mg-next')).not.toBeVisible();
+
+    await page.locator('.mg-prev').click();
+    await expect.poll(() => activeDotIndex(page), { timeout: 3000 }).toBe(1);
+    await expect(page.locator('.mg-next')).toBeEnabled();   // re-enabled off the last slide
+  });
+
+  test('the dots still work standalone, and stay in sync with the arrows\' disabled state', async ({ page }) => {
+    await openListing(page, ROUTED);
+    await page.locator('.mg-dot[data-dot-idx="2"]').click();   // jump straight to the last slide via a dot
+    await expect.poll(() => activeDotIndex(page), { timeout: 3000 }).toBe(2);
+    await expect(page.locator('.mg-next')).toBeDisabled();
+    await expect(page.locator('.mg-prev')).toBeEnabled();
+
+    await page.locator('.mg-prev').click();   // the arrow still works after a dot-driven jump
+    await expect.poll(() => activeDotIndex(page), { timeout: 3000 }).toBe(1);
+  });
+
+  test('a single-photo listing renders no arrows at all (nothing to page through)', async ({ page }) => {
+    const ONE_PHOTO = Object.assign({}, BASE, { slug: 'one-photo', images: [IMG('pintag-hero.png')] });
+    const errors = await openListing(page, ONE_PHOTO);
+    await expect(page.locator('.mobile-gallery')).toBeVisible();
+    await expect(page.locator('.mg-prev')).toHaveCount(0);
+    await expect(page.locator('.mg-next')).toHaveCount(0);
+    expect(errors.map((e) => e.message)).toEqual([]);
+  });
+
+  test('the desktop gallery and lightbox are unaffected: no visible mobile arrows at desktop width', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await openListing(page, ROUTED);
+    await expect(page.locator('.desktop-gallery')).toBeVisible();
+    await expect(page.locator('.mobile-gallery')).not.toBeVisible();
+    await expect(page.locator('.mg-prev')).not.toBeVisible();
+    await expect(page.locator('.mg-next')).not.toBeVisible();
+    // The lightbox's own arrows are completely separate and still present/unchanged.
+    await expect(page.locator('#lb-prev')).toHaveCount(1);
+    await expect(page.locator('#lb-next')).toHaveCount(1);
+  });
+});
+
 test.describe('slugless listing opened via ?id=', () => {
   async function openById(page, property, hash) {
     const errors = [];

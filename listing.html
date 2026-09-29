@@ -198,6 +198,21 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .mg-dots{display:flex;justify-content:center;gap:5px;padding:10px 0 8px;background:var(--white);}
 .mg-dot{width:5px;height:5px;border-radius:50%;background:var(--ink-muted);opacity:0.28;transition:opacity 0.2s,background 0.2s;cursor:pointer;}
 .mg-dot.active{opacity:1;background:var(--teal);}
+/* mg-viewport wraps ONLY .mg-track (not .mg-dots below it), so the arrows'
+   top:50% centers on the image itself -- not on image+dots combined, which
+   .mobile-gallery{position:relative} alone would do. Same round/44px shape
+   and icon as the lightbox's .lb-arrow (see ~line 438), recolored for
+   legibility over an arbitrary photo instead of the lightbox's dark
+   backdrop -- reuses .dg-thumb-overflow's existing dark-scrim tone rather
+   than inventing a new one. Only rendered when there's more than one photo
+   to page through (buildMobileGallery() below), same convention
+   components.js's own gallery arrows already use for the same reason.*/
+.mg-viewport{position:relative;}
+.mg-arrow{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;padding:0;background:rgba(26,36,40,0.55);border:1px solid rgba(255,255,255,0.35);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;z-index:4;-webkit-tap-highlight-color:transparent;}
+.mg-arrow:active{background:rgba(26,36,40,0.75);}
+.mg-arrow[disabled]{display:none;}
+.mg-prev{left:8px;}
+.mg-next{right:8px;}
 /* Available Units — multi-unit buildings only (2+ unit types); see
    buildAvailableUnitsSection() in the script below. */
 .units-section{padding:32px 48px;border-bottom:1px solid var(--border-mid);background:var(--white);}
@@ -3436,7 +3451,19 @@ function buildMobileGallery(images, statusBadgeHtml, fomoOverlayHtml){
     dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'" data-track="gallery-mobile-dot" data-track-type="dot" data-track-label="Dot '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'></div>';
   });
   var overlayHtml=statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'';
-  return '<div class="mobile-gallery">'+overlayHtml+fomoOverlayHtml+'<div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
+  // Arrows only when there's more than one photo to page through -- same
+  // convention components.js's own card gallery arrows already use (see its
+  // "GALLERY ARROWS" comment), and the same chevron paths as the lightbox's
+  // .lb-prev/.lb-next so the two navigation affordances read as one language.
+  var arrowsHtml=clean.length>1?(
+    '<button type="button" class="mg-arrow mg-prev" id="mg-prev-btn" aria-label="Previous photo" data-track="gallery-mobile-prev" data-track-type="button" data-track-label="Previous photo">'+
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>'+
+    '</button>'+
+    '<button type="button" class="mg-arrow mg-next" id="mg-next-btn" aria-label="Next photo" data-track="gallery-mobile-next" data-track-type="button" data-track-label="Next photo">'+
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'+
+    '</button>'
+  ):'';
+  return '<div class="mobile-gallery">'+overlayHtml+fomoOverlayHtml+'<div class="mg-viewport"><div class="mg-track" id="mg-track-el">'+slidesHtml+'</div>'+arrowsHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
 }
 
 function jumpMobileGallerySlide(idx){var t=document.getElementById('mg-track-el');if(!t)return;hydrateMobileSlides(idx);t.scrollTo({left:idx*t.offsetWidth,behavior:'smooth'});}
@@ -3444,8 +3471,26 @@ function jumpMobileGallerySlide(idx){var t=document.getElementById('mg-track-el'
 function wireMobileGalleryTrack(){
   var track=document.getElementById('mg-track-el');
   var dotsBox=document.getElementById('mg-dots-box');
+  var prevBtn=document.getElementById('mg-prev-btn');
+  var nextBtn=document.getElementById('mg-next-btn');
   if(!track)return;
+  // .mg-dots is a sibling of .mg-viewport (which wraps the track), not of
+  // the track itself -- closest('.mobile-gallery') finds the shared
+  // ancestor regardless of that wrapper, instead of assuming a fixed
+  // parent depth.
+  var galleryRoot=track.closest('.mobile-gallery');
+  var slideCount=track.querySelectorAll('.mg-slide').length;
   if(dotsBox){dotsBox.onclick=function(e){var d=e.target.closest('[data-dot-idx]');if(d)jumpMobileGallerySlide(parseInt(d.getAttribute('data-dot-idx'),10));};}
+
+  function currentIdx(){var w=track.offsetWidth;return w?Math.round(track.scrollLeft/w):0;}
+  function updateArrows(idx){
+    if(prevBtn)prevBtn.disabled=(idx<=0);
+    if(nextBtn)nextBtn.disabled=(idx>=slideCount-1);
+  }
+  if(prevBtn)prevBtn.onclick=function(){jumpMobileGallerySlide(currentIdx()-1);};
+  if(nextBtn)nextBtn.onclick=function(){jumpMobileGallerySlide(currentIdx()+1);};
+  updateArrows(currentIdx());
+
   var scrollDebounce=null;
   track.addEventListener('scroll',function(){
     if(scrollDebounce)clearTimeout(scrollDebounce);
@@ -3454,8 +3499,9 @@ function wireMobileGalleryTrack(){
       var w=track.offsetWidth;if(!w)return;
       var idx=Math.round(track.scrollLeft/w);
       hydrateMobileSlides(idx);   // bring the next slides in range into range
-      var dots=track.parentElement?track.parentElement.querySelectorAll('.mg-dot'):[];
+      var dots=galleryRoot?galleryRoot.querySelectorAll('.mg-dot'):[];
       dots.forEach(function(d,i){d.classList.toggle('active',i===idx);});
+      updateArrows(idx);
       var c=_currentGalleryImages.filter(Boolean);
       var slides=track.querySelectorAll('.mg-slide');
       if(slides[idx]&&c[idx])checkSmartFitLayout(c[idx],slides[idx]);
