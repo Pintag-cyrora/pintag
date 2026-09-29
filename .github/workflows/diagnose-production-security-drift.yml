@@ -1,1 +1,265 @@
-bmFtZTogIkRJQUdOT1NUSUM6IFByb2R1Y3Rpb24gc2VjdXJpdHkgZHJpZnQgKGlzX2FkbWluIC8gcmxzX2F1dG9fZW5hYmxlKSIKCiMgVEVNUE9SQVJZLCBSRUFELU9OTFkgZGlhZ25vc3RpYyB3b3JrZmxvdy4gQ3JlYXRlZCB0byBjbG9zZSB0aGUKIyAyMDI2LTA5LTIxIC8gMjAyNi0wOS0yNCB1bnJlc29sdmVkIGZpbmRpbmcgaW4KIyBzY3JpcHRzL3ZlcmlmeS1wcm9kdWN0aW9uLXNlY3VyaXR5LnNxbCdzICJubyBVTkVYUEVDVEVEIHVuZ2F0ZWQKIyBTRUNVUklUWSBERUZJTkVSIGZ1bmN0aW9uIGlzIGNhbGxhYmxlIGJ5IGFub24iIGNoZWNrOiBpc19hZG1pbiBhbmQKIyBybHNfYXV0b19lbmFibGUgaGF2ZSBubyBDUkVBVEUgRlVOQ1RJT04gYW55d2hlcmUgaW4gdGhpcyByZXBvc2l0b3J5J3MKIyBtaWdyYXRpb24gaGlzdG9yeSAoY29uZmlybWVkIGJ5IHR3byBpbmRlcGVuZGVudCBmdWxsLXJlcG8gYXVkaXRzIC0tIHNlZQojIHN1cGFiYXNlL21pZ3JhdGlvbnMvMjAyNjA5MjEwMTAwMDBfcmV2b2tlX3B1YmxpY19leGVjdXRlX2FuYWx5dGljc19hbmRfb3duZXJzaGlwX3JwY3Muc3FsCiMgYW5kIHRoaXMgcmVwbydzIGFwcGx5LW1pZ3JhdGlvbi55bWwsIGJvdGggb2Ygd2hpY2ggZXhwbGFpbiB0aGUgc2FtZSBnYXAKIyBhbmQgZGVsaWJlcmF0ZWx5IGxlYXZlIGJvdGggZnVuY3Rpb25zIHVudG91Y2hlZCBwZW5kaW5nIGV4YWN0bHkgdGhpcwojIGtpbmQgb2YgbGl2ZS1jYXRhbG9nIGluc3BlY3Rpb24pLiBUaGlzIHdvcmtmbG93IGluc3BlY3RzIHRoZWlyIExJVkUKIyBkZWZpbml0aW9ucyBzbyBhIGh1bWFuIGNhbiBkZWNpZGUgUkVWT0tFIC8gQUxMT1dMSVNUIC8gSU5WRVNUSUdBVEUKIyBGVVJUSEVSIHdpdGggcmVhbCBldmlkZW5jZSBpbnN0ZWFkIG9mIGd1ZXNzaW5nLgojCiMgU0FGRVRZIChhbGwgb2YgdGhlc2UgYXJlIGxvYWQtYmVhcmluZywgbm90IGRlY29yYXRpdmUpOgojICAgLSBTRUxFQ1QgLyBjYXRhbG9nIGluc3BlY3Rpb24gb25seS4gTm8gQ1JFQVRFL0FMVEVSL0RST1AvR1JBTlQvUkVWT0tFLwojICAgICBJTlNFUlQvVVBEQVRFL0RFTEVURS9UUlVOQ0FURS9DT1BZL0NBTEwvRE8gYW55d2hlcmUgaW4gdGhlIFNRTCB0aGlzCiMgICAgIHdvcmtmbG93IHJ1bnMgLS0gZW5mb3JjZWQgdHdpY2U6ICgxKSB0aGUgU1FMIGlzIGVtYmVkZGVkIGRpcmVjdGx5CiMgICAgIGJlbG93LCByZWFkYWJsZSBpbiB0aGlzIGRpZmY7ICgyKSBhIHNoZWxsLWxldmVsIGdyZXAgZ2F0ZSBhYm9ydHMgdGhlCiMgICAgIGpvYiBpZiB0aGUgU1FMIGZpbGUgZXZlciBjb250YWlucyBhIHdyaXRlL0RETCBrZXl3b3JkLCBCRUZPUkUgcHNxbAojICAgICBpcyBldmVyIGludm9rZWQgYWdhaW5zdCBwcm9kdWN0aW9uLgojICAgLSBUaGUgREIgc2Vzc2lvbiBpcyBwdXQgaW50byBSRUFEIE9OTFkgbW9kZSAoQkVHSU4gUkVBRCBPTkxZKSBiZWZvcmUKIyAgICAgYW55IGNhdGFsb2cgcXVlcnkgcnVucywgYW5kIGEgc2VwYXJhdGUgc3RlcCBpbmRlcGVuZGVudGx5IGNvbmZpcm1zCiMgICAgIGN1cnJlbnRfc2V0dGluZygndHJhbnNhY3Rpb25fcmVhZF9vbmx5JykgYWN0dWFsbHkgcmVwb3J0cyAnb24nCiMgICAgIGJlZm9yZSB0aGUgbWFpbiBkaWFnbm9zdGljIHByb2NlZWRzIC0tIGl0IGZhaWxzIGNsb3NlZCBpZiB0aGUKIyAgICAgY29ubmVjdGlvbiBjYW5ub3QgYmUgbWFkZSByZWFkLW9ubHksIHJhdGhlciB0aGFuIHNpbGVudGx5CiMgICAgIGNvbnRpbnVpbmcuCiMgICAtIFJldXNlcyB0aGUgRVhJU1RJTkcgcHJvZHVjdGlvbi1iYWNrdXAgZW52aXJvbm1lbnQgYW5kIGl0cyBFWElTVElORwojICAgICBQSU5UQUdfUFJPRF9EQl9VUkwgc2VjcmV0ICh0aGUgc2FtZSBvbmUgdmVyaWZ5LXByb2R1Y3Rpb24tc2VjdXJpdHkueW1sCiMgICAgIGFuZCBpbWFnZS1pbnRlZ3JpdHkueW1sIGFscmVhZHkgdXNlKSAtLSBubyBuZXcgY3JlZGVudGlhbCBpcyBjcmVhdGVkLgojICAgLSBOZXZlciBlY2hvZXMgdGhlIGNvbm5lY3Rpb24gc3RyaW5nLCBhIHBhc3N3b3JkLCBvciBhbnkgb3RoZXIgc2VjcmV0LgojICAgICBObyBzdGVwIHRvdWNoaW5nIFBJTlRBR19QUk9EX0RCX1VSTCB1c2VzIGBzZXQgLXhgLiBHaXRIdWIgQWN0aW9ucycKIyAgICAgb3duIHNlY3JldCByZWRhY3Rpb24gaXMgYW4gYWRkaXRpb25hbCBiYWNrc3RvcCBvbiB0b3Agb2YgdGhhdC4KIyAgIC0gRG9lcyBOT1QgbW9kaWZ5IHZlcmlmeS1wcm9kdWN0aW9uLXNlY3VyaXR5LnltbCwgYW55IG1pZ3JhdGlvbiBmaWxlLAojICAgICBvciBhbnkgcHJvZHVjdGlvbiBvYmplY3QuIFJlYWQtb25seSBieSBjb25zdHJ1Y3Rpb24sIG5vdCBieSBwcm9taXNlLgojCiMgVFJJR0dFUlM6IHRoaXMgYnJhbmNoIGlzIGV4cGxpY2l0bHkgTk9UIHRvIGJlIG1lcmdlZCBpbnRvIG1haW4geWV0LCBhbmQKIyB3b3JrZmxvd19kaXNwYXRjaCBvbmx5IGJlY29tZXMgaW52b2thYmxlIHZpYSB0aGUgR2l0SHViIFVJL0FQSSBvbmNlIGEKIyB3b3JrZmxvdyBmaWxlIGlzIHJlZ2lzdGVyZWQgb24gdGhlIGRlZmF1bHQgYnJhbmNoIC0tIHNvIHRoaXMgYWxzbyBydW5zCiMgb24gYSBwdXNoIHRvIHRoaXMgZXhhY3QgYnJhbmNoLCB3aGljaCBuZWVkcyBubyBzdWNoIHJlZ2lzdHJhdGlvbiBhbmQKIyBmaXJlcyB0aGUgb25lIHJ1biB0aGlzIGRpYWdub3N0aWMgZXhpc3RzIGZvci4gd29ya2Zsb3dfZGlzcGF0Y2ggaXMga2VwdAojIHRvbywgZm9yIGFueSBsYXRlciByZS1ydW4gb25jZSB0aGlzIGlzIG1lcmdlZC4gTmV2ZXIgc2NoZWR1bGVkLgojCiMgVGhpcyB3b3JrZmxvdyBpcyBpbnRlbnRpb25hbGx5IHRlbXBvcmFyeTogZGVsZXRlIGl0IG9uY2UgdGhlIGZpbmRpbmdzCiMgYmVsb3cgaGF2ZSBiZWVuIGFjdGVkIG9uIChSRVZPS0UsIEFMTE9XTElTVCwgb3Igb3RoZXJ3aXNlIHJlc29sdmVkKS4KCm9uOgogIHdvcmtmbG93X2Rpc3BhdGNoOgogIHB1c2g6CiAgICBicmFuY2hlczoKICAgICAgLSBjbGF1ZGUvZGlhZ25vc2UtaXMtYWRtaW4tcmxzLWF1dG8tZW5hYmxlCgpwZXJtaXNzaW9uczoKICBjb250ZW50czogcmVhZAoKY29uY3VycmVuY3k6CiAgZ3JvdXA6IGRpYWdub3NlLXByb2R1Y3Rpb24tc2VjdXJpdHktZHJpZnQKICBjYW5jZWwtaW4tcHJvZ3Jlc3M6IGZhbHNlCgpqb2JzOgogIGRpYWdub3NlOgogICAgbmFtZTogSW5zcGVjdCBpc19hZG1pbiAvIHJsc19hdXRvX2VuYWJsZSAocmVhZC1vbmx5KQogICAgcnVucy1vbjogdWJ1bnR1LWxhdGVzdAogICAgdGltZW91dC1taW51dGVzOiAxMAogICAgZW52aXJvbm1lbnQ6IHByb2R1Y3Rpb24tYmFja3VwCiAgICBlbnY6CiAgICAgIFBJTlRBR19QUk9EX0RCX1VSTDogJHt7IHNlY3JldHMuUElOVEFHX1BST0RfREJfVVJMIH19CiAgICBzdGVwczoKICAgICAgLSB1c2VzOiBhY3Rpb25zL2NoZWNrb3V0QDExZDU5NjBhMzI2NzUwZDU4MzgwNzhlMzZjZjM4Yjg1YWY2NzcyNjIgIyB2NAoKICAgICAgLSBuYW1lOiBJbnN0YWxsIHBzcWwgY2xpZW50CiAgICAgICAgcnVuOiB8CiAgICAgICAgICBzdWRvIGFwdC1nZXQgdXBkYXRlIC1xcQogICAgICAgICAgc3VkbyBhcHQtZ2V0IGluc3RhbGwgLXkgLXFxIHBvc3RncmVzcWwtY2xpZW50CgogICAgICAtIG5hbWU6IFZlcmlmeSBEQiBVUkwgc2VjcmV0IGlzIHByZXNlbnQKICAgICAgICBydW46IHwKICAgICAgICAgIGlmIFsgLXogIiR7UElOVEFHX1BST0RfREJfVVJMOi19IiBdOyB0aGVuCiAgICAgICAgICAgIGVjaG8gIjo6ZXJyb3I6Ok1pc3Npbmcgc2VjcmV0IFBJTlRBR19QUk9EX0RCX1VSTCBpbiB0aGUgcHJvZHVjdGlvbi1iYWNrdXAgZW52aXJvbm1lbnQuIgogICAgICAgICAgICBleGl0IDEKICAgICAgICAgIGZpCgogICAgICAtIG5hbWU6IFdyaXRlIHRoZSBkaWFnbm9zdGljIFNRTCAoU0VMRUNUIC8gY2F0YWxvZyBpbnNwZWN0aW9uIG9ubHkpCiAgICAgICAgcnVuOiB8CiAgICAgICAgICBjYXQgPiBkaWFnbm9zZS5zcWwgPDwnU1FMX0VPRicKICAgICAgICAgIFxwc2V0IGJvcmRlciAyCiAgICAgICAgICBccHNldCBwYWdlciBvZmYKICAgICAgICAgIFxzZXQgT05fRVJST1JfU1RPUCBvbgoKICAgICAgICAgIEJFR0lOIFJFQUQgT05MWTsKCiAgICAgICAgICBcZWNobyAnPT09PT09PT09PT09PT09PSBRVUVSWSAxOiBGVU5DVElPTiBDQVRBTE9HIERFVEFJTCAoYWxsIHNjaGVtYXMsIGFsbCBvdmVybG9hZHMpID09PT09PT09PT09PT09PT0nCiAgICAgICAgICBTRUxFQ1QKICAgICAgICAgICAgbi5uc3BuYW1lICAgICAgICAgICAgICAgICAgICBBUyBzY2hlbWEsCiAgICAgICAgICAgIHAucHJvbmFtZSAgICAgICAgICAgICAgICAgICAgQVMgZnVuY3Rpb25fbmFtZSwKICAgICAgICAgICAgcC5vaWQ6OnRleHQgICAgICAgICAgICAgICAgICBBUyBvaWQsCiAgICAgICAgICAgIHBnX2dldF9mdW5jdGlvbl9pZGVudGl0eV9hcmd1bWVudHMocC5vaWQpICAgIEFTIGFyZ3MsCiAgICAgICAgICAgIHBnX2dldF9mdW5jdGlvbl9yZXN1bHQocC5vaWQpICAgICAgICAgICAgICAgIEFTIHJldHVybl90eXBlLAogICAgICAgICAgICBwLnByb3NlY2RlZiAgICAgICAgICAgICAgICAgICBBUyBzZWN1cml0eV9kZWZpbmVyLAogICAgICAgICAgICBwZ19nZXRfdXNlcmJ5aWQocC5wcm9vd25lcikgICAgICAgICAgICAgICAgICBBUyBvd25lciwKICAgICAgICAgICAgcC5wcm9jb25maWcgICAgICAgICAgICAgICAgICAgQVMgY29uZmlnX3NldHRpbmdzLAogICAgICAgICAgICBDQVNFIHAucHJvdm9sYXRpbGUgV0hFTiAnaScgVEhFTiAnSU1NVVRBQkxFJyBXSEVOICdzJyBUSEVOICdTVEFCTEUnIFdIRU4gJ3YnIFRIRU4gJ1ZPTEFUSUxFJyBFTFNFIHAucHJvdm9sYXRpbGU6OnRleHQgRU5EIEFTIHZvbGF0aWxpdHksCiAgICAgICAgICAgIGhhc19mdW5jdGlvbl9wcml2aWxlZ2UoJ3B1YmxpYycsIHAub2lkLCAnRVhFQ1VURScpICAgICAgICBBUyBwdWJsaWNfZXhlY3V0ZSwKICAgICAgICAgICAgaGFzX2Z1bmN0aW9uX3ByaXZpbGVnZSgnYW5vbicsIHAub2lkLCAnRVhFQ1VURScpICAgICAgICAgIEFTIGFub25fZXhlY3V0ZSwKICAgICAgICAgICAgaGFzX2Z1bmN0aW9uX3ByaXZpbGVnZSgnYXV0aGVudGljYXRlZCcsIHAub2lkLCAnRVhFQ1VURScpIEFTIGF1dGhlbnRpY2F0ZWRfZXhlY3V0ZSwKICAgICAgICAgICAgaGFzX2Z1bmN0aW9uX3ByaXZpbGVnZSgnc2VydmljZV9yb2xlJywgcC5vaWQsICdFWEVDVVRFJykgIEFTIHNlcnZpY2Vfcm9sZV9leGVjdXRlCiAgICAgICAgICBGUk9NIHBnX3Byb2MgcAogICAgICAgICAgSk9JTiBwZ19uYW1lc3BhY2UgbiBPTiBuLm9pZCA9IHAucHJvbmFtZXNwYWNlCiAgICAgICAgICBXSEVSRSBwLnByb25hbWUgSU4gKCdpc19hZG1pbicsJ3Jsc19hdXRvX2VuYWJsZScpCiAgICAgICAgICAgIEFORCBuLm5zcG5hbWUgTk9UIElOICgncGdfY2F0YWxvZycsJ2luZm9ybWF0aW9uX3NjaGVtYScpCiAgICAgICAgICAgIEFORCBuLm5zcG5hbWUgTk9UIExJS0UgJ3BnXF90b2FzdCUnCiAgICAgICAgICBPUkRFUiBCWSBwLnByb25hbWUsIG4ubnNwbmFtZSwgcC5vaWQ7CgogICAgICAgICAgXGVjaG8gJz09PT09PT09PT09PT09PT0gUVVFUlkgMWI6IENPTVBMRVRFIEZVTkNUSU9OIERFRklOSVRJT05TIChwZ19nZXRfZnVuY3Rpb25kZWYpID09PT09PT09PT09PT09PT0nCiAgICAgICAgICBTRUxFQ1QKICAgICAgICAgICAgbi5uc3BuYW1lIEFTIHNjaGVtYSwKICAgICAgICAgICAgcC5wcm9uYW1lIEFTIGZ1bmN0aW9uX25hbWUsCiAgICAgICAgICAgIHAub2lkOjp0ZXh0IEFTIG9pZCwKICAgICAgICAgICAgcGdfZ2V0X2Z1bmN0aW9uZGVmKHAub2lkKSBBUyBkZWZpbml0aW9uCiAgICAgICAgICBGUk9NIHBnX3Byb2MgcAogICAgICAgICAgSk9JTiBwZ19uYW1lc3BhY2UgbiBPTiBuLm9pZCA9IHAucHJvbmFtZXNwYWNlCiAgICAgICAgICBXSEVSRSBwLnByb25hbWUgSU4gKCdpc19hZG1pbicsJ3Jsc19hdXRvX2VuYWJsZScpCiAgICAgICAgICAgIEFORCBuLm5zcG5hbWUgTk9UIElOICgncGdfY2F0YWxvZycsJ2luZm9ybWF0aW9uX3NjaGVtYScpCiAgICAgICAgICAgIEFORCBuLm5zcG5hbWUgTk9UIExJS0UgJ3BnXF90b2FzdCUnCiAgICAgICAgICBPUkRFUiBCWSBwLnByb25hbWUsIG4ubnNwbmFtZSwgcC5vaWQ7CgogICAgICAgICAgXGVjaG8gJz09PT09PT09PT09PT09PT0gUVVFUlkgMmE6IFdIQVQgaXNfYWRtaW4vcmxzX2F1dG9fZW5hYmxlIERFUEVORCBPTiAocGdfZGVwZW5kLCBvYmppZCA9IHRoZSBmdW5jdGlvbikgPT09PT09PT09PT09PT09PScKICAgICAgICAgIFNFTEVDVAogICAgICAgICAgICBwLnByb25hbWUgQVMgZnVuY3Rpb25fbmFtZSwKICAgICAgICAgICAgcGQuZGVwdHlwZSwKICAgICAgICAgICAgcGQucmVmY2xhc3NpZDo6cmVnY2xhc3MgQVMgcmVmZXJlbmNlZF9jYXRhbG9nLAogICAgICAgICAgICBwZ19kZXNjcmliZV9vYmplY3QocGQucmVmY2xhc3NpZCwgcGQucmVmb2JqaWQsIHBkLnJlZm9ianN1YmlkKSBBUyByZWZlcmVuY2VkX29iamVjdAogICAgICAgICAgRlJPTSBwZ19kZXBlbmQgcGQKICAgICAgICAgIEpPSU4gcGdfcHJvYyBwIE9OIHAub2lkID0gcGQub2JqaWQgQU5EIHBkLmNsYXNzaWQgPSAncGdfcHJvYyc6OnJlZ2NsYXNzCiAgICAgICAgICBKT0lOIHBnX25hbWVzcGFjZSBuIE9OIG4ub2lkID0gcC5wcm9uYW1lc3BhY2UKICAgICAgICAgIFdIRVJFIHAucHJvbmFtZSBJTiAoJ2lzX2FkbWluJywncmxzX2F1dG9fZW5hYmxlJykKICAgICAgICAgICAgQU5EIG4ubnNwbmFtZSBOT1QgSU4gKCdwZ19jYXRhbG9nJywnaW5mb3JtYXRpb25fc2NoZW1hJyk7CgogICAgICAgICAgXGVjaG8gJz09PT09PT09PT09PT09PT0gUVVFUlkgMmI6IFdIQVQgREVQRU5EUyBPTiBpc19hZG1pbi9ybHNfYXV0b19lbmFibGUgKHdvdWxkIGZhaWwgaWYgdGhlIGZ1bmN0aW9uIHdlcmUgcmVtb3ZlZCkgPT09PT09PT09PT09PT09PScKICAgICAgICAgIFNFTEVDVAogICAgICAgICAgICBwLnByb25hbWUgQVMgcmVmZXJlbmNlZF9mdW5jdGlvbiwKICAgICAgICAgICAgcGQuZGVwdHlwZSwKICAgICAgICAgICAgcGQuY2xhc3NpZDo6cmVnY2xhc3MgQVMgZGVwZW5kZW50X2NhdGFsb2csCiAgICAgICAgICAgIHBnX2Rlc2NyaWJlX29iamVjdChwZC5jbGFzc2lkLCBwZC5vYmppZCwgcGQub2Jqc3ViaWQpIEFTIGRlcGVuZGVudF9vYmplY3QKICAgICAgICAgIEZST00gcGdfZGVwZW5kIHBkCiAgICAgICAgICBKT0lOIHBnX3Byb2MgcCBPTiBwLm9pZCA9IHBkLnJlZm9iamlkIEFORCBwZC5yZWZjbGFzc2lkID0gJ3BnX3Byb2MnOjpyZWdjbGFzcwogICAgICAgICAgSk9JTiBwZ19uYW1lc3BhY2UgbiBPTiBuLm9pZCA9IHAucHJvbmFtZXNwYWNlCiAgICAgICAgICBXSEVSRSBwLnByb25hbWUgSU4gKCdpc19hZG1pbicsJ3Jsc19hdXRvX2VuYWJsZScpCiAgICAgICAgICAgIEFORCBuLm5zcG5hbWUgTk9UIElOICgncGdfY2F0YWxvZycsJ2luZm9ybWF0aW9uX3NjaGVtYScpOwoKICAgICAgICAgIFxlY2hvICc9PT09PT09PT09PT09PT09IFFVRVJZIDJjOiBUUklHR0VSUyB3aG9zZSBmdW5jdGlvbiBpcyBpc19hZG1pbi9ybHNfYXV0b19lbmFibGUgPT09PT09PT09PT09PT09PScKICAgICAgICAgIFNFTEVDVCB0LnRnbmFtZSBBUyB0cmlnZ2VyX25hbWUsIGMucmVsbmFtZSBBUyBvbl90YWJsZSwgcC5wcm9uYW1lIEFTIGZ1bmN0aW9uX25hbWUKICAgICAgICAgIEZST00gcGdfdHJpZ2dlciB0CiAgICAgICAgICBKT0lOIHBnX3Byb2MgcCBPTiBwLm9pZCA9IHQudGdmb2lkCiAgICAgICAgICBKT0lOIHBnX2NsYXNzIGMgT04gYy5vaWQgPSB0LnRncmVsaWQKICAgICAgICAgIFdIRVJFIHAucHJvbmFtZSBJTiAoJ2lzX2FkbWluJywncmxzX2F1dG9fZW5hYmxlJykgQU5EIE5PVCB0LnRnaXNpbnRlcm5hbDsKCiAgICAgICAgICBcZWNobyAnPT09PT09PT09PT09PT09PSBRVUVSWSAyZDogUkxTIFBPTElDSUVTIHJlZmVyZW5jaW5nIHRoZXNlIG5hbWVzIGluIFVTSU5HL1dJVEggQ0hFQ0sgPT09PT09PT09PT09PT09PScKICAgICAgICAgIFNFTEVDVCBzY2hlbWFuYW1lLCB0YWJsZW5hbWUsIHBvbGljeW5hbWUsIGNtZCwgcm9sZXMsIHF1YWwsIHdpdGhfY2hlY2sKICAgICAgICAgIEZST00gcGdfcG9saWNpZXMKICAgICAgICAgIFdIRVJFIHF1YWwgSUxJS0UgJyVpc19hZG1pbiUnIE9SIHdpdGhfY2hlY2sgSUxJS0UgJyVpc19hZG1pbiUnCiAgICAgICAgICAgICBPUiBxdWFsIElMSUtFICclcmxzX2F1dG9fZW5hYmxlJScgT1Igd2l0aF9jaGVjayBJTElLRSAnJXJsc19hdXRvX2VuYWJsZSUnOwoKICAgICAgICAgIFxlY2hvICc9PT09PT09PT09PT09PT09IFFVRVJZIDJlOiBWSUVXUyByZWZlcmVuY2luZyB0aGVzZSBmdW5jdGlvbiBuYW1lcyA9PT09PT09PT09PT09PT09JwogICAgICAgICAgU0VMRUNUIG4ubnNwbmFtZSBBUyBzY2hlbWEsIGMucmVsbmFtZSBBUyB2aWV3X25hbWUsIGMucmVsa2luZAogICAgICAgICAgRlJPTSBwZ19jbGFzcyBjCiAgICAgICAgICBKT0lOIHBnX25hbWVzcGFjZSBuIE9OIG4ub2lkID0gYy5yZWxuYW1lc3BhY2UKICAgICAgICAgIFdIRVJFIGMucmVsa2luZCBJTiAoJ3YnLCdtJykKICAgICAgICAgICAgQU5EIChwZ19nZXRfdmlld2RlZihjLm9pZCkgSUxJS0UgJyVpc19hZG1pbiUnIE9SIHBnX2dldF92aWV3ZGVmKGMub2lkKSBJTElLRSAnJXJsc19hdXRvX2VuYWJsZSUnKTsKCiAgICAgICAgICBcZWNobyAnPT09PT09PT09PT09PT09PSBRVUVSWSAyZjogRVhURU5TSU9OIE1FTUJFUlNISVAgKG93bmVkIGJ5IGFuIGluc3RhbGxlZCBleHRlbnNpb24/KSA9PT09PT09PT09PT09PT09JwogICAgICAgICAgU0VMRUNUCiAgICAgICAgICAgIG4ubnNwbmFtZSBBUyBzY2hlbWEsIHAucHJvbmFtZSBBUyBmdW5jdGlvbl9uYW1lLAogICAgICAgICAgICBlLmV4dG5hbWUgQVMgb3duaW5nX2V4dGVuc2lvbgogICAgICAgICAgRlJPTSBwZ19wcm9jIHAKICAgICAgICAgIEpPSU4gcGdfbmFtZXNwYWNlIG4gT04gbi5vaWQgPSBwLnByb25hbWVzcGFjZQogICAgICAgICAgTEVGVCBKT0lOIHBnX2RlcGVuZCBkIE9OIGQub2JqaWQgPSBwLm9pZCBBTkQgZC5jbGFzc2lkID0gJ3BnX3Byb2MnOjpyZWdjbGFzcyBBTkQgZC5kZXB0eXBlID0gJ2UnCiAgICAgICAgICBMRUZUIEpPSU4gcGdfZXh0ZW5zaW9uIGUgT04gZS5vaWQgPSBkLnJlZm9iamlkCiAgICAgICAgICBXSEVSRSBwLnByb25hbWUgSU4gKCdpc19hZG1pbicsJ3Jsc19hdXRvX2VuYWJsZScpCiAgICAgICAgICAgIEFORCBuLm5zcG5hbWUgTk9UIElOICgncGdfY2F0YWxvZycsJ2luZm9ybWF0aW9uX3NjaGVtYScpOwoKICAgICAgICAgIFxlY2hvICc9PT09PT09PT09PT09PT09IFFVRVJZIDM6IE9USEVSIEZVTkNUSU9OIEJPRElFUyBSRUZFUkVOQ0lORyBpc19hZG1pbiAvIHJsc19hdXRvX2VuYWJsZSBCWSBOQU1FID09PT09PT09PT09PT09PT0nCiAgICAgICAgICBTRUxFQ1Qgbi5uc3BuYW1lIEFTIHNjaGVtYSwgcC5wcm9uYW1lIEFTIGNhbGxpbmdfZnVuY3Rpb24sIHAub2lkOjp0ZXh0IEFTIG9pZAogICAgICAgICAgRlJPTSBwZ19wcm9jIHAKICAgICAgICAgIEpPSU4gcGdfbmFtZXNwYWNlIG4gT04gbi5vaWQgPSBwLnByb25hbWVzcGFjZQogICAgICAgICAgV0hFUkUgbi5uc3BuYW1lIE5PVCBJTiAoJ3BnX2NhdGFsb2cnLCdpbmZvcm1hdGlvbl9zY2hlbWEnKQogICAgICAgICAgICBBTkQgcC5wcm9uYW1lIE5PVCBJTiAoJ2lzX2FkbWluJywncmxzX2F1dG9fZW5hYmxlJykKICAgICAgICAgICAgQU5EIChwZ19nZXRfZnVuY3Rpb25kZWYocC5vaWQpIElMSUtFICclaXNfYWRtaW4lJyBPUiBwZ19nZXRfZnVuY3Rpb25kZWYocC5vaWQpIElMSUtFICclcmxzX2F1dG9fZW5hYmxlJScpOwoKICAgICAgICAgIFxlY2hvICc9PT09PT09PT09PT09PT09IFFVRVJZIDQ6IEVYUExJQ0lUIEFDTCBHUkFOVFMgKGFjbGV4cGxvZGUgLS0gd2hvIGNhbiBFWEVDVVRFLCBhbmQgaG93KSA9PT09PT09PT09PT09PT09JwogICAgICAgICAgU0VMRUNUCiAgICAgICAgICAgIG4ubnNwbmFtZSBBUyBzY2hlbWEsIHAucHJvbmFtZSBBUyBmdW5jdGlvbl9uYW1lLCBwLm9pZDo6dGV4dCBBUyBvaWQsCiAgICAgICAgICAgIENBU0UgV0hFTiBhLmdyYW50ZWUgPSAwIFRIRU4gJ1BVQkxJQycgRUxTRSBhLmdyYW50ZWU6OnJlZ3JvbGU6OnRleHQgRU5EIEFTIGdyYW50ZWVfcm9sZSwKICAgICAgICAgICAgYS5wcml2aWxlZ2VfdHlwZSwgYS5pc19ncmFudGFibGUKICAgICAgICAgIEZST00gcGdfcHJvYyBwCiAgICAgICAgICBKT0lOIHBnX25hbWVzcGFjZSBuIE9OIG4ub2lkID0gcC5wcm9uYW1lc3BhY2UKICAgICAgICAgIENST1NTIEpPSU4gTEFURVJBTCBhY2xleHBsb2RlKGNvYWxlc2NlKHAucHJvYWNsLCBhY2xkZWZhdWx0KCdmJywgcC5wcm9vd25lcikpKSBhCiAgICAgICAgICBXSEVSRSBwLnByb25hbWUgSU4gKCdpc19hZG1pbicsJ3Jsc19hdXRvX2VuYWJsZScpCiAgICAgICAgICAgIEFORCBuLm5zcG5hbWUgTk9UIElOICgncGdfY2F0YWxvZycsJ2luZm9ybWF0aW9uX3NjaGVtYScpCiAgICAgICAgICBPUkRFUiBCWSBwLnByb25hbWUsIGdyYW50ZWVfcm9sZSwgYS5wcml2aWxlZ2VfdHlwZTsKCiAgICAgICAgICBST0xMQkFDSzsKICAgICAgICAgIFNRTF9FT0YKICAgICAgICAgIGVjaG8gImRpYWdub3NlLnNxbCB3cml0dGVuICgkKHdjIC1sIDwgZGlhZ25vc2Uuc3FsKSBsaW5lcykuIgoKICAgICAgLSBuYW1lOiAiU2FmZXR5IGdhdGU6IHJlZnVzZSB0byBydW4gaWYgdGhlIFNRTCBjb250YWlucyBhbnkgd3JpdGUvRERMIGtleXdvcmQiCiAgICAgICAgcnVuOiB8CiAgICAgICAgICBzZXQgLWV1byBwaXBlZmFpbAogICAgICAgICAgZWNobyAiPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PSIKICAgICAgICAgIGVjaG8gIiBTQUZFVFkgR0FURSAtLSBzY2FubmluZyBkaWFnbm9zZS5zcWwgZm9yIHdyaXRlIG9wZXJhdGlvbnMiCiAgICAgICAgICBlY2hvICIgYmVmb3JlIGl0IGlzIGV2ZXIgc2VudCB0byBwcm9kdWN0aW9uLiIKICAgICAgICAgIGVjaG8gIj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0iCiAgICAgICAgICBpZiBncmVwIC1pbkUgJ1xiKENSRUFURXxBTFRFUnxEUk9QfEdSQU5UfFJFVk9LRXxJTlNFUlR8VVBEQVRFfERFTEVURXxUUlVOQ0FURXxDT1BZfENBTEx8RE8pXGInIGRpYWdub3NlLnNxbDsgdGhlbgogICAgICAgICAgICBlY2hvICI6OmVycm9yOjpkaWFnbm9zZS5zcWwgY29udGFpbnMgYSB3cml0ZS9EREwga2V5d29yZCAobWF0Y2hlZCBhYm92ZSkuIFJlZnVzaW5nIHRvIHJ1biAtLSB0aGlzIHdvcmtmbG93IGlzIFJFQUQtT05MWSBieSBkZXNpZ24uIgogICAgICAgICAgICBleGl0IDEKICAgICAgICAgIGZpCiAgICAgICAgICBlY2hvICJPSzogbm8gd3JpdGUvRERMIGtleXdvcmRzIGZvdW5kLiBQcm9jZWVkaW5nIHdpdGggU0VMRUNUL2NhdGFsb2cgaW5zcGVjdGlvbiBvbmx5LiIKCiAgICAgIC0gbmFtZTogIkZhaWwgY2xvc2VkIHVubGVzcyB0aGUgY29ubmVjdGlvbiBjYW4gYWN0dWFsbHkgYmUgbWFkZSBSRUFEIE9OTFkiCiAgICAgICAgcnVuOiB8CiAgICAgICAgICBzZXQgLWV1byBwaXBlZmFpbAogICAgICAgICAgIyBwc3FsIC10QSBzdGlsbCBlbWl0cyB0aGUgQkVHSU4vUk9MTEJBQ0sgY29tbWFuZC1jb21wbGV0aW9uIHRhZ3MKICAgICAgICAgICMgYWxvbmdzaWRlIHRoZSBTRUxFQ1QgdHVwbGUgd2hlbiB0aGV5J3JlIGJhdGNoZWQgaW50byBvbmUgLWMgc3RyaW5nCiAgICAgICAgICAjICh0dXBsZXMtb25seSBzdXBwcmVzc2VzIGhlYWRlcnMvZm9vdGVycywgbm90IGNvbW1hbmQgdGFncyksIHNvIHBpY2sKICAgICAgICAgICMgb3V0IHRoZSBleGFjdCAnb24nLycub2ZmJyBsaW5lIHJhdGhlciB0aGFuIGFzc3VtaW5nIHRoZSB3aG9sZSBvdXRwdXQKICAgICAgICAgICMgaXMgdGhlIHZhbHVlLiBJZiBubyBzdWNoIGxpbmUgaXMgZm91bmQsIFJPIGlzIGVtcHR5IGFuZCB0aGUgY2hlY2sKICAgICAgICAgICMgc3RpbGwgZmFpbHMgY2xvc2VkIGJlbG93LgogICAgICAgICAgUk89JChwc3FsICIkUElOVEFHX1BST0RfREJfVVJMIiAtWCAtdEEgLWMgIkJFR0lOIFJFQUQgT05MWTsgU0VMRUNUIGN1cnJlbnRfc2V0dGluZygndHJhbnNhY3Rpb25fcmVhZF9vbmx5Jyk7IFJPTExCQUNLOyIgfCBncmVwIC1FICdeKG9ufG9mZikkJyB8IGhlYWQgLW4xKQogICAgICAgICAgZWNobyAidHJhbnNhY3Rpb25fcmVhZF9vbmx5IHJlcG9ydHM6ICckUk8nIgogICAgICAgICAgaWYgWyAiJFJPIiAhPSAib24iIF07IHRoZW4KICAgICAgICAgICAgZWNobyAiOjplcnJvcjo6Q291bGQgbm90IGNvbmZpcm0gYSBSRUFEIE9OTFkgdHJhbnNhY3Rpb24gYWdhaW5zdCBwcm9kdWN0aW9uIChnb3QgJyRSTycpLiBSZWZ1c2luZyB0byBwcm9jZWVkLiIKICAgICAgICAgICAgZXhpdCAxCiAgICAgICAgICBmaQogICAgICAgICAgZWNobyAiT0s6IGNvbm5lY3Rpb24gY29uZmlybWVkIHJlYWQtb25seS4iCgogICAgICAtIG5hbWU6IFJ1biBkaWFnbm9zdGljIChTRUxFQ1QgLyBjYXRhbG9nIGluc3BlY3Rpb24gb25seSkKICAgICAgICBydW46IHwKICAgICAgICAgIHNldCAtZXVvIHBpcGVmYWlsCiAgICAgICAgICBlY2hvICI9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09IgogICAgICAgICAgZWNobyAiIFJFQUQtT05MWSBESUFHTk9TVElDIC0tIGNhdGFsb2cgaW5zcGVjdGlvbiBvZiBpc19hZG1pbiBhbmQiCiAgICAgICAgICBlY2hvICIgcmxzX2F1dG9fZW5hYmxlIG9ubHkuIE5vIHdyaXRlcy4gTm8gcHJvZHVjdGlvbiBjaGFuZ2VzLiIKICAgICAgICAgIGVjaG8gIj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0iCiAgICAgICAgICBwc3FsICIkUElOVEFHX1BST0RfREJfVVJMIiAtdiBPTl9FUlJPUl9TVE9QPTEgLWYgZGlhZ25vc2Uuc3FsIDI+JjEgfCB0ZWUgZGlhZ25vc3RpYy1yZXBvcnQudHh0CgogICAgICAtIG5hbWU6IFB1Ymxpc2ggZmluZGluZ3MgdG8gdGhlIGpvYiBzdW1tYXJ5CiAgICAgICAgaWY6IGFsd2F5cygpCiAgICAgICAgcnVuOiB8CiAgICAgICAgICB7CiAgICAgICAgICAgIGVjaG8gIiMgUHJvZHVjdGlvbiBzZWN1cml0eSBkcmlmdCBkaWFnbm9zdGljOiBpc19hZG1pbiAvIHJsc19hdXRvX2VuYWJsZSIKICAgICAgICAgICAgZWNobyAiIgogICAgICAgICAgICBlY2hvICJSZWFkLW9ubHkgY2F0YWxvZyBpbnNwZWN0aW9uLiBObyB3cml0ZXMgd2VyZSBtYWRlIHRvIHByb2R1Y3Rpb24uIgogICAgICAgICAgICBlY2hvICIiCiAgICAgICAgICAgIGVjaG8gJ2BgYCcKICAgICAgICAgICAgY2F0IGRpYWdub3N0aWMtcmVwb3J0LnR4dCAyPi9kZXYvbnVsbCB8fCBlY2hvICIoZGlkIG5vdCBydW4pIgogICAgICAgICAgICBlY2hvICdgYGAnCiAgICAgICAgICB9ID4+ICIkR0lUSFVCX1NURVBfU1VNTUFSWSIKCiAgICAgIC0gbmFtZTogVXBsb2FkIGRpYWdub3N0aWMgcmVwb3J0CiAgICAgICAgaWY6IGFsd2F5cygpCiAgICAgICAgdXNlczogYWN0aW9ucy91cGxvYWQtYXJ0aWZhY3RAZWExNjVmOGQ2NWI2ZTc1YjU0MDQ0OWU5MmI0ODg2ZjQzNjA3ZmEwMiAjIHY0CiAgICAgICAgd2l0aDoKICAgICAgICAgIG5hbWU6IGlzLWFkbWluLXJscy1hdXRvLWVuYWJsZS1kaWFnbm9zdGljCiAgICAgICAgICBwYXRoOiBkaWFnbm9zdGljLXJlcG9ydC50eHQKICAgICAgICAgIHJldGVudGlvbi1kYXlzOiA5MAo=
+name: "DIAGNOSTIC: Production security drift (is_admin / rls_auto_enable)"
+
+# TEMPORARY, READ-ONLY diagnostic workflow. Created to close the
+# 2026-09-21 / 2026-09-24 unresolved finding in
+# scripts/verify-production-security.sql's "no UNEXPECTED ungated
+# SECURITY DEFINER function is callable by anon" check: is_admin and
+# rls_auto_enable have no CREATE FUNCTION anywhere in this repository's
+# migration history (confirmed by two independent full-repo audits -- see
+# supabase/migrations/20260921010000_revoke_public_execute_analytics_and_ownership_rpcs.sql
+# and this repo's apply-migration.yml, both of which explain the same gap
+# and deliberately leave both functions untouched pending exactly this
+# kind of live-catalog inspection). This workflow inspects their LIVE
+# definitions so a human can decide REVOKE / ALLOWLIST / INVESTIGATE
+# FURTHER with real evidence instead of guessing.
+#
+# SAFETY (all of these are load-bearing, not decorative):
+#   - SELECT / catalog inspection only. No CREATE/ALTER/DROP/GRANT/REVOKE/
+#     INSERT/UPDATE/DELETE/TRUNCATE/COPY/CALL/DO anywhere in the SQL this
+#     workflow runs -- enforced twice: (1) the SQL is embedded directly
+#     below, readable in this diff; (2) a shell-level grep gate aborts the
+#     job if the SQL file ever contains a write/DDL keyword, BEFORE psql
+#     is ever invoked against production.
+#   - The DB session is put into READ ONLY mode (BEGIN READ ONLY) before
+#     any catalog query runs, and a separate step independently confirms
+#     current_setting('transaction_read_only') actually reports 'on'
+#     before the main diagnostic proceeds -- it fails closed if the
+#     connection cannot be made read-only, rather than silently
+#     continuing.
+#   - Reuses the EXISTING production-backup environment and its EXISTING
+#     PINTAG_PROD_DB_URL secret (the same one verify-production-security.yml
+#     and image-integrity.yml already use) -- no new credential is created.
+#   - Never echoes the connection string, a password, or any other secret.
+#     No step touching PINTAG_PROD_DB_URL uses `set -x`. GitHub Actions'
+#     own secret redaction is an additional backstop on top of that.
+#   - Does NOT modify verify-production-security.yml, any migration file,
+#     or any production object. Read-only by construction, not by promise.
+#
+# TRIGGERS: this branch is explicitly NOT to be merged into main yet, and
+# workflow_dispatch only becomes invokable via the GitHub UI/API once a
+# workflow file is registered on the default branch -- so this also runs
+# on a push to this exact branch, which needs no such registration and
+# fires the one run this diagnostic exists for. workflow_dispatch is kept
+# too, for any later re-run once this is merged. Never scheduled.
+#
+# This workflow is intentionally temporary: delete it once the findings
+# below have been acted on (REVOKE, ALLOWLIST, or otherwise resolved).
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/diagnose-is-admin-rls-auto-enable
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-production-security-drift
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Inspect is_admin / rls_auto_enable (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-backup
+    env:
+      PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Verify DB URL secret is present
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Write the diagnostic SQL (SELECT / catalog inspection only)
+        run: |
+          cat > diagnose.sql <<'SQL_EOF'
+          \pset border 2
+          \pset pager off
+          \set ON_ERROR_STOP on
+
+          BEGIN READ ONLY;
+
+          \echo '================ QUERY 1: FUNCTION CATALOG DETAIL (all schemas, all overloads) ================'
+          SELECT
+            n.nspname                    AS schema,
+            p.proname                    AS function_name,
+            p.oid::text                  AS oid,
+            pg_get_function_identity_arguments(p.oid)    AS args,
+            pg_get_function_result(p.oid)                AS return_type,
+            p.prosecdef                   AS security_definer,
+            pg_get_userbyid(p.proowner)                  AS owner,
+            p.proconfig                   AS config_settings,
+            CASE p.provolatile WHEN 'i' THEN 'IMMUTABLE' WHEN 's' THEN 'STABLE' WHEN 'v' THEN 'VOLATILE' ELSE p.provolatile::text END AS volatility,
+            has_function_privilege('public', p.oid, 'EXECUTE')        AS public_execute,
+            has_function_privilege('anon', p.oid, 'EXECUTE')          AS anon_execute,
+            has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated_execute,
+            has_function_privilege('service_role', p.oid, 'EXECUTE')  AS service_role_execute
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema')
+            AND n.nspname NOT LIKE 'pg\_toast%'
+          ORDER BY p.proname, n.nspname, p.oid;
+
+          \echo '================ QUERY 1b: COMPLETE FUNCTION DEFINITIONS (pg_get_functiondef) ================'
+          SELECT
+            n.nspname AS schema,
+            p.proname AS function_name,
+            p.oid::text AS oid,
+            pg_get_functiondef(p.oid) AS definition
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema')
+            AND n.nspname NOT LIKE 'pg\_toast%'
+          ORDER BY p.proname, n.nspname, p.oid;
+
+          \echo '================ QUERY 2a: WHAT is_admin/rls_auto_enable DEPEND ON (pg_depend, objid = the function) ================'
+          SELECT
+            p.proname AS function_name,
+            pd.deptype,
+            pd.refclassid::regclass AS referenced_catalog,
+            pg_describe_object(pd.refclassid, pd.refobjid, pd.refobjsubid) AS referenced_object
+          FROM pg_depend pd
+          JOIN pg_proc p ON p.oid = pd.objid AND pd.classid = 'pg_proc'::regclass
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema');
+
+          \echo '================ QUERY 2b: WHAT DEPENDS ON is_admin/rls_auto_enable (would fail if the function were removed) ================'
+          SELECT
+            p.proname AS referenced_function,
+            pd.deptype,
+            pd.classid::regclass AS dependent_catalog,
+            pg_describe_object(pd.classid, pd.objid, pd.objsubid) AS dependent_object
+          FROM pg_depend pd
+          JOIN pg_proc p ON p.oid = pd.refobjid AND pd.refclassid = 'pg_proc'::regclass
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema');
+
+          \echo '================ QUERY 2c: TRIGGERS whose function is is_admin/rls_auto_enable ================'
+          SELECT t.tgname AS trigger_name, c.relname AS on_table, p.proname AS function_name
+          FROM pg_trigger t
+          JOIN pg_proc p ON p.oid = t.tgfoid
+          JOIN pg_class c ON c.oid = t.tgrelid
+          WHERE p.proname IN ('is_admin','rls_auto_enable') AND NOT t.tgisinternal;
+
+          \echo '================ QUERY 2d: RLS POLICIES referencing these names in USING/WITH CHECK ================'
+          SELECT schemaname, tablename, policyname, cmd, roles, qual, with_check
+          FROM pg_policies
+          WHERE qual ILIKE '%is_admin%' OR with_check ILIKE '%is_admin%'
+             OR qual ILIKE '%rls_auto_enable%' OR with_check ILIKE '%rls_auto_enable%';
+
+          \echo '================ QUERY 2e: VIEWS referencing these function names ================'
+          SELECT n.nspname AS schema, c.relname AS view_name, c.relkind
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relkind IN ('v','m')
+            AND (pg_get_viewdef(c.oid) ILIKE '%is_admin%' OR pg_get_viewdef(c.oid) ILIKE '%rls_auto_enable%');
+
+          \echo '================ QUERY 2f: EXTENSION MEMBERSHIP (owned by an installed extension?) ================'
+          SELECT
+            n.nspname AS schema, p.proname AS function_name,
+            e.extname AS owning_extension
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          LEFT JOIN pg_depend d ON d.objid = p.oid AND d.classid = 'pg_proc'::regclass AND d.deptype = 'e'
+          LEFT JOIN pg_extension e ON e.oid = d.refobjid
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema');
+
+          \echo '================ QUERY 3: OTHER FUNCTION BODIES REFERENCING is_admin / rls_auto_enable BY NAME ================'
+          SELECT n.nspname AS schema, p.proname AS calling_function, p.oid::text AS oid
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname NOT IN ('pg_catalog','information_schema')
+            AND p.proname NOT IN ('is_admin','rls_auto_enable')
+            AND (pg_get_functiondef(p.oid) ILIKE '%is_admin%' OR pg_get_functiondef(p.oid) ILIKE '%rls_auto_enable%');
+
+          \echo '================ QUERY 4: EXPLICIT ACL GRANTS (aclexplode -- who can EXECUTE, and how) ================'
+          SELECT
+            n.nspname AS schema, p.proname AS function_name, p.oid::text AS oid,
+            CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END AS grantee_role,
+            a.privilege_type, a.is_grantable
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+          WHERE p.proname IN ('is_admin','rls_auto_enable')
+            AND n.nspname NOT IN ('pg_catalog','information_schema')
+          ORDER BY p.proname, grantee_role, a.privilege_type;
+
+          ROLLBACK;
+          SQL_EOF
+          echo "diagnose.sql written ($(wc -l < diagnose.sql) lines)."
+
+      - name: "Safety gate: refuse to run if the SQL contains any write/DDL keyword"
+        run: |
+          set -euo pipefail
+          echo "================================================================"
+          echo " SAFETY GATE -- scanning diagnose.sql for write operations"
+          echo " before it is ever sent to production."
+          echo "================================================================"
+          if grep -inE '\b(CREATE|ALTER|DROP|GRANT|REVOKE|INSERT|UPDATE|DELETE|TRUNCATE|COPY|CALL|DO)\b' diagnose.sql; then
+            echo "::error::diagnose.sql contains a write/DDL keyword (matched above). Refusing to run -- this workflow is READ-ONLY by design."
+            exit 1
+          fi
+          echo "OK: no write/DDL keywords found. Proceeding with SELECT/catalog inspection only."
+
+      - name: "Fail closed unless the connection can actually be made READ ONLY"
+        run: |
+          set -euo pipefail
+          # psql -tA still emits the BEGIN/ROLLBACK command-completion tags
+          # alongside the SELECT tuple when they're batched into one -c string
+          # (tuples-only suppresses headers/footers, not command tags), so pick
+          # out the exact 'on'/'.off' line rather than assuming the whole output
+          # is the value. If no such line is found, RO is empty and the check
+          # still fails closed below.
+          RO=$(psql "$PINTAG_PROD_DB_URL" -X -tA -c "BEGIN READ ONLY; SELECT current_setting('transaction_read_only'); ROLLBACK;" | grep -E '^(on|off)$' | head -n1)
+          echo "transaction_read_only reports: '$RO'"
+          if [ "$RO" != "on" ]; then
+            echo "::error::Could not confirm a READ ONLY transaction against production (got '$RO'). Refusing to proceed."
+            exit 1
+          fi
+          echo "OK: connection confirmed read-only."
+
+      - name: Run diagnostic (SELECT / catalog inspection only)
+        run: |
+          set -euo pipefail
+          echo "================================================================"
+          echo " READ-ONLY DIAGNOSTIC -- catalog inspection of is_admin and"
+          echo " rls_auto_enable only. No writes. No production changes."
+          echo "================================================================"
+          psql "$PINTAG_PROD_DB_URL" -v ON_ERROR_STOP=1 -f diagnose.sql 2>&1 | tee diagnostic-report.txt
+
+      - name: Publish findings to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Production security drift diagnostic: is_admin / rls_auto_enable"
+            echo ""
+            echo "Read-only catalog inspection. No writes were made to production."
+            echo ""
+            echo '```'
+            cat diagnostic-report.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload diagnostic report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: is-admin-rls-auto-enable-diagnostic
+          path: diagnostic-report.txt
+          retention-days: 90
