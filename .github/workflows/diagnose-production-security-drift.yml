@@ -310,42 +310,53 @@ jobs:
           ORDER BY label DESC, kind;
 
           \echo '=== P2-9b: scheduled jobs (pg_cron) mentioning is_admin ==='
-          SELECT (to_regclass('cron.job') IS NOT NULL) AS has_cron \gset
-          \if :has_cron
-            SELECT has_table_privilege(current_user, 'cron.job', 'SELECT') AS cron_readable \gset
-            \if :cron_readable
-              SELECT jobid, jobname, left(command, 160) AS command_start FROM cron.job WHERE command ILIKE '%is\_admin%';
-            \else
-              \echo 'cron.job exists but the connected role cannot read it: skipped'
-            \endif
+          SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'cron') AS pg_cron_schema_present,
+                 EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                         WHERE n.nspname = 'cron' AND c.relname = 'job'
+                           AND has_schema_privilege(current_user, n.oid, 'USAGE')
+                           AND has_table_privilege(current_user, c.oid, 'SELECT')) AS cron_job_readable_by_connected_role \gset
+          \echo 'pg_cron schema present:' :pg_cron_schema_present '- cron.job readable by the connected role:' :cron_job_readable_by_connected_role
+          \if :cron_job_readable_by_connected_role
+            SELECT jobid, jobname, left(command, 160) AS command_start FROM cron.job WHERE command ILIKE '%is\_admin%';
           \else
-            \echo 'pg_cron is not installed (no cron.job table)'
+            \echo 'cron.job cannot be read by the connected role: scheduled-job text NOT verified from this connection'
           \endif
 
           \echo '=== P2-10: MIGRATION STATE - applied versions from 20260901000000 onward ==='
-          SELECT (to_regclass('supabase_migrations.schema_migrations') IS NOT NULL) AS has_mig \gset
-          \if :has_mig
-            SELECT has_table_privilege(current_user, 'supabase_migrations.schema_migrations', 'SELECT') AS mig_readable \gset
-            \if :mig_readable
-              SELECT version FROM supabase_migrations.schema_migrations WHERE version >= '20260901000000' ORDER BY version;
-            \else
-              \echo 'schema_migrations exists but the connected role cannot read it: skipped'
-            \endif
+          SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                         WHERE n.nspname = 'supabase_migrations' AND c.relname = 'schema_migrations'
+                           AND has_schema_privilege(current_user, n.oid, 'USAGE')
+                           AND has_table_privilege(current_user, c.oid, 'SELECT')) AS mig_readable \gset
+          \if :mig_readable
+            SELECT version FROM supabase_migrations.schema_migrations WHERE version >= '20260901000000' ORDER BY version;
           \else
-            \echo 'supabase_migrations.schema_migrations not found'
+            \echo 'supabase_migrations.schema_migrations is absent or not readable by the connected role: skipped'
+          \endif
+
+          \echo '=== P2-11: RUNTIME USAGE EVIDENCE - does anything actually execute is_admin / rls_auto_enable ==='
+          SELECT current_setting('track_functions') AS track_functions,
+                 pg_has_role(current_user, 'pg_read_all_stats', 'USAGE') AS can_read_all_stats,
+                 EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements') AS pg_stat_statements_installed;
+          SELECT funcname, calls, total_time FROM pg_stat_user_functions WHERE funcname IN ('is_admin','rls_auto_enable') ORDER BY funcname;
+          SELECT (SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = 'pg_stat_statements') AS pgss_schema,
+                 EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements')
+                   AND pg_has_role(current_user, 'pg_read_all_stats', 'USAGE') AS pgss_readable \gset
+          \if :pgss_readable
+            SELECT count(*) AS statements_mentioning_is_admin, coalesce(sum(calls), 0) AS total_calls
+            FROM :"pgss_schema".pg_stat_statements WHERE query ILIKE '%is\_admin%';
+          \else
+            \echo 'pg_stat_statements absent or the connected role lacks pg_read_all_stats: statement text NOT verified'
           \endif
 
           \echo '=== P2-4d: counts only (no identities) - rows in public.profiles and how many carry role admin ==='
-          SELECT (to_regclass('public.profiles') IS NOT NULL) AS profiles_exists \gset
-          \if :profiles_exists
-            SELECT has_table_privilege(current_user, 'public.profiles', 'SELECT') AS profiles_readable \gset
-            \if :profiles_readable
-              SELECT count(*) AS profile_rows, count(*) FILTER (WHERE role = 'admin') AS rows_with_role_admin FROM public.profiles;
-            \else
-              \echo 'public.profiles exists but the connected role cannot read it: count skipped'
-            \endif
+          SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                         WHERE n.nspname = 'public' AND c.relname = 'profiles' AND c.relkind = 'r'
+                           AND has_schema_privilege(current_user, n.oid, 'USAGE')
+                           AND has_table_privilege(current_user, c.oid, 'SELECT')) AS profiles_readable \gset
+          \if :profiles_readable
+            SELECT count(*) AS profile_rows, count(*) FILTER (WHERE role = 'admin') AS rows_with_role_admin FROM public.profiles;
           \else
-            \echo 'public.profiles does not exist'
+            \echo 'public.profiles is absent or not readable by the connected role: count skipped'
           \endif
 
           ROLLBACK;
