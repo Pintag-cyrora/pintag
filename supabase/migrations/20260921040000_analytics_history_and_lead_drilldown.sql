@@ -24,6 +24,9 @@
 --     unattributed_event  lead_events row with neither a listing nor a leads
 --                         row. Shown so nothing silently disappears; cannot
 --                         be attributed to a listing.
+--   A lead whose listing was hard-deleted has leads.property_id = NULL (ON DELETE
+--   SET NULL) but its lead_event still carries the listing id, so the row keeps
+--   its listing attribution (resolved through the snapshot / removal-log chain).
 --   `totals` always describe the WHOLE requested range (not the page), so the
 --   UI can say "12 leads · 3 legacy events" while paging. p_property_id
 --   filters to one listing (unattributed events never match it).
@@ -124,7 +127,7 @@ BEGIN
            l.created_at          AS event_at,
            l.id                  AS lead_id,
            l.lead_event_id       AS lead_event_id,
-           l.property_id         AS property_id,
+           COALESCE(l.property_id, lev.listing_id) AS property_id,  -- detached lead (listing hard-deleted): keep the id the event recorded
            l.party_id            AS agent_party_id,
            l.contact_id          AS contact_id,
            l.status              AS lead_status,
@@ -133,8 +136,9 @@ BEGIN
            l.recipient_verified  AS recipient_verified,
            l.unit_type_id        AS unit_type_id
     FROM leads l
+    LEFT JOIN lead_events lev ON lev.id = l.lead_event_id
     WHERE l.created_at >= v_from AND l.created_at < v_to
-      AND (p_property_id IS NULL OR l.property_id = p_property_id)
+      AND (p_property_id IS NULL OR COALESCE(l.property_id, lev.listing_id) = p_property_id)
     UNION ALL
     SELECT CASE WHEN le.listing_id IS NULL THEN 'unattributed_event' ELSE 'legacy_event' END,
            le.id, le.created_at, NULL::uuid, le.id, le.listing_id, le.agent_id, le.contact_id,

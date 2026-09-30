@@ -86,7 +86,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql
 
-      # Applies BOTH migrations twice to a throwaway cluster, asserts ~290
+      # Applies BOTH migrations twice to a throwaway cluster, asserts ~300
       # boundary / attribution / paging / ACL / search_path checks, then builds a
       # ~30x-production-volume database and asserts every all-time RPC finishes
       # inside half of Supabase's 8 s `authenticated` statement_timeout.

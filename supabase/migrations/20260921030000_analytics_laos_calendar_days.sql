@@ -557,8 +557,15 @@ BEGIN
   END IF;
   v_from := p_start::timestamp AT TIME ZONE 'Asia/Vientiane';
   v_to   := p_end::timestamp   AT TIME ZONE 'Asia/Vientiane';
+  -- listing_ref: the listing a lead belongs to. leads.property_id is set to NULL
+  -- when its listing is hard-deleted (ON DELETE SET NULL, 20260806020000), but the
+  -- originating lead_events row keeps the listing id (it has no FK), so fall back
+  -- to it: a detached lead must still be attributed to the listing that generated it.
   WITH in_range AS (
-    SELECT * FROM leads WHERE created_at >= v_from AND created_at < v_to
+    SELECT l.*, COALESCE(l.property_id, lev.listing_id) AS listing_ref
+    FROM leads l
+    LEFT JOIN lead_events lev ON lev.id = l.lead_event_id
+    WHERE l.created_at >= v_from AND l.created_at < v_to
   ),
   orphan_events AS (
     SELECT le.id, le.created_at, le.listing_id
@@ -577,7 +584,7 @@ BEGIN
     ) pv ON le.session_id IS NOT NULL
   ),
   by_listing_all AS (
-    SELECT property_id, COUNT(*) AS cnt FROM in_range WHERE property_id IS NOT NULL GROUP BY property_id
+    SELECT listing_ref AS property_id, COUNT(*) AS cnt FROM in_range WHERE listing_ref IS NOT NULL GROUP BY listing_ref
   ),
   by_listing_top AS (
     SELECT property_id, cnt FROM by_listing_all ORDER BY cnt DESC, property_id LIMIT 10
@@ -627,11 +634,11 @@ BEGIN
     ),
     'by_listing_total', (SELECT COUNT(*) FROM by_listing_all),
     'by_listing_other', (SELECT COALESCE(SUM(cnt), 0) FROM by_listing_all) - (SELECT COALESCE(SUM(cnt), 0) FROM by_listing_top),
-    'by_listing_unattributed', (SELECT COUNT(*) FROM in_range WHERE property_id IS NULL),
+    'by_listing_unattributed', (SELECT COUNT(*) FROM in_range WHERE listing_ref IS NULL),
     'by_listing_deleted', (
       SELECT COUNT(*) FROM in_range ir
-      WHERE ir.property_id IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM properties p WHERE p.id = ir.property_id AND p.deleted_at IS NULL)
+      WHERE ir.listing_ref IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM properties p WHERE p.id = ir.listing_ref AND p.deleted_at IS NULL)
     ),
     'by_agent', (
       SELECT COALESCE(jsonb_agg(jsonb_build_object(

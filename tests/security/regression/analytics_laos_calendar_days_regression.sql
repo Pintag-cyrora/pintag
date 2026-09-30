@@ -377,6 +377,33 @@ BEGIN
 END $$;
 
 \echo ''
+\echo '=== E2. A lead detached from a hard-deleted listing keeps its listing attribution ==='
+RESET ROLE;
+-- Simulates the FK's ON DELETE SET NULL: the leads row loses property_id, the lead_event still has listing_id.
+SELECT seed_event('detached', timestamptz '2026-09-20 12:00:00+07', 'aaaaaaaa-0000-0000-0000-00000000000d', 'whatsapp_click', true, 'sdet');
+UPDATE leads SET property_id = NULL WHERE customer_name = 'Secret Buyer detached';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000ad01', false);
+DO $$
+DECLARE r jsonb := analytics_lead_activity('2026-09-20', '2026-09-21'); row jsonb; s jsonb := analytics_leads_breakdown('2026-09-20', '2026-09-21');
+BEGIN
+  PERFORM assert((SELECT property_id IS NULL FROM leads WHERE customer_name = 'Secret Buyer detached'), 'fixture: the CRM row really has no property_id');
+  PERFORM assert_eq(jsonb_array_length(r -> 'rows')::text, '1', 'the detached lead is listed');
+  row := r -> 'rows' -> 0;
+  PERFORM assert_eq(row ->> 'kind', 'lead', 'it is still an official CRM lead');
+  PERFORM assert_eq(row ->> 'property_id', 'aaaaaaaa-0000-0000-0000-00000000000d', 'its listing id is recovered from the originating lead_event');
+  PERFORM assert_eq(row ->> 'listing_title', 'Delta Snap', 'and resolved through the snapshot fallback');
+  PERFORM assert_eq(row ->> 'listing_resolution', 'snapshot', 'resolution = snapshot');
+  PERFORM assert_eq(row ->> 'is_deleted', 'true', 'flagged as a deleted listing');
+  PERFORM assert_eq(r -> 'totals' ->> 'distinct_listings', '1', 'counted as one listing');
+  PERFORM assert_eq(jsonb_array_length(analytics_lead_activity('2026-09-20', '2026-09-21', 'aaaaaaaa-0000-0000-0000-00000000000d') -> 'rows')::text, '1', 'the per-listing filter finds it');
+  PERFORM assert_eq(s ->> 'total', '1', 'summary: 1 lead');
+  PERFORM assert_eq(s ->> 'by_listing_unattributed', '0', 'summary: NOT counted as "without a listing"');
+  PERFORM assert_eq(s -> 'by_listing' -> 0 ->> 'property_id', 'aaaaaaaa-0000-0000-0000-00000000000d', 'summary: ranked under its real listing');
+  PERFORM assert_eq(s ->> 'by_listing_deleted', '1', 'summary: counted on a deleted listing');
+END $$;
+
+\echo ''
 \echo '=== F. Per-listing drill-down ==='
 DO $$
 DECLARE r jsonb;
