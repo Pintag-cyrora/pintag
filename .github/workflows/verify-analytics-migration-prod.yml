@@ -1,0 +1,876 @@
+name: "DIAGNOSTIC: Verify analytics migrations in production (read-only)"
+
+# TEMPORARY, READ-ONLY verification of migrations 20260921030000 and
+# 20260921040000 after they were applied to production by apply-migration.yml
+# (run #16). Not for merge.
+#
+# WHAT IT CHECKS (catalog + SELECT only):
+#   V1  migration ledger through 20260921040000; 20260922000000 not recorded
+#   V2  the 12 analytics functions exist, SECURITY DEFINER, search_path pinned
+#   V3  EXECUTE privileges: no PUBLIC / anon grant; authenticated only
+#   V4  definitions: staff gate, Asia/Vientiane, no bare UTC date bucketing
+#   V5  idx_leads_lead_event_id exists
+#   V6  the production security verifier's check-10 predicate lists none of them
+#   V7  SMOKE: each function's own statement (taken verbatim from the migration,
+#       staff gate removed) is executed over the WHOLE history, and its results are
+#       cross-checked against the raw tables. Only counts/dates are printed.
+#       (The generated statements were proven identical to the real RPCs on a
+#       local fixture before this file was written.)
+#   V8  the staff gate fails closed when no staff identity is presented
+#
+# SAFETY: same guarantees as the earlier read-only diagnostics -- static
+# keyword + meta-command gate BEFORE connecting, BEGIN READ ONLY with
+# transaction_read_only verified, ROLLBACK, existing production-backup
+# environment/secret, no secrets printed, NO migration/apply path. It does NOT
+# forge a staff/JWT identity: the RPCs' own auth gate is left untouched.
+#
+# Runs on push to this branch only (and workflow_dispatch). Never scheduled.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/verify-analytics-migration-prod
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-analytics-migration-prod
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify analytics migrations (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-backup
+    env:
+      PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Verify DB URL secret is present
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Write the verification SQL (SELECT / catalog inspection only)
+        run: |
+          cat > diagnose.sql <<'SQL_EOF'
+          \pset border 2
+          \pset pager off
+          \set ON_ERROR_STOP on
+
+          BEGIN READ ONLY;
+
+          \echo '=== V0: SESSION - connected role and read-only confirmation ==='
+          SELECT current_user AS connected_role, current_setting('server_version') AS server_version,
+                 current_setting('transaction_read_only') AS transaction_read_only,
+                 (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS role_bypasses_rls;
+
+          SELECT (current_setting('transaction_read_only') = 'on') AS ro_on
+          \gset
+          \if :ro_on
+            \echo 'OK: transaction_read_only = on'
+          \else
+            \echo 'ABORT: transaction is NOT read only'
+            \q
+          \endif
+
+          \echo '=== V1: MIGRATION LEDGER (versions from 20260921000000) ==='
+          SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                         WHERE n.nspname = 'supabase_migrations' AND c.relname = 'schema_migrations'
+                           AND has_schema_privilege(current_user, n.oid, 'USAGE')
+                           AND has_table_privilege(current_user, c.oid, 'SELECT')) AS ledger_readable
+          \gset
+          \if :ledger_readable
+            SELECT version, name FROM supabase_migrations.schema_migrations WHERE version >= '20260921000000' ORDER BY version;
+            SELECT max(version) AS highest_applied_version,
+                   bool_or(version = '20260921030000') AS analytics_030000_recorded,
+                   bool_or(version = '20260921040000') AS analytics_040000_recorded,
+                   bool_or(version = '20260922000000') AS v_20260922000000_recorded,
+                   count(*) FILTER (WHERE version > '20260921040000') AS versions_above_boundary,
+                   count(*) FILTER (WHERE version > '20260921020000') AS versions_after_previous_state
+            FROM supabase_migrations.schema_migrations;
+          \else
+            \echo 'supabase_migrations.schema_migrations is not readable by the connected role: ledger NOT verified here'
+          \endif
+
+          \echo '=== V2: FUNCTION CATALOG - existence, SECURITY DEFINER, search_path, owner, return type ==='
+          SELECT p.oid::regprocedure::text AS function, p.prosecdef AS security_definer, p.proconfig AS config,
+                 pg_get_userbyid(p.proowner) AS owner, p.prorettype::regtype::text AS returns, p.provolatile AS volatility
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND (starts_with(p.proname, 'analytics_') OR p.proname = 'analytics_listing_labels')
+          ORDER BY 1;
+
+          SELECT count(*) AS analytics_functions_expected_12,
+                 count(*) FILTER (WHERE p.prosecdef) AS security_definer_count,
+                 count(*) FILTER (WHERE p.proconfig @> ARRAY['search_path=public, pg_temp']) AS pinned_public_pg_temp
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.oid = ANY (ARRAY['analytics_traffic_by_day(date,date)', 'analytics_funnel(date,date)', 'analytics_session_stats(date,date)', 'analytics_traffic_sources(date,date)', 'analytics_listing_engagement(date,date)', 'analytics_search_breakdown(date,date)', 'analytics_behavior(date,date)', 'analytics_location_breakdown(date,date)', 'analytics_leads_breakdown(date,date)', 'analytics_admin_insights(date,date)', 'analytics_history_bounds()', 'analytics_lead_activity(date,date,uuid,integer,timestamptz,uuid)']::regprocedure[]);
+
+          \echo '=== V3: EXECUTE PRIVILEGES (explicit ACL entries with grantor, then the effective matrix) ==='
+          SELECT p.oid::regprocedure::text AS function,
+                 CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END AS grantee, a.privilege_type
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+          WHERE n.nspname = 'public' AND (starts_with(p.proname, 'analytics_') OR p.proname = 'analytics_listing_labels')
+          ORDER BY 1, 2;
+
+          SELECT p.oid::regprocedure::text AS function,
+                 has_function_privilege('anon', p.oid, 'execute') AS anon,
+                 has_function_privilege('authenticated', p.oid, 'execute') AS authenticated,
+                 has_function_privilege('service_role', p.oid, 'execute') AS service_role,
+                 has_function_privilege(current_user, p.oid, 'execute') AS connected_role,
+                 EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                         WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE') AS public_grant
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND (starts_with(p.proname, 'analytics_') OR p.proname = 'analytics_listing_labels')
+          ORDER BY 1;
+
+          \echo '=== V4: DEFINITION MARKERS (staff gate, Laos calendar, no bare UTC bucketing) ==='
+          SELECT p.oid::regprocedure::text AS function,
+                 (pg_get_functiondef(p.oid) LIKE '%is_pintag_staff(auth.uid())%') AS staff_gated,
+                 (pg_get_functiondef(p.oid) LIKE '%Asia/Vientiane%') AS uses_laos_calendar,
+                 (pg_get_functiondef(p.oid) ~ 'created_at::date|updated_at::date') AS has_bare_utc_date_bucketing
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.oid = ANY (ARRAY['analytics_traffic_by_day(date,date)', 'analytics_funnel(date,date)', 'analytics_session_stats(date,date)', 'analytics_traffic_sources(date,date)', 'analytics_listing_engagement(date,date)', 'analytics_search_breakdown(date,date)', 'analytics_behavior(date,date)', 'analytics_location_breakdown(date,date)', 'analytics_leads_breakdown(date,date)', 'analytics_admin_insights(date,date)', 'analytics_history_bounds()', 'analytics_lead_activity(date,date,uuid,integer,timestamptz,uuid)']::regprocedure[])
+          ORDER BY 1;
+
+          \echo '=== V5: INDEX idx_leads_lead_event_id ==='
+          SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_leads_lead_event_id';
+
+          \echo '=== V6: VERIFIER CHECK 10 PREDICATE (SECURITY DEFINER, callable by anon, not gated) - must list none of the analytics functions ==='
+          SELECT p.oid::regprocedure::text AS function
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.prosecdef
+            AND p.prorettype <> 'trigger'::regtype
+            AND has_function_privilege('anon', p.oid, 'execute')
+            AND pg_get_functiondef(p.oid) NOT LIKE '%is_pintag_admin%'
+            AND p.proname NOT IN (
+              'public_listing_stats','increment_listing_view','market_transition_stats',
+              'is_pintag_admin','is_pintag_staff',
+              'check_lead_rate_limit','check_listing_event_dedup','check_event_target_ceiling',
+              'check_search_event_rate_limit','check_ui_event_rate_limit',
+              'check_page_view_rate_limit','check_listing_event_burst_limit')
+          ORDER BY 1;
+
+          \echo '=== V7: SMOKE - the migrations'' own statements (function bodies, staff gate removed) run over the WHOLE history, read-only ==='
+          \echo '    Only counts and dates are printed; no listing, agent, contact or lead content.'
+          SELECT (least((SELECT (min(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM page_views),
+                        (SELECT (min(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM listing_events),
+                        (SELECT (min(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM lead_events),
+                        (SELECT (min(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM leads),
+                        (SELECT (min(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM search_events),
+                        (SELECT (min(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM ui_events)))::text AS p_start,
+                 (((now() AT TIME ZONE 'Asia/Vientiane')::date) + 1)::text AS p_end,
+                 200 AS v_limit
+          \gset
+          SELECT (:'p_start'::date::timestamp AT TIME ZONE 'Asia/Vientiane') AS v_from, (:'p_end'::date::timestamp AT TIME ZONE 'Asia/Vientiane') AS v_to
+          \gset
+          SELECT :'p_start' AS all_time_start_laos_date, :'p_end' AS end_exclusive, (:'p_end'::date - :'p_start'::date) AS days_in_range;
+
+          \timing on
+          \echo '--- history bounds'
+          SELECT r ->> 'tz' AS tz, r ->> 'today' AS today, r ->> 'earliest_day' AS earliest_day, r ->> 'latest_day' AS latest_day FROM (  WITH b AS (
+              SELECT 'page_views' AS src,
+                     (SELECT (MIN(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM page_views) AS first_day,
+                     (SELECT (MAX(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM page_views) AS last_day
+              UNION ALL SELECT 'listing_events',
+                     (SELECT (MIN(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM listing_events),
+                     (SELECT (MAX(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM listing_events)
+              UNION ALL SELECT 'lead_events',
+                     (SELECT (MIN(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM lead_events),
+                     (SELECT (MAX(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM lead_events)
+              UNION ALL SELECT 'leads',
+                     (SELECT (MIN(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM leads),
+                     (SELECT (MAX(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM leads)
+              UNION ALL SELECT 'search_events',
+                     (SELECT (MIN(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM search_events),
+                     (SELECT (MAX(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM search_events)
+              UNION ALL SELECT 'ui_events',
+                     (SELECT (MIN(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM ui_events),
+                     (SELECT (MAX(created_at) AT TIME ZONE 'Asia/Vientiane')::date FROM ui_events)
+            )
+            SELECT jsonb_build_object(
+              'tz', 'Asia/Vientiane',
+              'today', (now() AT TIME ZONE 'Asia/Vientiane')::date,
+              'earliest_day', (SELECT MIN(first_day) FROM b),
+              'latest_day', (SELECT MAX(last_day) FROM b),
+              'sources', (SELECT jsonb_object_agg(src, jsonb_build_object('first_day', first_day, 'last_day', last_day)) FROM b)
+            ) AS r) q;
+
+          \echo '--- traffic_by_day (all time): rows must equal days; sum(page_views) must equal count(*) of page_views'
+          SELECT count(*) AS rows_returned, sum(pv) AS sum_page_views,
+                 (count(*) = (:'p_end'::date - :'p_start'::date)) AS one_row_per_day,
+                 (sum(pv) = (SELECT count(*) FROM page_views)) AS matches_raw_page_views,
+                 min(day) AS first_day, max(day) AS last_day
+          FROM (WITH agg AS (
+              SELECT (pv.created_at AT TIME ZONE 'Asia/Vientiane')::date AS d,
+                     COUNT(*)                                            AS pvs,
+                     COUNT(DISTINCT pv.session_id)                       AS sess,
+                     COUNT(DISTINCT pv.visitor_id)                       AS uv,
+                     COUNT(DISTINCT pv.visitor_id) FILTER (WHERE pv.is_returning) AS rv
+              FROM page_views pv
+              WHERE pv.created_at >= :'v_from'::timestamptz AND pv.created_at < :'v_to'::timestamptz
+              GROUP BY 1
+            )
+            SELECT g.d::date,
+                   COALESCE(a.pvs, 0), COALESCE(a.sess, 0), COALESCE(a.uv, 0), COALESCE(a.rv, 0)
+            FROM generate_series(:'p_start'::date::timestamp, (:'p_end'::date - 1)::timestamp, interval '1 day') AS g(d)
+            LEFT JOIN agg a ON a.d = g.d::date
+            ORDER BY 1) AS t(day, pv, sess, uv, rv);
+
+          \echo '--- session_stats'
+          SELECT r ->> 'page_views' AS page_views, (r ->> 'page_views')::bigint = (SELECT count(*) FROM page_views) AS matches_raw,
+                 r ->> 'sessions' AS sessions, r ->> 'unique_visitors' AS unique_visitors FROM (  WITH per_session AS (
+              SELECT session_id, COUNT(*) AS views,
+                     EXTRACT(EPOCH FROM (MAX(created_at) - MIN(created_at))) AS duration_seconds
+              FROM page_views
+              WHERE session_id IS NOT NULL AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+              GROUP BY session_id
+            ), totals AS (
+              SELECT COUNT(*) AS page_views,
+                     COUNT(DISTINCT visitor_id) AS unique_visitors,
+                     COUNT(DISTINCT visitor_id) FILTER (WHERE is_returning) AS returning_visitors
+              FROM page_views
+              WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+            )
+            SELECT jsonb_build_object(
+              'sessions', (SELECT COUNT(*) FROM per_session),
+              'avg_pages_per_session', COALESCE((SELECT ROUND(AVG(views), 2) FROM per_session), 0),
+              'avg_session_duration_seconds', COALESCE((SELECT ROUND(AVG(duration_seconds)) FROM per_session), 0),
+              'bounce_rate', COALESCE((SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE views = 1) / NULLIF(COUNT(*), 0), 1) FROM per_session), 0),
+              'page_views', (SELECT page_views FROM totals),
+              'unique_visitors', (SELECT unique_visitors FROM totals),
+              'returning_visitors', (SELECT returning_visitors FROM totals)
+            ) AS r) q;
+
+          \echo '--- funnel (5 stages)'
+          SELECT count(*) AS stages, max(sessions) FILTER (WHERE stage = 'landed') AS landed, max(sessions) FILTER (WHERE stage = 'contacted') AS contacted, max(sessions) FILTER (WHERE stage = 'closed') AS closed
+          FROM (WITH landed AS (
+              SELECT DISTINCT session_id FROM page_views
+              WHERE session_id IS NOT NULL AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+            ), searched AS (
+              SELECT DISTINCT session_id FROM search_events
+              WHERE session_id IS NOT NULL AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+            ), viewed AS (
+              SELECT DISTINCT session_id FROM listing_events
+              WHERE event_type = 'view' AND session_id IS NOT NULL AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+            ), contacted AS (
+              SELECT DISTINCT session_id FROM lead_events
+              WHERE session_id IS NOT NULL AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+            ), closed AS (
+              SELECT DISTINCT le.session_id
+              FROM leads l JOIN lead_events le ON le.id = l.lead_event_id
+              WHERE l.status = 'closed' AND le.session_id IS NOT NULL
+                AND l.updated_at >= :'v_from'::timestamptz AND l.updated_at < :'v_to'::timestamptz
+            )
+            SELECT 'landed', (SELECT COUNT(*) FROM landed)
+            UNION ALL SELECT 'searched', (SELECT COUNT(*) FROM searched)
+            UNION ALL SELECT 'viewed_listing', (SELECT COUNT(*) FROM viewed)
+            UNION ALL SELECT 'contacted', (SELECT COUNT(*) FROM contacted)
+            UNION ALL SELECT 'closed', (SELECT COUNT(*) FROM closed)) AS t(stage, sessions);
+
+          \echo '--- traffic_sources'
+          SELECT (SELECT count(*) FROM jsonb_object_keys(r -> 'by_source')) AS source_kinds, jsonb_array_length(r -> 'top_referrers') AS top_referrers, jsonb_array_length(r -> 'campaigns') AS campaigns FROM (  SELECT jsonb_build_object(
+              'by_source', (
+                SELECT COALESCE(jsonb_object_agg(COALESCE(referrer_source, 'direct'), cnt), '{}'::jsonb)
+                FROM (
+                  SELECT referrer_source, COUNT(*) cnt FROM page_views
+                  WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+                  GROUP BY referrer_source
+                ) t
+              ),
+              'top_referrers', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', host, 'value', cnt)), '[]'::jsonb)
+                FROM (
+                  SELECT regexp_replace(regexp_replace(referrer, '^https?://(www[.])?', ''), '/.*$', '') AS host,
+                         COUNT(*) cnt
+                  FROM page_views
+                  WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+                    AND referrer IS NOT NULL AND referrer_source != 'direct'
+                  GROUP BY host ORDER BY cnt DESC, host LIMIT 10
+                ) t
+              ),
+              'campaigns', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                  'campaign', utm_campaign, 'source', COALESCE(utm_source, '—'),
+                  'medium', COALESCE(utm_medium, '—'), 'sessions', sessions
+                )), '[]'::jsonb)
+                FROM (
+                  SELECT utm_campaign, utm_source, utm_medium, COUNT(DISTINCT session_id) sessions
+                  FROM page_views
+                  WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz AND utm_campaign IS NOT NULL
+                  GROUP BY utm_campaign, utm_source, utm_medium ORDER BY sessions DESC, utm_campaign LIMIT 20
+                ) t
+              )
+            ) AS r) q;
+
+          \echo '--- listing_engagement'
+          SELECT r ->> 'views_total' AS views_total, (r ->> 'views_total')::bigint = (SELECT count(*) FROM listing_events WHERE event_type = 'view') AS views_match_raw,
+                 r ->> 'wa_clicks' AS wa_clicks, (r ->> 'wa_clicks')::bigint = (SELECT count(*) FROM lead_events WHERE event_type = 'whatsapp_click') AS wa_match_raw,
+                 r ->> 'call_clicks' AS call_clicks, (r ->> 'call_clicks')::bigint = (SELECT count(*) FROM lead_events WHERE event_type = 'call_click') AS call_match_raw,
+                 r ->> 'agent_profile_clicks' AS agent_profile_clicks, (r ->> 'agent_profile_clicks')::bigint = (SELECT count(*) FROM ui_events WHERE element_id = 'agent-profile-link') AS agent_click_match_raw,
+                 r ->> 'most_viewed_total' AS listings_with_views, jsonb_array_length(r -> 'views_by_day') AS views_by_day_points,
+                 (jsonb_array_length(r -> 'views_by_day') = (:'p_end'::date - :'p_start'::date)) AS zero_filled_one_point_per_day
+          FROM (  WITH per_property AS (
+              SELECT property_id,
+                     COUNT(*) FILTER (WHERE event_type = 'view') AS views,
+                     COUNT(*) FILTER (WHERE event_type = 'impression') AS impressions,
+                     COUNT(*) FILTER (WHERE event_type = 'click') AS clicks,
+                     COUNT(*) FILTER (WHERE event_type = 'save') AS saves,
+                     COUNT(*) FILTER (WHERE event_type = 'share') AS shares
+              FROM listing_events
+              WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz AND property_id IS NOT NULL
+              GROUP BY property_id
+            ),
+            totals AS (
+              SELECT COALESCE(SUM(views), 0) AS views_total, COALESCE(SUM(shares), 0) AS shares_total
+              FROM per_property
+            ),
+            shared_sessions AS (
+              SELECT DISTINCT session_id FROM page_views
+              WHERE page = 'listing.html' AND utm_source = 'pintag_share'
+                AND session_id IS NOT NULL
+                AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+            ),
+            shared_link_stats AS (
+              SELECT
+                (SELECT COUNT(*) FROM page_views
+                   WHERE page = 'listing.html' AND utm_source = 'pintag_share'
+                     AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz) AS shared_link_views,
+                (SELECT COUNT(*) FROM lead_events
+                   WHERE session_id IN (SELECT session_id FROM shared_sessions)
+                     AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz) AS shared_link_leads,
+                (SELECT COUNT(*) FROM listing_events
+                   WHERE event_type = 'share'
+                     AND session_id IN (SELECT session_id FROM shared_sessions)
+                     AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz) AS secondary_shares
+            ),
+            views_daily AS (
+              SELECT (created_at AT TIME ZONE 'Asia/Vientiane')::date AS d, COUNT(*) AS cnt
+              FROM listing_events
+              WHERE event_type = 'view' AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+              GROUP BY 1
+            )
+            SELECT jsonb_build_object(
+              'saves_total', COALESCE((SELECT SUM(saves) FROM per_property), 0),
+              'shares_total', (SELECT shares_total FROM totals),
+              'views_total', (SELECT views_total FROM totals),
+              'share_rate', (
+                SELECT CASE WHEN views_total > 0 THEN ROUND(100.0 * shares_total / views_total, 1) ELSE NULL END
+                FROM totals
+              ),
+              'shared_link_views', (SELECT shared_link_views FROM shared_link_stats),
+              'views_per_share', (
+                SELECT CASE WHEN shares_total > 0 THEN ROUND(shared_link_stats.shared_link_views::numeric / shares_total, 2) ELSE NULL END
+                FROM totals, shared_link_stats
+              ),
+              'shared_link_leads', (SELECT shared_link_leads FROM shared_link_stats),
+              'secondary_shares', (SELECT secondary_shares FROM shared_link_stats),
+              'wa_clicks', (SELECT COUNT(*) FROM lead_events
+                            WHERE event_type = 'whatsapp_click' AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz),
+              'call_clicks', (SELECT COUNT(*) FROM lead_events
+                              WHERE event_type = 'call_click' AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz),
+              'agent_profile_clicks', (SELECT COUNT(*) FROM ui_events
+                                       WHERE element_id = 'agent-profile-link' AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz),
+              'views_by_day', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('day', g.d::date, 'views', COALESCE(v.cnt, 0)) ORDER BY g.d), '[]'::jsonb)
+                FROM generate_series(:'p_start'::date::timestamp, (:'p_end'::date - 1)::timestamp, interval '1 day') AS g(d)
+                LEFT JOIN views_daily v ON v.d = g.d::date
+              ),
+              'most_viewed_total', (SELECT COUNT(*) FROM per_property WHERE views > 0),
+              'most_viewed', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', COALESCE(p.title_en, p.title_lo, pp.property_id::text), 'value', pp.views) ORDER BY pp.views DESC, pp.property_id), '[]'::jsonb)
+                FROM (SELECT * FROM per_property WHERE views > 0 ORDER BY views DESC, property_id LIMIT 10) pp
+                LEFT JOIN properties p ON p.id = pp.property_id
+              ),
+              'top_ctr', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', COALESCE(p.title_en, p.title_lo, pp.property_id::text), 'value', ROUND(100.0 * pp.clicks / NULLIF(pp.impressions,0), 1)) ORDER BY pp.clicks::float / NULLIF(pp.impressions,0) DESC, pp.property_id), '[]'::jsonb)
+                FROM (SELECT * FROM per_property WHERE impressions >= 5 ORDER BY clicks::float / NULLIF(impressions,0) DESC, property_id LIMIT 10) pp
+                LEFT JOIN properties p ON p.id = pp.property_id
+              )
+            ) AS r) q;
+
+          \echo '--- search_breakdown'
+          SELECT r ->> 'total' AS total, (r ->> 'total')::bigint = (SELECT count(*) FROM search_events) AS matches_raw, r ->> 'zero_result' AS zero_result FROM (  SELECT jsonb_build_object(
+              'total', (SELECT COUNT(*) FROM search_events WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz),
+              'zero_result', (SELECT COUNT(*) FROM search_events WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz AND result_count = 0),
+              'by_type', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', property_type, 'value', cnt) ORDER BY cnt DESC, property_type), '[]'::jsonb)
+                FROM (SELECT property_type, COUNT(*) cnt FROM search_events WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz AND property_type IS NOT NULL GROUP BY property_type) t
+              ),
+              'by_tx', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', transaction_type, 'value', cnt)), '[]'::jsonb)
+                FROM (SELECT transaction_type, COUNT(*) cnt FROM search_events WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz AND transaction_type IS NOT NULL GROUP BY transaction_type) t
+              ),
+              'by_district', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', district, 'value', cnt) ORDER BY cnt DESC, district), '[]'::jsonb)
+                FROM (SELECT district, COUNT(*) cnt FROM search_events WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz AND district IS NOT NULL GROUP BY district) t
+              )
+            ) AS r) q;
+
+          \echo '--- behavior'
+          SELECT jsonb_array_length(r -> 'entry') AS entry_pages, jsonb_array_length(r -> 'exit') AS exit_pages, jsonb_array_length(r -> 'avg_duration') AS duration_pages, jsonb_array_length(r -> 'top_clicks') AS top_clicks FROM (  WITH ordered AS (
+              SELECT session_id, page, created_at,
+                     ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at) AS rn,
+                     COUNT(*) OVER (PARTITION BY session_id) AS session_len,
+                     LEAD(created_at) OVER (PARTITION BY session_id ORDER BY created_at) AS next_at
+              FROM page_views
+              WHERE session_id IS NOT NULL AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+            )
+            SELECT jsonb_build_object(
+              'entry', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', page, 'value', cnt) ORDER BY cnt DESC, page), '[]'::jsonb)
+                FROM (SELECT page, COUNT(*) cnt FROM ordered WHERE rn = 1 GROUP BY page ORDER BY cnt DESC, page LIMIT 8) t
+              ),
+              'exit', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', page, 'value', cnt) ORDER BY cnt DESC, page), '[]'::jsonb)
+                FROM (SELECT page, COUNT(*) cnt FROM ordered WHERE rn = session_len GROUP BY page ORDER BY cnt DESC, page LIMIT 8) t
+              ),
+              'avg_duration', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', page, 'value', avg_secs) ORDER BY avg_secs DESC, page), '[]'::jsonb)
+                FROM (
+                  SELECT page, ROUND(AVG(EXTRACT(EPOCH FROM (next_at - created_at)))) AS avg_secs
+                  FROM ordered
+                  WHERE next_at IS NOT NULL AND next_at >= created_at AND next_at < created_at + INTERVAL '1 hour'
+                  GROUP BY page ORDER BY avg_secs DESC, page LIMIT 8
+                ) t
+              ),
+              'scroll', (
+                SELECT COALESCE(jsonb_object_agg(element_id, cnt), '{}'::jsonb)
+                FROM (
+                  SELECT element_id, COUNT(*) cnt FROM ui_events
+                  WHERE event_type = 'scroll' AND element_id IN ('25','50','75','100')
+                    AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+                  GROUP BY element_id
+                ) t
+              ),
+              'top_clicks', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', k, 'value', cnt) ORDER BY cnt DESC, k), '[]'::jsonb)
+                FROM (
+                  SELECT COALESCE(NULLIF(label,''), element_id) AS k, COUNT(*) cnt FROM ui_events
+                  WHERE event_type = 'click' AND created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+                  GROUP BY k ORDER BY cnt DESC, k LIMIT 10
+                ) t
+              )
+            ) AS r) q;
+
+          \echo '--- location_breakdown'
+          SELECT (SELECT count(*) FROM jsonb_object_keys(r -> 'device')) AS device_kinds, (SELECT count(*) FROM jsonb_object_keys(r -> 'browser')) AS browser_kinds, (SELECT count(*) FROM jsonb_object_keys(r -> 'os')) AS os_kinds, (SELECT count(*) FROM jsonb_object_keys(r -> 'lang')) AS lang_kinds FROM (  SELECT jsonb_build_object(
+              'device', (SELECT COALESCE(jsonb_object_agg(device_type, cnt), '{}'::jsonb) FROM (SELECT device_type, COUNT(*) cnt FROM page_views WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz AND device_type IS NOT NULL GROUP BY device_type) t),
+              'browser', (SELECT COALESCE(jsonb_object_agg(browser, cnt), '{}'::jsonb) FROM (SELECT browser, COUNT(*) cnt FROM page_views WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz AND browser IS NOT NULL GROUP BY browser) t),
+              'os', (SELECT COALESCE(jsonb_object_agg(os, cnt), '{}'::jsonb) FROM (SELECT os, COUNT(*) cnt FROM page_views WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz AND os IS NOT NULL GROUP BY os) t),
+              'lang', (SELECT COALESCE(jsonb_object_agg(lang, cnt), '{}'::jsonb) FROM (SELECT lang, COUNT(*) cnt FROM page_views WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz AND lang IS NOT NULL GROUP BY lang) t)
+            ) AS r) q;
+
+          \echo '--- admin_insights'
+          SELECT r ->> 'new_listings' AS new_listings, (r ->> 'new_listings')::bigint = (SELECT count(*) FROM properties) AS matches_all_properties,
+                 jsonb_array_length(r -> 'by_agent') AS agents, jsonb_array_length(r -> 'by_district') AS districts, jsonb_array_length(r -> 'by_type') AS types FROM (  WITH leads_in_range AS (
+              SELECT * FROM leads WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
+            )
+            SELECT jsonb_build_object(
+              'new_listings', (SELECT COUNT(*) FROM properties WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz),
+              'by_agent', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', COALESCE(pt.name_en, 'Unassigned'), 'value', cnt) ORDER BY cnt DESC, l.party_id), '[]'::jsonb)
+                FROM (SELECT party_id, COUNT(*) cnt FROM leads_in_range WHERE party_id IS NOT NULL GROUP BY party_id ORDER BY cnt DESC, party_id LIMIT 10) l
+                LEFT JOIN parties pt ON pt.id = l.party_id
+              ),
+              'by_district', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', d, 'value', cnt) ORDER BY cnt DESC, d), '[]'::jsonb)
+                FROM (
+                  SELECT p.district_en AS d, COUNT(*) cnt FROM leads_in_range l
+                  JOIN properties p ON p.id = l.property_id
+                  WHERE p.district_en IS NOT NULL GROUP BY p.district_en ORDER BY cnt DESC, d LIMIT 10
+                ) t
+              ),
+              'by_type', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', d, 'value', cnt) ORDER BY cnt DESC, d), '[]'::jsonb)
+                FROM (
+                  SELECT p.property_type AS d, COUNT(*) cnt FROM leads_in_range l
+                  JOIN properties p ON p.id = l.property_id
+                  WHERE p.property_type IS NOT NULL GROUP BY p.property_type ORDER BY cnt DESC, d
+                ) t
+              ),
+              'no_views', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('title', COALESCE(p.title_en, p.title_lo), 'district', p.district_en, 'type', p.property_type)), '[]'::jsonb)
+                FROM (
+                  SELECT * FROM properties
+                  WHERE workflow_status = 'active' AND (view_count IS NULL OR view_count = 0)
+                  ORDER BY created_at DESC LIMIT 15
+                ) p
+              ),
+              'high_view_low_convert', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object('label', COALESCE(p.title_en, p.title_lo), 'value', p.view_count) ORDER BY p.view_count DESC, p.id), '[]'::jsonb)
+                FROM (
+                  SELECT * FROM properties p
+                  WHERE p.workflow_status = 'active' AND COALESCE(p.view_count, 0) >= 20
+                    AND NOT EXISTS (SELECT 1 FROM leads_in_range l WHERE l.property_id = p.id)
+                  ORDER BY p.view_count DESC, p.id LIMIT 10
+                ) p
+              )
+            ) AS r) q;
+
+          \echo '--- leads_breakdown: CRM leads vs legacy vs unattributed, and the by-listing / by-agent parts must add up'
+          SELECT r ->> 'total' AS crm_leads, (r ->> 'total')::bigint = (SELECT count(*) FROM leads) AS leads_match_raw,
+                 r ->> 'legacy_events' AS legacy_events,
+                 (r ->> 'legacy_events')::bigint = (SELECT count(*) FROM lead_events le WHERE le.listing_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM leads l WHERE l.lead_event_id = le.id)) AS legacy_match_raw,
+                 r ->> 'unattributed_events' AS unattributed_events,
+                 (r ->> 'unattributed_events')::bigint = (SELECT count(*) FROM lead_events le WHERE le.listing_id IS NULL AND NOT EXISTS (SELECT 1 FROM leads l WHERE l.lead_event_id = le.id)) AS unattributed_match_raw,
+                 (SELECT sum((e ->> 'value')::bigint) FROM jsonb_array_elements(r -> 'by_day') e) = (r ->> 'total')::bigint AS by_day_sums_to_total,
+                 (SELECT coalesce(sum((e ->> 'value')::bigint), 0) FROM jsonb_array_elements(r -> 'by_listing') e) + (r ->> 'by_listing_other')::bigint + (r ->> 'by_listing_unattributed')::bigint = (r ->> 'total')::bigint AS by_listing_adds_up,
+                 (SELECT coalesce(sum((e ->> 'value')::bigint), 0) FROM jsonb_array_elements(r -> 'by_agent') e) + (r ->> 'by_agent_other')::bigint + (r ->> 'by_agent_unassigned')::bigint = (r ->> 'total')::bigint AS by_agent_adds_up,
+                 r ->> 'by_listing_total' AS distinct_listings, r ->> 'by_listing_unattributed' AS leads_without_listing, r ->> 'by_listing_deleted' AS leads_on_deleted_listings,
+                 jsonb_array_length(r -> 'by_day') AS by_day_points
+          FROM (  WITH in_range AS (
+              SELECT l.*, COALESCE(l.property_id, lev.listing_id) AS listing_ref
+              FROM leads l
+              LEFT JOIN lead_events lev ON lev.id = l.lead_event_id
+              WHERE l.created_at >= :'v_from'::timestamptz AND l.created_at < :'v_to'::timestamptz
+            ),
+            orphan_events AS (
+              SELECT le.id, le.created_at, le.listing_id
+              FROM lead_events le
+              WHERE le.created_at >= :'v_from'::timestamptz AND le.created_at < :'v_to'::timestamptz
+                AND NOT EXISTS (SELECT 1 FROM leads l WHERE l.lead_event_id = le.id)
+            ),
+            first_touch AS (
+              SELECT ir.id AS lead_id, pv.referrer_source
+              FROM in_range ir
+              LEFT JOIN lead_events le ON le.id = ir.lead_event_id
+              LEFT JOIN LATERAL (
+                SELECT referrer_source FROM page_views
+                WHERE session_id = le.session_id
+                ORDER BY created_at ASC LIMIT 1
+              ) pv ON le.session_id IS NOT NULL
+            ),
+            by_listing_all AS (
+              SELECT listing_ref AS property_id, COUNT(*) AS cnt FROM in_range WHERE listing_ref IS NOT NULL GROUP BY listing_ref
+            ),
+            by_listing_top AS (
+              SELECT property_id, cnt FROM by_listing_all ORDER BY cnt DESC, property_id LIMIT 10
+            ),
+            listing_labels AS (
+              SELECT * FROM (SELECT i.id,
+                   COALESCE(p.title_en, p.title_lo,
+                            s.row_data ->> 'title_en', s.row_data ->> 'title_lo',
+                            r.title_en, r.title_lo),
+                   COALESCE(p.slug, s.row_data ->> 'slug'),
+                   COALESCE(p.workflow_status, p.status,
+                            s.row_data ->> 'workflow_status', s.row_data ->> 'status',
+                            r.status_at_removal),
+                   CASE
+                     WHEN p.id IS NOT NULL AND p.deleted_at IS NULL THEN 'current'
+                     WHEN p.id IS NOT NULL THEN 'soft_deleted'
+                     WHEN s.row_data IS NOT NULL THEN 'snapshot'
+                     WHEN r.property_id IS NOT NULL THEN 'removal_log'
+                     ELSE 'unknown'
+                   END,
+                   (p.id IS NULL OR p.deleted_at IS NOT NULL)
+            FROM (SELECT DISTINCT x AS id FROM unnest(ARRAY(SELECT property_id FROM by_listing_top)) AS x WHERE x IS NOT NULL) i
+            LEFT JOIN properties p ON p.id = i.id
+            LEFT JOIN LATERAL (
+              SELECT ps.row_data FROM properties_row_snapshots ps
+              WHERE ps.property_id = i.id ORDER BY ps.created_at DESC LIMIT 1
+            ) s ON p.id IS NULL
+            LEFT JOIN LATERAL (
+              SELECT rl.property_id, rl.title_en, rl.title_lo, rl.status_at_removal FROM properties_removal_log rl
+              WHERE rl.property_id = i.id ORDER BY rl.removed_at DESC LIMIT 1
+            ) r ON p.id IS NULL AND s.row_data IS NULL) AS h(property_id, title, slug, listing_status, resolution, is_deleted)
+            ),
+            by_agent_all AS (
+              SELECT party_id, COUNT(*) AS cnt FROM in_range WHERE party_id IS NOT NULL GROUP BY party_id
+            ),
+            by_agent_top AS (
+              SELECT party_id, cnt FROM by_agent_all ORDER BY cnt DESC, party_id LIMIT 10
+            ),
+            daily_leads AS (
+              SELECT (created_at AT TIME ZONE 'Asia/Vientiane')::date AS d, COUNT(*) AS cnt FROM in_range GROUP BY 1
+            ),
+            daily_orphans AS (
+              SELECT (created_at AT TIME ZONE 'Asia/Vientiane')::date AS d,
+                     COUNT(*) FILTER (WHERE listing_id IS NOT NULL) AS legacy,
+                     COUNT(*) FILTER (WHERE listing_id IS NULL)     AS unattributed
+              FROM orphan_events GROUP BY 1
+            )
+            SELECT jsonb_build_object(
+              'total', (SELECT COUNT(*) FROM in_range),
+              'closed', (SELECT COUNT(*) FROM in_range WHERE status = 'closed'),
+              'legacy_events', (SELECT COUNT(*) FROM orphan_events WHERE listing_id IS NOT NULL),
+              'unattributed_events', (SELECT COUNT(*) FROM orphan_events WHERE listing_id IS NULL),
+              'by_day', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                         'day', g.d::date,
+                         'value', COALESCE(dl.cnt, 0),
+                         'legacy', COALESCE(dorph.legacy, 0),
+                         'unattributed', COALESCE(dorph.unattributed, 0)) ORDER BY g.d), '[]'::jsonb)
+                FROM generate_series(:'p_start'::date::timestamp, (:'p_end'::date - 1)::timestamp, interval '1 day') AS g(d)
+                LEFT JOIN daily_leads dl ON dl.d = g.d::date
+                LEFT JOIN daily_orphans dorph ON dorph.d = g.d::date
+              ),
+              'by_listing', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                         'property_id', t.property_id,
+                         'label', COALESCE(lb.title, lb.slug, 'Unknown listing ' || left(t.property_id::text, 8)),
+                         'value', t.cnt,
+                         'resolution', lb.resolution,
+                         'is_deleted', lb.is_deleted) ORDER BY t.cnt DESC, t.property_id), '[]'::jsonb)
+                FROM by_listing_top t
+                LEFT JOIN listing_labels lb ON lb.property_id = t.property_id
+              ),
+              'by_listing_total', (SELECT COUNT(*) FROM by_listing_all),
+              'by_listing_other', (SELECT COALESCE(SUM(cnt), 0) FROM by_listing_all) - (SELECT COALESCE(SUM(cnt), 0) FROM by_listing_top),
+              'by_listing_unattributed', (SELECT COUNT(*) FROM in_range WHERE listing_ref IS NULL),
+              'by_listing_deleted', (
+                SELECT COUNT(*) FROM in_range ir
+                WHERE ir.listing_ref IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM properties p WHERE p.id = ir.listing_ref AND p.deleted_at IS NULL)
+              ),
+              'by_agent', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                         'party_id', t.party_id,
+                         'label', COALESCE(pt.name_en, 'Unknown agent'),
+                         'value', t.cnt) ORDER BY t.cnt DESC, t.party_id), '[]'::jsonb)
+                FROM by_agent_top t
+                LEFT JOIN parties pt ON pt.id = t.party_id
+              ),
+              'by_agent_total', (SELECT COUNT(*) FROM by_agent_all),
+              'by_agent_other', (SELECT COALESCE(SUM(cnt), 0) FROM by_agent_all) - (SELECT COALESCE(SUM(cnt), 0) FROM by_agent_top),
+              'by_agent_unassigned', (SELECT COUNT(*) FROM in_range WHERE party_id IS NULL),
+              'by_source', (
+                SELECT COALESCE(jsonb_object_agg(COALESCE(referrer_source, 'unknown'), cnt), '{}'::jsonb)
+                FROM (SELECT referrer_source, COUNT(*) cnt FROM first_touch GROUP BY referrer_source) t
+              ),
+    
+    
+              'recent', (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                  'id', ir.id, 'listing', COALESCE(p.title_en, p.title_lo, '—'),
+                  'agent', COALESCE(pt.name_en, '—'), 'status', ir.status, 'created_at', ir.created_at
+                ) ORDER BY ir.created_at DESC), '[]'::jsonb)
+                FROM (SELECT * FROM in_range ORDER BY created_at DESC LIMIT 50) ir
+                LEFT JOIN properties p ON p.id = ir.property_id
+                LEFT JOIN parties pt ON pt.id = ir.party_id
+              )
+            ) AS r) q;
+
+          \echo '--- lead_activity (first page of 200, all time): totals must equal the summary; no PII keys in any row'
+          SELECT r -> 'totals' AS totals, jsonb_array_length(r -> 'rows') AS rows_on_first_page, r ->> 'has_more' AS has_more,
+                 (SELECT jsonb_agg(k ORDER BY k) FROM jsonb_object_keys(r -> 'rows' -> 0) k) AS row_keys,
+                 EXISTS (SELECT 1 FROM jsonb_array_elements(r -> 'rows') e, LATERAL jsonb_object_keys(e) k WHERE k ~* '(customer|phone|note|email|whatsapp)') AS has_pii_key,
+                 (r -> 'totals' ->> 'leads')::bigint = (SELECT count(*) FROM leads) AS leads_match_raw,
+                 (r -> 'totals' ->> 'legacy_events')::bigint = (SELECT count(*) FROM lead_events le WHERE le.listing_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM leads l WHERE l.lead_event_id = le.id)) AS legacy_match_raw,
+                 (r -> 'totals' ->> 'unattributed_events')::bigint = (SELECT count(*) FROM lead_events le WHERE le.listing_id IS NULL AND NOT EXISTS (SELECT 1 FROM leads l WHERE l.lead_event_id = le.id)) AS unattributed_match_raw,
+                 (jsonb_array_length(r -> 'rows') = least(200, (r -> 'totals' ->> 'leads')::int + (r -> 'totals' ->> 'legacy_events')::int + (r -> 'totals' ->> 'unattributed_events')::int)) AS page_size_ok
+          FROM (  WITH act AS MATERIALIZED (
+              SELECT 'lead'::text          AS kind,
+                     l.id                  AS row_id,
+                     l.created_at          AS event_at,
+                     l.id                  AS lead_id,
+                     l.lead_event_id       AS lead_event_id,
+                     COALESCE(l.property_id, lev.listing_id) AS property_id,  
+                     l.party_id            AS agent_party_id,
+                     l.contact_id          AS contact_id,
+                     l.status              AS lead_status,
+                     l.contact_method      AS channel,
+                     l.recipient_type      AS recipient_type,
+                     l.recipient_verified  AS recipient_verified,
+                     l.unit_type_id        AS unit_type_id
+              FROM leads l
+              LEFT JOIN lead_events lev ON lev.id = l.lead_event_id
+              WHERE l.created_at >= :'v_from'::timestamptz AND l.created_at < :'v_to'::timestamptz
+                AND (NULL::uuid IS NULL OR COALESCE(l.property_id, lev.listing_id) = NULL::uuid)
+              UNION ALL
+              SELECT CASE WHEN le.listing_id IS NULL THEN 'unattributed_event' ELSE 'legacy_event' END,
+                     le.id, le.created_at, NULL::uuid, le.id, le.listing_id, le.agent_id, le.contact_id,
+                     NULL::text, regexp_replace(le.event_type, '_click$', ''), NULL::text, NULL::boolean,
+                     le.unit_type_id
+              FROM lead_events le
+              WHERE le.created_at >= :'v_from'::timestamptz AND le.created_at < :'v_to'::timestamptz
+                AND (NULL::uuid IS NULL OR le.listing_id = NULL::uuid)
+                AND NOT EXISTS (SELECT 1 FROM leads l2 WHERE l2.lead_event_id = le.id)
+            ),
+            totals AS (
+              SELECT COUNT(*) FILTER (WHERE kind = 'lead')               AS leads,
+                     COUNT(*) FILTER (WHERE kind = 'legacy_event')       AS legacy_events,
+                     COUNT(*) FILTER (WHERE kind = 'unattributed_event') AS unattributed_events,
+                     COUNT(DISTINCT property_id)                         AS distinct_listings,
+                     COUNT(*) FILTER (
+                       WHERE property_id IS NOT NULL
+                         AND NOT EXISTS (SELECT 1 FROM properties p WHERE p.id = act.property_id AND p.deleted_at IS NULL)
+                     )                                                   AS deleted_listing_rows
+              FROM act
+            ),
+            page AS MATERIALIZED (
+              SELECT * FROM act
+              WHERE NULL::timestamptz IS NULL OR (act.event_at, act.row_id) < (NULL::timestamptz, NULL::uuid)
+              ORDER BY act.event_at DESC, act.row_id DESC
+              LIMIT :v_limit + 1
+            ),
+            page_lim AS MATERIALIZED (
+              SELECT * FROM page ORDER BY event_at DESC, row_id DESC LIMIT :v_limit
+            ),
+            labels AS (
+              SELECT * FROM (SELECT i.id,
+                   COALESCE(p.title_en, p.title_lo,
+                            s.row_data ->> 'title_en', s.row_data ->> 'title_lo',
+                            r.title_en, r.title_lo),
+                   COALESCE(p.slug, s.row_data ->> 'slug'),
+                   COALESCE(p.workflow_status, p.status,
+                            s.row_data ->> 'workflow_status', s.row_data ->> 'status',
+                            r.status_at_removal),
+                   CASE
+                     WHEN p.id IS NOT NULL AND p.deleted_at IS NULL THEN 'current'
+                     WHEN p.id IS NOT NULL THEN 'soft_deleted'
+                     WHEN s.row_data IS NOT NULL THEN 'snapshot'
+                     WHEN r.property_id IS NOT NULL THEN 'removal_log'
+                     ELSE 'unknown'
+                   END,
+                   (p.id IS NULL OR p.deleted_at IS NOT NULL)
+            FROM (SELECT DISTINCT x AS id FROM unnest(ARRAY(SELECT DISTINCT property_id FROM page_lim WHERE property_id IS NOT NULL)) AS x WHERE x IS NOT NULL) i
+            LEFT JOIN properties p ON p.id = i.id
+            LEFT JOIN LATERAL (
+              SELECT ps.row_data FROM properties_row_snapshots ps
+              WHERE ps.property_id = i.id ORDER BY ps.created_at DESC LIMIT 1
+            ) s ON p.id IS NULL
+            LEFT JOIN LATERAL (
+              SELECT rl.property_id, rl.title_en, rl.title_lo, rl.status_at_removal FROM properties_removal_log rl
+              WHERE rl.property_id = i.id ORDER BY rl.removed_at DESC LIMIT 1
+            ) r ON p.id IS NULL AND s.row_data IS NULL) AS h(property_id, title, slug, listing_status, resolution, is_deleted)
+            ),
+            enriched AS (
+              SELECT pl.event_at, pl.row_id,
+                     jsonb_build_object(
+                       'event_at', pl.event_at,
+                       'laos_day', (pl.event_at AT TIME ZONE 'Asia/Vientiane')::date,
+                       'kind', pl.kind,
+                       'lead_id', pl.lead_id,
+                       'lead_event_id', pl.lead_event_id,
+                       'contact_action', COALESCE(le.event_type, pl.channel || '_click'),
+                       'channel', pl.channel,
+                       'lead_status', pl.lead_status,
+                       'property_id', pl.property_id,
+                       'listing_title', CASE WHEN pl.property_id IS NULL THEN NULL
+                                             ELSE COALESCE(lb.title, lb.slug, 'Unknown listing ' || left(pl.property_id::text, 8)) END,
+                       'listing_slug', lb.slug,
+                       'listing_status', lb.listing_status,
+                       'listing_resolution', CASE WHEN pl.property_id IS NULL THEN NULL ELSE COALESCE(lb.resolution, 'unknown') END,
+                       'is_deleted', COALESCE(lb.is_deleted, false),
+                       'unit_type_id', pl.unit_type_id,
+                       'unit_type_name', ut.name_en,
+                       'agent_party_id', pl.agent_party_id,
+                       'agent_name', pt.name_en,
+                       'contact_id', pl.contact_id,
+                       'contact_name', c.name,
+                       'contact_role', c.role,
+                       'recipient_type', pl.recipient_type,
+                       'recipient_verified', pl.recipient_verified,
+                       'first_touch_source', ft.referrer_source,
+                       'session_id', le.session_id
+                     ) AS j
+              FROM page_lim pl
+              LEFT JOIN lead_events le ON le.id = pl.lead_event_id
+              LEFT JOIN labels lb ON lb.property_id = pl.property_id
+              LEFT JOIN unit_types ut ON ut.id = pl.unit_type_id
+              LEFT JOIN parties pt ON pt.id = pl.agent_party_id
+              LEFT JOIN contacts c ON c.id = pl.contact_id
+              LEFT JOIN LATERAL (
+                SELECT pv.referrer_source FROM page_views pv
+                WHERE pv.session_id = le.session_id
+                ORDER BY pv.created_at ASC LIMIT 1
+              ) ft ON le.session_id IS NOT NULL
+            )
+            SELECT jsonb_build_object(
+              'range', jsonb_build_object('start', :'p_start'::date, 'end', :'p_end'::date, 'tz', 'Asia/Vientiane'),
+              'property_id', NULL::uuid,
+              'totals', (SELECT jsonb_build_object(
+                           'leads', leads, 'legacy_events', legacy_events,
+                           'unattributed_events', unattributed_events,
+                           'distinct_listings', distinct_listings,
+                           'deleted_listing_rows', deleted_listing_rows) FROM totals),
+              'rows', (SELECT COALESCE(jsonb_agg(j ORDER BY event_at DESC, row_id DESC), '[]'::jsonb) FROM enriched),
+              'has_more', ((SELECT COUNT(*) FROM page) > :v_limit),
+              'next_cursor', (
+                SELECT CASE WHEN (SELECT COUNT(*) FROM page) > :v_limit
+                            THEN jsonb_build_object('at', event_at, 'id', row_id) END
+                FROM page_lim ORDER BY event_at ASC, row_id ASC LIMIT 1
+              )
+            ) AS r) q;
+          \timing off
+
+          \echo '=== V8: THE STAFF GATE FAILS CLOSED - the same functions, called with no signed-in staff identity ==='
+          \echo '    (an error below is the expected, correct result)'
+          ROLLBACK;
+          BEGIN READ ONLY;
+          \set ON_ERROR_STOP off
+          SELECT analytics_history_bounds();
+          ROLLBACK;
+          BEGIN READ ONLY;
+          SELECT analytics_lead_activity('2026-01-01', '2026-01-02');
+          ROLLBACK;
+          BEGIN READ ONLY;
+          SELECT analytics_leads_breakdown('2026-01-01', '2026-01-02');
+          ROLLBACK;
+          BEGIN READ ONLY;
+          SELECT analytics_listing_labels(ARRAY[gen_random_uuid()]);
+          ROLLBACK;
+          \set ON_ERROR_STOP on
+          BEGIN READ ONLY;
+          \echo 'done'
+          ROLLBACK;
+          SQL_EOF
+          echo "diagnose.sql written ($(wc -l < diagnose.sql) lines)."
+
+      - name: "Safety gate: refuse to run if the SQL is anything but read-only"
+        run: |
+          set -euo pipefail
+          echo "SAFETY GATE -- scanning diagnose.sql BEFORE any connection."
+          BAD_META=$(grep -nE '[\\]' diagnose.sql \
+            | grep -vE '^[0-9]+:[[:space:]]*[\\](pset|set|echo|if|else|endif|q|timing|gset)([[:space:]]|$)' || true)
+          if [ -n "$BAD_META" ]; then
+            echo "$BAD_META"
+            echo "::error::diagnose.sql contains a psql meta-command outside the allow-list. Refusing to run."
+            exit 1
+          fi
+          if grep -vE '^[[:space:]]*[\\]' diagnose.sql \
+             | grep -inE '\b(CREATE|ALTER|DROP|GRANT|REVOKE|INSERT|UPDATE|DELETE|TRUNCATE|COPY|CALL|DO|VACUUM|ANALYZE|ANALYSE|REINDEX|CLUSTER|REFRESH|LOCK|SET|RESET|PREPARE|MERGE|COMMENT|LISTEN|NOTIFY|DISCARD|IMPORT|LOAD|REASSIGN|SAVEPOINT|COMMIT|INTO)\b'; then
+            echo "::error::diagnose.sql contains a write/DDL/maintenance keyword (matched above). Refusing to run -- READ-ONLY by design."
+            exit 1
+          fi
+          # every transaction opened must be READ ONLY, and the script must end with ROLLBACK
+          [ "$(grep -cE '^BEGIN' diagnose.sql)" = "$(grep -cE '^BEGIN READ ONLY;$' diagnose.sql)" ] || { echo "::error::a BEGIN that is not BEGIN READ ONLY"; exit 1; }
+          [ "$(grep -cE '^BEGIN READ ONLY;$' diagnose.sql)" -ge 1 ] || { echo "::error::missing BEGIN READ ONLY"; exit 1; }
+          [ "$(grep -vE '^[[:space:]]*$' diagnose.sql | tail -n1)" = "ROLLBACK;" ] || { echo "::error::script must end with ROLLBACK;"; exit 1; }
+          echo "OK: meta-commands allow-listed, no write/DDL keywords, every BEGIN is READ ONLY, ends with ROLLBACK."
+
+      - name: "Fail closed unless the connection can actually be made READ ONLY"
+        run: |
+          set -euo pipefail
+          RO=$(psql "$PINTAG_PROD_DB_URL" -X -tA -c "BEGIN READ ONLY; SELECT current_setting('transaction_read_only'); ROLLBACK;" | grep -E '^(on|off)$' | head -n1)
+          echo "transaction_read_only reports: '$RO'"
+          [ "$RO" = "on" ] || { echo "::error::Could not confirm a READ ONLY transaction (got '$RO')."; exit 1; }
+          echo "OK: connection confirmed read-only."
+
+      - name: Run verification (SELECT / catalog inspection only)
+        run: |
+          set -euo pipefail
+          psql "$PINTAG_PROD_DB_URL" -X -v ON_ERROR_STOP=1 -f diagnose.sql 2>&1 | tee verification-report.txt
+
+      - name: Publish findings to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Analytics migrations: production verification (read-only)"
+            echo '```'
+            cat verification-report.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
