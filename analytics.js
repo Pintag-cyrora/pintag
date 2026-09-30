@@ -11,6 +11,14 @@
 //   lead_events / leads  -- leads analytics
 //   properties / parties -- admin insights
 //
+// Ranges (2026-09 rework): a range is two Asia/Vientiane calendar-date labels
+// (laos-date.js), never browser-local Dates. Presets: Today / 7d / 30d / 90d /
+// All time (from analytics_history_bounds()) / Custom. No RPC caps history;
+// daily series are fetched in <=900-day chunks; every failure is shown as an
+// error with Retry instead of zeros (analytics-core.js). The Leads tab drills
+// down by day / listing through the keyset-paginated analytics_lead_activity().
+// See supabase/migrations/20260921030000_* and 20260921040000_*.
+//
 // Explicitly NOT built here, disclosed in the Location tab rather than
 // faked: visitor country/city. No IP geolocation exists anywhere in this
 // stack (every public page's CSP connect-src is locked to Supabase only,
@@ -44,33 +52,29 @@ async function bootAnalytics() {
 }
 PintagAdminAuth.protect(sbClient, bootAnalytics);
 
-// ── REST / RPC helpers ───────────────────────────────────────────────
-async function sbGet(path) {
-  const token = _adminToken || SUPABASE_ANON;
-  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
-    headers: { apikey: SUPABASE_ANON, Authorization: 'Bearer ' + token }
-  });
-  if (!res.ok) { console.error('[Analytics] REST error', path, res.status); return []; }
-  const text = await res.text();
-  return text ? JSON.parse(text) : [];
-}
-async function sbCount(path) {
-  const token = _adminToken || SUPABASE_ANON;
-  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
-    headers: { apikey: SUPABASE_ANON, Authorization: 'Bearer ' + token, Prefer: 'count=exact', Range: '0-0' }
-  });
-  if (!res.ok) return 0;
-  const range = res.headers.get('content-range'); // "0-0/123"
-  return range ? parseInt(range.split('/')[1], 10) || 0 : 0;
-}
+// ── RPC helper ──────────────────────────────────────────────────────
+// Every failure THROWS a typed RpcError (see analytics-core.js). The old
+// helper logged and returned null, and callers did `(await sbRpc(...)) || {}`,
+// so a timeout or a denied session rendered as "0 leads / 0 views" -- wrong
+// data that looks right. loadTab() now turns any thrown error into a visible
+// error banner with a Retry button.
 async function sbRpc(fn, params) {
   const token = _adminToken || SUPABASE_ANON;
-  const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
-    method: 'POST',
-    headers: { apikey: SUPABASE_ANON, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify(params || {})
-  });
-  if (!res.ok) { console.error('[Analytics] RPC error', fn, res.status, await res.text().catch(()=> '')); return null; }
+  let res;
+  try {
+    res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(params || {})
+    });
+  } catch (netErr) {
+    throw PT_ANALYTICS_CORE.RpcError(fn, 'network', 0, String(netErr && netErr.message || netErr));
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    console.error('[Analytics] RPC error', fn, res.status, body);
+    throw PT_ANALYTICS_CORE.classifyFailure(fn, res.status, body);
+  }
   return res.json();
 }
 
@@ -80,43 +84,123 @@ function esc(s) {
 }
 
 // ── Date range state ──────────────────────────────────────────────────
-// p_end is always exclusive (the day AFTER the last included day) to match
-// the RPC functions' own convention -- see the migration's own comment.
-let _range = null;       // {start: Date, end: Date, label: string}
-let _compareRange = null;
+// A range is two calendar-date LABELS in Laos time ('YYYY-MM-DD'), never a
+// Date: see laos-date.js for why (toISOString() shifted the requested day for
+// any browser east of UTC). `endExclusive` is the day AFTER the last included
+// day, the RPC contract. The server converts labels to instants with
+// AT TIME ZONE 'Asia/Vientiane', so the browser's timezone can't matter.
+const LAOS = PT_LAOS_DATE;
+const CORE = PT_ANALYTICS_CORE;
+
+let _range = null;        // {preset, start, endExclusive, label, text, days}
+let _compareRange = null; // {start, endExclusive, beforeData} | null (All time)
 let _compareOn = false;
 let _activeTab = 'overview';
+let _bounds = null;       // analytics_history_bounds(): earliest day + per-source first days
+let _boundsPromise = null;
 const _cache = {}; // per-tab cache, keyed by tab+range signature, cleared on range change
 
-function fmtIso(d) { return d.toISOString().slice(0, 10); }
+// {p_start, p_end} for any {start, endExclusive}-shaped range.
+function rangeParams(r) { r = r || _range; return { p_start: r.start, p_end: r.endExclusive }; }
 
-function computeRange(preset) {
-  const end = new Date(); end.setHours(0, 0, 0, 0); end.setDate(end.getDate() + 1); // exclusive, start of tomorrow
-  const start = new Date(end);
-  const days = { today: 1, '7d': 7, '30d': 30, '90d': 90 }[preset] || 7;
-  start.setDate(start.getDate() - days);
-  return { start, end, label: preset === 'today' ? 'Today' : `Last ${days} days` };
+function ensureBounds() {
+  if (_bounds) return Promise.resolve(_bounds);
+  if (!_boundsPromise) {
+    _boundsPromise = sbRpc('analytics_history_bounds', {}).then(b => { _bounds = b; return b; })
+      .catch(e => { _boundsPromise = null; throw e; });
+  }
+  return _boundsPromise;
 }
-function computeCompareRange(range) {
-  const lengthMs = range.end - range.start;
-  const end = new Date(range.start);
-  const start = new Date(range.start.getTime() - lengthMs);
-  return { start, end };
+// First day a source has data (null while bounds are unknown / source empty).
+function coverageStart(src) {
+  return (_bounds && _bounds.sources && _bounds.sources[src] && _bounds.sources[src].first_day) || null;
+}
+// A short "tracking began" note when the range reaches before a source's first day.
+function coverageNote(src, label) {
+  const first = coverageStart(src);
+  if (!first || !_range || _range.start >= first) return '';
+  return '<p class="disclosure">' + esc(label) + ' has only been recorded since ' + esc(first) +
+    '; earlier days are not shown because nothing was tracked then.</p>';
 }
 
-function setRange(preset) {
+function showRangeError(err) {
+  document.getElementById('range-error').innerHTML = CORE.errorBannerHtml(err.message || String(err), null);
+}
+function hideRangeError() { document.getElementById('range-error').innerHTML = ''; }
+
+function setActivePreset(preset) {
   document.querySelectorAll('.range-preset').forEach(b => b.classList.toggle('active', b.dataset.range === preset));
-  _range = computeRange(preset);
-  _compareRange = computeCompareRange(_range);
-  document.getElementById('range-label').textContent =
-    `${fmtIso(_range.start)} → ${fmtIso(new Date(_range.end - 86400000))}`;
+}
+
+async function setRange(preset) {
+  hideRangeError();
+  let range;
+  try {
+    if (preset === 'all') {
+      const b = await ensureBounds();
+      range = LAOS.presetRange('all', b.today || LAOS.todayLaos(), b.earliest_day);
+    } else {
+      range = LAOS.presetRange(preset, LAOS.todayLaos());
+    }
+  } catch (err) {
+    // Never fall back to a guessed range: say what failed and keep the current view.
+    showRangeError(err);
+    return;
+  }
+  setCustomPanel(false);
+  applyRange(range);
+}
+
+function applyRange(range) {
+  _range = range;
+  _compareRange = LAOS.compareRange(range, _bounds && _bounds.earliest_day);
+  setActivePreset(range.preset);
+  document.getElementById('range-label').textContent = range.label + ' · ' + range.text;
+  const cmp = document.getElementById('compare-toggle');
+  cmp.disabled = !_compareRange;
+  if (!_compareRange && cmp.checked) { cmp.checked = false; _compareOn = false; }
+  document.getElementById('compare-label').textContent = _compareRange
+    ? 'Compare to previous period'
+    : 'Compare (not available for All time)';
   Object.keys(_cache).forEach(k => delete _cache[k]);
   loadTab(_activeTab);
 }
+
+// ── Custom range ─────────────────────────────────────────────────────
+function setCustomPanel(open) {
+  const panel = document.getElementById('range-custom');
+  panel.classList.toggle('open', open);
+  const btn = document.querySelector('.range-preset[data-range="custom"]');
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function toggleCustomRange() {
+  const panel = document.getElementById('range-custom');
+  const open = !panel.classList.contains('open');
+  setCustomPanel(open);
+  if (open && _range) {
+    document.getElementById('custom-from').value = _range.start;
+    document.getElementById('custom-to').value = LAOS.addDays(_range.endExclusive, -1);
+    document.getElementById('custom-msg').textContent = '';
+  }
+}
+function applyCustomRange() {
+  const msg = document.getElementById('custom-msg');
+  const from = document.getElementById('custom-from').value;
+  const to = document.getElementById('custom-to').value;
+  const today = (_bounds && _bounds.today) || LAOS.todayLaos();
+  const r = LAOS.customRange(from, to, today);
+  if (r.error) { msg.textContent = r.message; return; }
+  msg.textContent = '';
+  hideRangeError();
+  applyRange(r);
+}
+
 function onCompareToggle() {
   _compareOn = document.getElementById('compare-toggle').checked;
   loadTab(_activeTab);
 }
+// Compare deltas are only meaningful when a previous span with data exists.
+function compareActive() { return _compareOn && !!_compareRange && !_compareRange.beforeData; }
 
 function switchTab(tab) {
   _activeTab = tab;
@@ -137,17 +221,46 @@ const TAB_LOADERS = {
   location: loadLocationTab,
   admin: loadAdminTab
 };
+function rangeKey() { return _range.start + '_' + _range.endExclusive + '_' + _compareOn; }
 function loadTab(tab) {
+  if (!_range) return;
   const el = document.getElementById('view-' + tab);
-  if (!el.dataset.loaded || el.dataset.loaded !== rangeKey()) {
-    el.innerHTML = '<div class="insp-loading">Loading…</div>';
-    Promise.resolve(TAB_LOADERS[tab]()).then(() => { el.dataset.loaded = rangeKey(); }).catch(err => {
+  const key = rangeKey();
+  if (el.dataset.loaded === key) return;
+  el.innerHTML = '<div class="insp-loading">Loading…</div>';
+  // Bounds feed the "tracking since" notes; a failure there is not fatal for
+  // presets other than All time (which already failed visibly in setRange).
+  ensureBounds().catch(() => null)
+    .then(() => {
+      // "Is the previous span entirely before the first day of data?" needs the
+      // bounds, which may only have arrived now (the first load races them).
+      _compareRange = LAOS.compareRange(_range, _bounds && _bounds.earliest_day);
+      return TAB_LOADERS[tab]();
+    })
+    .then(() => {
+      if (rangeKey() === key) el.dataset.loaded = key;
+      else if (_activeTab === tab) loadTab(tab); // range changed while loading: never leave stale numbers on screen
+    })
+    .catch(err => {
       console.error('[Analytics] tab load failed', tab, err);
-      el.innerHTML = '<div class="an-empty">Something went wrong loading this section.</div>';
+      if (rangeKey() !== key) { if (_activeTab === tab) loadTab(tab); return; }
+      delete el.dataset.loaded;
+      el.innerHTML = CORE.errorBannerHtml(err && err.message ? err.message : 'Unexpected error.', 'retryTab()');
     });
-  }
 }
-function rangeKey() { return fmtIso(_range.start) + '_' + fmtIso(_range.end) + '_' + _compareOn; }
+function retryTab() {
+  const el = document.getElementById('view-' + _activeTab);
+  delete el.dataset.loaded;
+  loadTab(_activeTab);
+}
+
+// Daily traffic series: chunked (<= 900 days per request, exact because it is
+// a per-day metric) so PostgREST's 1000-row cap can never silently truncate a
+// long history; days before page_views tracking began are trimmed off.
+async function fetchTrafficByDay() {
+  const rows = await CORE.fetchDailyChunked(sbRpc, 'analytics_traffic_by_day', _range.start, _range.endExclusive);
+  return CORE.trimBeforeCoverage(rows, 'day', coverageStart('page_views'));
+}
 
 // ── Small shared render helpers ──────────────────────────────────────
 function pctDelta(cur, prev) {
@@ -156,7 +269,7 @@ function pctDelta(cur, prev) {
   return { pct: pct, dir: pct > 0.5 ? 'up' : pct < -0.5 ? 'down' : 'flat' };
 }
 function deltaHtml(cur, prev) {
-  if (!_compareOn || prev == null) return '';
+  if (!compareActive() || prev == null) return '';
   const d = pctDelta(cur, prev);
   if (!d) return '';
   const sign = d.pct > 0 ? '+' : '';
@@ -202,7 +315,9 @@ function startLivePolling() {
   _liveTimer = setInterval(refreshLive, 20000);
 }
 async function refreshLive() {
-  const snap = await sbRpc('analytics_realtime_snapshot', { p_minutes: 5 });
+  let snap;
+  try { snap = await sbRpc('analytics_realtime_snapshot', { p_minutes: 5 }); }
+  catch (e) { return; } // the live strip is best-effort; the tabs report their own errors
   if (!snap) return;
   document.getElementById('live-visitors').textContent = snap.active_visitors || 0;
   document.getElementById('live-searches').textContent = snap.live_searches || 0;
@@ -219,9 +334,9 @@ async function refreshLive() {
 async function loadOverviewTab() {
   const el = document.getElementById('view-overview');
   const [stats, prevStats, trend] = await Promise.all([
-    sbRpc('analytics_session_stats', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) }),
-    _compareOn ? sbRpc('analytics_session_stats', { p_start: fmtIso(_compareRange.start), p_end: fmtIso(_compareRange.end) }) : null,
-    sbRpc('analytics_traffic_by_day', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })
+    sbRpc('analytics_session_stats', rangeParams()),
+    compareActive() ? sbRpc('analytics_session_stats', rangeParams(_compareRange)) : null,
+    fetchTrafficByDay()
   ]);
   const s = stats || {}, p = prevStats || {};
 
@@ -240,6 +355,8 @@ async function loadOverviewTab() {
     '</div>' +
     '<div class="section-block">' + sectionHeader('Traffic Trend') +
       '<div class="chart-card"><div id="ov-trend-chart"></div></div>' +
+      coverageNote('page_views', 'Website traffic') +
+      (_compareOn && _compareRange && _compareRange.beforeData ? '<p class="disclosure">No data exists before ' + esc(_bounds && _bounds.earliest_day || 'the first day') + ', so there is no previous period to compare against.</p>' : '') +
     '</div>';
 
   const rows = trend || [];
@@ -248,7 +365,7 @@ async function loadOverviewTab() {
       { label: 'Page views', points: rows.map(r => ({ y: r.page_views })) },
       { label: 'Sessions', points: rows.map(r => ({ y: r.sessions })) }
     ],
-    xLabels: rows.map(r => r.day.slice(5)),
+    xLabels: LAOS.axisLabels(rows.map(r => r.day)),
     height: 240,
     ariaLabel: 'Page views and sessions over time'
   });
@@ -265,8 +382,8 @@ async function loadTrafficTab() {
   // result (source counts, top-10 referrer hosts, top-20 campaigns) --
   // kilobytes instead of a payload that grows with total traffic.
   const [trend, sources] = await Promise.all([
-    sbRpc('analytics_traffic_by_day', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) }),
-    sbRpc('analytics_traffic_sources', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })
+    fetchTrafficByDay(),
+    sbRpc('analytics_traffic_sources', rangeParams())
   ]);
   const rows = trend || [];
   const src = sources || {};
@@ -282,7 +399,7 @@ async function loadTrafficTab() {
 
   el.innerHTML =
     '<div class="section-block">' + sectionHeader('Traffic Over Time') +
-      '<div class="chart-card"><div id="tr-trend-chart"></div></div>' +
+      '<div class="chart-card"><div id="tr-trend-chart"></div></div>' + coverageNote('page_views', 'Website traffic') +
     '</div>' +
     '<div class="section-block">' +
       '<div class="chart-row">' +
@@ -296,7 +413,7 @@ async function loadTrafficTab() {
 
   PT_CHART.renderLineChart(document.getElementById('tr-trend-chart'), {
     series: [{ label: 'Page views', points: rows.map(r => ({ y: r.page_views })) }],
-    xLabels: rows.map(r => r.day.slice(5)), height: 220, ariaLabel: 'Traffic over time'
+    xLabels: LAOS.axisLabels(rows.map(r => r.day)), height: 220, ariaLabel: 'Traffic over time'
   });
   PT_CHART.renderDonutChart(document.getElementById('tr-source-chart'), { slices: sourceSlices, size: 170, emptyLabel: 'No traffic yet.' });
   PT_CHART.renderBarChart(document.getElementById('tr-referrer-chart'), { rows: topReferrers, labelWidth: 120, emptyLabel: 'No external referrers yet — all traffic is direct/internal.' });
@@ -307,21 +424,15 @@ async function loadTrafficTab() {
 // ══════════════════════════════════════════════════════════════════════
 async function loadListingsTab() {
   const el = document.getElementById('view-listings');
-  const range = `created_at=gte.${_range.start.toISOString()}&created_at=lt.${_range.end.toISOString()}`;
-  // Was: a raw listing_events fetch capped at 20,000 rows plus the entire
-  // active-properties catalog (limit 5000), joined and aggregated per
-  // property_id in JS. analytics_listing_engagement() does the same
-  // per-property GROUP BY + the view-by-day rollup + the title join
-  // server-side, returning only the top-10 lists the UI renders. The 3
-  // stat-tile counts stay as sbCount() -- those already use
-  // Prefer:count=exact + Range:0-0, which downloads zero rows, so they
-  // were never the bottleneck.
-  const [engagement, waClicks, callClicks, agentClicks] = await Promise.all([
-    sbRpc('analytics_listing_engagement', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) }),
-    sbCount(`lead_events?select=id&event_type=eq.whatsapp_click&${range}`),
-    sbCount(`lead_events?select=id&event_type=eq.call_click&${range}`),
-    sbCount(`ui_events?select=id&element_id=eq.agent-profile-link&${range}`)
-  ]);
+  // The three stat-tile counts (WhatsApp clicks, call clicks, agent-profile
+  // clicks) used to be client-side sbCount() calls built from browser-local
+  // instants, which disagreed with this RPC's day boundaries. They are now
+  // fields of analytics_listing_engagement() itself, so every card and chart
+  // on this tab uses the same Asia/Vientiane calendar days.
+  const engagement = await sbRpc('analytics_listing_engagement', rangeParams());
+  const waClicks = (engagement || {}).wa_clicks || 0;
+  const callClicks = (engagement || {}).call_clicks || 0;
+  const agentClicks = (engagement || {}).agent_profile_clicks || 0;
   const eng = engagement || {};
   const mostViewed = eng.most_viewed || [];
   const ctrRows = eng.top_ctr || [];
@@ -348,9 +459,11 @@ async function loadListingsTab() {
   const sharedLinkLeads = eng.shared_link_leads || 0;
   const secondaryShares = eng.secondary_shares || 0;
 
-  const byDay = {}; (eng.views_by_day || []).forEach(r => { byDay[r.day] = r.views; });
+  const viewRows = CORE.trimBeforeCoverage(eng.views_by_day || [], 'day', coverageStart('listing_events'));
+  const byDay = {}; viewRows.forEach(r => { byDay[r.day] = r.views; });
   const days = Object.keys(byDay).sort();
   _lastRows.listings = mostViewed;
+  const mostViewedNote = CORE.topNote(mostViewed.length, eng.most_viewed_total || 0, 0, '', 0, 0);
 
   el.innerHTML =
     '<div class="section-block">' + sectionHeader('Listing Engagement') +
@@ -370,18 +483,18 @@ async function loadListingsTab() {
       '</div>' +
     '</div>' +
     '<div class="section-block">' + sectionHeader('Listing Views Over Time') +
-      '<div class="chart-card"><div id="li-trend-chart"></div></div>' +
+      '<div class="chart-card"><div id="li-trend-chart"></div></div>' + coverageNote('listing_events', 'Listing activity') +
     '</div>' +
     '<div class="section-block">' +
       '<div class="chart-row">' +
-        '<div class="chart-card">' + sectionHeader('Most Viewed Listings', "exportCsv('most-viewed-listings.csv',['label','value'],_lastRows.listings)") + '<div id="li-mostviewed-chart"></div></div>' +
+        '<div class="chart-card">' + sectionHeader('Most Viewed Listings', "exportCsv('most-viewed-listings.csv',['label','value'],_lastRows.listings)") + '<div id="li-mostviewed-chart"></div>' + (mostViewedNote ? '<div class="top-note">' + esc(mostViewedNote) + ' listings by views</div>' : '') + '</div>' +
         '<div class="chart-card">' + sectionHeader('Click-Through Rate (% , ≥5 impressions)') + '<div id="li-ctr-chart"></div></div>' +
       '</div>' +
     '</div>';
 
   PT_CHART.renderLineChart(document.getElementById('li-trend-chart'), {
     series: [{ label: 'Views', points: days.map(d => ({ y: byDay[d] })) }],
-    xLabels: days.map(d => d.slice(5)), height: 200, ariaLabel: 'Listing views over time', emptyLabel: 'No listing views in this period yet.'
+    xLabels: LAOS.axisLabels(days), height: 200, ariaLabel: 'Listing views over time', emptyLabel: 'No listing views in this period yet.'
   });
   PT_CHART.renderBarChart(document.getElementById('li-mostviewed-chart'), { rows: mostViewed, labelWidth: 130 });
   PT_CHART.renderBarChart(document.getElementById('li-ctr-chart'), { rows: ctrRows, labelWidth: 130, emptyLabel: 'Not enough impression volume yet (≥5 needed per listing).' });
@@ -395,7 +508,7 @@ async function loadSearchTab() {
   // Was: a raw search_events fetch capped at 20,000 rows, aggregated by
   // type/transaction/district in JS. analytics_search_breakdown() does
   // the same 3 GROUP BYs plus the zero-result count server-side.
-  const b = (await sbRpc('analytics_search_breakdown', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })) || {};
+  const b = (await sbRpc('analytics_search_breakdown', rangeParams())) || {};
   const total = b.total || 0;
   const zeroResult = b.zero_result || 0;
   const typeRows = b.by_type || [];
@@ -463,8 +576,8 @@ async function loadBehaviorTab() {
   // by session_id) plus 2 more GROUP BYs for scroll/clicks, all in one
   // round trip returning only the top-8/top-10 lists actually rendered.
   const [funnel, behavior] = await Promise.all([
-    sbRpc('analytics_funnel', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) }),
-    sbRpc('analytics_behavior', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })
+    sbRpc('analytics_funnel', rangeParams()),
+    sbRpc('analytics_behavior', rangeParams())
   ]);
   const beh = behavior || {};
   const entryRows = beh.entry || [];
@@ -523,33 +636,35 @@ async function loadBehaviorTab() {
 // ══════════════════════════════════════════════════════════════════════
 async function loadLeadsTab() {
   const el = document.getElementById('view-leads');
-  // Was: 4 fetches (leads limit 10000, the ENTIRE properties catalog limit
-  // 5000, parties limit 1000, lead_events limit 10000), then a SECOND,
-  // sequential fetch of up to 20,000 more page_views rows just to resolve
-  // first-touch attribution for the leads already in hand -- up to ~46,000
-  // rows for one tab, only to render 3 stat cards, 2 top-10 charts, a
-  // donut, and a 50-row table. analytics_leads_breakdown() computes all of
-  // it server-side in one call, including the first-touch join (a LATERAL
-  // join per lead instead of pulling every candidate page_views row into
-  // the browser), and returns only the most recent 50 leads for the table
-  // -- not the whole range, matching what's actually displayed.
-  const lb = (await sbRpc('analytics_leads_breakdown', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })) || {};
-
+  // analytics_leads_breakdown() computes every summary server-side over
+  // whatever range is selected (no window cap). It counts OFFICIAL CRM leads
+  // only; lead_events with no CRM row are reported separately as
+  // `legacy_events` (they have a listing) and `unattributed_events` (they do
+  // not). Ranked lists stay top-10 but say "Top 10 of N" and carry an
+  // unattributed / deleted remainder so the parts always add up.
+  const lb = await sbRpc('analytics_leads_breakdown', rangeParams());
   const total = lb.total || 0;
   const closed = lb.closed || 0;
-  const byListingRows = lb.by_listing || [];
+  const legacy = lb.legacy_events || 0;
+  const unattributed = lb.unattributed_events || 0;
+  const byListingRows = (lb.by_listing || []).map(r => ({ label: r.label, value: r.value, property_id: r.property_id }));
   const byAgentRows = lb.by_agent || [];
+  const listingNote = CORE.topNote(byListingRows.length, lb.by_listing_total || 0, lb.by_listing_other || 0, 'without a listing', lb.by_listing_unattributed || 0, lb.by_listing_deleted || 0);
+  const agentNote = CORE.topNote(byAgentRows.length, lb.by_agent_total || 0, lb.by_agent_other || 0, 'unassigned', lb.by_agent_unassigned || 0, 0);
 
-  const byDay = {}; (lb.by_day || []).forEach(r => { byDay[r.day] = r.value; });
-  const days = Object.keys(byDay).sort();
+  const firstLeadDay = [coverageStart('leads'), coverageStart('lead_events')].filter(Boolean).sort()[0] || null;
+  const dayRows = CORE.trimBeforeCoverage(lb.by_day || [], 'day', firstLeadDay);
+  const days = dayRows.map(r => r.day);
+  _leadDays = days;
+  const activeDays = dayRows.filter(r => (r.value || 0) + (r.legacy || 0) + (r.unattributed || 0) > 0).slice().reverse();
 
   const sourceSlices = Object.entries(lb.by_source || {}).map(([label, value]) => ({ label: label.charAt(0).toUpperCase() + label.slice(1), value }));
 
-  // Capped server-side at the 50 most recent leads in range -- the CSV
-  // export below reflects exactly what's on screen, not a hidden larger
-  // set (see the "Recent Leads" heading/filename, renamed from "All
-  // Leads" for the same reason).
-  _lastRows.leads = lb.recent || [];
+  const daysTable = activeDays.length
+    ? '<div style="max-height:260px;overflow:auto;"><table class="an-table day-table"><thead><tr><th>Day (Laos)</th><th>Leads</th><th>Legacy events</th><th>Unattributed</th></tr></thead><tbody>' +
+      activeDays.map(r => '<tr><td><button type="button" class="day-btn" data-day="' + esc(r.day) + '">' + esc(r.day) + '</button></td><td>' + (r.value || 0) + '</td><td>' + (r.legacy || 0) + '</td><td>' + (r.unattributed || 0) + '</td></tr>').join('') +
+      '</tbody></table></div>'
+    : '<div class="an-empty">No lead activity in this period.</div>';
 
   el.innerHTML =
     '<div class="section-block">' + sectionHeader('Leads') +
@@ -557,31 +672,178 @@ async function loadLeadsTab() {
         statCard('Total leads', total) +
         statCard('Closed deals', closed) +
         statCard('Conversion rate', total ? Math.round(closed / total * 1000) / 10 + '%' : '0%') +
+        '<div class="stat-card" title="Lead clicks that have a listing but no CRM lead record. Preserved for history; not counted as leads."><div class="stat-label">Legacy events (no CRM lead)</div><div class="stat-value">' + esc(legacy) + '</div></div>' +
       '</div>' +
+      '<p class="disclosure"><b>Total leads</b> counts official CRM leads only. <b>Legacy events</b> are older lead clicks that have a listing but no CRM record; ' +
+        (unattributed ? '<b>' + esc(unattributed) + ' unattributed event(s)</b> have neither a listing nor a CRM record. ' : '') +
+        'Both are listed separately below and never added to the lead count.</p>' +
     '</div>' +
-    '<div class="section-block">' + sectionHeader('Leads Over Time') + '<div class="chart-card"><div id="ld-trend-chart"></div></div></div>' +
+    '<div class="section-block">' + sectionHeader('Leads Over Time (click a day to see its leads)') +
+      '<div class="chart-card"><div id="ld-trend-chart"></div>' + coverageNote('lead_events', 'Lead tracking') + '</div></div>' +
+    '<div class="section-block">' + sectionHeader('Days With Lead Activity') + '<div class="chart-card">' + daysTable + '</div></div>' +
     '<div class="section-block">' +
       '<div class="chart-row">' +
-        '<div class="chart-card">' + sectionHeader('Leads by Listing') + '<div id="ld-listing-chart"></div></div>' +
-        '<div class="chart-card">' + sectionHeader('Leads by Agent') + '<div id="ld-agent-chart"></div></div>' +
+        '<div class="chart-card">' + sectionHeader('Leads by Listing (click a bar to filter)') + '<div id="ld-listing-chart"></div>' + (listingNote ? '<div class="top-note">' + esc(listingNote) + '</div>' : '') + '</div>' +
+        '<div class="chart-card">' + sectionHeader('Leads by Agent') + '<div id="ld-agent-chart"></div>' + (agentNote ? '<div class="top-note">' + esc(agentNote) + '</div>' : '') + '</div>' +
       '</div>' +
     '</div>' +
     '<div class="section-block">' + sectionHeader('Leads by Source') +
       '<div class="chart-card"><div id="ld-source-chart"></div>' +
       '<p class="disclosure">First-touch attribution: the referrer source of the earliest page view in the same browser session that generated the lead.</p></div>' +
     '</div>' +
-    '<div class="section-block">' + sectionHeader('Recent Leads (up to 50)', "exportCsv('recent-leads.csv',['id','listing','agent','status','created_at'],_lastRows.leads)") +
-      renderTable(['Listing', 'Agent', 'Status', 'Date'], _lastRows.leads || [], r => [r.listing, r.agent || '—', r.status, r.created_at.slice(0, 10)], 'No leads in this period yet.') +
+    '<div class="section-block" id="la-section">' + sectionHeader('Lead Activity — which listing generated each lead', 'exportLeadActivityCsv()') +
+      '<div class="la-toolbar">' +
+        '<span id="la-scope"></span>' +
+        '<label>Day <input type="date" id="la-day" aria-label="Show lead activity for a day"></label>' +
+        '<button type="button" class="export-btn" id="la-day-go" onclick="openDayFromInput()">Show day</button>' +
+        '<button type="button" class="export-btn" id="la-range-btn" onclick="showWholeRange()">Whole selected range</button>' +
+        '<span id="la-chip"></span>' +
+      '</div>' +
+      '<div id="la-summary" class="top-note" style="margin:0 0 10px;"></div>' +
+      '<div id="la-error"></div>' +
+      '<div class="chart-card" id="la-table"></div>' +
+      '<div class="la-foot"><button type="button" class="export-btn" id="la-more" onclick="loadLeadActivity(false)">Load more</button><span id="la-count"></span></div>' +
     '</div>';
 
   PT_CHART.renderLineChart(document.getElementById('ld-trend-chart'), {
-    series: [{ label: 'Leads', points: days.map(d => ({ y: byDay[d] })) }],
-    xLabels: days.map(d => d.slice(5)), height: 200, emptyLabel: 'No leads in this period yet.'
+    series: [{ label: 'Leads', points: dayRows.map(r => ({ y: r.value || 0 })) }]
+      .concat(legacy ? [{ label: 'Legacy events', points: dayRows.map(r => ({ y: r.legacy || 0 })) }] : []),
+    xLabels: LAOS.axisLabels(days), height: 200, emptyLabel: 'No leads in this period yet.',
+    onPointClick: i => { if (days[i]) openLeadDay(days[i]); }
   });
-  PT_CHART.renderBarChart(document.getElementById('ld-listing-chart'), { rows: byListingRows, labelWidth: 130, emptyLabel: 'No leads yet.' });
+  PT_CHART.renderBarChart(document.getElementById('ld-listing-chart'), {
+    rows: byListingRows, labelWidth: 130, emptyLabel: 'No leads yet.',
+    onRowClick: row => { if (row && row.property_id) filterLeadListing(row.property_id, row.label); }
+  });
   PT_CHART.renderBarChart(document.getElementById('ld-agent-chart'), { rows: byAgentRows, labelWidth: 130, emptyLabel: 'No leads yet.' });
   PT_CHART.renderDonutChart(document.getElementById('ld-source-chart'), { slices: sourceSlices, size: 170, emptyLabel: 'No leads yet.' });
+
+  // Default drill-down: every lead-type record in the selected range, newest first.
+  _leadView = newLeadView(_range.start, _range.endExclusive, null, null);
+  renderLeadActivity();
+  loadLeadActivity(true);
 }
+
+// ── Lead activity drill-down (day / listing), keyset-paginated ───────────
+let _leadDays = [];
+let _leadView = null; // {start, endExclusive, propertyId, propertyLabel, rows, totals, hasMore, cursor, loading, error}
+
+function newLeadView(start, endExclusive, propertyId, propertyLabel) {
+  return { start, endExclusive, propertyId: propertyId || null, propertyLabel: propertyLabel || '', rows: [], totals: null, hasMore: false, cursor: null, loading: false, error: null };
+}
+function openLeadDay(day) {
+  if (!LAOS.isLabel(day)) return;
+  const keep = _leadView || {};
+  _leadView = newLeadView(day, LAOS.addDays(day, 1), keep.propertyId, keep.propertyLabel);
+  renderLeadActivity(true);
+  loadLeadActivity(true);
+}
+function openDayFromInput() {
+  const v = document.getElementById('la-day').value;
+  if (!LAOS.isLabel(v)) { document.getElementById('la-error').innerHTML = CORE.errorBannerHtml('Pick a valid day first.', null); return; }
+  openLeadDay(v);
+}
+function showWholeRange() {
+  const keep = _leadView || {};
+  _leadView = newLeadView(_range.start, _range.endExclusive, keep.propertyId, keep.propertyLabel);
+  renderLeadActivity();
+  loadLeadActivity(true);
+}
+function filterLeadListing(propertyId, label) {
+  const keep = _leadView || newLeadView(_range.start, _range.endExclusive, null, null);
+  _leadView = newLeadView(keep.start, keep.endExclusive, propertyId, label);
+  renderLeadActivity(true);
+  loadLeadActivity(true);
+}
+function clearLeadListingFilter() {
+  const keep = _leadView;
+  _leadView = newLeadView(keep.start, keep.endExclusive, null, null);
+  renderLeadActivity();
+  loadLeadActivity(true);
+}
+
+async function loadLeadActivity(reset) {
+  const v = _leadView;
+  if (!v || v.loading) return;
+  v.loading = true; v.error = null;
+  renderLeadActivity();
+  try {
+    const res = await sbRpc('analytics_lead_activity', CORE.leadActivityParams(v, CORE.DRILLDOWN_PAGE, reset ? null : v.cursor));
+    if (v !== _leadView) return; // the view was replaced while this page was in flight
+    if (!res || !Array.isArray(res.rows)) throw CORE.RpcError('analytics_lead_activity', 'incomplete', 200, 'malformed page');
+    v.rows = reset ? res.rows : v.rows.concat(res.rows);
+    v.totals = res.totals || v.totals;
+    v.hasMore = !!res.has_more;
+    v.cursor = res.next_cursor || null;
+  } catch (err) {
+    if (v === _leadView) v.error = err.message || String(err);
+  } finally {
+    v.loading = false;
+    if (v === _leadView) renderLeadActivity();
+  }
+}
+
+function renderLeadActivity(scrollIntoView) {
+  const v = _leadView;
+  const table = document.getElementById('la-table');
+  if (!v || !table) return;
+  const single = v.endExclusive === LAOS.addDays(v.start, 1);
+  document.getElementById('la-scope').textContent = 'Showing ' + (single ? 'day ' + v.start : v.start + ' → ' + LAOS.addDays(v.endExclusive, -1)) + ' (Laos time)';
+  document.getElementById('la-chip').innerHTML = v.propertyId
+    ? '<span class="la-chip">Listing: ' + esc(v.propertyLabel || v.propertyId.slice(0, 8)) +
+      ' <button type="button" class="link-btn" data-act="clear-filter" aria-label="Remove listing filter">✕ clear</button></span>'
+    : '';
+  document.getElementById('la-day').value = single ? v.start : '';
+  const t = v.totals;
+  document.getElementById('la-summary').textContent = t
+    ? t.leads + ' lead' + (t.leads === 1 ? '' : 's') + ' · ' + t.legacy_events + ' legacy event' + (t.legacy_events === 1 ? '' : 's') +
+      ' · ' + t.unattributed_events + ' unattributed · ' + t.distinct_listings + ' listing' + (t.distinct_listings === 1 ? '' : 's') +
+      (t.deleted_listing_rows ? ' · ' + t.deleted_listing_rows + ' on deleted listings' : '')
+    : '';
+  document.getElementById('la-error').innerHTML = v.error ? CORE.errorBannerHtml(v.error, 'retryLeadActivity()') : '';
+  if (v.loading && !v.rows.length) table.innerHTML = '<div class="insp-loading">Loading…</div>';
+  else if (!v.error || v.rows.length) table.innerHTML = CORE.renderLeadActivityTable(v.rows);
+  else table.innerHTML = '';
+  const more = document.getElementById('la-more');
+  more.style.display = v.hasMore ? '' : 'none';
+  more.disabled = v.loading;
+  more.textContent = v.loading ? 'Loading…' : 'Load more';
+  const total = t ? t.leads + t.legacy_events + t.unattributed_events : null;
+  document.getElementById('la-count').textContent = total != null ? 'Showing ' + v.rows.length + ' of ' + total : '';
+  if (scrollIntoView) document.getElementById('la-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function retryLeadActivity() { if (_leadView) { _leadView.error = null; loadLeadActivity(_leadView.rows.length === 0); } }
+
+// CSV of EVERYTHING in the current view (all pages), not just what is on screen.
+async function exportLeadActivityCsv() {
+  const v = _leadView;
+  if (!v) return;
+  const btn = document.querySelector('#la-section .export-btn');
+  const original = btn ? btn.textContent : '';
+  try {
+    if (btn) btn.disabled = true;
+    const { rows } = await CORE.pageAllLeadActivity(sbRpc, v, {
+      pageSize: CORE.EXPORT_PAGE,
+      onProgress: n => { if (btn) btn.textContent = 'Exporting… ' + n; }
+    });
+    const last = LAOS.addDays(v.endExclusive, -1);
+    const name = 'lead-activity_' + v.start + (last === v.start ? '' : '_to_' + last) + (v.propertyId ? '_listing-' + v.propertyId.slice(0, 8) : '') + '.csv';
+    exportCsv(name, CORE.LEAD_CSV_HEADERS, rows.map(CORE.leadRowToCsv));
+  } catch (err) {
+    document.getElementById('la-error').innerHTML = CORE.errorBannerHtml('Export failed: ' + (err.message || err), null);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original || '⇩ Export CSV'; }
+  }
+}
+
+// One delegated handler for the buttons inside rendered tables.
+document.addEventListener('click', ev => {
+  const t = ev.target.closest && ev.target.closest('[data-day],[data-act]');
+  if (!t) return;
+  if (t.dataset.day) openLeadDay(t.dataset.day);
+  else if (t.dataset.act === 'filter-listing') filterLeadListing(t.dataset.propertyId, t.dataset.label);
+  else if (t.dataset.act === 'clear-filter') clearLeadListingFilter();
+});
 
 // ══════════════════════════════════════════════════════════════════════
 // LOCATION TAB — device/browser/OS/language are real; country/city are
@@ -592,7 +854,7 @@ async function loadLocationTab() {
   // Was: a raw page_views fetch capped at 20,000 rows, aggregated by
   // device/browser/os/lang in JS. analytics_location_breakdown() does the
   // same 4 GROUP BYs server-side.
-  const loc = (await sbRpc('analytics_location_breakdown', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })) || {};
+  const loc = (await sbRpc('analytics_location_breakdown', rangeParams())) || {};
   const byDevice = loc.device || {}, byBrowser = loc.browser || {}, byOs = loc.os || {}, byLang = loc.lang || {};
   const langNames = { en: 'English', lo: 'Lao', zh: 'Chinese' };
 
@@ -624,20 +886,13 @@ async function loadLocationTab() {
 // ══════════════════════════════════════════════════════════════════════
 async function loadAdminTab() {
   const el = document.getElementById('view-admin');
-  const range = `created_at=gte.${_range.start.toISOString()}&created_at=lt.${_range.end.toISOString()}`;
-  // Was: sbCount for new listings (cheap, kept) plus the ENTIRE properties
-  // catalog fetched unfiltered (limit 5000, every column) just to compute
-  // "no views" / "high view, low convert" client-side, plus leads (limit
-  // 10000), parties (limit 1000), and listing_events views (limit 20000)
-  // -- none of it actually date-scoped except the leads. This payload grew
-  // with total catalog + total leads ever recorded, not with the ~10 rows
-  // per list the UI shows. analytics_admin_insights() computes every
-  // GROUP BY/EXISTS check server-side and returns only the top-10/top-15
-  // lists rendered below.
-  const [newListings, insights] = await Promise.all([
-    sbCount(`properties?select=id&${range}`),
-    sbRpc('analytics_admin_insights', { p_start: fmtIso(_range.start), p_end: fmtIso(_range.end) })
-  ]);
+  // Was: sbCount for new listings plus the ENTIRE properties catalog fetched
+  // unfiltered (limit 5000, every column) just to compute "no views" / "high
+  // view, low convert" client-side, plus leads (limit 10000), parties (limit
+  // 1000), and listing_events views (limit 20000). analytics_admin_insights()
+  // computes every count and top-N list server-side (new_listings included,
+  // on the same Laos calendar days as everything else).
+  const insights = await sbRpc('analytics_admin_insights', rangeParams());
   const adm = insights || {};
   const activeAgentRows = adm.by_agent || [];
   const districtRows = adm.by_district || [];
@@ -648,7 +903,7 @@ async function loadAdminTab() {
 
   el.innerHTML =
     '<div class="section-block">' + sectionHeader('Admin Insights') +
-      '<div class="stat-grid">' + statCard('New listings added', newListings) + '</div>' +
+      '<div class="stat-grid">' + statCard('New listings added', adm.new_listings || 0) + '</div>' +
     '</div>' +
     '<div class="section-block">' +
       '<div class="chart-row">' +

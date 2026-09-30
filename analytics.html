@@ -75,6 +75,14 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
 .range-preset.active{background:var(--ink);color:#fff;border-color:var(--ink);}
 .range-compare{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);margin-left:auto;}
 .range-label{font-size:11.5px;color:var(--ink-muted);margin-left:6px;}
+.range-custom{display:none;align-items:center;gap:8px;flex-wrap:wrap;margin:-8px 0 20px;font-size:12px;color:var(--ink-soft);}
+.range-custom.open{display:flex;}
+.range-custom input[type=date]{font-size:12px;padding:5px 8px;border:1px solid var(--border-mid);border-radius:6px;background:var(--white);color:var(--ink);font-family:inherit;}
+.range-msg{font-size:11.5px;color:var(--red);}
+.range-note{font-size:11.5px;color:var(--ink-muted);margin:-12px 0 16px;}
+.an-error{background:#fdf1ef;border:1px solid #e8b9b1;color:#7a2a20;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.5;margin-bottom:14px;}
+.an-error .export-btn{margin-left:8px;}
+.an-error-note{color:#8a5a54;font-size:11.5px;}
 
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px;flex-wrap:wrap;overflow-x:auto;}
 .tab{padding:10px 16px;font-size:12.5px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:var(--ink-muted);transition:all 0.2s;background:none;border-top:none;border-left:none;border-right:none;font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;white-space:nowrap;}
@@ -104,6 +112,24 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
 .an-table td{padding:7px 10px;border-bottom:1px solid var(--border);}
 .an-table tr:last-child td{border-bottom:none;}
 .an-empty{padding:24px;text-align:center;color:var(--ink-muted);font-size:12.5px;}
+.an-table td.nowrap{white-space:nowrap;}
+.an-table td.idcell{font-size:11px;line-height:1.5;}
+.an-table code{font-size:10.5px;background:var(--warm-deep);padding:1px 4px;border-radius:3px;}
+.an-table .muted,.muted{color:var(--ink-muted);}
+.an-table .idline{margin-top:3px;font-size:11px;}
+.badge{display:inline-block;font-size:10px;font-weight:600;letter-spacing:0.02em;padding:2px 7px;border-radius:10px;margin-top:3px;white-space:nowrap;}
+.badge-lead{background:#e3f1ee;color:#1f5d52;}
+.badge-legacy{background:#f3ecd6;color:#7a5b12;}
+.badge-unattr{background:#eceff1;color:#4a5a63;}
+.badge-deleted{background:#f6e0dc;color:#8a2f22;}
+.badge-unknown{background:#e9e3f3;color:#5a3d8a;}
+.link-btn{background:none;border:none;padding:0;color:var(--teal);font-size:11px;cursor:pointer;text-decoration:underline;font-family:inherit;}
+.la-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:12px;color:var(--ink-soft);}
+.la-toolbar input[type=date]{font-size:12px;padding:4px 8px;border:1px solid var(--border-mid);border-radius:6px;font-family:inherit;}
+.la-chip{display:inline-flex;align-items:center;gap:6px;background:var(--warm-deep);border-radius:12px;padding:3px 10px;font-size:11.5px;}
+.la-foot{display:flex;align-items:center;gap:12px;margin-top:12px;font-size:12px;color:var(--ink-muted);}
+.day-table button.day-btn{background:none;border:none;color:var(--teal);cursor:pointer;text-decoration:underline;font-family:inherit;font-size:12.5px;padding:0;}
+.top-note{font-size:11.5px;color:var(--ink-muted);margin-top:8px;}
 
 .insp-loading{padding:40px;text-align:center;color:var(--ink-muted);font-size:13px;}
 
@@ -147,9 +173,19 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
       <button class="range-preset active" data-range="7d" onclick="setRange('7d')">7 days</button>
       <button class="range-preset" data-range="30d" onclick="setRange('30d')">30 days</button>
       <button class="range-preset" data-range="90d" onclick="setRange('90d')">90 days</button>
+      <button class="range-preset" data-range="all" onclick="setRange('all')">All time</button>
+      <button class="range-preset" data-range="custom" onclick="toggleCustomRange()" aria-expanded="false" aria-controls="range-custom">Custom</button>
       <span class="range-label" id="range-label"></span>
-      <label class="range-compare"><input type="checkbox" id="compare-toggle" onchange="onCompareToggle()"> Compare to previous period</label>
+      <label class="range-compare"><input type="checkbox" id="compare-toggle" onchange="onCompareToggle()"> <span id="compare-label">Compare to previous period</span></label>
     </div>
+    <div class="range-custom" id="range-custom">
+      <label>From <input type="date" id="custom-from" aria-label="Custom range start date"></label>
+      <label>To (inclusive) <input type="date" id="custom-to" aria-label="Custom range end date"></label>
+      <button type="button" class="export-btn" id="custom-apply" onclick="applyCustomRange()">Apply</button>
+      <span class="range-msg" id="custom-msg" role="alert"></span>
+    </div>
+    <div class="range-note" id="range-note">Days are Laos calendar days (Asia/Vientiane, UTC+7).</div>
+    <div id="range-error"></div>
 
     <div class="tabs" id="an-tabs">
       <button class="tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
@@ -177,6 +213,8 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
 <script src="config.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>
 <script src="charts.js?v=__ASSET_VERSION__"></script>
+<script src="laos-date.js?v=__ASSET_VERSION__"></script>
+<script src="analytics-core.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
 <script src="analytics.js?v=__ASSET_VERSION__"></script>
 </body>
