@@ -231,7 +231,12 @@ function loadTab(tab) {
   // Bounds feed the "tracking since" notes; a failure there is not fatal for
   // presets other than All time (which already failed visibly in setRange).
   ensureBounds().catch(() => null)
-    .then(() => TAB_LOADERS[tab]())
+    .then(() => {
+      // "Is the previous span entirely before the first day of data?" needs the
+      // bounds, which may only have arrived now (the first load races them).
+      _compareRange = LAOS.compareRange(_range, _bounds && _bounds.earliest_day);
+      return TAB_LOADERS[tab]();
+    })
     .then(() => {
       if (rangeKey() === key) el.dataset.loaded = key;
       else if (_activeTab === tab) loadTab(tab); // range changed while loading: never leave stale numbers on screen

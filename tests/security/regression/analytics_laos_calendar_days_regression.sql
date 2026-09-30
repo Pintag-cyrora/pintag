@@ -453,6 +453,44 @@ BEGIN
 END $$;
 
 \echo ''
+\echo '=== G2. Paging past the 1,000-row PostgREST cap: a full-range walk returns every row ==='
+RESET ROLE;
+-- 1,300 lead-type records on one Laos day (650 CRM leads + 650 legacy events), one per second.
+SELECT seed_event('bulk' || g, timestamptz '2026-05-05 00:00:00+07' + (g || ' seconds')::interval,
+                  'aaaaaaaa-0000-0000-0000-00000000000a', 'whatsapp_click', (g % 2 = 0), 'sb' || g)
+FROM generate_series(1, 1300) g;
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000ad01', false);
+DO $$
+DECLARE page jsonb; cur jsonb := NULL; n int := 0; pages int := 0; ids text[] := '{}'; prev timestamptz := NULL; ok boolean := true;
+        r jsonb; sizes int[] := '{}';
+BEGIN
+  page := analytics_lead_activity('2026-05-05', '2026-05-06', NULL, 500);
+  PERFORM assert_eq(jsonb_array_length(page -> 'rows')::text, '500', 'a single page is capped at the server maximum of 500 (never a silent 1,000)');
+  PERFORM assert_eq(page ->> 'has_more', 'true', '... and says there is more');
+  PERFORM assert_eq(page -> 'totals' ->> 'leads', '650', 'totals describe all 1,300 records, not the page (650 leads)');
+  PERFORM assert_eq(page -> 'totals' ->> 'legacy_events', '650', '... (650 legacy events)');
+  LOOP
+    page := analytics_lead_activity('2026-05-05', '2026-05-06', NULL, 500, (cur ->> 'at')::timestamptz, (cur ->> 'id')::uuid);
+    pages := pages + 1;
+    sizes := sizes || jsonb_array_length(page -> 'rows');
+    FOR r IN SELECT e FROM jsonb_array_elements(page -> 'rows') e LOOP
+      ids := ids || COALESCE(r ->> 'lead_id', r ->> 'lead_event_id');
+      IF prev IS NOT NULL AND (r ->> 'event_at')::timestamptz > prev THEN ok := false; END IF;
+      prev := (r ->> 'event_at')::timestamptz;
+    END LOOP;
+    EXIT WHEN (page ->> 'has_more') <> 'true';
+    cur := page -> 'next_cursor';
+    EXIT WHEN pages > 10;
+  END LOOP;
+  PERFORM assert_eq(array_to_string(sizes, ','), '500,500,300', 'walking the whole range takes 500 + 500 + 300 rows');
+  PERFORM assert_eq(cardinality(ids)::text, '1300', 'the walk returns all 1,300 records (well past the 1,000-row API cap)');
+  PERFORM assert_eq((SELECT count(DISTINCT x)::text FROM unnest(ids) x), '1300', 'no duplicates across 3 pages');
+  PERFORM assert(ok, 'newest-first ordering holds across every page boundary');
+  PERFORM assert((page -> 'next_cursor') = 'null'::jsonb, 'the final page has no cursor');
+END $$;
+
+\echo ''
 \echo '=== H. Ranked lists stay top-10 but are honest about the rest ==='
 DO $$
 DECLARE r jsonb := analytics_leads_breakdown('2026-08-01', '2026-08-31');

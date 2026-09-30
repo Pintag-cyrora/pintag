@@ -253,12 +253,16 @@ test('renderLeadActivityTable: deleted listings are badged (by source), unknown 
 });
 test('renderLeadActivityTable: all dynamic text is escaped', () => {
   const html = CORE.renderLeadActivityTable([row({ listing_title: '<img src=x onerror=alert(1)>', agent_name: '"><script>x</script>', unit_type_name: "<b>'", first_touch_source: '<i>' })]);
-  assert.doesNotMatch(html, /<img|<script|<b>|<i>/);
+  // Every '<' in the output must open one of the table's own tags -- anything else
+  // (img, script, b, i, in any letter case) means user text reached the DOM unescaped.
+  assert.doesNotMatch(html, /<(?!\/?(?:table|thead|tbody|tr|th|td|div|span|a|code|button|br)\b)/i);
+  assert.doesNotMatch(html, /<\s*(img|script|b|i)\b/i);
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(html, /&lt;script&gt;x&lt;\/script&gt;/);
 });
 test('renderLeadActivityTable: a non-UUID property id is never put in a link', () => {
   const html = CORE.renderLeadActivityTable([row({ property_id: '"><script>' })]);
-  assert.doesNotMatch(html, /<script>/); assert.doesNotMatch(html, /href="listing\.html/);
+  assert.doesNotMatch(html, /<\s*script/i); assert.doesNotMatch(html, /href="listing\.html/);
 });
 test('renderLeadActivityTable: empty state', () => {
   assert.match(CORE.renderLeadActivityTable([]), /No lead activity/);

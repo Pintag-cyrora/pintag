@@ -443,7 +443,7 @@ env:
   #     and granted to authenticated only. No table, policy, trigger or row is
   #     changed. Rollback notes are in each file's header.
   #   * Verified by tests/security/regression/run-analytics-laos-calendar-days-pg.sh
-  #     (283 assertions incl. ACL/search_path/idempotency, plus a ~30x-volume scale probe).
+  #     (292 assertions incl. ACL/search_path/idempotency, plus a ~30x-volume scale probe).
   #   * EXPECTED_MIGRATION_BOUNDARY is now 20260921040000. 20260922000000
   #     (intelligence_unit_type_demand) is STILL deliberately NOT authorized: it
   #     sorts above the boundary, so the boundary-filtered work directory

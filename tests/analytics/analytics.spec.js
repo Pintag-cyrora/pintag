@@ -267,6 +267,30 @@ test.describe('range controls', () => {
     await expect(page.locator('#compare-toggle')).toBeEnabled();
   });
 
+  test('Compare to previous period: previous equal-length span is requested and deltas render', async ({ page }) => {
+    const fake = makeFake();
+    await open(page, fake);
+    await expect(page.locator('#view-overview .stat-grid')).toBeVisible();
+    await page.check('#compare-toggle');
+    // 7 days = 2026-09-25..2026-10-01 -> previous 7 days = 2026-09-18..2026-09-24
+    await expect.poll(() => fake.callsFor('analytics_session_stats').some(b => b.p_start === '2026-09-18' && b.p_end === '2026-09-25')).toBe(true);
+    await expect(page.locator('#view-overview .stat-delta').first()).toContainText('vs prev');
+    // moving to another preset re-derives the previous span from the NEW range (Laos days)
+    await page.click('.range-preset[data-range="today"]');
+    await expect.poll(() => fake.callsFor('analytics_session_stats').some(b => b.p_start === '2026-09-30' && b.p_end === '2026-10-01')).toBe(true);
+  });
+
+  test('Compare is not offered a fabricated baseline when the previous period predates all data', async ({ page }) => {
+    const fake = makeFake({ bounds: { tz: 'Asia/Vientiane', today: '2026-10-01', earliest_day: '2026-09-25', latest_day: '2026-09-30', sources: { page_views: { first_day: '2026-09-25' } } } });
+    await open(page, fake);
+    await expect(page.locator('#view-overview .stat-grid')).toBeVisible();
+    const before = fake.callsFor('analytics_session_stats').length;
+    await page.check('#compare-toggle');
+    await expect(page.locator('#view-overview')).toContainText('no previous period to compare against');
+    await expect(page.locator('#view-overview .stat-delta')).toHaveCount(0);
+    expect(fake.callsFor('analytics_session_stats').slice(before).some(b => b.p_start === '2026-09-18')).toBe(false);
+  });
+
   test('All time over >900 days: the daily series is fetched in <=900-day chunks and rendered whole', async ({ page }) => {
     const fake = makeFake({
       bounds: { tz: 'Asia/Vientiane', today: '2026-10-01', earliest_day: '2023-03-19', latest_day: '2026-09-30',
