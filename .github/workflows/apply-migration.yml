@@ -426,6 +426,28 @@ env:
   #     stays above EXPECTED_MIGRATION_BOUNDARY and therefore invisible to
   #     this workflow. Nothing in scripts/verify-production-security.sql is
   #     modified or allowlisted.
+  # 20260921030000_analytics_laos_calendar_days.sql and
+  # 20260921040000_analytics_history_and_lead_drilldown.sql — the "Admin
+  # Analytics: full history + Laos calendar days + lead drill-down" project.
+  # Authorized as a pair, in this order (040000 calls the analytics_listing_labels()
+  # helper that 030000 creates). Both are read-only with respect to data:
+  #   * 030000 recreates the ten analytics_* range RPCs (same signatures) with
+  #     Asia/Vientiane calendar-day bucketing, no window cap, zero-filled daily
+  #     series, top-N-of-total buckets, and legacy/unattributed lead-event counts;
+  #     adds the internal analytics_listing_labels(uuid[]) helper (no client
+  #     grant) and idx_leads_lead_event_id.
+  #   * 040000 adds analytics_history_bounds() and the keyset-paginated
+  #     analytics_lead_activity() drill-down.
+  #   * Every function is SECURITY DEFINER, SET search_path = public, pg_temp,
+  #     gated by is_pintag_staff(auth.uid()), EXECUTE revoked from PUBLIC/anon
+  #     and granted to authenticated only. No table, policy, trigger or row is
+  #     changed. Rollback notes are in each file's header.
+  #   * Verified by tests/security/regression/run-analytics-laos-calendar-days-pg.sh
+  #     (283 assertions incl. ACL/search_path/idempotency, plus a ~30x-volume scale probe).
+  #   * EXPECTED_MIGRATION_BOUNDARY is now 20260921040000. 20260922000000
+  #     (intelligence_unit_type_demand) is STILL deliberately NOT authorized: it
+  #     sorts above the boundary, so the boundary-filtered work directory
+  #     excludes it and this workflow cannot apply it.
   EXPECTED_MIGRATIONS: |
     20260813000000
     20260817000000
@@ -445,12 +467,14 @@ env:
     20260921000000
     20260921010000
     20260921020000
-  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql + 20260918000000_intelligence_vientiane_calendar.sql + 20260920000000_intelligence_demand_supply_gap.sql + 20260921000000_lead_unit_attribution.sql (fixes a live production incident — see review note above) + 20260921010000_revoke_public_execute_analytics_and_ownership_rpcs.sql + 20260921020000_harden_is_admin_and_rls_auto_enable.sql'
+    20260921030000
+    20260921040000
+  EXPECTED_MIGRATION_FILE: '20260813000000_property_images_registry.sql + the 2026-08-17/18 security migrations + 20260818010000_restore_views_week_column.sql + 20260818020000_daily_rate_and_unit_lease_pricing.sql + 20260820000000_multi_phone_contacts.sql + 20260822000000_province_coverage.sql + 20260823000000_contact_primary_invariant.sql + 20260901000000_protect_pending_contact_sentinel.sql + 20260905000000_intelligence_customer_intent.sql (must precede 20260912000000) + 20260912000000_intelligence_bedroom_intent.sql + 20260915000000_revoke_anon_execute_ops_alert_and_image_sync.sql + 20260918000000_intelligence_vientiane_calendar.sql + 20260920000000_intelligence_demand_supply_gap.sql + 20260921000000_lead_unit_attribution.sql (fixes a live production incident — see review note above) + 20260921010000_revoke_public_execute_analytics_and_ownership_rpcs.sql + 20260921020000_harden_is_admin_and_rls_auto_enable.sql + 20260921030000_analytics_laos_calendar_days.sql + 20260921040000_analytics_history_and_lead_drilldown.sql'
   # The highest migration version this run may ever apply. Must equal the
   # highest entry in EXPECTED_MIGRATIONS above — asserted by the "Build
   # boundary-filtered Supabase work directory" step, which fails closed if
   # they disagree. See the boundary mechanism described in this file's header.
-  EXPECTED_MIGRATION_BOUNDARY: '20260921020000'
+  EXPECTED_MIGRATION_BOUNDARY: '20260921040000'
   # Tripwire: the dev project ref must never be the target.
   DEV_REF: 'ebtgoqrywdywuqrvudcp'
 

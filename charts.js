@@ -131,6 +131,13 @@ var PT_CHART = (function () {
       legendHtml(series.map(function (s) { return s.label; }).filter(Boolean), series.map(function (s, i) { return s.color || CATEGORICAL[i % CATEGORICAL.length]; }));
 
     wireHover(container);
+    // Opt-in drill-down: opts.onPointClick(index) makes each x position clickable.
+    if (typeof opts.onPointClick === 'function') {
+      container.querySelectorAll('rect[data-i]').forEach(function (el) {
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', function () { opts.onPointClick(parseInt(el.getAttribute('data-i'), 10)); });
+      });
+    }
   }
 
   // ── Bar chart: horizontal ranking (top listings, districts, ...) ──────
@@ -148,12 +155,21 @@ var PT_CHART = (function () {
       var w = Math.max(2, (r.value / maxV) * barAreaW);
       var cy = i * rowH + rowH / 2;
       return '<text x="' + (labelW - 8) + '" y="' + (cy + 4) + '" text-anchor="end" font-size="11.5" fill="' + INK_SOFT + '">' + esc(truncate(r.label, 22)) + '</text>' +
-        '<rect x="' + labelW + '" y="' + (cy - 9) + '" width="' + w + '" height="18" rx="4" fill="' + color + '" data-tip="' + esc(r.label) + ': ' + fmtNum(r.value) + '" style="cursor:pointer;"/>' +
+        '<rect x="' + labelW + '" y="' + (cy - 9) + '" width="' + w + '" height="18" rx="4" fill="' + color + '" data-i="' + i + '" data-tip="' + esc(r.label) + ': ' + fmtNum(r.value) + '" style="cursor:pointer;"' + (opts.onRowClick ? ' tabindex="0" role="button" aria-label="' + esc(r.label) + ': ' + fmtNum(r.value) + ' — show details"' : '') + '/>' +
         '<text x="' + (labelW + w + 6) + '" y="' + (cy + 4) + '" font-size="11" fill="' + INK + '" font-weight="600">' + fmtNum(r.value) + '</text>';
     }).join('');
 
     container.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" role="img" aria-label="' + esc(opts.ariaLabel || 'Bar chart') + '">' + bars + '</svg>';
     wireHover(container);
+    // Opt-in drill-down: opts.onRowClick(row, index) makes each bar clickable
+    // (mouse, and Enter/Space when focused).
+    if (typeof opts.onRowClick === 'function') {
+      container.querySelectorAll('rect[data-i]').forEach(function (el) {
+        var fire = function () { var i = parseInt(el.getAttribute('data-i'), 10); opts.onRowClick(rows[i], i); };
+        el.addEventListener('click', fire);
+        el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(); } });
+      });
+    }
   }
 
   // ── Donut chart: categorical share breakdown ────────────────────────

@@ -1,0 +1,128 @@
+name: Analytics Tests
+
+# Admin Analytics: Asia/Vientiane calendar days, All time / Custom ranges,
+# chunked daily series, visible error states, and the paginated lead/listing
+# drill-down (analytics.html, analytics.js, analytics-core.js, laos-date.js,
+# charts.js, and migrations 20260921030000 / 20260921040000).
+#
+# Read-only: it checks out code and runs tests against a throwaway local
+# PostgreSQL and a stubbed browser. No secrets, no Supabase project, and it can
+# never apply a migration (apply-migration.yml is the only workflow that can,
+# and only by manual dispatch).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'analytics.html'
+      - 'analytics.js'
+      - 'analytics-core.js'
+      - 'laos-date.js'
+      - 'charts.js'
+      - 'tests/analytics/**'
+      - 'tests/security/regression/*analytics_laos_calendar_days*'
+      - 'tests/security/regression/run-analytics-laos-calendar-days-pg.sh'
+      - 'supabase/migrations/20260921030000_analytics_laos_calendar_days.sql'
+      - 'supabase/migrations/20260921040000_analytics_history_and_lead_drilldown.sql'
+      - 'supabase/functions/generate-intelligence-report/date-boundary.js'
+      - '.github/workflows/analytics-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'analytics.html'
+      - 'analytics.js'
+      - 'analytics-core.js'
+      - 'laos-date.js'
+      - 'charts.js'
+      - 'tests/analytics/**'
+      - 'tests/security/regression/*analytics_laos_calendar_days*'
+      - 'tests/security/regression/run-analytics-laos-calendar-days-pg.sh'
+      - 'supabase/migrations/20260921030000_analytics_laos_calendar_days.sql'
+      - 'supabase/migrations/20260921040000_analytics_history_and_lead_drilldown.sql'
+      - 'supabase/functions/generate-intelligence-report/date-boundary.js'
+      - '.github/workflows/analytics-tests.yml'
+  workflow_dispatch:
+
+# Least privilege: reads code and runs tests, nothing else.
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit tests (laos-date, analytics-core)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # The suite spawns its own children under UTC, Asia/Vientiane,
+        # America/Los_Angeles and Pacific/Kiritimati; running the whole file under a
+        # few runner timezones as well proves nothing depends on the host's.
+        tz: ['UTC', 'Asia/Vientiane', 'Pacific/Kiritimati']
+    env:
+      TZ: ${{ matrix.tz }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: node --test
+        run: node --test tests/analytics/*.test.js
+
+  sql:
+    name: SQL regression (Laos calendar, drill-down, ACLs, scale)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install PostgreSQL server binaries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql
+
+      # Applies BOTH migrations twice to a throwaway cluster, asserts ~280
+      # boundary / attribution / paging / ACL / search_path checks, then builds a
+      # ~30x-production-volume database and asserts every all-time RPC finishes
+      # inside half of Supabase's 8 s `authenticated` statement_timeout.
+      - name: Analytics SQL regression + scale probe
+        run: bash tests/security/regression/run-analytics-laos-calendar-days-pg.sh
+
+  e2e:
+    name: Admin Analytics page (Playwright, stubbed RPCs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Install test dependencies
+        working-directory: tests/analytics
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium
+        working-directory: tests/analytics
+        run: npx playwright install --with-deps chromium
+
+      - name: Run suite
+        working-directory: tests/analytics
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: analytics-playwright-report
+          path: tests/analytics/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore

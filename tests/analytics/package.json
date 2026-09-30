@@ -1,0 +1,13 @@
+{
+  "name": "pintag-analytics-tests",
+  "private": true,
+  "description": "Admin Analytics: Asia/Vientiane calendar-day ranges (timezone-independent), All time / Custom presets, chunked daily series + the 1000-row guard, visible error/retry states, and the paginated lead/listing drill-down with legacy/unattributed/deleted labelling. Pure logic runs under node --test in several timezones; the page itself is driven through Playwright against stubbed RPCs.",
+  "scripts": {
+    "test": "node --test *.test.js && playwright test",
+    "test:unit": "node --test *.test.js",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
