@@ -1,0 +1,430 @@
+name: "DIAGNOSTIC: Production analytics history (read-only)"
+
+# TEMPORARY, READ-ONLY diagnostic. Answers, with live evidence, the audit
+# questions that the repository alone cannot answer before the "All time"
+# analytics + daily lead drill-down project is designed:
+#   A. Does production hold analytics data older than 90 days, and how far
+#      back? (page_views, listing_events, lead_events, leads)
+#   B. Which calendar (UTC vs Asia/Vientiane) should daily reporting use?
+#   C. Is there any live retention / purge mechanism (pg_cron, partitions,
+#      triggers, functions, other catalog objects)?
+#
+# SAFETY (all load-bearing):
+#   - SELECT / catalog inspection only. There is NO migration, apply,
+#     supabase CLI, or write path anywhere in this workflow.
+#   - Static safety gate BEFORE any connection: (1) every psql meta-command
+#     must be on a small allow-list, (2) the SQL may not contain any
+#     write/DDL/maintenance keyword. Either failure aborts the job before
+#     psql ever connects.
+#   - A separate step opens BEGIN READ ONLY on the real connection and
+#     fails closed unless transaction_read_only reports 'on'. The
+#     diagnostic itself re-checks it as its very first query and quits if
+#     it is not 'on'. The script ends with ROLLBACK.
+#   - Reuses the EXISTING production-backup environment and its EXISTING
+#     PINTAG_PROD_DB_URL secret. No new credential.
+#   - Never prints the connection string or any secret. cron.job command
+#     text is only printed for jobs that touch analytics tables / use
+#     removal terms AND contain no credential-looking text.
+#   - Does not modify any other workflow, migration, or application code.
+#
+# TRIGGERS: push to this exact diagnostic branch (fires the single run this
+# exists for; needs no registration on the default branch) and
+# workflow_dispatch (kept for a manual re-run once registered). Never
+# scheduled. This branch is NOT to be merged.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/diagnose-analytics-history
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-analytics-history
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Inspect analytics history (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-backup
+    env:
+      PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Verify DB URL secret is present
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Write the diagnostic SQL (SELECT / catalog inspection only)
+        run: |
+          cat > diagnose.sql <<'SQL_EOF'
+          \pset border 2
+          \pset pager off
+          \set ON_ERROR_STOP on
+
+          BEGIN READ ONLY;
+
+          \echo '=== A0: SESSION - connected role, read-only confirmation ==='
+          SELECT current_user AS connected_role,
+                 current_setting('server_version') AS server_version,
+                 current_setting('transaction_read_only') AS transaction_read_only,
+                 current_setting('TimeZone') AS session_timezone,
+                 (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS role_bypasses_rls,
+                 (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS role_is_superuser;
+
+          SELECT (current_setting('transaction_read_only') = 'on') AS ro_on
+          \gset
+          \if :ro_on
+            \echo 'OK: transaction_read_only = on'
+          \else
+            \echo 'ABORT: transaction is NOT read only - stopping before any analytics query'
+            \q
+          \endif
+
+          \echo '=== A1: REFERENCE TIME - one now() for the whole transaction; 90-day cutoff derived from it ==='
+          SELECT now() AS ref_now, (now() - interval '90 days') AS cutoff_90d
+          \gset
+          SELECT to_char(:'ref_now'::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS reference_now_utc,
+                 to_char(:'cutoff_90d'::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS cutoff_90_days_before_utc;
+
+          \echo '=== A2: created_at column types (timestamptz is required for AT TIME ZONE bucketing to mean what we expect) ==='
+          SELECT table_name, column_name, data_type
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name IN ('page_views','listing_events','lead_events','leads','ui_events','search_events')
+            AND column_name = 'created_at'
+          ORDER BY table_name;
+
+          \echo '=== Q1: HISTORICAL COVERAGE - count, min, max, rows older than the 90-day cutoff ==='
+          WITH t AS (
+            SELECT 'page_views'::text AS tbl, created_at FROM public.page_views
+            UNION ALL SELECT 'listing_events', created_at FROM public.listing_events
+            UNION ALL SELECT 'lead_events', created_at FROM public.lead_events
+            UNION ALL SELECT 'leads', created_at FROM public.leads
+          )
+          SELECT tbl,
+                 count(*) AS total_rows,
+                 min(created_at) AS min_created_at,
+                 max(created_at) AS max_created_at,
+                 count(*) FILTER (WHERE created_at < :'cutoff_90d'::timestamptz) AS rows_older_than_90d,
+                 round(100.0 * count(*) FILTER (WHERE created_at < :'cutoff_90d'::timestamptz) / nullif(count(*), 0), 1) AS pct_older_than_90d,
+                 count(*) FILTER (WHERE created_at < :'cutoff_90d'::timestamptz - interval '90 days') AS rows_older_than_180d,
+                 count(*) FILTER (WHERE created_at < :'cutoff_90d'::timestamptz - interval '275 days') AS rows_older_than_365d,
+                 count(*) FILTER (WHERE created_at IS NULL) AS null_created_at,
+                 round(extract(epoch FROM (:'ref_now'::timestamptz - min(created_at))) / 86400.0, 1) AS oldest_row_age_days
+          FROM t
+          GROUP BY tbl
+          ORDER BY tbl;
+
+          \echo '=== Q1b: MONTHLY HISTOGRAM (UTC month) - shows any gap or hard edge in history ==='
+          WITH t AS (
+            SELECT 'page_views'::text AS tbl, created_at FROM public.page_views
+            UNION ALL SELECT 'listing_events', created_at FROM public.listing_events
+            UNION ALL SELECT 'lead_events', created_at FROM public.lead_events
+            UNION ALL SELECT 'leads', created_at FROM public.leads
+          )
+          SELECT tbl, to_char(date_trunc('month', created_at AT TIME ZONE 'UTC'), 'YYYY-MM') AS month_utc, count(*) AS rows_in_month
+          FROM t
+          GROUP BY 1, 2
+          ORDER BY 1, 2;
+
+          \echo '=== Q1c: EXTRA CONTEXT - ui_events and search_events coverage (only if readable) ==='
+          SELECT coalesce(has_table_privilege(current_user, to_regclass('public.ui_events')::oid, 'SELECT'), false)
+             AND coalesce(has_table_privilege(current_user, to_regclass('public.search_events')::oid, 'SELECT'), false) AS extras_ok
+          \gset
+          \if :extras_ok
+            WITH t AS (
+              SELECT 'ui_events'::text AS tbl, created_at FROM public.ui_events
+              UNION ALL SELECT 'search_events', created_at FROM public.search_events
+            )
+            SELECT tbl, count(*) AS total_rows, min(created_at) AS min_created_at, max(created_at) AS max_created_at,
+                   count(*) FILTER (WHERE created_at < :'cutoff_90d'::timestamptz) AS rows_older_than_90d
+            FROM t GROUP BY tbl ORDER BY tbl;
+          \else
+            \echo 'ui_events / search_events absent or not readable by the connected role: skipped'
+          \endif
+
+          \echo '=== Q1d: RLS VISIBILITY CHECK - is the connected role seeing every row? (compare with Q2 n_live_tup) ==='
+          SELECT c.relname, c.relrowsecurity AS rls_enabled, c.relforcerowsecurity AS rls_forced,
+                 (SELECT rolbypassrls OR rolsuper FROM pg_roles WHERE rolname = current_user) AS connected_role_bypasses_rls
+          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relname IN ('page_views','listing_events','lead_events','leads')
+          ORDER BY c.relname;
+
+          \echo '=== Q2: pg_stat_user_tables - independent statistics (cumulative counters since stats reset) ==='
+          SELECT s.relname, s.n_live_tup, s.n_dead_tup, c.reltuples::bigint AS pg_class_reltuples_estimate,
+                 s.n_mod_since_analyze,
+                 s.last_vacuum, s.last_autovacuum, s.last_analyze, s.last_autoanalyze,
+                 s.vacuum_count, s.autovacuum_count, s.analyze_count, s.autoanalyze_count,
+                 s.n_tup_ins, s.n_tup_upd, s.n_tup_del,
+                 pg_size_pretty(pg_relation_size(s.relid)) AS heap_size,
+                 pg_size_pretty(pg_total_relation_size(s.relid)) AS total_size_with_indexes
+          FROM pg_stat_user_tables s JOIN pg_class c ON c.oid = s.relid
+          WHERE s.schemaname = 'public'
+            AND s.relname IN ('page_views','listing_events','lead_events','leads','ui_events','search_events')
+          ORDER BY s.relname;
+
+          \echo '=== Q2b: when were the cumulative counters last reset (n_tup_del is only meaningful since then) ==='
+          SELECT datname, stats_reset, (now() - stats_reset) AS counters_age
+          FROM pg_stat_database WHERE datname = current_database();
+
+          \echo '=== Q3: SHOW TimeZone (this connection) ==='
+          SHOW TimeZone;
+
+          \echo '=== Q3b: persistent timezone/timeout/PostgREST settings on databases and roles (allow-listed names only) ==='
+          SELECT coalesce(r.rolname, '(all roles)') AS for_role,
+                 coalesce(d.datname, '(all databases)') AS for_database,
+                 split_part(x.cfg, '=', 1) AS setting,
+                 substr(x.cfg, position('=' IN x.cfg) + 1) AS value
+          FROM pg_db_role_setting rs
+          LEFT JOIN pg_roles r ON r.oid = rs.setrole
+          LEFT JOIN pg_database d ON d.oid = rs.setdatabase
+          CROSS JOIN LATERAL unnest(rs.setconfig) AS x(cfg)
+          WHERE split_part(x.cfg, '=', 1) ~* '^(timezone|statement_timeout|lock_timeout|idle_in_transaction_session_timeout|pgrst[.]db_max_rows|pgrst[.]db_aggregates_enabled)$'
+          ORDER BY 1, 2, 3;
+
+          \echo '=== Q3c: CALENDAR-DAY DIFFERENCE using real rows - session cast vs explicit UTC vs Asia/Vientiane ==='
+          WITH t AS (
+            SELECT 'page_views'::text AS tbl, created_at FROM public.page_views
+            UNION ALL SELECT 'listing_events', created_at FROM public.listing_events
+            UNION ALL SELECT 'lead_events', created_at FROM public.lead_events
+            UNION ALL SELECT 'leads', created_at FROM public.leads
+          )
+          SELECT tbl,
+                 count(*) AS rows_all_time,
+                 count(*) FILTER (WHERE created_at::date <> (created_at AT TIME ZONE 'UTC')::date) AS bare_cast_differs_from_explicit_utc,
+                 count(*) FILTER (WHERE (created_at AT TIME ZONE 'UTC')::date <> (created_at AT TIME ZONE 'Asia/Vientiane')::date) AS utc_day_differs_from_vientiane_day,
+                 round(100.0 * count(*) FILTER (WHERE (created_at AT TIME ZONE 'UTC')::date <> (created_at AT TIME ZONE 'Asia/Vientiane')::date) / nullif(count(*), 0), 1) AS pct_all_time,
+                 count(*) FILTER (WHERE created_at >= :'cutoff_90d'::timestamptz) AS rows_last_90d,
+                 count(*) FILTER (WHERE created_at >= :'cutoff_90d'::timestamptz
+                                    AND (created_at AT TIME ZONE 'UTC')::date <> (created_at AT TIME ZONE 'Asia/Vientiane')::date) AS differing_last_90d,
+                 round(100.0 * count(*) FILTER (WHERE created_at >= :'cutoff_90d'::timestamptz
+                                    AND (created_at AT TIME ZONE 'UTC')::date <> (created_at AT TIME ZONE 'Asia/Vientiane')::date)
+                       / nullif(count(*) FILTER (WHERE created_at >= :'cutoff_90d'::timestamptz), 0), 1) AS pct_last_90d
+          FROM t
+          GROUP BY tbl
+          ORDER BY tbl;
+
+          \echo '=== Q3d: LEADS per calendar day, last 14 days, UTC day vs Asia/Vientiane day (counts only) ==='
+          SELECT day, sum(utc_n)::int AS leads_on_utc_day, sum(vte_n)::int AS leads_on_vientiane_day
+          FROM (
+            SELECT (created_at AT TIME ZONE 'UTC')::date AS day, 1 AS utc_n, 0 AS vte_n
+            FROM public.leads WHERE created_at >= :'ref_now'::timestamptz - interval '14 days'
+            UNION ALL
+            SELECT (created_at AT TIME ZONE 'Asia/Vientiane')::date, 0, 1
+            FROM public.leads WHERE created_at >= :'ref_now'::timestamptz - interval '14 days'
+          ) x
+          GROUP BY day
+          ORDER BY day;
+
+          \echo '=== Q4: pg_cron - extension, schema, and whether cron.job is readable by the connected role ==='
+          SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') AS pg_cron_extension_installed,
+                 EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'cron') AS cron_schema_present,
+                 EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                         WHERE n.nspname = 'cron' AND c.relname = 'job'
+                           AND has_schema_privilege(current_user, n.oid, 'USAGE')
+                           AND has_table_privilege(current_user, c.oid, 'SELECT')) AS cron_job_readable
+          \gset
+          \echo 'pg_cron extension installed:' :pg_cron_extension_installed '| cron schema present:' :cron_schema_present '| cron.job readable by connected role:' :cron_job_readable
+          \if :cron_job_readable
+            \echo '--- Q4a: every scheduled job (command TEXT is NOT printed here; only flags) ---'
+            SELECT jobid, jobname, schedule, active,
+                   (command ~* '(page_views|listing_events|lead_events|ui_events|search_events|(^|[^a-z_])leads($|[^a-z_]))') AS mentions_analytics_table,
+                   (command ~* '(dele[t]e|trunc|purge|retention|archiv|prune|cleanup|older than)') AS mentions_removal_terms,
+                   (command ~* '(http|net[.]http)') AS looks_like_http_call,
+                   length(command) AS command_length
+            FROM cron.job
+            ORDER BY jobid;
+            \echo '--- Q4b: command text ONLY for jobs that touch analytics tables or use removal terms, and that carry no credential-looking text ---'
+            SELECT jobid, jobname, left(command, 400) AS command_start
+            FROM cron.job
+            WHERE (command ~* '(page_views|listing_events|lead_events|ui_events|search_events|(^|[^a-z_])leads($|[^a-z_]))'
+                   OR command ~* '(dele[t]e|trunc|purge|retention|archiv|prune|cleanup|older than)')
+              AND command !~* '(bearer|authorization|apikey|secret|jwt|token|password)'
+            ORDER BY jobid;
+          \else
+            \echo 'cron.job cannot be read by the connected role: scheduled-job contents NOT verified from this connection (no workaround attempted)'
+          \endif
+
+          \echo '=== Q4c: PARTITIONING / INHERITANCE for the analytics tables ==='
+          WITH tabs AS (
+            SELECT c.oid, c.relname, c.relkind, c.relispartition
+            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relname IN ('page_views','listing_events','lead_events','leads','ui_events','search_events')
+          )
+          SELECT t.relname, t.relkind, (pt.partrelid IS NOT NULL) AS is_partitioned_parent, t.relispartition AS is_a_partition,
+                 (SELECT count(*) FROM pg_inherits i WHERE i.inhparent = t.oid) AS child_tables,
+                 (SELECT count(*) FROM pg_inherits i WHERE i.inhrelid = t.oid) AS parent_tables
+          FROM tabs t LEFT JOIN pg_partitioned_table pt ON pt.partrelid = t.oid
+          ORDER BY t.relname;
+
+          \echo '=== Q4d: installed extensions (any retention / partition-management / scheduling extension shows here) ==='
+          SELECT extname, extversion FROM pg_extension ORDER BY extname;
+
+          \echo '=== Q5a: TRIGGERS on the analytics tables (a retention trigger would show here) ==='
+          SELECT c.relname AS table_name, t.tgname, t.tgenabled, t.tgfoid::regproc::text AS trigger_function,
+                 pg_get_triggerdef(t.oid) AS definition
+          FROM pg_trigger t
+          JOIN pg_class c ON c.oid = t.tgrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND NOT t.tgisinternal
+            AND c.relname IN ('page_views','listing_events','lead_events','leads','ui_events','search_events')
+          ORDER BY c.relname, t.tgname;
+
+          \echo '=== Q5b: FUNCTIONS (outside system schemas) whose source both names an analytics table AND uses removal terms - names only ==='
+          SELECT n.nspname AS schema_name, p.proname AS function_name, p.prokind, pg_get_userbyid(p.proowner) AS owner
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+            AND p.prosrc ~* '(page_views|listing_events|lead_events|ui_events|search_events|(^|[^a-z_])leads($|[^a-z_]))'
+            AND p.prosrc ~* '(dele[t]e[[:space:]]+from|trunc|dro[p][[:space:]]+(table|partition)|retention|purge|prune|older[[:space:]]+than)'
+          ORDER BY 1, 2;
+
+          \echo '=== Q5c: RULES on the analytics tables ==='
+          SELECT schemaname, tablename, rulename FROM pg_rules
+          WHERE schemaname = 'public' AND tablename IN ('page_views','listing_events','lead_events','leads','ui_events','search_events')
+          ORDER BY tablename, rulename;
+
+          \echo '=== Q5d: RLS POLICIES on the four tables (names/commands/roles only) ==='
+          SELECT tablename, policyname, cmd, permissive, roles
+          FROM pg_policies
+          WHERE schemaname = 'public' AND tablename IN ('page_views','listing_events','lead_events','leads')
+          ORDER BY tablename, policyname;
+
+          \echo '=== Q5e: tables / materialized views whose NAME suggests rollup, snapshot, archive or history (relevant to All time) ==='
+          SELECT c.relname, c.relkind, c.reltuples::bigint AS estimated_rows, pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size
+          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relkind IN ('r','m','p')
+            AND c.relname ~* '(daily|snapshot|rollup|archive|history|retention|aggregate|metrics)'
+          ORDER BY c.relname;
+
+          \echo '=== Q5f: table comments mentioning retention, purge or ttl ==='
+          SELECT c.relname, obj_description(c.oid, 'pg_class') AS table_comment
+          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relkind IN ('r','p','m')
+            AND obj_description(c.oid, 'pg_class') ~* '(retention|purge|ttl|expire|prune)'
+          ORDER BY c.relname;
+
+          \echo '=== Q5g: LIVE INDEXES on the four tables (is created_at indexed on production?) ==='
+          SELECT tablename, indexname, indexdef
+          FROM pg_indexes
+          WHERE schemaname = 'public' AND tablename IN ('page_views','listing_events','lead_events','leads')
+          ORDER BY tablename, indexname;
+
+          \echo '=== Q6: LEAD -> LISTING ATTRIBUTION INTEGRITY (counts only) ==='
+          SELECT count(*) AS leads_total,
+                 count(*) FILTER (WHERE l.property_id IS NULL) AS leads_property_id_null,
+                 count(*) FILTER (WHERE l.property_id IS NOT NULL AND p.id IS NULL) AS leads_property_row_missing,
+                 count(*) FILTER (WHERE p.deleted_at IS NOT NULL) AS leads_listing_soft_deleted,
+                 count(*) FILTER (WHERE l.lead_event_id IS NULL) AS leads_without_lead_event,
+                 count(*) FILTER (WHERE l.unit_type_id IS NOT NULL) AS leads_with_unit_type
+          FROM public.leads l LEFT JOIN public.properties p ON p.id = l.property_id;
+
+          \echo '=== Q6b: lead_events with a listing but NO leads row (clicks that pre-date the CRM table or were never converted) ==='
+          SELECT count(*) AS lead_events_total,
+                 count(*) FILTER (WHERE le.listing_id IS NULL) AS lead_events_without_listing,
+                 count(*) FILTER (WHERE le.listing_id IS NOT NULL) AS lead_events_with_listing,
+                 count(*) FILTER (WHERE le.listing_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.leads l WHERE l.lead_event_id = le.id)) AS with_listing_but_no_lead,
+                 min(le.created_at) FILTER (WHERE le.listing_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.leads l WHERE l.lead_event_id = le.id)) AS oldest_unmatched,
+                 max(le.created_at) FILTER (WHERE le.listing_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.leads l WHERE l.lead_event_id = le.id)) AS newest_unmatched
+          FROM public.lead_events le;
+
+          \echo '=== Q7: ALL-TIME COST PROBE - the same first-touch join analytics_leads_breakdown runs, over EVERY lead (timings follow) ==='
+          \set ON_ERROR_STOP off
+          \timing on
+          SELECT count(*) AS leads_scanned, count(fp.referrer_source) AS with_first_touch_source
+          FROM public.leads ir
+          LEFT JOIN public.lead_events le ON le.id = ir.lead_event_id
+          LEFT JOIN LATERAL (
+            SELECT referrer_source FROM public.page_views WHERE session_id = le.session_id ORDER BY created_at ASC LIMIT 1
+          ) fp ON le.session_id IS NOT NULL;
+          SELECT count(*) AS distinct_vientiane_days_in_page_views
+          FROM (SELECT (created_at AT TIME ZONE 'Asia/Vientiane')::date AS d FROM public.page_views GROUP BY 1) x;
+          \timing off
+
+          ROLLBACK;
+
+          SQL_EOF
+          echo "diagnose.sql written ($(wc -l < diagnose.sql) lines)."
+
+      - name: "Safety gate: refuse to run if the SQL is anything but read-only"
+        run: |
+          set -euo pipefail
+          echo "================================================================"
+          echo " SAFETY GATE -- scanning diagnose.sql BEFORE any connection."
+          echo "================================================================"
+          # 1. psql meta-commands: only an explicit allow-list may appear, and
+          #    only at the start of a line (or a trailing \gset). Anything else
+          #    (\!, \i, \copy, \gexec, \o, \w, ...) is refused, because a
+          #    meta-command can run shell or SQL that the keyword scan below
+          #    cannot see.
+          BAD_META=$(grep -nE '[\\]' diagnose.sql \
+            | grep -vE '^[0-9]+:[[:space:]]*[\\](pset|set|echo|if|else|endif|q|timing|gset)([[:space:]]|$)' || true)
+          if [ -n "$BAD_META" ]; then
+            echo "$BAD_META"
+            echo "::error::diagnose.sql contains a psql meta-command outside the allow-list. Refusing to run."
+            exit 1
+          fi
+          # 2. Write / DDL / maintenance / session-mutation keywords in the SQL
+          #    proper (meta-command lines are already constrained above).
+          if grep -vE '^[[:space:]]*[\\]' diagnose.sql \
+             | grep -inE '\b(CREATE|ALTER|DROP|GRANT|REVOKE|INSERT|UPDATE|DELETE|TRUNCATE|COPY|CALL|DO|VACUUM|ANALYZE|ANALYSE|REINDEX|CLUSTER|REFRESH|LOCK|SET|RESET|EXECUTE|PREPARE|MERGE|COMMENT|LISTEN|NOTIFY|DISCARD|IMPORT|LOAD|REASSIGN|SAVEPOINT|COMMIT|INTO)\b'; then
+            echo "::error::diagnose.sql contains a write/DDL/maintenance keyword (matched above). Refusing to run -- this workflow is READ-ONLY by design."
+            exit 1
+          fi
+          # 3. Must open a READ ONLY transaction and end with ROLLBACK.
+          grep -qE '^BEGIN READ ONLY;$' diagnose.sql || { echo "::error::missing BEGIN READ ONLY"; exit 1; }
+          [ "$(grep -vE '^[[:space:]]*$' diagnose.sql | tail -n1)" = "ROLLBACK;" ] || { echo "::error::script must end with ROLLBACK;"; exit 1; }
+          echo "OK: meta-commands allow-listed, no write/DDL keywords, BEGIN READ ONLY ... ROLLBACK present."
+
+      - name: "Fail closed unless the connection can actually be made READ ONLY"
+        run: |
+          set -euo pipefail
+          RO=$(psql "$PINTAG_PROD_DB_URL" -X -tA -c "BEGIN READ ONLY; SELECT current_setting('transaction_read_only'); ROLLBACK;" | grep -E '^(on|off)$' | head -n1)
+          echo "transaction_read_only reports: '$RO'"
+          if [ "$RO" != "on" ]; then
+            echo "::error::Could not confirm a READ ONLY transaction against production (got '$RO'). Refusing to proceed."
+            exit 1
+          fi
+          echo "OK: connection confirmed read-only."
+
+      - name: Run diagnostic (SELECT / catalog inspection only)
+        run: |
+          set -euo pipefail
+          echo "================================================================"
+          echo " READ-ONLY DIAGNOSTIC -- analytics history. No writes."
+          echo "================================================================"
+          psql "$PINTAG_PROD_DB_URL" -X -v ON_ERROR_STOP=1 -f diagnose.sql 2>&1 | tee diagnostic-report.txt
+
+      - name: Publish findings to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Production analytics history diagnostic"
+            echo ""
+            echo "Read-only catalog + SELECT inspection. No writes were made to production."
+            echo ""
+            echo '```'
+            cat diagnostic-report.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload diagnostic report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: analytics-history-diagnostic
+          path: diagnostic-report.txt
+          retention-days: 90
