@@ -474,7 +474,7 @@ jobs:
             ) AS r) q;
 
           \echo '--- admin_insights'
-          SELECT r ->> 'new_listings' AS new_listings, (r ->> 'new_listings')::bigint = (SELECT count(*) FROM properties) AS matches_all_properties,
+          SELECT r ->> 'new_listings' AS new_listings, (r ->> 'new_listings')::bigint = (SELECT count(*) FROM properties WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz) AS matches_raw_in_range,
                  jsonb_array_length(r -> 'by_agent') AS agents, jsonb_array_length(r -> 'by_district') AS districts, jsonb_array_length(r -> 'by_type') AS types FROM (  WITH leads_in_range AS (
               SELECT * FROM leads WHERE created_at >= :'v_from'::timestamptz AND created_at < :'v_to'::timestamptz
             )
