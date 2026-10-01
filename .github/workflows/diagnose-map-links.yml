@@ -1,0 +1,451 @@
+name: "DIAGNOSTIC: Production map-link investigation (read-only)"
+
+# TEMPORARY, READ-ONLY follow-up to the map/location integrity diagnostic.
+# Looks at the public listings that currently have no map pin and carry a link:
+#   - 6 unexpanded goo.gl / maps.app.goo.gl short links: what do they resolve to,
+#     and does the destination carry exact coordinates?
+#   - 5 google.com/maps links with no explicit coordinates: what KIND of link is
+#     each (specific place / named place / generic search / parser-format issue)?
+#
+# SAFETY (all load-bearing, same pattern as f89c583 / run 36825065250):
+#   - SELECT only against production, through the EXISTING production-backup
+#     environment and PINTAG_PROD_DB_URL. Static keyword/meta-command gate on every
+#     generated SQL file; BEGIN READ ONLY with transaction_read_only verified;
+#     every script ends with ROLLBACK. No migration, no supabase CLI, no db push.
+#   - The ONLY other network traffic is the project's own resolve-map-url edge
+#     function (the same POST scripts/normalize-map-links.mjs makes in dry-run) to
+#     read where a short link redirects. No geocoding, no other map API, no write.
+#   - scripts/normalize-map-links.mjs is run WITHOUT --apply and with no service
+#     key, so its only write path cannot execute. Its raw output goes to a file that
+#     is never printed or uploaded; only slugs, outcomes and masked shapes are shown.
+#   - Privacy: link text is masked (letters -> a, digits -> 9). Query values, place
+#     identifiers and full URLs never reach the logs; the raw rows exist only on the
+#     runner's disk.
+#
+# TRIGGERS: push to this exact diagnostic branch and workflow_dispatch. Never
+# scheduled. NOT to be merged.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/diagnose-map-links
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-map-links
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Inspect map links (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-backup
+    env:
+      PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Verify DB URL secret is present
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Assemble the diagnostic SQL (SELECT / catalog inspection only)
+        run: |
+          set -euo pipefail
+
+          # The classification CTE: one row per properties row. No SQL comments
+          # in the generated files on purpose -- the safety gate scans them.
+          cat > cte.sql <<'SQL_EOF'
+          WITH base AS (
+            SELECT id, slug, province_en, district_en, status, workflow_status, market_status,
+                   owner_id, managed_by_party_id, deleted_at, map_embed_url,
+                   COALESCE(status IN ('active','available') AND deleted_at IS NULL, false) AS is_public
+            FROM public.properties
+          ), parsed AS (
+            SELECT b.*,
+              regexp_match(map_embed_url, '!3d(-?[0-9]+(?:[.][0-9]+)?)!4d(-?[0-9]+(?:[.][0-9]+)?)') AS m_pin,
+              regexp_match(map_embed_url, '!2d(-?[0-9]+(?:[.][0-9]+)?)!3d(-?[0-9]+(?:[.][0-9]+)?)') AS m_embed,
+              regexp_match(map_embed_url, '[?&](?:q|query|ll|center|destination|daddr|sll)=(-?[0-9]+(?:[.][0-9]+)?)(?:%2C|,)(-?[0-9]+(?:[.][0-9]+)?)', 'i') AS m_q,
+              regexp_match(map_embed_url, '/maps/(?:search|dir/?)/(?:[^/]*/)?(-?[0-9]+(?:[.][0-9]+)?),(-?[0-9]+(?:[.][0-9]+)?)') AS m_path,
+              regexp_match(map_embed_url, '[/@](-?[0-9]+(?:[.][0-9]+)?),(-?[0-9]+(?:[.][0-9]+)?)(?:,[0-9.]+[a-z])?') AS m_cam
+            FROM base b
+          ), picked AS (
+            SELECT p.*,
+              CASE WHEN m_pin IS NOT NULL THEN 'place-pin'
+                   WHEN m_embed IS NOT NULL THEN 'embed'
+                   WHEN m_q IS NOT NULL THEN 'query-param'
+                   WHEN m_path IS NOT NULL THEN 'path-coords'
+                   WHEN m_cam IS NOT NULL THEN 'camera' END AS pin_source,
+              CASE WHEN m_pin IS NOT NULL THEN m_pin[1]::float8
+                   WHEN m_embed IS NOT NULL THEN m_embed[2]::float8
+                   WHEN m_q IS NOT NULL THEN m_q[1]::float8
+                   WHEN m_path IS NOT NULL THEN m_path[1]::float8
+                   WHEN m_cam IS NOT NULL THEN m_cam[1]::float8 END AS lat,
+              CASE WHEN m_pin IS NOT NULL THEN m_pin[2]::float8
+                   WHEN m_embed IS NOT NULL THEN m_embed[1]::float8
+                   WHEN m_q IS NOT NULL THEN m_q[2]::float8
+                   WHEN m_path IS NOT NULL THEN m_path[2]::float8
+                   WHEN m_cam IS NOT NULL THEN m_cam[2]::float8 END AS lng
+            FROM parsed p
+          ), classified AS (
+            SELECT *,
+              CASE
+                WHEN map_embed_url IS NULL OR btrim(map_embed_url) = '' THEN 'no-url'
+                WHEN map_embed_url !~* '^[[:space:]]*https?://' THEN 'not-a-url'
+                WHEN map_embed_url ~* '^[[:space:]]*https?://(maps[.]app[.]goo[.]gl|goo[.]gl|g[.]co)(/|[?]|#|$)' THEN 'unresolved-short-link'
+                WHEN lat IS NULL THEN 'no-coordinates'
+                WHEN lat BETWEEN 13.5 AND 23.0 AND lng BETWEEN 99.5 AND 108.5 THEN 'ok'
+                WHEN lng BETWEEN 13.5 AND 23.0 AND lat BETWEEN 99.5 AND 108.5 THEN 'reversed-coordinates'
+                WHEN lat NOT BETWEEN -90 AND 90 OR lng NOT BETWEEN -180 AND 180 THEN 'out-of-range'
+                ELSE 'outside-bounds'
+              END AS map_state,
+              CASE
+                WHEN map_embed_url IS NULL OR btrim(map_embed_url) = '' THEN '(none)'
+                WHEN map_embed_url !~* '^[[:space:]]*https?://' THEN '(not a URL: ' || length(map_embed_url) || ' chars)'
+                ELSE left(regexp_replace(btrim(map_embed_url), '[?#].*$', ''), 70)
+              END AS url_prefix
+            FROM picked
+          )
+          SQL_EOF
+
+          # section <title> : stdin is the final SELECT, run over the classified CTE.
+          section() {
+            printf '%s\n' "\\echo '=== $1 ==='" >> diagnose.sql
+            cat cte.sql >> diagnose.sql
+            cat >> diagnose.sql
+            printf ';\n\n' >> diagnose.sql
+          }
+
+          cat > diagnose.sql <<'SQL_EOF'
+          \pset border 2
+          \pset pager off
+          \set ON_ERROR_STOP on
+
+          BEGIN READ ONLY;
+
+          \echo '=== A0: SESSION - connected role, read-only confirmation ==='
+          SELECT current_user AS connected_role,
+                 current_setting('transaction_read_only') AS transaction_read_only,
+                 to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS reference_now_utc;
+
+          SELECT (current_setting('transaction_read_only') = 'on') AS ro_on
+          \gset
+          \if :ro_on
+            \echo 'OK: transaction_read_only = on'
+          \else
+            \echo 'ABORT: transaction is NOT read only - stopping before any listing query'
+            \q
+          \endif
+
+          SQL_EOF
+
+          section "Q1: re-baseline - public listings by parser outcome (must match the previous run: 100 public, 56 ok, 33 no-url, 6 short, 5 no-coordinates)" <<'Q'
+          SELECT count(*) FILTER (WHERE is_public) AS public_total,
+                 count(*) FILTER (WHERE is_public AND map_state = 'ok') AS ok,
+                 count(*) FILTER (WHERE is_public AND map_state = 'no-url') AS no_url,
+                 count(*) FILTER (WHERE is_public AND map_state = 'unresolved-short-link') AS short_link,
+                 count(*) FILTER (WHERE is_public AND map_state = 'no-coordinates') AS no_coordinates,
+                 count(*) FILTER (WHERE is_public AND map_state NOT IN ('ok','no-url','unresolved-short-link','no-coordinates')) AS other,
+                 count(*) AS all_rows
+          FROM classified
+          Q
+
+          printf 'ROLLBACK;\n' >> diagnose.sql
+
+          # export.sql: one JSON document of the rows, for the Node cross-check
+          # against the REAL map-location.js. It stays on the runner's disk.
+          { printf 'BEGIN READ ONLY;\n'; cat cte.sql; cat <<'SQL_EOF'
+          SELECT json_agg(json_build_object('id', id, 'slug', slug, 'is_public', is_public,
+                                            'province_en', province_en, 'district_en', district_en,
+                                            'market_status', market_status, 'map_state', map_state,
+                                            'url', map_embed_url) ORDER BY slug)
+          FROM classified;
+          ROLLBACK;
+          SQL_EOF
+          } > export.sql
+
+          echo "diagnose.sql: $(wc -l < diagnose.sql) lines; export.sql: $(wc -l < export.sql) lines."
+
+      - name: "Safety gate: refuse to run if any SQL is anything but read-only"
+        run: |
+          set -euo pipefail
+          echo "================================================================"
+          echo " SAFETY GATE -- scanning every generated SQL file BEFORE any connection."
+          echo "================================================================"
+          for f in diagnose.sql export.sql; do
+            echo "--- $f ---"
+            # 1. psql meta-commands: only an explicit allow-list may appear, and
+            #    only at the start of a line. Anything else (\!, \i, \copy,
+            #    \gexec, \o, \w, ...) can run shell or SQL the keyword scan
+            #    cannot see. The SQL itself must carry no backslash at all.
+            BAD_META=$(grep -nE '[\\]' "$f" \
+              | grep -vE '^[0-9]+:[[:space:]]*[\\](pset|set|echo|if|else|endif|q|timing|gset)([[:space:]]|$)' || true)
+            if [ -n "$BAD_META" ]; then
+              echo "$BAD_META"
+              echo "::error::$f contains a psql meta-command outside the allow-list. Refusing to run."
+              exit 1
+            fi
+            # 2. Write / DDL / maintenance / session-mutation keywords in the SQL
+            #    proper (meta-command lines are constrained above).
+            if grep -vE '^[[:space:]]*[\\]' "$f" \
+               | grep -inE '\b(CREATE|ALTER|DROP|GRANT|REVOKE|INSERT|UPDATE|DELETE|TRUNCATE|COPY|CALL|DO|VACUUM|ANALYZE|ANALYSE|REINDEX|CLUSTER|REFRESH|LOCK|SET|RESET|EXECUTE|PREPARE|MERGE|COMMENT|LISTEN|NOTIFY|DISCARD|IMPORT|LOAD|REASSIGN|SAVEPOINT|COMMIT|INTO)\b'; then
+              echo "::error::$f contains a write/DDL/maintenance keyword (matched above). Refusing to run -- this workflow is READ-ONLY by design."
+              exit 1
+            fi
+            # 3. Must open a READ ONLY transaction and end with ROLLBACK.
+            grep -qE '^BEGIN READ ONLY;$' "$f" || { echo "::error::$f missing BEGIN READ ONLY"; exit 1; }
+            [ "$(grep -vE '^[[:space:]]*$' "$f" | tail -n1)" = "ROLLBACK;" ] || { echo "::error::$f must end with ROLLBACK;"; exit 1; }
+            echo "OK: meta-commands allow-listed, no write/DDL keywords, BEGIN READ ONLY ... ROLLBACK present."
+          done
+
+      - name: "Fail closed unless the connection can actually be made READ ONLY"
+        run: |
+          set -euo pipefail
+          RO=$(psql "$PINTAG_PROD_DB_URL" -X -tA -c "BEGIN READ ONLY; SELECT current_setting('transaction_read_only'); ROLLBACK;" | grep -E '^(on|off)$' | head -n1)
+          echo "transaction_read_only reports: '$RO'"
+          if [ "$RO" != "on" ]; then
+            echo "::error::Could not confirm a READ ONLY transaction against production (got '$RO'). Refusing to proceed."
+            exit 1
+          fi
+          echo "OK: connection confirmed read-only."
+
+      - name: Run diagnostic (SELECT / catalog inspection only)
+        run: |
+          set -euo pipefail
+          echo "================================================================"
+          echo " READ-ONLY DIAGNOSTIC -- map/location integrity. No writes."
+          echo "================================================================"
+          psql "$PINTAG_PROD_DB_URL" -X -v ON_ERROR_STOP=1 -f diagnose.sql 2>&1 | tee diagnostic-report.txt
+
+      - name: "Analyse the coordinate-less links and resolve the short links (read-only, masked output)"
+        run: |
+          set -euo pipefail
+          psql "$PINTAG_PROD_DB_URL" -X -qtA -v ON_ERROR_STOP=1 -f export.sql > export-raw.txt
+          grep -m1 '^\[' export-raw.txt > rows.json || echo '[]' > rows.json
+          cat > analyze.js <<'JS_EOF'
+          // Read-only analysis of the public listings that have no map pin.
+          // Input : rows.json (on the runner's disk only) from the READ ONLY export.
+          // Output: id, slug, province, district, status and a MASKED description of each
+          //         link. Letters in free text become 'a', digits become '9'; credentials,
+          //         full URLs and query values are never printed.
+          // Network: for an unexpanded short link ONLY, the same POST to the project's own
+          //         resolve-map-url edge function that scripts/normalize-map-links.mjs
+          //         makes. No geocoding, no other map API, no write of any kind.
+          const fs = require('fs');
+          const M = require('./map-location.js');
+
+          let SUPABASE_URL, ANON;
+          if (require.main === module) {
+            const cfg = fs.readFileSync('config.prod.js', 'utf8');
+            const pick = (k) => (cfg.match(new RegExp(k + ":\\s*'([^']+)'")) || [])[1];
+            SUPABASE_URL = pick('supabaseUrl');
+            ANON = pick('anonKey');
+          }
+
+          const maskText = (s, max) => {
+            const m = String(s).replace(/\p{L}/gu, 'a').replace(/\p{N}/gu, '9');
+            return m.length > (max || 48) ? m.slice(0, max || 48) + '…(' + m.length + ')' : m;
+          };
+          const safeDecode = (s) => { try { return decodeURIComponent(s.replace(/\+/g, ' ')); } catch (e) { return s; } };
+          const KEEP_SEG = new Set(['maps', 'place', 'search', 'dir', 'embed', 'api', 'd', 'u', 'v1', '0']);
+          const KEEP_KEYS = new Set(['q', 'query', 'll', 'center', 'destination', 'daddr', 'sll', 'api', 'ftid', 'cid',
+            'query_place_id', 'place_id', 'output', 'entry', 'g_ep', 'z', 'hl', 't', 'ie', 'iwloc', 'source', 'mid', 'saddr', 'pb']);
+          const COORD_PAIR = /-?\d{1,3}\.\d{3,}[\s,;+]+-?\d{1,3}\.\d{3,}/;
+          const LOOSE_PAIR = /^\s*-?\d+(?:\.\d+)?[\s,;+]+-?\d+(?:\.\d+)?\s*$/;
+
+          function shape(raw) {
+            let u;
+            try { u = new URL(String(raw).trim()); } catch (e) { return { malformed: true, shape: '(not parseable as a URL, ' + String(raw).length + ' chars)', flags: {} }; }
+            const decoded = safeDecode(u.pathname + u.search + u.hash);
+            const flags = {
+              google_host: /(^|[.])google([.][a-z]{2,3}){1,2}$/i.test(u.hostname),
+              place_path: false, place_name: false, feature_id: false, cid: false, place_id: false,
+              camera_at: false, q_text: false, q_loose_pair: false, search_path: false,
+              dms: /\d+\s*°\s*\d+/.test(decoded), coord_pair_anywhere: COORD_PAIR.test(decoded)
+            };
+            const segs = u.pathname.split('/').filter(Boolean);
+            const outSegs = segs.map((s, i) => {
+              if (KEEP_SEG.has(s)) { if (s === 'place') flags.place_path = true; if (s === 'search') flags.search_path = true; return s; }
+              if (/^@-?\d/.test(s)) { flags.camera_at = true; return '@<camera>'; }
+              if (/^data=/.test(s)) {
+                const tags = (s.match(/![0-9]+[a-z]/g) || []).slice(0, 14).join('');
+                if (/!1s0x[0-9a-f]+:0x[0-9a-f]+/i.test(s)) flags.feature_id = true;
+                return 'data=<' + tags + (flags.feature_id ? ' +feature-id' : '') + '>';
+              }
+              if (segs[i - 1] === 'place') flags.place_name = true;
+              if (segs[i - 1] === 'search') flags.q_text = true;
+              return '<' + maskText(safeDecode(s)) + '>';
+            });
+            const q = [];
+            for (const [k, v] of u.searchParams) {
+              const key = k.toLowerCase();
+              if (key === 'ftid' || /0x[0-9a-f]+:0x[0-9a-f]+/i.test(v)) flags.feature_id = true;
+              if (key === 'cid') flags.cid = true;
+              if (key === 'query_place_id' || key === 'place_id' || /^place_id:/i.test(v)) flags.place_id = true;
+              if (key === 'q' || key === 'query') {
+                if (LOOSE_PAIR.test(v.replace(/^loc:/i, ''))) flags.q_loose_pair = true; else flags.q_text = true;
+              }
+              let shown;
+              if (['ftid', 'cid', 'query_place_id', 'place_id', 'pb'].includes(key)) shown = '<present,' + v.length + ' chars>';
+              else if (['output', 'entry', 'api', 'z', 'hl', 't', 'ie', 'g_ep', 'source', 'iwloc'].includes(key) && v.length <= 12) shown = v;
+              else shown = '<' + maskText(v, 40) + '>';
+              q.push((KEEP_KEYS.has(key) ? key : '<key>') + '=' + shown);
+            }
+            const hash = u.hash ? ' #<' + maskText(u.hash.slice(1), 20) + '>' : '';
+            return {
+              malformed: false,
+              shape: u.hostname + '/' + outSegs.join('/') + (q.length ? '?' + q.join('&') : '') + hash,
+              flags
+            };
+          }
+
+          function classify(sh) {
+            if (sh.malformed || !sh.flags.google_host) return { cls: 'malformed/invalid', action: 'Re-enter a valid Google Maps link.' };
+            const f = sh.flags;
+            if (f.dms || f.q_loose_pair || f.coord_pair_anywhere) {
+              return { cls: 'coordinate link with parser-format issue', action: 'Parser improvement: the URL carries coordinates in a format map-location.js does not read. Deterministic, no geocoding.' };
+            }
+            if (f.feature_id || f.cid || f.place_id) {
+              return { cls: 'specific Google Maps place/business', action: 'Named-place candidate: the link carries a Google place identifier. No coordinates in the URL.' };
+            }
+            if (f.place_path && f.place_name) {
+              return { cls: 'named place (name only, no place identifier)', action: 'Ambiguous: Google resolves the name at view time. Better link required.' };
+            }
+            if (f.q_text || f.search_path) return { cls: 'generic search/location', action: 'Better link required: re-share the exact pinned place from Google Maps.' };
+            return { cls: 'other', action: 'Review manually.' };
+          }
+
+          async function resolveViaEdgeFunction(url) {
+            const res = await fetch(SUPABASE_URL + '/functions/v1/resolve-map-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + ANON },
+              body: JSON.stringify({ url }),
+              signal: AbortSignal.timeout(30000)
+            });
+            let body = {};
+            try { body = await res.json(); } catch (e) { /* ignore */ }
+            if (!res.ok || !body.resolved_url) return { error: 'resolver HTTP ' + res.status + (body.error ? ' - ' + String(body.error).slice(0, 80) : '') };
+            return { resolved: body.resolved_url };
+          }
+
+          async function main() {
+            const rows = (JSON.parse(fs.readFileSync('rows.json', 'utf8')) || []).filter((r) => r.is_public && r.map_state !== 'ok');
+            const byState = {};
+            const summary = [];
+            console.log('public listings without a pin that carry a link to inspect: ' +
+              rows.filter((r) => r.map_state === 'no-coordinates' || r.map_state === 'unresolved-short-link').length);
+            for (const r of rows) {
+              byState[r.map_state] = (byState[r.map_state] || 0) + 1;
+              if (r.map_state !== 'no-coordinates' && r.map_state !== 'unresolved-short-link') continue;
+              const head = r.slug + '  [' + r.id + ']  province=' + (r.province_en || '(null)') + ' district=' + (r.district_en || '(null)') + ' market=' + (r.market_status || '(null)');
+              console.log('\n' + head);
+              console.log('  stored state          : ' + r.map_state);
+              if (r.map_state === 'no-coordinates') {
+                const sh = shape(r.url);
+                const parsed = M.parseMapUrl(r.url);
+                const c = classify(sh);
+                console.log('  stored link (masked)  : ' + sh.shape);
+                console.log('  real parser says      : ' + (parsed.ok ? 'ok' : parsed.reason));
+                console.log('  signals               : ' + Object.keys(sh.flags).filter((k) => sh.flags[k]).join(', '));
+                console.log('  classification        : ' + c.cls);
+                console.log('  existing data enough for a pin? ' + (c.cls.startsWith('coordinate link') ? 'YES, deterministically, after a parser change' : 'NO (no coordinates in the stored URL)'));
+                console.log('  action                : ' + c.action);
+                summary.push({ slug: r.slug, id: r.id, group: 'coordinate-less', cls: c.cls });
+              } else {
+                const out = await resolveViaEdgeFunction(r.url);
+                if (out.error) {
+                  console.log('  resolver              : FAILED (' + out.error + ')');
+                  console.log('  existing data enough for a pin? NO (cannot expand)');
+                  summary.push({ slug: r.slug, id: r.id, group: 'short', cls: 'resolver-failed' });
+                  continue;
+                }
+                const parsed = M.parseMapUrl(out.resolved);
+                const sh = shape(out.resolved);
+                console.log('  resolves to (masked)  : ' + sh.shape);
+                if (parsed.ok) {
+                  console.log('  real parser on result : ok ' + parsed.lat + ',' + parsed.lng + ' [' + parsed.pattern + ']');
+                  console.log('  specific place?       : ' + (sh.flags.place_path ? 'place URL' : 'coordinate/pinned-location URL') + (sh.flags.feature_id ? ' (+place identifier)' : ''));
+                  console.log('  existing data enough for a pin? YES, exact coordinates (normalize would write the expanded URL)');
+                  console.log('  action                : normalize-map-links.mjs --apply (needs separate approval)');
+                  summary.push({ slug: r.slug, id: r.id, group: 'short', cls: 'resolves to exact pin (' + parsed.pattern + ')' });
+                } else {
+                  const c = classify(sh);
+                  console.log('  real parser on result : ' + parsed.reason);
+                  console.log('  signals               : ' + Object.keys(sh.flags).filter((k) => sh.flags[k]).join(', '));
+                  console.log('  classification        : ' + c.cls);
+                  console.log('  existing data enough for a pin? ' + (c.cls.startsWith('coordinate link') ? 'YES, deterministically, after a parser change' : 'NO (resolved URL has no coordinates)'));
+                  console.log('  action                : ' + c.action);
+                  summary.push({ slug: r.slug, id: r.id, group: 'short', cls: 'resolves to ' + c.cls });
+                }
+              }
+            }
+            console.log('\n=== SUMMARY (public listings without a pin by stored state) ===');
+            console.log(JSON.stringify(byState));
+            const tally = {};
+            summary.forEach((s) => { const k = s.group + ' -> ' + s.cls; tally[k] = (tally[k] || 0) + 1; });
+            console.log(JSON.stringify(tally, null, 1));
+          }
+
+          module.exports = { shape, classify };
+          if (require.main === module) main().catch((e) => { console.error('analysis failed: ' + e.message); process.exit(1); });
+          JS_EOF
+          node analyze.js 2>&1 | tee analysis-report.txt
+          rm -f rows.json export-raw.txt
+
+      - name: "scripts/normalize-map-links.mjs in DRY-RUN mode (no --apply, no service key; raw output never printed)"
+        run: |
+          set -uo pipefail
+          # The script writes only under --apply, and --apply refuses to start without
+          # SUPABASE_SERVICE_ROLE_KEY. Neither is present here.
+          env -u SUPABASE_SERVICE_ROLE_KEY node scripts/normalize-map-links.mjs > normalize-raw.txt 2>&1
+          echo "script exit code: $?"
+          if ! grep -q '^DRY RUN' normalize-raw.txt; then
+            echo "::error::script did not report DRY RUN - refusing to publish its output"; exit 1
+          fi
+          if grep -q '^APPLY' normalize-raw.txt; then echo "::error::script ran in APPLY mode"; exit 1; fi
+          # Only counts, slugs and outcomes: the lines carrying URLs are dropped.
+          grep -aE '^(DRY RUN|  already expanded|  short links to expand|  (✓|⊘|✗) |      resolved but unusable|      -?[0-9.]+, -?[0-9.]+ |WOULD EXPAND)' normalize-raw.txt | tee normalize-report.txt
+          rm -f normalize-raw.txt
+
+      - name: Publish findings to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Production map-link investigation"
+            echo ""
+            echo "Read-only SELECT inspection. No writes were made to production."
+            echo ""
+            echo '```'
+            cat diagnostic-report.txt 2>/dev/null || echo "(did not run)"
+            echo ""
+            echo ""
+            echo "=== Analysis of coordinate-less and short links ==="
+            cat analysis-report.txt 2>/dev/null || echo "(did not run)"
+            echo ""
+            echo "=== normalize-map-links.mjs dry run ==="
+            cat normalize-report.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload diagnostic report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: map-links-diagnostic
+          path: |
+            diagnostic-report.txt
+            analysis-report.txt
+            normalize-report.txt
+          retention-days: 30
