@@ -56,6 +56,33 @@
     return get('year') + '-' + get('month') + '-' + get('day') + ' ' + get('hour') + ':' + get('minute');
   }
 
+  // Laos wall-clock -> UTC instant. `wall` is a timezone-NAIVE 'YYYY-MM-DD',
+  // 'YYYY-MM-DDTHH:mm' or 'YYYY-MM-DDTHH:mm:ss' (what <input type="datetime-local">
+  // holds), interpreted as Asia/Vientiane time. Returns the ISO-8601 UTC string
+  // (what PostgREST filters take), or null when `wall` is not a real date/time.
+  // Never goes through the runtime timezone: `new Date('2026-05-04T00:00')`
+  // would read the string in the BROWSER's zone, so the same selection would
+  // mean different instants on different machines.
+  var WALL_RE = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/;
+  function laosWallClockToInstant(wall) {
+    var m = typeof wall === 'string' ? WALL_RE.exec(wall.trim()) : null;
+    if (!m || !isLabel(m[1])) return null;
+    var h = m[2] === undefined ? 0 : +m[2], mi = m[3] === undefined ? 0 : +m[3], se = m[4] === undefined ? 0 : +m[4];
+    if (h > 23 || mi > 59 || se > 59) return null;
+    // Treat the wall-clock fields as if they were UTC, then subtract the zone's
+    // offset at that point (derived from Intl, not hardcoded; Laos has no DST,
+    // so one pass is exact, a second pass keeps it correct for any zone).
+    var asUtc = Date.parse(m[1] + 'T00:00:00Z') + ((h * 60 + mi) * 60 + se) * 1000;
+    var offset = function (ms) {
+      var local = laosDateTimeString(new Date(ms)); // 'YYYY-MM-DD HH:mm'
+      var utcMin = Math.floor(ms / 60000) * 60000;
+      return Date.parse(local.replace(' ', 'T') + ':00Z') - utcMin;
+    };
+    var guess = asUtc - offset(asUtc);
+    guess = asUtc - offset(guess);
+    return new Date(guess).toISOString();
+  }
+
   function isLabel(s) {
     if (typeof s !== 'string' || !LABEL_RE.test(s)) return false;
     var d = new Date(s + 'T00:00:00Z');
@@ -149,6 +176,7 @@
   return {
     LAOS_TZ: LAOS_TZ, PRESET_DAYS: PRESET_DAYS,
     laosDateString: laosDateString, laosDateTimeString: laosDateTimeString,
+    laosWallClockToInstant: laosWallClockToInstant,
     isLabel: isLabel, addDays: addDays, diffDays: diffDays, todayLaos: todayLaos,
     presetRange: presetRange, customRange: customRange, compareRange: compareRange,
     chunkRanges: chunkRanges, axisLabels: axisLabels, rangeLabel: rangeLabel

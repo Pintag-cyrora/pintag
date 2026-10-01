@@ -234,3 +234,46 @@ test('the browser page and its helpers contain no toISOString()-based day maths'
     assert.ok(!/setHours\(0,\s*0,\s*0,\s*0\)/.test(code), f + ' must not compute local-midnight boundaries');
   }
 });
+
+// ── Laos wall-clock -> instant (Analytics Inspector's From/To filter) ─────
+// <input type="datetime-local"> holds a timezone-naive 'YYYY-MM-DDTHH:mm'. It
+// must mean Laos time on every machine; `new Date(value)` reads it in the
+// BROWSER's zone, which is the Inspector bug this helper replaces.
+test('laosWallClockToInstant: Laos midnight and end-of-day are the same instants in every runtime timezone', () => {
+  const expected = {
+    startOfDay: '2026-09-30T17:00:00.000Z',   // 2026-10-01T00:00 Laos
+    lastMinute: '2026-10-01T16:59:00.000Z',   // 2026-10-01T23:59 Laos
+    dateOnly: '2026-09-30T17:00:00.000Z',     // bare label == midnight
+    withSeconds: '2026-10-01T16:59:59.000Z',
+    boundaryBefore: '2026-09-30T16:59:00.000Z' // 2026-09-30T23:59 Laos
+  };
+  for (const tz of TIMEZONES) {
+    const got = inTimezone(tz, `L => ({
+      startOfDay: L.laosWallClockToInstant('2026-10-01T00:00'),
+      lastMinute: L.laosWallClockToInstant('2026-10-01T23:59'),
+      dateOnly: L.laosWallClockToInstant('2026-10-01'),
+      withSeconds: L.laosWallClockToInstant('2026-10-01T23:59:59'),
+      boundaryBefore: L.laosWallClockToInstant('2026-09-30T23:59')
+    })`);
+    assert.deepEqual(got, expected, 'TZ=' + tz);
+  }
+});
+test('laosWallClockToInstant: round-trips through laosDateTimeString and crosses month/year/leap boundaries', () => {
+  for (const tz of TIMEZONES) {
+    const got = inTimezone(tz, `L => ['2026-12-31T23:59','2027-01-01T00:00','2028-02-29T12:30','2026-03-01T00:00'].map(w => {
+      const iso = L.laosWallClockToInstant(w);
+      return [w, iso, L.laosDateTimeString(iso)];
+    })`);
+    assert.deepEqual(got, [
+      ['2026-12-31T23:59', '2026-12-31T16:59:00.000Z', '2026-12-31 23:59'],
+      ['2027-01-01T00:00', '2026-12-31T17:00:00.000Z', '2027-01-01 00:00'],
+      ['2028-02-29T12:30', '2028-02-29T05:30:00.000Z', '2028-02-29 12:30'],
+      ['2026-03-01T00:00', '2026-02-28T17:00:00.000Z', '2026-03-01 00:00']
+    ], 'TZ=' + tz);
+  }
+});
+test('laosWallClockToInstant: rejects anything that is not a real wall-clock time (null, never a guess)', () => {
+  for (const bad of ['', '   ', 'tomorrow', '2026-02-31', '2026-13-01', '2026-10-01T24:00', '2026-10-01T12:60', '2026-10-01T12:00Z', '2026-10-01T12:00+07:00', null, undefined, 20261001]) {
+    assert.equal(LAOS.laosWallClockToInstant(bad), null, String(bad));
+  }
+});
