@@ -176,11 +176,11 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
       <button class="insp-btn" onclick="searchBySessionId()">Open Session</button>
 
       <div class="insp-field">
-        <label>From</label>
+        <label>From (Laos time)</label>
         <input type="datetime-local" id="f-date-from">
       </div>
       <div class="insp-field">
-        <label>To</label>
+        <label>To (Laos time)</label>
         <input type="datetime-local" id="f-date-to">
       </div>
       <button class="insp-btn secondary" onclick="searchByDateRange()">Filter Sessions</button>
@@ -227,6 +227,7 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
 <script src="config.js?v=__ASSET_VERSION__"></script>
 <script src="dev-banner.js?v=__ASSET_VERSION__"></script>
 <script src="admin-auth.js?v=__ASSET_VERSION__"></script>
+<script src="laos-date.js?v=__ASSET_VERSION__"></script>
 <script>
 const SUPABASE_URL  = window.PINTAG.supabaseUrl;
 const SUPABASE_ANON = window.PINTAG.anonKey;
@@ -259,13 +260,16 @@ function esc(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+// All times are shown in Asia/Vientiane (the analytics calendar), never in the
+// viewer's browser timezone, so a session lands on the same day/hour here as in
+// Full Analytics and the Intelligence report.
 function fmtTime(iso) {
   const d = new Date(iso);
-  return d.toLocaleTimeString(undefined, { hour12: false });
+  return d.toLocaleTimeString(undefined, { hour12: false, timeZone: PT_LAOS_DATE.LAOS_TZ });
 }
 function fmtDateTime(iso) {
   const d = new Date(iso);
-  return d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:false });
+  return d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:false, timeZone: PT_LAOS_DATE.LAOS_TZ });
 }
 function fmtDuration(ms) {
   if (ms < 0) ms = 0;
@@ -667,10 +671,17 @@ function toggleEvent(el) { el.classList.toggle('expanded'); }
 
 // ── Latest Sessions discovery ────────────────────────────────────
 var LATEST_RECENT_LIMIT = 300;
+function laosInstant(wall) {
+  var iso = PT_LAOS_DATE.laosWallClockToInstant(wall);
+  if (!iso) throw new Error('Invalid date/time: ' + wall);
+  return iso;
+}
 async function fetchRecentRows(table, dateFrom, dateTo) {
   var params = ['select=session_id,created_at', 'order=created_at.desc'];
-  if (dateFrom) params.push('created_at=gte.' + encodeURIComponent(new Date(dateFrom).toISOString()));
-  if (dateTo) params.push('created_at=lte.' + encodeURIComponent(new Date(dateTo).toISOString()));
+  // From/To are Laos wall-clock values from <input type="datetime-local">;
+  // convert them to instants as Laos time, not via the browser's timezone.
+  if (dateFrom) params.push('created_at=gte.' + encodeURIComponent(laosInstant(dateFrom)));
+  if (dateTo) params.push('created_at=lte.' + encodeURIComponent(laosInstant(dateTo)));
   params.push('limit=' + (dateFrom || dateTo ? 1000 : LATEST_RECENT_LIMIT));
   return sbGet(table + '?' + params.join('&'));
 }
@@ -758,7 +769,7 @@ function renderSessionsList(sessions, nullSessionCounts, orphanedLeadsCount) {
     );
   }).join('');
   document.getElementById('sessions-list').innerHTML = banner +
-    '<table class="sessions-table"><thead><tr><th>Session ID</th><th>Start Time</th><th>Duration</th><th>Events</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    '<table class="sessions-table"><thead><tr><th>Session ID</th><th>Start Time (Laos)</th><th>Duration</th><th>Events</th></tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
 // ── Top-level flow ────────────────────────────────────────────────
@@ -797,7 +808,7 @@ async function searchByDateRange() {
   var to = document.getElementById('f-date-to').value;
   document.getElementById('session-view').style.display = 'none';
   document.getElementById('sessions-view').style.display = 'block';
-  document.getElementById('sessions-view-title').textContent = 'Sessions' + (from || to ? ' (filtered by date)' : '');
+  document.getElementById('sessions-view-title').textContent = 'Sessions' + (from || to ? ' (filtered by date, Laos time: ' + (from ? from.replace('T', ' ') : '…') + ' → ' + (to ? to.replace('T', ' ') : '…') + ')' : '');
   document.getElementById('sessions-list').innerHTML = '<div class="insp-loading">Loading sessions…</div>';
   var result = await discoverSessions(from || null, to || null);
   var orphanedLeadsCount = await fetchOrphanedLeadsCount();
