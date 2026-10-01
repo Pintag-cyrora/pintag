@@ -302,6 +302,10 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .map-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;}
 .map-open-link{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--teal);font-weight:500;text-decoration:none;transition:gap 0.15s;}
 .map-open-link:hover{gap:8px;}
+.map-place{border:1px solid var(--border-mid);border-left:3px solid var(--teal);border-radius:12px;padding:14px 16px;background:var(--warm-deep);margin-bottom:12px;}
+.map-place-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--teal);letter-spacing:0.04em;text-transform:uppercase;}
+.map-place-name{font-size:15px;font-weight:600;color:var(--ink,#1a2a33);margin:6px 0 4px;word-break:break-word;}
+.map-place-note{font-size:12.5px;line-height:1.5;color:#6A8490;margin:4px 0 10px;}
 /* Nearby places */
 .nearby-list{display:flex;flex-direction:column;gap:11px;margin-top:18px;padding-top:18px;border-top:1px solid var(--border);}
 .nearby-item{display:flex;align-items:center;gap:11px;font-size:13px;color:var(--ink-soft);padding-bottom:11px;border-bottom:1px solid var(--border);}
@@ -2388,6 +2392,8 @@ function buildMockupLayout(){
     nearby :{lo:'ສະຖານທີ່ໃກ້ຄຽງ',en:'Nearby',zh:'周边'},
     viewFt :{lo:'ເບິ່ງທັງໝົດ',en:'View all features',zh:'查看全部特征'},
     mapOpen:{lo:'ເປີດໃນ Google Maps',en:'Open in Google Maps',zh:'在谷歌地图中打开'},
+    mapPlaceBadge:{lo:'ສະຖານທີ່ໃນ Google Maps',en:'Google Maps place',zh:'谷歌地图地点'},
+    mapPlaceNote:{lo:'ຕຳແໜ່ງລະດັບສະຖານທີ່ ບໍ່ມີພິກັດແນ່ນອນ. ເປີດໃນ Google Maps ເພື່ອເບິ່ງສະຖານທີ່ນີ້.',en:'Place-level location: no exact coordinates are available. Open in Google Maps to see this place.',zh:'地点级位置：暂无精确坐标。请在谷歌地图中查看该地点。'},
     video  :{lo:'ວິດີໂອນຳຊົມ',en:'Property walk-through',zh:'实景视频'},
     verified:{lo:'ກວດສອບແລ້ວ',en:'Verified',zh:'平台已核验'},
     inquire:{lo:'ສອບຖາມລາຄາ',en:'Inquire for price',zh:'意向询价'},
@@ -2973,6 +2979,9 @@ function buildMockupLayout(){
   function extractMapCoords(url){
     var r = window.PintagMapLocation.parseMapUrl(url);
     if (r.ok) return { lat: r.lat, lng: r.lng };
+    // A named Google Maps place is a legitimate location with no coordinates:
+    // handled below as place-level, not reported as a broken link.
+    if (r.reason === 'place-only') return null;
     // A location we cannot establish is reported, not guessed at.
     if (r.reason !== 'no-url') {
       console.warn('[pintag/map] listing map link unusable: ' +
@@ -2985,10 +2994,21 @@ function buildMockupLayout(){
   var gmapsHref='';
 
   var coords=extractMapCoords(data.map_embed_url);
+  // exact (has coordinates) | place (named Google Maps place, NO coordinates) | none.
+  // A place is never given a pin or an embedded map: there is no verified position
+  // to draw, and a keyless Google embed of a name search cannot be guaranteed to
+  // land on the right place. The original Google Maps link is the destination.
+  var placeLoc=null;
+  if(!coords){
+    var cls=window.PintagMapLocation.classifyMapUrl(data.map_embed_url);
+    if(cls.type==='place')placeLoc=cls;
+  }
 
   // Build Open in Maps href
   if(coords){
     gmapsHref='https://www.google.com/maps?q='+coords.lat+','+coords.lng;
+  } else if(placeLoc){
+    gmapsHref=placeLoc.url;   // the original link: it names the exact place on Google's side
   } else if(isSafeUrl(data.map_embed_url)){
     gmapsHref=data.map_embed_url;
   } else if(data.district_en){
@@ -3001,7 +3021,16 @@ function buildMockupLayout(){
   }
 
   var mapHtml='';
-  if(gmapsHref){
+  if(placeLoc){
+    mapHtml=(
+      '<div class="map-place" data-map-type="place">'+
+        '<span class="map-place-badge">'+I.pin+' '+L.mapPlaceBadge[lang]+'</span>'+
+        (placeLoc.label?'<div class="map-place-name" data-track="map-place-name">'+esc(placeLoc.label)+'</div>':'')+
+        '<p class="map-place-note">'+L.mapPlaceNote[lang]+'</p>'+
+        '<a href="'+esc(gmapsHref)+'" target="_blank" rel="noopener noreferrer" class="map-open-link" data-track="map-open-link" data-track-type="cta" data-track-label="Open in Google Maps">'+L.mapOpen[lang]+' '+I.ext+'</a>'+
+      '</div>'
+    );
+  } else if(gmapsHref){
     mapHtml=(
       (mapSrc?'<div class="map-frame" data-track="map-embed" data-track-type="map"><iframe src="'+esc(mapSrc)+'" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe></div>':'')+
       '<a href="'+esc(gmapsHref)+'" target="_blank" rel="noopener noreferrer" class="map-open-link" data-track="map-open-link" data-track-type="cta" data-track-label="Open in Google Maps">'+L.mapOpen[lang]+' '+I.ext+'</a>'

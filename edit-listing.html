@@ -377,6 +377,12 @@ label{
     <input type="text" class="input" id="village">
   </div>
 
+  <div class="field" id="mapField">
+    <label>ລິ້ງແຜນທີ່ Google Maps <span style="font-weight:400;opacity:.7;">(ບໍ່ບັງຄັບ)</span></label>
+    <input type="text" class="input" id="mapEmbedUrl" placeholder="https://maps.app.goo.gl/… ຫຼື https://www.google.com/maps/…" autocomplete="off">
+    <p id="mapHint" data-map-state="empty" style="font-size:12.5px;line-height:1.5;margin:6px 0 0;color:#6A8490;"></p>
+  </div>
+
 </div>
 
 <div class="section">
@@ -583,6 +589,8 @@ label{
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
   <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
   <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
+  <script src="map-location.js?v=__ASSET_VERSION__"></script>
+  <script src="map-location-field.js?v=__ASSET_VERSION__"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -594,6 +602,17 @@ supabase.createClient(
   SUPABASE_URL,
   SUPABASE_KEY
 );
+
+const mapField = PintagMapField.attach({
+  input: document.getElementById('mapEmbedUrl'),
+  hint: document.getElementById('mapHint'),
+  supabaseUrl: SUPABASE_URL,
+  anonKey: SUPABASE_KEY,
+  getToken: async function(){
+    const { data } = await supabaseClient.auth.getSession();
+    return data && data.session ? data.session.access_token : null;
+  }
+});
 
 const propertyId =
 new URLSearchParams(
@@ -995,6 +1014,9 @@ async function loadProperty(){
   document.getElementById('village').value =
   data.village_lo || '';
 
+  // Remember the stored link so saving an unrelated field never rewrites it.
+  mapField.setOriginal(data.map_embed_url);
+
   // Reconstruct this dropdown's legacy published/draft/sold/rented
   // vocabulary from the real workflow_status/market_status columns --
   // data.status itself now always collapses to just active/draft/archived
@@ -1192,6 +1214,15 @@ async function saveProperty(){
   ).innerHTML =
   'ກຳລັງບັນທຶກ...';
 
+  // A short link starts expanding on blur, on the way to this click.
+  await mapField.pending();
+  const mapChange = mapField.changeFor();   // null = leave map_embed_url alone
+  if(mapChange && mapChange.clearing &&
+     !confirm('ລຶບລິ້ງແຜນທີ່ອອກຈາກລາຍການນີ້ບໍ? (Remove the map link from this listing?)')){
+    document.getElementById('statusText').innerHTML = '';
+    return;
+  }
+
   const images =
     await uploadImages();
 
@@ -1329,6 +1360,10 @@ async function saveProperty(){
     contact_id: editingContactId,
 
     owner_id: resolvedOwnerId,
+
+    // Only present when the user actually changed the field. An edit of any
+    // other field must never send map_embed_url (and certainly not NULL).
+    ...(mapChange ? { map_embed_url: mapChange.value } : {}),
 
     // _rentalTermsFieldValues was seeded from the property's full existing
     // rental_terms at load (loadProperty()) and is kept live by the panel's
