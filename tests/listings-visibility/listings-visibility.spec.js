@@ -149,9 +149,12 @@ test('rows with legacy/NULL/unknown values still render, and no listing throws',
 });
 
 test('a card links by ?slug= when the listing has a slug', async ({ page }) => {
-  // The canonical, shareable form. Nothing here changes it.
+  // The canonical, shareable form: ?slug= stays the first parameter, untouched.
+  // The page's current language rides after it (&lang=) so a copied/shared card
+  // link unfurls in the visitor's language -- see listing-card-href.test.js.
+  // (Playwright's default locale is en-US, which is what lang.js resolves here.)
   await mount(page, [listing(1, { slug: 'riverside-villa' })]);
-  await expect(cards(page).first()).toHaveAttribute('href', 'listing.html?slug=riverside-villa');
+  await expect(cards(page).first()).toHaveAttribute('href', 'listing.html?slug=riverside-villa&lang=en');
 });
 
 test('a slugless card falls back to ?id= instead of a dead ?slug=', async ({ page }) => {
@@ -161,7 +164,7 @@ test('a slugless card falls back to ?id= instead of a dead ?slug=', async ({ pag
   // dead end. The card must now carry the row id so the detail page can
   // still resolve the listing.
   await mount(page, [listing(1, { slug: null, id: 'abc-123' })]);
-  await expect(cards(page).first()).toHaveAttribute('href', 'listing.html?id=abc-123');
+  await expect(cards(page).first()).toHaveAttribute('href', 'listing.html?id=abc-123&lang=en');
 });
 
 test('full flow: a slugless active listing is reachable from the grid to its detail page', async ({ page }) => {
@@ -193,11 +196,11 @@ test('full flow: a slugless active listing is reachable from the grid to its det
   await page.goto('/listings.html');
   const card = page.locator('#listings-container > .pt-card').first();
   await expect(card).toBeVisible();
-  await expect(card).toHaveAttribute('href', 'listing.html?id=flow-uuid-1');
+  await expect(card).toHaveAttribute('href', 'listing.html?id=flow-uuid-1&lang=en');
 
   // Follow the real link, exactly as a visitor would.
   await card.click();
-  await page.waitForURL('**/listing.html?id=flow-uuid-1');
+  await page.waitForURL('**/listing.html?id=flow-uuid-1&lang=en');
   await page.waitForTimeout(500);
   const bodyText = await page.locator('body').innerText();
   expect(bodyText).not.toContain('No property selected');

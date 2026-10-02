@@ -317,9 +317,27 @@ function ptCdnImageFallback(el) {
 // when a listing has no slug yet -- some listings finished via the admin
 // edit path were saved without a slug, and a bare "listing.html?slug="
 // lands on the "No property selected" error. listing.html accepts either.
-function _ptListingHref(p) {
-  if (p && p.slug) return 'listing.html?slug=' + encodeURIComponent(p.slug);
-  if (p && p.id) return 'listing.html?id=' + encodeURIComponent(p.id);
+//
+// `lang` is the page's CURRENT language, handed in by the caller exactly as the
+// card builders already receive it (opts.lang, from each page's own
+// getCurrentLang()) -- this file is shared by pages with different language
+// plumbing, so it never reads the language itself. When it is a supported
+// Pintag language the link carries it as &lang=, appended AFTER the existing
+// slug/id so everything that reads the leading ?slug= / ?id= is unaffected.
+// This matters beyond the page itself: the URL is what a visitor copies or
+// shares, and the Cloudflare Worker builds the WhatsApp/Facebook link preview
+// from ?lang= alone (an absent ?lang= means the Lao default), so a card link
+// without it unfurls in Lao for someone browsing in English. An omitted or
+// unsupported `lang` leaves the URL exactly as it always was.
+function _ptLinkLang(lang) {
+  var valid = (typeof PINTAG_VALID_LANGS !== 'undefined') ? PINTAG_VALID_LANGS : ['en', 'lo', 'zh'];
+  return (lang && valid.indexOf(lang) !== -1) ? lang : null;
+}
+function _ptListingHref(p, lang) {
+  var l = _ptLinkLang(lang);
+  var langParam = l ? '&lang=' + encodeURIComponent(l) : '';
+  if (p && p.slug) return 'listing.html?slug=' + encodeURIComponent(p.slug) + langParam;
+  if (p && p.id) return 'listing.html?id=' + encodeURIComponent(p.id) + langParam;
   return 'listing.html';
 }
 
@@ -1200,7 +1218,7 @@ function renderPropertyCard(property, opts) {
   var p = property;
 
   var card = document.createElement(opts.tag === 'div' ? 'div' : 'a');
-  if (opts.tag !== 'div') card.href = _ptListingHref(p);
+  if (opts.tag !== 'div') card.href = _ptListingHref(p, opts.lang);
   card.className = 'pt-card' + (opts.isFeatured ? ' pt-featured' : '');
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
   if (opts.onClick) card.addEventListener('click', opts.onClick);
@@ -1483,7 +1501,7 @@ function renderPropertyPreview(property, opts) {
   var p = property;
 
   var card = document.createElement('a');
-  card.href = _ptListingHref(p);
+  card.href = _ptListingHref(p, opts.lang);
   card.className = 'pt-preview';
   if (opts.dataTrack) _ptApplyDataTrack(card, opts.dataTrack);
   if (opts.onClick) card.addEventListener('click', opts.onClick);
