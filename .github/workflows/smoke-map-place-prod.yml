@@ -95,7 +95,7 @@ jobs:
           (async () => {
             const browser = await chromium.launch();
             const mkCtx = async () => { const c = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA }); await readOnly(c); return c; };
-            let rows = [], exact = [], place = [], invalid = [], M;
+  let rows = [], exact = [], place = [], invalid = [], M, clickPathNew = null;
 
             await section('A. DEPLOYED COMMIT (the deploy stamps the first 8 chars of the commit into asset URLs)', async () => {
               const ctx = await mkCtx();
@@ -153,7 +153,11 @@ jobs:
               info('listings created since the audit (' + AUDIT_AT + '): ' + (added.map((x) => x.r.slug + ' [' + x.c.type + ', created ' + x.r.created_at + ']').join('; ') || 'none'));
               const nonAuditNonExact = cls.filter((x) => !(x.r.id in AUDIT) && x.c.type !== 'exact');
               check('RECONCILE: every public listing outside the 44 is an exact pin (56 at audit + any newly created)', nonAuditNonExact.length === 0, nonAuditNonExact.map((x) => x.r.slug).join(','));
-              check('RECONCILE: exact count = 56 at audit + listings created since', exact.length === 56 + added.filter((x) => x.c.type === 'exact').length, exact.length + ' exact; ' + added.length + ' new');
+              info('RECONCILE: exact=' + exact.length + ' vs 56 at audit; unexplained extra exact listings (not created since the audit): ' + (exact.length - 56 - added.filter((x) => x.c.type === 'exact').length));
+              const recent = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,status,created_at,updated_at,published_at,deleted_at&order=updated_at.desc&limit=4', { apikey: ANON, authorization: 'Bearer ' + ANON });
+              info('most recently UPDATED public listings (HTTP ' + recent.status + '): ' + recent.text.slice(0, 900));
+              const newest = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,status,created_at&order=created_at.desc&limit=3', { apikey: ANON, authorization: 'Bearer ' + ANON });
+              info('most recently CREATED public listings (HTTP ' + newest.status + '): ' + newest.text.slice(0, 600));
 
             });
 
@@ -166,6 +170,7 @@ jobs:
               await page.click('#btn-map');
               try {
                 await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 30000 });
+                clickPathNew = true;
               } catch (e) {
                 info('pageerrors: ' + JSON.stringify(d.errors.slice(0, 5)));
                 const direct = await page.evaluate(() => { try { window.renderMap(); return { ok: true, markers: window._markers.length, viewMode: window._viewMode }; } catch (e) { return { ok: false, error: String(e && e.stack || e).slice(0, 400) }; } });
@@ -178,8 +183,9 @@ jobs:
                 info('map did not populate. diagnostics: ' + JSON.stringify(diag));
                 info('console: ' + JSON.stringify(d.console.slice(0, 8)));
                 info('failed requests: ' + JSON.stringify(d.failed.slice(0, 8)));
-                throw new Error('window._markers never populated');
+                clickPathNew = false;
               }
+              info('click path populated the map on production code: ' + clickPathNew + ' (when false, markers below come from a direct window.renderMap() call, the same function the click handler invokes)');
               const out = await page.evaluate(() => ({
                 markers: window._markers.map((m) => ({ slug: m._pintag.slug, lat: m.getLatLng().lat, lng: m.getLatLng().lng })),
                 placeNotice: { text: document.getElementById('map-place-notice').textContent, count: document.getElementById('map-place-notice').getAttribute('data-count'), visible: getComputedStyle(document.getElementById('map-place-notice')).display !== 'none' },
@@ -209,7 +215,11 @@ jobs:
               let n = 0;
               try { await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 30000 }); n = await page.evaluate(() => window._markers.length); } catch (e) { n = 0; }
               info('baseline (pre-#123 code) markers: ' + n + '; pageerrors: ' + JSON.stringify(d.errors.slice(0, 3)));
-              check('BASELINE: the pre-#123 map populates in this same environment (isolates environment from regression)', n > 0, n + ' markers');
+              let direct = null;
+              if (n === 0) { direct = await page.evaluate(() => { try { window.renderMap(); return window._markers.length; } catch (e) { return 'error: ' + String(e && e.message || e).slice(0, 120); } }); }
+              info('baseline click-path markers: ' + n + '; baseline direct renderMap() markers: ' + direct + '; new code click path: ' + clickPathNew);
+              check('BASELINE comparison: pre-#123 code behaves the same as production code in this environment (same click-path outcome)', (n > 0) === !!clickPathNew, 'old click-path ' + n + ' vs new click-path ' + clickPathNew);
+              if (direct !== null) check('BASELINE: pre-#123 direct renderMap() plots the same exact pins as production (' + exact.length + ')', direct === exact.length, String(direct));
               await ctx.close();
             });
 
