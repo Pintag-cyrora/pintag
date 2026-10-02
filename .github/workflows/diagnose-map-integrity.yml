@@ -54,45 +54,34 @@ jobs:
           \pset pager off
           \echo === A0: session
           SELECT current_setting('transaction_read_only') AS transaction_read_only, current_user AS connected_role, now() AS now_utc;
-          \echo === Q1: row counts NOW (audit at 2026-10-01 06:30Z: all=170 public=100 excluded=70)
-          SELECT count(*) AS all_rows,
-                 count(*) FILTER (WHERE status IN ('active','available') AND deleted_at IS NULL) AS public_rows,
-                 count(*) FILTER (WHERE NOT (status IN ('active','available') AND deleted_at IS NULL)) AS excluded_rows
-          FROM properties;
-          \echo === Q2: status x soft-deleted NOW (audit excluded: active+deleted=1, archived=2, draft=64, draft+deleted=3)
-          SELECT status, (deleted_at IS NOT NULL) AS soft_deleted, count(*) AS listings
-          FROM properties GROUP BY 1, 2 ORDER BY 1, 2;
-          \echo === Q3: every soft-deleted row NOW
-          SELECT id, slug, status, market_status, deleted_at, status_changed_at
-          FROM properties WHERE deleted_at IS NOT NULL ORDER BY deleted_at;
-          \echo === Q4: public rows whose status_changed_at is NULL or newer than the audit
-          SELECT id, slug, status, market_status, deleted_at, status_changed_at, market_status_changed_at
-          FROM properties
-          WHERE status IN ('active','available') AND deleted_at IS NULL
-            AND (status_changed_at IS NULL OR status_changed_at > timestamptz '2026-10-01 06:30:03+00')
-          ORDER BY slug;
+          \echo === E1: PUBLIC listings with NO event at all, or whose FIRST anon event is later than the audit (2026-10-01 06:30:03Z)
+          SELECT p.id, p.slug, p.status, p.status_changed_at, p.market_status_changed_at,
+                 count(e.id) AS events, min(e.created_at) AS first_event_at, max(e.created_at) AS last_event_at
+          FROM properties p LEFT JOIN listing_events e ON e.property_id = p.id
+          WHERE p.status IN ('active','available') AND p.deleted_at IS NULL
+          GROUP BY p.id, p.slug, p.status, p.status_changed_at, p.market_status_changed_at
+          HAVING min(e.created_at) IS NULL OR min(e.created_at) > timestamptz '2026-10-01 06:30:03+00'
+          ORDER BY min(e.created_at) NULLS FIRST, p.slug;
+          \echo === E2: the one public row with no status timestamps (e5f71fd2): its event timeline by event type
+          SELECT e.event_type, count(*) AS events, min(e.created_at) AS first_at, max(e.created_at) AS last_at
+          FROM listing_events e
+          WHERE e.property_id = uuid 'e5f71fd2-a4e4-4b94-b0ee-bc66d869e5b6'
+          GROUP BY e.event_type ORDER BY 1;
+          \echo === E3: how many public listings have a first event before the audit (context)
+          SELECT count(*) AS public_listings_first_seen_before_audit
+          FROM (SELECT p.id FROM properties p JOIN listing_events e ON e.property_id = p.id
+                WHERE p.status IN ('active','available') AND p.deleted_at IS NULL
+                GROUP BY p.id HAVING min(e.created_at) <= timestamptz '2026-10-01 06:30:03+00') t;
           ROLLBACK;
           Q
           cat > d2.sql <<'Q'
           BEGIN READ ONLY;
           \pset border 2
           \pset pager off
-          \echo === S1: row snapshots by operation
-          SELECT op, count(*) AS snapshots, min(created_at) AS first_at, max(created_at) AS last_at
-          FROM properties_row_snapshots GROUP BY op ORDER BY op;
-          \echo === S2: snapshots taken since 2026-09-20, with whether the listing is public NOW
-          SELECT s.property_id AS id, p.slug, s.op, s.created_at AS snapshot_at,
-                 s.row_data->>'status' AS status_in_snapshot,
-                 s.row_data->>'deleted_at' IS NOT NULL AS was_soft_deleted_in_snapshot,
-                 (p.id IS NOT NULL AND p.status IN ('active','available') AND p.deleted_at IS NULL) AS public_now
-          FROM properties_row_snapshots s LEFT JOIN properties p ON p.id = s.property_id
-          WHERE s.created_at > timestamptz '2026-09-20 00:00:00+00'
-          ORDER BY s.created_at DESC LIMIT 40;
-          \echo === S3: listings that were soft-deleted per a snapshot and are PUBLIC now (i.e. restored)
-          SELECT s.property_id AS id, p.slug, s.op, s.created_at AS snapshot_at, p.status, p.deleted_at
-          FROM properties_row_snapshots s JOIN properties p ON p.id = s.property_id
-          WHERE s.op = 'soft_delete' AND p.status IN ('active','available') AND p.deleted_at IS NULL
-          ORDER BY s.created_at DESC;
+          \echo === E4: status of e5f71fd2 and its map-link type (prefix only)
+          SELECT id, slug, status, market_status, deleted_at, status_changed_at, market_status_changed_at,
+                 CASE WHEN map_embed_url IS NULL THEN '(none)' ELSE split_part(map_embed_url, '?', 1) END AS map_url_prefix
+          FROM properties WHERE id = uuid 'e5f71fd2-a4e4-4b94-b0ee-bc66d869e5b6';
           ROLLBACK;
           Q
 
