@@ -1,7 +1,9 @@
-name: "DIAG (temporary): public listing count vs original audit (read-only, anon)"
+name: "DIAG (temporary): WhatsApp link-preview metadata vs Worker expectation (read-only)"
 
-# TEMPORARY, READ-ONLY. NOT to be merged. No secrets, no environment, no database connection.
-# Only public anonymous GETs of the same listings any visitor can read (anon key from config.prod.js).
+# TEMPORARY, READ-ONLY. NOT to be merged. No secrets, no environment, no database connection, no deploy.
+# Public GET requests only (pages as any visitor/crawler would fetch them + the public anon listings read);
+# every non-GET browser request is aborted. Compares what production actually serves in og:* tags with what
+# cloudflare-worker/og-listing-preview.js (at main 3a7fd1e) should emit, per language.
 
 on:
   workflow_dispatch:
@@ -18,98 +20,190 @@ concurrency:
 
 jobs:
   diag:
-    name: Public listing count vs audit (read-only)
+    name: Link-preview metadata probe (read-only)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
-      - name: Compare anon public set with the 2026-10-01 audit
+          node-version: '22'
+
+      - name: Install Playwright
+        run: |
+          npm install --no-audit --no-fund --no-save @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: Probe (read-only)
         run: |
           set -uo pipefail
-          cat > diag.js <<'JS_EOF'
+          git show 3a7fd1e13717c7b2ff19008fbfd763b968d661a5:cloudflare-worker/og-listing-preview.js > og.mjs
+          cat > probe.js <<'JS_EOF'
+          // READ-ONLY production probe of the WhatsApp LINK-PREVIEW metadata (Cloudflare Worker) versus the
+          // pre-filled WhatsApp MESSAGE and the listing PAGE language. GET only; every non-GET browser
+          // request is aborted. No secrets. Uses the repo's own Worker module (og.mjs) to compute what the
+          // Worker SHOULD emit for each real listing, then compares with what production actually serves.
           const fs = require('fs');
-          const cfg = fs.readFileSync('config.prod.js', 'utf8');
-          const pick = (k) => (cfg.match(new RegExp(k + ":\\s*'([^']+)'")) || [])[1];
-          const SUPA = pick('supabaseUrl'), ANON = pick('anonKey');
-          const AUDIT_NOW = '2026-10-01T06:30:03Z';
-          const H = { apikey: ANON, authorization: 'Bearer ' + ANON };
-          const NO_PIN = new Set(fs.readFileSync('nopin.txt', 'utf8').split(/\s+/).filter(Boolean));
+          const LAO = /[຀-໿]/;
+          const BASE = 'https://pintag.io';
+          const UA_BROWSER = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+          const UA_WA = 'WhatsApp/2.23.20.0 A';
+          const UA_FB = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
+          const log = (s) => console.log(s);
+          const short = (s, n) => { s = String(s == null ? '' : s).replace(/\s+/g, ' '); return s.length > (n || 90) ? s.slice(0, n || 90) + '…' : s; };
+          const script = (s) => (LAO.test(s || '') ? 'LAO' : /[一-鿿]/.test(s || '') ? 'ZH' : s ? 'latin' : '(empty)');
+
+          function attrsOf(tag) { const a = {}; tag.replace(/([a-zA-Z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)')/g, (_, k, __, v1, v2) => { a[k.toLowerCase()] = v1 != null ? v1 : v2; return ''; }); return a; }
+          const decodeEnt = (s) => String(s == null ? '' : s).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+          function parseHead(html) {
+            const metas = (html.match(/<meta\b[^>]*>/gi) || []).map(attrsOf);
+            const links = (html.match(/<link\b[^>]*>/gi) || []).map(attrsOf);
+            const m = (k, v) => { const e = metas.find((x) => x[k] === v); return e ? decodeEnt(e.content) : null; };
+            const can = links.find((x) => (x.rel || '').toLowerCase() === 'canonical');
+            const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1];
+            const htmlLang = (html.match(/<html\b[^>]*\blang="([^"]*)"/i) || [])[1];
+            return { title: decodeEnt(title), ogTitle: m('property', 'og:title'), ogDesc: m('property', 'og:description'), ogLocale: m('property', 'og:locale'),
+              ogUrl: m('property', 'og:url'), canonical: can ? decodeEnt(can.href) : null, htmlLang, twTitle: m('name', 'twitter:title') };
+          }
+          const withEn = (r) => !!(r.title_en && String(r.title_en).trim());
+
+          let browser, M;
+          async function mkCtx(ua) {
+            const ctx = await browser.newContext({ userAgent: ua, viewport: { width: 1280, height: 800 } });
+            await ctx.route('**/*', (route) => { const m = route.request().method(); return (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') ? route.fallback() : route.abort(); });
+            return ctx;
+          }
+          async function fetchHtml(url, ua) {
+            const ctx = await mkCtx(ua || UA_BROWSER); const page = await ctx.newPage();
+            try {
+              const resp = await page.goto(url, { waitUntil: 'commit', timeout: 45000 });
+              const html = await resp.text(); const h = resp.headers();
+              return { status: resp.status(), html, headers: h, worker: h['x-pintag-worker'] || null, cc: h['cache-control'] || null, cf: h['cf-cache-status'] || null, age: h['age'] || null, etag: h['etag'] || null };
+            } catch (e) { return { status: 0, html: '', headers: {}, error: String(e.message || e).split('\n')[0] }; }
+            finally { await ctx.close(); }
+          }
+          function classify(head, slug, lang) {
+            if (!head.ogUrl) return 'NO-OG';
+            if (head.ogUrl.indexOf('slug=') < 0) return 'ORIGIN-STATIC';       // static page: og:url has no slug
+            return 'WORKER-REWRITTEN';
+          }
+
           (async () => {
-            const r = await fetch(SUPA + '/rest/v1/properties?select=*&limit=1000', { headers: H });
-            const rows = await r.json();
-            console.log('HTTP ' + r.status + '; anon-visible rows: ' + (Array.isArray(rows) ? rows.length : JSON.stringify(rows).slice(0, 200)));
-            if (!Array.isArray(rows)) process.exit(1);
-            const keys = Object.keys(rows[0] || {});
-            const timeKeys = keys.filter((k) => /(_at|_date|date|time|publish|verified|created|updated)/i.test(k));
-            console.log('time-like columns visible to anon: ' + timeKeys.join(', '));
-            for (const k of timeKeys) console.log('  ' + k + ': non-null in ' + rows.filter((x) => x[k] != null).length + ' of ' + rows.length);
-            const statusCount = {}; rows.forEach((x) => { const s = x.status + '/deleted=' + (x.deleted_at != null); statusCount[s] = (statusCount[s] || 0) + 1; });
-            console.log('status/deleted breakdown (anon): ' + JSON.stringify(statusCount));
-            console.log('rows violating the public rule (status in active|available, deleted_at null): ' + rows.filter((x) => !(['active', 'available'].includes(x.status) && x.deleted_at == null)).length);
-            const ids = new Set(rows.map((x) => x.id));
-            console.log('unique ids: ' + ids.size + ' of ' + rows.length);
-            const missing = [...NO_PIN].filter((id) => !ids.has(id));
-            console.log('audited no-pin ids (44) missing from anon set: ' + missing.length);
-            const outside = rows.filter((x) => !NO_PIN.has(x.id));
-            console.log('anon rows outside the 44 no-pin ids (audit: 56 exact): ' + outside.length);
-            const fmt = (x) => ({ id: x.id, slug: x.slug, status: x.status, market_status: x.market_status, deleted_at: x.deleted_at, ...Object.fromEntries(timeKeys.map((k) => [k, x[k]])) });
-            const after = rows.filter((x) => timeKeys.some((k) => x[k] && String(x[k]) > AUDIT_NOW));
-            console.log('\nrows with ANY time-like value later than the audit (' + AUDIT_NOW + '): ' + after.length);
-            after.forEach((x) => console.log('  ' + JSON.stringify(fmt(x))));
-            for (const k of ['status_changed_at', 'created_at', 'updated_at']) {
-              if (!timeKeys.includes(k)) continue;
-              const top = rows.filter((x) => x[k]).sort((a, b) => String(b[k]).localeCompare(String(a[k]))).slice(0, 4);
-              console.log('\nlatest by ' + k + ':'); top.forEach((x) => console.log('  ' + JSON.stringify(fmt(x))));
+            const { chromium } = require('@playwright/test');
+            M = await import(process.cwd() + '/og.mjs');
+            browser = await chromium.launch();
+            const cfg = fs.readFileSync('config.prod.js', 'utf8'); const pick = (k) => (cfg.match(new RegExp(k + ":\\s*'([^']+)'")) || [])[1];
+            const SUPA = pick('supabaseUrl'), ANON = pick('anonKey'); const H = { apikey: ANON, authorization: 'Bearer ' + ANON };
+
+            // ───────── 1. DATA: how many public listings lack title_en (and other English fields)? ─────────
+            log('=== 1. DATA (public listings, anon GET) ===');
+            const res = await fetch(SUPA + '/rest/v1/properties?select=*&order=slug&limit=1000', { headers: H });
+            const rows = await res.json(); if (!Array.isArray(rows)) { log('REST failed: ' + JSON.stringify(rows).slice(0, 200)); process.exit(0); }
+            const withSlug = rows.filter((r) => r.slug);
+            const cat = (r) => (!withEn(r) ? (r.title_lo ? 'MISSING_en(has lo)' : 'MISSING_en(no lo)') : LAO.test(r.title_en) ? 'en-field-contains-LAO-script' : 'ok');
+            const tally = {}; rows.forEach((r) => { const c = cat(r); tally[c] = (tally[c] || 0) + 1; });
+            log('public listings: ' + rows.length + '; with slug: ' + withSlug.length);
+            log('title_en status: ' + JSON.stringify(tally));
+            const blank = (v) => !(v && String(v).trim());
+            log('description_en blank: ' + rows.filter((r) => blank(r.description_en)).length + '; property_highlight_en blank: ' + rows.filter((r) => blank(r.property_highlight_en)).length +
+                '; description_en has LAO script: ' + rows.filter((r) => LAO.test(r.description_en || '')).length + '; highlight_en has LAO script: ' + rows.filter((r) => LAO.test(r.property_highlight_en || '')).length +
+                '; title_zh blank: ' + rows.filter((r) => blank(r.title_zh)).length);
+            for (const k of Object.keys(tally)) if (k !== 'ok') log('  ' + k + ' slugs: ' + rows.filter((r) => cat(r) === k).map((r) => r.slug).slice(0, 15).join(', '));
+
+            // ───────── 2. WORKER vs EXPECTED, every public listing, lang=en and lang=lo ─────────
+            log('\n=== 2. PRODUCTION LINK-PREVIEW METADATA vs what og-listing-preview.js should emit (browser UA, GET) ===');
+            const agg = {}; const bump = (k) => { agg[k] = (agg[k] || 0) + 1; };
+            const detail = []; const queue = [];
+            for (const r of withSlug) for (const lang of ['en', 'lo']) queue.push({ r, lang });
+            let qi = 0;
+            async function worker() {
+              while (qi < queue.length) {
+                const { r, lang } = queue[qi++];
+                const url = BASE + '/listing.html?slug=' + encodeURIComponent(r.slug) + '&lang=' + lang;
+                const f = await fetchHtml(url); const head = parseHead(f.html || ''); const kind = f.status === 200 ? classify(head, r.slug, lang) : 'HTTP-' + f.status;
+                let exp = null; try { exp = M.buildOgFields(r, lang); } catch (e) {}
+                const titleOk = exp ? head.ogTitle === exp.title : null; const descOk = exp ? head.ogDesc === exp.desc : null;
+                const locOk = head.ogLocale === ({ en: 'en_US', lo: 'lo_LA', zh: 'zh_CN' })[lang]; const urlOk = head.ogUrl === M.canonicalUrl(r.slug, lang);
+                detail.push({ slug: r.slug, lang, kind, hasEn: withEn(r), head, exp, titleOk, descOk, locOk, urlOk, worker: f.worker, cc: f.cc, cf: f.cf });
+              }
             }
-          })().catch((e) => { console.error('DIAG ERROR: ' + (e && e.stack || e)); process.exit(2); });
+            await Promise.all([worker(), worker(), worker(), worker()]);
+            for (const lang of ['en', 'lo']) {
+              const d = detail.filter((x) => x.lang === lang);
+              const c = (f) => d.filter(f).length;
+              log('\n-- lang=' + lang + ' (' + d.length + ' listings) --');
+              log('  response kinds: ' + JSON.stringify(d.reduce((a, x) => (a[x.kind] = (a[x.kind] || 0) + 1, a), {})));
+              log('  x-pintag-worker header present: ' + c((x) => x.worker) + ' of ' + d.length + '; Cache-Control values: ' + JSON.stringify([...new Set(d.map((x) => x.cc))]) + '; cf-cache-status: ' + JSON.stringify([...new Set(d.map((x) => x.cf))]));
+              log('  og:locale correct for lang: ' + c((x) => x.locOk) + '; og:url == canonical(slug,lang): ' + c((x) => x.urlOk) + '; <html lang> == ' + lang + ': ' + c((x) => x.head.htmlLang === lang));
+              log('  og:title == Worker-expected: ' + c((x) => x.titleOk) + '; og:description == Worker-expected: ' + c((x) => x.descOk));
+              log('  og:title script: ' + JSON.stringify(d.reduce((a, x) => { const s = script(x.head.ogTitle); a[s] = (a[s] || 0) + 1; return a; }, {})) + '; og:description script: ' + JSON.stringify(d.reduce((a, x) => { const s = script(x.head.ogDesc); a[s] = (a[s] || 0) + 1; return a; }, {})));
+              if (lang === 'en') {
+                const bad = d.filter((x) => LAO.test(x.head.ogTitle || ''));
+                log('  >>> ENGLISH previews whose og:title contains LAO script: ' + bad.length + '  (of those, listing has NO title_en: ' + bad.filter((x) => !x.hasEn).length + ')');
+                log('  >>> with title_en present, og:title Lao: ' + d.filter((x) => x.hasEn && LAO.test(x.head.ogTitle || '')).length + '; with title_en missing, og:title Lao: ' + d.filter((x) => !x.hasEn && LAO.test(x.head.ogTitle || '')).length + ' of ' + d.filter((x) => !x.hasEn).length);
+                const dl = d.filter((x) => LAO.test(x.head.ogDesc || '')); log('  >>> ENGLISH previews whose og:description contains LAO script: ' + dl.length);
+                bad.slice(0, 8).forEach((x) => log('      LAO og:title for lang=en: ' + x.slug + ' | hasTitleEn=' + x.hasEn + ' | ' + short(x.head.ogTitle, 60)));
+              }
+              const odd = d.filter((x) => x.kind !== 'WORKER-REWRITTEN' || x.titleOk === false || x.locOk === false || x.urlOk === false);
+              log('  deviations from expectation: ' + odd.length); odd.slice(0, 10).forEach((x) => log('      ' + x.slug + ' [' + x.kind + '] title=' + short(x.head.ogTitle, 50) + ' | locale=' + x.head.ogLocale + ' | og:url=' + short(x.head.ogUrl, 70) + ' | expTitle=' + short(x.exp && x.exp.title, 50)));
+            }
+
+            // ───────── 3. SIDE-BY-SIDE for one listing WITH and one WITHOUT title_en ─────────
+            log('\n=== 3. SIDE BY SIDE: a listing WITH title_en vs one WITHOUT (full metadata) ===');
+            const sampleWith = withSlug.find((r) => cat(r) === 'ok'); const sampleWithout = withSlug.find((r) => !withEn(r));
+            for (const [label, r] of [['WITH title_en', sampleWith], ['WITHOUT title_en', sampleWithout]]) {
+              if (!r) { log('(' + label + ': no such listing)'); continue; }
+              for (const lang of ['en', 'lo', null]) {
+                const url = BASE + '/listing.html?slug=' + encodeURIComponent(r.slug) + (lang ? '&lang=' + lang : '');
+                const f = await fetchHtml(url); const h = parseHead(f.html);
+                log('[' + label + '] ' + r.slug + (lang ? ' ?lang=' + lang : ' (no ?lang)') + '  HTTP ' + f.status + '  ' + classify(h, r.slug, lang) + '\n    og:title=' + short(h.ogTitle, 100) + '\n    og:description=' + short(h.ogDesc, 110) + '\n    og:locale=' + h.ogLocale + '  <html lang>=' + h.htmlLang + '\n    og:url=' + h.ogUrl + '\n    canonical=' + h.canonical);
+              }
+            }
+
+            // ───────── 4. Does it ever fall back to the ORIGIN (static Lao) HTML? ─────────
+            log('\n=== 4. ORIGIN-FALLBACK CASES ===');
+            for (const [label, u] of [['nonexistent slug, lang=en', '/listing.html?slug=zz-does-not-exist-123&lang=en'], ['no slug, lang=en', '/listing.html?lang=en']]) {
+              const f = await fetchHtml(BASE + u); const h = parseHead(f.html);
+              log(label + ': HTTP ' + f.status + ' worker-header=' + f.worker + ' -> ' + classify(h, 'x', 'en') + ' | og:title=' + short(h.ogTitle, 70) + ' | og:locale=' + h.ogLocale + ' | <html lang>=' + h.htmlLang);
+            }
+
+            // ───────── 5. Crawler user agents (WhatsApp / Facebook) vs a browser ─────────
+            log('\n=== 5. CRAWLER USER AGENTS (does Cloudflare / the Worker treat them differently?) ===');
+            const probe = sampleWithout || sampleWith;
+            if (probe) for (const [n, ua] of [['browser', UA_BROWSER], ['WhatsApp', UA_WA], ['facebookexternalhit', UA_FB]]) {
+              const url = BASE + '/listing.html?slug=' + encodeURIComponent(probe.slug) + '&lang=en'; const f = await fetchHtml(url, ua); const h = parseHead(f.html);
+              log(n.padEnd(20) + ' HTTP ' + f.status + ' ' + classify(h, probe.slug, 'en') + ' worker=' + f.worker + ' og:locale=' + h.ogLocale + ' og:title=' + short(h.ogTitle, 60) + (f.error ? ' ERR ' + f.error : ''));
+            }
+
+            // ───────── 6. Caching headers (could a cache pin the wrong language?) ─────────
+            log('\n=== 6. CACHING ===');
+            if (sampleWith) {
+              const u = BASE + '/listing.html?slug=' + encodeURIComponent(sampleWith.slug); const a = await fetchHtml(u + '&lang=en'); await new Promise((r) => setTimeout(r, 1500)); const b = await fetchHtml(u + '&lang=en'); const lo = await fetchHtml(u + '&lang=lo');
+              log('same URL twice: identical body=' + (a.html === b.html) + '; cache-control=' + a.cc + '; cf-cache-status=' + a.cf + '/' + b.cf + '; age=' + a.age + '/' + b.age + '; etag=' + a.etag);
+              log('lang=en vs lang=lo bodies differ (URL is the cache key): ' + (a.html !== lo.html) + '; og:locale en=' + parseHead(a.html).ogLocale + ' lo=' + parseHead(lo.html).ogLocale);
+            }
+
+            // ───────── 7. The actual pre-filled WhatsApp MESSAGE and the PAGE language (separate from the card) ─────────
+            log('\n=== 7. PRE-FILLED WHATSAPP MESSAGE and PAGE LANGUAGE (real page, JS executed, non-GET aborted) ===');
+            for (const [label, r] of [['WITH title_en', sampleWith], ['WITHOUT title_en', sampleWithout]]) {
+              if (!r) continue;
+              for (const lang of ['en', 'lo']) {
+                const ctx = await mkCtx(UA_BROWSER); const page = await ctx.newPage(); const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+                try {
+                  await page.goto(BASE + '/listing.html?slug=' + encodeURIComponent(r.slug) + '&lang=' + lang, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                  await page.waitForFunction(() => window.propertyContext, null, { timeout: 30000 }); await page.waitForTimeout(800);
+                  const o = await page.evaluate(() => { const a = document.querySelector('#pt-wa-primary') || document.querySelector('.agent-ctas a.btn-wa'); const h = a ? a.getAttribute('href') : null; const i = h ? h.indexOf('text=') : -1; return { body: (document.body.className.match(/lang-\w+/) || [])[0], htmlLang: document.documentElement.lang, msg: i >= 0 ? decodeURIComponent(h.slice(i + 5)) : null, clientOgTitle: (document.querySelector('meta[property="og:title"]') || {}).content, docTitle: document.title }; });
+                  const urlInMsg = ((o.msg || '').match(/https:\/\/pintag\.io\/listing\.html\?[^\s]+/) || [])[0];
+                  log('[' + label + '] ' + r.slug + ' ?lang=' + lang + ': page body=' + o.body + ' <html lang>=' + o.htmlLang + ' | message script=' + script(o.msg) + ' | URL inside message=' + urlInMsg + ' | == Worker canonical: ' + (urlInMsg === M.canonicalUrl(r.slug, lang)) + '\n    message: ' + JSON.stringify(short(o.msg, 170)) + '\n    (client-side og:title after JS, NOT what crawlers read: ' + short(o.clientOgTitle, 60) + ')' + (errs.length ? ' pageerrors=' + JSON.stringify(errs) : ''));
+                } catch (e) { log('[' + label + '] ' + r.slug + ' ?lang=' + lang + ': ERROR ' + String(e.message).split('\n')[0]); }
+                await ctx.close();
+              }
+            }
+            await browser.close();
+            log('\nDONE (GET-only; no writes).');
+          })().catch((e) => { console.error('PROBE ERROR: ' + (e && e.stack || e)); process.exit(0); });
           JS_EOF
-          cat > nopin.txt <<'IDS_EOF'
-          c627c509-e246-420a-a3da-c5f440816f70
-          e7080606-e0cc-4bce-b0e6-fb26ca1840f8
-          f45e4cca-7404-4db6-a150-9e02f214fbf7
-          9a719a5a-081b-486d-b661-f02a593acb9f
-          67973cc8-ff60-472e-bce5-78cf3ba46fe3
-          d737bef7-5368-4efe-937c-4881942db686
-          dd5e2aea-e21b-40a1-9320-8d6a97ee29c3
-          56c45df2-0bdd-4ac4-8358-affaa0060b87
-          2b3557fb-3bf1-4a82-8b64-1c811ccef0b0
-          8e2e7f56-82ac-493a-8694-bc5944b15b6a
-          5b404911-ec76-4e7a-b120-0e5139d4e21a
-          41bcf31a-7c96-4b29-a7b6-970b610f0c02
-          ffcf7fd5-3111-4182-9164-519ef9db4bd3
-          eb0ef259-6aef-4c0f-8781-caa1a7468948
-          9dbaff42-9f7d-4e5f-a103-65f66364c30e
-          807e1687-4d67-4be6-9297-071612ead779
-          2d457bb2-ea10-4106-9001-1cabd7480d46
-          d15bd1a5-ef6f-482a-9f3c-42b89bd5f2d8
-          f8795eaf-b4db-427f-b04f-9e760b27942b
-          c0f2c802-dd34-4af0-a869-1735a1fa129a
-          ccae7084-2a64-4a62-b466-b84f98445f41
-          de79effe-9819-4b84-84fc-57f699e5fe7f
-          83e2594b-9316-44d0-986a-dbbefa68ae93
-          5aa7a63c-828f-4470-a6a6-37371cedc017
-          ce6f34fb-c6ca-4fda-a539-ada7131bbd97
-          2b1af93d-25a2-4404-addb-90f0c35f9515
-          e3d7e6bd-a365-43fa-a77c-04e7b013db9b
-          25466382-a766-463f-a743-8c4aff349cf2
-          57a355df-da9f-4c59-89b6-7d795939e7ce
-          670e15a9-5f2e-43bc-b8bb-153b6b53bbea
-          34e02f9b-90a7-4d32-ad67-3c4ec49fd538
-          6df983c0-7ad5-4816-be2f-d5fdce863768
-          5dcacebe-7d26-4ae3-aede-9df54f4649aa
-          b4f2f48b-da45-4018-94e8-4474ee636119
-          61e0b0f0-009c-4863-8547-052002ac3a10
-          b6a12374-f895-4cb1-85a0-c48daad11025
-          3eea383a-88b5-4b45-86f1-219b73b395cf
-          793c8947-fbe6-4560-9fc0-7f46390e6e2b
-          74f47a8c-52c8-4abb-962f-e481f917a0e3
-          c7e5d649-920d-48a7-8897-587f60c96301
-          092c7d71-6110-4071-9af0-98936cda3cea
-          ccd18840-ad0f-488f-b810-3adfadca2832
-          d3f6306d-d771-4cfe-bb44-77bec703d106
-          40e8fb92-e28a-49d3-b170-74d93842facd
-          IDS_EOF
-          node diag.js 2>&1 | tee diag-report.txt
+          node probe.js 2>&1 | tee probe-report.txt
