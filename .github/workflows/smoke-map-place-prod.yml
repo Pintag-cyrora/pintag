@@ -122,7 +122,7 @@ jobs:
             });
 
             await section('B. REAL PUBLIC LISTINGS classified by the deployed map-location.js', async () => {
-              const rest = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,province_en,market_status,map_embed_url&order=created_at.desc&limit=1000', { apikey: ANON, authorization: 'Bearer ' + ANON });
+              const rest = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,province_en,market_status,created_at,map_embed_url&order=created_at.desc&limit=1000', { apikey: ANON, authorization: 'Bearer ' + ANON });
               try { rows = JSON.parse(rest.text); } catch (e) { rows = []; }
               if (!Array.isArray(rows)) { info('listings REST answered HTTP ' + rest.status + ': ' + rest.text.slice(0, 200)); rows = []; }
               check('public listings fetched (anon, GET only)', rows.length > 0, rows.length + ' rows');
@@ -135,6 +135,26 @@ jobs:
               check('legacy parseMapUrl agrees: places ok:false/place-only (no lat/lng), exact ok:true', place.every((x) => { const p = M.parseMapUrl(x.r.map_embed_url); return p.ok === false && p.reason === 'place-only' && !('lat' in p); }) && exact.every((x) => M.parseMapUrl(x.r.map_embed_url).ok === true));
               info('named-place listings: ' + place.map((x) => x.r.slug).join(', '));
               info('listings with an unexpanded short link (still invalid until expanded): ' + invalid.filter((x) => x.c.reason === 'unresolved-short-link').map((x) => x.r.slug).join(', '));
+              const AUDIT = {"c627c509-e246-420a-a3da-c5f440816f70": "no-coordinates", "e7080606-e0cc-4bce-b0e6-fb26ca1840f8": "no-coordinates", "f45e4cca-7404-4db6-a150-9e02f214fbf7": "no-coordinates", "9a719a5a-081b-486d-b661-f02a593acb9f": "no-coordinates", "67973cc8-ff60-472e-bce5-78cf3ba46fe3": "no-coordinates", "d737bef7-5368-4efe-937c-4881942db686": "unresolved-short-link", "dd5e2aea-e21b-40a1-9320-8d6a97ee29c3": "unresolved-short-link", "56c45df2-0bdd-4ac4-8358-affaa0060b87": "unresolved-short-link", "2b3557fb-3bf1-4a82-8b64-1c811ccef0b0": "unresolved-short-link", "8e2e7f56-82ac-493a-8694-bc5944b15b6a": "unresolved-short-link", "5b404911-ec76-4e7a-b120-0e5139d4e21a": "unresolved-short-link", "41bcf31a-7c96-4b29-a7b6-970b610f0c02": "no-url", "ffcf7fd5-3111-4182-9164-519ef9db4bd3": "no-url", "eb0ef259-6aef-4c0f-8781-caa1a7468948": "no-url", "9dbaff42-9f7d-4e5f-a103-65f66364c30e": "no-url", "807e1687-4d67-4be6-9297-071612ead779": "no-url", "2d457bb2-ea10-4106-9001-1cabd7480d46": "no-url", "d15bd1a5-ef6f-482a-9f3c-42b89bd5f2d8": "no-url", "f8795eaf-b4db-427f-b04f-9e760b27942b": "no-url", "c0f2c802-dd34-4af0-a869-1735a1fa129a": "no-url", "ccae7084-2a64-4a62-b466-b84f98445f41": "no-url", "de79effe-9819-4b84-84fc-57f699e5fe7f": "no-url", "83e2594b-9316-44d0-986a-dbbefa68ae93": "no-url", "5aa7a63c-828f-4470-a6a6-37371cedc017": "no-url", "ce6f34fb-c6ca-4fda-a539-ada7131bbd97": "no-url", "2b1af93d-25a2-4404-addb-90f0c35f9515": "no-url", "e3d7e6bd-a365-43fa-a77c-04e7b013db9b": "no-url", "25466382-a766-463f-a743-8c4aff349cf2": "no-url", "57a355df-da9f-4c59-89b6-7d795939e7ce": "no-url", "670e15a9-5f2e-43bc-b8bb-153b6b53bbea": "no-url", "34e02f9b-90a7-4d32-ad67-3c4ec49fd538": "no-url", "6df983c0-7ad5-4816-be2f-d5fdce863768": "no-url", "5dcacebe-7d26-4ae3-aede-9df54f4649aa": "no-url", "b4f2f48b-da45-4018-94e8-4474ee636119": "no-url", "61e0b0f0-009c-4863-8547-052002ac3a10": "no-url", "b6a12374-f895-4cb1-85a0-c48daad11025": "no-url", "3eea383a-88b5-4b45-86f1-219b73b395cf": "no-url", "793c8947-fbe6-4560-9fc0-7f46390e6e2b": "no-url", "74f47a8c-52c8-4abb-962f-e481f917a0e3": "no-url", "c7e5d649-920d-48a7-8897-587f60c96301": "no-url", "092c7d71-6110-4071-9af0-98936cda3cea": "no-url", "ccd18840-ad0f-488f-b810-3adfadca2832": "no-url", "d3f6306d-d771-4cfe-bb44-77bec703d106": "no-url", "40e8fb92-e28a-49d3-b170-74d93842facd": "no-url"};  // id -> state at the 2026-10-01T06:30Z audit (the 44 public listings without a pin)
+              const AUDIT_AT = '2026-10-01T06:30:00Z';
+              const ids = new Set(rows.map((r) => r.id));
+              check('RECONCILE: listing ids are unique (no duplicate rows inflate the count)', ids.size === rows.length, ids.size + ' unique of ' + rows.length);
+              check('RECONCILE: each listing is in exactly one class (exact + place + invalid = total)', exact.length + place.length + invalid.length === rows.length, exact.length + '+' + place.length + '+' + invalid.length + '=' + (exact.length + place.length + invalid.length));
+              const byId = new Map(cls.map((x) => [x.r.id, x]));
+              const wrong = [];
+              for (const id of Object.keys(AUDIT)) {
+                const x = byId.get(id);
+                const want = AUDIT[id] === 'no-url' ? 'invalid/no-url' : AUDIT[id] === 'unresolved-short-link' ? 'invalid/unresolved-short-link' : 'place';
+                const got = !x ? 'MISSING' : x.c.type === 'invalid' ? 'invalid/' + x.c.reason : x.c.type;
+                if (got !== want) wrong.push(id + ': expected ' + want + ', got ' + got);
+              }
+              check('RECONCILE: all 44 audited no-pin listings are still present and classify as expected (33 no-url, 6 short link, 5 -> place)', wrong.length === 0, wrong.join(' | '));
+              const added = cls.filter((x) => !(x.r.id in AUDIT) && x.r.created_at > AUDIT_AT);
+              info('listings created since the audit (' + AUDIT_AT + '): ' + (added.map((x) => x.r.slug + ' [' + x.c.type + ', created ' + x.r.created_at + ']').join('; ') || 'none'));
+              const nonAuditNonExact = cls.filter((x) => !(x.r.id in AUDIT) && x.c.type !== 'exact');
+              check('RECONCILE: every public listing outside the 44 is an exact pin (56 at audit + any newly created)', nonAuditNonExact.length === 0, nonAuditNonExact.map((x) => x.r.slug).join(','));
+              check('RECONCILE: exact count = 56 at audit + listings created since', exact.length === 56 + added.filter((x) => x.c.type === 'exact').length, exact.length + ' exact; ' + added.length + ' new');
+
             });
 
             await section('C. LIVE listings.html map view', async () => {
