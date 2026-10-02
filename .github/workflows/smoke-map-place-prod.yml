@@ -1,15 +1,7 @@
-name: "SMOKE (temporary): production named-place map functionality (read-only)"
+name: "DIAG (temporary): public listing count vs original audit (read-only, anon)"
 
-# TEMPORARY, READ-ONLY smoke test of what is live on pintag.io after PR #123.
-# NOT to be merged. No secrets, no environment, no database connection.
-#
-#   - The only direct network traffic is public GETs of the same pages and the same
-#     public listings any visitor loads (anon key from config.prod.js, as the site does).
-#   - Every browser request that is not GET/HEAD/OPTIONS is ABORTED, so nothing the
-#     pages do (page views, impressions, view counters are all POSTs) can write.
-#   - The admin.html check loads the PRODUCTION-served admin.html with its auth script
-#     replaced by a stub and its REST calls answered locally; it cannot log in or write.
-#   - No migration, no deploy, no data change.
+# TEMPORARY, READ-ONLY. NOT to be merged. No secrets, no environment, no database connection.
+# Only public anonymous GETs of the same listings any visitor can read (anon key from config.prod.js).
 
 on:
   workflow_dispatch:
@@ -25,281 +17,99 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  smoke:
-    name: Production map/place smoke test (read-only)
+  diag:
+    name: Public listing count vs audit (read-only)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      EXPECT_SHA: 3a7fd1e13717c7b2ff19008fbfd763b968d661a5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
-
-      - name: Install Playwright
-        run: |
-          npm install --no-audit --no-fund --no-save @playwright/test@1.56.1
-          npx playwright install --with-deps chromium
-
-      - name: Smoke test (read-only)
+          node-version: 20
+      - name: Compare anon public set with the 2026-10-01 audit
         run: |
           set -uo pipefail
-          git show 1944bb97bd4fef80f804e963c9161c53ec81399c:listings.html > old-listings.html
-          git show 1944bb97bd4fef80f804e963c9161c53ec81399c:map-location.js > old-map-location.js
-          cat > smoke.js <<'JS_EOF'
-          // READ-ONLY production smoke test for the named-place map work (PR #123).
-          // Every browser request that is not GET/HEAD/OPTIONS is aborted, so nothing the
-          // pages do (page views, impressions, view counters are POSTs) can write to production.
-          const { chromium } = require('@playwright/test');
-          const fs = require('fs'), crypto = require('crypto');
-
-          const BASE = 'https://pintag.io';
-          const EXPECT_SHA = (process.env.EXPECT_SHA || '').slice(0, 8);
-          const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
-          const results = [];
-          const check = (name, ok, detail) => { results.push({ name, ok }); console.log((ok ? 'PASS  ' : 'FAIL  ') + name + (detail ? '  -- ' + detail : '')); };
-          const info = (msg) => console.log('INFO  ' + msg);
+          cat > diag.js <<'JS_EOF'
+          const fs = require('fs');
           const cfg = fs.readFileSync('config.prod.js', 'utf8');
           const pick = (k) => (cfg.match(new RegExp(k + ":\\s*'([^']+)'")) || [])[1];
           const SUPA = pick('supabaseUrl'), ANON = pick('anonKey');
-
-          async function get(u, extra) {
-            const r = await fetch(u, { headers: Object.assign({ 'cache-control': 'no-cache', 'user-agent': UA, accept: '*/*' }, extra || {}) });
-            return { status: r.status, text: await r.text() };
-          }
-          let blocked = 0;
-          async function readOnly(context) {
-            await context.route('**/*', (route) => {
-              const m = route.request().method();
-              if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return route.fallback();
-              blocked++;
-              return route.abort();
-            });
-          }
-          async function section(title, fn) {
-            console.log('\n=== ' + title + ' ===');
-            try { await fn(); } catch (e) { check(title + ' -- completed without a script/timeout error', false, String(e && e.message || e).split('\n')[0]); }
-          }
-          function watch(page) {
-            const d = { errors: [], console: [], failed: [] };
-            page.on('pageerror', (e) => d.errors.push(e.message));
-            page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') d.console.push(m.type() + ': ' + m.text().slice(0, 160)); });
-            page.on('requestfailed', (r) => d.failed.push(r.url().slice(0, 100) + ' ' + (r.failure() && r.failure().errorText)));
-            return d;
-          }
-
+          const AUDIT_NOW = '2026-10-01T06:30:03Z';
+          const H = { apikey: ANON, authorization: 'Bearer ' + ANON };
+          const NO_PIN = new Set(fs.readFileSync('nopin.txt', 'utf8').split(/\s+/).filter(Boolean));
           (async () => {
-            const browser = await chromium.launch();
-            const mkCtx = async () => { const c = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA }); await readOnly(c); return c; };
-            let rows = [], exact = [], place = [], invalid = [], M, clickPathNew = null;
-
-            await section('A. DEPLOYED COMMIT (the deploy stamps the first 8 chars of the commit into asset URLs)', async () => {
-              const ctx = await mkCtx();
-              const served = {};
-              for (const p of ['listings.html', 'listing.html', 'admin.html']) {
-                const page = await ctx.newPage();
-                try {
-                  const resp = await page.goto(BASE + '/' + p + '?smoke=' + Date.now(), { waitUntil: 'commit', timeout: 45000 });
-                  served[p] = await resp.text();
-                  check(p + ' is served (HTTP 200, real browser)', resp.status() === 200, 'HTTP ' + resp.status());
-                } catch (e) { served[p] = ''; check(p + ' is served', false, e.message.split('\n')[0]); }
-                check(p + ' references map-location.js?v=' + EXPECT_SHA, served[p].includes('map-location.js?v=' + EXPECT_SHA));
-                await page.close();
-              }
-              check('listings.html carries the place notice + classifier', served['listings.html'].includes('map-place-notice') && served['listings.html'].includes('classifyMapUrl'));
-              check('listing.html carries the place-level block', served['listing.html'].includes('map-place-badge') && served['listing.html'].includes('data-map-type="place"'));
-              check('admin.html carries the Named place classification', served['admin.html'].includes('Named place') && served['admin.html'].includes('classifyMapUrl'));
-              await ctx.close();
-              const mlServed = await get(BASE + '/map-location.js?v=' + EXPECT_SHA);
-              const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
-              check('served map-location.js is byte-identical to the repo file at this commit', mlServed.status === 200 && sha(mlServed.text) === sha(fs.readFileSync('map-location.js', 'utf8')), sha(mlServed.text).slice(0, 12));
-              fs.writeFileSync('served-map-location.js', mlServed.text);
-              M = require('./served-map-location.js');
-            });
-
-            await section('B. REAL PUBLIC LISTINGS classified by the deployed map-location.js', async () => {
-              const rest = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,province_en,market_status,created_at,map_embed_url&order=created_at.desc&limit=1000', { apikey: ANON, authorization: 'Bearer ' + ANON });
-              try { rows = JSON.parse(rest.text); } catch (e) { rows = []; }
-              if (!Array.isArray(rows)) { info('listings REST answered HTTP ' + rest.status + ': ' + rest.text.slice(0, 200)); rows = []; }
-              check('public listings fetched (anon, GET only)', rows.length > 0, rows.length + ' rows');
-              const cls = rows.map((r) => ({ r, c: M.classifyMapUrl(r.map_embed_url) }));
-              exact = cls.filter((x) => x.c.type === 'exact'); place = cls.filter((x) => x.c.type === 'place'); invalid = cls.filter((x) => x.c.type === 'invalid');
-              const byReason = {}; invalid.forEach((x) => { byReason[x.c.reason] = (byReason[x.c.reason] || 0) + 1; });
-              info('total=' + rows.length + '  exact=' + exact.length + '  place=' + place.length + '  invalid=' + invalid.length + ' ' + JSON.stringify(byReason));
-              check('every named place carries NO latitude/longitude', place.length > 0 && place.every((x) => !('lat' in x.c) && !('lng' in x.c) && x.c.ok === false));
-              check('no named place was classified invalid; none became an exact pin', place.every((x) => x.c.type === 'place') && exact.every((x) => typeof x.c.lat === 'number' && typeof x.c.lng === 'number'));
-              check('legacy parseMapUrl agrees: places ok:false/place-only (no lat/lng), exact ok:true', place.every((x) => { const p = M.parseMapUrl(x.r.map_embed_url); return p.ok === false && p.reason === 'place-only' && !('lat' in p); }) && exact.every((x) => M.parseMapUrl(x.r.map_embed_url).ok === true));
-              info('named-place listings: ' + place.map((x) => x.r.slug).join(', '));
-              info('listings with an unexpanded short link (still invalid until expanded): ' + invalid.filter((x) => x.c.reason === 'unresolved-short-link').map((x) => x.r.slug).join(', '));
-              const AUDIT = {"c627c509-e246-420a-a3da-c5f440816f70": "no-coordinates", "e7080606-e0cc-4bce-b0e6-fb26ca1840f8": "no-coordinates", "f45e4cca-7404-4db6-a150-9e02f214fbf7": "no-coordinates", "9a719a5a-081b-486d-b661-f02a593acb9f": "no-coordinates", "67973cc8-ff60-472e-bce5-78cf3ba46fe3": "no-coordinates", "d737bef7-5368-4efe-937c-4881942db686": "unresolved-short-link", "dd5e2aea-e21b-40a1-9320-8d6a97ee29c3": "unresolved-short-link", "56c45df2-0bdd-4ac4-8358-affaa0060b87": "unresolved-short-link", "2b3557fb-3bf1-4a82-8b64-1c811ccef0b0": "unresolved-short-link", "8e2e7f56-82ac-493a-8694-bc5944b15b6a": "unresolved-short-link", "5b404911-ec76-4e7a-b120-0e5139d4e21a": "unresolved-short-link", "41bcf31a-7c96-4b29-a7b6-970b610f0c02": "no-url", "ffcf7fd5-3111-4182-9164-519ef9db4bd3": "no-url", "eb0ef259-6aef-4c0f-8781-caa1a7468948": "no-url", "9dbaff42-9f7d-4e5f-a103-65f66364c30e": "no-url", "807e1687-4d67-4be6-9297-071612ead779": "no-url", "2d457bb2-ea10-4106-9001-1cabd7480d46": "no-url", "d15bd1a5-ef6f-482a-9f3c-42b89bd5f2d8": "no-url", "f8795eaf-b4db-427f-b04f-9e760b27942b": "no-url", "c0f2c802-dd34-4af0-a869-1735a1fa129a": "no-url", "ccae7084-2a64-4a62-b466-b84f98445f41": "no-url", "de79effe-9819-4b84-84fc-57f699e5fe7f": "no-url", "83e2594b-9316-44d0-986a-dbbefa68ae93": "no-url", "5aa7a63c-828f-4470-a6a6-37371cedc017": "no-url", "ce6f34fb-c6ca-4fda-a539-ada7131bbd97": "no-url", "2b1af93d-25a2-4404-addb-90f0c35f9515": "no-url", "e3d7e6bd-a365-43fa-a77c-04e7b013db9b": "no-url", "25466382-a766-463f-a743-8c4aff349cf2": "no-url", "57a355df-da9f-4c59-89b6-7d795939e7ce": "no-url", "670e15a9-5f2e-43bc-b8bb-153b6b53bbea": "no-url", "34e02f9b-90a7-4d32-ad67-3c4ec49fd538": "no-url", "6df983c0-7ad5-4816-be2f-d5fdce863768": "no-url", "5dcacebe-7d26-4ae3-aede-9df54f4649aa": "no-url", "b4f2f48b-da45-4018-94e8-4474ee636119": "no-url", "61e0b0f0-009c-4863-8547-052002ac3a10": "no-url", "b6a12374-f895-4cb1-85a0-c48daad11025": "no-url", "3eea383a-88b5-4b45-86f1-219b73b395cf": "no-url", "793c8947-fbe6-4560-9fc0-7f46390e6e2b": "no-url", "74f47a8c-52c8-4abb-962f-e481f917a0e3": "no-url", "c7e5d649-920d-48a7-8897-587f60c96301": "no-url", "092c7d71-6110-4071-9af0-98936cda3cea": "no-url", "ccd18840-ad0f-488f-b810-3adfadca2832": "no-url", "d3f6306d-d771-4cfe-bb44-77bec703d106": "no-url", "40e8fb92-e28a-49d3-b170-74d93842facd": "no-url"};  // id -> state at the 2026-10-01T06:30Z audit (the 44 public listings without a pin)
-              const AUDIT_AT = '2026-10-01T06:30:00Z';
-              const ids = new Set(rows.map((r) => r.id));
-              check('RECONCILE: listing ids are unique (no duplicate rows inflate the count)', ids.size === rows.length, ids.size + ' unique of ' + rows.length);
-              check('RECONCILE: each listing is in exactly one class (exact + place + invalid = total)', exact.length + place.length + invalid.length === rows.length, exact.length + '+' + place.length + '+' + invalid.length + '=' + (exact.length + place.length + invalid.length));
-              const byId = new Map(cls.map((x) => [x.r.id, x]));
-              const wrong = [];
-              for (const id of Object.keys(AUDIT)) {
-                const x = byId.get(id);
-                const want = AUDIT[id] === 'no-url' ? 'invalid/no-url' : AUDIT[id] === 'unresolved-short-link' ? 'invalid/unresolved-short-link' : 'place';
-                const got = !x ? 'MISSING' : x.c.type === 'invalid' ? 'invalid/' + x.c.reason : x.c.type;
-                if (got !== want) wrong.push(id + ': expected ' + want + ', got ' + got);
-              }
-              check('RECONCILE: all 44 audited no-pin listings are still present and classify as expected (33 no-url, 6 short link, 5 -> place)', wrong.length === 0, wrong.join(' | '));
-              const added = cls.filter((x) => !(x.r.id in AUDIT) && x.r.created_at > AUDIT_AT);
-              info('listings created since the audit (' + AUDIT_AT + '): ' + (added.map((x) => x.r.slug + ' [' + x.c.type + ', created ' + x.r.created_at + ']').join('; ') || 'none'));
-              const nonAuditNonExact = cls.filter((x) => !(x.r.id in AUDIT) && x.c.type !== 'exact');
-              check('RECONCILE: every public listing outside the 44 is an exact pin (56 at audit + any newly created)', nonAuditNonExact.length === 0, nonAuditNonExact.map((x) => x.r.slug).join(','));
-              info('RECONCILE: exact=' + exact.length + ' vs 56 at audit; unexplained extra exact listings (not created since the audit): ' + (exact.length - 56 - added.filter((x) => x.c.type === 'exact').length));
-              const recent = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,status,created_at,updated_at,published_at,deleted_at&order=updated_at.desc&limit=4', { apikey: ANON, authorization: 'Bearer ' + ANON });
-              info('most recently UPDATED public listings (HTTP ' + recent.status + '): ' + recent.text.slice(0, 900));
-              const newest = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,status,created_at&order=created_at.desc&limit=3', { apikey: ANON, authorization: 'Bearer ' + ANON });
-              info('most recently CREATED public listings (HTTP ' + newest.status + '): ' + newest.text.slice(0, 600));
-
-            });
-
-            await section('C. LIVE listings.html map view', async () => {
-              const ctx = await mkCtx();
-              const page = await ctx.newPage();
-              const d = watch(page);
-              await page.goto(BASE + '/listings.html', { waitUntil: 'domcontentloaded', timeout: 45000 });
-              await page.waitForSelector('#listings-container .pt-card, #listings-container [data-slug]', { timeout: 45000 });
-              await page.click('#btn-map');
-              try {
-                await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 30000 });
-                clickPathNew = true;
-              } catch (e) {
-                info('pageerrors: ' + JSON.stringify(d.errors.slice(0, 5)));
-                const direct = await page.evaluate(() => { try { window.renderMap(); return { ok: true, markers: window._markers.length, viewMode: window._viewMode }; } catch (e) { return { ok: false, error: String(e && e.stack || e).slice(0, 400) }; } });
-                info('direct renderMap() call: ' + JSON.stringify(direct));
-                const diag = await page.evaluate(() => ({
-                  L: typeof window.L, map: typeof window._map, markers: window._markers ? window._markers.length : null,
-                  mapWrap: document.getElementById('map-wrap') && getComputedStyle(document.getElementById('map-wrap')).display,
-                  count: (document.getElementById('count-text') || {}).textContent, cards: document.querySelectorAll('#listings-container [data-slug], #listings-container .pt-card').length,
-                }));
-                info('map did not populate. diagnostics: ' + JSON.stringify(diag));
-                info('console: ' + JSON.stringify(d.console.slice(0, 8)));
-                info('failed requests: ' + JSON.stringify(d.failed.slice(0, 8)));
-                clickPathNew = false;
-              }
-              info('click path populated the map on production code: ' + clickPathNew + ' (when false, markers below come from a direct window.renderMap() call, the same function the click handler invokes)');
-              const out = await page.evaluate(() => ({
-                markers: window._markers.map((m) => ({ slug: m._pintag.slug, lat: m.getLatLng().lat, lng: m.getLatLng().lng })),
-                placeNotice: { text: document.getElementById('map-place-notice').textContent, count: document.getElementById('map-place-notice').getAttribute('data-count'), visible: getComputedStyle(document.getElementById('map-place-notice')).display !== 'none' },
-                unmapped: { text: document.getElementById('map-unmapped').textContent, visible: getComputedStyle(document.getElementById('map-unmapped')).display !== 'none' },
-              }));
-              const placeSlugs = new Set(place.map((x) => x.r.slug));
-              const exactBySlug = new Map(exact.map((x) => [x.r.slug, x.c]));
-              check('exact listings still get Leaflet markers', out.markers.length === exact.length, out.markers.length + ' markers vs ' + exact.length + ' exact listings');
-              check('every marker sits exactly on its listing\'s own coordinate', out.markers.every((m) => { const c = exactBySlug.get(m.slug); return c && Math.abs(c.lat - m.lat) < 1e-9 && Math.abs(c.lng - m.lng) < 1e-9; }));
-              check('NO named-place listing has a marker (no fabricated coordinates)', out.markers.every((m) => !placeSlugs.has(m.slug)));
-              check('place notice visible and counts the named places separately', out.placeNotice.visible && out.placeNotice.count === String(place.length) && out.placeNotice.text.includes(place.length + ' of ' + rows.length) && /named Google Maps place/i.test(out.placeNotice.text), out.placeNotice.text);
-              check('unmapped notice counts only listings with no usable location', out.unmapped.visible && out.unmapped.text.includes(invalid.length + ' of ' + rows.length) && !/place/i.test(out.unmapped.text), out.unmapped.text);
-              check('markers + places + unmapped account for every listing', out.markers.length + place.length + invalid.length === rows.length);
-              check('no page errors on listings.html', d.errors.length === 0, d.errors.join(' | '));
-              await ctx.close();
-            });
-
-            await section('C2. BASELINE: the pre-#123 listings.html + map-location.js served into the same live origin', async () => {
-              const ctx = await mkCtx();
-              await ctx.route('**/listings.html*', (r) => r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fs.readFileSync('old-listings.html', 'utf8').replace(/__ASSET_VERSION__/g, EXPECT_SHA) }));
-              await ctx.route('**/map-location.js*', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync('old-map-location.js', 'utf8') }));
-              const page = await ctx.newPage();
-              const d = watch(page);
-              await page.goto(BASE + '/listings.html', { waitUntil: 'domcontentloaded', timeout: 45000 });
-              await page.waitForSelector('#listings-container .pt-card, #listings-container [data-slug]', { timeout: 45000 });
-              await page.click('#btn-map');
-              let n = 0;
-              try { await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 30000 }); n = await page.evaluate(() => window._markers.length); } catch (e) { n = 0; }
-              info('baseline (pre-#123 code) markers: ' + n + '; pageerrors: ' + JSON.stringify(d.errors.slice(0, 3)));
-              let direct = null;
-              if (n === 0) { direct = await page.evaluate(() => { try { window.renderMap(); return window._markers.length; } catch (e) { return 'error: ' + String(e && e.message || e).slice(0, 120); } }); }
-              info('baseline click-path markers: ' + n + '; baseline direct renderMap() markers: ' + direct + '; new code click path: ' + clickPathNew);
-              check('BASELINE comparison: pre-#123 code behaves the same as production code in this environment (same click-path outcome)', (n > 0) === !!clickPathNew, 'old click-path ' + n + ' vs new click-path ' + clickPathNew);
-              if (direct !== null) check('BASELINE: pre-#123 direct renderMap() plots the same exact pins as production (' + exact.length + ')', direct === exact.length, String(direct));
-              await ctx.close();
-            });
-
-            await section('D. LIVE listing.html detail pages', async () => {
-              const detail = async (slug) => {
-                const ctx = await mkCtx();
-                const page = await ctx.newPage();
-                const d = watch(page);
-                await page.goto(BASE + '/listing.html?slug=' + encodeURIComponent(slug) + '&lang=en', { waitUntil: 'domcontentloaded', timeout: 45000 });
-                await page.waitForSelector('.hero-map-section', { timeout: 45000 });
-                const r = await page.evaluate(() => {
-                  const sec = document.querySelector('.hero-map-section');
-                  const link = sec.querySelector('a.map-open-link');
-                  const pl = sec.querySelector('.map-place');
-                  return { iframe: sec.querySelectorAll('iframe').length, mapFrame: sec.querySelectorAll('.map-frame').length, place: !!pl, placeType: pl && pl.getAttribute('data-map-type'), text: pl ? pl.textContent : '', href: link && link.getAttribute('href'), target: link && link.getAttribute('target') };
-                });
-                await ctx.close();
-                return { d: r, errors: d.errors };
-              };
-              for (const x of exact.slice(0, 2)) {
-                const { d, errors } = await detail(x.r.slug);
-                check('exact listing ' + x.r.slug + ': embedded map + link, no place block', d.iframe === 1 && !d.place && /google\.com\/maps\?q=/.test(d.href || ''), JSON.stringify({ iframe: d.iframe, place: d.place }));
-                check('exact listing ' + x.r.slug + ': no page errors', errors.length === 0, errors.join(' | '));
-              }
-              for (const x of place.slice(0, 3)) {
-                const { d, errors } = await detail(x.r.slug);
-                check('place listing ' + x.r.slug + ': place-level (not invalid), no embed, no pin', d.place && d.placeType === 'place' && d.iframe === 0 && d.mapFrame === 0, JSON.stringify({ place: d.place, iframe: d.iframe }));
-                check('place listing ' + x.r.slug + ': states there are no exact coordinates', /no exact coordinates/i.test(d.text));
-                check('place listing ' + x.r.slug + ': original Google Maps link preserved byte-for-byte, new tab', d.href === x.r.map_embed_url && d.target === '_blank');
-                check('place listing ' + x.r.slug + ': no page errors', errors.length === 0, errors.join(' | '));
-              }
-            });
-
-            await section('E. production admin.html map-link field (served code, auth stubbed, GET-only, no writes)', async () => {
-              const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA });
-              await readOnly(ctx);
-              await ctx.route('**/cdn.jsdelivr.net/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript',
-                body: 'window.supabase={createClient:function(){return {auth:{getSession:async()=>({data:{session:null}}),refreshSession:async()=>({data:{session:null}}),getUser:async()=>({data:{user:{}}}),onAuthStateChange:function(){return {data:{subscription:{unsubscribe:function(){}}}};}},storage:{from:function(){return {upload:async()=>({}),getPublicUrl:function(){return {data:{publicUrl:""}};}};}}};}};' }));
-              await ctx.route('**/admin-auth.js*', (r) => r.fulfill({ status: 200, contentType: 'application/javascript',
-                body: 'window.PintagAdminAuth={protect:function(c,cb){cb();},token:async()=>"stub",requireAdminSession:async()=>true,ADMIN_EMAIL:"x"};' }));
-              await ctx.route('**/rest/v1/**', (r) => r.request().method() === 'OPTIONS'
-                ? r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' }, body: '' })
-                : r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' }));
-              const page = await ctx.newPage();
-              const d = watch(page);
-              await page.goto(BASE + '/admin.html', { waitUntil: 'domcontentloaded', timeout: 45000 });
-              await page.waitForFunction(() => typeof window.reportMapCoords === 'function' && document.getElementById('f-map-hint'), null, { timeout: 45000 });
-              const PID = '0x3123456789abcdef:0x7f9e8d7c6b5a4f3e';
-              const probe = (v) => page.evaluate((url) => { reportMapCoords(url); const h = document.getElementById('f-map-hint'); return { state: h.getAttribute('data-map-state'), text: h.textContent }; }, v);
-              const ex = await probe('https://www.google.com/maps?q=17.9757,102.6331');
-              check('admin: exact link -> "Exact location"', ex.state === 'exact' && /Exact location/.test(ex.text), ex.text);
-              const ex2 = await probe('https://www.google.com/maps?q=17.9757, 102.6331');
-              check('admin: newer exact format (?q=lat, lng) -> "Exact location"', ex2.state === 'exact');
-              const pl = await probe('https://www.google.com/maps?q=Example+Hotel,+Vientiane&ftid=' + PID + '&entry=gps');
-              check('admin: Google place link -> "Named place", explained, not an error', pl.state === 'place' && /Named place/.test(pl.text) && /no exact coordinates/.test(pl.text) && /can be saved/.test(pl.text) && !/Unusable/.test(pl.text), pl.text);
-              const bad = await probe('https://www.google.com/maps?q=apartments+in+Vientiane');
-              check('admin: generic search -> "Unusable link" with the existing warning', bad.state === 'invalid' && /Unusable link/.test(bad.text) && /will NOT place a pin/.test(bad.text), bad.text);
-              const rev = await probe('https://www.google.com/maps?q=102.6331, 17.9757');
-              check('admin: reversed coordinates -> unusable (transposed)', rev.state === 'invalid' && /transposed/.test(rev.text), rev.text);
-              check('no page errors on admin.html', d.errors.length === 0, d.errors.join(' | '));
-              await ctx.close();
-            });
-
-            await browser.close();
-            console.log('\nnon-GET browser requests aborted (none reached production): ' + blocked);
-            const failed = results.filter((r) => !r.ok);
-            console.log('\nSUMMARY: ' + (results.length - failed.length) + ' passed, ' + failed.length + ' failed');
-            failed.forEach((f) => console.log('  FAILED: ' + f.name));
-            process.exit(failed.length ? 1 : 0);
-          })().catch((e) => { console.error('SMOKE SCRIPT ERROR: ' + (e && e.stack || e)); process.exit(2); });
+            const r = await fetch(SUPA + '/rest/v1/properties?select=*&limit=1000', { headers: H });
+            const rows = await r.json();
+            console.log('HTTP ' + r.status + '; anon-visible rows: ' + (Array.isArray(rows) ? rows.length : JSON.stringify(rows).slice(0, 200)));
+            if (!Array.isArray(rows)) process.exit(1);
+            const keys = Object.keys(rows[0] || {});
+            const timeKeys = keys.filter((k) => /(_at|_date|date|time|publish|verified|created|updated)/i.test(k));
+            console.log('time-like columns visible to anon: ' + timeKeys.join(', '));
+            for (const k of timeKeys) console.log('  ' + k + ': non-null in ' + rows.filter((x) => x[k] != null).length + ' of ' + rows.length);
+            const statusCount = {}; rows.forEach((x) => { const s = x.status + '/deleted=' + (x.deleted_at != null); statusCount[s] = (statusCount[s] || 0) + 1; });
+            console.log('status/deleted breakdown (anon): ' + JSON.stringify(statusCount));
+            console.log('rows violating the public rule (status in active|available, deleted_at null): ' + rows.filter((x) => !(['active', 'available'].includes(x.status) && x.deleted_at == null)).length);
+            const ids = new Set(rows.map((x) => x.id));
+            console.log('unique ids: ' + ids.size + ' of ' + rows.length);
+            const missing = [...NO_PIN].filter((id) => !ids.has(id));
+            console.log('audited no-pin ids (44) missing from anon set: ' + missing.length);
+            const outside = rows.filter((x) => !NO_PIN.has(x.id));
+            console.log('anon rows outside the 44 no-pin ids (audit: 56 exact): ' + outside.length);
+            const fmt = (x) => ({ id: x.id, slug: x.slug, status: x.status, market_status: x.market_status, deleted_at: x.deleted_at, ...Object.fromEntries(timeKeys.map((k) => [k, x[k]])) });
+            const after = rows.filter((x) => timeKeys.some((k) => x[k] && String(x[k]) > AUDIT_NOW));
+            console.log('\nrows with ANY time-like value later than the audit (' + AUDIT_NOW + '): ' + after.length);
+            after.forEach((x) => console.log('  ' + JSON.stringify(fmt(x))));
+            for (const k of ['status_changed_at', 'created_at', 'updated_at']) {
+              if (!timeKeys.includes(k)) continue;
+              const top = rows.filter((x) => x[k]).sort((a, b) => String(b[k]).localeCompare(String(a[k]))).slice(0, 4);
+              console.log('\nlatest by ' + k + ':'); top.forEach((x) => console.log('  ' + JSON.stringify(fmt(x))));
+            }
+          })().catch((e) => { console.error('DIAG ERROR: ' + (e && e.stack || e)); process.exit(2); });
           JS_EOF
-          node smoke.js 2>&1 | tee smoke-report.txt
-          exit "${PIPESTATUS[0]}"
-
-      - name: Publish report
-        if: always()
-        run: |
-          {
-            echo "# Production named-place smoke test (read-only)"
-            echo '```'
-            cat smoke-report.txt 2>/dev/null || echo "(did not run)"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          cat > nopin.txt <<'IDS_EOF'
+          c627c509-e246-420a-a3da-c5f440816f70
+          e7080606-e0cc-4bce-b0e6-fb26ca1840f8
+          f45e4cca-7404-4db6-a150-9e02f214fbf7
+          9a719a5a-081b-486d-b661-f02a593acb9f
+          67973cc8-ff60-472e-bce5-78cf3ba46fe3
+          d737bef7-5368-4efe-937c-4881942db686
+          dd5e2aea-e21b-40a1-9320-8d6a97ee29c3
+          56c45df2-0bdd-4ac4-8358-affaa0060b87
+          2b3557fb-3bf1-4a82-8b64-1c811ccef0b0
+          8e2e7f56-82ac-493a-8694-bc5944b15b6a
+          5b404911-ec76-4e7a-b120-0e5139d4e21a
+          41bcf31a-7c96-4b29-a7b6-970b610f0c02
+          ffcf7fd5-3111-4182-9164-519ef9db4bd3
+          eb0ef259-6aef-4c0f-8781-caa1a7468948
+          9dbaff42-9f7d-4e5f-a103-65f66364c30e
+          807e1687-4d67-4be6-9297-071612ead779
+          2d457bb2-ea10-4106-9001-1cabd7480d46
+          d15bd1a5-ef6f-482a-9f3c-42b89bd5f2d8
+          f8795eaf-b4db-427f-b04f-9e760b27942b
+          c0f2c802-dd34-4af0-a869-1735a1fa129a
+          ccae7084-2a64-4a62-b466-b84f98445f41
+          de79effe-9819-4b84-84fc-57f699e5fe7f
+          83e2594b-9316-44d0-986a-dbbefa68ae93
+          5aa7a63c-828f-4470-a6a6-37371cedc017
+          ce6f34fb-c6ca-4fda-a539-ada7131bbd97
+          2b1af93d-25a2-4404-addb-90f0c35f9515
+          e3d7e6bd-a365-43fa-a77c-04e7b013db9b
+          25466382-a766-463f-a743-8c4aff349cf2
+          57a355df-da9f-4c59-89b6-7d795939e7ce
+          670e15a9-5f2e-43bc-b8bb-153b6b53bbea
+          34e02f9b-90a7-4d32-ad67-3c4ec49fd538
+          6df983c0-7ad5-4816-be2f-d5fdce863768
+          5dcacebe-7d26-4ae3-aede-9df54f4649aa
+          b4f2f48b-da45-4018-94e8-4474ee636119
+          61e0b0f0-009c-4863-8547-052002ac3a10
+          b6a12374-f895-4cb1-85a0-c48daad11025
+          3eea383a-88b5-4b45-86f1-219b73b395cf
+          793c8947-fbe6-4560-9fc0-7f46390e6e2b
+          74f47a8c-52c8-4abb-962f-e481f917a0e3
+          c7e5d649-920d-48a7-8897-587f60c96301
+          092c7d71-6110-4071-9af0-98936cda3cea
+          ccd18840-ad0f-488f-b810-3adfadca2832
+          d3f6306d-d771-4cfe-bb44-77bec703d106
+          40e8fb92-e28a-49d3-b170-74d93842facd
+          IDS_EOF
+          node diag.js 2>&1 | tee diag-report.txt
