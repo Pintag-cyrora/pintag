@@ -53,7 +53,7 @@ jobs:
 
       - name: map-location unit suite
         working-directory: tests/map-location
-        run: node --test map-location.test.js
+        run: node --test *.test.js
 
       - name: Smart Import prompt unit suite
         run: node --test tests/smart-import-prompt/*.test.mjs

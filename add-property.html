@@ -481,6 +481,12 @@ body{
 
       </div>
 
+  <div class="field" id="mapField">
+    <label>ລິ້ງແຜນທີ່ Google Maps <span style="font-weight:400;opacity:.7;">(ບໍ່ບັງຄັບ)</span></label>
+    <input type="text" class="input" id="mapEmbedUrl" placeholder="https://maps.app.goo.gl/… ຫຼື https://www.google.com/maps/…" autocomplete="off">
+    <p id="mapHint" data-map-state="empty" style="font-size:12.5px;line-height:1.5;margin:6px 0 0;color:#6A8490;"></p>
+  </div>
+
     </div>
 
     <!-- DETAILS -->
@@ -606,6 +612,8 @@ body{
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
   <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
   <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
+  <script src="map-location.js?v=__ASSET_VERSION__"></script>
+  <script src="map-location-field.js?v=__ASSET_VERSION__"></script>
 <script>
 
 const SUPABASE_URL = window.PINTAG.supabaseUrl;
@@ -617,6 +625,17 @@ const supabaseClient =
     SUPABASE_URL,
     SUPABASE_KEY
   );
+
+const mapField = PintagMapField.attach({
+  input: document.getElementById('mapEmbedUrl'),
+  hint: document.getElementById('mapHint'),
+  supabaseUrl: SUPABASE_URL,
+  anonKey: SUPABASE_KEY,
+  getToken: async function(){
+    const { data } = await supabaseClient.auth.getSession();
+    return data && data.session ? data.session.access_token : null;
+  }
+});
 let deleteId = null;
 
 // Resolves the logged-in user's own party row — checks auth_user_id first
@@ -1064,6 +1083,9 @@ async function saveProperty(){
     return;
   }
 
+  // A short link starts expanding on blur, on the way to this click.
+  await mapField.pending();
+
   const contactPhone =
     document.getElementById('contactPhone').value.trim();
 
@@ -1169,6 +1191,10 @@ async function saveProperty(){
 
         village_en:village,
         village_lo:village,
+
+        // Same column and same value shape as admin.html. A new listing has no
+        // stored link to protect, so blank is simply NULL.
+        map_embed_url: mapField.value(),
 
         description_en:description,
         description_lo:description,

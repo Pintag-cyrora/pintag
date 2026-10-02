@@ -337,9 +337,15 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 #map{width:100%;height:100%;}
 /* Sits ABOVE the tiles (Leaflet panes top out at z-index 700) so the count of
    listings the map is not showing cannot be hidden by the map itself. */
-#map-unmapped{position:absolute;left:12px;bottom:12px;z-index:900;max-width:min(420px,calc(100% - 24px));
+#map-notices{position:absolute;left:12px;bottom:12px;z-index:900;max-width:min(420px,calc(100% - 24px));
+  display:flex;flex-direction:column;gap:6px;pointer-events:none;}
+#map-notices > div{pointer-events:auto;}
+#map-unmapped,#map-place-notice{
   background:var(--warm-deep,#fff);border:1px solid var(--border,#e5e0d8);border-radius:8px;
   padding:8px 12px;font-size:13px;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,.12);display:none;}
+/* A named Google Maps place is not "missing": it has a real, identified location
+   that simply carries no coordinates. A teal edge tells the two notices apart. */
+#map-place-notice{border-left:3px solid var(--teal,#0f766e);}
 /* Cluster bubbles reuse the price-bubble palette so a cluster reads as "several
    of these", not as a different kind of thing. */
 .pt-cluster{background:var(--teal,#0f766e);color:#fff;border-radius:999px;font-weight:600;
@@ -589,7 +595,10 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 <!-- MAP VIEW -->
 <div id="map-wrap">
   <div id="map"></div>
-  <div id="map-unmapped" role="status"></div>
+  <div id="map-notices">
+    <div id="map-place-notice" role="status" data-testid="map-place-notice"></div>
+    <div id="map-unmapped" role="status"></div>
+  </div>
 </div>
 
 <!-- MAP PREVIEW CARD -->
@@ -1112,10 +1121,20 @@ function renderMap() {
   updateListingsMetaForFilters();
   _deriveListingSignals(filtered);
   var unmapped = [];
+  var places   = [];
   var bounds   = [];
 
   filtered.forEach(function(p) {
-    var res = window.PintagMapLocation.parseMapUrl(p.map_embed_url);
+    var res = window.PintagMapLocation.classifyMapUrl(p.map_embed_url);
+    if (res.type === 'place') {
+      // A named Google Maps place: a real, identified location with NO
+      // coordinates. The Leaflet layer needs a lat/lng and none is available,
+      // so it is kept OFF the marker layer (never given a district/centroid
+      // position) and counted separately from listings that have no usable
+      // location at all. Its detail page links to the place on Google Maps.
+      places.push({ slug: p.slug, label: res.label });
+      return;
+    }
     if (!res.ok) {
       // Explicitly NOT mapped. A listing whose location we do not know is left
       // off the map and counted, because inventing a position for it would put
@@ -1149,6 +1168,7 @@ function renderMap() {
   _clusters.addLayers(_markers);
   updateCountText(filtered.length);
   reportUnmapped(unmapped, filtered.length);
+  reportPlaces(places, filtered.length);
 
   // Frame what is actually there. Hard-coding the Vientiane viewport would
   // hide a correctly-placed listing in another province off-screen and make it
@@ -1183,6 +1203,27 @@ function reportUnmapped(unmapped, totalShown) {
     lo: unmapped.length + ' ຈາກ ' + totalShown + ' ລາຍການ ຍັງບໍ່ມີຈຸດທີ່ຕັ້ງແນ່ນອນ ຈຶ່ງບໍ່ສະແດງຢູ່ແຜນທີ່',
     en: unmapped.length + ' of ' + totalShown + ' listings have no exact location yet and are not shown on the map',
     zh: totalShown + ' 个房源中有 ' + unmapped.length + ' 个尚无确切位置，未在地图上显示'
+  })[lang];
+  box.textContent = msg;
+  box.style.display = 'block';
+}
+
+// Listings whose Google Maps link names a PLACE (ftid) but carries no coordinates.
+// They are not on the coordinate map and not "unmapped" in the broken-link sense
+// either, so they get their own count and their own wording.
+function reportPlaces(places, totalShown) {
+  var box = document.getElementById('map-place-notice');
+  if (!box) return;
+  box.setAttribute('data-count', String(places.length));
+  if (!places.length) { box.style.display = 'none'; box.textContent = ''; return; }
+  console.info('[pintag/map] ' + places.length + ' of ' + totalShown +
+               ' listings are a named Google Maps place (no coordinates): ' +
+               places.map(function (u) { return u.slug; }).join(', '));
+  var lang = getCurrentLang();
+  var msg = ({
+    lo: places.length + ' ຈາກ ' + totalShown + ' ລາຍການ ເປັນສະຖານທີ່ທີ່ມີຊື່ໃນ Google Maps (ບໍ່ມີພິກັດແນ່ນອນ) ຈຶ່ງບໍ່ສະແດງເປັນຈຸດຢູ່ແຜນທີ່',
+    en: places.length + ' of ' + totalShown + ' listings are a named Google Maps place (no exact coordinates), so they are not shown as pins on this map',
+    zh: totalShown + ' 个房源中有 ' + places.length + ' 个是谷歌地图上的命名地点（无精确坐标），未显示为地图标记'
   })[lang];
   box.textContent = msg;
   box.style.display = 'block';

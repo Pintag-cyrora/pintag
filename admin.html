@@ -1581,27 +1581,35 @@ function setHighlights(values) {
 // operator saw no difference between "resolved" and "silently gave up".
 const MAP_HINT_DEFAULT = 'Paste any Google Maps share link — it will be resolved automatically to show the exact pin on the listing page.';
 
-function setMapHint(text, color) {
+function setMapHint(text, color, state) {
   const hint = document.getElementById('f-map-hint');
   if (!hint) return;
   hint.textContent = text;
   hint.style.color = color || '';
+  // exact | place | invalid | resolving | empty -- read by tests and styling.
+  if (state) hint.setAttribute('data-map-state', state);
 }
 
 // Reports whether the (possibly just-resolved) URL actually yields a pin, using
 // the same parser the public map uses -- so what admin promises and what the
 // map does cannot diverge.
 function reportMapCoords(url) {
-  const r = window.PintagMapLocation.parseMapUrl(url);
-  if (r.ok) {
-    setMapHint('✓ Exact pin found: ' + r.lat.toFixed(6) + ', ' + r.lng.toFixed(6) +
-               ' (from ' + r.pattern + ')', 'var(--teal)');
-  } else if (r.reason === 'no-url') {
-    setMapHint(MAP_HINT_DEFAULT, '');
+  const c = window.PintagMapLocation.classifyMapUrl(url);
+  if (c.type === 'exact') {
+    setMapHint('✓ Exact location: ' + c.lat.toFixed(6) + ', ' + c.lng.toFixed(6) +
+               ' (from ' + c.pattern + ') — the listing gets an exact pin on the map.', 'var(--teal)', 'exact');
+  } else if (c.type === 'place') {
+    // Allowed, never blocked: it is a real, identified place; it just has no
+    // coordinates, so it is NOT an exact pin and the public pages say so.
+    setMapHint('ℹ Named place' + (c.label ? ': “' + c.label + '”' : '') +
+               ' — a Google Maps place with no exact coordinates. It can be saved. The listing page will link to this place on Google Maps, ' +
+               'but it will NOT get an exact pin on the map. For an exact pin, share the pinned location instead.', 'var(--ink-soft, #3A4E55)', 'place');
+  } else if (c.reason === 'no-url') {
+    setMapHint(MAP_HINT_DEFAULT, '', 'empty');
   } else {
-    setMapHint('⚠ This link will NOT place a pin on the map: ' +
-               window.PintagMapLocation.describeFailure(r) +
-               '. Open the location in Google Maps and copy the share link again.', 'var(--danger, #b91c1c)');
+    setMapHint('⚠ Unusable link — this will NOT place a pin on the map: ' +
+               window.PintagMapLocation.describeFailure(c) +
+               '. Open the location in Google Maps and copy the share link again.', 'var(--danger, #b91c1c)', 'invalid');
   }
 }
 
@@ -1620,12 +1628,12 @@ function resolveMapUrl(el) {
 }
 async function _resolveMapUrlNow(el) {
   const url = el.value.trim();
-  if (!url) { setMapHint(MAP_HINT_DEFAULT, ''); return; }
+  if (!url) { setMapHint(MAP_HINT_DEFAULT, '', 'empty'); return; }
 
   // A link that already carries coordinates needs no round trip.
   if (!window.PintagMapLocation.isShortLink(url)) { reportMapCoords(url); return; }
 
-  setMapHint('Resolving link…', 'var(--teal)');
+  setMapHint('Resolving link…', 'var(--teal)', 'resolving');
   try {
     const res = await fetch(SUPABASE_URL + '/functions/v1/resolve-map-url', {
       method: 'POST',
@@ -1637,7 +1645,7 @@ async function _resolveMapUrlNow(el) {
     if (!res.ok || !data.resolved_url) {
       setMapHint('⚠ Could not expand this short link (' + (data.error || ('HTTP ' + res.status)) +
                  '). It will be saved as-is and the listing will NOT appear on the map. Try again, or paste the full google.com/maps URL.',
-                 'var(--danger, #b91c1c)');
+                 'var(--danger, #b91c1c)', 'invalid');
       return;
     }
     if (data.resolved_url !== url) el.value = data.resolved_url;
@@ -1645,7 +1653,7 @@ async function _resolveMapUrlNow(el) {
   } catch (e) {
     setMapHint('⚠ Could not reach the link resolver (' + (e && e.message ? e.message : 'network error') +
                '). The short link will be saved unexpanded and the listing will NOT appear on the map.',
-               'var(--danger, #b91c1c)');
+               'var(--danger, #b91c1c)', 'invalid');
   }
 }
 
@@ -3975,6 +3983,7 @@ async function editListing(id, from) {
   document.getElementById('f-district').value    = p.district_en || '';
   document.getElementById('f-village').value     = p.village_en || p.village || '';
   document.getElementById('f-map').value         = p.map_embed_url || '';
+  reportMapCoords(p.map_embed_url || '');
 
   document.getElementById('nearby-list').innerHTML = '';
   const nearbyArr = p.nearby_places || p.landmarks || [];
