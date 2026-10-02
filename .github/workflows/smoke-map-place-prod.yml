@@ -1,9 +1,7 @@
-name: "DIAG (temporary): WhatsApp link-preview metadata vs Worker expectation (read-only)"
+name: "DIAG (temporary): inspect one listing's title fields (read-only, anon)"
 
-# TEMPORARY, READ-ONLY. NOT to be merged. No secrets, no environment, no database connection, no deploy.
-# Public GET requests only (pages as any visitor/crawler would fetch them + the public anon listings read);
-# every non-GET browser request is aborted. Compares what production actually serves in og:* tags with what
-# cloudflare-worker/og-listing-preview.js (at main 3a7fd1e) should emit, per language.
+# TEMPORARY, READ-ONLY. NOT to be merged. No secrets, no environment, no database connection, no writes.
+# One anonymous GET of the public listing row (the same read any visitor's browser performs).
 
 on:
   workflow_dispatch:
@@ -20,190 +18,40 @@ concurrency:
 
 jobs:
   diag:
-    name: Link-preview metadata probe (read-only)
+    name: Inspect one listing's title fields (read-only)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-
-      - name: Install Playwright
-        run: |
-          npm install --no-audit --no-fund --no-save @playwright/test@1.56.1
-          npx playwright install --with-deps chromium
-
-      - name: Probe (read-only)
+      - name: Read the row
         run: |
           set -uo pipefail
-          git show 3a7fd1e13717c7b2ff19008fbfd763b968d661a5:cloudflare-worker/og-listing-preview.js > og.mjs
-          cat > probe.js <<'JS_EOF'
-          // READ-ONLY production probe of the WhatsApp LINK-PREVIEW metadata (Cloudflare Worker) versus the
-          // pre-filled WhatsApp MESSAGE and the listing PAGE language. GET only; every non-GET browser
-          // request is aborted. No secrets. Uses the repo's own Worker module (og.mjs) to compute what the
-          // Worker SHOULD emit for each real listing, then compares with what production actually serves.
+          cat > q.js <<'JS_EOF'
           const fs = require('fs');
-          const LAO = /[຀-໿]/;
-          const BASE = 'https://pintag.io';
-          const UA_BROWSER = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
-          const UA_WA = 'WhatsApp/2.23.20.0 A';
-          const UA_FB = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
-          const log = (s) => console.log(s);
-          const short = (s, n) => { s = String(s == null ? '' : s).replace(/\s+/g, ' '); return s.length > (n || 90) ? s.slice(0, n || 90) + '…' : s; };
-          const script = (s) => (LAO.test(s || '') ? 'LAO' : /[一-鿿]/.test(s || '') ? 'ZH' : s ? 'latin' : '(empty)');
-
-          function attrsOf(tag) { const a = {}; tag.replace(/([a-zA-Z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)')/g, (_, k, __, v1, v2) => { a[k.toLowerCase()] = v1 != null ? v1 : v2; return ''; }); return a; }
-          const decodeEnt = (s) => String(s == null ? '' : s).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-          function parseHead(html) {
-            const metas = (html.match(/<meta\b[^>]*>/gi) || []).map(attrsOf);
-            const links = (html.match(/<link\b[^>]*>/gi) || []).map(attrsOf);
-            const m = (k, v) => { const e = metas.find((x) => x[k] === v); return e ? decodeEnt(e.content) : null; };
-            const can = links.find((x) => (x.rel || '').toLowerCase() === 'canonical');
-            const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1];
-            const htmlLang = (html.match(/<html\b[^>]*\blang="([^"]*)"/i) || [])[1];
-            return { title: decodeEnt(title), ogTitle: m('property', 'og:title'), ogDesc: m('property', 'og:description'), ogLocale: m('property', 'og:locale'),
-              ogUrl: m('property', 'og:url'), canonical: can ? decodeEnt(can.href) : null, htmlLang, twTitle: m('name', 'twitter:title') };
-          }
-          const withEn = (r) => !!(r.title_en && String(r.title_en).trim());
-
-          let browser, M;
-          async function mkCtx(ua) {
-            const ctx = await browser.newContext({ userAgent: ua, viewport: { width: 1280, height: 800 } });
-            await ctx.route('**/*', (route) => { const m = route.request().method(); return (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') ? route.fallback() : route.abort(); });
-            return ctx;
-          }
-          async function fetchHtml(url, ua) {
-            const ctx = await mkCtx(ua || UA_BROWSER); const page = await ctx.newPage();
-            try {
-              const resp = await page.goto(url, { waitUntil: 'commit', timeout: 45000 });
-              const html = await resp.text(); const h = resp.headers();
-              return { status: resp.status(), html, headers: h, worker: h['x-pintag-worker'] || null, cc: h['cache-control'] || null, cf: h['cf-cache-status'] || null, age: h['age'] || null, etag: h['etag'] || null };
-            } catch (e) { return { status: 0, html: '', headers: {}, error: String(e.message || e).split('\n')[0] }; }
-            finally { await ctx.close(); }
-          }
-          function classify(head, slug, lang) {
-            if (!head.ogUrl) return 'NO-OG';
-            if (head.ogUrl.indexOf('slug=') < 0) return 'ORIGIN-STATIC';       // static page: og:url has no slug
-            return 'WORKER-REWRITTEN';
-          }
-
+          const cfg = fs.readFileSync('config.prod.js', 'utf8');
+          const pick = (k) => (cfg.match(new RegExp(k + ":\\s*'([^']+)'")) || [])[1];
+          const SUPA = pick('supabaseUrl'), ANON = pick('anonKey');
+          const SLUG = 'modern-3-bedroom-house-with-carport-and-contemporary-design-252656';
+          const LAO = /[\u0E80-\u0EFF]/g;
           (async () => {
-            const { chromium } = require('@playwright/test');
-            M = await import(process.cwd() + '/og.mjs');
-            browser = await chromium.launch();
-            const cfg = fs.readFileSync('config.prod.js', 'utf8'); const pick = (k) => (cfg.match(new RegExp(k + ":\\s*'([^']+)'")) || [])[1];
-            const SUPA = pick('supabaseUrl'), ANON = pick('anonKey'); const H = { apikey: ANON, authorization: 'Bearer ' + ANON };
-
-            // ───────── 1. DATA: how many public listings lack title_en (and other English fields)? ─────────
-            log('=== 1. DATA (public listings, anon GET) ===');
-            const res = await fetch(SUPA + '/rest/v1/properties?select=*&order=slug&limit=1000', { headers: H });
-            const rows = await res.json(); if (!Array.isArray(rows)) { log('REST failed: ' + JSON.stringify(rows).slice(0, 200)); process.exit(0); }
-            const withSlug = rows.filter((r) => r.slug);
-            const cat = (r) => (!withEn(r) ? (r.title_lo ? 'MISSING_en(has lo)' : 'MISSING_en(no lo)') : LAO.test(r.title_en) ? 'en-field-contains-LAO-script' : 'ok');
-            const tally = {}; rows.forEach((r) => { const c = cat(r); tally[c] = (tally[c] || 0) + 1; });
-            log('public listings: ' + rows.length + '; with slug: ' + withSlug.length);
-            log('title_en status: ' + JSON.stringify(tally));
-            const blank = (v) => !(v && String(v).trim());
-            log('description_en blank: ' + rows.filter((r) => blank(r.description_en)).length + '; property_highlight_en blank: ' + rows.filter((r) => blank(r.property_highlight_en)).length +
-                '; description_en has LAO script: ' + rows.filter((r) => LAO.test(r.description_en || '')).length + '; highlight_en has LAO script: ' + rows.filter((r) => LAO.test(r.property_highlight_en || '')).length +
-                '; title_zh blank: ' + rows.filter((r) => blank(r.title_zh)).length);
-            for (const k of Object.keys(tally)) if (k !== 'ok') log('  ' + k + ' slugs: ' + rows.filter((r) => cat(r) === k).map((r) => r.slug).slice(0, 15).join(', '));
-
-            // ───────── 2. WORKER vs EXPECTED, every public listing, lang=en and lang=lo ─────────
-            log('\n=== 2. PRODUCTION LINK-PREVIEW METADATA vs what og-listing-preview.js should emit (browser UA, GET) ===');
-            const agg = {}; const bump = (k) => { agg[k] = (agg[k] || 0) + 1; };
-            const detail = []; const queue = [];
-            for (const r of withSlug) for (const lang of ['en', 'lo']) queue.push({ r, lang });
-            let qi = 0;
-            async function worker() {
-              while (qi < queue.length) {
-                const { r, lang } = queue[qi++];
-                const url = BASE + '/listing.html?slug=' + encodeURIComponent(r.slug) + '&lang=' + lang;
-                const f = await fetchHtml(url); const head = parseHead(f.html || ''); const kind = f.status === 200 ? classify(head, r.slug, lang) : 'HTTP-' + f.status;
-                let exp = null; try { exp = M.buildOgFields(r, lang); } catch (e) {}
-                const titleOk = exp ? head.ogTitle === exp.title : null; const descOk = exp ? head.ogDesc === exp.desc : null;
-                const locOk = head.ogLocale === ({ en: 'en_US', lo: 'lo_LA', zh: 'zh_CN' })[lang]; const urlOk = head.ogUrl === M.canonicalUrl(r.slug, lang);
-                detail.push({ slug: r.slug, lang, kind, hasEn: withEn(r), head, exp, titleOk, descOk, locOk, urlOk, worker: f.worker, cc: f.cc, cf: f.cf });
-              }
+            const r = await fetch(SUPA + '/rest/v1/properties?slug=eq.' + encodeURIComponent(SLUG) + '&select=id,slug,status,market_status,title_en,title_lo,title_zh,description_en,property_highlight_en,property_highlight', { headers: { apikey: ANON, authorization: 'Bearer ' + ANON } });
+            const rows = await r.json();
+            console.log('HTTP ' + r.status + '; rows: ' + (Array.isArray(rows) ? rows.length : JSON.stringify(rows).slice(0, 200)));
+            const row = Array.isArray(rows) && rows[0]; if (!row) return;
+            console.log('id=' + row.id + ' status=' + row.status + ' market_status=' + row.market_status);
+            for (const f of ['title_en', 'title_lo', 'title_zh', 'description_en', 'property_highlight_en', 'property_highlight']) {
+              const v = row[f]; const lao = v ? (v.match(LAO) || []).length : 0;
+              console.log('\n' + f + ': length=' + (v ? v.length : 0) + ', Lao-script chars=' + lao);
+              if (f.startsWith('title_')) console.log('  VALUE: ' + JSON.stringify(v));
+              else if (lao) console.log('  (contains Lao) VALUE: ' + JSON.stringify(v));
             }
-            await Promise.all([worker(), worker(), worker(), worker()]);
-            for (const lang of ['en', 'lo']) {
-              const d = detail.filter((x) => x.lang === lang);
-              const c = (f) => d.filter(f).length;
-              log('\n-- lang=' + lang + ' (' + d.length + ' listings) --');
-              log('  response kinds: ' + JSON.stringify(d.reduce((a, x) => (a[x.kind] = (a[x.kind] || 0) + 1, a), {})));
-              log('  x-pintag-worker header present: ' + c((x) => x.worker) + ' of ' + d.length + '; Cache-Control values: ' + JSON.stringify([...new Set(d.map((x) => x.cc))]) + '; cf-cache-status: ' + JSON.stringify([...new Set(d.map((x) => x.cf))]));
-              log('  og:locale correct for lang: ' + c((x) => x.locOk) + '; og:url == canonical(slug,lang): ' + c((x) => x.urlOk) + '; <html lang> == ' + lang + ': ' + c((x) => x.head.htmlLang === lang));
-              log('  og:title == Worker-expected: ' + c((x) => x.titleOk) + '; og:description == Worker-expected: ' + c((x) => x.descOk));
-              log('  og:title script: ' + JSON.stringify(d.reduce((a, x) => { const s = script(x.head.ogTitle); a[s] = (a[s] || 0) + 1; return a; }, {})) + '; og:description script: ' + JSON.stringify(d.reduce((a, x) => { const s = script(x.head.ogDesc); a[s] = (a[s] || 0) + 1; return a; }, {})));
-              if (lang === 'en') {
-                const bad = d.filter((x) => LAO.test(x.head.ogTitle || ''));
-                log('  >>> ENGLISH previews whose og:title contains LAO script: ' + bad.length + '  (of those, listing has NO title_en: ' + bad.filter((x) => !x.hasEn).length + ')');
-                log('  >>> with title_en present, og:title Lao: ' + d.filter((x) => x.hasEn && LAO.test(x.head.ogTitle || '')).length + '; with title_en missing, og:title Lao: ' + d.filter((x) => !x.hasEn && LAO.test(x.head.ogTitle || '')).length + ' of ' + d.filter((x) => !x.hasEn).length);
-                const dl = d.filter((x) => LAO.test(x.head.ogDesc || '')); log('  >>> ENGLISH previews whose og:description contains LAO script: ' + dl.length);
-                bad.slice(0, 8).forEach((x) => log('      LAO og:title for lang=en: ' + x.slug + ' | hasTitleEn=' + x.hasEn + ' | ' + short(x.head.ogTitle, 60)));
-              }
-              const odd = d.filter((x) => x.kind !== 'WORKER-REWRITTEN' || x.titleOk === false || x.locOk === false || x.urlOk === false);
-              log('  deviations from expectation: ' + odd.length); odd.slice(0, 10).forEach((x) => log('      ' + x.slug + ' [' + x.kind + '] title=' + short(x.head.ogTitle, 50) + ' | locale=' + x.head.ogLocale + ' | og:url=' + short(x.head.ogUrl, 70) + ' | expTitle=' + short(x.exp && x.exp.title, 50)));
-            }
-
-            // ───────── 3. SIDE-BY-SIDE for one listing WITH and one WITHOUT title_en ─────────
-            log('\n=== 3. SIDE BY SIDE: a listing WITH title_en vs one WITHOUT (full metadata) ===');
-            const sampleWith = withSlug.find((r) => cat(r) === 'ok'); const sampleWithout = withSlug.find((r) => !withEn(r));
-            for (const [label, r] of [['WITH title_en', sampleWith], ['WITHOUT title_en', sampleWithout]]) {
-              if (!r) { log('(' + label + ': no such listing)'); continue; }
-              for (const lang of ['en', 'lo', null]) {
-                const url = BASE + '/listing.html?slug=' + encodeURIComponent(r.slug) + (lang ? '&lang=' + lang : '');
-                const f = await fetchHtml(url); const h = parseHead(f.html);
-                log('[' + label + '] ' + r.slug + (lang ? ' ?lang=' + lang : ' (no ?lang)') + '  HTTP ' + f.status + '  ' + classify(h, r.slug, lang) + '\n    og:title=' + short(h.ogTitle, 100) + '\n    og:description=' + short(h.ogDesc, 110) + '\n    og:locale=' + h.ogLocale + '  <html lang>=' + h.htmlLang + '\n    og:url=' + h.ogUrl + '\n    canonical=' + h.canonical);
-              }
-            }
-
-            // ───────── 4. Does it ever fall back to the ORIGIN (static Lao) HTML? ─────────
-            log('\n=== 4. ORIGIN-FALLBACK CASES ===');
-            for (const [label, u] of [['nonexistent slug, lang=en', '/listing.html?slug=zz-does-not-exist-123&lang=en'], ['no slug, lang=en', '/listing.html?lang=en']]) {
-              const f = await fetchHtml(BASE + u); const h = parseHead(f.html);
-              log(label + ': HTTP ' + f.status + ' worker-header=' + f.worker + ' -> ' + classify(h, 'x', 'en') + ' | og:title=' + short(h.ogTitle, 70) + ' | og:locale=' + h.ogLocale + ' | <html lang>=' + h.htmlLang);
-            }
-
-            // ───────── 5. Crawler user agents (WhatsApp / Facebook) vs a browser ─────────
-            log('\n=== 5. CRAWLER USER AGENTS (does Cloudflare / the Worker treat them differently?) ===');
-            const probe = sampleWithout || sampleWith;
-            if (probe) for (const [n, ua] of [['browser', UA_BROWSER], ['WhatsApp', UA_WA], ['facebookexternalhit', UA_FB]]) {
-              const url = BASE + '/listing.html?slug=' + encodeURIComponent(probe.slug) + '&lang=en'; const f = await fetchHtml(url, ua); const h = parseHead(f.html);
-              log(n.padEnd(20) + ' HTTP ' + f.status + ' ' + classify(h, probe.slug, 'en') + ' worker=' + f.worker + ' og:locale=' + h.ogLocale + ' og:title=' + short(h.ogTitle, 60) + (f.error ? ' ERR ' + f.error : ''));
-            }
-
-            // ───────── 6. Caching headers (could a cache pin the wrong language?) ─────────
-            log('\n=== 6. CACHING ===');
-            if (sampleWith) {
-              const u = BASE + '/listing.html?slug=' + encodeURIComponent(sampleWith.slug); const a = await fetchHtml(u + '&lang=en'); await new Promise((r) => setTimeout(r, 1500)); const b = await fetchHtml(u + '&lang=en'); const lo = await fetchHtml(u + '&lang=lo');
-              log('same URL twice: identical body=' + (a.html === b.html) + '; cache-control=' + a.cc + '; cf-cache-status=' + a.cf + '/' + b.cf + '; age=' + a.age + '/' + b.age + '; etag=' + a.etag);
-              log('lang=en vs lang=lo bodies differ (URL is the cache key): ' + (a.html !== lo.html) + '; og:locale en=' + parseHead(a.html).ogLocale + ' lo=' + parseHead(lo.html).ogLocale);
-            }
-
-            // ───────── 7. The actual pre-filled WhatsApp MESSAGE and the PAGE language (separate from the card) ─────────
-            log('\n=== 7. PRE-FILLED WHATSAPP MESSAGE and PAGE LANGUAGE (real page, JS executed, non-GET aborted) ===');
-            for (const [label, r] of [['WITH title_en', sampleWith], ['WITHOUT title_en', sampleWithout]]) {
-              if (!r) continue;
-              for (const lang of ['en', 'lo']) {
-                const ctx = await mkCtx(UA_BROWSER); const page = await ctx.newPage(); const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-                try {
-                  await page.goto(BASE + '/listing.html?slug=' + encodeURIComponent(r.slug) + '&lang=' + lang, { waitUntil: 'domcontentloaded', timeout: 45000 });
-                  await page.waitForFunction(() => window.propertyContext, null, { timeout: 30000 }); await page.waitForTimeout(800);
-                  const o = await page.evaluate(() => { const a = document.querySelector('#pt-wa-primary') || document.querySelector('.agent-ctas a.btn-wa'); const h = a ? a.getAttribute('href') : null; const i = h ? h.indexOf('text=') : -1; return { body: (document.body.className.match(/lang-\w+/) || [])[0], htmlLang: document.documentElement.lang, msg: i >= 0 ? decodeURIComponent(h.slice(i + 5)) : null, clientOgTitle: (document.querySelector('meta[property="og:title"]') || {}).content, docTitle: document.title }; });
-                  const urlInMsg = ((o.msg || '').match(/https:\/\/pintag\.io\/listing\.html\?[^\s]+/) || [])[0];
-                  log('[' + label + '] ' + r.slug + ' ?lang=' + lang + ': page body=' + o.body + ' <html lang>=' + o.htmlLang + ' | message script=' + script(o.msg) + ' | URL inside message=' + urlInMsg + ' | == Worker canonical: ' + (urlInMsg === M.canonicalUrl(r.slug, lang)) + '\n    message: ' + JSON.stringify(short(o.msg, 170)) + '\n    (client-side og:title after JS, NOT what crawlers read: ' + short(o.clientOgTitle, 60) + ')' + (errs.length ? ' pageerrors=' + JSON.stringify(errs) : ''));
-                } catch (e) { log('[' + label + '] ' + r.slug + ' ?lang=' + lang + ': ERROR ' + String(e.message).split('\n')[0]); }
-                await ctx.close();
-              }
-            }
-            await browser.close();
-            log('\nDONE (GET-only; no writes).');
-          })().catch((e) => { console.error('PROBE ERROR: ' + (e && e.stack || e)); process.exit(0); });
+            const te = row.title_en || '';
+            const m = te.match(/[\u0E80-\u0EFF][\u0E80-\u0EFF\s]*[\u0E80-\u0EFF]|[\u0E80-\u0EFF]/g) || [];
+            console.log('\nLao run(s) inside title_en: ' + JSON.stringify(m) + ' at index ' + JSON.stringify(m.map((x) => te.indexOf(x))));
+            console.log('title_en === title_lo ? ' + (row.title_en === row.title_lo));
+          })().catch((e) => { console.error('ERROR ' + e); process.exit(0); });
           JS_EOF
-          node probe.js 2>&1 | tee probe-report.txt
+          node q.js 2>&1 | tee q-report.txt
