@@ -95,7 +95,7 @@ jobs:
           (async () => {
             const browser = await chromium.launch();
             const mkCtx = async () => { const c = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA }); await readOnly(c); return c; };
-  let rows = [], exact = [], place = [], invalid = [], M, clickPathNew = null;
+            let rows = [], exact = [], place = [], invalid = [], M, clickPathNew = null;
 
             await section('A. DEPLOYED COMMIT (the deploy stamps the first 8 chars of the commit into asset URLs)', async () => {
               const ctx = await mkCtx();
