@@ -65,8 +65,9 @@ jobs:
           const pick = (k) => (cfg.match(new RegExp(k + ":\\s*'([^']+)'")) || [])[1];
           const SUPA = pick('supabaseUrl'), ANON = pick('anonKey');
 
-          async function get(u) {
-            const r = await fetch(u, { headers: { 'cache-control': 'no-cache' } });
+          const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+          async function get(u, extra) {
+            const r = await fetch(u, { headers: Object.assign({ 'cache-control': 'no-cache', 'user-agent': UA, accept: 'text/html,application/json,*/*' }, extra || {}) });
             return { status: r.status, text: await r.text(), headers: r.headers };
           }
 
@@ -104,8 +105,11 @@ jobs:
             // ── B. classify the real public listings with the DEPLOYED parser ───────
             console.log('\n=== B. REAL PUBLIC LISTINGS classified by the deployed map-location.js ===');
             const M = require('./served-map-location.js');
-            const rest = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,province_en,market_status,map_embed_url&order=created_at.desc&limit=1000');
-            const rows = JSON.parse(rest.text);
+            const rest = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,province_en,market_status,map_embed_url&order=created_at.desc&limit=1000',
+              { apikey: ANON, authorization: 'Bearer ' + ANON });
+            let rows = [];
+            try { rows = JSON.parse(rest.text); } catch (e) { /* reported below */ }
+            if (!Array.isArray(rows)) { info('listings REST answered HTTP ' + rest.status + ': ' + rest.text.slice(0, 200)); rows = []; }
             check('public listings fetched (anon, GET only)', Array.isArray(rows) && rows.length > 0, rows.length + ' rows');
             const cls = rows.map((r) => ({ r, c: M.classifyMapUrl(r.map_embed_url) }));
             const exact = cls.filter((x) => x.c.type === 'exact'), place = cls.filter((x) => x.c.type === 'place'), invalid = cls.filter((x) => x.c.type === 'invalid');
@@ -124,7 +128,7 @@ jobs:
             // ── C. the live listings map ────────────────────────────────────────────
             console.log('\n=== C. LIVE listings.html map view ===');
             {
-              const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+              const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA });
               await readOnly(ctx);
               const page = await ctx.newPage();
               const errors = []; page.on('pageerror', (e) => errors.push(e.message));
@@ -151,7 +155,7 @@ jobs:
             // ── D. live listing detail pages ────────────────────────────────────────
             console.log('\n=== D. LIVE listing.html detail pages ===');
             const detail = async (slug) => {
-              const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+              const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA });
               await readOnly(ctx);
               const page = await ctx.newPage();
               const errors = []; page.on('pageerror', (e) => errors.push(e.message));
@@ -183,7 +187,7 @@ jobs:
             // ── E. the production admin.html map field (auth stubbed, GET-only) ─────
             console.log('\n=== E. production admin.html map-link field (served code, auth stubbed, no writes) ===');
             {
-              const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+              const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA });
               await ctx.route('**/cdn.jsdelivr.net/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript',
                 body: 'window.supabase={createClient:function(){return {auth:{getSession:async()=>({data:{session:null}}),refreshSession:async()=>({data:{session:null}}),getUser:async()=>({data:{user:{}}}),onAuthStateChange:function(){return {data:{subscription:{unsubscribe:function(){}}}};}},storage:{from:function(){return {upload:async()=>({}),getPublicUrl:function(){return {data:{publicUrl:""}};}};}}};}};' }));
               await ctx.route('**/admin-auth.js*', (r) => r.fulfill({ status: 200, contentType: 'application/javascript',
