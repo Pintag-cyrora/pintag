@@ -48,29 +48,25 @@ jobs:
           set -uo pipefail
           cat > smoke.js <<'JS_EOF'
           // READ-ONLY production smoke test for the named-place map work (PR #123).
-          // Every request that is not GET/HEAD/OPTIONS is aborted in the browser, so
-          // nothing this script drives can write to production (page views, impressions,
-          // view counters are all POSTs). The only direct network calls are public GETs of
-          // the same pages and listings any visitor loads.
+          // Every browser request that is not GET/HEAD/OPTIONS is aborted, so nothing the
+          // pages do (page views, impressions, view counters are POSTs) can write to production.
           const { chromium } = require('@playwright/test');
           const fs = require('fs'), crypto = require('crypto');
 
           const BASE = 'https://pintag.io';
           const EXPECT_SHA = (process.env.EXPECT_SHA || '').slice(0, 8);
+          const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
           const results = [];
           const check = (name, ok, detail) => { results.push({ name, ok }); console.log((ok ? 'PASS  ' : 'FAIL  ') + name + (detail ? '  -- ' + detail : '')); };
           const info = (msg) => console.log('INFO  ' + msg);
-
           const cfg = fs.readFileSync('config.prod.js', 'utf8');
           const pick = (k) => (cfg.match(new RegExp(k + ":\\s*'([^']+)'")) || [])[1];
           const SUPA = pick('supabaseUrl'), ANON = pick('anonKey');
 
-          const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
           async function get(u, extra) {
-            const r = await fetch(u, { headers: Object.assign({ 'cache-control': 'no-cache', 'user-agent': UA, accept: 'text/html,application/json,*/*' }, extra || {}) });
-            return { status: r.status, text: await r.text(), headers: r.headers };
+            const r = await fetch(u, { headers: Object.assign({ 'cache-control': 'no-cache', 'user-agent': UA, accept: '*/*' }, extra || {}) });
+            return { status: r.status, text: await r.text() };
           }
-
           let blocked = 0;
           async function readOnly(context) {
             await context.route('**/*', (route) => {
@@ -80,127 +76,143 @@ jobs:
               return route.abort();
             });
           }
+          async function section(title, fn) {
+            console.log('\n=== ' + title + ' ===');
+            try { await fn(); } catch (e) { check(title + ' -- completed without a script/timeout error', false, String(e && e.message || e).split('\n')[0]); }
+          }
+          function watch(page) {
+            const d = { errors: [], console: [], failed: [] };
+            page.on('pageerror', (e) => d.errors.push(e.message));
+            page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') d.console.push(m.type() + ': ' + m.text().slice(0, 160)); });
+            page.on('requestfailed', (r) => d.failed.push(r.url().slice(0, 100) + ' ' + (r.failure() && r.failure().errorText)));
+            return d;
+          }
 
           (async () => {
-            // ── A. what is deployed ────────────────────────────────────────────────
-            console.log('\n=== A. DEPLOYED COMMIT (asset version stamped by the deploy = first 8 chars of the commit) ===');
-            const served = {};
-            for (const p of ['listings.html', 'listing.html', 'admin.html']) {
-              const r = await get(BASE + '/' + p + '?smoke=' + Date.now());
-              served[p] = r.text;
-              check(p + ' is served (HTTP 200)', r.status === 200, 'HTTP ' + r.status);
-              check(p + ' references map-location.js?v=' + EXPECT_SHA, r.text.includes('map-location.js?v=' + EXPECT_SHA));
-            }
-            check('listings.html carries the place notice + classifier', served['listings.html'].includes('map-place-notice') && served['listings.html'].includes('classifyMapUrl'));
-            check('listing.html carries the place-level block', served['listing.html'].includes('map-place-badge') && served['listing.html'].includes('data-map-type="place"'));
-            check('admin.html carries the Named place classification', served['admin.html'].includes('Named place') && served['admin.html'].includes('classifyMapUrl'));
-            const mlServed = await get(BASE + '/map-location.js?v=' + EXPECT_SHA);
-            const mlRepo = fs.readFileSync('map-location.js', 'utf8');
-            const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
-            check('served map-location.js is byte-identical to the repo file at this commit', mlServed.status === 200 && sha(mlServed.text) === sha(mlRepo), sha(mlServed.text).slice(0, 12));
-            const pruned = await get(BASE + '/edit-listing.html');
-            info('edit-listing.html on production: HTTP ' + pruned.status + ' (the deploy prunes the legacy agent pages, so add-property/edit-listing are not published)');
-            fs.writeFileSync('served-map-location.js', mlServed.text);
-
-            // ── B. classify the real public listings with the DEPLOYED parser ───────
-            console.log('\n=== B. REAL PUBLIC LISTINGS classified by the deployed map-location.js ===');
-            const M = require('./served-map-location.js');
-            const rest = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,province_en,market_status,map_embed_url&order=created_at.desc&limit=1000',
-              { apikey: ANON, authorization: 'Bearer ' + ANON });
-            let rows = [];
-            try { rows = JSON.parse(rest.text); } catch (e) { /* reported below */ }
-            if (!Array.isArray(rows)) { info('listings REST answered HTTP ' + rest.status + ': ' + rest.text.slice(0, 200)); rows = []; }
-            check('public listings fetched (anon, GET only)', Array.isArray(rows) && rows.length > 0, rows.length + ' rows');
-            const cls = rows.map((r) => ({ r, c: M.classifyMapUrl(r.map_embed_url) }));
-            const exact = cls.filter((x) => x.c.type === 'exact'), place = cls.filter((x) => x.c.type === 'place'), invalid = cls.filter((x) => x.c.type === 'invalid');
-            const byReason = {}; invalid.forEach((x) => { byReason[x.c.reason] = (byReason[x.c.reason] || 0) + 1; });
-            info('total=' + rows.length + '  exact=' + exact.length + '  place=' + place.length + '  invalid=' + invalid.length + ' ' + JSON.stringify(byReason));
-            info('audit baseline was: 100 public / 56 exact / 11 named place / 33 no link. Match: ' +
-                 (rows.length === 100 && exact.length === 56 && place.length === 11 && invalid.length === 33 && byReason['no-url'] === 33));
-            check('every place result carries NO latitude/longitude', place.every((x) => !('lat' in x.c) && !('lng' in x.c) && x.c.ok === false));
-            check('no place is reported as invalid, and none became an exact pin', place.length > 0 && exact.every((x) => typeof x.c.lat === 'number'));
-            check('legacy parseMapUrl agrees: places are ok:false/place-only, exact are ok:true', place.every((x) => { const p = M.parseMapUrl(x.r.map_embed_url); return p.ok === false && p.reason === 'place-only' && !('lat' in p); }) && exact.every((x) => M.parseMapUrl(x.r.map_embed_url).ok === true));
-            const placeSlugs = new Set(place.map((x) => x.r.slug));
-            info('named-place listings: ' + place.map((x) => x.r.slug).join(', '));
-
             const browser = await chromium.launch();
+            const mkCtx = async () => { const c = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA }); await readOnly(c); return c; };
+            let rows = [], exact = [], place = [], invalid = [], M;
 
-            // ── C. the live listings map ────────────────────────────────────────────
-            console.log('\n=== C. LIVE listings.html map view ===');
-            {
-              const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA });
-              await readOnly(ctx);
+            await section('A. DEPLOYED COMMIT (the deploy stamps the first 8 chars of the commit into asset URLs)', async () => {
+              const ctx = await mkCtx();
+              const served = {};
+              for (const p of ['listings.html', 'listing.html', 'admin.html']) {
+                const page = await ctx.newPage();
+                try {
+                  const resp = await page.goto(BASE + '/' + p + '?smoke=' + Date.now(), { waitUntil: 'commit', timeout: 45000 });
+                  served[p] = await resp.text();
+                  check(p + ' is served (HTTP 200, real browser)', resp.status() === 200, 'HTTP ' + resp.status());
+                } catch (e) { served[p] = ''; check(p + ' is served', false, e.message.split('\n')[0]); }
+                check(p + ' references map-location.js?v=' + EXPECT_SHA, served[p].includes('map-location.js?v=' + EXPECT_SHA));
+                await page.close();
+              }
+              check('listings.html carries the place notice + classifier', served['listings.html'].includes('map-place-notice') && served['listings.html'].includes('classifyMapUrl'));
+              check('listing.html carries the place-level block', served['listing.html'].includes('map-place-badge') && served['listing.html'].includes('data-map-type="place"'));
+              check('admin.html carries the Named place classification', served['admin.html'].includes('Named place') && served['admin.html'].includes('classifyMapUrl'));
+              await ctx.close();
+              const mlServed = await get(BASE + '/map-location.js?v=' + EXPECT_SHA);
+              const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
+              check('served map-location.js is byte-identical to the repo file at this commit', mlServed.status === 200 && sha(mlServed.text) === sha(fs.readFileSync('map-location.js', 'utf8')), sha(mlServed.text).slice(0, 12));
+              fs.writeFileSync('served-map-location.js', mlServed.text);
+              M = require('./served-map-location.js');
+            });
+
+            await section('B. REAL PUBLIC LISTINGS classified by the deployed map-location.js', async () => {
+              const rest = await get(SUPA + '/rest/v1/properties?or=(status.neq.draft,status.is.null)&select=id,slug,province_en,market_status,map_embed_url&order=created_at.desc&limit=1000', { apikey: ANON, authorization: 'Bearer ' + ANON });
+              try { rows = JSON.parse(rest.text); } catch (e) { rows = []; }
+              if (!Array.isArray(rows)) { info('listings REST answered HTTP ' + rest.status + ': ' + rest.text.slice(0, 200)); rows = []; }
+              check('public listings fetched (anon, GET only)', rows.length > 0, rows.length + ' rows');
+              const cls = rows.map((r) => ({ r, c: M.classifyMapUrl(r.map_embed_url) }));
+              exact = cls.filter((x) => x.c.type === 'exact'); place = cls.filter((x) => x.c.type === 'place'); invalid = cls.filter((x) => x.c.type === 'invalid');
+              const byReason = {}; invalid.forEach((x) => { byReason[x.c.reason] = (byReason[x.c.reason] || 0) + 1; });
+              info('total=' + rows.length + '  exact=' + exact.length + '  place=' + place.length + '  invalid=' + invalid.length + ' ' + JSON.stringify(byReason));
+              check('every named place carries NO latitude/longitude', place.length > 0 && place.every((x) => !('lat' in x.c) && !('lng' in x.c) && x.c.ok === false));
+              check('no named place was classified invalid; none became an exact pin', place.every((x) => x.c.type === 'place') && exact.every((x) => typeof x.c.lat === 'number' && typeof x.c.lng === 'number'));
+              check('legacy parseMapUrl agrees: places ok:false/place-only (no lat/lng), exact ok:true', place.every((x) => { const p = M.parseMapUrl(x.r.map_embed_url); return p.ok === false && p.reason === 'place-only' && !('lat' in p); }) && exact.every((x) => M.parseMapUrl(x.r.map_embed_url).ok === true));
+              info('named-place listings: ' + place.map((x) => x.r.slug).join(', '));
+              info('listings with an unexpanded short link (still invalid until expanded): ' + invalid.filter((x) => x.c.reason === 'unresolved-short-link').map((x) => x.r.slug).join(', '));
+            });
+
+            await section('C. LIVE listings.html map view', async () => {
+              const ctx = await mkCtx();
               const page = await ctx.newPage();
-              const errors = []; page.on('pageerror', (e) => errors.push(e.message));
-              await page.goto(BASE + '/listings.html', { waitUntil: 'domcontentloaded' });
+              const d = watch(page);
+              await page.goto(BASE + '/listings.html', { waitUntil: 'domcontentloaded', timeout: 45000 });
               await page.waitForSelector('#listings-container .pt-card, #listings-container [data-slug]', { timeout: 45000 });
               await page.click('#btn-map');
-              await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 45000 });
+              try {
+                await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 30000 });
+              } catch (e) {
+                const diag = await page.evaluate(() => ({
+                  L: typeof window.L, map: typeof window._map, markers: window._markers ? window._markers.length : null,
+                  mapWrap: document.getElementById('map-wrap') && getComputedStyle(document.getElementById('map-wrap')).display,
+                  count: (document.getElementById('count-text') || {}).textContent, cards: document.querySelectorAll('#listings-container [data-slug], #listings-container .pt-card').length,
+                }));
+                info('map did not populate. diagnostics: ' + JSON.stringify(diag));
+                info('console: ' + JSON.stringify(d.console.slice(0, 8)));
+                info('failed requests: ' + JSON.stringify(d.failed.slice(0, 8)));
+                throw new Error('window._markers never populated');
+              }
               const out = await page.evaluate(() => ({
                 markers: window._markers.map((m) => ({ slug: m._pintag.slug, lat: m.getLatLng().lat, lng: m.getLatLng().lng })),
                 placeNotice: { text: document.getElementById('map-place-notice').textContent, count: document.getElementById('map-place-notice').getAttribute('data-count'), visible: getComputedStyle(document.getElementById('map-place-notice')).display !== 'none' },
                 unmapped: { text: document.getElementById('map-unmapped').textContent, visible: getComputedStyle(document.getElementById('map-unmapped')).display !== 'none' },
               }));
-              check('exact listings still get Leaflet markers', out.markers.length === exact.length, out.markers.length + ' markers vs ' + exact.length + ' exact listings');
+              const placeSlugs = new Set(place.map((x) => x.r.slug));
               const exactBySlug = new Map(exact.map((x) => [x.r.slug, x.c]));
+              check('exact listings still get Leaflet markers', out.markers.length === exact.length, out.markers.length + ' markers vs ' + exact.length + ' exact listings');
               check('every marker sits exactly on its listing\'s own coordinate', out.markers.every((m) => { const c = exactBySlug.get(m.slug); return c && Math.abs(c.lat - m.lat) < 1e-9 && Math.abs(c.lng - m.lng) < 1e-9; }));
               check('NO named-place listing has a marker (no fabricated coordinates)', out.markers.every((m) => !placeSlugs.has(m.slug)));
-              check('place notice is visible, counts the named places separately', out.placeNotice.visible && out.placeNotice.count === String(place.length) && out.placeNotice.text.includes(place.length + ' of ' + rows.length) && /named Google Maps place/i.test(out.placeNotice.text), out.placeNotice.text);
-              check('unmapped notice counts only the listings with no usable location', out.unmapped.visible && out.unmapped.text.includes(invalid.length + ' of ' + rows.length) && !/place/i.test(out.unmapped.text), out.unmapped.text);
-              check('markers + place + unmapped account for every listing', out.markers.length + place.length + invalid.length === rows.length);
-              check('no page errors on listings.html', errors.length === 0, errors.join(' | '));
+              check('place notice visible and counts the named places separately', out.placeNotice.visible && out.placeNotice.count === String(place.length) && out.placeNotice.text.includes(place.length + ' of ' + rows.length) && /named Google Maps place/i.test(out.placeNotice.text), out.placeNotice.text);
+              check('unmapped notice counts only listings with no usable location', out.unmapped.visible && out.unmapped.text.includes(invalid.length + ' of ' + rows.length) && !/place/i.test(out.unmapped.text), out.unmapped.text);
+              check('markers + places + unmapped account for every listing', out.markers.length + place.length + invalid.length === rows.length);
+              check('no page errors on listings.html', d.errors.length === 0, d.errors.join(' | '));
               await ctx.close();
-            }
+            });
 
-            // ── D. live listing detail pages ────────────────────────────────────────
-            console.log('\n=== D. LIVE listing.html detail pages ===');
-            const detail = async (slug) => {
+            await section('D. LIVE listing.html detail pages', async () => {
+              const detail = async (slug) => {
+                const ctx = await mkCtx();
+                const page = await ctx.newPage();
+                const d = watch(page);
+                await page.goto(BASE + '/listing.html?slug=' + encodeURIComponent(slug) + '&lang=en', { waitUntil: 'domcontentloaded', timeout: 45000 });
+                await page.waitForSelector('.hero-map-section', { timeout: 45000 });
+                const r = await page.evaluate(() => {
+                  const sec = document.querySelector('.hero-map-section');
+                  const link = sec.querySelector('a.map-open-link');
+                  const pl = sec.querySelector('.map-place');
+                  return { iframe: sec.querySelectorAll('iframe').length, mapFrame: sec.querySelectorAll('.map-frame').length, place: !!pl, placeType: pl && pl.getAttribute('data-map-type'), text: pl ? pl.textContent : '', href: link && link.getAttribute('href'), target: link && link.getAttribute('target') };
+                });
+                await ctx.close();
+                return { d: r, errors: d.errors };
+              };
+              for (const x of exact.slice(0, 2)) {
+                const { d, errors } = await detail(x.r.slug);
+                check('exact listing ' + x.r.slug + ': embedded map + link, no place block', d.iframe === 1 && !d.place && /google\.com\/maps\?q=/.test(d.href || ''), JSON.stringify({ iframe: d.iframe, place: d.place }));
+                check('exact listing ' + x.r.slug + ': no page errors', errors.length === 0, errors.join(' | '));
+              }
+              for (const x of place.slice(0, 3)) {
+                const { d, errors } = await detail(x.r.slug);
+                check('place listing ' + x.r.slug + ': place-level (not invalid), no embed, no pin', d.place && d.placeType === 'place' && d.iframe === 0 && d.mapFrame === 0, JSON.stringify({ place: d.place, iframe: d.iframe }));
+                check('place listing ' + x.r.slug + ': states there are no exact coordinates', /no exact coordinates/i.test(d.text));
+                check('place listing ' + x.r.slug + ': original Google Maps link preserved byte-for-byte, new tab', d.href === x.r.map_embed_url && d.target === '_blank');
+                check('place listing ' + x.r.slug + ': no page errors', errors.length === 0, errors.join(' | '));
+              }
+            });
+
+            await section('E. production admin.html map-link field (served code, auth stubbed, GET-only, no writes)', async () => {
               const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA });
               await readOnly(ctx);
-              const page = await ctx.newPage();
-              const errors = []; page.on('pageerror', (e) => errors.push(e.message));
-              await page.goto(BASE + '/listing.html?slug=' + encodeURIComponent(slug) + '&lang=en', { waitUntil: 'domcontentloaded' });
-              await page.waitForSelector('.hero-map-section', { timeout: 45000 });
-              const d = await page.evaluate(() => {
-                const sec = document.querySelector('.hero-map-section');
-                const link = sec.querySelector('a.map-open-link');
-                const pl = sec.querySelector('.map-place');
-                return { iframe: sec.querySelectorAll('iframe').length, mapFrame: sec.querySelectorAll('.map-frame').length, place: !!pl, placeType: pl && pl.getAttribute('data-map-type'),
-                         text: pl ? pl.textContent : '', href: link && link.getAttribute('href'), target: link && link.getAttribute('target') };
-              });
-              await ctx.close();
-              return { d, errors };
-            };
-            for (const x of exact.slice(0, 2)) {
-              const { d, errors } = await detail(x.r.slug);
-              check('exact listing ' + x.r.slug + ': embedded map, link, no place block', d.iframe === 1 && !d.place && /google\.com\/maps\?q=/.test(d.href || ''), JSON.stringify({ iframe: d.iframe, place: d.place }));
-              check('exact listing ' + x.r.slug + ': no page errors', errors.length === 0, errors.join(' | '));
-            }
-            for (const x of place.slice(0, 3)) {
-              const { d, errors } = await detail(x.r.slug);
-              check('place listing ' + x.r.slug + ': shown as place-level (not invalid), no map embed, no pin', d.place && d.placeType === 'place' && d.iframe === 0 && d.mapFrame === 0, JSON.stringify({ place: d.place, iframe: d.iframe }));
-              check('place listing ' + x.r.slug + ': says there are no exact coordinates', /no exact coordinates/i.test(d.text));
-              check('place listing ' + x.r.slug + ': original Google Maps link preserved byte-for-byte, opens in a new tab', d.href === x.r.map_embed_url && d.target === '_blank');
-              check('place listing ' + x.r.slug + ': no page errors', errors.length === 0, errors.join(' | '));
-            }
-
-            // ── E. the production admin.html map field (auth stubbed, GET-only) ─────
-            console.log('\n=== E. production admin.html map-link field (served code, auth stubbed, no writes) ===');
-            {
-              const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, userAgent: UA });
               await ctx.route('**/cdn.jsdelivr.net/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript',
                 body: 'window.supabase={createClient:function(){return {auth:{getSession:async()=>({data:{session:null}}),refreshSession:async()=>({data:{session:null}}),getUser:async()=>({data:{user:{}}}),onAuthStateChange:function(){return {data:{subscription:{unsubscribe:function(){}}}};}},storage:{from:function(){return {upload:async()=>({}),getPublicUrl:function(){return {data:{publicUrl:""}};}};}}};}};' }));
               await ctx.route('**/admin-auth.js*', (r) => r.fulfill({ status: 200, contentType: 'application/javascript',
                 body: 'window.PintagAdminAuth={protect:function(c,cb){cb();},token:async()=>"stub",requireAdminSession:async()=>true,ADMIN_EMAIL:"x"};' }));
               await ctx.route('**/rest/v1/**', (r) => r.request().method() === 'OPTIONS'
                 ? r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' }, body: '' })
-                : r.request().method() === 'GET'
-                  ? r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' })
-                  : (blocked++, r.abort()));
-              await readOnly(ctx);
+                : r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' }));
               const page = await ctx.newPage();
-              const errors = []; page.on('pageerror', (e) => errors.push(e.message));
-              await page.goto(BASE + '/admin.html', { waitUntil: 'domcontentloaded' });
+              const d = watch(page);
+              await page.goto(BASE + '/admin.html', { waitUntil: 'domcontentloaded', timeout: 45000 });
               await page.waitForFunction(() => typeof window.reportMapCoords === 'function' && document.getElementById('f-map-hint'), null, { timeout: 45000 });
               const PID = '0x3123456789abcdef:0x7f9e8d7c6b5a4f3e';
               const probe = (v) => page.evaluate((url) => { reportMapCoords(url); const h = document.getElementById('f-map-hint'); return { state: h.getAttribute('data-map-state'), text: h.textContent }; }, v);
@@ -214,18 +226,17 @@ jobs:
               check('admin: generic search -> "Unusable link" with the existing warning', bad.state === 'invalid' && /Unusable link/.test(bad.text) && /will NOT place a pin/.test(bad.text), bad.text);
               const rev = await probe('https://www.google.com/maps?q=102.6331, 17.9757');
               check('admin: reversed coordinates -> unusable (transposed)', rev.state === 'invalid' && /transposed/.test(rev.text), rev.text);
-              check('no page errors on admin.html', errors.length === 0, errors.join(' | '));
+              check('no page errors on admin.html', d.errors.length === 0, d.errors.join(' | '));
               await ctx.close();
-            }
+            });
 
             await browser.close();
-            console.log('\nnon-GET requests aborted in the browser (none reached production): ' + blocked);
+            console.log('\nnon-GET browser requests aborted (none reached production): ' + blocked);
             const failed = results.filter((r) => !r.ok);
             console.log('\nSUMMARY: ' + (results.length - failed.length) + ' passed, ' + failed.length + ' failed');
             failed.forEach((f) => console.log('  FAILED: ' + f.name));
             process.exit(failed.length ? 1 : 0);
           })().catch((e) => { console.error('SMOKE SCRIPT ERROR: ' + (e && e.stack || e)); process.exit(2); });
-
           JS_EOF
           node smoke.js 2>&1 | tee smoke-report.txt
           exit "${PIPESTATUS[0]}"
