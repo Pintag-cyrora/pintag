@@ -33,6 +33,8 @@ jobs:
       EXPECT_SHA: 3a7fd1e13717c7b2ff19008fbfd763b968d661a5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -46,6 +48,8 @@ jobs:
       - name: Smoke test (read-only)
         run: |
           set -uo pipefail
+          git show 1944bb97bd4fef80f804e963c9161c53ec81399c:listings.html > old-listings.html
+          git show 1944bb97bd4fef80f804e963c9161c53ec81399c:map-location.js > old-map-location.js
           cat > smoke.js <<'JS_EOF'
           // READ-ONLY production smoke test for the named-place map work (PR #123).
           // Every browser request that is not GET/HEAD/OPTIONS is aborted, so nothing the
@@ -143,6 +147,9 @@ jobs:
               try {
                 await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 30000 });
               } catch (e) {
+                info('pageerrors: ' + JSON.stringify(d.errors.slice(0, 5)));
+                const direct = await page.evaluate(() => { try { window.renderMap(); return { ok: true, markers: window._markers.length, viewMode: window._viewMode }; } catch (e) { return { ok: false, error: String(e && e.stack || e).slice(0, 400) }; } });
+                info('direct renderMap() call: ' + JSON.stringify(direct));
                 const diag = await page.evaluate(() => ({
                   L: typeof window.L, map: typeof window._map, markers: window._markers ? window._markers.length : null,
                   mapWrap: document.getElementById('map-wrap') && getComputedStyle(document.getElementById('map-wrap')).display,
@@ -167,6 +174,22 @@ jobs:
               check('unmapped notice counts only listings with no usable location', out.unmapped.visible && out.unmapped.text.includes(invalid.length + ' of ' + rows.length) && !/place/i.test(out.unmapped.text), out.unmapped.text);
               check('markers + places + unmapped account for every listing', out.markers.length + place.length + invalid.length === rows.length);
               check('no page errors on listings.html', d.errors.length === 0, d.errors.join(' | '));
+              await ctx.close();
+            });
+
+            await section('C2. BASELINE: the pre-#123 listings.html + map-location.js served into the same live origin', async () => {
+              const ctx = await mkCtx();
+              await ctx.route('**/listings.html*', (r) => r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fs.readFileSync('old-listings.html', 'utf8').replace(/__ASSET_VERSION__/g, EXPECT_SHA) }));
+              await ctx.route('**/map-location.js*', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync('old-map-location.js', 'utf8') }));
+              const page = await ctx.newPage();
+              const d = watch(page);
+              await page.goto(BASE + '/listings.html', { waitUntil: 'domcontentloaded', timeout: 45000 });
+              await page.waitForSelector('#listings-container .pt-card, #listings-container [data-slug]', { timeout: 45000 });
+              await page.click('#btn-map');
+              let n = 0;
+              try { await page.waitForFunction(() => window._markers && window._markers.length > 0, null, { timeout: 30000 }); n = await page.evaluate(() => window._markers.length); } catch (e) { n = 0; }
+              info('baseline (pre-#123 code) markers: ' + n + '; pageerrors: ' + JSON.stringify(d.errors.slice(0, 3)));
+              check('BASELINE: the pre-#123 map populates in this same environment (isolates environment from regression)', n > 0, n + ' markers');
               await ctx.close();
             });
 
