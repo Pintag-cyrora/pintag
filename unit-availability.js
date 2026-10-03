@@ -222,3 +222,18 @@ function formatAvailabilityAdminSummary(resolved) {
   }
   return base;
 }
+
+// ---------------------------------------------------------------------------
+// ptIsMultiUnit(property) -- true when the listing offers MORE THAN ONE unit
+// type, i.e. when a visitor has to say which unit they are asking about.
+//
+// The threshold is deliberately the one listing.html's buildAvailableUnitsSection()
+// already uses to decide whether to show the unit picker at all: a lone unit type
+// folds into the ordinary single-listing layout (there is nothing to choose
+// between), so it is NOT multi-unit here either -- including a lone unit type that
+// tracks a total_units inventory. Reads only the number of unit_types rows, never
+// the availability columns (rule 2 above). Pure and DOM-free.
+// ---------------------------------------------------------------------------
+function ptIsMultiUnit(property) {
+  return !!(property && Array.isArray(property.unit_types) && property.unit_types.length >= 2);
+}
