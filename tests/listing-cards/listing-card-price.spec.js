@@ -343,10 +343,27 @@ test('the date sits on ONE line with the price — the card does not grow a row'
 const slugsInOrder = (page) => page.locator('.pt-card').evaluateAll(
   (els) => els.map((e) => (e.getAttribute('href').match(/slug=([^&]+)/) || [])[1]));
 
+// The grid is progressive: it renders PT_PAGE_SIZE (12) cards, then appends the next
+// batch only when an IntersectionObserver sentinel nears the viewport. Re-sorting
+// rebuilds the grid from batch 1, so right after selectOption() the DOM holds only
+// the first batch -- and the occupied listings (positions 17-22 of 25 in the sorted
+// lists) are not in it yet. Reading the order at that instant is a race against the
+// observer callback: a fast machine wins it, a slower CI runner loses it and every
+// indexOf() comes back -1, which is NOT a sort failure. Wait until every fixture card
+// is rendered, then read the order. (The FILTER tests below already do this via
+// revealAllCards().)
+async function allSlugsInOrder(page) {
+  await expect.poll(async () => {
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    return page.locator('.pt-card').count();
+  }, { message: 'every fixture card is rendered before the order is read', timeout: 15000 }).toBe(FIXTURES.length);
+  return slugsInOrder(page);
+}
+
 test('SORT: an occupied listing sorts on its unit-type price, not as 0', async ({ page }) => {
   await openListings(page);
   await page.selectOption('#sort-select', 'price_asc');
-  const asc = await slugsInOrder(page);
+  const asc = await allSlugsInOrder(page);
   // Within the unavailable group, $380 must precede $500 and $450.
   const idx = (s) => asc.indexOf(s);
   expect(idx('unavail-unit-price')).toBeGreaterThan(-1);
@@ -357,7 +374,7 @@ test('SORT: an occupied listing sorts on its unit-type price, not as 0', async (
   expect(idx('no-price')).toBeLessThan(idx('unavail-unit-price'));
 
   await page.selectOption('#sort-select', 'price_desc');
-  const desc = await slugsInOrder(page);
+  const desc = await allSlugsInOrder(page);
   expect(desc.indexOf('unavail-unit-price')).toBeGreaterThan(desc.indexOf('unavail-prop-price'));
 });
 
