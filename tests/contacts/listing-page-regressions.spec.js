@@ -19,6 +19,9 @@ const ROUTED = Object.assign({}, BASE, {
 
 test('the mobile sticky WhatsApp button follows the contact picker, with the picked contact id for lead attribution', async ({ page }) => {
   const errors = await openListing(page, ROUTED);
+  // ROUTED is a two-unit listing: its main and mobile WhatsApp buttons only become WhatsApp links once the
+  // visitor has said which unit they are asking about (see tests/contact-tracking/wa-unit-selection.spec.js).
+  await page.locator('.unit-card').first().click();
   await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('href', /wa\.me\/856201111111/);
   await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('data-contact-id', 'a');
   await page.locator('.contact-picker .cpick-row').nth(2).click();   // [legacy embed, a, cc]: the picker lists the legacy row first

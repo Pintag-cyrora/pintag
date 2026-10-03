@@ -263,6 +263,13 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .btn-primary{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px 20px;border-radius:var(--r-btn);font-size:13px;font-weight:500;text-decoration:none;border:none;cursor:pointer;transition:all 0.2s cubic-bezier(0.16,1,0.3,1);font-family:"DM Sans","Phetsarath","Noto Sans Lao","Noto Sans SC",sans-serif;white-space:nowrap;}
 .btn-wa{background:var(--wa);color:var(--white);box-shadow:0 2px 10px rgba(35,107,107,0.18);}
 .btn-wa:hover{background:var(--wa-hover);transform:translateY(-1px);box-shadow:0 4px 16px rgba(35,107,107,0.22);}
+/* Multi-unit listing, no unit chosen yet: the WhatsApp CTA stays visible but is not a
+   WhatsApp link -- it points the visitor at the unit picker (see ptWaNeedUnit()). */
+.btn-wa.wa-needs-unit,.mcta-btn.wa-needs-unit{opacity:.72;cursor:pointer;}
+.btn-wa.wa-needs-unit:hover{transform:none;box-shadow:0 2px 10px rgba(35,107,107,0.18);}
+.agent-ctas-needs-unit{flex-wrap:wrap;}
+.wa-unit-hint{flex:none;width:100%;margin:0;font-size:12px;line-height:1.45;color:var(--muted,#5A6670);}
+.units-section-prompt{outline:2px solid var(--teal);outline-offset:6px;border-radius:12px;}
 .btn-call{background:transparent;color:var(--ink-soft);border:1px solid var(--border-strong);}
 .btn-call:hover{background:var(--warm);color:var(--ink);transform:translateY(-1px);}
 /* Detail 2-col — was 3-col (Overview/Features/Location) until the Location
@@ -1900,6 +1907,22 @@ function selectUnitType(id){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
+// A multi-unit listing's main / mobile WhatsApp CTA, before any unit is chosen. It is not a
+// WhatsApp link (see waNeedsUnit in buildMockupLayout()): activating it takes the visitor to
+// the unit picker and highlights it. It deliberately posts no tracking -- nothing was
+// contacted, so there is no inquiry to record. Choosing a unit re-renders the CTA as the
+// normal WhatsApp link carrying that unit.
+function ptWaNeedUnit(e){
+  if(e&&e.preventDefault) e.preventDefault();
+  var sec=document.getElementById('units-section');
+  if(sec){
+    sec.scrollIntoView({behavior:'smooth',block:'start'});
+    sec.classList.add('units-section-prompt');
+    setTimeout(function(){ sec.classList.remove('units-section-prompt'); },1600);
+  }
+  return false;
+}
+
 // Keeps the address bar's ?unit= param in sync with the current selection
 // (replaceState, not pushState -- toggling a unit shouldn't pollute the
 // back-button history with every click) so the URL on screen always
@@ -1968,6 +1991,10 @@ function ptSelectContact(index){
     .concat(Array.prototype.slice.call(document.querySelectorAll('.unit-cta[data-contact-id]')));
   waButtons.forEach(function(wa){
     if(!wa) return;
+    // A CTA that is waiting for a unit selection has no wa.me link to re-point; rewriting its
+    // href here would turn it into a live link and bypass the gate. It is rebuilt with the
+    // right contact once a unit is picked (selectUnitType() re-renders the page).
+    if(wa.getAttribute('data-wa-needs-unit')){ wa.setAttribute('data-contact-id', _currentContactId); return; }
     var existing=wa.getAttribute('href')||'';
     var q=existing.indexOf('?');
     var text=(q>-1)?existing.slice(q):'';
@@ -2405,6 +2432,8 @@ function buildMockupLayout(){
     unitAvailability:{lo:'ສະຖານະ',en:'Availability',zh:'状态'},
     unitMoveIn:{lo:'ວັນທີເຂົ້າຢູ່',en:'Move-in',zh:'入住日期'},
     unitInquire:{lo:'ສອບຖາມຫ້ອງນີ້',en:'Inquire about this unit',zh:'咨询此房型'},
+    waPickUnit:{lo:'ອາຄານນີ້ມີຫຼາຍຫ້ອງ. ກະລຸນາເລືອກຫ້ອງທີ່ທ່ານສອບຖາມຈາກດ້ານລຸ່ມ ແລ້ວຈຶ່ງສົ່ງຂໍ້ຄວາມທາງ WhatsApp.',en:'This property has several units. Select the unit you are asking about below, then message on WhatsApp.',zh:'该房源有多种户型。请先在下方选择您要咨询的户型，再通过 WhatsApp 联系。'},
+    waPickUnitShort:{lo:'ເລືອກຫ້ອງ',en:'Select a unit',zh:'选择户型'},
     viewingUnit:{lo:'ກຳລັງເບິ່ງ',en:'Viewing',zh:'正在查看'},
     showOverview:{lo:'ເບິ່ງພາບລວມອາຄານ',en:'Show building overview',zh:'查看整栋概览'},
     buildingPhotosAmenities:{lo:'ຮູບພາບ ແລະ ສິ່ງອຳນວຍຄວາມສະດວກຂອງອາຄານ',en:'Building Photos & Shared Amenities',zh:'楼栋照片与公共设施'},
@@ -2761,6 +2790,10 @@ function buildMockupLayout(){
     var _selPriceForWa=buildUnitPriceText(data,selectedUnit.resolved,lang);
     waMessageText=buildUnitWhatsAppMessage(data,_selUnitNameForWa,_selPriceForWa,selectedUnit.availability,lang,selectedUnit.resolved.bedrooms,L.unitBeds[lang],waCanonicalUrl);
   }
+  // Multi-unit listing with no unit chosen: the main and mobile WhatsApp CTAs must not start a
+  // conversation yet -- the lead would not say which unit it is about. (Per-unit Inquire buttons
+  // already name their unit; the waiting-list / notify-me CTAs are not unit inquiries.)
+  var waNeedsUnit=!!cleanPhone && !selectedUnit && typeof ptIsMultiUnit==='function' && ptIsMultiUnit(data);
   var waMessage=encodeURIComponent(waMessageText);
   var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
   var CONTACT_ROLE_LABELS={
@@ -2830,13 +2863,16 @@ function buildMockupLayout(){
     '<div><div class="agent-name-en">'+esc((contact&&contact.name)||roleLabel.en)+'</div></div>'+
     '</div></div>'+
     contactPickerHtml+
-    '<div class="agent-ctas">'+
+    '<div class="agent-ctas'+(waNeedsUnit?' agent-ctas-needs-unit':'')+'">'+
     // id="pt-wa-primary" + data-contact-id let ptSelectContact() re-point BOTH
     // the href and the lead attribution when the buyer picks another number.
     // contactId comes from the RESOLVED primary, not propertyContext.contacts,
     // so the tracked contact and the dialled number can never disagree.
-    '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'contact-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>'+
+(waNeedsUnit
+      ? '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" data-wa-needs-unit="1" role="button" aria-disabled="true" aria-describedby="pt-wa-unit-hint" href="#units-section" class="btn-primary btn-wa wa-needs-unit" onclick="return ptWaNeedUnit(event)">'+WA_SVG+'<span>'+esc(L.waPickUnitShort[lang])+'</span></a>'
+      : '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'contact-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>')+
     callBtn+
+    (waNeedsUnit?'<p class="wa-unit-hint" id="pt-wa-unit-hint" role="status">'+esc(L.waPickUnit[lang])+'</p>':'')+
     '</div></div>'
   );
 
@@ -3298,7 +3334,9 @@ function buildMockupLayout(){
               var mWaStatusUrl=cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+resolveLangField(data,'title',lang))):'#';
               return '<a href="'+esc(mWaStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'mcta-whatsapp-status\',trackLabel:\''+escJs(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
             })())
-      : '<a id="pt-wa-mobile" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>';
+      : (waNeedsUnit
+          ? '<a id="pt-wa-mobile" data-contact-id="'+escJs(_currentContactId)+'" data-wa-needs-unit="1" role="button" aria-disabled="true" href="#units-section" class="mcta-btn wa-needs-unit" onclick="return ptWaNeedUnit(event)">'+WA_SVG+'<span>'+esc(L.waPickUnitShort[lang])+'</span></a>'
+          : '<a id="pt-wa-mobile" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'mcta-whatsapp\',trackLabel:\'WhatsApp\'})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>');
     mCtaBar.innerHTML=(
       '<div class="mcta-inner">'+
       '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+

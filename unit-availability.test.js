@@ -236,3 +236,37 @@ test('compareUnitTypesForDisplay: unavailable unit types are still included, nev
   const sorted = items.slice().sort(compareUnitTypesForDisplay);
   assert.equal(sorted.length, 1);
 });
+
+// ── ptIsMultiUnit: when a visitor must choose a unit before WhatsApp ─────────
+// listing.html gates the main / mobile WhatsApp CTA on this. The threshold is the one
+// buildAvailableUnitsSection() uses to decide whether a unit picker exists at all.
+const { ptIsMultiUnit } = globalThis;
+
+test('ptIsMultiUnit: two or more unit types is multi-unit', () => {
+  assert.equal(ptIsMultiUnit({ unit_types: [{ id: 'a' }, { id: 'b' }] }), true);
+  assert.equal(ptIsMultiUnit({ unit_types: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }), true);
+});
+
+test('ptIsMultiUnit: none or ONE unit type is single-unit (nothing to choose between)', () => {
+  assert.equal(ptIsMultiUnit({ unit_types: [] }), false);
+  assert.equal(ptIsMultiUnit({ unit_types: [{ id: 'a' }] }), false);
+  // A lone unit type that tracks a total_units inventory still has no picker, so it is not multi-unit.
+  assert.equal(ptIsMultiUnit({ unit_types: [{ id: 'a', total_units: 24, available_count: 7 }] }), false);
+});
+
+test('ptIsMultiUnit: unavailable unit types still count -- availability never changes the answer', () => {
+  assert.equal(ptIsMultiUnit({ unit_types: [{ id: 'a', is_available: false, available_count: 0 }, { id: 'b', is_available: false, available_count: 0 }] }), true);
+});
+
+test('ptIsMultiUnit: missing, null or malformed input is false, never a throw', () => {
+  for (const bad of [undefined, null, {}, { unit_types: null }, { unit_types: undefined }, { unit_types: 'ab' }, { unit_types: { length: 5 } }, 0, 'x']) {
+    assert.equal(ptIsMultiUnit(bad), false, JSON.stringify(bad));
+  }
+});
+
+test('ptIsMultiUnit: does not mutate its input', () => {
+  const p = { unit_types: [{ id: 'a' }, { id: 'b' }] };
+  const before = JSON.stringify(p);
+  ptIsMultiUnit(p);
+  assert.equal(JSON.stringify(p), before);
+});
