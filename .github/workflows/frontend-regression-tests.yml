@@ -66,6 +66,7 @@ jobs:
       fail-fast: false
       matrix:
         suite:
+          - admin-analytics-nav
           - admin-province
           - admin-save-integrity
           - agent-assignment
