@@ -33,12 +33,23 @@ var PT_CHART = (function () {
 
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
+  // Exact, never abbreviated: 1000 -> "1,000", 12500 -> "12,500",
+  // 1234567 -> "1,234,567". This used to collapse thousands/millions to
+  // "1K" / "1.2M", which hid real counts on the Website Overview cards (a
+  // 1,000-view day and a 1,499-view day both read "1K"). Display only: the
+  // value passed in is untouched, and it stays integer-rounded because every
+  // caller formats a COUNT (or an axis tick of one). Percentages, durations and
+  // the pages/session decimal never went through here and still don't.
+  // en-US is explicit so the separator doesn't depend on the admin's browser
+  // locale (the dashboard's copy is English throughout).
   function fmtNum(n) {
     if (n == null || isNaN(n)) return '0';
-    if (Math.abs(n) >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-    return Math.round(n).toLocaleString();
+    return (Math.round(n) || 0).toLocaleString('en-US');   // `|| 0` turns -0 into 0
   }
+
+  // Exact numbers are wider than "12K", so charts size their gutters from the
+  // longest label they will actually draw instead of a fixed pixel guess.
+  function textWidth(label, pxPerChar) { return String(label).length * pxPerChar; }
 
   function niceMax(v) {
     if (v <= 0) return 10;
@@ -87,6 +98,10 @@ var PT_CHART = (function () {
     if (!allPoints.length) { container.innerHTML = emptyState(opts.emptyLabel); return; }
     var n = series[0].points.length;
     var maxY = niceMax(Math.max.apply(null, allPoints.map(function (p) { return p.y; }).concat([1])));
+    // The y-axis labels are exact ("12,500", "125,000"), so widen the left gutter
+    // to fit the longest one (10px digits ~ 6px each, + the 8px gap and a margin).
+    padL = Math.max(padL, Math.ceil(textWidth(fmtNum(maxY), 6)) + 14);
+    plotW = W - padL - padR;
     var x = function (i) { return padL + (n <= 1 ? 0 : (i / (n - 1)) * plotW); };
     var y = function (v) { return padT + plotH - (v / maxY) * plotH; };
 
@@ -148,7 +163,10 @@ var PT_CHART = (function () {
     var color = opts.color || TEAL;
     var maxV = niceMax(Math.max.apply(null, rows.map(function (r) { return r.value; }).concat([1])));
     var rowH = 28, labelW = opts.labelWidth || 140, W = opts.width || container.clientWidth || 640;
-    var barAreaW = W - labelW - 56;
+    // Room for the value printed after the longest bar ("125,000", exact, 11px
+    // bold ~ 7px a digit); never less than the old fixed 56px.
+    var valueRoom = Math.max(56, Math.ceil(textWidth(fmtNum(Math.max.apply(null, rows.map(function (r) { return r.value; }))), 7)) + 12);
+    var barAreaW = W - labelW - valueRoom;
     var H = rows.length * rowH + 8;
 
     var bars = rows.map(function (r, i) {
