@@ -35,6 +35,13 @@ async function stubSupabase(page) {
       }),
     };
   }, ADMIN_EMAIL);
+  // admin.html loads the real supabase-js from jsdelivr with a <script> tag. On a
+  // machine with network access that script REPLACES window.supabase and undoes
+  // the stub above (the page then runs real auth, finds no session and stays
+  // behind the login overlay). Serve it an empty script so the stub always wins,
+  // with or without internet access.
+  await page.route('**/cdn.jsdelivr.net/npm/@supabase/**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/javascript', body: '' }));
   await page.route('**/rest/v1/**', (r) =>
     r.fulfill({ status: 200, contentType: 'application/json',
       headers: { 'access-control-allow-origin': '*', 'content-range': '0-0/0' }, body: '[]' }));
