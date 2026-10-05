@@ -20,7 +20,7 @@ import fs from 'node:fs';
 const {
   CONTACT_LANGUAGES, contactLanguageByCode, normalizeContactLanguages,
   formatContactLanguages, resolveListingContacts, resolvePrimaryContact,
-  hasMultipleContacts
+  hasMultipleContacts, resolvePickedContact
 } = await import('./contact-languages.js');
 
 const c = (o) => Object.assign({ id: 'c1', role: 'agent', phone: '02011111111' }, o);
@@ -491,3 +491,58 @@ test('MIGRATION: is_primary is backfilled from the existing single contact', () 
       'the migration must NOT backfill — repairing existing rows is a separate authorized step');
   });
 }
+
+// ── resolvePickedContact: a manual pick outranks language routing ─────────────
+// listing.html keeps the visitor's explicit choice across re-renders (selecting a unit,
+// switching the language) by remembering the contact's id and asking this which contact
+// that is NOW. null means "no pick / no longer on offer" -> fall back to language routing.
+const LIST = [
+  { id: 'a', phone: '1', languages: ['lo', 'en'] },
+  { id: 'b', phone: '2', languages: ['th'] },
+  { id: 'cc', phone: '3', languages: ['zh'] },
+];
+
+test('resolvePickedContact: returns the contact the visitor picked', () => {
+  assert.equal(resolvePickedContact(LIST, 'b'), LIST[1]);
+  assert.equal(resolvePickedContact(LIST, 'cc'), LIST[2]);
+  assert.equal(resolvePickedContact(LIST, 'a'), LIST[0]);
+});
+
+test('resolvePickedContact: no pick means no override', () => {
+  for (const none of [null, undefined, '', 0, false]) assert.equal(resolvePickedContact(LIST, none), null, String(none));
+});
+
+test('resolvePickedContact: a picked contact that is no longer on the listing is dropped, not guessed at', () => {
+  assert.equal(resolvePickedContact(LIST, 'gone'), null);
+  assert.equal(resolvePickedContact([LIST[0], LIST[2]], 'b'), null);
+});
+
+test('resolvePickedContact: matches by id, never by position, so re-ordering cannot move the choice to someone else', () => {
+  const reordered = [LIST[2], LIST[0], LIST[1]];
+  assert.equal(resolvePickedContact(reordered, 'b').phone, '2');
+  assert.equal(resolvePickedContact(reordered, 'a').phone, '1');
+});
+
+test('resolvePickedContact: malformed input is null, never a throw', () => {
+  for (const bad of [undefined, null, 'ab', 5, {}, { length: 2 }]) assert.equal(resolvePickedContact(bad, 'a'), null);
+  assert.equal(resolvePickedContact([null, undefined, { id: 'a' }], 'a').id, 'a');
+  assert.equal(resolvePickedContact([{ phone: 'x' }], 'a'), null);   // a row with no id can never be matched
+});
+
+test('resolvePickedContact: does not mutate its inputs', () => {
+  const before = JSON.stringify(LIST);
+  resolvePickedContact(LIST, 'b');
+  assert.equal(JSON.stringify(LIST), before);
+});
+
+test('resolvePickedContact: a pick is independent of language routing -- it can name someone routing would never choose', async () => {
+  const { resolveContactForLanguage } = await import('./contact-languages.js');
+  const property = { contacts: null, property_contacts: LIST.map((c, i) => ({ sort_order: i, is_primary: i === 0, contacts: Object.assign({ role: 'agent', phone: c.phone }, c) })) };
+  const all = resolveListingContacts(property);
+  // routing by language: Chinese -> cc, English -> a; nobody routes to the Thai-only contact b
+  assert.equal(resolveContactForLanguage(property, 'zh').contact.id, 'cc');
+  assert.equal(resolveContactForLanguage(property, 'en').contact.id, 'a');
+  for (const lang of ['lo', 'en', 'zh']) assert.notEqual(resolveContactForLanguage(property, lang).contact.id, 'b');
+  // ...but the visitor can pick b, and that is what resolvePickedContact reports
+  assert.equal(resolvePickedContact(all, 'b').id, 'b');
+});
