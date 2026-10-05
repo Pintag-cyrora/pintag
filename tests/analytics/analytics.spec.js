@@ -111,7 +111,7 @@ function makeFake(opts = {}) {
   const handlers = {
     analytics_history_bounds: () => st.bounds,
     analytics_realtime_snapshot: () => ({ active_visitors: 3, live_searches: 1, live_listing_views: 2, pages_now: { 'index.html': 2 } }),
-    analytics_session_stats: () => ({ sessions: 10, avg_pages_per_session: 2, avg_session_duration_seconds: 30, bounce_rate: 20, page_views: 120, unique_visitors: 8, returning_visitors: 2 }),
+    analytics_session_stats: () => st.sessionStats || ({ sessions: 10, avg_pages_per_session: 2, avg_session_duration_seconds: 30, bounce_rate: 20, page_views: 120, unique_visitors: 8, returning_visitors: 2 }),
     analytics_traffic_by_day: b => st.trafficRows ? st.trafficRows(b) : zeroFill(b, d => ({ day: d, page_views: 5, sessions: 3, unique_visitors: 2, returning_visitors: 1 })),
     analytics_traffic_sources: () => ({ by_source: { direct: 5 }, top_referrers: [], campaigns: [] }),
     analytics_listing_engagement: b => ({
@@ -372,6 +372,55 @@ test.describe('range controls', () => {
 // ═════════════════════════════════════════════════════════════════════════
 // Errors are visible, with retry -- never zeros
 // ═════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════
+// Exact numbers: counts are never abbreviated (no "1K" / "1.2M")
+// ═════════════════════════════════════════════════════════════════════════
+test.describe('exact numbers on the Website Overview', () => {
+  const card = (page, label) => page.locator('#view-overview .stat-card').filter({ hasText: label }).locator('.stat-value');
+
+  test('1,000 / 1,234 / 12,500 / 1,234,567 are shown exactly, not as 1K / 1.2K / 12.5K / 1.2M', async ({ page }) => {
+    const fake = makeFake({ sessionStats: { sessions: 12500, avg_pages_per_session: 2.4, avg_session_duration_seconds: 125, bounce_rate: 37.5, page_views: 1000, unique_visitors: 1234, returning_visitors: 1234567 } });
+    await open(page, fake);
+    await expect(card(page, 'Page views')).toHaveText('1,000');
+    await expect(card(page, 'Total visitors')).toHaveText('1,000');
+    await expect(card(page, 'Unique visitors')).toHaveText('1,234');
+    await expect(card(page, 'Sessions')).toHaveText('12,500');
+    await expect(card(page, 'Returning visitors')).toHaveText('1,234,567');
+    // Every COUNT card (not the "2m 5s" duration, whose "m" is minutes) must be plain digits and commas.
+    for (const label of ['Page views', 'Unique visitors', 'Returning visitors', 'Sessions', 'Total visitors']) {
+      expect(await card(page, label).innerText(), label).toMatch(/^[\d,]+$/);
+    }
+  });
+
+  test('percentages, durations and decimals keep their own formatting', async ({ page }) => {
+    const fake = makeFake({ sessionStats: { sessions: 12500, avg_pages_per_session: 2.4, avg_session_duration_seconds: 125, bounce_rate: 37.5, page_views: 1000, unique_visitors: 1234, returning_visitors: 5 } });
+    await open(page, fake);
+    await expect(card(page, 'Bounce rate')).toHaveText('37.5%');
+    await expect(card(page, 'Pages / session')).toHaveText('2.4');
+    await expect(card(page, 'Avg session duration')).toHaveText('2m 5s');
+  });
+
+  test('values under 1,000 and zero are unchanged', async ({ page }) => {
+    const fake = makeFake({ sessionStats: { sessions: 0, avg_pages_per_session: 0, avg_session_duration_seconds: 0, bounce_rate: 0, page_views: 999, unique_visitors: 7, returning_visitors: 0 } });
+    await open(page, fake);
+    await expect(card(page, 'Page views')).toHaveText('999');
+    await expect(card(page, 'Unique visitors')).toHaveText('7');
+    await expect(card(page, 'Sessions')).toHaveText('0');
+  });
+
+  test('the traffic-trend chart draws exact axis labels and tooltips', async ({ page }) => {
+    const fake = makeFake({ trafficRows: b => { const rows = []; let i = 0; for (let d = b.p_start; d < b.p_end; d = LAOS.addDays(d, 1)) rows.push({ day: d, page_views: i++ === 0 ? 12500 : 1000, sessions: 3, unique_visitors: 2, returning_visitors: 1 }); return rows; } });
+    await open(page, fake);
+    await expect(page.locator('#ov-trend-chart svg')).toBeVisible();
+    const svgText = await page.locator('#ov-trend-chart svg text').evaluateAll(els => els.map(e => e.textContent));   // SVG nodes have no innerText
+    expect(svgText.filter(t => /^[\d,]+$/.test(t))).toContain('20,000');
+    for (const t of svgText) expect(t).not.toMatch(/\d[KMB]$/i);
+    const tips = await page.locator('#ov-trend-chart rect[data-tip]').evaluateAll(els => els.map(e => e.getAttribute('data-tip')));
+    expect(tips.join('|')).toContain('12,500');
+    expect(tips.join('|')).not.toMatch(/\d[KMB]\b/);
+  });
+});
+
 test.describe('failure handling', () => {
   test('a timed-out RPC shows an error banner (not zeros) and Retry recovers', async ({ page }) => {
     const fake = makeFake({ fail: { analytics_session_stats: true } });
