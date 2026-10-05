@@ -1972,10 +1972,14 @@ var _currentHeroIdx = 0;
 // the tracking model.
 //
 // Deliberately does NOT re-render the page: swapping attributes preserves
-// scroll position, the selected unit type, and the gallery state.
+// scroll position, the selected unit type, and the gallery state. The choice is
+// also recorded in _pickedContactId, because other things DO re-render the page
+// (selecting a unit, switching the language) and rebuild all of the above from
+// scratch -- buildMockupLayout() reads _pickedContactId to keep this contact.
 function ptSelectContact(index){
   var c=_currentContacts&&_currentContacts[index];
   if(!c) return;
+  _pickedContactId=c.id||null;
   _currentContactId=c.id||'';
   // The mobile sticky bar and the status CTAs build their wa.me URLs from this
   // digits-only global at click time, so updating it is what makes them follow
@@ -2018,6 +2022,13 @@ var _currentContacts=[];
 var _currentContactTier=0;
 var _currentContactId='';
 var _currentContactPhone = '';
+// The contact the visitor explicitly picked in the picker (its contacts.id), or null. This is the
+// ONLY durable record of that choice: the four globals above are recomputed on every render, and the
+// picker rows / CTA attributes are rebuilt with the page, so without this a re-render (selecting a
+// unit, switching the language) swapped the choice back to the language-routed contact.
+// buildMockupLayout() honours it ahead of language routing; it falls back to routing only when there
+// is no pick or the picked contact is no longer on the listing.
+var _pickedContactId=null;
 
 // Deep linking (?unit=slugified-name or ?unit=<uuid>) -- resolves to a
 // unit_types id so the caller can pre-select it before the first render.
@@ -2746,6 +2757,16 @@ function buildMockupLayout(){
     ? resolveContactForLanguage(data,lang) : null;
   _currentContactTier=_routed?_routed.tier:0;
   var contact=(_routed&&_routed.contact)||(allContacts.length?allContacts[0]:(data.contacts||null));
+  // An explicit pick outranks language routing, across every re-render (unit selection, language
+  // switch). A stale pick -- the contact is gone from this listing -- is dropped and routing applies.
+  var _picked=(typeof resolvePickedContact==='function')?resolvePickedContact(allContacts,_pickedContactId):null;
+  if(_picked){
+    contact=_picked;
+    // Not a language match, so the picker heading stays neutral rather than claiming "Speaks <lang>".
+    _currentContactTier=0;
+  }else{
+    _pickedContactId=null;
+  }
   var contactPhone=contact?(contact.whatsapp||contact.phone||''):'';
   var cleanPhone=ptNormalizePhoneDigits(contactPhone);
   _currentContactPhone=cleanPhone;

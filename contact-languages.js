@@ -255,6 +255,27 @@ function hasMultipleContacts(property) {
   return resolveListingContacts(property).length > 1;
 }
 
+// ---------------------------------------------------------------------------
+// resolvePickedContact(contacts, pickedId) -- the number the visitor EXPLICITLY
+// chose in the picker, if it is still on offer.
+//
+// A manual pick outranks language routing (resolveContactForLanguage): the
+// visitor chose that person on purpose, so re-rendering the page -- selecting a
+// unit, switching the language -- must not silently swap it back. Returns the
+// matching contact from `contacts`, or null when there is no pick or the picked
+// id is no longer in the list (the listing changed, or the row never had an id);
+// the caller then falls back to language routing. Matches by id only, never by
+// position, so a re-ordered list cannot shift the choice onto someone else.
+// Pure and DOM-free; never mutates its inputs.
+// ---------------------------------------------------------------------------
+function resolvePickedContact(contacts, pickedId) {
+  if (!pickedId || !Array.isArray(contacts)) return null;
+  for (var i = 0; i < contacts.length; i++) {
+    if (contacts[i] && contacts[i].id === pickedId) return contacts[i];
+  }
+  return null;
+}
+
 
 // ---------------------------------------------------------------------------
 // THE PRIMARY-LINK WRITE PATH — one implementation, four callers.
@@ -349,7 +370,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CONTACT_LANGUAGES_SCHEMA_VERSION, CONTACT_LANGUAGES, contactLanguageByCode,
     normalizeContactLanguages, formatContactLanguages,
-    resolveListingContacts, resolvePrimaryContact, hasMultipleContacts,
+    resolveListingContacts, resolvePrimaryContact, hasMultipleContacts, resolvePickedContact,
     resolveContactForLanguage,
     PRIMARY_CONTACT_SORT_ORDER, primaryContactLinkRow, ensurePrimaryContactLink,
     supabaseJsContactLinkIO, restContactLinkIO
