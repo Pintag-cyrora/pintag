@@ -275,8 +275,10 @@ function deltaHtml(cur, prev) {
   const sign = d.pct > 0 ? '+' : '';
   return `<div class="stat-delta ${d.dir}">${sign}${d.pct.toFixed(1)}% vs prev</div>`;
 }
-function statCard(label, value, deltaCurrent, deltaPrev) {
-  return `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(value)}</div>${deltaHtml(deltaCurrent, deltaPrev)}</div>`;
+// `title` (optional) is a hover tooltip on the whole card, for a metric whose
+// definition isn't obvious from its label.
+function statCard(label, value, deltaCurrent, deltaPrev, title) {
+  return `<div class="stat-card"${title ? ` title="${esc(title)}"` : ''}><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(value)}</div>${deltaHtml(deltaCurrent, deltaPrev)}</div>`;
 }
 function sectionHeader(title, exportFn) {
   return `<div class="section-header"><h2>${esc(title)}</h2>${exportFn ? `<button class="export-btn" onclick="${exportFn}">⇩ Export CSV</button>` : ''}</div>`;
@@ -344,13 +346,12 @@ async function loadOverviewTab() {
     '<div class="section-block">' + sectionHeader('Website Overview') +
       '<div class="stat-grid">' +
         statCard('Page views', PT_CHART.fmtNum(s.page_views || 0), s.page_views, p.page_views) +
-        statCard('Unique visitors', PT_CHART.fmtNum(s.unique_visitors || 0), s.unique_visitors, p.unique_visitors) +
+        statCard('Unique visitors', PT_CHART.fmtNum(s.unique_visitors || 0), s.unique_visitors, p.unique_visitors, 'Distinct browsers (visitor IDs stored in the browser) that loaded a page in this range. One person on two devices counts twice; cleared storage counts as a new visitor.') +
         statCard('Returning visitors', PT_CHART.fmtNum(s.returning_visitors || 0), s.returning_visitors, p.returning_visitors) +
         statCard('Sessions', PT_CHART.fmtNum(s.sessions || 0), s.sessions, p.sessions) +
         statCard('Avg session duration', fmtSeconds(s.avg_session_duration_seconds), s.avg_session_duration_seconds, p.avg_session_duration_seconds) +
         statCard('Bounce rate', (s.bounce_rate || 0) + '%', s.bounce_rate, p.bounce_rate) +
         statCard('Pages / session', s.avg_pages_per_session || 0, s.avg_pages_per_session, p.avg_pages_per_session) +
-        statCard('Total visitors', PT_CHART.fmtNum(s.page_views || 0), s.page_views, p.page_views) +
       '</div>' +
     '</div>' +
     '<div class="section-block">' + sectionHeader('Traffic Trend') +
