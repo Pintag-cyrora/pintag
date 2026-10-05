@@ -341,7 +341,7 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
   <div class="admin-body">
     <div id="listings-panel">
       <div class="tabs" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <button class="tab active">All Listings</button>
+        <button class="tab active" id="listings-tab" onclick="setAnalyticsView(false)">All Listings</button>
         <button class="tab" onclick="toggleAnalytics()" id="analytics-tab">📊 Analytics</button>
         <a class="tab" href="intelligence.html" style="text-decoration:none;">🧠 Intelligence</a>
         <a class="tab" href="analytics.html" style="text-decoration:none;">📈 Full Analytics</a>
@@ -3207,14 +3207,21 @@ function fillContactFromSelectedAgent() {
 
 // ── ANALYTICS ────────────────────────────────────────────────────
 var _analyticsVisible = false;
-function toggleAnalytics() {
-  _analyticsVisible = !_analyticsVisible;
+// The single place that decides which of the two in-page views (All Listings /
+// Analytics) is showing. It takes an EXPLICIT target state, so "All Listings"
+// and "back from New Listing" can request the listings view directly instead of
+// relying on a toggle that only ever flips whatever is currently shown. Looked
+// up by id -- the old `.tab[0]` position assumption broke as soon as the tab row
+// changed.
+function setAnalyticsView(on) {
+  _analyticsVisible = !!on;
   document.getElementById('analytics-panel').style.display = _analyticsVisible ? 'block' : 'none';
   document.getElementById('listings-container').style.display = _analyticsVisible ? 'none' : 'block';
   document.getElementById('analytics-tab').classList.toggle('active', _analyticsVisible);
-  document.querySelectorAll('.tab')[0].classList.toggle('active', !_analyticsVisible);
+  document.getElementById('listings-tab').classList.toggle('active', !_analyticsVisible);
   if (_analyticsVisible) loadAnalytics();
 }
+function toggleAnalytics() { setAnalyticsView(!_analyticsVisible); }
 
 const RECIPIENT_TYPE_LABELS = {
   owner: 'Owner', agent: 'Agent', property_manager: 'Property Manager',
@@ -3792,6 +3799,9 @@ function onTransactionChange() {
 
 // ── FORM SHOW/HIDE ────────────────────────────────────────────────
 function showListings() {
+  // Returning from New Listing / the edit form must land on the listings, even
+  // if the in-page Analytics view was open when the visitor left.
+  setAnalyticsView(false);
   document.getElementById('listings-panel').style.display = 'block';
   document.getElementById('form-panel').style.display    = 'none';
   document.getElementById('import-panel').style.display  = 'none';

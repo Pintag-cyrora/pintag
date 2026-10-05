@@ -1,0 +1,11 @@
+{
+  "name": "pintag-admin-analytics-nav-tests",
+  "private": true,
+  "description": "Admin page in-page Analytics navigation: the All Listings tab and the return from New Listing must always restore the listings view, the Analytics toggle must still work, and the Full Analytics / Analytics-to-Admin links must keep pointing at the right pages.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
