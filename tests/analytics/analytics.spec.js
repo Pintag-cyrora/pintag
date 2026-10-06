@@ -382,14 +382,45 @@ test.describe('exact numbers on the Website Overview', () => {
     const fake = makeFake({ sessionStats: { sessions: 12500, avg_pages_per_session: 2.4, avg_session_duration_seconds: 125, bounce_rate: 37.5, page_views: 1000, unique_visitors: 1234, returning_visitors: 1234567 } });
     await open(page, fake);
     await expect(card(page, 'Page views')).toHaveText('1,000');
-    await expect(card(page, 'Total visitors')).toHaveText('1,000');
     await expect(card(page, 'Unique visitors')).toHaveText('1,234');
     await expect(card(page, 'Sessions')).toHaveText('12,500');
     await expect(card(page, 'Returning visitors')).toHaveText('1,234,567');
     // Every COUNT card (not the "2m 5s" duration, whose "m" is minutes) must be plain digits and commas.
-    for (const label of ['Page views', 'Unique visitors', 'Returning visitors', 'Sessions', 'Total visitors']) {
+    for (const label of ['Page views', 'Unique visitors', 'Returning visitors', 'Sessions']) {
       expect(await card(page, label).innerText(), label).toMatch(/^[\d,]+$/);
     }
+  });
+
+  // The card that used to be here ("Total visitors") was wired to page_views, so
+  // it always repeated the Page views number. It was removed; these pin that it
+  // stays gone and that the remaining metrics are untouched.
+  test('the duplicate "Total visitors" card is gone: exactly 7 Website Overview cards, in order', async ({ page }) => {
+    const fake = makeFake({ sessionStats: { sessions: 12500, avg_pages_per_session: 2.4, avg_session_duration_seconds: 125, bounce_rate: 37.5, page_views: 1000, unique_visitors: 1234, returning_visitors: 55 } });
+    await open(page, fake);
+    const overview = page.locator('#view-overview .section-block').first();
+    await expect(overview.locator('.section-header h2')).toHaveText('Website Overview');
+    await expect(overview.locator('.stat-card')).toHaveCount(7);
+    expect(await overview.locator('.stat-label').allInnerTexts().then(a => a.map(t => t.trim().toLowerCase())))
+      .toEqual(['page views', 'unique visitors', 'returning visitors', 'sessions', 'avg session duration', 'bounce rate', 'pages / session']);
+    await expect(page.locator('#view-overview .stat-card').filter({ hasText: /total visitors/i })).toHaveCount(0);
+    await expect(page.locator('#view-overview')).not.toContainText(/total visitors/i);
+  });
+
+  test('every remaining Website Overview value is unchanged', async ({ page }) => {
+    const fake = makeFake({ sessionStats: { sessions: 12500, avg_pages_per_session: 2.4, avg_session_duration_seconds: 125, bounce_rate: 37.5, page_views: 1000, unique_visitors: 1234, returning_visitors: 55 } });
+    await open(page, fake);
+    const got = await page.locator('#view-overview .section-block').first().locator('.stat-card').evaluateAll(
+      els => els.map(e => [e.querySelector('.stat-label').textContent.trim(), e.querySelector('.stat-value').textContent.trim()]));
+    expect(got).toEqual([['Page views', '1,000'], ['Unique visitors', '1,234'], ['Returning visitors', '55'], ['Sessions', '12,500'],
+      ['Avg session duration', '2m 5s'], ['Bounce rate', '37.5%'], ['Pages / session', '2.4']]);
+  });
+
+  test('Unique visitors explains that it counts distinct browsers; other cards have no tooltip', async ({ page }) => {
+    await open(page, makeFake());
+    const unique = page.locator('#view-overview .stat-card').filter({ hasText: 'Unique visitors' });
+    await expect(unique).toHaveAttribute('title', /Distinct browsers/);
+    await expect(unique).toHaveAttribute('title', /visitor IDs/);
+    await expect(page.locator('#view-overview .section-block').first().locator('.stat-card[title]')).toHaveCount(1);
   });
 
   test('percentages, durations and decimals keep their own formatting', async ({ page }) => {
