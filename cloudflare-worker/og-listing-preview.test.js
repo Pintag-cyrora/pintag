@@ -47,8 +47,10 @@ globalThis.HTMLRewriter = FakeHTMLRewriter;
 import ogWorker, {
   resolveLang,
   buildOgFields,
+  canonicalUrl,
   rewriteListingHead,
   rewriteGenericHead,
+  listingsPageUrl,
   HOME_META_I18N,
   LISTINGS_META_I18N,
   withNoStore,
@@ -808,6 +810,133 @@ test('fetch(): "/listings.html" rewrites the generic head per ?lang=, stays no-s
   assert.equal(res.headers.get('x-frame-options'), 'DENY');
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].init.cf, { cacheTtl: 0 });
+});
+
+// ── /listings.html: og:url / canonical carry the resolved language ───────────
+// The copy used to be localized while og:url and <link rel="canonical"> stayed
+// at the bare https://pintag.io/listings.html (the Lao default), so a crawler
+// that treats og:url/canonical as "the real URL" got a mixed signal. These run
+// the REAL fetch() against the real listings.html <head> fixture.
+async function fetchListingsHead(search) {
+  const { result: res } = await withStubbedFetch(
+    () => new Response(LISTINGS_FIXTURE, { status: 200, headers: { 'content-type': 'text/html' } }),
+    () => ogWorker.fetch(new Request(`https://pintag.io/listings.html${search}`), {}, fakeCtx())
+  );
+  const html = await res.text();
+  const pick = (re) => { const m = html.match(re); return m ? m[1] : null; };
+  return {
+    res,
+    htmlLang: pick(/<html[^>]*\blang="([^"]*)"/),
+    title: pick(/<title>([^<]*)<\/title>/),
+    ogTitle: pick(/<meta property="og:title" content="([^"]*)"/),
+    ogDesc: pick(/<meta property="og:description" content="([^"]*)"/),
+    ogLocale: pick(/<meta property="og:locale" content="([^"]*)"/),
+    ogUrl: pick(/<meta property="og:url" content="([^"]*)"/),
+    canonical: pick(/<link rel="canonical" href="([^"]*)"/),
+  };
+}
+const unAmp = (s) => s && s.replace(/&amp;/g, '&');
+
+test('listings.html?lang=en: English metadata AND English og:url / canonical', async () => {
+  const h = await fetchListingsHead('?lang=en');
+  assert.equal(h.htmlLang, 'en');
+  assert.equal(h.title, LISTINGS_META_I18N.en.title);
+  assert.equal(unAmp(h.ogTitle), LISTINGS_META_I18N.en.title);
+  assert.equal(unAmp(h.ogDesc), LISTINGS_META_I18N.en.desc);
+  assert.equal(h.ogLocale, 'en_US');
+  assert.equal(h.ogUrl, 'https://pintag.io/listings.html?lang=en');
+  assert.equal(h.canonical, 'https://pintag.io/listings.html?lang=en');
+  assert.equal(h.res.headers.get('cache-control'), 'no-store');
+});
+
+test('listings.html?lang=lo: Lao metadata AND Lao og:url / canonical', async () => {
+  const h = await fetchListingsHead('?lang=lo');
+  assert.equal(h.htmlLang, 'lo');
+  assert.equal(h.title, LISTINGS_META_I18N.lo.title);
+  assert.equal(unAmp(h.ogTitle), LISTINGS_META_I18N.lo.title);
+  assert.equal(unAmp(h.ogDesc), LISTINGS_META_I18N.lo.desc);
+  assert.equal(h.ogLocale, 'lo_LA');
+  assert.equal(h.ogUrl, 'https://pintag.io/listings.html?lang=lo');
+  assert.equal(h.canonical, 'https://pintag.io/listings.html?lang=lo');
+});
+
+test('bare listings.html: Lao default, and og:url / canonical stay the bare URL', async () => {
+  const h = await fetchListingsHead('');
+  assert.equal(h.htmlLang, 'lo');
+  assert.equal(h.title, LISTINGS_META_I18N.lo.title);
+  assert.equal(h.ogLocale, 'lo_LA');
+  assert.equal(h.ogUrl, 'https://pintag.io/listings.html');
+  assert.equal(h.canonical, 'https://pintag.io/listings.html');
+});
+
+test('listings.html?lang=zh: Chinese metadata AND ?lang=zh preserved in og:url / canonical', async () => {
+  const h = await fetchListingsHead('?lang=zh');
+  assert.equal(h.htmlLang, 'zh');
+  assert.equal(h.title, LISTINGS_META_I18N.zh.title);
+  assert.equal(h.ogLocale, 'zh_CN');
+  assert.equal(h.ogUrl, 'https://pintag.io/listings.html?lang=zh');
+  assert.equal(h.canonical, 'https://pintag.io/listings.html?lang=zh');
+});
+
+test('listings.html: unrelated query params are kept byte-for-byte and in order next to the resolved lang', async () => {
+  const cases = [
+    ['?lang=en&tx=for_rent&type=apartment&beds=2&sort=newest', 'lang=en&tx=for_rent&type=apartment&beds=2&sort=newest'],
+    ['?utm_source=wa&lang=zh&x=1', 'utm_source=wa&lang=zh&x=1'],                    // lang in the middle stays in place
+    ['?district=Sisattanak%20Nuea&lang=en', 'district=Sisattanak%20Nuea&lang=en'],  // %20 not re-encoded to "+"
+    ['?preview_test=20261007&lang=en', 'preview_test=20261007&lang=en'],
+    ['?lang=en&preview_test=20261007', 'lang=en&preview_test=20261007'],
+  ];
+  for (const [search, expectedQs] of cases) {
+    const h = await fetchListingsHead(search);
+    const want = `https://pintag.io/listings.html?${expectedQs}`;
+    assert.equal(unAmp(h.ogUrl), want, `og:url for ${search}`);
+    assert.equal(unAmp(h.canonical), want, `canonical for ${search}`);
+  }
+});
+
+test('listings.html: other params with NO ?lang= stay as-is and no lang is invented (copy stays Lao)', async () => {
+  const h = await fetchListingsHead('?tx=for_rent&type=apartment');
+  assert.equal(h.htmlLang, 'lo');
+  assert.equal(unAmp(h.ogUrl), 'https://pintag.io/listings.html?tx=for_rent&type=apartment');
+  assert.equal(unAmp(h.canonical), 'https://pintag.io/listings.html?tx=for_rent&type=apartment');
+  assert.doesNotMatch(h.ogUrl, /lang=/);
+});
+
+test('listings.html: an unsupported ?lang= resolves to the Lao default and og:url / canonical say so', async () => {
+  const h = await fetchListingsHead('?lang=fr&tx=for_rent');
+  assert.equal(h.htmlLang, 'lo');
+  assert.equal(unAmp(h.ogUrl), 'https://pintag.io/listings.html?lang=lo&tx=for_rent');
+  assert.equal(unAmp(h.canonical), 'https://pintag.io/listings.html?lang=lo&tx=for_rent');
+});
+
+test('listings.html: og:url and canonical always agree with each other and with the html lang', async () => {
+  for (const lang of ['lo', 'en', 'zh']) {
+    const h = await fetchListingsHead(`?lang=${lang}`);
+    assert.equal(h.ogUrl, h.canonical);
+    assert.equal(h.htmlLang, lang);
+    assert.ok(h.ogUrl.endsWith(`lang=${lang}`));
+  }
+});
+
+test('listingsPageUrl: pure URL builder (lang from the resolver, other params untouched)', () => {
+  const f = listingsPageUrl;
+  assert.equal(f('https://pintag.io/listings.html', 'lo'), 'https://pintag.io/listings.html');
+  assert.equal(f('https://pintag.io/listings.html?', 'lo'), 'https://pintag.io/listings.html');
+  assert.equal(f('https://pintag.io/listings.html?lang=en', 'en'), 'https://pintag.io/listings.html?lang=en');
+  assert.equal(f('https://pintag.io/listings.html?lang=fr', 'lo'), 'https://pintag.io/listings.html?lang=lo');
+  assert.equal(f('https://pintag.io/listings.html?lang=en&lang=zh', 'en'), 'https://pintag.io/listings.html?lang=en', 'first lang wins, as resolveLang read it');
+  assert.equal(f('https://pintag.io/listings.html?%6Cang=en', 'en'), 'https://pintag.io/listings.html?lang=en', 'an encoded key is still the lang param');
+  assert.equal(f('https://pintag.io/listings.html?a=1&&b=2', 'lo'), 'https://pintag.io/listings.html?a=1&b=2');
+});
+
+test('rewriteGenericHead: without a page URL (index.html path) og:url / canonical are left exactly as the static page has them', async () => {
+  const html = await (await rewriteGenericHead(LISTINGS_FIXTURE, 'en', LISTINGS_META_I18N)).text();
+  assert.match(html, /<meta property="og:url" content="https:\/\/pintag\.io\/listings\.html">/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/pintag\.io\/listings\.html">/);
+});
+
+test('/listing.html (the per-property page) is unaffected: its canonical still comes from canonicalUrl(slug, lang)', () => {
+  assert.equal(canonicalUrl('riverside-villa', 'en'), 'https://pintag.io/listing.html?slug=riverside-villa&lang=en');
 });
 
 test('fetch(): an unrelated path (static asset) still passes straight through with security headers, AND its origin fetch also carries cf: { cacheTtl: 0 } (this catch-all branch can serve HTML for "other pages" too, on any route this Worker fronts)', async () => {
