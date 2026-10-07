@@ -1922,3 +1922,82 @@ function ptContactClick(opts) {
     });
   }
 }
+
+// ptTrackContactIntent(intent, ctx) -- records ONE contact-intent interaction
+// (contact-intent.js: open | location | price | availability | gallery | book_tour |
+// contact_agent) in ui_events, the existing first-party UI analytics table. No new
+// table, no new event_type: the row is an ordinary 'click' whose element_id is the
+// intent's event id (contact_intent_<intent>) and whose element_type is
+// 'contact_intent'.
+//
+// What each row retains (the existing columns, plus metadata for what has no column):
+//   session_id   getOrCreateSessionId() -- the same spine every other event uses
+//   property_id  ctx.listingId, else window.PINTAG_CURRENT_PROPERTY_ID
+//   created_at   the table default (server time)
+//   page         the current page
+//   label        the intent's stable English label
+//   metadata     { intent, lang, surface, unit_type_id, contact_id, availability:
+//                  { available, reason, scope } } -- ui_events has no `lang` column,
+//                  so the language travels here (page_views.lang is joinable on
+//                  session_id for the visit-level view).
+//
+// Answer intents (location/price/availability/gallery) call ONLY this helper: they
+// record a ui_events row and nothing else -- never lead_events, never WhatsApp.
+// (A WhatsApp intent goes through ptContactClick, which already writes ui_events +
+// lead_events; wiring those is separate.)
+//
+// Safe by construction: an unknown intent returns false and writes nothing, so this
+// can never be used to write an arbitrary element_id. Fire-and-forget (keepalive),
+// swallowing network errors like every other tracker here. A repeat of the same
+// intent for the same listing within 300ms is dropped as an accidental double-tap
+// (the same window tracking.js uses). Returns true when a row was sent.
+var _ptContactIntentLast = {};
+function ptTrackContactIntent(intent, ctx) {
+  ctx = ctx || {};
+  if (typeof contactIntentEventId !== 'function') return false;
+  var eventId = contactIntentEventId(intent);
+  if (!eventId) return false;
+  if (!window.PINTAG || !window.PINTAG.supabaseUrl) return false;
+
+  var propertyId = ctx.listingId || (typeof window.PINTAG_CURRENT_PROPERTY_ID !== 'undefined' ? window.PINTAG_CURRENT_PROPERTY_ID : null) || null;
+  var now = Date.now();
+  var key = eventId + '|' + (propertyId || '');
+  if (_ptContactIntentLast[key] && now - _ptContactIntentLast[key] < 300) return false;
+  _ptContactIntentLast[key] = now;
+
+  var lang = ctx.lang || ((typeof getCurrentLang === 'function') ? getCurrentLang() : null) || null;
+  var avail = ctx.availability || null;
+  var meta = {
+    intent: intent,
+    lang: lang,
+    surface: ctx.surface || null,
+    unit_type_id: ctx.unitTypeId || null,
+    contact_id: ctx.contactId || null,
+    availability: avail ? { available: !!avail.available, reason: avail.reason || null, scope: avail.scope || null } : null
+  };
+  var page = (function () {
+    var seg = location.pathname.split('/').filter(Boolean).pop();
+    return seg || 'index.html';
+  })();
+
+  fetch(window.PINTAG.supabaseUrl + '/rest/v1/ui_events', {
+    method: 'POST',
+    headers: {
+      apikey: window.PINTAG.anonKey,
+      Authorization: 'Bearer ' + window.PINTAG.anonKey,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal'
+    },
+    body: JSON.stringify({
+      session_id: (typeof getOrCreateSessionId === 'function') ? getOrCreateSessionId() : null,
+      page: page,
+      element_id: eventId,
+      element_type: 'contact_intent',
+      label: (typeof contactIntentDef === 'function' && contactIntentDef(intent)) ? contactIntentDef(intent).labelEn : intent,
+      property_id: propertyId,
+      metadata: meta
+    }),
+    keepalive: true
+  }).catch(function () {});
+  return true;
+}
