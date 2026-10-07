@@ -69,16 +69,18 @@ async function expectContact(page, id, { live = true } = {}) {
   await expect(page.locator('.cpick-row').nth(ROW[id])).toHaveClass(/is-active/);
   await expect(page.locator('.cpick-row').nth(ROW[id])).toHaveAttribute('aria-checked', 'true');
   // every CTA is attributed to it, and (when live) dials it
-  for (const sel of ['#pt-wa-primary', '#pt-wa-mobile', '#pt-call-primary']) {
+  // (#ci-wa-sheet / #ci-call-sheet are the Ask sheet's WhatsApp and Call rows: the mobile contact actions)
+  for (const sel of ['#pt-wa-primary', '#ci-wa-sheet', '#ci-call-sheet', '#pt-call-primary']) {
     await expect(page.locator(sel)).toHaveAttribute('data-contact-id', id);
   }
   await expect(page.locator('#pt-call-primary')).toHaveAttribute('href', TEL[id]);
   if (live) {
     await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + num + '\\?text='));
-    await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + num + '\\?text='));
+    await expect(page.locator('#ci-wa-sheet')).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + num + '\\?text='));
+    await expect(page.locator('#ci-call-sheet')).toHaveAttribute('href', TEL[id]);
   } else {
     await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', '#units-section');
-    await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('href', '#units-section');
+    await expect(page.locator('#ci-wa-sheet')).toHaveAttribute('href', '#units-section');
   }
 }
 
@@ -160,12 +162,13 @@ test.describe('unit first, then contact', () => {
     expect(errors).toEqual([]);
   });
 
-  test('mobile sticky bar: same result in either order', async ({ page }) => {
+  test('mobile Ask sheet: same result in either order', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     const { posts } = await open(page, MULTI(), 'en');
     await selectUnit(page, 'Room Type A');
     await pick(page, 'cc');
-    const m = page.locator('#pt-wa-mobile');
+    await page.click('#ci-open-sheet');
+    const m = page.locator('#ci-wa-sheet');
     await expect(m).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + NUM.cc + '\\?text='));
     expect(await waText(m)).toContain('Room Type A');
     await m.click();

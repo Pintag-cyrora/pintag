@@ -470,12 +470,21 @@ test('menu: no phone hides the WhatsApp rows, no photos hides View photos', () =
 });
 
 test('UI strings exist in lo/en/zh and an unsupported language falls back to English', () => {
-  for (const key of ['menuTitle', 'ask', 'close', 'unitUnavailable']) {
+  for (const key of ['menuTitle', 'contactGroup', 'callAgent', 'chatWhatsApp', 'close', 'unitUnavailable']) {
     for (const l of ['lo', 'en', 'zh']) assert.ok(ui(key, l).length > 0, key + '/' + l);
     assert.equal(ui(key, 'vi'), ui(key, 'en'));
   }
   assert.equal(ui('nope', 'en'), '');
   assert.equal(ui('menuTitle', 'en'), 'Ask about this property');
+  assert.equal(ui('contactGroup', 'en'), 'Contact an agent');
+  assert.equal(ui('callAgent', 'en'), 'Call agent');
+  assert.equal(ui('chatWhatsApp', 'en'), 'Chat with agent on WhatsApp');
+});
+
+test('mobile sheet order: answers, Book a viewing, then Contact agent last (Call + WhatsApp share it)', () => {
+  assert.deepEqual(G.CONTACT_INTENT_SHEET_ORDER, ['location', 'price', 'availability', 'gallery', 'book_tour', 'contact_agent']);
+  const rows = menu(avail(prop({})), { hasPhone: true, hasPhotos: true }, G.CONTACT_INTENT_SHEET_ORDER);
+  assert.deepEqual(rows.map((r) => r.id), G.CONTACT_INTENT_SHEET_ORDER);
 });
 
 test('labels: the four answers, Book a viewing and Contact agent are short enough for a chip', () => {

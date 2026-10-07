@@ -304,22 +304,13 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .ci-item-book_tour{border-color:var(--wa);color:var(--wa);font-weight:500;}
 .ci-item-gated{opacity:.78;}
 @media(max-width:960px){.ci-panel{display:none;}}
-.mcta-ask{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:44px;min-height:44px;padding:0 10px;border:1px solid var(--border-strong);border-radius:var(--r-btn);background:var(--white);color:var(--ink);font:inherit;font-size:13px;font-weight:500;cursor:pointer;}
-.mcta-ask-dots{font-size:18px;line-height:1;letter-spacing:1px;}
-/* The sticky bar gained one button (Ask). Keep every control on one row down to 320px: tighter gaps, the
-   primary button takes the remaining width and may wrap its label onto two lines, and Ask is icon-only
-   on narrow phones (its aria-label still names it). */
-.mobile-cta-bar .mcta-inner{gap:8px;}
-.mobile-cta-bar .mcta-price-wrap{flex:0 1 auto;min-width:0;}
-.mobile-cta-bar .mcta-btn{flex:1 1 0;min-width:0;justify-content:center;text-align:center;white-space:normal;line-height:1.3;padding:8px 10px;}
-@media(max-width:480px){.mcta-ask-text{display:none;}}
-@media(max-width:400px){
-  .mobile-cta-bar .mcta-price-label{display:none;}
-  .mobile-cta-bar .mcta-price-value{white-space:nowrap;font-size:16px;}
-}
-@media(max-width:340px){.mobile-cta-bar .mcta-btn svg{display:none;}}
-/* The share button's "Share" word is dropped on phones (it stays an icon button with its aria-label) to
-   make room for Ask on the same row. */
+/* The mobile sticky bar is exactly two controls: the Ask button (it takes the width) and Share. There is
+   no standalone WhatsApp or price in it: WhatsApp and Call are the last group inside the Ask sheet. */
+.mobile-cta-bar .mcta-inner{gap:10px;}
+.mcta-ask{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:8px 16px;border:none;border-radius:var(--r-btn);background:var(--wa);color:var(--white);font:inherit;font-size:14px;font-weight:600;line-height:1.4;text-align:center;cursor:pointer;box-shadow:0 3px 10px rgba(35,107,107,0.18);}
+.mcta-ask:active{background:var(--wa-hover);}
+.mcta-ask-chev{flex:0 0 auto;font-size:12px;line-height:1;opacity:.9;}
+/* The share button's "Share" word is dropped on narrow phones (it stays an icon button with its aria-label). */
 @media(max-width:400px){.mobile-cta-bar .pt-share-label{display:none;}}
 .ci-sheet-root{position:fixed;inset:0;z-index:400;display:flex;align-items:flex-end;justify-content:center;}
 .ci-sheet-root[hidden]{display:none;}
@@ -332,6 +323,11 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .ci-sheet-title{font-size:15px;font-weight:600;line-height:1.5;color:var(--ink);}
 .ci-sheet-close{flex:0 0 auto;min-width:44px;min-height:44px;border:none;border-radius:50%;background:var(--warm);color:var(--ink);font:inherit;font-size:16px;cursor:pointer;}
 .ci-sheet-body{display:flex;flex-direction:column;gap:8px;}
+.ci-divider{height:1px;margin:6px 0 2px;background:var(--border-strong);}
+.ci-group-label{margin:2px 2px 0;font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--ink-muted);line-height:1.5;}
+.ci-item-call.ci-item-contact_agent{background:var(--white);border-color:var(--wa);color:var(--wa);font-weight:500;}
+.ci-item-call.ci-item-contact_agent:hover{background:var(--warm);}
+.ci-item-status{background:var(--wa);border-color:var(--wa);color:var(--white);font-weight:500;}
 .ci-sheet .ci-item{width:100%;min-height:52px;padding:12px 16px;border-radius:12px;font-size:15px;}
 body.ci-sheet-open{overflow:hidden;}
 .btn-call{background:transparent;color:var(--ink-soft);border:1px solid var(--border-strong);}
@@ -2093,10 +2089,10 @@ var _ciSheetOpener=null;      // the Ask button that opened it, to give focus ba
 var _ciLastCtx=null;          // the latest render's menu context, so the sheet can be refilled
 
 // Metadata for a contact-intent row, via the one shared builder (components.js).
-function ptCiMeta(intent,surface,unitTypeId){
+function ptCiMeta(intent,surface,unitTypeId,channel){
   var data=propertyContext;
   return ptContactIntentMeta(intent,{
-    lang:getCurrentLang(),surface:surface||null,
+    lang:getCurrentLang(),surface:surface||null,channel:channel||null,
     unitTypeId:(unitTypeId!=null&&unitTypeId!=='')?unitTypeId:(selectedUnitTypeId||null),
     contactId:_currentContactId||null,
     availability:data?resolveContactIntentAvailability(data):null
@@ -2128,17 +2124,80 @@ function ptCiRowHtml(row,surface,ctx){
   // line across the change.
   var waHref=!ctx.cleanPhone?'#':(row.id==='contact_agent'?ctx.waUrl:'https://wa.me/'+ctx.cleanPhone+'?text='+encodeURIComponent(buildTourWhatsAppMessage(ctx.tour,ctx.lang)));
   return '<a class="'+cls+'" data-ci-wa="'+row.id+'" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waHref)+'" target="_blank" rel="noopener noreferrer" '+
-    'onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(ctx.data.id||'')+'\',partyId:\''+escJs(ctx.data.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnitTypeId||'')+'\',trackId:\''+def.eventId+'\',trackLabel:\''+escJs(row.id==='contact_agent'?'WhatsApp':def.labelEn)+'\',trackMeta:ptCiMeta(\''+row.id+'\',\''+surface+'\')});ptCiCloseSheet({restoreFocus:false})">'+
+    'onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(ctx.data.id||'')+'\',partyId:\''+escJs(ctx.data.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnitTypeId||'')+'\',trackId:\''+def.eventId+'\',trackLabel:\''+escJs(row.id==='contact_agent'?'WhatsApp':def.labelEn)+'\',trackMeta:ptCiMeta(\''+row.id+'\',\''+surface+'\',\'\',\'whatsapp\')});ptCiCloseSheet({restoreFocus:false})">'+
     ico+'<span class="ci-text"><span class="ci-label">'+label+'</span></span></a>';
 }
 
 // The desktop panel leaves Contact agent out: the contact band already has the primary "Chat on
 // WhatsApp" button, which IS the Contact agent intent (recorded as contact_intent_contact_agent,
-// surface "band"). The mobile sheet is the complete menu, so it keeps the row.
+// surface "band", channel "whatsapp"). The mobile sheet is the complete menu (see ptCiSheetBodyHtml).
 function ptCiRowsHtml(surface,ctx){
   return ptCiMenuRows(ctx)
     .filter(function(r){ return !(surface==='panel'&&r.id==='contact_agent'); })
     .map(function(r){ return ptCiRowHtml(r,surface,ctx); }).join('');
+}
+
+// ---- The mobile Ask sheet ------------------------------------------------------------------------
+//   Ask about this property
+//     1 Where is it?  2 What's the price?  3 Is it available?  4 View photos  5 Book a viewing
+//   ----------------------------------------------------------------------------------------------
+//     Contact an agent
+//     6 Call agent  7 Chat with agent on WhatsApp
+// The property questions come first so the visitor can browse before choosing a direct-contact option;
+// Call and WhatsApp are the same Contact agent intent (contact_intent_contact_agent), told apart by
+// metadata.channel ("call" / "whatsapp") and by the lead_events row they create (call_click /
+// whatsapp_click). One click, one lead: both go through ptContactClick exactly like the band buttons.
+// When availability is OFF the group is replaced by the listing's existing status CTA (Find Similar /
+// Notify Me / Waiting List), so that path stays one tap from the sticky bar.
+function ptCiAgentRowsHtml(row,ctx){
+  var lang=ctx.lang, out='';
+  var channels=[{ch:'call',on:!!ctx.callPhone,label:contactIntentUiText('callAgent',lang),ico:'\uD83D\uDCDE',id:'ci-call-sheet'},
+                {ch:'whatsapp',on:!!ctx.cleanPhone,label:contactIntentUiText('chatWhatsApp',lang),ico:CONTACT_INTENTS.contact_agent.icon,id:'ci-wa-sheet'}];
+  channels.forEach(function(c){
+    if(!c.on) return;
+    var cls='ci-item ci-item-contact_agent ci-in-sheet'+(c.ch==='call'?' ci-item-call':'');
+    var inner='<span class="ci-ico" aria-hidden="true">'+c.ico+'</span><span class="ci-text"><span class="ci-label">'+esc(c.label)+'</span>';
+    var attrs=(c.ch==='call'?' data-ci-call="1"':' data-ci-wa="contact_agent"')+' data-contact-id="'+escJs(_currentContactId)+'" id="'+c.id+'"';
+    if(!row.enabled){
+      var hint=(row.disabledReason==='unit_unavailable')?contactIntentUiText('unitUnavailable',lang):ctx.L.waPickUnitShort[lang];
+      out+='<a class="'+cls+' ci-item-gated" href="#units-section" role="button" aria-disabled="true" data-wa-needs-unit="1"'+attrs+' onclick="ptCiCloseSheet({restoreFocus:false});return ptWaNeedUnit(event)">'+inner+'<span class="ci-hint">'+esc(hint)+'</span></span></a>';
+      return;
+    }
+    var click='ptContactClick({channel:\''+c.ch+'\',listingId:\''+escJs(ctx.data.id||'')+'\',partyId:\''+escJs(ctx.data.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnitTypeId||'')+'\',trackId:\'contact_intent_contact_agent\',trackLabel:\''+(c.ch==='call'?'Call':'WhatsApp')+'\',trackMeta:ptCiMeta(\'contact_agent\',\'sheet\',\'\',\''+c.ch+'\')});ptCiCloseSheet({restoreFocus:false})';
+    if(c.ch==='call'){
+      out+='<a class="'+cls+'"'+attrs+' href="'+esc(ptTelHref(ctx.callPhone))+'" onclick="'+click+'">'+inner+'</span></a>';
+    }else{
+      // Contact agent WhatsApp = the main CTA's URL byte for byte (same message, same unit variant).
+      out+='<a class="'+cls+'"'+attrs+' href="'+esc(ctx.waUrl)+'" target="_blank" rel="noopener noreferrer" onclick="'+click+'">'+inner+'</span></a>';
+    }
+  });
+  return out;
+}
+
+// The existing status CTA (unavailable listing), as the sheet's last row. Same destinations, same
+// tracking ids and the same recordLead:false the sticky bar used to give them.
+function ptCiStatusRowHtml(ctx){
+  var cta=ctx.statusCta;
+  if(!cta) return '';
+  var label=esc(cta.label);
+  if(cta.action==='find_similar'){
+    return '<a href="#similar-section" class="ci-item ci-item-status ci-in-sheet" onclick="ptCiCloseSheet({restoreFocus:false});scrollToSimilar(event)" data-track="mcta-find-similar" data-track-type="cta" data-track-label="Find Similar"><span class="ci-text"><span class="ci-label">'+label+'</span></span></a>';
+  }
+  var waStatusUrl=ctx.cleanPhone?('https://wa.me/'+ctx.cleanPhone+'?text='+encodeURIComponent(cta.label+' \u2014 '+resolveLangField(ctx.data,'title',ctx.lang))):'#';
+  return '<a href="'+esc(waStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="ci-item ci-item-status ci-in-sheet" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(ctx.data.id||'')+'\',partyId:\''+escJs(ctx.data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'mcta-whatsapp-status\',trackLabel:\''+escJs(cta.action)+'\'});ptCiCloseSheet({restoreFocus:false})"><span class="ci-text"><span class="ci-label">'+label+'</span></span></a>';
+}
+
+function ptCiSheetBodyHtml(ctx){
+  var rows=resolveContactIntentMenu(ctx.summary,{hasPhone:!!ctx.cleanPhone,hasPhotos:ctx.hasPhotos,selectedUnitTypeId:selectedUnitTypeId},CONTACT_INTENT_SHEET_ORDER);
+  var agent=rows.filter(function(r){return r.id==='contact_agent';})[0]||null;
+  var html=rows.filter(function(r){return r.id!=='contact_agent';}).map(function(r){return ptCiRowHtml(r,'sheet',ctx);}).join('');
+  var tail=agent?ptCiAgentRowsHtml(agent,ctx):ptCiStatusRowHtml(ctx);
+  if(tail){
+    html+='<div class="ci-divider" role="separator"></div>';
+    if(agent) html+='<p class="ci-group-label">'+esc(contactIntentUiText('contactGroup',ctx.lang))+'</p>';
+    html+=tail;
+  }
+  return html;
 }
 
 // The desktop panel (a grid child of the contact band). Collapsed unless the visitor already opened it.
@@ -2153,10 +2212,11 @@ function ptCiPanelHtml(ctx){
   '</div>';
 }
 
-// The sticky bar's Ask button (phones only: the bar itself is display:none above 960px).
+// The sticky bar's main button (phones only: the bar itself is display:none above 960px). Its label is
+// the menu title, "Ask about this property".
 function ptCiAskButtonHtml(ctx){
   var title=esc(contactIntentUiText('menuTitle',ctx.lang));
-  return '<button type="button" class="mcta-ask" id="ci-open-sheet" data-ci-open-sheet="1" aria-haspopup="dialog" aria-expanded="'+(_ciSheetOpen?'true':'false')+'" aria-label="'+title+'"><span class="mcta-ask-dots" aria-hidden="true">\u22EF</span><span class="mcta-ask-text">'+esc(contactIntentUiText('ask',ctx.lang))+'</span></button>';
+  return '<button type="button" class="mcta-ask" id="ci-open-sheet" data-ci-open-sheet="1" aria-haspopup="dialog" aria-expanded="'+(_ciSheetOpen?'true':'false')+'"><span class="mcta-ask-label">'+title+'</span><span class="mcta-ask-chev" aria-hidden="true">\u25B2</span></button>';
 }
 
 function ptCiEnsureSheet(){
@@ -2183,7 +2243,7 @@ function ptCiRenderSheet(ctx){
   document.getElementById('ci-sheet-title').textContent=title;
   var cb=document.getElementById('ci-sheet-close');
   cb.textContent='\u2715';cb.setAttribute('aria-label',close);
-  document.getElementById('ci-sheet-body').innerHTML=ptCiRowsHtml('sheet',ctx);
+  document.getElementById('ci-sheet-body').innerHTML=ptCiSheetBodyHtml(ctx);
   root.hidden=!_ciSheetOpen;
 }
 
@@ -2338,12 +2398,11 @@ function ptSelectContact(index){
   // the selection too.
   _currentContactPhone=ptNormalizePhoneDigits(c.whatsapp||c.phone||'');
 
-  // Both WhatsApp buttons -- the desktop one and the mobile sticky bar's,
-  // which are on screen together on a phone -- must dial the picked contact.
+  // The main WhatsApp button must dial the picked contact...
   // ...and every unit card's own Inquire button, which sits on the same
   // screen: each keeps its pre-filled unit message, only the number and the
   // attributed contact change.
-  var waButtons=[document.getElementById('pt-wa-primary'),document.getElementById('pt-wa-mobile')]
+  var waButtons=[document.getElementById('pt-wa-primary')]
     .concat(Array.prototype.slice.call(document.querySelectorAll('.unit-cta[data-contact-id]')))
     // ...and the contact-intent menu's own WhatsApp actions (Book a viewing / Contact agent), in the
     // desktop panel and the mobile sheet. Same loop, same gate handling; no second contact mechanism.
@@ -2367,6 +2426,11 @@ function ptSelectContact(index){
     call.setAttribute('href',ptTelHref(c.phone));
     call.setAttribute('data-contact-id', _currentContactId);
   }
+  // The Ask sheet's own Call row follows the pick too (a gated one has no tel link to re-point).
+  Array.prototype.slice.call(document.querySelectorAll('[data-ci-call][data-contact-id]')).forEach(function(cr){
+    cr.setAttribute('data-contact-id', _currentContactId);
+    if(!cr.getAttribute('data-wa-needs-unit')) cr.setAttribute('href',ptTelHref(c.phone));
+  });
   var rows=document.querySelectorAll('.contact-picker .cpick-row');
   for(var i=0;i<rows.length;i++){
     var on=(i===index);
@@ -2587,7 +2651,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
         // display name -- the canonical identifier lead_events.unit_type_id
         // stores, so renaming this unit type later never invalidates the
         // attribution (see 20260921000000_lead_unit_attribution.sql).
-        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(u.id||'')+'\',trackId:\'contact_intent_contact_agent\',trackLabel:\'Inquire unit\',trackMeta:Object.assign({unit:\''+escJs(unitName)+'\'},ptCiMeta(\'contact_agent\',\'unit_card\',\''+escJs(u.id||'')+'\'))})">'+
+        'onclick="event.stopPropagation();ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(property.id||'')+'\',partyId:\''+escJs(property.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(u.id||'')+'\',trackId:\'contact_intent_contact_agent\',trackLabel:\'Inquire unit\',trackMeta:Object.assign({unit:\''+escJs(unitName)+'\'},ptCiMeta(\'contact_agent\',\'unit_card\',\''+escJs(u.id||'')+'\',\'whatsapp\'))})">'+
         esc(L.unitInquire[lang])+'</a>';
     }
 
@@ -3189,7 +3253,7 @@ function buildMockupLayout(){
   // mobile sheet and the sticky bar are built from the same state): the availability summary, the
   // selected unit, the contact's number and the Contact agent URL EXACTLY as the main CTA uses it.
   var ciCtx={
-    data:data,L:L,lang:lang,summary:ciSummary,cleanPhone:cleanPhone,waUrl:waUrl,
+    data:data,L:L,lang:lang,summary:ciSummary,cleanPhone:cleanPhone,callPhone:(contact&&contact.phone)||'',waUrl:waUrl,
     hasPhotos:(Array.isArray(imagesArray)?imagesArray:[]).some(function(u){return u&&typeof u==='string';}),
     tour:{
       propertyName:waPropertyName,
@@ -3276,7 +3340,7 @@ function buildMockupLayout(){
     // so the tracked contact and the dialled number can never disagree.
 (waNeedsUnit
       ? '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" data-wa-needs-unit="1" role="button" aria-disabled="true" aria-describedby="pt-wa-unit-hint" href="#units-section" class="btn-primary btn-wa wa-needs-unit" onclick="return ptWaNeedUnit(event)">'+WA_SVG+'<span>'+esc(L.waPickUnitShort[lang])+'</span></a>'
-      : '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'contact_intent_contact_agent\',trackLabel:\'WhatsApp\',trackMeta:ptCiMeta(\'contact_agent\',\'band\')})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>')+
+      : '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'contact_intent_contact_agent\',trackLabel:\'WhatsApp\',trackMeta:ptCiMeta(\'contact_agent\',\'band\',\'\',\'whatsapp\')})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>')+
     callBtn+
     (waNeedsUnit?'<p class="wa-unit-hint" id="pt-wa-unit-hint" role="status">'+esc(L.waPickUnit[lang])+'</p>':'')+
     '</div>'+ciPanelHtml+'</div>'
@@ -3715,43 +3779,16 @@ function buildMockupLayout(){
 
   container.innerHTML=layout;
 
-  // Mobile CTA bar
+  // Mobile sticky bar: the Ask button and Share, nothing else. It no longer carries a WhatsApp button,
+  // a status CTA or the price: the visitor enters the Ask menu first, and Call / WhatsApp are its last
+  // group, after the property questions. (Everything the bar used to do is still reachable: the price
+  // is on the page and behind the Price intent, an unavailable listing's status CTA is the last row of
+  // the sheet and still in the contact band, WhatsApp / Call are in the sheet and the band.)
   var mCtaBar=document.getElementById('mobile-cta-bar');
   if(mCtaBar){
-    var mPriceDisplay=selectedUnit?buildUnitPriceText(data,selectedUnit.resolved,lang):(priceInfo.isSor
-      ? ([priceInfo.saleText,priceInfo.rentText].filter(Boolean).join(' · ')||null)
-      : (priceInfo.singleText?(priceInfo.singleText+(priceInfo.unitText?' '+priceInfo.unitText:'')):null));
-    var mPriceHtml=mPriceDisplay?'<span class="mcta-price-value">'+esc(mPriceDisplay)+'</span>':'<span class="mcta-price-req">'+L.inquire[lang]+'</span>';
-    // Mirrors the desktop CTA swap above (statusCta, computed earlier in
-    // this function) -- an unavailable listing's sticky mobile bar must not
-    // still invite a "Chat on WhatsApp" tap for a property that's gone.
-    //
-    // This bar is the primary, most-visible contact CTA on a phone -- an
-    // earlier version of these three branches had NO tracking at all (no
-    // data-track, no lead_events call), which is exactly the gap a 2026-08
-    // audit found: real WhatsApp contacts made here never appeared anywhere
-    // in admin.html. All three branches now behave exactly like their
-    // desktop equivalents just above/below this block (same helper, same
-    // recordLead semantics per branch).
-    var mCtaButtonHtml=(typeof statusCta!=='undefined'&&statusCta)
-      ? (statusCta.action==='find_similar'
-          ? '<a href="#similar-section" class="mcta-btn" onclick="scrollToSimilar(event)" data-track="mcta-find-similar" data-track-type="cta" data-track-label="Find Similar">'+esc(statusCta.label)+'</a>'
-          : (function(){
-              var mWaStatusUrl=cleanPhone?('https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(statusCta.label+' — '+resolveLangField(data,'title',lang))):'#';
-              return '<a href="'+esc(mWaStatusUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',recordLead:false,trackId:\'mcta-whatsapp-status\',trackLabel:\''+escJs(statusCta.action)+'\'})">'+WA_SVG+'<span>'+esc(statusCta.label)+'</span></a>';
-            })())
-      : (waNeedsUnit
-          ? '<a id="pt-wa-mobile" data-contact-id="'+escJs(_currentContactId)+'" data-wa-needs-unit="1" role="button" aria-disabled="true" href="#units-section" class="mcta-btn wa-needs-unit" onclick="return ptWaNeedUnit(event)">'+WA_SVG+'<span>'+esc(L.waPickUnitShort[lang])+'</span></a>'
-          : '<a id="pt-wa-mobile" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="mcta-btn" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'contact_intent_contact_agent\',trackLabel:\'WhatsApp\',trackMeta:ptCiMeta(\'contact_agent\',\'mobile_bar\')})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>');
-    mCtaBar.innerHTML=(
-      '<div class="mcta-inner">'+
-      '<div class="mcta-price-wrap"><span class="mcta-price-label">'+esc(typeBadgeText)+'</span>'+mPriceHtml+'</div>'+
-      mCtaButtonHtml+
-      ptCiAskButtonHtml(ciCtx)+
-      '<span id="mcta-share-slot"></span>'+
-      '</div>'
-    );
+    mCtaBar.innerHTML='<div class="mcta-inner">'+ptCiAskButtonHtml(ciCtx)+'<span id="mcta-share-slot"></span></div>';
   }
+  ciCtx.statusCta=(typeof statusCta!=='undefined'&&statusCta)?statusCta:null;
   ptCiRenderSheet(ciCtx);
 
   // Share UX Improvement -- mount the shared renderShareButton() component

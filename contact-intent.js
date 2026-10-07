@@ -340,22 +340,28 @@ function contactIntentAvailabilityText(summary, lang) {
 // Menu order: the two high-intent actions first (one tap, obvious), then the quick
 // answers. Same list on desktop (the panel) and mobile (the bottom sheet).
 var CONTACT_INTENT_MENU_ORDER = ['contact_agent', 'book_tour', 'location', 'price', 'availability', 'gallery'];
+// The mobile Ask sheet reads in the order a visitor would browse: the property questions first, then
+// Book a viewing, and the direct-contact option (Call / WhatsApp, both the contact_agent intent) last.
+var CONTACT_INTENT_SHEET_ORDER = ['location', 'price', 'availability', 'gallery', 'book_tour', 'contact_agent'];
 
-// resolveContactIntentMenu(summary, ctx) -> the VISIBLE rows of resolveContactIntents(),
-// in menu order. Nothing new is decided here: visibility and enabled-ness are exactly
-// resolveContactIntents()'s, this only filters and orders.
-function resolveContactIntentMenu(summary, ctx) {
+// resolveContactIntentMenu(summary, ctx[, order]) -> the VISIBLE rows of resolveContactIntents(),
+// in menu order (the desktop order unless `order` is given). Nothing new is decided here:
+// visibility and enabled-ness are exactly resolveContactIntents()'s, this only filters and orders.
+function resolveContactIntentMenu(summary, ctx, order) {
   var rows = resolveContactIntents(summary, ctx);
   var byId = {};
   rows.forEach(function (r) { byId[r.id] = r; });
-  return CONTACT_INTENT_MENU_ORDER.map(function (id) { return byId[id]; }).filter(function (r) { return r && r.visible; });
+  return (order || CONTACT_INTENT_MENU_ORDER).map(function (id) { return byId[id]; }).filter(function (r) { return r && r.visible; });
 }
 
 // The menu's own strings. Wording is final for lo/en/zh: short, spoken-style, and built
 // from words already on the page (listing.html's L dictionary, listing-status.js).
 var _CI_UI_TEXT = {
   menuTitle: { en: 'Ask about this property', lo: 'ສອບຖາມກ່ຽວກັບຊັບສິນນີ້', zh: '咨询此房源' },
-  ask:       { en: 'Ask',                     lo: 'ສອບຖາມ',                zh: '咨询' },
+  // The mobile sheet's last group: both rows are the contact_agent intent (channel call / whatsapp).
+  contactGroup: { en: 'Contact an agent',           lo: 'ຕິດຕໍ່ຕົວແທນ',              zh: '联系经纪人' },
+  callAgent:    { en: 'Call agent',                 lo: 'ໂທຫາຕົວແທນ',               zh: '致电经纪人' },
+  chatWhatsApp: { en: 'Chat with agent on WhatsApp', lo: 'ແຊັດກັບຕົວແທນທາງ WhatsApp', zh: '通过 WhatsApp 联系经纪人' },
   close:     { en: 'Close',                   lo: 'ປິດ',                    zh: '关闭' },
   unitUnavailable: { en: 'Unit not available', lo: 'ຫ້ອງນີ້ບໍ່ວ່າງ',        zh: '该户型暂不可订' }
 };
@@ -431,6 +437,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveContactIntents: resolveContactIntents,
     contactIntentAvailabilityText: contactIntentAvailabilityText,
     CONTACT_INTENT_MENU_ORDER: CONTACT_INTENT_MENU_ORDER,
+    CONTACT_INTENT_SHEET_ORDER: CONTACT_INTENT_SHEET_ORDER,
     resolveContactIntentMenu: resolveContactIntentMenu,
     contactIntentUiText: contactIntentUiText,
     WA_TOUR_MESSAGE_TEMPLATES: WA_TOUR_MESSAGE_TEMPLATES,
