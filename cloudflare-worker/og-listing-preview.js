@@ -627,17 +627,45 @@ async function rewriteListingHead(response, row, lang, slug, supabaseUrl = DEFAU
   return rewriter.transform(response);
 }
 
+// The og:url / canonical for /listings.html: the page's own address with the
+// RESOLVED language in it, so a crawler that treats og:url/canonical as "the real
+// URL" lands on the same-language page instead of the bare (Lao) default.
+//   * ?lang= absent            -> https://pintag.io/listings.html (bare, unchanged)
+//   * ?lang=en|lo|zh           -> ...?lang=<that>
+//   * ?lang=<anything else>    -> ...?lang=<resolved default>, matching the copy the
+//                                 page was actually rewritten to
+// Every other query parameter is kept byte-for-byte and in its original order
+// (the raw query string is split, not re-serialised, so e.g. %20 stays %20), so
+// no new URL scheme is invented. A repeated `lang` collapses to its first
+// occurrence, which is the one resolveLang() read (searchParams.get). `lang` here
+// is the value resolveLang() already produced for this request -- not re-derived.
+function listingsPageUrl(requestUrl, lang) {
+  const raw = new URL(requestUrl).search.slice(1);
+  const kept = [];
+  let sawLang = false;
+  for (const part of raw.split('&')) {
+    if (!part) continue;
+    const key = [...new URLSearchParams(part).keys()][0];   // decodes an encoded key, too
+    if (key === 'lang') {
+      if (!sawLang) kept.push(`lang=${encodeURIComponent(lang)}`);
+      sawLang = true;
+    } else {
+      kept.push(part);
+    }
+  }
+  return 'https://pintag.io/listings.html' + (kept.length ? `?${kept.join('&')}` : '');
+}
+
 // Rewrites the static, non-listing pages' <head> (index.html, listings.html)
 // to the resolved language's generic trilingual copy. Unlike
-// rewriteListingHead(), there's no per-property data and no lang-suffixed
-// og:url/canonical to compute — those pages' own client-side
-// updateHeadMeta()/updateListingsMetaForFilters() deliberately leave og:url
-// untouched by language too (see listings.html's own comment on that), so
-// this mirrors that exactly rather than introducing a URL scheme the client
-// doesn't use.
-function rewriteGenericHead(response, lang, i18n) {
+// rewriteListingHead(), there's no per-property data. `pageUrl` is optional:
+// when given (the /listings.html route passes listingsPageUrl()), og:url and
+// <link rel="canonical"> are set to it so they agree with the localized copy;
+// when omitted they are left exactly as the static page has them, which is what
+// index.html's rewrite (currently unused live) still does.
+function rewriteGenericHead(response, lang, i18n, pageUrl) {
   const t = i18n[lang] || i18n[DEFAULT_LANG];
-  return new HTMLRewriter()
+  const rewriter = new HTMLRewriter()
     .on('html', new AttrSetter('lang', lang))
     .on('title', new TextSetter(t.title))
     .on('meta[name="description"]', new AttrSetter('content', t.desc))
@@ -645,8 +673,13 @@ function rewriteGenericHead(response, lang, i18n) {
     .on('meta[property="og:description"]', new AttrSetter('content', t.desc))
     .on('meta[property="og:locale"]', new AttrSetter('content', OG_LOCALE[lang] || OG_LOCALE.lo))
     .on('meta[name="twitter:title"]', new AttrSetter('content', t.title))
-    .on('meta[name="twitter:description"]', new AttrSetter('content', t.desc))
-    .transform(response);
+    .on('meta[name="twitter:description"]', new AttrSetter('content', t.desc));
+  if (pageUrl) {
+    rewriter
+      .on('meta[property="og:url"]', new AttrSetter('content', pageUrl))
+      .on('link[rel="canonical"]', new AttrSetter('href', pageUrl));
+  }
+  return rewriter.transform(response);
 }
 
 // Forces every rewritten response to bypass caching entirely (browser,
@@ -846,7 +879,7 @@ export default {
       const origin = await fetch(request, BYPASS_ORIGIN_CACHE);
       const lang = resolveLang(url.searchParams.get('lang'));
       try {
-        return withSecurityHeaders(withNoStore(await rewriteGenericHead(origin, lang, LISTINGS_META_I18N)));
+        return withSecurityHeaders(withNoStore(await rewriteGenericHead(origin, lang, LISTINGS_META_I18N, listingsPageUrl(request.url, lang))));
       } catch (err) {
         return withSecurityHeaders(origin);
       }
@@ -880,6 +913,7 @@ export {
   LISTINGS_META_I18N,
   rewriteListingHead,
   rewriteGenericHead,
+  listingsPageUrl,
   withNoStore,
   withSecurityHeaders,
   SECURITY_HEADERS,
