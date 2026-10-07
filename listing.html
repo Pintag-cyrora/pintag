@@ -270,6 +270,19 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .agent-ctas-needs-unit{flex-wrap:wrap;}
 .wa-unit-hint{flex:none;width:100%;margin:0;font-size:12px;line-height:1.45;color:var(--muted,#5A6670);}
 .units-section-prompt{outline:2px solid var(--teal);outline-offset:6px;border-radius:12px;}
+/* Contact intents (contact-intent.js). The anchors the Where / Price / Photos answers scroll to
+   clear the fixed nav, the brief highlight, and the in-page availability answer. */
+#section-price,#section-map,#section-gallery-desktop,#section-gallery-mobile,#contact-intent-answer{scroll-margin-top:calc(72px + env(safe-area-inset-top));}
+.ci-flash{outline:2px solid var(--teal);outline-offset:6px;border-radius:12px;}
+.ci-answer{margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-left-width:4px;border-radius:10px;background:var(--white);font-size:13px;line-height:1.5;}
+.ci-answer[hidden]{display:none;}
+.ci-answer-on{border-left-color:#1E6B45;}
+.ci-answer-off{border-left-color:#B0443A;}
+.ci-answer-head{font-weight:600;color:var(--ink);}
+.ci-answer-detail{margin-top:2px;color:var(--ink-soft);}
+.ci-answer-units{list-style:none;margin:8px 0 0;padding:0;}
+.ci-answer-units li{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-top:1px solid var(--border);font-size:12.5px;}
+.ci-answer-units .ci-unit-state{color:var(--ink-soft);text-align:right;}
 .btn-call{background:transparent;color:var(--ink-soft);border:1px solid var(--border-strong);}
 .btn-call:hover{background:var(--warm);color:var(--ink);transform:translateY(-1px);}
 /* Detail 2-col — was 3-col (Overview/Features/Location) until the Location
@@ -684,6 +697,7 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
+<script src="contact-intent.js?v=__ASSET_VERSION__"></script>
   <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
@@ -1907,6 +1921,102 @@ function selectUnitType(id){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
+// ── Contact intents: the four ANSWER intents (location / price / availability / gallery) ──
+// contact-intent.js owns the rules; components.js ptTrackContactIntent() writes the ui_events
+// row. Any element can raise an answer intent by carrying data-contact-intent="location|price|
+// availability|gallery" (and optionally data-contact-intent-surface="..."); one delegated listener
+// at the bottom of this block handles it, so the intent menu added later only has to render
+// buttons. An element that raises an intent must NOT also carry data-track (tracking.js would
+// record a second, duplicate row). Answer intents never open WhatsApp and never write
+// lead_events. The WhatsApp intents (book_tour / contact_agent) are not wired here and are
+// ignored by this handler.
+function ptCiVisible(el){ return !!el&&(el.offsetParent!==null||(el.getClientRects&&el.getClientRects().length>0)); }
+
+// The gallery is two CSS-toggled variants (desktop .hero-right / mobile .mobile-gallery) with no
+// single id valid on both, so the visible one is the target.
+function ptCiTarget(intent){
+  if(intent==='location') return document.getElementById('section-map');
+  if(intent==='price') return document.getElementById('section-price');
+  if(intent==='availability') return document.getElementById('contact-intent-answer');
+  if(intent==='gallery'){
+    var ids=['section-gallery-desktop','section-gallery-mobile'];
+    for(var i=0;i<ids.length;i++){
+      var g=document.getElementById(ids[i]);
+      if(ptCiVisible(g)) return g;
+    }
+  }
+  return null;
+}
+
+function ptCiReveal(el){
+  if(!el) return;
+  var reduce=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  el.scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'});
+  el.classList.add('ci-flash');
+  setTimeout(function(){ el.classList.remove('ci-flash'); },1600);
+}
+
+// Fills the in-page availability answer from resolveContactIntentAvailability(). For a multi-unit
+// listing it lists each unit's own state (so the answer is visibly per-unit, never "the whole
+// building is available"); for an unavailable listing it lists no units and adds the existing
+// next-available line (display only -- no date decides the state).
+function ptCiRenderAvailability(summary,lang){
+  var el=document.getElementById('contact-intent-answer');
+  if(!el) return null;
+  var t=contactIntentAvailabilityText(summary,lang);
+  var html='<div class="ci-answer-head">'+esc(t.headline)+'</div>';
+  if(t.detail) html+='<div class="ci-answer-detail">'+esc(t.detail)+'</div>';
+  // Per-unit lines only while the listing is ON: an OFF listing (sold, coming soon, ...) must never
+  // print a unit as "Available Now" under an unavailable headline.
+  if(summary.available&&summary.multiUnit&&propertyContext&&Array.isArray(propertyContext.unit_types)){
+    var pairs=propertyContext.unit_types.map(function(u){
+      return {raw:u,resolved:resolveUnitAvailability(u),sort_order:u.sort_order||0};
+    });
+    pairs.sort(compareUnitTypesForDisplay);
+    html+='<ul class="ci-answer-units">'+pairs.map(function(p){
+      var ru=resolveUnitType(propertyContext,p.raw);
+      var name=ru.name[lang]||ru.name.en||'';
+      return '<li><span>'+esc(name)+'</span><span class="ci-unit-state">'+esc(formatAvailabilityDisplay(p.resolved,lang))+'</span></li>';
+    }).join('')+'</ul>';
+  } else if(!summary.available&&typeof ptResolveNextAvailable==='function'){
+    var na=ptResolveNextAvailable(propertyContext,lang);
+    if(na&&na.text) html+='<div class="ci-answer-detail">'+esc(na.text)+'</div>';
+  }
+  el.innerHTML=html;
+  el.className='ci-answer ci-answer-'+t.state;
+  el.setAttribute('data-availability',t.state);
+  el.setAttribute('data-scope',t.scope);
+  el.hidden=false;
+  return el;
+}
+
+// Raises one answer intent: records it, then answers it on the page. Returns true when handled
+// (so the caller can cancel the element's default anchor jump), false for anything that is not an
+// answer intent.
+function ptContactIntent(intent,opts){
+  opts=opts||{};
+  if(typeof isContactIntentAnswer!=='function'||!isContactIntentAnswer(intent)) return false;
+  var data=propertyContext;
+  if(!data) return false;
+  var lang=getCurrentLang();
+  var summary=resolveContactIntentAvailability(data);
+  try{
+    ptTrackContactIntent(intent,{
+      listingId:data.id,lang:lang,surface:opts.surface||null,
+      unitTypeId:selectedUnitTypeId||null,availability:summary
+    });
+  }catch(e){PT.warn('contact intent tracking failed',e);}
+  if(intent==='availability') ptCiRenderAvailability(summary,lang);
+  ptCiReveal(ptCiTarget(intent));
+  return true;
+}
+
+document.addEventListener('click',function(e){
+  var el=(e.target&&e.target.closest)?e.target.closest('[data-contact-intent]'):null;
+  if(!el) return;
+  if(ptContactIntent(el.getAttribute('data-contact-intent'),{surface:el.getAttribute('data-contact-intent-surface')})) e.preventDefault();
+});
+
 // A multi-unit listing's main / mobile WhatsApp CTA, before any unit is chosen. It is not a
 // WhatsApp link (see waNeedsUnit in buildMockupLayout()): activating it takes the visitor to
 // the unit picker and highlights it. It deliberately posts no tracking -- nothing was
@@ -3121,7 +3231,7 @@ function buildMockupLayout(){
   // completely unchanged; only where this finished string gets
   // concatenated into `layout` below has moved.
   var locationColHtml=(
-    '<div class="hero-map-section">'+
+    '<div class="hero-map-section" id="section-map">'+
     '<span class="section-label">'+L.location[lang]+'</span>'+
     mapHtml+
     nearbyHtml+
@@ -3291,7 +3401,7 @@ function buildMockupLayout(){
     conversionPanelHtml+
     '<div id="sp-badges" class="sp-badges-row"></div>'+
     viewingUnitBannerHtml+
-    '<div class="price-block">'+resolvedPriceHtml+'</div>'+
+    '<div class="price-block" id="section-price">'+resolvedPriceHtml+'<div class="ci-answer" id="contact-intent-answer" role="status" aria-live="polite" hidden></div></div>'+
     // Lease-term breakdown — directly under the price it explains. See
     // .hero-lease-pricing in the <style> block and the mobile `order:2`
     // rule that keeps it here (immediately after price-block's order:1)
@@ -3310,7 +3420,7 @@ function buildMockupLayout(){
     '<span id="share-btn-slot"></span>'+
     '<span class="pintag-verified">'+L.verified[lang]+'</span>'+
     '</div></div>'+
-    '<div class="hero-right">'+desktopGalleryMarkup+'</div>'+
+    '<div class="hero-right" id="section-gallery-desktop">'+desktopGalleryMarkup+'</div>'+
     '</div>'+
     buildingStripHtml+
     availableUnitsHtml+
@@ -3503,7 +3613,7 @@ function hydrateMobileSlides(idx){
 function buildMobileGallery(images, statusBadgeHtml, fomoOverlayHtml){
   fomoOverlayHtml=fomoOverlayHtml||'';
   var clean=(Array.isArray(images)?images:[]).filter(function(u){return u&&typeof u==='string';});
-  if(!clean.length)return '<div class="mobile-gallery">'+(statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'')+fomoOverlayHtml+'<div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
+  if(!clean.length)return '<div class="mobile-gallery" id="section-gallery-mobile">'+(statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'')+fomoOverlayHtml+'<div class="mg-track"><div class="mg-slide"><div class="sim-no-img"></div></div></div></div>';
   var slidesHtml='',dotsHtml='';
   // WINDOWED LOADING (cached-egress fix). Every slide used to carry a real
   // src, so a 44-photo listing queued 44 full-resolution originals. lazy is
@@ -3524,7 +3634,7 @@ function buildMobileGallery(images, statusBadgeHtml, fomoOverlayHtml){
     dotsHtml+='<div class="mg-dot '+(i===0?'active':'')+'" data-dot-idx="'+i+'" data-track="gallery-mobile-dot" data-track-type="dot" data-track-label="Dot '+(i+1)+'" data-track-meta=\'{"index":'+i+'}\'></div>';
   });
   var overlayHtml=statusBadgeHtml?'<div class="mg-status-wrap">'+statusBadgeHtml+'</div>':'';
-  return '<div class="mobile-gallery">'+overlayHtml+fomoOverlayHtml+'<div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
+  return '<div class="mobile-gallery" id="section-gallery-mobile">'+overlayHtml+fomoOverlayHtml+'<div class="mg-track" id="mg-track-el">'+slidesHtml+'</div><div class="mg-dots" id="mg-dots-box">'+dotsHtml+'</div></div>';
 }
 
 function jumpMobileGallerySlide(idx){var t=document.getElementById('mg-track-el');if(!t)return;hydrateMobileSlides(idx);t.scrollTo({left:idx*t.offsetWidth,behavior:'smooth'});}
