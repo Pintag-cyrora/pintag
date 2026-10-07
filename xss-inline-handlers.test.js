@@ -187,7 +187,8 @@ test('listing.html inline handlers interpolate through escJs(), never esc()', ()
   const offenders = handlers.filter(h => /\besc\(/.test(h));
   assert.deepEqual(offenders, [],
     'HTML-context esc() found inside an inline handler — use escJs() there');
-  assert.match(src, /trackMeta:\{unit:\\'\s*'\+escJs\(unitName\)/,
+  // (the unit name is still escJs()'d; trackMeta is now Object.assign({unit:...}, ptCiMeta(...)) so the intent metadata is merged in)
+  assert.match(src, /trackMeta:(?:Object\.assign\()?\{unit:\\'\s*'\+escJs\(unitName\)/,
     'the unit-card CTA must escape the unit name for the JS-string context');
 });
 

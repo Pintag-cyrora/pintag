@@ -1951,6 +1951,21 @@ function ptContactClick(opts) {
 // swallowing network errors like every other tracker here. A repeat of the same
 // intent for the same listing within 300ms is dropped as an accidental double-tap
 // (the same window tracking.js uses). Returns true when a row was sent.
+// The metadata object every contact-intent row carries, whether it is written by
+// ptTrackContactIntent() (open / answer intents) or handed to ptContactClick() as
+// trackMeta (the two WhatsApp intents), so all seven intents record the same shape.
+function ptContactIntentMeta(intent, ctx) {
+  ctx = ctx || {};
+  var avail = ctx.availability || null;
+  return {
+    intent: intent,
+    lang: ctx.lang || ((typeof getCurrentLang === 'function') ? getCurrentLang() : null) || null,
+    surface: ctx.surface || null,
+    unit_type_id: ctx.unitTypeId || null,
+    contact_id: ctx.contactId || null,
+    availability: avail ? { available: !!avail.available, reason: avail.reason || null, scope: avail.scope || null } : null
+  };
+}
 var _ptContactIntentLast = {};
 function ptTrackContactIntent(intent, ctx) {
   ctx = ctx || {};
@@ -1965,16 +1980,7 @@ function ptTrackContactIntent(intent, ctx) {
   if (_ptContactIntentLast[key] && now - _ptContactIntentLast[key] < 300) return false;
   _ptContactIntentLast[key] = now;
 
-  var lang = ctx.lang || ((typeof getCurrentLang === 'function') ? getCurrentLang() : null) || null;
-  var avail = ctx.availability || null;
-  var meta = {
-    intent: intent,
-    lang: lang,
-    surface: ctx.surface || null,
-    unit_type_id: ctx.unitTypeId || null,
-    contact_id: ctx.contactId || null,
-    availability: avail ? { available: !!avail.available, reason: avail.reason || null, scope: avail.scope || null } : null
-  };
+  var meta = ptContactIntentMeta(intent, ctx);
   var page = (function () {
     var seg = location.pathname.split('/').filter(Boolean).pop();
     return seg || 'index.html';

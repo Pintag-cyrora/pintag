@@ -15,13 +15,16 @@
 //   💬 contact_agent  "Contact agent"           WhatsApp (normal message) [PR B]
 //   ⋯  open           the intent menu itself was opened / interacted with
 //
-// THIS FILE (PR A) holds only pure data and pure functions -- no document/window
+// THIS FILE holds only pure data and pure functions -- no document/window
 // reference anywhere -- so the rules are unit-testable and portable:
 //   * CONTACT_INTENTS / helpers   the registry (ids, event ids, labels, gating)
 //   * resolveContactIntentAvailability(property)   the availability state the
 //     intents surface (the ON/OFF business state; see below)
 //   * resolveContactIntents(summary, ctx)          which intents are visible/enabled
 //   * contactIntentAvailabilityText(summary, lang) the localised "current state"
+//   * resolveContactIntentMenu(summary, ctx)       the visible menu rows, in menu order
+//   * buildTourWhatsAppMessage(vars, lang)         the "Book a viewing" WhatsApp text
+//   * contactIntentUiText(key, lang)               the menu's own strings
 // Tracking lives in components.js (ptTrackContactIntent) and the page wiring in
 // listing.html. Nothing here reads a date to decide availability.
 //
@@ -64,19 +67,19 @@ var CONTACT_INTENT_ELEMENT_TYPE = 'contact_intent';
 var CONTACT_INTENTS = {
   open: {
     id: 'open', kind: 'menu', eventId: 'contact_intent_open', labelEn: 'Contact options opened',
-    labels: { lo: 'ຕິດຕໍ່ / ສອບຖາມ', en: 'Ask about this property', zh: '咨询此房源' }
+    labels: { lo: 'ສອບຖາມກ່ຽວກັບຊັບສິນນີ້', en: 'Ask about this property', zh: '咨询此房源' }
   },
   location: {
     id: 'location', kind: 'answer', eventId: 'contact_intent_location', labelEn: 'Where is it?', icon: '📍',
-    labels: { lo: 'ຢູ່ບ່ອນໃດ?', en: 'Where is it?', zh: '位置在哪里？' }
+    labels: { lo: 'ຢູ່ບ່ອນໃດ?', en: 'Where is it?', zh: '在哪里？' }
   },
   price: {
     id: 'price', kind: 'answer', eventId: 'contact_intent_price', labelEn: "What's the price?", icon: '💰',
-    labels: { lo: 'ລາຄາເທົ່າໃດ?', en: "What's the price?", zh: '价格是多少？' }
+    labels: { lo: 'ລາຄາເທົ່າໃດ?', en: "What's the price?", zh: '价格多少？' }
   },
   availability: {
     id: 'availability', kind: 'answer', eventId: 'contact_intent_availability', labelEn: 'Is it available?', icon: '🏠',
-    labels: { lo: 'ຍັງວ່າງຢູ່ບໍ?', en: 'Is it available?', zh: '现在还可租吗？' }
+    labels: { lo: 'ຍັງວ່າງຢູ່ບໍ?', en: 'Is it available?', zh: '还有吗？' }
   },
   gallery: {
     id: 'gallery', kind: 'answer', eventId: 'contact_intent_gallery', labelEn: 'View photos', icon: '📷',
@@ -84,22 +87,33 @@ var CONTACT_INTENTS = {
   },
   book_tour: {
     id: 'book_tour', kind: 'whatsapp', highIntent: true, eventId: 'contact_intent_book_tour', labelEn: 'Book a viewing', icon: '📅',
-    labels: { lo: 'ນັດໝາຍເບິ່ງຊັບສິນ', en: 'Book a viewing', zh: '预约看房' },
+    labels: { lo: 'ນັດເບິ່ງຊັບສິນ', en: 'Book a viewing', zh: '预约看房' },
     surfaces: ['band', 'mobile_bar', 'unit_card']
   },
   contact_agent: {
     id: 'contact_agent', kind: 'whatsapp', highIntent: true, eventId: 'contact_intent_contact_agent', labelEn: 'Contact agent', icon: '💬',
     labels: { lo: 'ຕິດຕໍ່ຕົວແທນ', en: 'Contact agent', zh: '联系经纪人' },
     surfaces: ['band', 'mobile_bar', 'unit_card'],
-    // The element_id every WhatsApp inquiry was recorded under before this model.
-    legacyElementIds: ['contact-whatsapp']
+    // Every element_id a WhatsApp inquiry was recorded under before this model: the
+    // desktop band, the mobile sticky bar and the per-unit Inquire button.
+    legacyElementIds: ['contact-whatsapp', 'mcta-whatsapp', 'unit-inquire-whatsapp']
   }
 };
 
 var CONTACT_INTENT_ORDER = ['location', 'price', 'availability', 'gallery', 'book_tour', 'contact_agent'];
 
 // legacy ui_events.element_id -> intent id (see "COMPATIBILITY WITH HISTORY" above).
-var CONTACT_INTENT_LEGACY_ELEMENT_IDS = { 'contact-whatsapp': 'contact_agent' };
+var CONTACT_INTENT_LEGACY_ELEMENT_IDS = {
+  'contact-whatsapp': 'contact_agent',
+  'mcta-whatsapp': 'contact_agent',
+  'unit-inquire-whatsapp': 'contact_agent'
+};
+// The surface each legacy id came from (new rows carry it in metadata.surface instead).
+var CONTACT_INTENT_LEGACY_SURFACES = {
+  'contact-whatsapp': 'band',
+  'mcta-whatsapp': 'mobile_bar',
+  'unit-inquire-whatsapp': 'unit_card'
+};
 
 function contactIntentDef(intent) {
   return Object.prototype.hasOwnProperty.call(CONTACT_INTENTS, intent) ? CONTACT_INTENTS[intent] : null;
@@ -124,7 +138,7 @@ function contactIntentFromElementId(elementId) {
     }
   }
   if (Object.prototype.hasOwnProperty.call(CONTACT_INTENT_LEGACY_ELEMENT_IDS, elementId)) {
-    return { intent: CONTACT_INTENT_LEGACY_ELEMENT_IDS[elementId], legacy: true };
+    return { intent: CONTACT_INTENT_LEGACY_ELEMENT_IDS[elementId], legacy: true, surface: CONTACT_INTENT_LEGACY_SURFACES[elementId] };
   }
   return null;
 }
@@ -271,22 +285,26 @@ var _CI_OFF_LABEL = {
   fully_occupied: { en: 'Fully Occupied', lo: 'ເຕັມແລ້ວ',        zh: '已满租' },
   temporarily_unavailable: { en: 'Currently Unavailable', lo: 'ບໍ່ວ່າງໃນຕອນນີ້', zh: '暂不可用' }
 };
-var _CI_AVAILABLE_NOW = { en: 'Available Now', lo: 'ວ່າງດຽວນີ້', zh: '现在可租' };
-// DRAFT wording (pending approval). {open}/{total} are unit-type counts.
+// Property-wide ON. "Available Now" matches the unit wording on the page; the Chinese is
+// "可预订" (the listing-status word) rather than the rental-only "可租", because a property
+// for sale is also answered here.
+var _CI_AVAILABLE_NOW = { en: 'Available Now', lo: 'ວ່າງດຽວນີ້', zh: '目前可预订' };
+// {open}/{total} are unit-type counts. Says plainly that the answer is per unit and tells
+// the visitor what to do next.
 var _CI_UNIT_SPECIFIC = {
-  en: '{open} of {total} unit types available. Availability depends on the unit.',
-  lo: '{open} ຈາກ {total} ປະເພດຫ້ອງ ວ່າງ. ສະຖານະຂຶ້ນກັບແຕ່ລະຫ້ອງ.',
-  zh: '{total}种户型中有{open}种可租，具体以所选户型为准。'
+  en: '{open} of {total} unit types are available. Check each unit below.',
+  lo: 'ມີ {open} ຈາກ {total} ແບບຫ້ອງທີ່ວ່າງ. ກະລຸນາເບິ່ງແຕ່ລະຫ້ອງຂ້າງລຸ່ມ.',
+  zh: '{total}种户型中有{open}种可订，请查看下方各户型。'
 };
 var _CI_UNIT_OVERRIDE = {
-  en: 'The listing is marked {status}, but the units below are open.',
-  lo: 'ລາຍການນີ້ຖືກໝາຍວ່າ {status} ແຕ່ມີຫ້ອງຂ້າງລຸ່ມທີ່ຍັງວ່າງ.',
-  zh: '该房源标记为“{status}”，但下列户型仍可租。'
+  en: 'The listing is marked {status}, but some units are still open.',
+  lo: 'ລາຍການນີ້ຖືກໝາຍວ່າ {status} ແຕ່ບາງຫ້ອງຍັງວ່າງຢູ່.',
+  zh: '该房源标记为“{status}”，但部分户型仍可订。'
 };
 var _CI_NOT_AVAILABLE = {
-  en: 'This property is not currently available.',
+  en: "This property isn't available right now.",
   lo: 'ຊັບສິນນີ້ບໍ່ວ່າງໃນຕອນນີ້.',
-  zh: '该房源目前不可租。'
+  zh: '该房源目前不可订。'
 };
 
 function _ciFill(tpl, vars) {
@@ -317,12 +335,93 @@ function contactIntentAvailabilityText(summary, lang) {
   return { state: 'on', scope: 'property', headline: _CI_AVAILABLE_NOW[lang], detail: '' };
 }
 
+// ── The menu (PR B) ──────────────────────────────────────────────────────────
+
+// Menu order: the two high-intent actions first (one tap, obvious), then the quick
+// answers. Same list on desktop (the panel) and mobile (the bottom sheet).
+var CONTACT_INTENT_MENU_ORDER = ['contact_agent', 'book_tour', 'location', 'price', 'availability', 'gallery'];
+
+// resolveContactIntentMenu(summary, ctx) -> the VISIBLE rows of resolveContactIntents(),
+// in menu order. Nothing new is decided here: visibility and enabled-ness are exactly
+// resolveContactIntents()'s, this only filters and orders.
+function resolveContactIntentMenu(summary, ctx) {
+  var rows = resolveContactIntents(summary, ctx);
+  var byId = {};
+  rows.forEach(function (r) { byId[r.id] = r; });
+  return CONTACT_INTENT_MENU_ORDER.map(function (id) { return byId[id]; }).filter(function (r) { return r && r.visible; });
+}
+
+// The menu's own strings. Wording is final for lo/en/zh: short, spoken-style, and built
+// from words already on the page (listing.html's L dictionary, listing-status.js).
+var _CI_UI_TEXT = {
+  menuTitle: { en: 'Ask about this property', lo: 'ສອບຖາມກ່ຽວກັບຊັບສິນນີ້', zh: '咨询此房源' },
+  ask:       { en: 'Ask',                     lo: 'ສອບຖາມ',                zh: '咨询' },
+  close:     { en: 'Close',                   lo: 'ປິດ',                    zh: '关闭' },
+  unitUnavailable: { en: 'Unit not available', lo: 'ຫ້ອງນີ້ບໍ່ວ່າງ',        zh: '该户型暂不可订' }
+};
+function contactIntentUiText(key, lang) {
+  var e = _CI_UI_TEXT[key];
+  if (!e) return '';
+  return e[lang] || e.en;
+}
+
+// ── "Book a viewing" WhatsApp message ───────────────────────────────────────
+// Same shape as the existing property message (a short greeting, then "Property: <name>"
+// and the listing link) so whoever receives it can open the exact listing, with the
+// request itself changed to a viewing. The unit variant names the selected unit and
+// its price in the sentence, then repeats the structured "Property — Unit / Beds —
+// Price / link" breadcrumb the per-unit Inquire message already uses.
+// WA_MESSAGE_TEMPLATES (the Contact agent message) is untouched.
+var WA_TOUR_MESSAGE_TEMPLATES = {
+  lo: 'ສະບາຍດີ,\n\nຂ້ອຍຢາກນັດເບິ່ງຊັບສິນນີ້. ສາມາດເບິ່ງໄດ້ມື້ໃດ ແລະ ເວລາໃດແດ່?\n\nຊັບສິນ: {{PROPERTY_NAME}}',
+  en: "Hello,\n\nI'd like to book a viewing of this property. What days and times are available?\n\nProperty: {{PROPERTY_NAME}}",
+  zh: '您好，\n\n我想预约看房。请问什么时间方便参观？\n\n房源: {{PROPERTY_NAME}}'
+};
+var WA_TOUR_UNIT_MESSAGE_TEMPLATES = {
+  lo: 'ສະບາຍດີ,\n\nຂ້ອຍຢາກນັດເບິ່ງຫ້ອງ {{UNIT_NAME}} ທີ່ {{PROPERTY_NAME}}{{PRICE_PART}}. ສາມາດເບິ່ງໄດ້ມື້ໃດ ແລະ ເວລາໃດແດ່?',
+  en: "Hello,\n\nI'd like to book a viewing of the {{UNIT_NAME}} unit at {{PROPERTY_NAME}}{{PRICE_PART}}. What days and times are available?",
+  zh: '您好，\n\n我想预约参观{{PROPERTY_NAME}}的{{UNIT_NAME}}户型{{PRICE_PART}}。请问什么时间方便？'
+};
+
+function _ciFillTemplate(tpl, vars) {
+  return String(tpl).replace(/\{\{(\w+)\}\}/g, function (m, k) { return vars[k] != null ? String(vars[k]) : ''; });
+}
+
+// buildTourWhatsAppMessage(vars, lang) -> plain text (the caller encodes it into the wa.me URL)
+//   vars.propertyName   resolved (language-aware) title
+//   vars.canonicalUrl   the listing link, or null/'' (the line is then omitted, never faked)
+//   vars.unit           null for a property-level request, or
+//                       { name, bedrooms, bedroomsLabel, priceText, specificUnitLabel? }
+// Every line whose value is unknown is omitted.
+function buildTourWhatsAppMessage(vars, lang) {
+  lang = (lang === 'lo' || lang === 'zh') ? lang : 'en';
+  vars = vars || {};
+  var unit = vars.unit || null;
+  if (!unit) {
+    var base = _ciFillTemplate(WA_TOUR_MESSAGE_TEMPLATES[lang], { PROPERTY_NAME: vars.propertyName || '' });
+    return vars.canonicalUrl ? base + '\n' + vars.canonicalUrl : base;
+  }
+  var pricePart = unit.priceText ? (lang === 'zh' ? '（' + unit.priceText + '）' : ' (' + unit.priceText + ')') : '';
+  var unitLabel = (unit.bedrooms != null && unit.bedroomsLabel) ? ((unit.name || '') + ' (' + unit.bedrooms + ' ' + unit.bedroomsLabel + ')') : (unit.name || '');
+  var greeting = _ciFillTemplate(WA_TOUR_UNIT_MESSAGE_TEMPLATES[lang], { UNIT_NAME: unitLabel, PROPERTY_NAME: vars.propertyName || '', PRICE_PART: pricePart });
+  var head = [vars.propertyName || '', unit.name || unitLabel];
+  if (unit.specificUnitLabel) head.push(unit.specificUnitLabel);
+  var lines = [head.join(' \u2014 ')];
+  var facts = [];
+  if (unit.bedrooms != null && unit.bedroomsLabel) facts.push(unit.bedrooms + ' ' + unit.bedroomsLabel);
+  if (unit.priceText) facts.push(unit.priceText);
+  if (facts.length) lines.push(facts.join(' \u2014 '));
+  if (vars.canonicalUrl) lines.push(vars.canonicalUrl);
+  return greeting + '\n\n' + lines.join('\n');
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CONTACT_INTENTS: CONTACT_INTENTS,
     CONTACT_INTENT_ORDER: CONTACT_INTENT_ORDER,
     CONTACT_INTENT_ELEMENT_TYPE: CONTACT_INTENT_ELEMENT_TYPE,
     CONTACT_INTENT_LEGACY_ELEMENT_IDS: CONTACT_INTENT_LEGACY_ELEMENT_IDS,
+    CONTACT_INTENT_LEGACY_SURFACES: CONTACT_INTENT_LEGACY_SURFACES,
     isContactIntent: isContactIntent,
     isContactIntentAnswer: isContactIntentAnswer,
     contactIntentEventId: contactIntentEventId,
@@ -330,6 +429,12 @@ if (typeof module !== 'undefined' && module.exports) {
     contactIntentLabel: contactIntentLabel,
     resolveContactIntentAvailability: resolveContactIntentAvailability,
     resolveContactIntents: resolveContactIntents,
-    contactIntentAvailabilityText: contactIntentAvailabilityText
+    contactIntentAvailabilityText: contactIntentAvailabilityText,
+    CONTACT_INTENT_MENU_ORDER: CONTACT_INTENT_MENU_ORDER,
+    resolveContactIntentMenu: resolveContactIntentMenu,
+    contactIntentUiText: contactIntentUiText,
+    WA_TOUR_MESSAGE_TEMPLATES: WA_TOUR_MESSAGE_TEMPLATES,
+    WA_TOUR_UNIT_MESSAGE_TEMPLATES: WA_TOUR_UNIT_MESSAGE_TEMPLATES,
+    buildTourWhatsAppMessage: buildTourWhatsAppMessage
   };
 }
