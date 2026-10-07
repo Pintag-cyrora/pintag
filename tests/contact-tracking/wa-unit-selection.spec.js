@@ -2,7 +2,8 @@
 // mobile WhatsApp button starts a conversation. Driven against the real listing.html with mocked
 // Supabase, like contact-tracking-live.spec.js.
 //
-// What is gated: the main CTA (#pt-wa-primary) and the mobile sticky CTA (#pt-wa-mobile), and only
+// What is gated: the main CTA (#pt-wa-primary) and the Ask sheet's WhatsApp row (#ci-wa-sheet; the sticky
+// bar itself no longer carries a WhatsApp button), and only
 // on a listing with TWO OR MORE unit types that has no unit selected.
 // What is NOT gated, and must stay exactly as it was:
 //   - single-unit listings (no unit types, or one);
@@ -76,7 +77,7 @@ test.describe('single-unit listings are unchanged', () => {
     test(label + ': the WhatsApp CTA is a live link with the generic property message, and the lead carries no unit', async ({ page }) => {
       const { posts, errors } = await open(page, prop({ unit_types: units }));
       await LIVE(page.locator('#pt-wa-primary'));
-      await LIVE(page.locator('#pt-wa-mobile'));
+      await LIVE(page.locator('#ci-wa-sheet'));
       await expect(page.locator('.wa-unit-hint')).toHaveCount(0);
       await expect(page.locator('.agent-ctas-needs-unit')).toHaveCount(0);
       const msg = await text(page.locator('#pt-wa-primary'));
@@ -122,10 +123,11 @@ test.describe('multi-unit listing, no unit selected', () => {
     await expect(page.locator('#units-section')).toBeInViewport();
   });
 
-  test('mobile: the sticky CTA is gated the same way', async ({ page }) => {
+  test('mobile: the Ask sheet\'s WhatsApp row is gated the same way', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     const { posts } = await open(page, MULTI());
-    const m = page.locator('#pt-wa-mobile');
+    await page.click('#ci-open-sheet');
+    const m = page.locator('#ci-wa-sheet');
     await GATED(m);
     await expect(m).toContainText('Select a unit');
     let popups = 0; page.on('popup', () => { popups++; });
@@ -168,11 +170,12 @@ test.describe('multi-unit listing, unit selected', () => {
     expect(errors).toEqual([]);
   });
 
-  test('mobile: the sticky CTA carries the selected unit in the message and the lead', async ({ page }) => {
+  test('mobile: the Ask sheet\'s WhatsApp row carries the selected unit in the message and the lead', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     const { posts } = await open(page, MULTI());
     await selectUnit(page, 'Room Type A');
-    const m = page.locator('#pt-wa-mobile');
+    await page.click('#ci-open-sheet');
+    const m = page.locator('#ci-wa-sheet');
     await LIVE(m);
     const msg = await text(m);
     expect(msg).toContain('Room Type A'); expect(msg).toContain('2 Beds'); expect(msg).toContain('$400 / month');
@@ -247,7 +250,7 @@ test.describe('multi-number contact picker', () => {
     await expect(page.locator('.contact-picker .cpick-row')).toHaveCount(2);
     await page.locator('.contact-picker .cpick-row').nth(1).click();
     await GATED(page.locator('#pt-wa-primary'));
-    await GATED(page.locator('#pt-wa-mobile'));
+    await GATED(page.locator('#ci-wa-sheet'));
     await expect(page.locator('#pt-wa-primary')).toHaveAttribute('data-contact-id', 'b');
   });
 
@@ -309,10 +312,11 @@ test.describe('not gated', () => {
     expect(errors).toEqual([]);
   });
 
-  test('an unavailable multi-unit listing: the mobile status CTA needs no unit', async ({ page }) => {
+  test('an unavailable multi-unit listing: the status CTA in the Ask sheet needs no unit', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     const { posts } = await openUnavailable(page);
-    const m = page.locator('#mobile-cta-bar .mcta-btn');
+    await page.click('#ci-open-sheet');
+    const m = page.locator('#ci-sheet-body .ci-item-status');
     await expect(m).not.toHaveAttribute('data-wa-needs-unit', '1');
     await expect(m).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + PHONE_DIGITS + '\\?text='));
     await m.click();

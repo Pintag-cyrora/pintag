@@ -61,6 +61,14 @@ const toBottom = (page) => page.evaluate(() => {
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
 });
 const PANEL = '#ci-panel-body', SHEET = '#ci-sheet', ASK = '#ci-open-sheet';
+// What each row of the mobile Ask sheet is, in order: answers, Book a viewing, then the contact group
+// (Call / WhatsApp are the same contact_agent intent: told apart by channel), or the status CTA when OFF.
+const sheetKeys = (page) => page.locator('#ci-sheet-body .ci-item').evaluateAll((els) => els.map((e) =>
+  e.getAttribute('data-contact-intent') || (e.hasAttribute('data-ci-call') ? 'call' : (e.getAttribute('data-ci-wa') === 'contact_agent' ? 'whatsapp' : (e.getAttribute('data-ci-wa') || 'status')))));
+const SHEET_ON = ['location', 'price', 'availability', 'gallery', 'book_tour', 'call', 'whatsapp'];
+const SHEET_ANSWERS = ['location', 'price', 'availability', 'gallery'];
+// tel: links would navigate the test browser; the click handlers (tracking) still run
+const noTelNav = (page) => page.addInitScript(() => document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('a[href^="tel:"]')) e.preventDefault(); }, true));
 const toggle = (page) => page.click('#ci-toggle');
 const GATED = async (loc) => {
   await expect(loc).toHaveAttribute('data-wa-needs-unit', '1');
@@ -164,35 +172,59 @@ test.describe('desktop panel', () => {
 
 // ═══ Mobile bottom sheet ═════════════════════════════════════════════════════
 test.describe('mobile sheet', () => {
-  test('the sticky bar has WhatsApp + Ask; the sheet is closed on load and nothing is recorded', async ({ page }) => {
+  test('the sticky bar is exactly [Ask about this property] [Share]: no standalone WhatsApp, status CTA or price', async ({ page }) => {
     const { posts, errors } = await phone(page, { row: prop() });
-    await expect(page.locator('#pt-wa-mobile')).toBeVisible();
+    const bar = page.locator('#mobile-cta-bar');
+    await expect(bar).toBeVisible();
     await expect(page.locator(ASK)).toBeVisible();
+    await expect(page.locator(ASK)).toHaveText(/Ask about this property/);
     await expect(page.locator(ASK)).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(page.locator(ASK)).toHaveAttribute('aria-expanded', 'false');
+    await expect(bar.locator('.pt-share-btn')).toBeVisible();                                   // Share
+    await expect(bar.locator('.pt-share-btn')).toHaveAttribute('aria-label', 'Share');
+    expect(await bar.locator('.mcta-inner > *').evaluateAll((els) => els.map((e) => e.id || e.className.split(' ')[0]))).toEqual(['ci-open-sheet', 'pt-share-btn']);
+    // ...and NOTHING that starts a WhatsApp action:
+    await expect(page.locator('#pt-wa-mobile')).toHaveCount(0);
+    await expect(bar.locator('.mcta-btn')).toHaveCount(0);
+    await expect(bar.locator('a')).toHaveCount(0);
+    await expect(bar.locator('[href*="wa.me"], [data-ci-wa], [data-ci-call]')).toHaveCount(0);
+    await expect(bar.locator('.mcta-price-wrap')).toHaveCount(0);
+    expect((await bar.innerText()).replace(/\s+/g, ' ')).not.toMatch(/Chat on WhatsApp|WhatsApp/i);
+    // the sheet is closed and nothing was recorded by rendering
     await expect(page.locator('#ci-sheet-root')).toBeHidden();
-    await expect(page.locator('#ci-panel')).toBeHidden();                  // the inline panel is a desktop thing
+    await expect(page.locator('#ci-panel')).toBeHidden();                                       // the inline panel is a desktop thing
     expect(intentRows(posts)).toEqual([]);
     expect(errors).toEqual([]);
   });
 
-  test('tapping WhatsApp in the bar is still ONE tap to the chat (no sheet in the way)', async ({ page }) => {
+  test('tapping the sticky bar can only open the menu: no WhatsApp, no call, no lead', async ({ page }) => {
     const { posts } = await phone(page, { row: prop() });
-    await page.click('#pt-wa-mobile');
-    await page.waitForTimeout(400);
-    await expect(page.locator('#ci-sheet-root')).toBeHidden();
-    expect(opens(posts)).toEqual([]);
-    expect(posts.lead_events.length).toBe(1);
+    let popups = 0; page.on('popup', () => { popups++; });
+    await page.click(ASK);
+    await page.waitForTimeout(500);
+    await expect(page.locator('#ci-sheet-root')).toBeVisible();
+    expect(popups).toBe(0);
+    expect(await page.evaluate(() => window.__opens.length)).toBe(0);
+    expect(posts.lead_events).toEqual([]);
+    expect(posts.ui_events.filter((e) => e.element_type === 'cta')).toEqual([]);
+    expect(intentRows(posts).map((r) => r.element_id)).toEqual(['contact_intent_open']);
   });
 
-  test('Ask opens a modal sheet with the six intents and records ONE contact_intent_open (surface sheet)', async ({ page }) => {
+  test('Ask opens a modal sheet: questions, Book a viewing, a divider, then Call / WhatsApp; ONE contact_intent_open (surface sheet)', async ({ page }) => {
     const { posts } = await phone(page, { row: prop() });
     await page.click(ASK);
     await expect(page.locator('#ci-sheet-root')).toBeVisible();
     await expect(page.locator(SHEET)).toHaveAttribute('role', 'dialog');
     await expect(page.locator(SHEET)).toHaveAttribute('aria-modal', 'true');
     await expect(page.locator('#ci-sheet-title')).toHaveText('Ask about this property');
-    expect(await ids(page.locator('#ci-sheet-body .ci-item'))).toEqual(MENU);
+    expect(await sheetKeys(page)).toEqual(SHEET_ON);
+    expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(
+      ['Where is it?', "What's the price?", 'Is it available?', 'View photos', 'Book a viewing', 'Call agent', 'Chat with agent on WhatsApp']);
+    // the divider and the "Contact an agent" label sit between Book a viewing and the contact rows
+    expect(await page.locator('#ci-sheet-body').evaluate((b) => [...b.children].map((e) => e.getAttribute('role') === 'separator' ? 'divider' : (e.classList.contains('ci-group-label') ? 'label:' + e.textContent : 'row')))).toEqual(
+      ['row', 'row', 'row', 'row', 'row', 'divider', 'label:Contact an agent', 'row', 'row']);
+    await expect(page.locator('#ci-call-sheet')).toBeVisible();
+    await expect(page.locator('#ci-wa-sheet')).toBeVisible();
     await expect(page.locator(ASK)).toHaveAttribute('aria-expanded', 'true');
     expect(await page.evaluate(() => document.body.classList.contains('ci-sheet-open'))).toBe(true);   // page scroll locked
     await expect(page.locator('#ci-sheet-close')).toBeFocused();
@@ -313,10 +345,13 @@ test.describe('mobile sheet', () => {
     await page.waitForTimeout(500);
     await expect(page.locator('#ci-sheet-root')).toBeVisible();
     await expect(page.locator('#ci-sheet-title')).toHaveText('ສອບຖາມກ່ຽວກັບຊັບສິນນີ້');
-    await expect(page.locator('#ci-sheet-body .ci-item').first()).toContainText('ຕິດຕໍ່ຕົວແທນ');
+    await expect(page.locator('#ci-sheet-body .ci-item').first()).toContainText('ຢູ່ບ່ອນໃດ?');
+    await expect(page.locator('#ci-wa-sheet')).toContainText('ແຊັດກັບຕົວແທນທາງ WhatsApp');
+    await expect(page.locator('#ci-call-sheet')).toContainText('ໂທຫາຕົວແທນ');
     await page.evaluate(() => setLang('zh'));
     await page.waitForTimeout(500);
     await expect(page.locator('#ci-sheet-title')).toHaveText('咨询此房源');
+    await expect(page.locator('#ci-wa-sheet')).toContainText('通过 WhatsApp 联系经纪人');
     expect(opens(posts).length).toBe(1);
   });
 
@@ -341,12 +376,12 @@ test.describe('Contact agent', () => {
     await expect(page.locator('#ci-sheet-body [data-ci-wa="contact_agent"]')).toHaveCount(1);   // in the DOM for phones (hidden at this width)
   });
 
-  test('the sheet\'s Contact agent is the main CTA\'s link, byte for byte (same message)', async ({ page }) => {
+  test('the sheet\'s WhatsApp row is the main CTA\'s link, byte for byte (same message)', async ({ page }) => {
     await open(page, prop());
     const main = await page.locator('#pt-wa-primary').getAttribute('href');
-    expect(await page.locator('#pt-wa-mobile').getAttribute('href')).toBe(main);
-    expect(await page.locator('#ci-sheet-body [data-ci-wa="contact_agent"]').getAttribute('href')).toBe(main);
+    expect(await page.locator('#ci-wa-sheet').getAttribute('href')).toBe(main);
     expect(await waText(page.locator('#pt-wa-primary'))).toContain("I'm interested in this property");
+    await expect(page.locator('#ci-call-sheet')).toHaveAttribute('href', 'tel:+856201111111');
   });
 
   test('the existing desktop button now records the same intent id with surface "band", one lead', async ({ page }) => {
@@ -357,17 +392,34 @@ test.describe('Contact agent', () => {
     expect(posts.ui_events.filter((e) => e.element_type === 'cta').map((e) => [e.element_id, e.metadata.surface])).toEqual([['contact_intent_contact_agent', 'band']]);
   });
 
-  test('mobile bar button records surface "mobile_bar"; sheet row records surface "sheet"; one lead each', async ({ page }) => {
+  test('mobile sheet: WhatsApp and Call are the same contact_agent intent, told apart by channel; ONE lead each; no duplicates', async ({ page }) => {
+    await noTelNav(page);
     const { posts } = await phone(page, { row: prop() });
-    await page.click('#pt-wa-mobile');
-    await page.waitForTimeout(350);
     await page.click(ASK);
-    await page.click('#ci-sheet-body [data-ci-wa="contact_agent"]');
+    await page.click('#ci-wa-sheet');
+    await page.waitForTimeout(400);
+    await expect(page.locator('#ci-sheet-root')).toBeHidden();                              // choosing a contact closes the sheet
+    await page.waitForTimeout(400);
+    await page.click(ASK);
+    await page.click('#ci-call-sheet');
     await page.waitForTimeout(400);
     const cta = posts.ui_events.filter((e) => e.element_type === 'cta');
-    expect(cta.map((e) => [e.element_id, e.metadata.surface])).toEqual([['contact_intent_contact_agent', 'mobile_bar'], ['contact_intent_contact_agent', 'sheet']]);
-    expect(posts.lead_events.length).toBe(2);
-    await expect(page.locator('#ci-sheet-root')).toBeHidden();                         // choosing WhatsApp closes the sheet
+    expect(cta.map((e) => [e.element_id, e.label, e.metadata.surface, e.metadata.channel, e.metadata.intent])).toEqual([
+      ['contact_intent_contact_agent', 'WhatsApp', 'sheet', 'whatsapp', 'contact_agent'],
+      ['contact_intent_contact_agent', 'Call', 'sheet', 'call', 'contact_agent'],
+    ]);
+    expect(cta.every((e) => e.property_id === 'p-menu' && e.metadata.lang === 'en' && e.metadata.availability.available === true)).toBe(true);
+    expect(posts.lead_events.map((l) => l.event_type)).toEqual(['whatsapp_click', 'call_click']);      // exactly one lead per click
+    expect(posts.lead_events.every((l) => l.listing_id === 'p-menu' && l.contact_id === 'a')).toBe(true);
+    expect(opens(posts).length).toBe(2);
+  });
+
+  test('there is no way to a WhatsApp lead from the sticky bar itself', async ({ page }) => {
+    const { posts } = await phone(page, { row: prop() });
+    await page.locator('#mobile-cta-bar .mcta-inner').click({ position: { x: 5, y: 5 } });
+    await page.waitForTimeout(300);
+    expect(posts.lead_events).toEqual([]);
+    expect(posts.ui_events.filter((e) => e.element_type === 'cta')).toEqual([]);
   });
 
   test('the per-unit Inquire button is a contact_agent intent carrying that unit', async ({ page }) => {
@@ -619,12 +671,15 @@ test.describe('contact picker', () => {
 // ═══ Availability ON / OFF ═══════════════════════════════════════════════════
 const ANSWER_ONLY = ANSWERS;
 test.describe('availability', () => {
-  test('ON: Book a viewing is in the desktop panel (Contact agent is the primary button); the sheet has both', async ({ page }) => {
+  test('ON: Book a viewing is in the desktop panel (Contact agent is the primary button); the sheet has Call and WhatsApp', async ({ page }) => {
     await open(page, prop());
     await toggle(page);
     expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(PANEL_MENU);
     await expect(page.locator('#pt-wa-primary')).toBeVisible();
-    expect(await ids(page.locator('#ci-sheet-body .ci-item'))).toEqual(MENU);
+    await page.setViewportSize({ width: 375, height: 760 });
+    await page.waitForTimeout(300);
+    await page.click(ASK);
+    expect(await sheetKeys(page)).toEqual(SHEET_ON);
   });
 
   for (const [label, row] of [
@@ -649,12 +704,12 @@ test.describe('availability', () => {
     });
   }
 
-  test('OFF on a phone: the sheet lists answers only and the bar keeps the status CTA', async ({ page }) => {
+  test('OFF on a phone: the sheet lists answers, then the status CTA; the bar stays Ask + Share', async ({ page }) => {
     await phone(page, { row: prop({ market_status: 'rented' }) });
     await expect(page.locator('#pt-wa-mobile')).toHaveCount(0);
-    await expect(page.locator('#mobile-cta-bar .mcta-btn')).toBeVisible();                   // Find Similar
+    await expect(page.locator('#mobile-cta-bar .mcta-btn')).toHaveCount(0);                  // the bar is Ask + Share only
     await page.click(ASK);
-    expect(await ids(page.locator('#ci-sheet-body .ci-item'))).toEqual(ANSWER_ONLY);
+    expect(await sheetKeys(page)).toEqual([...SHEET_ANSWERS, 'status']);                     // the status CTA is the last row
   });
 
   test('coming soon: OFF everywhere in the contact area; the existing Notify Me CTA replaces WhatsApp', async ({ page }) => {
@@ -669,12 +724,13 @@ test.describe('availability', () => {
     expect(posts.lead_events).toEqual([]);
   });
 
-  test('coming soon on a phone: bar shows Notify Me, sheet shows answers only', async ({ page }) => {
+  test('coming soon on a phone: the sheet shows answers, then Notify Me', async ({ page }) => {
     await phone(page, { row: prop({ market_status: 'coming_soon', unit_types: [UA, UB] }) });
     await expect(page.locator('#pt-wa-mobile')).toHaveCount(0);
-    await expect(page.locator('#mobile-cta-bar .mcta-btn')).toContainText('Notify Me');
+    await expect(page.locator('#mobile-cta-bar .mcta-btn')).toHaveCount(0);
     await page.click(ASK);
-    expect(await ids(page.locator('#ci-sheet-body .ci-item'))).toEqual(ANSWER_ONLY);
+    expect(await sheetKeys(page)).toEqual([...SHEET_ANSWERS, 'status']);
+    await expect(page.locator('#ci-sheet-body .ci-item-status')).toContainText('Notify Me');
   });
 
   test('multi-unit rented with an open unit: ON for that unit only (gated actions, unit-specific answer)', async ({ page }) => {
@@ -698,15 +754,16 @@ test.describe('availability', () => {
     expect(await page.locator(PANEL + ' .ci-item .ci-label').allInnerTexts()).toEqual(['ນັດເບິ່ງຊັບສິນ', 'ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ']);
     await page.setViewportSize({ width: 375, height: 760 });
     await page.waitForTimeout(300);
-    expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(['ຕິດຕໍ່ຕົວແທນ', 'ນັດເບິ່ງຊັບສິນ', 'ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ']);
+    await page.click(ASK);
+    expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(['ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ', 'ນັດເບິ່ງຊັບສິນ', 'ໂທຫາຕົວແທນ', 'ແຊັດກັບຕົວແທນທາງ WhatsApp']);
   });
 });
 
 // ═══ Labels per language / no photos / no phone ══════════════════════════════
 test.describe('labels and edge cases', () => {
-  for (const [lang, labels, agentLabel] of [
-    ['en', ['Book a viewing', 'Where is it?', "What's the price?", 'Is it available?', 'View photos'], 'Contact agent'],
-    ['zh', ['预约看房', '在哪里？', '价格多少？', '还有吗？', '查看照片'], '联系经纪人'],
+  for (const [lang, labels, callLabel, waLabel] of [
+    ['en', ['Book a viewing', 'Where is it?', "What's the price?", 'Is it available?', 'View photos'], 'Call agent', 'Chat with agent on WhatsApp'],
+    ['zh', ['预约看房', '在哪里？', '价格多少？', '还有吗？', '查看照片'], '致电经纪人', '通过 WhatsApp 联系经纪人'],
   ]) {
     test(`${lang}: the menu labels`, async ({ page }) => {
       await open(page, prop(), { lang });
@@ -714,7 +771,9 @@ test.describe('labels and edge cases', () => {
       expect(await page.locator(PANEL + ' .ci-item .ci-label').allInnerTexts()).toEqual(labels);
       await page.setViewportSize({ width: 375, height: 760 });
       await page.waitForTimeout(300);
-      expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual([agentLabel, ...labels]);   // the sheet is the complete menu
+      await page.click(ASK);
+      const [book, ...answers] = labels;
+      expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual([...answers, book, callLabel, waLabel]);   // the sheet is the complete menu
     });
   }
 
@@ -724,7 +783,8 @@ test.describe('labels and edge cases', () => {
     expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(['book_tour', 'location', 'price', 'availability']);
     await page.setViewportSize({ width: 375, height: 760 });
     await page.waitForTimeout(300);
-    expect(await ids(page.locator('#ci-sheet-body .ci-item'))).toEqual(['contact_agent', 'book_tour', 'location', 'price', 'availability']);
+    await page.click(ASK);
+    expect(await sheetKeys(page)).toEqual(['location', 'price', 'availability', 'book_tour', 'call', 'whatsapp']);
   });
 
   test('no contact number: only the answers are offered', async ({ page }) => {
@@ -748,4 +808,136 @@ test.describe('labels and edge cases', () => {
     const dup = await page.evaluate(() => { const c = {}; document.querySelectorAll('[id]').forEach((e) => { c[e.id] = (c[e.id] || 0) + 1; }); return Object.keys(c).filter((k) => c[k] > 1); });
     expect(dup).toEqual([]);
   });
+});
+
+// ═══ Unavailable listings: the status CTA works from the contact band AND from the Ask sheet ═══════════════
+// (Find Similar for sold / rented / reserved / off market; Notify Me for coming soon; waiting list for fully
+// occupied.) Neither is a contact intent: own tracking ids, never a lead. The mobile bar no longer holds it.
+test.describe('unavailable listings: status CTA from the band and the Ask sheet', () => {
+  // Make Similar Properties tall and visible so "scrolled to it" is observable.
+  const showSimilar = (page) => page.evaluate(() => {
+    const s = document.getElementById('similar-section');
+    s.style.display = 'block'; s.style.minHeight = '900px';
+    const pad = document.createElement('div'); pad.style.height = '3000px'; s.before(pad);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  });
+  const nearTop = (page) => page.evaluate(() => Math.abs(document.getElementById('similar-section').getBoundingClientRect().top) < 120);
+  const statusEvents = (posts, id) => posts.ui_events.filter((e) => e.element_id === id);
+
+  for (const status of ['sold', 'rented', 'reserved', 'off_market']) {
+    test(`${status}: Find Similar works from the band and from the sheet; no lead, no contact intent`, async ({ page }) => {
+      const { posts, errors } = await phone(page, { row: prop({ market_status: status }) });
+      await expect(page.locator('#mobile-cta-bar .mcta-inner > *')).toHaveCount(2);                // Ask + Share only
+      // contact band
+      await showSimilar(page);
+      await page.locator('#agent-band-anchor a[href="#similar-section"]').click();
+      await expect.poll(() => nearTop(page)).toBe(true);
+      expect(statusEvents(posts, 'status-cta-find-similar').length).toBe(1);
+      // Ask sheet
+      await showSimilar(page);
+      await page.click(ASK);
+      await page.locator('#ci-sheet-body .ci-item-status').click();
+      await expect(page.locator('#ci-sheet-root')).toBeHidden();                                   // the sheet closes
+      await expect.poll(() => nearTop(page)).toBe(true);
+      const sheet = statusEvents(posts, 'mcta-find-similar');
+      expect(sheet.length).toBe(1);
+      expect(sheet[0]).toMatchObject({ element_type: 'cta', label: 'Find Similar' });
+      // never a lead, never a WhatsApp/call contact intent
+      expect(posts.lead_events).toEqual([]);
+      expect(posts.ui_events.some((e) => e.element_id === 'contact_intent_contact_agent' || e.element_type === 'cta' && /^contact_intent_/.test(e.element_id))).toBe(false);
+      expect(errors).toEqual([]);
+    });
+  }
+
+  for (const [status, label] of [['coming_soon', 'Notify Me'], ['fully_occupied', 'Waiting List']]) {
+    test(`${status}: the ${label} CTA opens WhatsApp from the band and from the sheet; recordLead:false, no lead`, async ({ page }) => {
+      const { posts, errors } = await phone(page, { row: prop({ market_status: status }) });
+      const band = page.locator('#agent-band-anchor a.btn-wa');
+      const bandHref = await band.getAttribute('href');
+      expect(bandHref).toMatch(new RegExp('^https://wa\\.me/' + NUM.a + '\\?text='));
+      await band.click();
+      await page.waitForTimeout(300);
+      expect(statusEvents(posts, 'contact-whatsapp-status-cta').length).toBe(1);
+      await page.click(ASK);
+      const row = page.locator('#ci-sheet-body .ci-item-status');
+      await expect(row).toHaveAttribute('href', bandHref);                                        // same destination and message
+      await expect(row).toHaveAttribute('target', '_blank');
+      await row.click();
+      await expect(page.locator('#ci-sheet-root')).toBeHidden();
+      await page.waitForTimeout(300);
+      const sheet = statusEvents(posts, 'mcta-whatsapp-status');
+      expect(sheet.length).toBe(1);
+      expect(sheet[0]).toMatchObject({ element_type: 'cta', property_id: 'p-menu' });
+      expect(posts.lead_events).toEqual([]);                                                      // a waitlist ping is not a lead
+      expect(intentRows(posts).filter((e) => e.element_id !== 'contact_intent_open' && e.element_id !== 'contact_intent_availability')).toEqual([]);
+      expect(errors).toEqual([]);
+    });
+  }
+});
+
+// ═══ A WhatsApp / Call action is exactly one lead, however it is reached ═══════════════════════════════════
+test.describe('lead_events: exactly once per actual WhatsApp / call action', () => {
+  test('mobile: sheet WhatsApp x1 and Call x1 → 2 leads (whatsapp_click, call_click); the row is unreachable the instant it is tapped', async ({ page }) => {
+    await noTelNav(page);
+    const { posts } = await phone(page, { row: prop() });
+    await page.click(ASK);
+    // the tap closes the sheet synchronously, so a second real tap cannot land on the row again
+    // (a script's .click() ignores visibility, so assert the reachability instead of faking a double tap)
+    const reachable = await page.evaluate(() => { const a = document.getElementById('ci-wa-sheet'); a.click(); return !!(a.offsetParent || a.getClientRects().length); });
+    expect(reachable).toBe(false);
+    await page.waitForTimeout(500);
+    expect(posts.lead_events.map((l) => l.event_type)).toEqual(['whatsapp_click']);
+    expect(posts.ui_events.filter((e) => e.element_type === 'cta').length).toBe(1);
+    await page.click(ASK);
+    await page.click('#ci-call-sheet');
+    await page.waitForTimeout(500);
+    expect(posts.lead_events.map((l) => l.event_type)).toEqual(['whatsapp_click', 'call_click']);
+    const cta = posts.ui_events.filter((e) => e.element_type === 'cta');
+    expect(cta.map((e) => e.element_id)).toEqual(['contact_intent_contact_agent', 'contact_intent_contact_agent']);
+    expect(cta.map((e) => e.metadata.channel)).toEqual(['whatsapp', 'call']);
+  });
+
+  test('desktop: the primary Chat on WhatsApp and Call buttons are unchanged: one lead per click', async ({ page }) => {
+    await noTelNav(page);
+    const { posts } = await open(page, prop());
+    await page.click('#pt-wa-primary');
+    await page.waitForTimeout(400);
+    expect(posts.lead_events.map((l) => l.event_type)).toEqual(['whatsapp_click']);
+    await page.locator('#agent-band-anchor a[href^="tel:"]').first().click();
+    await page.waitForTimeout(400);
+    expect(posts.lead_events.map((l) => l.event_type)).toEqual(['whatsapp_click', 'call_click']);
+    const cta = posts.ui_events.filter((e) => e.element_type === 'cta');
+    // desktop WhatsApp is the contact_agent intent (channel whatsapp, surface band); the desktop Call button is
+    // untouched by this change and keeps its legacy id
+    expect(cta.map((e) => [e.element_id, e.label])).toEqual([['contact_intent_contact_agent', 'WhatsApp'], ['contact-phone', 'Call']]);
+    expect(cta[0].metadata).toMatchObject({ intent: 'contact_agent', surface: 'band', channel: 'whatsapp' });
+  });
+});
+
+// ═══ The sticky bar is exactly two controls at every phone width, in every language ═════════════════════
+test.describe('sticky bar: exactly Ask + Share', () => {
+  for (const lang of ['en', 'lo', 'zh']) {
+    test(`${lang}: two visible controls (Ask, Share), no third button, no WhatsApp, no overflow, 320–960px`, async ({ page }) => {
+      await phone(page, { row: prop(), lang });
+      for (const width of [320, 360, 375, 414, 600, 960]) {
+        await page.setViewportSize({ width, height: 760 });
+        await page.waitForTimeout(150);
+        const m = await page.evaluate(() => {
+          const bar = document.getElementById('mobile-cta-bar'); const inner = bar.querySelector('.mcta-inner');
+          const kids = [...inner.children].map((e) => ({ id: e.id, cls: e.className, w: e.getBoundingClientRect().width, vis: !!(e.offsetParent || e.getClientRects().length) }));
+          const ask = document.getElementById('ci-open-sheet').getBoundingClientRect(); const share = inner.querySelector('.pt-share-btn').getBoundingClientRect();
+          return { kids, buttons: bar.querySelectorAll('button, a').length, overflow: bar.scrollWidth > bar.clientWidth + 1 || inner.scrollWidth > inner.clientWidth + 1,   // the BAR only: the page's own Lao Call button overflows at 320px on main too
+            askInBar: ask.left >= 0 && ask.right <= innerWidth && share.left >= 0 && share.right <= innerWidth && ask.right <= share.left, text: bar.innerText.replace(/\s+/g, ' ') };
+        });
+        const tag = lang + '@' + width;
+        expect(m.kids.map((k) => k.id || k.cls.split(' ')[0]), tag).toEqual(['ci-open-sheet', 'pt-share-btn']);
+        expect(m.kids.every((k) => k.vis && k.w > 0), tag).toBe(true);
+        expect(m.buttons, tag).toBe(2);                                    // Ask + Share: no third button, no link
+        expect(m.overflow, tag).toBe(false);
+        expect(m.askInBar, tag).toBe(true);
+        expect(m.text, tag).not.toMatch(/WhatsApp|ວອດ|微信/i);
+        await expect(page.locator('#mobile-cta-bar [data-ci-wa], #mobile-cta-bar [href*="wa.me"], #mobile-cta-bar .mcta-btn, #pt-wa-mobile')).toHaveCount(0);
+      }
+    });
+  }
 });

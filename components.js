@@ -1957,7 +1957,7 @@ function ptContactClick(opts) {
 function ptContactIntentMeta(intent, ctx) {
   ctx = ctx || {};
   var avail = ctx.availability || null;
-  return {
+  var meta = {
     intent: intent,
     lang: ctx.lang || ((typeof getCurrentLang === 'function') ? getCurrentLang() : null) || null,
     surface: ctx.surface || null,
@@ -1965,6 +1965,10 @@ function ptContactIntentMeta(intent, ctx) {
     contact_id: ctx.contactId || null,
     availability: avail ? { available: !!avail.available, reason: avail.reason || null, scope: avail.scope || null } : null
   };
+  // How a contact was made ("call" | "whatsapp"). Only the contact intents carry it: Call and WhatsApp are
+  // the same contact_agent intent and are told apart by this (and by the lead_events event_type).
+  if (ctx.channel) meta.channel = ctx.channel;
+  return meta;
 }
 var _ptContactIntentLast = {};
 function ptTrackContactIntent(intent, ctx) {

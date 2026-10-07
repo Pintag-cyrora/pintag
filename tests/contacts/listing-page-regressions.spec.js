@@ -17,22 +17,22 @@ const ROUTED = Object.assign({}, BASE, {
   ],
 });
 
-test('the mobile sticky WhatsApp button follows the contact picker, with the picked contact id for lead attribution', async ({ page }) => {
+test('the Ask sheet\'s WhatsApp row (the mobile contact action) follows the contact picker, with the picked contact id for lead attribution', async ({ page }) => {
   const errors = await openListing(page, ROUTED);
-  // ROUTED is a two-unit listing: its main and mobile WhatsApp buttons only become WhatsApp links once the
+  // ROUTED is a two-unit listing: its main and Ask-sheet WhatsApp buttons only become WhatsApp links once the
   // visitor has said which unit they are asking about (see tests/contact-tracking/wa-unit-selection.spec.js).
   await page.locator('.unit-card').first().click();
-  await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('href', /wa\.me\/856201111111/);
-  await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('data-contact-id', 'a');
+  await expect(page.locator('#ci-wa-sheet')).toHaveAttribute('href', /wa\.me\/856201111111/);
+  await expect(page.locator('#ci-wa-sheet')).toHaveAttribute('data-contact-id', 'a');
   await page.locator('.contact-picker .cpick-row').nth(2).click();   // [legacy embed, a, cc]: the picker lists the legacy row first
   await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', /wa\.me\/856203333333/);
-  await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('href', /wa\.me\/856203333333/);
-  await expect(page.locator('#pt-wa-mobile')).toHaveAttribute('data-contact-id', 'cc');
+  await expect(page.locator('#ci-wa-sheet')).toHaveAttribute('href', /wa\.me\/856203333333/);
+  await expect(page.locator('#ci-wa-sheet')).toHaveAttribute('data-contact-id', 'cc');
   // ...and every unit card's Inquire button on the same screen, keeping its own unit message
   const unitCtas = await page.evaluate(() => [...document.querySelectorAll('.unit-cta')].map((a) => [a.getAttribute('href'), a.getAttribute('data-contact-id')]));
   expect(unitCtas.length).toBeGreaterThan(0);
   unitCtas.forEach(([href, id]) => { expect(href).toMatch(/^https:\/\/wa\.me\/856203333333\?text=/); expect(id).toBe('cc'); });
-  expect(await page.evaluate(() => document.getElementById('pt-wa-mobile').getAttribute('onclick'))).toContain("contactId:this.getAttribute('data-contact-id')");
+  expect(await page.evaluate(() => document.getElementById('ci-wa-sheet').getAttribute('onclick'))).toContain("contactId:this.getAttribute('data-contact-id')");
   expect(errors.map((e) => e.message)).toEqual([]);
 });
 

@@ -202,13 +202,14 @@ test.describe('listing.html contact CTAs (mocked Supabase)', () => {
     expect(posts.lead_events[0].event_type).toBe('call_click');
   });
 
-  test('mobile sticky CTA bar WhatsApp button: 1 ui_events + 1 lead_events (the original regression)', async ({ page }) => {
+  test('mobile Ask sheet WhatsApp row: 1 ui_events + 1 lead_events (the original regression, now behind the Ask button)', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     await stubNavigator(page);
     const posts = await mockRestAndCollect(page, activeProp({ id: 'p-mobile', slug: 'test-mobile' }));
     await page.goto('/listing.html?slug=test-mobile&lang=en');
     await page.waitForTimeout(600);
-    await page.click('#mobile-cta-bar .mcta-btn');
+    await page.click('#ci-open-sheet');
+    await page.click('#ci-wa-sheet');
     await page.waitForTimeout(300);
     expect(contactUiEvents(posts).length).toBe(1);
     expect(posts.lead_events.length).toBe(1);
@@ -349,19 +350,19 @@ test.describe('listing.html contact CTAs (mocked Supabase)', () => {
     }
   });
 
-  test('unavailable-listing waitlist WhatsApp CTA (mobile bar): ui_events fires, lead_events does NOT', async ({ page }) => {
+  test('unavailable-listing waitlist WhatsApp CTA (mobile Ask sheet): ui_events fires, lead_events does NOT', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     await stubNavigator(page);
     const posts = await mockRestAndCollect(page, activeProp({ id: 'p-fully-occupied', slug: 'test-fo', market_status: 'fully_occupied' }));
     await page.goto('/listing.html?slug=test-fo&lang=en');
     await page.waitForTimeout(600);
-    const mCta = page.locator('#mobile-cta-bar .mcta-btn');
-    if (await mCta.count()) {
-      await mCta.click();
-      await page.waitForTimeout(300);
-      expect(contactUiEvents(posts).length).toBe(1);
-      expect(posts.lead_events.length).toBe(0);
-    }
+    await page.click('#ci-open-sheet');
+    const mCta = page.locator('#ci-sheet-body .ci-item-status');
+    await expect(mCta).toHaveCount(1);
+    await mCta.click();
+    await page.waitForTimeout(300);
+    expect(contactUiEvents(posts).length).toBe(1);
+    expect(posts.lead_events.length).toBe(0);
   });
 });
 
