@@ -67,7 +67,8 @@ const GATED = async (loc) => {
   await expect(loc).toHaveAttribute('aria-disabled', 'true');
   await expect(loc).toHaveAttribute('href', '#units-section');
 };
-const MENU = ['contact_agent', 'book_tour', 'location', 'price', 'availability', 'gallery'];
+const MENU = ['contact_agent', 'book_tour', 'location', 'price', 'availability', 'gallery'];       // the mobile sheet: the complete menu
+const PANEL_MENU = MENU.filter((i) => i !== 'contact_agent');                                       // the desktop panel: the primary WhatsApp button is Contact agent
 const ANSWERS = ['location', 'price', 'availability', 'gallery'];
 
 // ═══ Desktop panel ═══════════════════════════════════════════════════════════
@@ -85,12 +86,13 @@ test.describe('desktop panel', () => {
     expect(errors).toEqual([]);
   });
 
-  test('opening it shows the six intents, high-intent first, and records ONE contact_intent_open', async ({ page }) => {
+  test('opening it shows the five intents (Book a viewing first; no Contact agent chip) and records ONE contact_intent_open', async ({ page }) => {
     const { posts } = await open(page, prop());
     await toggle(page);
     await expect(page.locator('#ci-toggle')).toHaveAttribute('aria-expanded', 'true');
     await expect(page.locator(PANEL)).toBeVisible();
-    expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(MENU);
+    expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(PANEL_MENU);
+    await expect(page.locator(PANEL + ' [data-ci-wa="contact_agent"]')).toHaveCount(0);
     await page.waitForTimeout(300);
     const rows = opens(posts);
     expect(rows.length).toBe(1);
@@ -327,30 +329,24 @@ test.describe('mobile sheet', () => {
 
 // ═══ WhatsApp intents ════════════════════════════════════════════════════════
 test.describe('Contact agent', () => {
-  test('the menu\'s Contact agent is the main CTA\'s link, byte for byte (same message), in panel and sheet', async ({ page }) => {
+  test('desktop: NO Contact agent chip in the panel; the primary Chat on WhatsApp + Call are there; the mobile sheet keeps the row', async ({ page }) => {
     await open(page, prop());
     await toggle(page);
+    await expect(page.locator(PANEL + ' [data-ci-wa="contact_agent"]')).toHaveCount(0);
+    await expect(page.locator(PANEL + ' .ci-item-contact_agent')).toHaveCount(0);
+    await expect(page.locator('#ci-panel')).not.toContainText('Contact agent');
+    await expect(page.locator('#pt-wa-primary')).toBeVisible();
+    await expect(page.locator('#pt-wa-primary')).toContainText('Chat on WhatsApp');
+    await expect(page.locator('#pt-call-primary')).toBeVisible();
+    await expect(page.locator('#ci-sheet-body [data-ci-wa="contact_agent"]')).toHaveCount(1);   // in the DOM for phones (hidden at this width)
+  });
+
+  test('the sheet\'s Contact agent is the main CTA\'s link, byte for byte (same message)', async ({ page }) => {
+    await open(page, prop());
     const main = await page.locator('#pt-wa-primary').getAttribute('href');
-    expect(await page.locator(`${PANEL} [data-ci-wa="contact_agent"]`).getAttribute('href')).toBe(main);
     expect(await page.locator('#pt-wa-mobile').getAttribute('href')).toBe(main);
     expect(await page.locator('#ci-sheet-body [data-ci-wa="contact_agent"]').getAttribute('href')).toBe(main);
     expect(await waText(page.locator('#pt-wa-primary'))).toContain("I'm interested in this property");
-  });
-
-  test('desktop panel click: ONE lead_events row and ONE ui_events row under contact_intent_contact_agent', async ({ page }) => {
-    const { posts } = await open(page, prop());
-    await toggle(page);
-    await page.click(`${PANEL} [data-ci-wa="contact_agent"]`);
-    await page.waitForTimeout(400);
-    expect(posts.lead_events.length).toBe(1);
-    expect(posts.lead_events[0]).toMatchObject({ listing_id: 'p-menu', contact_id: 'a', event_type: 'whatsapp_click', unit_type_id: null });
-    const cta = posts.ui_events.filter((e) => e.element_type === 'cta');
-    expect(cta.length).toBe(1);
-    expect(cta[0].element_id).toBe('contact_intent_contact_agent');
-    expect(cta[0].label).toBe('WhatsApp');                                            // the label the old rows used
-    expect(cta[0].property_id).toBe('p-menu');
-    expect(cta[0].metadata).toMatchObject({ intent: 'contact_agent', surface: 'panel', lang: 'en', unit_type_id: null });
-    expect(cta[0].metadata.availability).toEqual({ available: true, reason: null, scope: 'property' });
   });
 
   test('the existing desktop button now records the same intent id with surface "band", one lead', async ({ page }) => {
@@ -441,15 +437,13 @@ test.describe('Book a viewing', () => {
 
 // ═══ Multi-unit gating ═══════════════════════════════════════════════════════
 test.describe('multi-unit listings', () => {
-  test('no unit selected: Book a viewing and Contact agent are gated like the main CTA; answers are not', async ({ page }) => {
+  test('no unit selected: Book a viewing (panel) and the main CTA are gated; answers are not', async ({ page }) => {
     const { posts } = await open(page, MULTI());
     await toggle(page);
-    for (const intent of ['contact_agent', 'book_tour']) {
-      const row = page.locator(`${PANEL} [data-ci-wa="${intent}"]`);
-      await GATED(row);
-      await expect(row).toContainText('Select a unit');
-      expect(await row.getAttribute('href')).not.toMatch(/wa\.me/);
-    }
+    const row = page.locator(`${PANEL} [data-ci-wa="book_tour"]`);
+    await GATED(row);
+    await expect(row).toContainText('Select a unit');
+    expect(await row.getAttribute('href')).not.toMatch(/wa\.me/);
     for (const intent of ANSWERS) {
       await expect(page.locator(`${PANEL} [data-contact-intent="${intent}"]`)).toBeEnabled();
     }
@@ -468,6 +462,8 @@ test.describe('multi-unit listings', () => {
   test('sheet: gated rows say "Select a unit", close the sheet and take the visitor to the unit picker', async ({ page }) => {
     const { posts } = await phone(page, { row: MULTI() });
     await page.click(ASK);
+    await GATED(page.locator('#ci-sheet-body [data-ci-wa="contact_agent"]'));
+    await expect(page.locator('#ci-sheet-body [data-ci-wa="contact_agent"]')).toContainText('Select a unit');
     const row = page.locator('#ci-sheet-body [data-ci-wa="book_tour"]');
     await GATED(row);
     await expect(row).toContainText('Select a unit');
@@ -477,27 +473,28 @@ test.describe('multi-unit listings', () => {
     expect(posts.lead_events).toEqual([]);
   });
 
-  test('selecting a unit makes both live; the viewing and the contact message name THAT unit; leads carry unit_type_id', async ({ page }) => {
+  test('selecting a unit makes them live; the viewing and the contact message name THAT unit; leads carry unit_type_id', async ({ page }) => {
     const { posts } = await open(page, MULTI());
     await page.locator('.unit-card', { hasText: 'Room Type A' }).first().click();
     await page.waitForTimeout(500);
     await toggle(page);
-    const tourLink = page.locator(`${PANEL} [data-ci-wa="book_tour"]`), agentLink = page.locator(`${PANEL} [data-ci-wa="contact_agent"]`);
+    const tourLink = page.locator(`${PANEL} [data-ci-wa="book_tour"]`), agentLink = page.locator('#ci-sheet-body [data-ci-wa="contact_agent"]');
     await expect(tourLink).not.toHaveAttribute('data-wa-needs-unit', '1');
+    await expect(agentLink).not.toHaveAttribute('data-wa-needs-unit', '1');
     await expect(agentLink).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + NUM.a));
     const tour = await waText(tourLink);
     expect(tour).toContain("I'd like to book a viewing of the Room Type A (2 Beds) unit at Nice Apartment ($400 / month)");
-    expect(tour).toContain('Nice Apartment — Room Type A');
+    expect(tour).toContain('Nice Apartment \u2014 Room Type A');
     expect(tour).toContain('https://pintag.io/listing.html?slug=menu-test&lang=en');
     expect(await waText(agentLink)).toBe(await waText(page.locator('#pt-wa-primary')));          // Contact agent = the existing unit message
     expect(await waText(agentLink)).toContain('Room Type A');
     await tourLink.click();
     await page.waitForTimeout(350);
-    await agentLink.click();
+    await page.click('#pt-wa-primary');                                                           // desktop Contact agent = the primary button
     await page.waitForTimeout(400);
     expect(posts.lead_events.map((l) => l.unit_type_id)).toEqual(['room-a', 'room-a']);
     const cta = posts.ui_events.filter((e) => e.element_type === 'cta');
-    expect(cta.map((e) => e.element_id)).toEqual(['contact_intent_book_tour', 'contact_intent_contact_agent']);
+    expect(cta.map((e) => [e.element_id, e.metadata.surface])).toEqual([['contact_intent_book_tour', 'panel'], ['contact_intent_contact_agent', 'band']]);
     expect(cta.every((e) => e.metadata.unit_type_id === 'room-a')).toBe(true);
     expect(cta[0].metadata.availability.scope).toBe('unit_specific');
   });
@@ -517,11 +514,12 @@ test.describe('multi-unit listings', () => {
     await page.locator('.unit-card', { hasText: 'Full Type' }).first().click();
     await page.waitForTimeout(500);
     await toggle(page);
-    for (const intent of ['contact_agent', 'book_tour']) {
-      const row = page.locator(`${PANEL} [data-ci-wa="${intent}"]`);
-      await GATED(row);
-      await expect(row).toContainText('Unit not available');
-    }
+    const row = page.locator(`${PANEL} [data-ci-wa="book_tour"]`);
+    await GATED(row);
+    await expect(row).toContainText('Unit not available');
+    const sheetRow = page.locator('#ci-sheet-body [data-ci-wa="contact_agent"]');
+    await GATED(sheetRow);
+    await expect(sheetRow).toContainText('Unit not available');
   });
 
   test('Price and Availability answer for the selected unit', async ({ page }) => {
@@ -571,18 +569,17 @@ test.describe('multi-unit listings', () => {
 
 // ═══ Contact picker ══════════════════════════════════════════════════════════
 test.describe('contact picker', () => {
-  test('picking another number re-points Book a viewing and Contact agent (panel and sheet), message unchanged', async ({ page }) => {
+  test('picking another number re-points Book a viewing and Contact agent (panel / sheet), message unchanged', async ({ page }) => {
     const { posts } = await open(page, TWO());
     await toggle(page);
     const before = await waText(page.locator(`${PANEL} [data-ci-wa="book_tour"]`));
     await page.locator('.contact-picker .cpick-row').nth(1).click();
-    for (const scope of [PANEL, '#ci-sheet-body']) {
-      for (const intent of ['book_tour', 'contact_agent']) {
-        const a = page.locator(`${scope} [data-ci-wa="${intent}"]`);
-        await expect(a).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + NUM.b + '\\?text='));
-        await expect(a).toHaveAttribute('data-contact-id', 'b');
-      }
+    for (const [scope, intent] of [[PANEL, 'book_tour'], ['#ci-sheet-body', 'book_tour'], ['#ci-sheet-body', 'contact_agent']]) {
+      const a = page.locator(`${scope} [data-ci-wa="${intent}"]`);
+      await expect(a).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + NUM.b + '\\?text='));
+      await expect(a).toHaveAttribute('data-contact-id', 'b');
     }
+    await expect(page.locator('#pt-wa-primary')).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + NUM.b));   // the primary button follows too
     expect(await waText(page.locator(`${PANEL} [data-ci-wa="book_tour"]`))).toBe(before);
     await page.click(`${PANEL} [data-ci-wa="book_tour"]`);
     await page.waitForTimeout(400);
@@ -595,16 +592,16 @@ test.describe('contact picker', () => {
     await page.click('.lang-btn[data-lang="zh"]'); await page.waitForTimeout(500);
     await page.locator('.unit-card', { hasText: 'Room Type A' }).first().click(); await page.waitForTimeout(500);
     await toggle(page);
-    for (const intent of ['book_tour', 'contact_agent']) {
-      await expect(page.locator(`${PANEL} [data-ci-wa="${intent}"]`)).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + NUM.b));
-    }
-    await page.click(`${PANEL} [data-ci-wa="contact_agent"]`);
+    await expect(page.locator(`${PANEL} [data-ci-wa="book_tour"]`)).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + NUM.b));
+    await page.click('#pt-wa-primary');
     await page.waitForTimeout(400);
     expect(posts.lead_events[0]).toMatchObject({ contact_id: 'b', unit_type_id: 'room-a' });
     // ...and the sheet's actions follow the same contact
     await page.setViewportSize({ width: 375, height: 760 });
     await page.waitForTimeout(300);
-    await expect(page.locator('#ci-sheet-body [data-ci-wa="book_tour"]')).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + NUM.b));
+    for (const intent of ['book_tour', 'contact_agent']) {
+      await expect(page.locator(`#ci-sheet-body [data-ci-wa="${intent}"]`)).toHaveAttribute('href', new RegExp('^https://wa\\.me/' + NUM.b));
+    }
   });
 
   test('a gated multi-unit action gets the picked contact once a unit is chosen', async ({ page }) => {
@@ -622,10 +619,12 @@ test.describe('contact picker', () => {
 // ═══ Availability ON / OFF ═══════════════════════════════════════════════════
 const ANSWER_ONLY = ANSWERS;
 test.describe('availability', () => {
-  test('ON: both WhatsApp actions are in the menu', async ({ page }) => {
+  test('ON: Book a viewing is in the desktop panel (Contact agent is the primary button); the sheet has both', async ({ page }) => {
     await open(page, prop());
     await toggle(page);
-    expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(MENU);
+    expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(PANEL_MENU);
+    await expect(page.locator('#pt-wa-primary')).toBeVisible();
+    expect(await ids(page.locator('#ci-sheet-body .ci-item'))).toEqual(MENU);
   });
 
   for (const [label, row] of [
@@ -681,7 +680,7 @@ test.describe('availability', () => {
   test('multi-unit rented with an open unit: ON for that unit only (gated actions, unit-specific answer)', async ({ page }) => {
     await open(page, MULTI({ market_status: 'rented', unit_types: [UA, FULL('f', 'Full Type')] }));
     await toggle(page);
-    expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(MENU);
+    expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(PANEL_MENU);
     await GATED(page.locator(`${PANEL} [data-ci-wa="book_tour"]`));
     await page.locator(`${PANEL} [data-contact-intent="availability"]`).click();
     await expect(page.locator('#contact-intent-answer')).toHaveAttribute('data-scope', 'unit_specific');
@@ -696,27 +695,36 @@ test.describe('availability', () => {
     await expect(page.locator('#contact-intent-answer')).toContainText('已售出');
     await open(page, prop(), { lang: 'lo' });
     await toggle(page);
-    expect(await page.locator(PANEL + ' .ci-item .ci-label').allInnerTexts()).toEqual(['ຕິດຕໍ່ຕົວແທນ', 'ນັດເບິ່ງຊັບສິນ', 'ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ']);
+    expect(await page.locator(PANEL + ' .ci-item .ci-label').allInnerTexts()).toEqual(['ນັດເບິ່ງຊັບສິນ', 'ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ']);
+    await page.setViewportSize({ width: 375, height: 760 });
+    await page.waitForTimeout(300);
+    expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(['ຕິດຕໍ່ຕົວແທນ', 'ນັດເບິ່ງຊັບສິນ', 'ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ']);
   });
 });
 
 // ═══ Labels per language / no photos / no phone ══════════════════════════════
 test.describe('labels and edge cases', () => {
-  for (const [lang, labels] of [
-    ['en', ['Contact agent', 'Book a viewing', 'Where is it?', "What's the price?", 'Is it available?', 'View photos']],
-    ['zh', ['联系经纪人', '预约看房', '在哪里？', '价格多少？', '还有吗？', '查看照片']],
+  for (const [lang, labels, agentLabel] of [
+    ['en', ['Book a viewing', 'Where is it?', "What's the price?", 'Is it available?', 'View photos'], 'Contact agent'],
+    ['zh', ['预约看房', '在哪里？', '价格多少？', '还有吗？', '查看照片'], '联系经纪人'],
   ]) {
     test(`${lang}: the menu labels`, async ({ page }) => {
       await open(page, prop(), { lang });
       await toggle(page);
       expect(await page.locator(PANEL + ' .ci-item .ci-label').allInnerTexts()).toEqual(labels);
+      await page.setViewportSize({ width: 375, height: 760 });
+      await page.waitForTimeout(300);
+      expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual([agentLabel, ...labels]);   // the sheet is the complete menu
     });
   }
 
   test('no photos: View photos is not offered', async ({ page }) => {
     await open(page, prop({ images: [] }));
     await toggle(page);
-    expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(['contact_agent', 'book_tour', 'location', 'price', 'availability']);
+    expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(['book_tour', 'location', 'price', 'availability']);
+    await page.setViewportSize({ width: 375, height: 760 });
+    await page.waitForTimeout(300);
+    expect(await ids(page.locator('#ci-sheet-body .ci-item'))).toEqual(['contact_agent', 'book_tour', 'location', 'price', 'availability']);
   });
 
   test('no contact number: only the answers are offered', async ({ page }) => {

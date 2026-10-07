@@ -2075,8 +2075,9 @@ function ptContactIntent(intent,opts){
 
 // ── Contact-intent MENU (PR B): desktop panel + mobile bottom sheet ──────────────────────────────
 // One list of intents (contact-intent.js resolveContactIntentMenu), two presentations: a collapsible
-// "Ask about this property" panel in the desktop contact band, and a bottom sheet opened by the Ask
-// button in the mobile sticky bar. The primary WhatsApp / Call buttons are unchanged and stay one tap
+// "Ask about this property" panel in the desktop contact band (everything except Contact agent, which
+// is the primary WhatsApp button right above it), and a bottom sheet opened by the Ask button in the
+// mobile sticky bar (the complete menu). The primary WhatsApp / Call buttons are unchanged and stay one tap
 // away on both; the menu is a shortcut, never a step in front of them.
 //   * contact_intent_open is recorded ONLY when the visitor opens the panel or the sheet, never from a
 //     render. Re-renders (language switch, unit selection) rebuild the menu from the state kept below
@@ -2131,8 +2132,13 @@ function ptCiRowHtml(row,surface,ctx){
     ico+'<span class="ci-text"><span class="ci-label">'+label+'</span></span></a>';
 }
 
+// The desktop panel leaves Contact agent out: the contact band already has the primary "Chat on
+// WhatsApp" button, which IS the Contact agent intent (recorded as contact_intent_contact_agent,
+// surface "band"). The mobile sheet is the complete menu, so it keeps the row.
 function ptCiRowsHtml(surface,ctx){
-  return ptCiMenuRows(ctx).map(function(r){ return ptCiRowHtml(r,surface,ctx); }).join('');
+  return ptCiMenuRows(ctx)
+    .filter(function(r){ return !(surface==='panel'&&r.id==='contact_agent'); })
+    .map(function(r){ return ptCiRowHtml(r,surface,ctx); }).join('');
 }
 
 // The desktop panel (a grid child of the contact band). Collapsed unless the visitor already opened it.
