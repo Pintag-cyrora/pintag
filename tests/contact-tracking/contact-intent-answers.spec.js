@@ -236,7 +236,7 @@ test.describe('availability answer', () => {
   test('Multi-unit: unit-specific wording and each unit\'s own state (never "the whole building")', async ({ page }) => {
     await ask(page, prop({ unit_types: [OPEN('a', 'Studio'), FULL('b', 'One Bed')] }));
     await expect(page.locator(ANSWER)).toHaveAttribute('data-scope', 'unit_specific');
-    await expect(page.locator(ANSWER)).toContainText('1 of 2 unit types available. Availability depends on the unit.');
+    await expect(page.locator(ANSWER)).toContainText('1 of 2 unit types are available. Check each unit below.');
     const lines = await page.locator(ANSWER + ' li').allInnerTexts();
     expect(lines.length).toBe(2);
     expect(lines.join('|')).toMatch(/Studio\s+Available Now/);
@@ -259,7 +259,7 @@ test.describe('availability answer', () => {
       await expect(page.locator(ANSWER)).toBeVisible();
       await expect(page.locator(ANSWER)).toHaveAttribute('data-availability', 'off');
       await expect(page.locator(ANSWER + ' .ci-answer-head')).toHaveText(headline);
-      await expect(page.locator(ANSWER)).toContainText('This property is not currently available.');
+      await expect(page.locator(ANSWER)).toContainText("This property isn't available right now.");
       await expect(page.locator(ANSWER)).not.toContainText('Available Now');
       await expect(page.locator(ANSWER + ' li')).toHaveCount(0);        // an OFF listing never lists units as available
       expect(intentRows(posts)[0].metadata.availability.available).toBe(false);
@@ -272,7 +272,7 @@ test.describe('availability answer', () => {
       const { posts } = await ask(page, prop({ market_status: market, unit_types: [OPEN('a', 'Studio'), FULL('b', 'One Bed')] }));
       await expect(page.locator(ANSWER)).toHaveAttribute('data-availability', 'on');
       await expect(page.locator(ANSWER)).toHaveAttribute('data-scope', 'unit_specific');
-      await expect(page.locator(ANSWER)).toContainText(`The listing is marked ${market === 'rented' ? 'Rented' : 'Reserved'}, but the units below are open.`);
+      await expect(page.locator(ANSWER)).toContainText(`The listing is marked ${market === 'rented' ? 'Rented' : 'Reserved'}, but some units are still open.`);
       await expect(page.locator(ANSWER + ' li').first()).toBeVisible();
       expect(intentRows(posts)[0].metadata.availability).toEqual({ available: true, reason: null, scope: 'unit_specific' });
     });
@@ -284,7 +284,7 @@ test.describe('availability answer', () => {
     await ask(page, prop({ market_status: 'sold' }), '&lang=zh');
     await expect(page.locator(ANSWER)).toContainText('已售出');
     await ask(page, prop({ unit_types: [OPEN('a', 'Studio'), FULL('b', 'One Bed')] }), '&lang=zh');
-    await expect(page.locator(ANSWER)).toContainText('2种户型中有1种可租');
+    await expect(page.locator(ANSWER)).toContainText('2种户型中有1种可订');
   });
 
   test('the existing status treatment of an unavailable listing is unchanged (badge + waiting-list CTA remain)', async ({ page }) => {
@@ -306,7 +306,7 @@ test.describe('existing contact flow is unchanged', () => {
     expect(intentRows(posts)).toEqual([]);                             // the existing flow records no contact_intent rows
   });
 
-  test('the WhatsApp intents are NOT handled yet: no event, no navigation', async ({ page }) => {
+  test('the WhatsApp intents are real links, not data-contact-intent answers: raising them that way does nothing', async ({ page }) => {
     const { posts } = await open(page, prop());
     await raise(page, 'book_tour');
     await raise(page, 'contact_agent');

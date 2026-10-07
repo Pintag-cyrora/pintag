@@ -202,13 +202,17 @@ test('per-unit "Inquire" buttons are a surface of contact_agent (wired in the Wh
 });
 
 test('history: legacy "contact-whatsapp" rows read as contact_agent next to the new vocabulary, no rename', () => {
-  assert.deepEqual(contactIntentFromElementId('contact-whatsapp'), { intent: 'contact_agent', legacy: true });
+  assert.deepEqual(contactIntentFromElementId('contact-whatsapp'), { intent: 'contact_agent', legacy: true, surface: 'band' });
+  assert.deepEqual(contactIntentFromElementId('mcta-whatsapp'), { intent: 'contact_agent', legacy: true, surface: 'mobile_bar' });
+  assert.deepEqual(contactIntentFromElementId('unit-inquire-whatsapp'), { intent: 'contact_agent', legacy: true, surface: 'unit_card' });
+  assert.equal(contactIntentFromElementId('contact-whatsapp-status-cta'), null);   // the waiting-list / status CTAs are not inquiries
+  assert.equal(contactIntentFromElementId('mcta-whatsapp-status'), null);
   assert.deepEqual(contactIntentFromElementId('contact_intent_contact_agent'), { intent: 'contact_agent', legacy: false });
   assert.deepEqual(contactIntentFromElementId('contact_intent_location'), { intent: 'location', legacy: false });
   assert.equal(contactIntentFromElementId('contact-call'), null);       // calls are not WhatsApp intents
   assert.equal(contactIntentFromElementId('favorite-property'), null);
   assert.equal(contactIntentFromElementId(null), null);
-  assert.deepEqual(CONTACT_INTENTS.contact_agent.legacyElementIds, ['contact-whatsapp']);
+  assert.deepEqual(CONTACT_INTENTS.contact_agent.legacyElementIds, ['contact-whatsapp', 'mcta-whatsapp', 'unit-inquire-whatsapp']);
   assert.notEqual(contactIntentEventId('contact_agent'), 'contact-whatsapp');     // the legacy id is not reused for the new rows
 });
 
@@ -268,26 +272,26 @@ test('no photos: the gallery answer is hidden, the others stay', () => {
 });
 
 // ═══ Localised availability text ═════════════════════════════════════════════
-test('ON property-wide reads "Available Now" in lo/en/zh (the existing unit-availability words)', () => {
+test('ON property-wide reads "Available Now" in lo/en/zh', () => {
   const s = avail(prop({}));
   assert.deepEqual(text(s, 'en'), { state: 'on', scope: 'property', headline: 'Available Now', detail: '' });
   assert.equal(text(s, 'lo').headline, 'ວ່າງດຽວນີ້');
-  assert.equal(text(s, 'zh').headline, '现在可租');
+  assert.equal(text(s, 'zh').headline, '目前可预订');      // not the rental-only "可租": a property for sale is answered here too
 });
 
-test('unit-specific text says availability depends on the unit (never universal) in every language', () => {
+test('unit-specific text is per unit (never universal) and tells the visitor what to do, in every language', () => {
   const s = avail(prop({ unit_types: [OPEN('a'), FULL('b'), FULL('c')] }));
   const en = text(s, 'en');
   assert.equal(en.state, 'on'); assert.equal(en.scope, 'unit_specific');
-  assert.equal(en.headline, '1 of 3 unit types available. Availability depends on the unit.');
-  assert.match(text(s, 'zh').headline, /3种户型中有1种可租/);
-  assert.match(text(s, 'lo').headline, /1 ຈາກ 3/);
+  assert.equal(en.headline, '1 of 3 unit types are available. Check each unit below.');
+  assert.match(text(s, 'zh').headline, /3种户型中有1种可订/);
+  assert.match(text(s, 'lo').headline, /ມີ 1 ຈາກ 3/);
   for (const l of ['lo', 'en', 'zh']) assert.doesNotMatch(text(s, l).headline, /\{|\}/);
 });
 
 test('an override names the property status and says the listed units are open', () => {
   const s = avail(prop({ market_status: 'rented', unit_types: [OPEN('a'), FULL('b')] }));
-  assert.equal(text(s, 'en').detail, 'The listing is marked Rented, but the units below are open.');
+  assert.equal(text(s, 'en').detail, 'The listing is marked Rented, but some units are still open.');
   assert.match(text(s, 'zh').detail, /已出租/);
   assert.match(text(s, 'lo').detail, /ເຊົ່າແລ້ວ/);
 });
@@ -296,7 +300,7 @@ test('OFF text: the honest reason in each language, never "available"', () => {
   const cases = { sold: 'Sold', off_market: 'Off Market', coming_soon: 'Coming Soon', reserved: 'Reserved', rented: 'Rented' };
   for (const [m, en] of Object.entries(cases)) {
     const t = text(avail(prop({ market_status: m })), 'en');
-    assert.equal(t.state, 'off'); assert.equal(t.headline, en); assert.equal(t.detail, 'This property is not currently available.');
+    assert.equal(t.state, 'off'); assert.equal(t.headline, en); assert.equal(t.detail, "This property isn't available right now.");
   }
   assert.equal(text(avail(prop({ unit_types: [TEMP('a')] })), 'en').headline, 'Currently Unavailable');
   assert.doesNotMatch(text(avail(prop({ market_status: 'coming_soon' })), 'en').headline, /available now/i);
@@ -310,9 +314,9 @@ test('the OFF/ON wording matches the existing status vocabulary (parity with lis
       assert.equal(text(s, l).headline, G.MARKET_STATUS_LABELS[reason][l], `${m}/${l}`);
     }
   }
-  const T = G.formatAvailabilityDisplay({ status: 'available' }, 'en');
-  assert.equal(text(avail(prop({})), 'en').headline, T);
-  for (const l of ['lo', 'zh']) assert.equal(text(avail(prop({})), l).headline, G.formatAvailabilityDisplay({ status: 'available' }, l));
+  // property-wide ON: en/lo are the unit-availability words; zh deliberately says 可预订 (works for sale too)
+  for (const l of ['lo', 'en']) assert.equal(text(avail(prop({})), l).headline, G.formatAvailabilityDisplay({ status: 'available' }, l));
+  assert.equal(text(avail(prop({})), 'zh').headline, '目前可预订');
   for (const l of ['lo', 'en', 'zh']) assert.equal(text(avail(prop({ unit_types: [TEMP('a')] })), l).headline, G.formatAvailabilityDisplay({ status: 'temporarily_unavailable' }, l));
 });
 
@@ -421,4 +425,138 @@ test('listing.html loads contact-intent.js and exposes the section anchors', () 
   for (const id of ['section-price', 'section-map', 'section-gallery-desktop', 'section-gallery-mobile', 'contact-intent-answer']) {
     assert.match(html, new RegExp('id=\\\\?"' + id + '\\\\?"'), id);
   }
+});
+
+// ═══ PR B: the menu, the viewing message, the UI strings ═════════════════════
+const { resolveContactIntentMenu: menu, contactIntentUiText: ui, buildTourWhatsAppMessage: tour, WA_TOUR_MESSAGE_TEMPLATES, WA_TOUR_UNIT_MESSAGE_TEMPLATES, CONTACT_INTENT_MENU_ORDER } = G;
+
+test('menu order: the two high-intent actions first, then the quick answers', () => {
+  assert.deepEqual(CONTACT_INTENT_MENU_ORDER, ['contact_agent', 'book_tour', 'location', 'price', 'availability', 'gallery']);
+  assert.deepEqual(menu(avail(prop({}))).map((r) => r.id), CONTACT_INTENT_MENU_ORDER);
+});
+
+test('menu is exactly the visible rows of resolveContactIntents (nothing new is decided)', () => {
+  const cases = [
+    [prop({}), {}], [prop({ market_status: 'sold' }), {}], [prop({ market_status: 'coming_soon' }), {}],
+    [prop({ unit_types: [OPEN('a'), FULL('b')] }), { selectedUnitTypeId: 'a' }], [prop({ unit_types: [OPEN('a'), FULL('b')] }), {}],
+    [prop({}), { hasPhone: false }], [prop({}), { hasPhotos: false }],
+  ];
+  for (const [p, ctx] of cases) {
+    const s = avail(p);
+    const expected = intents(s, ctx).filter((r) => r.visible).map((r) => r.id).sort();
+    assert.deepEqual(menu(s, ctx).map((r) => r.id).sort(), expected);
+  }
+});
+
+test('menu, availability OFF: answers only (no Book a viewing, no Contact agent)', () => {
+  for (const p of [prop({ market_status: 'sold' }), prop({ market_status: 'off_market' }), prop({ market_status: 'coming_soon' }), prop({ market_status: 'rented' }),
+    prop({ market_status: 'reserved' }), prop({ unit_types: [FULL('a'), FULL('b')] }), prop({ unit_types: [TEMP('a')] })]) {
+    assert.deepEqual(menu(avail(p)).map((r) => r.id), ['location', 'price', 'availability', 'gallery']);
+  }
+});
+
+test('menu, multi-unit: both WhatsApp rows are present but gated until an open unit is selected', () => {
+  const s = avail(prop({ unit_types: [OPEN('a'), FULL('b')] }));
+  const none = menu(s, {});
+  assert.deepEqual(none.slice(0, 2).map((r) => [r.id, r.enabled, r.disabledReason]), [['contact_agent', false, 'select_unit'], ['book_tour', false, 'select_unit']]);
+  assert.ok(none.slice(2).every((r) => r.enabled));                                 // answers never need a unit
+  const picked = menu(s, { selectedUnitTypeId: 'a' });
+  assert.ok(picked.every((r) => r.enabled));
+});
+
+test('menu: no phone hides the WhatsApp rows, no photos hides View photos', () => {
+  assert.deepEqual(menu(avail(prop({})), { hasPhone: false }).map((r) => r.id), ['location', 'price', 'availability', 'gallery']);
+  assert.deepEqual(menu(avail(prop({})), { hasPhotos: false }).map((r) => r.id), ['contact_agent', 'book_tour', 'location', 'price', 'availability']);
+});
+
+test('UI strings exist in lo/en/zh and an unsupported language falls back to English', () => {
+  for (const key of ['menuTitle', 'ask', 'close', 'unitUnavailable']) {
+    for (const l of ['lo', 'en', 'zh']) assert.ok(ui(key, l).length > 0, key + '/' + l);
+    assert.equal(ui(key, 'vi'), ui(key, 'en'));
+  }
+  assert.equal(ui('nope', 'en'), '');
+  assert.equal(ui('menuTitle', 'en'), 'Ask about this property');
+});
+
+test('labels: the four answers, Book a viewing and Contact agent are short enough for a chip', () => {
+  for (const id of Object.keys(CONTACT_INTENTS)) for (const l of ['lo', 'en', 'zh']) {
+    assert.ok(contactIntentLabel(id, l).length <= 30, id + '/' + l + ': ' + contactIntentLabel(id, l));
+  }
+  assert.equal(contactIntentLabel('book_tour', 'en'), 'Book a viewing');
+  assert.equal(contactIntentLabel('book_tour', 'zh'), '预约看房');
+});
+
+// ── Book a viewing message ───────────────────────────────────────────────────
+const URL1 = 'https://pintag.io/listing.html?slug=nice-apt&lang=en';
+
+test('viewing message, property level: greeting asking for a viewing, property name, link', () => {
+  assert.equal(tour({ propertyName: 'Nice Apartment', canonicalUrl: URL1 }, 'en'),
+    "Hello,\n\nI'd like to book a viewing of this property. What days and times are available?\n\nProperty: Nice Apartment\n" + URL1);
+  assert.equal(tour({ propertyName: 'ອາພາດເມັນ', canonicalUrl: URL1 }, 'lo'),
+    'ສະບາຍດີ,\n\nຂ້ອຍຢາກນັດເບິ່ງຊັບສິນນີ້. ສາມາດເບິ່ງໄດ້ມື້ໃດ ແລະ ເວລາໃດແດ່?\n\nຊັບສິນ: ອາພາດເມັນ\n' + URL1);
+  assert.equal(tour({ propertyName: '公寓', canonicalUrl: URL1 }, 'zh'),
+    '您好，\n\n我想预约看房。请问什么时间方便参观？\n\n房源: 公寓\n' + URL1);
+});
+
+test('viewing message is a viewing request, not the "interested / more details" message', () => {
+  for (const l of ['lo', 'en', 'zh']) {
+    const t = tour({ propertyName: 'X', canonicalUrl: URL1 }, l);
+    assert.ok(t.includes(WA_TOUR_MESSAGE_TEMPLATES[l].split('{{')[0]));
+  }
+  assert.match(tour({ propertyName: 'X' }, 'en'), /book a viewing/i);
+  assert.match(tour({ propertyName: 'X' }, 'zh'), /预约/);
+  assert.match(tour({ propertyName: 'X' }, 'lo'), /ນັດເບິ່ງ/);
+});
+
+test('viewing message, multi-unit: names the selected unit, its beds and price, and repeats them in the breadcrumb', () => {
+  const unit = { name: 'Studio', bedrooms: 1, bedroomsLabel: 'Beds', priceText: '$300/month' };
+  const en = tour({ propertyName: 'Nice Apartment', canonicalUrl: URL1, unit }, 'en');
+  assert.equal(en, "Hello,\n\nI'd like to book a viewing of the Studio (1 Beds) unit at Nice Apartment ($300/month). What days and times are available?\n\nNice Apartment — Studio\n1 Beds — $300/month\n" + URL1);
+  const zh = tour({ propertyName: '公寓', canonicalUrl: URL1, unit }, 'zh');
+  assert.match(zh, /我想预约参观公寓的Studio \(1 Beds\)户型（\$300\/month）。请问什么时间方便？/);
+  const lo = tour({ propertyName: 'ອາພາດເມັນ', canonicalUrl: URL1, unit }, 'lo');
+  assert.match(lo, /ຂ້ອຍຢາກນັດເບິ່ງຫ້ອງ Studio \(1 Beds\) ທີ່ ອາພາດເມັນ \(\$300\/month\)\./);
+  for (const m of [en, zh, lo]) assert.ok(m.includes('Studio') && m.includes('$300/month') && m.endsWith(URL1));
+});
+
+test('viewing message omits what is unknown instead of faking it', () => {
+  assert.equal(tour({ propertyName: 'Nice Apartment' }, 'en'), "Hello,\n\nI'd like to book a viewing of this property. What days and times are available?\n\nProperty: Nice Apartment");
+  const noPrice = tour({ propertyName: 'N', canonicalUrl: URL1, unit: { name: 'Studio' } }, 'en');
+  assert.doesNotMatch(noPrice, /\(\)/); assert.doesNotMatch(noPrice, /undefined|null|\{\{/);
+  assert.equal(noPrice.split('\n').filter((l) => l.includes('—')).length, 1);          // only "Property — Unit"; no empty facts line
+});
+
+test('viewing message: unsupported language falls back to English; templates have no stray placeholders', () => {
+  assert.match(tour({ propertyName: 'X' }, 'vi'), /book a viewing/i);
+  for (const t of [tour({ propertyName: 'X', canonicalUrl: URL1 }, 'en'), tour({ propertyName: 'X', canonicalUrl: URL1, unit: { name: 'S', priceText: '$1' } }, 'zh')]) assert.doesNotMatch(t, /\{\{|\}\}/);
+  assert.deepEqual(Object.keys(WA_TOUR_MESSAGE_TEMPLATES).sort(), ['en', 'lo', 'zh']);
+  assert.deepEqual(Object.keys(WA_TOUR_UNIT_MESSAGE_TEMPLATES).sort(), ['en', 'lo', 'zh']);
+});
+
+test('the existing WhatsApp message templates are not part of this module and are untouched', () => {
+  const html = fs.readFileSync(new URL('./listing.html', import.meta.url), 'utf8');
+  assert.match(html, /var WA_MESSAGE_TEMPLATES=\{\n  lo:'ສະບາຍດີ,\\n\\nຂ້ອຍສົນໃຈຊັບສິນນີ້\. ຂໍລາຍລະອຽດເພີ່ມແນ່\.\\n\\nຊັບສິນ: \{\{PROPERTY_NAME\}\}\\n\{\{CANONICAL_LISTING_URL\}\}',/);
+  assert.match(html, /en:'Hello,\\n\\nI\\'m interested in this property\. Could you provide more details\?\\n\\nProperty: \{\{PROPERTY_NAME\}\}\\n\{\{CANONICAL_LISTING_URL\}\}'/);
+});
+
+// ── tracking helper shared by all seven intents ──────────────────────────────
+test('ptContactIntentMeta: one metadata shape for every intent, usable as ptContactClick trackMeta', () => {
+  withBrowser(() => {
+    const m = G.ptContactIntentMeta('book_tour', { surface: 'sheet', unitTypeId: 'u1', contactId: 'c1', lang: 'lo', availability: avail(prop({ unit_types: [OPEN('u1'), OPEN('u2')] })) });
+    assert.deepEqual(m, { intent: 'book_tour', lang: 'lo', surface: 'sheet', unit_type_id: 'u1', contact_id: 'c1', availability: { available: true, reason: null, scope: 'unit_specific' } });
+    assert.deepEqual(Object.keys(G.ptContactIntentMeta('open')).sort(), ['availability', 'contact_id', 'intent', 'lang', 'surface', 'unit_type_id']);
+    assert.equal(G.ptContactIntentMeta('open').lang, 'en');                                 // page language default
+  });
+});
+
+test('inspector: every contact-intent id has an icon and is property-scoped; legacy WhatsApp ids keep theirs', () => {
+  const html = fs.readFileSync(new URL('./analytics-inspector.html', import.meta.url), 'utf8');
+  const icons = vm.runInNewContext('(' + html.match(/var UI_ICON_MAP = (\{[\s\S]*?\n\});/)[1] + ')');
+  const scoped = vm.runInNewContext(html.match(/var PROPERTY_SCOPED_UI_ELEMENTS = (\[[\s\S]*?\]);/)[1]);
+  for (const id of Object.keys(CONTACT_INTENTS)) {
+    const ev = CONTACT_INTENTS[id].eventId;
+    assert.ok(icons[ev], 'icon for ' + ev);
+    assert.ok(scoped.includes(ev), ev + ' is property-scoped');
+  }
+  for (const legacy of ['contact-whatsapp', 'mcta-whatsapp', 'unit-inquire-whatsapp']) assert.ok(icons[legacy], 'legacy icon ' + legacy);
 });
