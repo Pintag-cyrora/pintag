@@ -1,0 +1,224 @@
+{
+  "ask": {
+    "excluded_null_property": 1,
+    "excluded_null_session": 1,
+    "open_events": 21,
+    "repeat_open_visits": 1,
+    "visits": 17
+  },
+  "clicks": {
+    "call": 3,
+    "direct": {
+      "call": 1,
+      "total": 2,
+      "whatsapp": 1
+    },
+    "total": 12,
+    "unlinked": {
+      "call": 0,
+      "total": 2,
+      "whatsapp": 2
+    },
+    "via_ask": {
+      "call": 2,
+      "total": 8,
+      "whatsapp": 6
+    },
+    "whatsapp": 9
+  },
+  "contact_intent": {
+    "availability_visits": 1,
+    "intent_chosen_visits": 15,
+    "photos_visits": 1,
+    "price_visits": 2,
+    "self_service_visits": 5,
+    "unit_select_visits": 2,
+    "where_visits": 3
+  },
+  "diagnostics": {
+    "attribution": {
+      "leads_without_action": 3,
+      "matched": {
+        "book": 1,
+        "call": 3,
+        "whatsapp": 4
+      },
+      "unlinkable_actions": 1,
+      "unmatched": {
+        "book": 0,
+        "call": 0,
+        "whatsapp": 3
+      },
+      "visits_with_click_but_no_action": 1
+    },
+    "by_availability": [
+      {
+        "agent_contact_visits": 7,
+        "ask_visits": 14,
+        "book_visits": 1,
+        "contact_click_visits": 6,
+        "key": "on",
+        "self_service_visits": 5
+      },
+      {
+        "agent_contact_visits": 1,
+        "ask_visits": 2,
+        "book_visits": 0,
+        "contact_click_visits": 0,
+        "key": "unknown",
+        "self_service_visits": 0
+      },
+      {
+        "agent_contact_visits": 0,
+        "ask_visits": 1,
+        "book_visits": 0,
+        "contact_click_visits": 0,
+        "key": "off",
+        "self_service_visits": 0
+      }
+    ],
+    "by_lang": [
+      {
+        "agent_contact_visits": 5,
+        "ask_visits": 13,
+        "book_visits": 0,
+        "contact_click_visits": 4,
+        "key": "en",
+        "self_service_visits": 5
+      },
+      {
+        "agent_contact_visits": 1,
+        "ask_visits": 2,
+        "book_visits": 0,
+        "contact_click_visits": 0,
+        "key": "unknown",
+        "self_service_visits": 0
+      },
+      {
+        "agent_contact_visits": 1,
+        "ask_visits": 1,
+        "book_visits": 0,
+        "contact_click_visits": 1,
+        "key": "lo",
+        "self_service_visits": 0
+      },
+      {
+        "agent_contact_visits": 1,
+        "ask_visits": 1,
+        "book_visits": 1,
+        "contact_click_visits": 1,
+        "key": "zh",
+        "self_service_visits": 0
+      }
+    ],
+    "by_surface": [
+      {
+        "agent_contact_visits": 5,
+        "ask_visits": 8,
+        "book_visits": 1,
+        "contact_click_visits": 5,
+        "key": "sheet",
+        "self_service_visits": 0
+      },
+      {
+        "agent_contact_visits": 2,
+        "ask_visits": 7,
+        "book_visits": 0,
+        "contact_click_visits": 1,
+        "key": "panel",
+        "self_service_visits": 5
+      },
+      {
+        "agent_contact_visits": 1,
+        "ask_visits": 2,
+        "book_visits": 0,
+        "contact_click_visits": 0,
+        "key": "unknown",
+        "self_service_visits": 0
+      }
+    ],
+    "by_unit": [
+      {
+        "then_contact_visits": 1,
+        "unit_name": "Room A",
+        "unit_type_id": "bbbbbbbb-0000-0000-0000-00000000000a",
+        "visits": 1
+      },
+      {
+        "then_contact_visits": 0,
+        "unit_name": "Room B",
+        "unit_type_id": "bbbbbbbb-0000-0000-0000-00000000000b",
+        "visits": 1
+      }
+    ],
+    "data_quality": {
+      "legacy_call_rows": 2,
+      "legacy_rows": 3,
+      "new_rows_without_metadata": 2
+    },
+    "listings": [
+      {
+        "agent_contact_visits": 7,
+        "ask_visits": 14,
+        "book_visits": 1,
+        "contact_click_visits": 5,
+        "is_deleted": false,
+        "property_id": "aaaaaaaa-0000-0000-0000-00000000000a",
+        "resolution": "current",
+        "self_service_visits": 4,
+        "slug": "villa-alpha",
+        "title": "Villa Alpha"
+      },
+      {
+        "agent_contact_visits": 1,
+        "ask_visits": 2,
+        "book_visits": 0,
+        "contact_click_visits": 1,
+        "is_deleted": false,
+        "property_id": "aaaaaaaa-0000-0000-0000-00000000000b",
+        "resolution": "current",
+        "self_service_visits": 0,
+        "slug": "tower-beta",
+        "title": "Tower Beta"
+      },
+      {
+        "agent_contact_visits": 0,
+        "ask_visits": 1,
+        "book_visits": 0,
+        "contact_click_visits": 0,
+        "is_deleted": true,
+        "property_id": "aaaaaaaa-0000-0000-0000-00000000000c",
+        "resolution": "soft_deleted",
+        "self_service_visits": 1,
+        "slug": "gamma-soft",
+        "title": "Gamma Soft"
+      }
+    ]
+  },
+  "high_intent": {
+    "agent_contact_via_menu_visits": 5,
+    "agent_contact_visits": 8,
+    "book_visits": 1,
+    "call_clicks": 2,
+    "call_visits": 2,
+    "contact_click_visits": 6,
+    "contact_clicks": 7,
+    "high_intent_visits": 9,
+    "whatsapp_clicks": 5,
+    "whatsapp_visits": 6
+  },
+  "range": {
+    "end_exclusive": "2026-10-09",
+    "first_open_day": "2026-10-01",
+    "includes_today": false,
+    "outcome_window_hours": 24,
+    "outcomes_incomplete": false,
+    "start": "2026-10-08",
+    "today": "2026-10-20",
+    "tz": "Asia/Vientiane"
+  },
+  "unit_flow": {
+    "unit_select_visits": 2,
+    "unit_then_contact_visits": 1
+  }
+}

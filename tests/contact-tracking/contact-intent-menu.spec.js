@@ -941,3 +941,43 @@ test.describe('sticky bar: exactly Ask + Share', () => {
     });
   }
 });
+
+// ═══ contact_intent_unit_select: the actual "Select a unit" interaction on a multi-unit listing ═══════════
+test.describe('contact_intent_unit_select', () => {
+  const unitEvents = (posts) => posts.ui_events.filter((e) => e.element_id === 'contact_intent_unit_select');
+
+  test('not fired by a render, a language switch or a deep link; fired once per real selection', async ({ page }) => {
+    const { posts } = await open(page, MULTI());
+    await page.click('.lang-btn[data-lang="zh"]'); await page.waitForTimeout(400);
+    expect(unitEvents(posts)).toEqual([]);                                                  // render + language switch: nothing
+    await page.goto('/listing.html?slug=menu-test&lang=en&unit=room-a');                    // deep link preselects a unit
+    await page.waitForSelector('#section-price'); await page.waitForTimeout(500);
+    expect(unitEvents(posts)).toEqual([]);                                                  // ...and that is not an interaction
+
+    await page.locator('.unit-card', { hasText: 'Room Type B' }).first().click();
+    await page.waitForTimeout(400);
+    const ev = unitEvents(posts);
+    expect(ev.length).toBe(1);
+    expect(ev[0]).toMatchObject({ element_type: 'contact_intent', label: 'Selected a unit', property_id: 'p-menu', page: 'listing.html' });
+    expect(ev[0].metadata).toMatchObject({ intent: 'unit_select', surface: 'unit_card', unit_type_id: 'room-b', lang: 'en' });
+    expect(ev[0].metadata.availability).toMatchObject({ available: true });
+    expect(posts.lead_events).toEqual([]);                                                  // never a lead
+  });
+
+  test('un-selecting back to the overview records nothing; selecting another unit records it', async ({ page }) => {
+    const { posts } = await open(page, MULTI());
+    const card = (n) => page.locator('.unit-card', { hasText: n }).first();
+    await card('Room Type A').click(); await page.waitForTimeout(450);
+    expect(unitEvents(posts).length).toBe(1);
+    await card('Room Type A').click(); await page.waitForTimeout(450);                      // toggle off
+    expect(unitEvents(posts).length).toBe(1);
+    await card('Room Type B').click(); await page.waitForTimeout(450);
+    expect(unitEvents(posts).map((e) => e.metadata.unit_type_id)).toEqual(['room-a', 'room-b']);
+  });
+
+  test('a single-unit listing has no unit picker and never records it', async ({ page }) => {
+    const { posts } = await open(page, prop());
+    await page.waitForTimeout(300);
+    expect(unitEvents(posts)).toEqual([]);
+  });
+});

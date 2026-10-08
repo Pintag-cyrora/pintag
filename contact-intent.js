@@ -85,6 +85,13 @@ var CONTACT_INTENTS = {
     id: 'gallery', kind: 'answer', eventId: 'contact_intent_gallery', labelEn: 'View photos', icon: '📷',
     labels: { lo: 'ເບິ່ງຮູບພາບ', en: 'View photos', zh: '查看照片' }
   },
+  // Multi-unit listings only: the visitor actually chose a unit in the unit picker (a card click, never a
+  // render or a deep link). Not a menu row and not an answer: it only records that the visitor moved from
+  // "which unit?" to a specific one, so the funnel can show the step that unlocks Book a viewing / Contact agent.
+  unit_select: {
+    id: 'unit_select', kind: 'unit', eventId: 'contact_intent_unit_select', labelEn: 'Selected a unit', icon: '🏢',
+    labels: { lo: 'ເລືອກຫ້ອງ', en: 'Select a unit', zh: '选择户型' }
+  },
   book_tour: {
     id: 'book_tour', kind: 'whatsapp', highIntent: true, eventId: 'contact_intent_book_tour', labelEn: 'Book a viewing', icon: '📅',
     labels: { lo: 'ນັດເບິ່ງຊັບສິນ', en: 'Book a viewing', zh: '预约看房' },
