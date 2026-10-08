@@ -1,0 +1,164 @@
+{
+  "ask": {
+    "excluded_null_property": 0,
+    "excluded_null_session": 0,
+    "open_events": 11,
+    "repeat_open_visits": 0,
+    "visits": 11
+  },
+  "clicks": {
+    "call": 1,
+    "direct": {
+      "call": 0,
+      "total": 0,
+      "whatsapp": 0
+    },
+    "total": 4,
+    "unlinked": {
+      "call": 0,
+      "total": 0,
+      "whatsapp": 0
+    },
+    "via_ask": {
+      "call": 1,
+      "total": 4,
+      "whatsapp": 3
+    },
+    "whatsapp": 3
+  },
+  "contact_intent": {
+    "availability_visits": 0,
+    "escalated_visits": 5,
+    "intent_chosen_visits": 11,
+    "photos_visits": 0,
+    "price_visits": 5,
+    "self_service_visits": 6,
+    "terms_visits": 6,
+    "unit_select_visits": 0,
+    "where_visits": 1
+  },
+  "diagnostics": {
+    "attribution": {
+      "leads_without_action": 0,
+      "matched": {
+        "book": 0,
+        "call": 1,
+        "whatsapp": 3
+      },
+      "unlinkable_actions": 0,
+      "unmatched": {
+        "book": 0,
+        "call": 0,
+        "whatsapp": 0
+      },
+      "visits_with_click_but_no_action": 0
+    },
+    "by_availability": [
+      {
+        "agent_contact_visits": 4,
+        "ask_visits": 11,
+        "book_visits": 0,
+        "contact_click_visits": 4,
+        "key": "on",
+        "self_service_visits": 6
+      }
+    ],
+    "by_lang": [
+      {
+        "agent_contact_visits": 4,
+        "ask_visits": 11,
+        "book_visits": 0,
+        "contact_click_visits": 4,
+        "key": "en",
+        "self_service_visits": 6
+      }
+    ],
+    "by_surface": [
+      {
+        "agent_contact_visits": 2,
+        "ask_visits": 9,
+        "book_visits": 0,
+        "contact_click_visits": 2,
+        "key": "panel",
+        "self_service_visits": 6
+      },
+      {
+        "agent_contact_visits": 2,
+        "ask_visits": 2,
+        "book_visits": 0,
+        "contact_click_visits": 2,
+        "key": "sheet",
+        "self_service_visits": 0
+      }
+    ],
+    "by_unit": [],
+    "data_quality": {
+      "legacy_call_rows": 0,
+      "legacy_rows": 0,
+      "new_rows_without_metadata": 0
+    },
+    "listings": [
+      {
+        "agent_contact_visits": 4,
+        "ask_visits": 11,
+        "book_visits": 0,
+        "contact_click_visits": 4,
+        "is_deleted": false,
+        "property_id": "aaaaaaaa-0000-0000-0000-00000000000a",
+        "resolution": "current",
+        "self_service_visits": 6,
+        "slug": "villa-alpha",
+        "title": "Villa Alpha"
+      }
+    ]
+  },
+  "high_intent": {
+    "agent_contact_via_menu_visits": 1,
+    "agent_contact_visits": 4,
+    "book_visits": 0,
+    "call_clicks": 1,
+    "call_visits": 1,
+    "contact_click_visits": 4,
+    "contact_clicks": 4,
+    "high_intent_visits": 4,
+    "whatsapp_clicks": 3,
+    "whatsapp_visits": 3
+  },
+  "range": {
+    "end_exclusive": "2026-10-16",
+    "first_open_day": "2026-10-01",
+    "includes_today": false,
+    "outcome_window_hours": 24,
+    "outcomes_incomplete": false,
+    "start": "2026-10-15",
+    "today": "2026-10-20",
+    "tz": "Asia/Vientiane"
+  },
+  "resolution": {
+    "ask_agent_clicks": {
+      "deposit": 1,
+      "terms": 2,
+      "visits": 3
+    },
+    "deposit_topic": {
+      "answer_on_site": 2,
+      "escalate_to_agent": 2
+    },
+    "escalated_then_contact_visits": 3,
+    "escalated_visits": 5,
+    "price": {
+      "answer_on_site": 3,
+      "escalate_to_agent": 2,
+      "unspecified": 1
+    },
+    "terms": {
+      "answer_on_site": 2,
+      "escalate_to_agent": 3,
+      "unspecified": 1
+    }
+  },
+  "unit_flow": {
+    "unit_select_visits": 0,
+    "unit_then_contact_visits": 0
+  }
+}

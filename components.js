@@ -1968,6 +1968,10 @@ function ptContactIntentMeta(intent, ctx) {
   // How a contact was made ("call" | "whatsapp"). Only the contact intents carry it: Call and WhatsApp are
   // the same contact_agent intent and are told apart by this (and by the lead_events event_type).
   if (ctx.channel) meta.channel = ctx.channel;
+  // How a Price / Terms question was resolved, and what it was about (contact-intent.js
+  // resolveContactIntentResolution). Whitelisted: only the known values are ever written.
+  if (ctx.resolution && typeof CONTACT_INTENT_RESOLUTIONS !== 'undefined' && CONTACT_INTENT_RESOLUTIONS.indexOf(ctx.resolution) !== -1) meta.resolution = ctx.resolution;
+  if (ctx.topic && typeof CONTACT_INTENT_TOPICS !== 'undefined' && CONTACT_INTENT_TOPICS.indexOf(ctx.topic) !== -1) meta.topic = ctx.topic;
   return meta;
 }
 var _ptContactIntentLast = {};

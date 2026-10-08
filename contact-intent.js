@@ -77,6 +77,13 @@ var CONTACT_INTENTS = {
     id: 'price', kind: 'answer', eventId: 'contact_intent_price', labelEn: "What's the price?", icon: '💰',
     labels: { lo: 'ລາຄາເທົ່າໃດ?', en: "What's the price?", zh: '价格多少？' }
   },
+  // Rentals only (the row is hidden on sale listings): deposit, utilities, lease length, policies. Answered on the
+  // page from the listing's own Rental Terms when it has any; otherwise it points the visitor at the agent
+  // (resolution escalate_to_agent). See resolveContactIntentResolution().
+  terms: {
+    id: 'terms', kind: 'answer', eventId: 'contact_intent_terms', labelEn: 'Terms & utilities', icon: '🧾',
+    labels: { lo: 'ເງື່ອນໄຂ ແລະ ຄ່າສາທາລະນູປະໂພກ', en: 'Terms & utilities', zh: '条款与水电杂费' }
+  },
   availability: {
     id: 'availability', kind: 'answer', eventId: 'contact_intent_availability', labelEn: 'Is it available?', icon: '🏠',
     labels: { lo: 'ຍັງວ່າງຢູ່ບໍ?', en: 'Is it available?', zh: '还有吗？' }
@@ -107,7 +114,7 @@ var CONTACT_INTENTS = {
   }
 };
 
-var CONTACT_INTENT_ORDER = ['location', 'price', 'availability', 'gallery', 'book_tour', 'contact_agent'];
+var CONTACT_INTENT_ORDER = ['location', 'price', 'terms', 'availability', 'gallery', 'book_tour', 'contact_agent'];
 
 // legacy ui_events.element_id -> intent id (see "COMPATIBILITY WITH HISTORY" above).
 var CONTACT_INTENT_LEGACY_ELEMENT_IDS = {
@@ -243,7 +250,8 @@ function resolveContactIntentAvailability(property) {
 }
 
 // Which intents show, and whether each can be used right now.
-//   ctx: { hasPhone (default true), hasPhotos (default true), selectedUnitTypeId }
+//   ctx: { hasPhone (default true), hasPhotos (default true), selectedUnitTypeId,
+//          rental: { isRental, termsKnown } }   (rental is optional; without it the Terms row is hidden)
 // Answer intents are always visible and enabled: Pintag answers them itself, they
 // never open WhatsApp, and they stay available when the listing is OFF (an
 // unavailable listing still has a location, a price and photos, and "is it
@@ -264,6 +272,14 @@ function resolveContactIntents(summary, ctx) {
     var row = { id: id, eventId: d.eventId, kind: d.kind, visible: true, enabled: true, requiresUnitSelection: false, disabledReason: null };
     if (d.kind === 'answer') {
       if (id === 'gallery' && !hasPhotos) { row.visible = false; row.enabled = false; row.disabledReason = 'no_photos'; }
+      if (id === 'terms') {
+        // Rentals only. Shown when the listing has Rental Terms to answer with, or when there is an agent to
+        // hand the question to (which needs a number AND an ON listing: an OFF listing has no WhatsApp path).
+        var rf = ctx.rental || {};
+        var canAsk = hasPhone && !!summary.available;
+        if (!rf.isRental) { row.visible = false; row.enabled = false; row.disabledReason = 'not_rental'; }
+        else if (!(rf.termsKnown > 0) && !canAsk) { row.visible = false; row.enabled = false; row.disabledReason = 'no_terms'; }
+      }
       return row;
     }
     // whatsapp intents
@@ -346,10 +362,10 @@ function contactIntentAvailabilityText(summary, lang) {
 
 // Menu order: the two high-intent actions first (one tap, obvious), then the quick
 // answers. Same list on desktop (the panel) and mobile (the bottom sheet).
-var CONTACT_INTENT_MENU_ORDER = ['contact_agent', 'book_tour', 'location', 'price', 'availability', 'gallery'];
+var CONTACT_INTENT_MENU_ORDER = ['contact_agent', 'book_tour', 'location', 'price', 'terms', 'availability', 'gallery'];
 // The mobile Ask sheet reads in the order a visitor would browse: the property questions first, then
 // Book a viewing, and the direct-contact option (Call / WhatsApp, both the contact_agent intent) last.
-var CONTACT_INTENT_SHEET_ORDER = ['location', 'price', 'availability', 'gallery', 'book_tour', 'contact_agent'];
+var CONTACT_INTENT_SHEET_ORDER = ['location', 'price', 'terms', 'availability', 'gallery', 'book_tour', 'contact_agent'];
 
 // resolveContactIntentMenu(summary, ctx[, order]) -> the VISIBLE rows of resolveContactIntents(),
 // in menu order (the desktop order unless `order` is given). Nothing new is decided here:
@@ -376,6 +392,73 @@ function contactIntentUiText(key, lang) {
   var e = _CI_UI_TEXT[key];
   if (!e) return '';
   return e[lang] || e.en;
+}
+
+// ── Resolution: was the visitor's question answered on the page, or handed to the agent? ──────────────
+// Recorded in ui_events.metadata (no schema change) on the Price and Terms intent rows and on the
+// Contact agent click that an escalation produces:
+//   resolution  'answer_on_site'    the page answered with the listing's own data
+//               'escalate_to_agent' the data is not on the listing, so the visitor is offered the agent
+//   topic       'price' | 'deposit' | 'terms'  what the question was about
+// facts: { isRental, hasDeposit, termsKnown (count of Rental Terms with a value), canEscalate }
+//   canEscalate = there is a number to message AND the listing is ON (an OFF listing has no WhatsApp path;
+//   nothing is offered, so nothing is recorded as escalated).
+// Price: a rental whose deposit is not listed offers the agent for the deposit; everything else is answered
+//   by the price section already on the page.
+// Terms: answered when the listing has any Rental Term; otherwise handed to the agent.
+// -> { resolution, topic, offerAgent } or null for any other intent. Pure.
+var CONTACT_INTENT_RESOLUTIONS = ['answer_on_site', 'escalate_to_agent'];
+var CONTACT_INTENT_TOPICS = ['price', 'deposit', 'terms'];
+function resolveContactIntentResolution(intent, facts) {
+  facts = facts || {};
+  var esc = !!facts.canEscalate;
+  if (intent === 'price') {
+    if (facts.isRental && !facts.hasDeposit && esc) return { resolution: 'escalate_to_agent', topic: 'deposit', offerAgent: true };
+    return { resolution: 'answer_on_site', topic: (facts.isRental && facts.hasDeposit) ? 'deposit' : 'price', offerAgent: false };
+  }
+  if (intent === 'terms') {
+    if (facts.termsKnown > 0) return { resolution: 'answer_on_site', topic: 'terms', offerAgent: esc };   // "ask about anything not listed"
+    return { resolution: 'escalate_to_agent', topic: 'terms', offerAgent: esc };
+  }
+  return null;
+}
+
+// The Terms / deposit answer's own strings. DRAFT wording (lo/zh need native review before launch, like the
+// rest of the menu's first-release copy).
+var _CI_ANSWER_TEXT = {
+  termsNotListed:   { en: "The terms and utilities for this property aren't listed yet.", lo: 'ເງື່ອນໄຂ ແລະ ຄ່າສາທາລະນູປະໂພກຂອງຊັບສິນນີ້ຍັງບໍ່ໄດ້ລະບຸ.', zh: '该房源的条款与水电杂费暂未列出。' },
+  depositNotListed: { en: "The deposit for this property isn't listed.", lo: 'ເງິນມັດຈຳຂອງຊັບສິນນີ້ຍັງບໍ່ໄດ້ລະບຸ.', zh: '该房源的押金暂未列出。' },
+  askAgentTerms:    { en: 'Ask the agent about terms on WhatsApp', lo: 'ສອບຖາມຕົວແທນກ່ຽວກັບເງື່ອນໄຂທາງ WhatsApp', zh: '通过 WhatsApp 向经纪人咨询条款' },
+  askAgentDeposit:  { en: 'Ask the agent about the deposit on WhatsApp', lo: 'ສອບຖາມຕົວແທນກ່ຽວກັບເງິນມັດຈຳທາງ WhatsApp', zh: '通过 WhatsApp 向经纪人咨询押金' },
+  askAgentMore:     { en: 'Ask the agent about anything not listed', lo: 'ສອບຖາມຕົວແທນກ່ຽວກັບສິ່ງທີ່ບໍ່ໄດ້ລະບຸ', zh: '其他未列出的内容，向经纪人咨询' },
+  selectUnitToAsk:  { en: 'Select a unit above to ask the agent about it', lo: 'ເລືອກຫ້ອງກ່ອນ ແລ້ວຈຶ່ງສອບຖາມຕົວແທນ', zh: '请先选择户型，再向经纪人咨询' }
+};
+function contactIntentAnswerText(key, lang) {
+  var e = _CI_ANSWER_TEXT[key];
+  if (!e) return '';
+  return e[lang] || e.en;
+}
+
+// ── The escalation WhatsApp message ─────────────────────────────────────────
+// Same shape as the other property messages (greeting, "Property: <name>", listing link; unknown
+// lines omitted). topic: 'terms' | 'deposit'. A selected unit is named so the agent knows which one.
+var WA_QUESTION_TOPIC = {
+  terms:   { en: 'rental terms and utilities (deposit, electricity, water, internet, lease length)', lo: 'ເງື່ອນໄຂການເຊົ່າ ແລະ ຄ່າສາທາລະນູປະໂພກ', zh: '租赁条款和水电杂费（押金、电、水、网络、租期）' },
+  deposit: { en: 'the deposit', lo: 'ເງິນມັດຈຳ', zh: '押金' }
+};
+var WA_QUESTION_MESSAGE_TEMPLATES = {
+  lo: 'ສະບາຍດີ,\n\nຂ້ອຍຢາກສອບຖາມກ່ຽວກັບ {{TOPIC}} ຂອງຊັບສິນນີ້{{UNIT_PART}}.\n\nຊັບສິນ: {{PROPERTY_NAME}}',
+  en: "Hello,\n\nI have a question about {{TOPIC}} for this property{{UNIT_PART}}.\n\nProperty: {{PROPERTY_NAME}}",
+  zh: '您好，\n\n我想了解这套房源{{UNIT_PART}}的{{TOPIC}}。\n\n房源: {{PROPERTY_NAME}}'
+};
+// vars: { topic, propertyName, canonicalUrl, unitName }  -> plain text (the caller URL-encodes it)
+function buildQuestionWhatsAppMessage(vars, lang) {
+  lang = (lang === 'lo' || lang === 'zh') ? lang : 'en';
+  vars = vars || {};
+  var t = WA_QUESTION_TOPIC[vars.topic] || WA_QUESTION_TOPIC.terms;
+  var unitPart = vars.unitName ? (lang === 'zh' ? '（' + vars.unitName + '）' : ' (' + vars.unitName + ')') : '';
+  var base = _ciFillTemplate(WA_QUESTION_MESSAGE_TEMPLATES[lang], { TOPIC: t[lang] || t.en, PROPERTY_NAME: vars.propertyName || '', UNIT_PART: unitPart });
+  return vars.canonicalUrl ? base + '\n' + vars.canonicalUrl : base;
 }
 
 // ── "Book a viewing" WhatsApp message ───────────────────────────────────────
@@ -449,6 +532,11 @@ if (typeof module !== 'undefined' && module.exports) {
     contactIntentUiText: contactIntentUiText,
     WA_TOUR_MESSAGE_TEMPLATES: WA_TOUR_MESSAGE_TEMPLATES,
     WA_TOUR_UNIT_MESSAGE_TEMPLATES: WA_TOUR_UNIT_MESSAGE_TEMPLATES,
-    buildTourWhatsAppMessage: buildTourWhatsAppMessage
+    buildTourWhatsAppMessage: buildTourWhatsAppMessage,
+    CONTACT_INTENT_RESOLUTIONS: CONTACT_INTENT_RESOLUTIONS,
+    CONTACT_INTENT_TOPICS: CONTACT_INTENT_TOPICS,
+    resolveContactIntentResolution: resolveContactIntentResolution,
+    contactIntentAnswerText: contactIntentAnswerText,
+    buildQuestionWhatsAppMessage: buildQuestionWhatsAppMessage
   };
 }

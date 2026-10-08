@@ -28,12 +28,10 @@
   },
   "contact_intent": {
     "availability_visits": 0,
-    "escalated_visits": 0,
     "intent_chosen_visits": 0,
     "photos_visits": 0,
     "price_visits": 0,
     "self_service_visits": 0,
-    "terms_visits": 0,
     "unit_select_visits": 0,
     "where_visits": 0
   },
@@ -85,29 +83,6 @@
     "start": "2026-01-01",
     "today": "2026-10-20",
     "tz": "Asia/Vientiane"
-  },
-  "resolution": {
-    "ask_agent_clicks": {
-      "deposit": 0,
-      "terms": 0,
-      "visits": 0
-    },
-    "deposit_topic": {
-      "answer_on_site": 0,
-      "escalate_to_agent": 0
-    },
-    "escalated_then_contact_visits": 0,
-    "escalated_visits": 0,
-    "price": {
-      "answer_on_site": 0,
-      "escalate_to_agent": 0,
-      "unspecified": 0
-    },
-    "terms": {
-      "answer_on_site": 0,
-      "escalate_to_agent": 0,
-      "unspecified": 0
-    }
   },
   "unit_flow": {
     "unit_select_visits": 0,

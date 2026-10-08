@@ -15,6 +15,8 @@ const fs = require('fs');
 const path = require('path');
 // The real analytics_contact_intent_funnel() output for the controlled Postgres fixtures (fixtures/README.md).
 const FUNNEL_FIXTURE = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'contact-intent-funnel.rpc-output.json'), 'utf8'));
+const FUNNEL_RESOLUTION = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'contact-intent-funnel.rpc-output.resolution.json'), 'utf8'));
+const FUNNEL_V1 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'contact-intent-funnel.rpc-output.v1.json'), 'utf8'));   // the original function: no `resolution` block
 
 const TIMEZONES = ['UTC', 'Asia/Vientiane', 'Pacific/Kiritimati'];
 // 2026-10-01 00:30 in Laos, 2026-09-30 17:30 UTC: the instant the requirement calls out.
@@ -752,7 +754,7 @@ test.describe('Contact Intent funnel (Leads tab)', () => {
     await expect(kpi(page, 'call-vs-whatsapp')).toHaveText('2 : 6');
     await expect(kpi(page, 'contact-clicks')).toHaveText('7');
     for (const k of ['self-service', 'agent-contact', 'book']) await expect(kpi(page, k)).toHaveText('—');   // 17 visits: rates withheld
-    await expect(page.locator('#ci-funnel [data-block="contact-intent"] tr[data-stage]')).toHaveCount(7);
+    await expect(page.locator('#ci-funnel [data-block="contact-intent"] tr[data-stage]')).toHaveCount(8);
     await expect(page.locator('#ci-funnel [data-block="high-intent"] tr[data-stage]')).toHaveCount(4);
     await expect(page.locator('#ci-funnel [data-caveat="volume"]')).toContainText('Only 17 Ask visits');
     await expect(page.locator('#ci-funnel [data-block="reconciliation"]')).toContainText('12 WhatsApp / call clicks');
@@ -819,6 +821,29 @@ test.describe('Contact Intent funnel (Leads tab)', () => {
     const fake = makeFake({ funnel: { ask: {} } }); await openLeads(page, fake);
     await expect(page.locator('#ci-funnel .an-error')).toContainText('incomplete');
     await expect(page.locator('#ci-funnel [data-kpi]')).toHaveCount(0);
+  });
+
+  test('Terms & utilities and Price & deposit: the Resolution block shows answered vs handed to the agent', async ({ page }) => {
+    const fake = makeFake({ funnel: FUNNEL_RESOLUTION }); await openLeads(page, fake);
+    const rows = page.locator('#ci-funnel [data-block="contact-intent"] tr[data-stage]');
+    await expect(rows.filter({ hasText: 'Terms & utilities' }).locator('.cif-count')).toHaveText('6');
+    await expect(rows.filter({ hasText: 'Price & deposit' }).locator('.cif-count')).toHaveText('5');
+    const res = page.locator('#ci-funnel [data-block="resolution"]');
+    await expect(res).toBeVisible();
+    await expect(res.locator('tr[data-resolution-row="price"] td')).toHaveText(['Price & deposit', '3', '2', '1', '—']);        // 6 visits: share withheld
+    await expect(res.locator('tr[data-resolution-row="terms"] td')).toHaveText(['Terms & utilities', '2', '3', '1', '—']);
+    await expect(res.locator('tr[data-resolution-row="deposit"] td').first()).toContainText('deposit');
+    await expect(res.locator('[data-res="escalated"]')).toContainText('5 Ask visits had a question handed to the agent; 3 of them then contacted the agent');
+    await expect(res.locator('[data-res="ask-agent"]')).toContainText('3 visits tapped “Ask the agent” (2 about terms · 1 about the deposit)');
+    await expect(page.locator('#ci-funnel [data-kpi="visits"] .stat-value')).toHaveText('11');
+  });
+
+  test('with the v1 database function (migration 20261009000000 not applied) the funnel still renders and says what is missing', async ({ page }) => {
+    const fake = makeFake({ funnel: FUNNEL_V1 }); await openLeads(page, fake);
+    await expect(page.locator('#ci-funnel [data-kpi="visits"] .stat-value')).toHaveText('17');
+    await expect(page.locator('#ci-funnel [data-block="resolution"]')).toHaveCount(0);
+    await expect(page.locator('#ci-funnel [data-caveat="resolution-missing"]')).toContainText('20261009000000');
+    await expect(page.locator('#ci-funnel .an-error')).toHaveCount(0);
   });
 
   test('no buyer data, session ids or phone numbers reach the page', async ({ page }) => {

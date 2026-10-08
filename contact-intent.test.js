@@ -170,7 +170,7 @@ test('the existing resolvers are unchanged by this feature (still the same funct
 // ═══ Intent registry ═════════════════════════════════════════════════════════
 test('registry: every contact intent has a stable event id, an English label and lo/en/zh labels', () => {
   const ids = Object.keys(CONTACT_INTENTS);
-  assert.deepEqual(ids.sort(), ['availability', 'book_tour', 'contact_agent', 'gallery', 'location', 'open', 'price', 'unit_select']);
+  assert.deepEqual(ids.sort(), ['availability', 'book_tour', 'contact_agent', 'gallery', 'location', 'open', 'price', 'terms', 'unit_select']);
   for (const id of ids) {
     const d = CONTACT_INTENTS[id];
     assert.equal(d.eventId, 'contact_intent_' + id);
@@ -183,8 +183,8 @@ test('registry: every contact intent has a stable event id, an English label and
 });
 
 test('registry: kinds, order, and which intents are answers', () => {
-  assert.deepEqual(CONTACT_INTENT_ORDER, ['location', 'price', 'availability', 'gallery', 'book_tour', 'contact_agent']);
-  for (const id of ['location', 'price', 'availability', 'gallery']) assert.equal(isContactIntentAnswer(id), true, id);
+  assert.deepEqual(CONTACT_INTENT_ORDER, ['location', 'price', 'terms', 'availability', 'gallery', 'book_tour', 'contact_agent']);
+  for (const id of ['location', 'price', 'terms', 'availability', 'gallery']) assert.equal(isContactIntentAnswer(id), true, id);
   for (const id of ['book_tour', 'contact_agent', 'open']) assert.equal(isContactIntentAnswer(id), false, id);
   assert.equal(CONTACT_INTENTS.book_tour.kind, 'whatsapp'); assert.equal(CONTACT_INTENTS.contact_agent.kind, 'whatsapp');
 });
@@ -442,8 +442,10 @@ test('listing.html loads contact-intent.js and exposes the section anchors', () 
 const { resolveContactIntentMenu: menu, contactIntentUiText: ui, buildTourWhatsAppMessage: tour, WA_TOUR_MESSAGE_TEMPLATES, WA_TOUR_UNIT_MESSAGE_TEMPLATES, CONTACT_INTENT_MENU_ORDER } = G;
 
 test('menu order: the two high-intent actions first, then the quick answers', () => {
-  assert.deepEqual(CONTACT_INTENT_MENU_ORDER, ['contact_agent', 'book_tour', 'location', 'price', 'availability', 'gallery']);
-  assert.deepEqual(menu(avail(prop({}))).map((r) => r.id), CONTACT_INTENT_MENU_ORDER);
+  assert.deepEqual(CONTACT_INTENT_MENU_ORDER, ['contact_agent', 'book_tour', 'location', 'price', 'terms', 'availability', 'gallery']);
+  // Terms & utilities is a rental-only row: without the rental facts it is simply not offered
+  assert.deepEqual(menu(avail(prop({}))).map((r) => r.id), CONTACT_INTENT_MENU_ORDER.filter((i) => i !== 'terms'));
+  assert.deepEqual(menu(avail(prop({})), { rental: { isRental: true, termsKnown: 1 } }).map((r) => r.id), CONTACT_INTENT_MENU_ORDER);
 });
 
 test('menu is exactly the visible rows of resolveContactIntents (nothing new is decided)', () => {
@@ -493,8 +495,8 @@ test('UI strings exist in lo/en/zh and an unsupported language falls back to Eng
 });
 
 test('mobile sheet order: answers, Book a viewing, then Contact agent last (Call + WhatsApp share it)', () => {
-  assert.deepEqual(G.CONTACT_INTENT_SHEET_ORDER, ['location', 'price', 'availability', 'gallery', 'book_tour', 'contact_agent']);
-  const rows = menu(avail(prop({})), { hasPhone: true, hasPhotos: true }, G.CONTACT_INTENT_SHEET_ORDER);
+  assert.deepEqual(G.CONTACT_INTENT_SHEET_ORDER, ['location', 'price', 'terms', 'availability', 'gallery', 'book_tour', 'contact_agent']);
+  const rows = menu(avail(prop({})), { hasPhone: true, hasPhotos: true, rental: { isRental: true, termsKnown: 0 } }, G.CONTACT_INTENT_SHEET_ORDER);
   assert.deepEqual(rows.map((r) => r.id), G.CONTACT_INTENT_SHEET_ORDER);
 });
 
@@ -579,4 +581,74 @@ test('inspector: every contact-intent id has an icon and is property-scoped; leg
     assert.ok(scoped.includes(ev), ev + ' is property-scoped');
   }
   for (const legacy of ['contact-whatsapp', 'mcta-whatsapp', 'unit-inquire-whatsapp']) assert.ok(icons[legacy], 'legacy icon ' + legacy);
+});
+
+
+// ═══ Terms & utilities / Price & deposit: visibility, resolution, message ═══════════════════════════
+test('terms: a registered ANSWER intent with its own event id, placed directly after Price', () => {
+  assert.equal(contactIntentEventId('terms'), 'contact_intent_terms');
+  assert.equal(CONTACT_INTENTS.terms.kind, 'answer');
+  assert.equal(isContactIntentAnswer('terms'), true);
+  for (const o of [CONTACT_INTENT_ORDER, CONTACT_INTENT_MENU_ORDER, G.CONTACT_INTENT_SHEET_ORDER]) assert.equal(o.indexOf('terms'), o.indexOf('price') + 1);
+  assert.equal(contactIntentLabel('terms', 'en'), 'Terms & utilities');
+  for (const l of ['lo', 'en', 'zh']) assert.ok(contactIntentLabel('terms', l).length > 0 && contactIntentLabel('terms', l).length <= 30, l);
+});
+
+test('terms row visibility: rentals only; needs terms to show OR an agent that can be asked (a number and an ON listing)', () => {
+  const rowFor = (summaryProp, ctx) => G.resolveContactIntents(avail(prop(summaryProp)), ctx).find((r) => r.id === 'terms');
+  const vis = (p, ctx) => rowFor(p, ctx).visible;
+  assert.equal(vis({}, {}), false, 'no rental facts');
+  assert.equal(vis({}, { rental: { isRental: false, termsKnown: 3 } }), false, 'a sale listing');
+  assert.equal(vis({}, { rental: { isRental: true, termsKnown: 2 }, hasPhone: false }), true, 'terms known, no number');
+  assert.equal(vis({}, { rental: { isRental: true, termsKnown: 0 }, hasPhone: true }), true, 'nothing listed but the agent can be asked');
+  assert.equal(vis({}, { rental: { isRental: true, termsKnown: 0 }, hasPhone: false }), false, 'nothing to answer with or hand to');
+  assert.equal(vis({ market_status: 'sold' }, { rental: { isRental: true, termsKnown: 0 }, hasPhone: true }), false, 'an OFF listing has no WhatsApp path to hand it to');
+  assert.equal(vis({ market_status: 'sold' }, { rental: { isRental: true, termsKnown: 2 }, hasPhone: true }), true, 'an OFF listing can still show the terms it has');
+  assert.equal(rowFor({}, {}).disabledReason, 'not_rental');
+  assert.equal(rowFor({}, { rental: { isRental: true, termsKnown: 0 }, hasPhone: false }).disabledReason, 'no_terms');
+});
+
+test('resolution: Terms is answered when the listing has any Rental Term, otherwise handed to the agent', () => {
+  const r = G.resolveContactIntentResolution;
+  assert.deepEqual(r('terms', { termsKnown: 3, canEscalate: true }), { resolution: 'answer_on_site', topic: 'terms', offerAgent: true });
+  assert.deepEqual(r('terms', { termsKnown: 3, canEscalate: false }), { resolution: 'answer_on_site', topic: 'terms', offerAgent: false });
+  assert.deepEqual(r('terms', { termsKnown: 0, canEscalate: true }), { resolution: 'escalate_to_agent', topic: 'terms', offerAgent: true });
+  assert.deepEqual(r('terms', { termsKnown: 0, canEscalate: false }), { resolution: 'escalate_to_agent', topic: 'terms', offerAgent: false });
+});
+
+test('resolution: Price is answered by the price section; only a rental with no deposit (and an agent to ask) is escalated', () => {
+  const r = G.resolveContactIntentResolution;
+  assert.deepEqual(r('price', { isRental: true, hasDeposit: true, canEscalate: true }), { resolution: 'answer_on_site', topic: 'deposit', offerAgent: false });
+  assert.deepEqual(r('price', { isRental: true, hasDeposit: false, canEscalate: true }), { resolution: 'escalate_to_agent', topic: 'deposit', offerAgent: true });
+  assert.deepEqual(r('price', { isRental: true, hasDeposit: false, canEscalate: false }), { resolution: 'answer_on_site', topic: 'price', offerAgent: false }, 'nothing is offered, so nothing is "escalated"');
+  assert.deepEqual(r('price', { isRental: false, hasDeposit: false, canEscalate: true }), { resolution: 'answer_on_site', topic: 'price', offerAgent: false });
+  for (const other of ['location', 'availability', 'gallery', 'book_tour', 'contact_agent', 'open', 'nope', null]) assert.equal(r(other, { termsKnown: 1, canEscalate: true }), null, String(other));
+  assert.deepEqual(G.CONTACT_INTENT_RESOLUTIONS, ['answer_on_site', 'escalate_to_agent']);
+  assert.deepEqual(G.CONTACT_INTENT_TOPICS, ['price', 'deposit', 'terms']);
+});
+
+test('question message: topic, property, unit and link in the visitor\'s language; unknown lines omitted', () => {
+  const q = G.buildQuestionWhatsAppMessage;
+  const en = q({ topic: 'deposit', propertyName: 'Villa', unitName: 'Room A', canonicalUrl: 'https://x/l' }, 'en');
+  assert.equal(en, 'Hello,\n\nI have a question about the deposit for this property (Room A).\n\nProperty: Villa\nhttps://x/l');
+  assert.ok(!q({ topic: 'terms', propertyName: 'Villa' }, 'en').includes('http'), 'no link line when there is no link');
+  assert.ok(!/for this property \(/.test(q({ topic: 'terms', propertyName: 'Villa' }, 'en')), 'no unit part when no unit');
+  assert.match(q({ topic: 'terms', propertyName: 'V' }, 'zh'), /租赁条款和水电杂费/);
+  assert.match(q({ topic: 'deposit', propertyName: 'V', unitName: 'A' }, 'zh'), /（A）/);
+  assert.match(q({ topic: 'terms', propertyName: 'V' }, 'lo'), /ເງື່ອນໄຂການເຊົ່າ/);
+  assert.equal(q({ topic: 'terms', propertyName: 'V' }, 'vi'), q({ topic: 'terms', propertyName: 'V' }, 'en'), 'an unsupported language falls back to English');
+  assert.match(q({ topic: 'bogus', propertyName: 'V' }, 'en'), /rental terms and utilities/, 'an unknown topic never produces an empty question');
+});
+
+test('answer strings exist in lo/en/zh and fall back to English', () => {
+  for (const k of ['termsNotListed', 'depositNotListed', 'askAgentTerms', 'askAgentDeposit', 'askAgentMore', 'selectUnitToAsk']) {
+    for (const l of ['lo', 'en', 'zh']) assert.ok(G.contactIntentAnswerText(k, l).length > 0, k + '/' + l);
+    assert.equal(G.contactIntentAnswerText(k, 'vi'), G.contactIntentAnswerText(k, 'en'));
+  }
+  assert.equal(G.contactIntentAnswerText('nope', 'en'), '');
+});
+
+test('no Thai-block characters slipped into the Lao strings (U+0E00-0E7F are Thai; Lao is U+0E80-0EFF)', () => {
+  const src = fs.readFileSync(new URL('./contact-intent.js', import.meta.url), 'utf8');
+  assert.deepEqual(src.match(/[\u0E00-\u0E7F]/g), null);
 });

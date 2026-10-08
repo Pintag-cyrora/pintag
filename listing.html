@@ -280,6 +280,12 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .ci-answer-off{border-left-color:#B0443A;}
 .ci-answer-head{font-weight:600;color:var(--ink);}
 .ci-answer-detail{margin-top:2px;color:var(--ink-soft);}
+.ci-answer-terms{list-style:none;margin:6px 0 0;padding:0;}
+.ci-answer-terms li{padding:4px 0;border-top:1px solid var(--border);font-size:12.5px;color:var(--ink-soft);}
+.ci-answer-terms li:first-child{border-top:none;}
+.ci-answer-ask{display:flex;align-items:center;gap:8px;min-height:44px;margin-top:10px;padding:10px 14px;border:1px solid var(--wa);border-radius:10px;background:var(--white);color:var(--wa);font-weight:500;text-decoration:none;cursor:pointer;}
+.ci-answer-ask:hover{background:var(--warm);}
+.ci-answer-ask.ci-item-gated{border-style:dashed;color:var(--ink-soft);border-color:var(--border-strong);}
 .ci-answer-units{list-style:none;margin:8px 0 0;padding:0;}
 .ci-answer-units li{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-top:1px solid var(--border);font-size:12.5px;}
 .ci-answer-units .ci-unit-state{color:var(--ink-soft);text-align:right;}
@@ -1991,7 +1997,7 @@ function ptCiVisible(el){ return !!el&&(el.offsetParent!==null||(el.getClientRec
 function ptCiTarget(intent){
   if(intent==='location') return document.getElementById('section-map');
   if(intent==='price') return document.getElementById('section-price');
-  if(intent==='availability') return document.getElementById('contact-intent-answer');
+  if(intent==='availability'||intent==='terms') return document.getElementById('contact-intent-answer');
   if(intent==='gallery'){
     var ids=['section-gallery-desktop','section-gallery-mobile'];
     for(var i=0;i<ids.length;i++){
@@ -2055,6 +2061,83 @@ function ptCiRenderAvailability(summary,lang){
   return el;
 }
 
+// ── Terms & utilities / Price & deposit: answered on the page, or handed to the agent ───────────────
+// The listing's own Rental Terms (rental-terms.js resolveRentalTerms -- the only read API) decide it:
+//   * resolveContactIntentResolution() says 'answer_on_site' or 'escalate_to_agent' (and the topic)
+//   * 'answer_on_site' prints the terms the listing HAS in the answer box
+//   * 'escalate_to_agent' says what is missing and offers an explicit "Ask the agent on WhatsApp" button
+// Nothing opens WhatsApp until that button is tapped. Its click goes through ptContactClick() like every
+// other contact button (ui_events contact_intent_contact_agent + lead_events, one lead), carrying
+// {resolution:'escalate_to_agent', topic} so the funnel can tell an escalation from a plain contact.
+function ptCiRentalFacts(data){
+  var isRental=(typeof isRentalTransactionType==='function')&&!!data&&isRentalTransactionType(data.transaction_type);
+  var facts={isRental:isRental,termsKnown:0,hasDeposit:false,lines:[]};
+  if(!isRental||typeof resolveRentalTerms!=='function'||typeof RENTAL_TERMS_FIELDS==='undefined'||typeof formatRentalTermValue!=='function') return facts;
+  var unitRaw=(selectedUnitTypeId&&Array.isArray(data.unit_types))?(data.unit_types.filter(function(u){return u&&u.id===selectedUnitTypeId;})[0]||null):null;
+  var vals=resolveRentalTerms(data,unitRaw).values;
+  RENTAL_TERMS_FIELDS.forEach(function(f){
+    if(formatRentalTermValue(f.key,vals[f.key],'en')){ facts.termsKnown++; if(f.key==='deposit') facts.hasDeposit=true; facts.lines.push(f.key); }
+  });
+  facts.values=vals;
+  return facts;
+}
+
+// The "Ask the agent" control of an answer. A multi-unit listing needs a unit first (same gate as every
+// other WhatsApp action: the lead must say which unit), so it points at the unit picker instead.
+function ptCiAskAgentHtml(ctx,topic,labelKey){
+  var lang=ctx.lang;
+  if(!ctx.cleanPhone||!ctx.summary.available) return '';
+  if(ctx.summary.requiresUnitSelection&&!selectedUnitTypeId){
+    return '<a class="ci-answer-ask ci-item-gated" href="#units-section" role="button" aria-disabled="true" data-wa-needs-unit="1" onclick="return ptWaNeedUnit(event)">'+esc(contactIntentAnswerText('selectUnitToAsk',lang))+'</a>';
+  }
+  var msg=buildQuestionWhatsAppMessage({topic:topic,propertyName:ctx.tour.propertyName,canonicalUrl:ctx.tour.canonicalUrl,unitName:ctx.tour.unit?ctx.tour.unit.name:''},lang);
+  // The CURRENT contact's number (the contact picker may have changed it since this render), like every other
+  // WhatsApp control re-pointed by ptSelectContact().
+  var href='https://wa.me/'+(_currentContactPhone||ctx.cleanPhone)+'?text='+encodeURIComponent(msg);
+  var tp=(topic==='deposit')?'deposit':'terms';
+  return '<a class="ci-answer-ask" data-ci-wa="answer" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(href)+'" target="_blank" rel="noopener noreferrer" '+
+    'onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(ctx.data.id||'')+'\',partyId:\''+escJs(ctx.data.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnitTypeId||'')+'\',trackId:\'contact_intent_contact_agent\',trackLabel:\'WhatsApp\',trackMeta:ptCiMeta(\'contact_agent\',\'answer\',\'\',\'whatsapp\',{resolution:\'escalate_to_agent\',topic:\''+tp+'\'})})">'+
+    CONTACT_INTENTS.contact_agent.icon+' <span>'+esc(contactIntentAnswerText(labelKey,lang))+'</span></a>';
+}
+
+function ptCiShowAnswerBox(html,state){
+  var el=document.getElementById('contact-intent-answer');
+  if(!el) return null;
+  el.innerHTML=html;
+  el.className='ci-answer ci-answer-'+state;
+  el.removeAttribute('data-availability'); el.removeAttribute('data-scope');
+  el.hidden=false;
+  return el;
+}
+function ptCiHideAnswerBox(){
+  var el=document.getElementById('contact-intent-answer');
+  if(el){ el.hidden=true; el.innerHTML=''; el.removeAttribute('data-resolution'); }
+}
+
+// Terms & utilities: every Rental Term the listing has (registry order), then the agent control.
+function ptCiRenderTerms(res,facts,ctx,lang){
+  var html;
+  if(res.resolution==='answer_on_site'){
+    html='<div class="ci-answer-head">'+esc(ctx.L.rentalTerms[lang])+'</div><ul class="ci-answer-terms">'+
+      RENTAL_TERMS_FIELDS.map(function(f){return formatRentalTermValue(f.key,facts.values[f.key],lang);}).filter(Boolean)
+        .map(function(line){return '<li>'+esc(line)+'</li>';}).join('')+'</ul>';
+    if(res.offerAgent) html+=ptCiAskAgentHtml(ctx,'terms','askAgentMore');
+  }else{
+    html='<div class="ci-answer-head">'+esc(contactIntentAnswerText('termsNotListed',lang))+'</div>'+(res.offerAgent?ptCiAskAgentHtml(ctx,'terms','askAgentTerms'):'');
+  }
+  var el=ptCiShowAnswerBox(html,res.resolution==='answer_on_site'?'on':'off');
+  if(el) el.setAttribute('data-resolution',res.resolution);
+  return el;
+}
+// Price & deposit: the price section already shows the price (and the deposit when known). Only a rental whose
+// deposit is not listed gets a note and the agent control; anything else leaves the answer box empty.
+function ptCiRenderPriceNote(res,ctx,lang){
+  if(res.resolution!=='escalate_to_agent'){ ptCiHideAnswerBox(); return null; }
+  var el=ptCiShowAnswerBox('<div class="ci-answer-head">'+esc(contactIntentAnswerText('depositNotListed',lang))+'</div>'+ptCiAskAgentHtml(ctx,'deposit','askAgentDeposit'),'off');
+  if(el) el.setAttribute('data-resolution',res.resolution);
+  return el;
+}
+
 // Raises one answer intent: records it, then answers it on the page. Returns true when handled
 // (so the caller can cancel the element's default anchor jump), false for anything that is not an
 // answer intent.
@@ -2065,13 +2148,21 @@ function ptContactIntent(intent,opts){
   if(!data) return false;
   var lang=getCurrentLang();
   var summary=resolveContactIntentAvailability(data);
+  var ctx=_ciLastCtx, facts=null, res=null;
+  if(intent==='price'||intent==='terms'){
+    facts=ptCiRentalFacts(data);
+    res=resolveContactIntentResolution(intent,{isRental:facts.isRental,hasDeposit:facts.hasDeposit,termsKnown:facts.termsKnown,canEscalate:!!(ctx&&ctx.cleanPhone&&summary.available)});
+  }
   try{
     ptTrackContactIntent(intent,{
       listingId:data.id,lang:lang,surface:opts.surface||null,
-      unitTypeId:selectedUnitTypeId||null,availability:summary
+      unitTypeId:selectedUnitTypeId||null,availability:summary,
+      resolution:res?res.resolution:null,topic:res?res.topic:null
     });
   }catch(e){PT.warn('contact intent tracking failed',e);}
   if(intent==='availability') ptCiRenderAvailability(summary,lang);
+  else if(intent==='terms'&&ctx) ptCiRenderTerms(res,facts,ctx,lang);
+  else if(intent==='price'&&ctx) ptCiRenderPriceNote(res,ctx,lang);
   ptCiReveal(ptCiTarget(intent));
   return true;
 }
@@ -2096,10 +2187,11 @@ var _ciSheetOpener=null;      // the Ask button that opened it, to give focus ba
 var _ciLastCtx=null;          // the latest render's menu context, so the sheet can be refilled
 
 // Metadata for a contact-intent row, via the one shared builder (components.js).
-function ptCiMeta(intent,surface,unitTypeId,channel){
+function ptCiMeta(intent,surface,unitTypeId,channel,extra){
   var data=propertyContext;
+  extra=extra||{};
   return ptContactIntentMeta(intent,{
-    lang:getCurrentLang(),surface:surface||null,channel:channel||null,
+    lang:getCurrentLang(),surface:surface||null,channel:channel||null,resolution:extra.resolution||null,topic:extra.topic||null,
     unitTypeId:(unitTypeId!=null&&unitTypeId!=='')?unitTypeId:(selectedUnitTypeId||null),
     contactId:_currentContactId||null,
     availability:data?resolveContactIntentAvailability(data):null
@@ -2107,7 +2199,7 @@ function ptCiMeta(intent,surface,unitTypeId,channel){
 }
 
 function ptCiMenuRows(ctx){
-  return resolveContactIntentMenu(ctx.summary,{hasPhone:!!ctx.cleanPhone,hasPhotos:ctx.hasPhotos,selectedUnitTypeId:selectedUnitTypeId});
+  return resolveContactIntentMenu(ctx.summary,{hasPhone:!!ctx.cleanPhone,hasPhotos:ctx.hasPhotos,selectedUnitTypeId:selectedUnitTypeId,rental:ptCiRentalFacts(ctx.data)});
 }
 
 function ptCiRowHtml(row,surface,ctx){
@@ -2195,7 +2287,7 @@ function ptCiStatusRowHtml(ctx){
 }
 
 function ptCiSheetBodyHtml(ctx){
-  var rows=resolveContactIntentMenu(ctx.summary,{hasPhone:!!ctx.cleanPhone,hasPhotos:ctx.hasPhotos,selectedUnitTypeId:selectedUnitTypeId},CONTACT_INTENT_SHEET_ORDER);
+  var rows=resolveContactIntentMenu(ctx.summary,{hasPhone:!!ctx.cleanPhone,hasPhotos:ctx.hasPhotos,selectedUnitTypeId:selectedUnitTypeId,rental:ptCiRentalFacts(ctx.data)},CONTACT_INTENT_SHEET_ORDER);
   var agent=rows.filter(function(r){return r.id==='contact_agent';})[0]||null;
   var html=rows.filter(function(r){return r.id!=='contact_agent';}).map(function(r){return ptCiRowHtml(r,'sheet',ctx);}).join('');
   var tail=agent?ptCiAgentRowsHtml(agent,ctx):ptCiStatusRowHtml(ctx);

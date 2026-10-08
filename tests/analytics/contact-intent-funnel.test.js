@@ -12,6 +12,8 @@ const CIF = require('../../contact-intent-funnel.js');
 const load = (f) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', f), 'utf8'));
 const MAIN = () => load('contact-intent-funnel.rpc-output.json');
 const EMPTY = () => load('contact-intent-funnel.rpc-output.empty.json');
+const RES = () => load('contact-intent-funnel.rpc-output.resolution.json');          // Terms / Price & deposit scenarios
+const V1 = () => load('contact-intent-funnel.rpc-output.v1.json');                   // the ORIGINAL function: no `resolution` block
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const stage = (m, block, key) => m[block].find((r) => r.key === key);
 
@@ -33,7 +35,7 @@ test('buildModel on the controlled fixtures: every funnel count is exactly what 
   assert.equal(m.repeatOpenVisits, 1);
   assert.deepEqual(m.excluded, { nullSession: 1, nullProperty: 1 });
   // CONTACT INTENT
-  assert.deepEqual(m.contactIntent.map((r) => [r.key, r.count]), [['opened', 17], ['chosen', 15], ['where', 3], ['price', 2], ['availability', 1], ['photos', 1], ['unit', 2]]);
+  assert.deepEqual(m.contactIntent.map((r) => [r.key, r.count]), [['opened', 17], ['chosen', 15], ['where', 3], ['price', 2], ['terms', 0], ['availability', 1], ['photos', 1], ['unit', 2]]);
   assert.equal(m.selfServiceVisits, 5);
   // HIGH-INTENT CONVERSION
   assert.deepEqual(m.highIntent.map((r) => [r.key, r.count]), [['book', 1], ['call', 2], ['whatsapp', 6], ['clicks', 6]]);
@@ -85,10 +87,10 @@ test('the headline KPIs are the six the dashboard promises', () => {
   assert.match(html, /data-kpi="call-vs-whatsapp"[^>]*>.*?2 : 6/s);
 });
 
-test('structure: CONTACT INTENT (7 rows) and HIGH-INTENT CONVERSION (4 rows), in the agreed order', () => {
+test('structure: CONTACT INTENT (8 rows) and HIGH-INTENT CONVERSION (4 rows), in the agreed order', () => {
   const html = CIF.render(CIF.buildModel(MAIN()));
   const order = (block) => [...html.split('data-block="' + block + '"')[1].split('</table>')[0].matchAll(/data-stage="([a-z]+)"/g)].map((x) => x[1]);
-  assert.deepEqual(order('contact-intent'), ['opened', 'chosen', 'where', 'price', 'availability', 'photos', 'unit']);
+  assert.deepEqual(order('contact-intent'), ['opened', 'chosen', 'where', 'price', 'terms', 'availability', 'photos', 'unit']);
   assert.deepEqual(order('high-intent'), ['book', 'call', 'whatsapp', 'clicks']);
   assert.ok(html.indexOf('data-block="contact-intent"') < html.indexOf('data-block="high-intent"'));
 });
@@ -101,7 +103,7 @@ test('self-service intents are never presented as failed conversion', () => {
   // "failed" appears only in the explicit negation (self-service is NOT a failed conversion) and the "failed insert" data-quality note
   assert.deepEqual([...html.matchAll(/[^.>"]*\bfailed\b[^.<"]*/gi)].map((x) => x[0].trim()).filter((t) => !/not a failed conversion|a failed insert/i.test(t)), []);
   const m = CIF.buildModel(MAIN());
-  assert.equal(m.contactIntent.filter((r) => r.self).map((r) => r.key).join(), 'where,price,availability,photos');
+  assert.equal(m.contactIntent.filter((r) => r.self).map((r) => r.key).join(), 'where,price,terms,availability,photos');
 });
 
 test('diagnostics are collapsed (not open) and hold the low-volume breakdowns', () => {
@@ -208,4 +210,81 @@ test('loading / error shells keep the same anchor so a Retry can swap them in pl
   assert.match(CIF.loadingHtml(), /id="ci-funnel"/);
   assert.match(CIF.errorHtml('<div>x</div>'), /id="ci-funnel"/);
   assert.match(CIF.render(CIF.buildModel(MAIN())), /id="ci-funnel"/);
+});
+
+
+// ═══ Terms & utilities / Price & deposit: the resolution breakdown ══════════════════════════════════
+test('resolution scenarios: the model reproduces the database\'s numbers exactly', () => {
+  const m = CIF.buildModel(RES());
+  assert.equal(m.visits, 11);
+  assert.deepEqual(m.contactIntent.map((r) => [r.key, r.count]), [['opened', 11], ['chosen', 11], ['where', 1], ['price', 5], ['terms', 6], ['availability', 0], ['photos', 0], ['unit', 0]]);
+  assert.equal(m.selfServiceVisits, 6, 'self-service excludes the Price/Terms taps the page could not answer');
+  assert.equal(m.escalatedVisits, 5);
+  assert.deepEqual(m.resolution.price, { answered: 3, escalated: 2, unspecified: 1 });
+  assert.deepEqual(m.resolution.terms, { answered: 2, escalated: 3, unspecified: 1 });
+  assert.deepEqual(m.resolution.deposit, { answered: 2, escalated: 2 });
+  assert.deepEqual(m.resolution.askAgent, { visits: 3, terms: 2, deposit: 1 });
+  assert.equal(m.resolution.escalatedVisits, 5);
+  assert.equal(m.resolution.escalatedThenContact, 3);
+  assert.deepEqual([m.agentContactVisits, m.kpis.callVisits, m.kpis.whatsappVisits], [4, 1, 3]);
+  assert.deepEqual(m.integrity, []);
+});
+
+test('the Resolution block shows answered / handed-over / not-recorded per question', () => {
+  const html = CIF.render(CIF.buildModel(RES()));
+  assert.match(html, /data-block="resolution"/);
+  const cells = (k) => [...html.match(new RegExp('<tr data-resolution-row="' + k + '">(.*?)</tr>', 's'))[1].matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((x) => x[1].replace(/<[^>]+>/g, ''));
+  assert.deepEqual(cells('price').slice(0, 4), ['Price &amp; deposit', '3', '2', '1']);
+  assert.deepEqual(cells('terms').slice(0, 4), ['Terms &amp; utilities', '2', '3', '1']);
+  assert.deepEqual(cells('deposit').slice(0, 3), ['…of which about the deposit', '2', '2']);
+});
+
+test('resolution shares are withheld below the listing-level floor (never a percentage of a handful)', () => {
+  const html = CIF.render(CIF.buildModel(RES()));
+  const priceRow = html.match(/<tr data-resolution-row="price">(.*?)<\/tr>/s)[1];
+  assert.match(priceRow, /title="Too few visits for a share">—</);
+  const raw = RES(); raw.resolution.terms = { answer_on_site: 30, escalate_to_agent: 10, unspecified: 0 };
+  const row = CIF.render(CIF.buildModel(raw)).match(/<tr data-resolution-row="terms">(.*?)<\/tr>/s)[1];
+  assert.match(row, /25%/);
+});
+
+test('the resolution line states escalated visits and how many then contacted the agent; Ask-the-agent taps by topic', () => {
+  const html = CIF.render(CIF.buildModel(RES()));
+  assert.match(html, /data-res="escalated"[^>]*><b>5<\/b> Ask visits had a question handed to the agent; <b>3<\/b> of them then contacted the agent/);
+  assert.match(html, /data-res="ask-agent"[^>]*><b>3<\/b> visits tapped “Ask the agent” \(2 about terms · 1 about the deposit\)/);
+});
+
+test('a v1 payload (no resolution block) still renders, explains what is missing, and never draws an empty Resolution table', () => {
+  const m = CIF.buildModel(V1());
+  assert.equal(m.resolution, null);
+  assert.deepEqual(m.integrity, []);
+  const html = CIF.render(m);
+  assert.doesNotMatch(html, /data-block="resolution"/);
+  assert.match(html, /data-caveat="resolution-missing"/);
+  assert.match(html, /20261009000000/);
+  assert.equal(m.contactIntent.find((r) => r.key === 'terms').count, 0);
+  assert.doesNotMatch(html, /NaN|undefined/);
+});
+
+test('the v2 payload for the original fixtures keeps every v1 number (backward compatibility, end to end)', () => {
+  const a = CIF.buildModel(V1()), b = CIF.buildModel(MAIN());
+  for (const k of ['visits', 'selfServiceVisits', 'agentContactVisits', 'highIntentVisits']) assert.equal(b[k], a[k], k);
+  assert.deepEqual(b.highIntent.map((r) => r.count), a.highIntent.map((r) => r.count));
+  assert.deepEqual(b.clicks, a.clicks);
+  assert.deepEqual(b.resolution.price, { answered: 0, escalated: 0, unspecified: 2 }, 'the old Price rows have no resolution: "not recorded", still self-service');
+});
+
+test('integrity flags an impossible resolution payload', () => {
+  const raw = RES(); raw.resolution.escalated_then_contact_visits = 99;
+  assert.ok(CIF.buildModel(raw).integrity.some((x) => /Escalated-then-contacted/.test(x)));
+  const raw2 = RES(); raw2.resolution.escalated_visits = 1;
+  assert.ok(CIF.buildModel(raw2).integrity.some((x) => /differ/.test(x)));
+});
+
+test('garbage in the resolution block becomes zeros, hostile strings are escaped', () => {
+  const raw = RES(); raw.resolution.price = { answer_on_site: 'x', escalate_to_agent: -3 }; raw.resolution.ask_agent_clicks = { visits: '<script>' };
+  const m = CIF.buildModel(raw);
+  assert.deepEqual(m.resolution.price, { answered: 0, escalated: 0, unspecified: 0 });
+  assert.equal(m.resolution.askAgent.visits, 0);
+  assert.doesNotMatch(CIF.render(m), /<script>|NaN|undefined/);
 });

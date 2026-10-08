@@ -65,7 +65,7 @@ const PANEL = '#ci-panel-body', SHEET = '#ci-sheet', ASK = '#ci-open-sheet';
 // (Call / WhatsApp are the same contact_agent intent: told apart by channel), or the status CTA when OFF.
 const sheetKeys = (page) => page.locator('#ci-sheet-body .ci-item').evaluateAll((els) => els.map((e) =>
   e.getAttribute('data-contact-intent') || (e.hasAttribute('data-ci-call') ? 'call' : (e.getAttribute('data-ci-wa') === 'contact_agent' ? 'whatsapp' : (e.getAttribute('data-ci-wa') || 'status')))));
-const SHEET_ON = ['location', 'price', 'availability', 'gallery', 'book_tour', 'call', 'whatsapp'];
+const SHEET_ON = ['location', 'price', 'terms', 'availability', 'gallery', 'book_tour', 'call', 'whatsapp'];
 const SHEET_ANSWERS = ['location', 'price', 'availability', 'gallery'];
 // tel: links would navigate the test browser; the click handlers (tracking) still run
 const noTelNav = (page) => page.addInitScript(() => document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('a[href^="tel:"]')) e.preventDefault(); }, true));
@@ -75,9 +75,10 @@ const GATED = async (loc) => {
   await expect(loc).toHaveAttribute('aria-disabled', 'true');
   await expect(loc).toHaveAttribute('href', '#units-section');
 };
-const MENU = ['contact_agent', 'book_tour', 'location', 'price', 'availability', 'gallery'];       // the mobile sheet: the complete menu
+const MENU = ['contact_agent', 'book_tour', 'location', 'price', 'terms', 'availability', 'gallery'];   // a rental: Terms & utilities follows Price       // the mobile sheet: the complete menu
 const PANEL_MENU = MENU.filter((i) => i !== 'contact_agent');                                       // the desktop panel: the primary WhatsApp button is Contact agent
-const ANSWERS = ['location', 'price', 'availability', 'gallery'];
+const ANSWERS = ['location', 'price', 'availability', 'gallery'];                                  // an OFF listing / no number: no Terms row (nothing to answer with or hand to)
+const ANSWERS_ON = ['location', 'price', 'terms', 'availability', 'gallery'];                          // a rental that is ON
 
 // ═══ Desktop panel ═══════════════════════════════════════════════════════════
 test.describe('desktop panel', () => {
@@ -219,10 +220,10 @@ test.describe('mobile sheet', () => {
     await expect(page.locator('#ci-sheet-title')).toHaveText('Ask about this property');
     expect(await sheetKeys(page)).toEqual(SHEET_ON);
     expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(
-      ['Where is it?', "What's the price?", 'Is it available?', 'View photos', 'Book a viewing', 'Call agent', 'Chat with agent on WhatsApp']);
+      ['Where is it?', "What's the price?", 'Terms & utilities', 'Is it available?', 'View photos', 'Book a viewing', 'Call agent', 'Chat with agent on WhatsApp']);
     // the divider and the "Contact an agent" label sit between Book a viewing and the contact rows
     expect(await page.locator('#ci-sheet-body').evaluate((b) => [...b.children].map((e) => e.getAttribute('role') === 'separator' ? 'divider' : (e.classList.contains('ci-group-label') ? 'label:' + e.textContent : 'row')))).toEqual(
-      ['row', 'row', 'row', 'row', 'row', 'divider', 'label:Contact an agent', 'row', 'row']);
+      ['row', 'row', 'row', 'row', 'row', 'row', 'divider', 'label:Contact an agent', 'row', 'row']);
     await expect(page.locator('#ci-call-sheet')).toBeVisible();
     await expect(page.locator('#ci-wa-sheet')).toBeVisible();
     await expect(page.locator(ASK)).toHaveAttribute('aria-expanded', 'true');
@@ -751,19 +752,19 @@ test.describe('availability', () => {
     await expect(page.locator('#contact-intent-answer')).toContainText('已售出');
     await open(page, prop(), { lang: 'lo' });
     await toggle(page);
-    expect(await page.locator(PANEL + ' .ci-item .ci-label').allInnerTexts()).toEqual(['ນັດເບິ່ງຊັບສິນ', 'ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ']);
+    expect(await page.locator(PANEL + ' .ci-item .ci-label').allInnerTexts()).toEqual(['ນັດເບິ່ງຊັບສິນ', 'ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ເງື່ອນໄຂ ແລະ ຄ່າສາທາລະນູປະໂພກ', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ']);
     await page.setViewportSize({ width: 375, height: 760 });
     await page.waitForTimeout(300);
     await page.click(ASK);
-    expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(['ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ', 'ນັດເບິ່ງຊັບສິນ', 'ໂທຫາຕົວແທນ', 'ແຊັດກັບຕົວແທນທາງ WhatsApp']);
+    expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(['ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ເງື່ອນໄຂ ແລະ ຄ່າສາທາລະນູປະໂພກ', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ', 'ນັດເບິ່ງຊັບສິນ', 'ໂທຫາຕົວແທນ', 'ແຊັດກັບຕົວແທນທາງ WhatsApp']);
   });
 });
 
 // ═══ Labels per language / no photos / no phone ══════════════════════════════
 test.describe('labels and edge cases', () => {
   for (const [lang, labels, callLabel, waLabel] of [
-    ['en', ['Book a viewing', 'Where is it?', "What's the price?", 'Is it available?', 'View photos'], 'Call agent', 'Chat with agent on WhatsApp'],
-    ['zh', ['预约看房', '在哪里？', '价格多少？', '还有吗？', '查看照片'], '致电经纪人', '通过 WhatsApp 联系经纪人'],
+    ['en', ['Book a viewing', 'Where is it?', "What's the price?", 'Terms & utilities', 'Is it available?', 'View photos'], 'Call agent', 'Chat with agent on WhatsApp'],
+    ['zh', ['预约看房', '在哪里？', '价格多少？', '条款与水电杂费', '还有吗？', '查看照片'], '致电经纪人', '通过 WhatsApp 联系经纪人'],
   ]) {
     test(`${lang}: the menu labels`, async ({ page }) => {
       await open(page, prop(), { lang });
@@ -780,11 +781,11 @@ test.describe('labels and edge cases', () => {
   test('no photos: View photos is not offered', async ({ page }) => {
     await open(page, prop({ images: [] }));
     await toggle(page);
-    expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(['book_tour', 'location', 'price', 'availability']);
+    expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(['book_tour', 'location', 'price', 'terms', 'availability']);
     await page.setViewportSize({ width: 375, height: 760 });
     await page.waitForTimeout(300);
     await page.click(ASK);
-    expect(await sheetKeys(page)).toEqual(['location', 'price', 'availability', 'book_tour', 'call', 'whatsapp']);
+    expect(await sheetKeys(page)).toEqual(['location', 'price', 'terms', 'availability', 'book_tour', 'call', 'whatsapp']);
   });
 
   test('no contact number: only the answers are offered', async ({ page }) => {
@@ -979,5 +980,215 @@ test.describe('contact_intent_unit_select', () => {
     const { posts } = await open(page, prop());
     await page.waitForTimeout(300);
     expect(unitEvents(posts)).toEqual([]);
+  });
+});
+
+// ═══ Terms & utilities and Price & deposit: answered on the page, or handed to the agent ════════════════
+// resolution 'answer_on_site' | 'escalate_to_agent' and topic 'price' | 'deposit' | 'terms' travel in ui_events.metadata
+// (no schema change). Nothing opens WhatsApp until the explicit "Ask the agent" button is tapped; that click is one
+// contact_intent_contact_agent row (surface "answer", channel "whatsapp", resolution escalate_to_agent) + ONE lead.
+test.describe('Terms & utilities / Price & deposit', () => {
+  const TERMS = { version: 1, deposit: { type: 'months_of_rent', value: 2 }, electricity: { type: 'included' } };
+  const NO_DEPOSIT = { version: 1, electricity: { type: 'included' } };
+  const BOX = '#contact-intent-answer';
+  const ASKBTN = `${BOX} .ci-answer-ask`;
+  const evs = (posts, id) => posts.ui_events.filter((e) => e.element_id === id);
+  const panelTerms = (page) => page.locator(`${PANEL} [data-contact-intent="terms"]`);
+  const panelPrice = (page) => page.locator(`${PANEL} [data-contact-intent="price"]`);
+
+  test.describe('the Terms row: where and when it appears', () => {
+    const NO_NUMBER = [{ sort_order: 0, is_primary: true, contacts: Object.assign({}, A, { phone: '', whatsapp: '' }) }];
+    for (const [label, row, expected] of [
+      ['rental with terms', prop({ rental_terms: TERMS }), true],
+      ['rental with no terms but a number (the agent can be asked)', prop(), true],
+      ['rental with terms but no number', prop({ rental_terms: TERMS, property_contacts: NO_NUMBER }), true],
+      ['rental with no terms and no number: nothing to answer with or hand to', prop({ property_contacts: NO_NUMBER }), false],
+      ['sale listing (rental terms do not apply)', prop({ transaction_type: 'for_sale', rental_terms: TERMS }), false],
+      ['sold rental WITH terms: still answerable', prop({ market_status: 'sold', rental_terms: TERMS }), true],
+      ['sold rental with NO terms: an OFF listing has no WhatsApp path to hand it to', prop({ market_status: 'sold' }), false],
+    ]) {
+      test(`${label}: ${expected ? 'shown' : 'hidden'}`, async ({ page }) => {
+        await open(page, row);
+        await toggle(page);
+        const keys = await ids(page.locator(PANEL + ' .ci-item'));
+        expect(keys.includes('terms')).toBe(expected);
+        if (expected) expect(keys.indexOf('terms')).toBe(keys.indexOf('price') + 1);              // directly after Price
+      });
+    }
+  });
+
+  test('Terms with data: answers on the page (answer_on_site), lists the terms, no lead, no WhatsApp; then an explicit ask = ONE lead', async ({ page }) => {
+    const { posts } = await open(page, prop({ rental_terms: TERMS }));
+    await toggle(page);
+    await panelTerms(page).click();
+    await expect(page.locator(BOX)).toBeVisible();
+    await expect(page.locator(BOX)).toHaveAttribute('data-resolution', 'answer_on_site');
+    await expect(page.locator(`${BOX} .ci-answer-terms li`)).toHaveCount(2);
+    await expect(page.locator(BOX)).toContainText('Security Deposit');
+    const t = evs(posts, 'contact_intent_terms');
+    expect(t.length).toBe(1);
+    expect(t[0]).toMatchObject({ element_type: 'contact_intent', label: 'Terms & utilities', property_id: 'p-menu' });
+    expect(t[0].metadata).toMatchObject({ intent: 'terms', resolution: 'answer_on_site', topic: 'terms', surface: 'panel', lang: 'en' });
+    expect(posts.lead_events).toEqual([]);
+    expect(await page.evaluate(() => window.__opens.length)).toBe(0);
+    // the soft "ask about anything not listed" control: one tap, one lead, an escalation
+    const ask = page.locator(ASKBTN);
+    await expect(ask).toHaveText(/Ask the agent about anything not listed/);
+    const href = await ask.getAttribute('href');
+    expect(href).toMatch(new RegExp('^https://wa\\.me/' + NUM.a + '\\?text='));
+    const msg = decodeURIComponent(href.split('?text=')[1]);
+    expect(msg).toContain('rental terms and utilities'); expect(msg).toContain('Nice Apartment'); expect(msg).toContain('https://pintag.io/listing.html?slug=menu-test&lang=en');
+    await ask.click(); await page.waitForTimeout(400);
+    expect(posts.lead_events.length).toBe(1);
+    expect(posts.lead_events[0]).toMatchObject({ listing_id: 'p-menu', contact_id: 'a', event_type: 'whatsapp_click' });
+    const cta = posts.ui_events.filter((e) => e.element_type === 'cta');
+    expect(cta.length).toBe(1);
+    expect(cta[0]).toMatchObject({ element_id: 'contact_intent_contact_agent', label: 'WhatsApp' });
+    expect(cta[0].metadata).toMatchObject({ intent: 'contact_agent', surface: 'answer', channel: 'whatsapp', resolution: 'escalate_to_agent', topic: 'terms' });
+  });
+
+  test('Terms with NO data: escalate_to_agent, says what is missing, offers the agent; WhatsApp only on the tap', async ({ page }) => {
+    const { posts } = await open(page, prop());
+    await toggle(page);
+    await panelTerms(page).click();
+    await expect(page.locator(BOX)).toHaveAttribute('data-resolution', 'escalate_to_agent');
+    await expect(page.locator(BOX)).toContainText("aren't listed yet");
+    await expect(page.locator(`${BOX} .ci-answer-terms`)).toHaveCount(0);
+    await expect(page.locator(ASKBTN)).toHaveText(/Ask the agent about terms on WhatsApp/);
+    expect(evs(posts, 'contact_intent_terms')[0].metadata).toMatchObject({ resolution: 'escalate_to_agent', topic: 'terms' });
+    expect(posts.lead_events).toEqual([]);                                                   // choosing the question is not contacting anyone
+    await page.locator(ASKBTN).click(); await page.waitForTimeout(400);
+    expect(posts.lead_events.length).toBe(1);
+    expect(posts.ui_events.filter((e) => e.element_type === 'cta')[0].metadata).toMatchObject({ resolution: 'escalate_to_agent', topic: 'terms', surface: 'answer', channel: 'whatsapp' });
+  });
+
+  test('Price on a rental WITH a deposit: answer_on_site, topic deposit; the price section is shown, nothing to ask', async ({ page }) => {
+    const { posts } = await open(page, prop({ rental_terms: TERMS }));
+    await toggle(page);
+    await panelPrice(page).click();
+    await page.waitForTimeout(300);
+    const p = evs(posts, 'contact_intent_price');
+    expect(p.length).toBe(1);
+    expect(p[0].metadata).toMatchObject({ intent: 'price', resolution: 'answer_on_site', topic: 'deposit', surface: 'panel' });
+    await expect(page.locator(BOX)).toBeHidden();
+    await expect(page.locator('.price-deposit')).toContainText('Security Deposit');         // the price section already shows it
+    expect(posts.lead_events).toEqual([]);
+  });
+
+  test('Price on a rental with NO deposit listed: escalate_to_agent, topic deposit, an explicit ask button', async ({ page }) => {
+    const { posts } = await open(page, prop({ rental_terms: NO_DEPOSIT }));
+    await toggle(page);
+    await panelPrice(page).click();
+    await expect(page.locator(BOX)).toBeVisible();
+    await expect(page.locator(BOX)).toContainText("deposit for this property isn't listed");
+    expect(evs(posts, 'contact_intent_price')[0].metadata).toMatchObject({ resolution: 'escalate_to_agent', topic: 'deposit' });
+    const msg = decodeURIComponent((await page.locator(ASKBTN).getAttribute('href')).split('?text=')[1]);
+    expect(msg).toContain('the deposit');
+    expect(posts.lead_events).toEqual([]);
+    await page.locator(ASKBTN).click(); await page.waitForTimeout(400);
+    expect(posts.lead_events.length).toBe(1);
+    expect(posts.ui_events.filter((e) => e.element_type === 'cta')[0].metadata).toMatchObject({ resolution: 'escalate_to_agent', topic: 'deposit' });
+  });
+
+  test('Price on a sale listing: answer_on_site, topic price; no deposit question is invented', async ({ page }) => {
+    const { posts } = await open(page, prop({ transaction_type: 'for_sale' }));
+    await toggle(page);
+    await panelPrice(page).click();
+    await page.waitForTimeout(300);
+    expect(evs(posts, 'contact_intent_price')[0].metadata).toMatchObject({ resolution: 'answer_on_site', topic: 'price' });
+    await expect(page.locator(BOX)).toBeHidden();
+  });
+
+  test('an OFF rental offers no agent: Price stays answer_on_site, Terms (with data) has no ask button', async ({ page }) => {
+    const { posts } = await open(page, prop({ market_status: 'sold', rental_terms: NO_DEPOSIT }));
+    await toggle(page);
+    await panelPrice(page).click(); await page.waitForTimeout(250);
+    expect(evs(posts, 'contact_intent_price')[0].metadata).toMatchObject({ resolution: 'answer_on_site', topic: 'price' });   // nothing was offered, so nothing is "escalated"
+    await panelTerms(page).click();
+    await expect(page.locator(BOX)).toHaveAttribute('data-resolution', 'answer_on_site');
+    await expect(page.locator(ASKBTN)).toHaveCount(0);
+    expect(posts.lead_events).toEqual([]);
+  });
+
+  test('multi-unit with no unit chosen: the ask control is gated on the unit picker (no lead, no WhatsApp); choosing a unit unlocks it', async ({ page }) => {
+    const { posts } = await open(page, MULTI({ unit_types: [UA, UB] }));
+    await toggle(page);
+    await panelTerms(page).click();
+    const gated = page.locator(`${BOX} .ci-answer-ask`);
+    await expect(gated).toHaveAttribute('data-wa-needs-unit', '1');
+    await expect(gated).toHaveAttribute('aria-disabled', 'true');
+    await expect(gated).toContainText('Select a unit above');
+    await gated.click({ force: true }); await page.waitForTimeout(350);
+    expect(posts.lead_events).toEqual([]);
+    expect(posts.ui_events.filter((e) => e.element_type === 'cta')).toEqual([]);
+    await page.locator('.unit-card', { hasText: 'Room Type B' }).first().click();
+    await page.waitForTimeout(500);                                                          // the panel stays open across the re-render
+    await panelTerms(page).click();
+    const live = page.locator(ASKBTN);
+    await expect(live).not.toHaveAttribute('data-wa-needs-unit', '1');
+    const msg = decodeURIComponent((await live.getAttribute('href')).split('?text=')[1]);
+    expect(msg).toContain('Room Type B');                                                  // the lead says WHICH unit
+    await live.click(); await page.waitForTimeout(400);
+    expect(posts.lead_events.length).toBe(1);
+    expect(posts.lead_events[0]).toMatchObject({ unit_type_id: 'room-b' });
+  });
+
+  test('a per-unit override changes the answer for that unit', async ({ page }) => {
+    const UO = Object.assign({}, UA, { rental_terms_overrides: { version: 1, deposit: { type: 'months_of_rent', value: 1 } } });
+    await open(page, MULTI({ rental_terms: TERMS, unit_types: [UO, UB] }));
+    await toggle(page);
+    await panelTerms(page).click();
+    const building = (await page.locator(`${BOX} .ci-answer-terms`).innerText()).replace(/\s+/g, ' ');
+    await page.locator('.unit-card', { hasText: 'Room Type A' }).first().click();
+    await page.waitForTimeout(500);
+    await panelTerms(page).click();
+    const unit = (await page.locator(`${BOX} .ci-answer-terms`).innerText()).replace(/\s+/g, ' ');
+    expect(unit).not.toBe(building);
+  });
+
+  test('mobile sheet: Terms is in the sheet after Price, records surface "sheet", closes the sheet and answers on the page', async ({ page }) => {
+    const { posts } = await phone(page, { row: prop({ rental_terms: TERMS }) });
+    await page.click(ASK);
+    expect(await sheetKeys(page)).toEqual(SHEET_ON);
+    await page.locator('#ci-sheet-body [data-contact-intent="terms"]').click();
+    await expect(page.locator('#ci-sheet-root')).toBeHidden();
+    await expect(page.locator(BOX)).toBeVisible();
+    expect(evs(posts, 'contact_intent_terms')[0].metadata).toMatchObject({ surface: 'sheet', resolution: 'answer_on_site' });
+  });
+
+  test('the question is asked in the visitor\'s language (zh) and follows the contact picker', async ({ page }) => {
+    const { posts } = await open(page, TWO(), { lang: 'zh' });
+    await toggle(page);
+    await page.locator('.contact-picker .cpick-row').nth(1).click();
+    await page.waitForTimeout(300);
+    await panelTerms(page).click();
+    const href = await page.locator(ASKBTN).getAttribute('href');
+    expect(href).toMatch(new RegExp('^https://wa\\.me/' + NUM.b));
+    expect(decodeURIComponent(href.split('?text=')[1])).toContain('租赁条款和水电杂费');
+    await page.locator(ASKBTN).click(); await page.waitForTimeout(400);
+    expect(posts.lead_events[0]).toMatchObject({ contact_id: 'b' });
+    expect(posts.ui_events.filter((e) => e.element_type === 'cta')[0].metadata).toMatchObject({ contact_id: 'b', lang: 'zh', resolution: 'escalate_to_agent' });
+  });
+
+  test('repeat taps on Terms/Price never create a lead, and an answer rendered earlier is replaced, not stacked', async ({ page }) => {
+    const { posts } = await open(page, prop({ rental_terms: NO_DEPOSIT }));
+    await toggle(page);
+    await panelTerms(page).click(); await page.waitForTimeout(350);
+    await panelPrice(page).click(); await page.waitForTimeout(350);
+    await panelTerms(page).click(); await page.waitForTimeout(350);
+    expect(await page.locator(`${BOX} .ci-answer-ask`).count()).toBe(1);
+    expect(posts.lead_events).toEqual([]);
+    expect(evs(posts, 'contact_intent_terms').length).toBe(2);
+    expect(evs(posts, 'contact_intent_price').length).toBe(1);
+  });
+
+  test('no JS errors and no duplicate ids with the new row and answer controls', async ({ page }) => {
+    const { errors } = await open(page, MULTI({ rental_terms: NO_DEPOSIT }));
+    await toggle(page);
+    await panelTerms(page).click();
+    await panelPrice(page).click();
+    const dup = await page.evaluate(() => { const c = {}; document.querySelectorAll('[id]').forEach((e) => { c[e.id] = (c[e.id] || 0) + 1; }); return Object.keys(c).filter((k) => c[k] > 1); });
+    expect(dup).toEqual([]);
+    expect(errors).toEqual([]);
   });
 });
