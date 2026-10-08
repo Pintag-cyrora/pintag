@@ -233,10 +233,11 @@ test('resolution scenarios: the model reproduces the database\'s numbers exactly
 test('the Resolution block shows answered / handed-over / not-recorded per question', () => {
   const html = CIF.render(CIF.buildModel(RES()));
   assert.match(html, /data-block="resolution"/);
-  const cells = (k) => [...html.match(new RegExp('<tr data-resolution-row="' + k + '">(.*?)</tr>', 's'))[1].matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((x) => x[1].replace(/<[^>]+>/g, ''));
-  assert.deepEqual(cells('price').slice(0, 4), ['Price &amp; deposit', '3', '2', '1']);
-  assert.deepEqual(cells('terms').slice(0, 4), ['Terms &amp; utilities', '2', '3', '1']);
-  assert.deepEqual(cells('deposit').slice(0, 3), ['…of which about the deposit', '2', '2']);
+  // exact cell sequence per row (no tag-stripping regex: the markup is built by us and compared verbatim)
+  const rowStart = (k, label) => '<tr data-resolution-row="' + k + '"><td>' + label + '</td>';
+  assert.ok(html.includes(rowStart('price', 'Price &amp; deposit') + '<td>3</td><td>2</td><td>1</td>'), 'Price & deposit: 3 answered, 2 handed over, 1 not recorded');
+  assert.ok(html.includes(rowStart('terms', 'Terms &amp; utilities') + '<td>2</td><td>3</td><td>1</td>'), 'Terms & utilities: 2 answered, 3 handed over, 1 not recorded');
+  assert.ok(html.includes(rowStart('deposit', '…of which about the deposit') + '<td>2</td><td>2</td>'), 'deposit topic: 2 answered, 2 handed over');
 });
 
 test('resolution shares are withheld below the listing-level floor (never a percentage of a handful)', () => {
@@ -286,5 +287,7 @@ test('garbage in the resolution block becomes zeros, hostile strings are escaped
   const m = CIF.buildModel(raw);
   assert.deepEqual(m.resolution.price, { answered: 0, escalated: 0, unspecified: 0 });
   assert.equal(m.resolution.askAgent.visits, 0);
-  assert.doesNotMatch(CIF.render(m), /<script>|NaN|undefined/);
+  const out = CIF.render(m);
+  assert.doesNotMatch(out, /<script/i);
+  assert.doesNotMatch(out, /NaN|undefined/);
 });
