@@ -302,7 +302,7 @@ var UI_ICON_MAP = {
   // contact-whatsapp / mcta-whatsapp / unit-inquire-whatsapp rows, which keep their own entries.
   'contact_intent_open':'⋯','contact_intent_location':'📍','contact_intent_price':'💰',
   'contact_intent_availability':'🏠','contact_intent_gallery':'📷','contact_intent_book_tour':'📅',
-  'contact_intent_contact_agent':'💬','mcta-whatsapp':'💬','unit-inquire-whatsapp':'💬'
+  'contact_intent_contact_agent':'💬','contact_intent_unit_select':'🏢','mcta-whatsapp':'💬','unit-inquire-whatsapp':'💬'
 };
 // Elements where a null property_id is a real problem, not expected —
 // panels/filters/sort legitimately have no property context.
@@ -312,7 +312,7 @@ var PROPERTY_SCOPED_UI_ELEMENTS = [
   'gallery-thumbnail','gallery-hero-image','gallery-mobile-slide','agent-whatsapp',
   // every contact-intent row is about one listing, so a null property_id is a real problem
   'contact_intent_open','contact_intent_location','contact_intent_price','contact_intent_availability',
-  'contact_intent_gallery','contact_intent_book_tour','contact_intent_contact_agent'
+  'contact_intent_gallery','contact_intent_book_tour','contact_intent_contact_agent','contact_intent_unit_select'
 ];
 // Elements whose metadata is always populated by tracking.js — a null
 // here means the batch/position data got lost somewhere.

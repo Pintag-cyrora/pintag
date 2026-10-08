@@ -1951,7 +1951,14 @@ function showErrorState(msg){
 var selectedUnitTypeId = null;
 function selectUnitType(id){
   if(!id) return;
-  selectedUnitTypeId = (selectedUnitTypeId===id) ? null : id;
+  var wasSelected = (selectedUnitTypeId===id);
+  selectedUnitTypeId = wasSelected ? null : id;
+  // Contact Intent funnel: the visitor actually CHOSE a unit (a click on a unit card; deep links set the
+  // variable directly and never come through here, and renders never call this). Un-selecting back to
+  // the overview is not a step towards a contact, so it records nothing.
+  if(!wasSelected && propertyContext && typeof ptTrackContactIntent==='function'){
+    try{ ptTrackContactIntent('unit_select',{listingId:propertyContext.id,lang:getCurrentLang(),surface:'unit_card',unitTypeId:id,availability:resolveContactIntentAvailability(propertyContext)}); }catch(e){ PT.err('contact_intent_unit_select',e); }
+  }
   _syncUnitUrlParam();
   try{buildMockupLayout();}catch(e){PT.err('buildMockupLayout on unit select',e);}
   // The units section sits well below the gallery/price, so picking one

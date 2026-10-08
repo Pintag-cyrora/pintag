@@ -91,6 +91,7 @@ function esc(s) {
 // AT TIME ZONE 'Asia/Vientiane', so the browser's timezone can't matter.
 const LAOS = PT_LAOS_DATE;
 const CORE = PT_ANALYTICS_CORE;
+const CIF = PT_CONTACT_INTENT_FUNNEL;
 
 let _range = null;        // {preset, start, endExclusive, label, text, days}
 let _compareRange = null; // {start, endExclusive, beforeData} | null (All time)
@@ -635,8 +636,36 @@ async function loadBehaviorTab() {
 // ══════════════════════════════════════════════════════════════════════
 // LEADS TAB
 // ══════════════════════════════════════════════════════════════════════
+// ── Contact Intent funnel (top of the Leads tab) ───────────────────────
+// One staff-only RPC, analytics_contact_intent_funnel(). It has its OWN error state: if it fails
+// (or the migration is not applied yet) the section says so with a Retry button and the rest of
+// the Leads tab still renders -- the failure is visible, never zeros.
+async function fetchContactIntentFunnelHtml() {
+  try {
+    const raw = await sbRpc('analytics_contact_intent_funnel', rangeParams());
+    return CIF.render(CIF.buildModel(raw));
+  } catch (err) {
+    console.error('[Analytics] contact intent funnel failed', err);
+    const notInstalled = err && (err.status === 404 || /PGRST202|could not find the function/i.test(String(err.detail || err.message || '')));
+    const msg = notInstalled
+      ? 'The Contact Intent funnel function is not installed in the database yet (migration 20261008000000_analytics_contact_intent_funnel.sql has not been applied).'
+      : (err && err.message ? err.message : 'Unexpected error.');
+    return CIF.errorHtml(CORE.errorBannerHtml(msg, 'retryContactIntentFunnel()'));
+  }
+}
+async function retryContactIntentFunnel() {
+  const host = document.getElementById('ci-funnel');
+  if (!host) return;
+  const key = rangeKey();
+  host.outerHTML = CIF.loadingHtml();
+  const html = await fetchContactIntentFunnelHtml();
+  const now = document.getElementById('ci-funnel');
+  if (now && rangeKey() === key) now.outerHTML = html;   // a range change meanwhile re-renders the whole tab
+}
+
 async function loadLeadsTab() {
   const el = document.getElementById('view-leads');
+  const funnelPromise = fetchContactIntentFunnelHtml();   // runs alongside the leads breakdown
   // analytics_leads_breakdown() computes every summary server-side over
   // whatever range is selected (no window cap). It counts OFFICIAL CRM leads
   // only; lead_events with no CRM row are reported separately as
@@ -667,7 +696,8 @@ async function loadLeadsTab() {
       '</tbody></table></div>'
     : '<div class="an-empty">No lead activity in this period.</div>';
 
-  el.innerHTML =
+  const funnelHtml = await funnelPromise;
+  el.innerHTML = funnelHtml +
     '<div class="section-block">' + sectionHeader('Leads') +
       '<div class="stat-grid">' +
         statCard('Total leads', total) +

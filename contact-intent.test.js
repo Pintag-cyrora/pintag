@@ -170,7 +170,7 @@ test('the existing resolvers are unchanged by this feature (still the same funct
 // ═══ Intent registry ═════════════════════════════════════════════════════════
 test('registry: every contact intent has a stable event id, an English label and lo/en/zh labels', () => {
   const ids = Object.keys(CONTACT_INTENTS);
-  assert.deepEqual(ids.sort(), ['availability', 'book_tour', 'contact_agent', 'gallery', 'location', 'open', 'price']);
+  assert.deepEqual(ids.sort(), ['availability', 'book_tour', 'contact_agent', 'gallery', 'location', 'open', 'price', 'unit_select']);
   for (const id of ids) {
     const d = CONTACT_INTENTS[id];
     assert.equal(d.eventId, 'contact_intent_' + id);
@@ -187,6 +187,17 @@ test('registry: kinds, order, and which intents are answers', () => {
   for (const id of ['location', 'price', 'availability', 'gallery']) assert.equal(isContactIntentAnswer(id), true, id);
   for (const id of ['book_tour', 'contact_agent', 'open']) assert.equal(isContactIntentAnswer(id), false, id);
   assert.equal(CONTACT_INTENTS.book_tour.kind, 'whatsapp'); assert.equal(CONTACT_INTENTS.contact_agent.kind, 'whatsapp');
+});
+
+test('unit_select: a tracked intent (contact_intent_unit_select) that is NOT a menu row, an answer or a WhatsApp action', () => {
+  assert.equal(contactIntentEventId('unit_select'), 'contact_intent_unit_select');
+  assert.equal(CONTACT_INTENTS.unit_select.kind, 'unit');
+  assert.equal(isContactIntentAnswer('unit_select'), false);
+  assert.equal(CONTACT_INTENT_ORDER.includes('unit_select'), false);
+  assert.equal(G.CONTACT_INTENT_SHEET_ORDER.includes('unit_select'), false);
+  assert.equal(G.CONTACT_INTENT_MENU_ORDER.includes('unit_select'), false);
+  const rows = G.resolveContactIntentMenu(G.resolveContactIntentAvailability ? { availability: { available: true, reason: null, scope: 'property' } } : {}, { hasPhone: true, hasPhotos: true });
+  assert.equal(rows.some((r) => r.id === 'unit_select'), false, 'never offered as a menu row');
 });
 
 test('registry: unknown / hostile ids are not intents and have no event id', () => {

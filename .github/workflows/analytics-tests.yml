@@ -18,11 +18,15 @@ on:
       - 'analytics-inspector.html'
       - 'analytics.js'
       - 'analytics-core.js'
+      - 'contact-intent-funnel.js'
       - 'laos-date.js'
       - 'charts.js'
       - 'tests/analytics/**'
       - 'tests/security/regression/*analytics_laos_calendar_days*'
       - 'tests/security/regression/run-analytics-laos-calendar-days-pg.sh'
+      - 'tests/security/regression/*contact_intent_funnel*'
+      - 'tests/security/regression/run-contact-intent-funnel-pg.sh'
+      - 'supabase/migrations/20261008000000_analytics_contact_intent_funnel.sql'
       - 'supabase/migrations/20260921030000_analytics_laos_calendar_days.sql'
       - 'supabase/migrations/20260921040000_analytics_history_and_lead_drilldown.sql'
       - 'supabase/functions/generate-intelligence-report/date-boundary.js'
@@ -34,11 +38,15 @@ on:
       - 'analytics-inspector.html'
       - 'analytics.js'
       - 'analytics-core.js'
+      - 'contact-intent-funnel.js'
       - 'laos-date.js'
       - 'charts.js'
       - 'tests/analytics/**'
       - 'tests/security/regression/*analytics_laos_calendar_days*'
       - 'tests/security/regression/run-analytics-laos-calendar-days-pg.sh'
+      - 'tests/security/regression/*contact_intent_funnel*'
+      - 'tests/security/regression/run-contact-intent-funnel-pg.sh'
+      - 'supabase/migrations/20261008000000_analytics_contact_intent_funnel.sql'
       - 'supabase/migrations/20260921030000_analytics_laos_calendar_days.sql'
       - 'supabase/migrations/20260921040000_analytics_history_and_lead_drilldown.sql'
       - 'supabase/functions/generate-intelligence-report/date-boundary.js'
@@ -94,6 +102,12 @@ jobs:
       # inside half of Supabase's 8 s `authenticated` statement_timeout.
       - name: Analytics SQL regression + scale probe
         run: bash tests/security/regression/run-analytics-laos-calendar-days-pg.sh
+
+      # Contact Intent funnel RPC (20261008000000): controlled-fixture funnel counts (self-service,
+      # WhatsApp, Call, Book viewing, direct, legacy contact-phone, multi-unit, repeated opens, NULL
+      # session, deleted listing, legacy rows), Laos-day boundaries, ACLs, search_path, read-only.
+      - name: Contact Intent funnel SQL regression
+        run: bash tests/security/regression/run-contact-intent-funnel-pg.sh
 
   e2e:
     name: Admin Analytics page (Playwright, stubbed RPCs)

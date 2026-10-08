@@ -185,9 +185,12 @@ test.describe('tracking', () => {
     await page.locator('.unit-card', { hasText: 'Room B' }).first().click();
     await page.waitForTimeout(500);
     await raise(page, 'location', 'mobile_bar');
-    const rows = intentRows(posts);
+    // choosing a unit also records contact_intent_unit_select (its own event); the two ANSWER rows are what this checks
+    const rows = intentRows(posts).filter((r) => r.element_id !== 'contact_intent_unit_select');
     expect(rows[0].metadata.surface).toBe('band'); expect(rows[0].metadata.unit_type_id).toBe(null);
     expect(rows[1].metadata.surface).toBe('mobile_bar'); expect(rows[1].metadata.unit_type_id).toBe('room-b');
+    const pick = intentRows(posts).filter((r) => r.element_id === 'contact_intent_unit_select');
+    expect(pick.length).toBe(1); expect(pick[0].metadata.unit_type_id).toBe('room-b');
   });
 
   test('the row has no event_type override and stays within the existing ui_events columns', async ({ page }) => {

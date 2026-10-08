@@ -11,6 +11,10 @@
 const { test, expect } = require('@playwright/test');
 const LAOS = require('../../laos-date.js');
 const CORE = require('../../analytics-core.js');
+const fs = require('fs');
+const path = require('path');
+// The real analytics_contact_intent_funnel() output for the controlled Postgres fixtures (fixtures/README.md).
+const FUNNEL_FIXTURE = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'contact-intent-funnel.rpc-output.json'), 'utf8'));
 
 const TIMEZONES = ['UTC', 'Asia/Vientiane', 'Pacific/Kiritimati'];
 // 2026-10-01 00:30 in Laos, 2026-09-30 17:30 UTC: the instant the requirement calls out.
@@ -124,6 +128,11 @@ function makeFake(opts = {}) {
     analytics_behavior: () => ({ entry: [], exit: [], avg_duration: [], scroll: {}, top_clicks: [] }),
     analytics_location_breakdown: () => ({ device: {}, browser: {}, os: {}, lang: {} }),
     analytics_admin_insights: () => ({ new_listings: 7, by_agent: [], by_district: [], by_type: [], no_views: [], high_view_low_convert: [] }),
+    analytics_contact_intent_funnel: b => {
+      const f = JSON.parse(JSON.stringify(st.funnel || FUNNEL_FIXTURE));
+      if (f.range) { f.range.start = b.p_start; f.range.end_exclusive = b.p_end; }
+      return f;
+    },
     analytics_leads_breakdown: b => {
       const rows = inRange(b);
       const leads = rows.filter(r => r.kind === 'lead');
@@ -699,5 +708,122 @@ test.describe('one calendar for cards and counts', () => {
     await page.click('.tab[data-tab="listings"]');
     // 7 days, all present (server zero-fills; the client no longer plots only days that have data)
     await expect(page.locator('#li-trend-chart rect[data-i]')).toHaveCount(7);
+  });
+});
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// Contact Intent funnel: the section at the top of the Leads tab
+// ════════════════════════════════════════════════════════════════════════════
+test.describe('Contact Intent funnel (Leads tab)', () => {
+  const openLeads = async (page, fake) => {
+    const errors = await open(page, fake);
+    await page.click('.tab[data-tab="leads"]');
+    await expect(page.locator('#view-leads #ci-funnel')).toBeVisible();
+    return errors;
+  };
+  const kpi = (page, key) => page.locator('#ci-funnel [data-kpi="' + key + '"] .stat-value');
+
+  test('it is the FIRST section of the Leads tab, above the existing lead totals', async ({ page }) => {
+    const fake = makeFake(); const errors = await openLeads(page, fake);
+    const order = await page.evaluate(() => {
+      const v = document.getElementById('view-leads');
+      const funnel = v.querySelector('#ci-funnel'), leads = [...v.querySelectorAll('.section-block')].find((b) => /Total leads/.test(b.textContent) && b.id !== 'ci-funnel');
+      return { first: v.firstElementChild.id, funnelBeforeLeads: !!(funnel.compareDocumentPosition(leads) & Node.DOCUMENT_POSITION_FOLLOWING) };
+    });
+    expect(order).toEqual({ first: 'ci-funnel', funnelBeforeLeads: true });
+    await expect(page.locator('#view-leads .stat-card', { hasText: 'Total leads' })).toBeVisible();   // the existing section is intact
+    expect(errors).toEqual([]);
+  });
+
+  test('it asks for exactly the selected Laos calendar days, and again when the range changes', async ({ page }) => {
+    const fake = makeFake(); await openLeads(page, fake);
+    const first = lastCall(fake, 'analytics_contact_intent_funnel');
+    expect(first).toEqual({ p_start: '2026-09-25', p_end: '2026-10-02' });                  // 7d preset on the fixed clock: Laos 2026-10-01 (00:30), today inclusive
+    await page.click('.range-preset[data-range="30d"]');
+    await expect(page.locator('#view-leads #ci-funnel')).toBeVisible();
+    await expect.poll(() => fake.callsFor('analytics_contact_intent_funnel').length).toBe(2);
+    expect(lastCall(fake, 'analytics_contact_intent_funnel')).toEqual({ p_start: '2026-09-02', p_end: '2026-10-02' });
+  });
+
+  test('the headline KPIs, both blocks and their rows are on the page', async ({ page }) => {
+    const fake = makeFake(); await openLeads(page, fake);
+    await expect(kpi(page, 'visits')).toHaveText('17');
+    await expect(kpi(page, 'call-vs-whatsapp')).toHaveText('2 : 6');
+    await expect(kpi(page, 'contact-clicks')).toHaveText('7');
+    for (const k of ['self-service', 'agent-contact', 'book']) await expect(kpi(page, k)).toHaveText('—');   // 17 visits: rates withheld
+    await expect(page.locator('#ci-funnel [data-block="contact-intent"] tr[data-stage]')).toHaveCount(7);
+    await expect(page.locator('#ci-funnel [data-block="high-intent"] tr[data-stage]')).toHaveCount(4);
+    await expect(page.locator('#ci-funnel [data-caveat="volume"]')).toContainText('Only 17 Ask visits');
+    await expect(page.locator('#ci-funnel [data-block="reconciliation"]')).toContainText('12 WhatsApp / call clicks');
+  });
+
+  test('with enough volume the rates appear', async ({ page }) => {
+    const f = JSON.parse(JSON.stringify(FUNNEL_FIXTURE));
+    f.ask.visits = 100; f.contact_intent.self_service_visits = 40; f.high_intent.agent_contact_visits = 25; f.high_intent.book_visits = 5;
+    f.contact_intent.intent_chosen_visits = 70; f.high_intent.high_intent_visits = 30;
+    const fake = makeFake({ funnel: f }); await openLeads(page, fake);
+    await expect(kpi(page, 'self-service')).toHaveText('40%');
+    await expect(kpi(page, 'agent-contact')).toHaveText('25%');
+    await expect(kpi(page, 'book')).toHaveText('5%');
+    await expect(page.locator('#ci-funnel [data-caveat="volume"]')).toHaveCount(0);
+  });
+
+  test('Today is clearly marked incomplete', async ({ page }) => {
+    const f = JSON.parse(JSON.stringify(FUNNEL_FIXTURE)); f.range.includes_today = true; f.range.outcomes_incomplete = true;
+    const fake = makeFake({ funnel: f }); await openLeads(page, fake);
+    const c = page.locator('#ci-funnel [data-caveat="today"]');
+    await expect(c).toBeVisible();
+    await expect(c).toContainText('Today (Laos time) is still in progress');
+  });
+
+  test('a range reaching before the final layout day shows the history caveat; nothing is backfilled', async ({ page }) => {
+    const fake = makeFake(); await openLeads(page, fake);
+    await expect(page.locator('#ci-funnel [data-caveat="epoch"]')).toContainText('nothing is backfilled');
+  });
+
+  test('diagnostics are collapsed by default and expand on demand', async ({ page }) => {
+    const fake = makeFake(); await openLeads(page, fake);
+    const d = page.locator('#ci-funnel details.cif-diag');
+    await expect(d).not.toHaveAttribute('open', '');
+    await expect(d.locator('table').first()).toBeHidden();
+    await d.locator('summary').click();
+    await expect(d.locator('table').first()).toBeVisible();
+    await expect(d).toContainText('Derived action → lead matching');
+    await expect(d).toContainText('By listing');
+  });
+
+  test('a funnel failure is VISIBLE with Retry, the rest of the Leads tab still renders, and Retry recovers', async ({ page }) => {
+    const fake = makeFake({ fail: { analytics_contact_intent_funnel: { status: 500, json: { code: '57014', message: 'canceling statement due to statement timeout' } } } });
+    await openLeads(page, fake);
+    const host = page.locator('#view-leads #ci-funnel');
+    await expect(host.locator('.an-error')).toContainText('took too long');
+    await expect(host.locator('.an-error')).toContainText('Nothing was hidden or replaced with zeros');
+    await expect(host.locator('[data-kpi]')).toHaveCount(0);                                  // no zeros dressed up as data
+    await expect(page.locator('#view-leads .stat-card', { hasText: 'Total leads' })).toBeVisible();
+    delete fake.st.fail.analytics_contact_intent_funnel;
+    await host.locator('button', { hasText: 'Retry' }).click();
+    await expect(page.locator('#view-leads #ci-funnel [data-kpi="visits"] .stat-value')).toHaveText('17');
+    await expect(page.locator('#view-leads #ci-funnel .an-error')).toHaveCount(0);
+  });
+
+  test('when the migration is not applied yet the section says so (404) instead of showing zeros', async ({ page }) => {
+    const fake = makeFake({ fail: { analytics_contact_intent_funnel: { status: 404, json: { code: 'PGRST202', message: 'Could not find the function public.analytics_contact_intent_funnel' } } } });
+    await openLeads(page, fake);
+    await expect(page.locator('#ci-funnel .an-error')).toContainText('not installed in the database yet');
+    await expect(page.locator('#ci-funnel .an-error')).toContainText('20261008000000');
+    await expect(page.locator('#view-leads .stat-card', { hasText: 'Total leads' })).toBeVisible();
+  });
+
+  test('a malformed answer is an error, not zeros', async ({ page }) => {
+    const fake = makeFake({ funnel: { ask: {} } }); await openLeads(page, fake);
+    await expect(page.locator('#ci-funnel .an-error')).toContainText('incomplete');
+    await expect(page.locator('#ci-funnel [data-kpi]')).toHaveCount(0);
+  });
+
+  test('no buyer data, session ids or phone numbers reach the page', async ({ page }) => {
+    const fake = makeFake(); await openLeads(page, fake);
+    const html = await page.locator('#ci-funnel').innerHTML();
+    expect(html).not.toMatch(/\+856|customer_|\bs[0-9]{2}[ab]?\b/);
   });
 });
