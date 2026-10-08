@@ -92,7 +92,7 @@
       // ── HIGH-INTENT CONVERSION block ──
       highIntent: [
         { key: 'book',     label: 'Book viewing',   count: n(hi.book_visits),  rate: rate(hi.book_visits, visits) },
-        { key: 'call',     label: 'Call agent',     count: n(hi.call_visits),  rate: rate(hi.call_visits, visits), note: 'Includes the older desktop Call button (contact-phone).' },
+        { key: 'call',     label: 'Call agent',     count: n(hi.call_visits),  rate: rate(hi.call_visits, visits), note: 'Includes the older desktop Call button.' },
         { key: 'whatsapp', label: 'WhatsApp',       count: n(hi.whatsapp_visits), rate: rate(hi.whatsapp_visits, visits), note: 'Contact agent on WhatsApp, not Book a viewing.' },
         { key: 'clicks',   label: 'Contact clicks', count: n(hi.contact_click_visits), rate: rate(hi.contact_click_visits, visits), note: 'Visits with a recorded WhatsApp or call click (the lead record). A Book viewing also produces a WhatsApp click.' }
       ],
