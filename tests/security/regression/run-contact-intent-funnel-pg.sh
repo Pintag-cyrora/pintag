@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 # Regression runner for supabase/migrations/20261008000000_analytics_contact_intent_funnel.sql
+#                   and 20261009000000_analytics_contact_intent_resolution.sql
 #
 #   bash tests/security/regression/run-contact-intent-funnel-pg.sh
 #
@@ -21,6 +22,7 @@ MIGRATIONS=(
   "$ROOT/supabase/migrations/20260921030000_analytics_laos_calendar_days.sql"
   "$ROOT/supabase/migrations/20260921040000_analytics_history_and_lead_drilldown.sql"
   "$ROOT/supabase/migrations/20261008000000_analytics_contact_intent_funnel.sql"
+  "$ROOT/supabase/migrations/20261009000000_analytics_contact_intent_resolution.sql"
 )
 for m in "${MIGRATIONS[@]}"; do [[ -f "$m" ]] || { echo "FATAL: migration not found: $m"; exit 1; }; done
 
@@ -73,12 +75,25 @@ for pass in 1 2; do
   done
 done
 
-echo "Running assertions…"
+# The ORIGINAL funnel regression runs against the v2 function (both migrations applied): every v1 number
+# must be unchanged, which proves v2 is backward compatible for rows that carry no resolution.
+echo "Running assertions (v1 funnel regression against the v2 function)…"
 if psql_db postgres -f "$HERE/contact_intent_funnel_regression.sql" 2>&1 | sed 's/^psql:.*NOTICE: *//'; [[ "${PIPESTATUS[0]}" -eq 0 ]]; then
   echo
   echo "PASS — funnel stages, normalisation, reconciliation, Laos days, edge cases and ACLs all hold."
 else
   echo
   echo "FAIL — a regression assertion did not hold (see above)."
+  exit 1
+fi
+
+echo
+echo "Running assertions (Terms & utilities / Price & deposit resolution)…"
+if psql_db postgres -f "$HERE/contact_intent_resolution_regression.sql" 2>&1 | sed 's/^psql:.*NOTICE: *//'; [[ "${PIPESTATUS[0]}" -eq 0 ]]; then
+  echo
+  echo "PASS — resolution handling (answer_on_site / escalate_to_agent, topics, escalation clicks) holds."
+else
+  echo
+  echo "FAIL — a resolution regression assertion did not hold (see above)."
   exit 1
 fi

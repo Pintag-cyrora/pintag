@@ -83,12 +83,15 @@
         { key: 'opened',       label: 'Ask opened',            count: visits,                   rate: null, note: 'Distinct (visitor session, listing) pairs that opened the Ask menu.' },
         { key: 'chosen',       label: 'Intent chosen',         count: n(ci.intent_chosen_visits), rate: rate(ci.intent_chosen_visits, visits), note: 'Picked at least one option: a self-service answer, a unit, or an action.' },
         { key: 'where',        label: 'Where',                 count: n(ci.where_visits),         rate: rate(ci.where_visits, visits),        self: true },
-        { key: 'price',        label: 'Price',                 count: n(ci.price_visits),         rate: rate(ci.price_visits, visits),        self: true },
+        { key: 'price',        label: 'Price & deposit',       count: n(ci.price_visits),         rate: rate(ci.price_visits, visits),        self: true, note: 'Self-service only when the page answered it; an unanswered deposit question is under Resolution.' },
+        { key: 'terms',        label: 'Terms & utilities',     count: n(ci.terms_visits),         rate: rate(ci.terms_visits, visits),        self: true, note: 'Rentals only. Self-service only when the listing had terms to show.' },
         { key: 'availability', label: 'Availability',          count: n(ci.availability_visits),  rate: rate(ci.availability_visits, visits), self: true },
         { key: 'photos',       label: 'Photos',                count: n(ci.photos_visits),        rate: rate(ci.photos_visits, visits),       self: true },
         { key: 'unit',         label: 'Unit selection',        count: n(ci.unit_select_visits),   rate: rate(ci.unit_select_visits, visits),  note: 'Multi-unit listings only.' }
       ],
       selfServiceVisits: n(ci.self_service_visits),
+      escalatedVisits: n(ci.escalated_visits),
+      resolution: resolutionModel(raw.resolution),
       // ── HIGH-INTENT CONVERSION block ──
       highIntent: [
         { key: 'book',     label: 'Book viewing',   count: n(hi.book_visits),  rate: rate(hi.book_visits, visits) },
@@ -141,6 +144,19 @@
   }
 
   function pick(o) { o = obj(o); return { total: n(o.total), call: n(o.call), whatsapp: n(o.whatsapp) }; }
+  // Was the visitor's question answered on the page, or handed to the agent? null when the database is still on
+  // the v1 function (migration 20261009000000 not applied): the block is then simply not drawn.
+  function resolutionModel(r) {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+    function trio(o) { o = obj(o); return { answered: n(o.answer_on_site), escalated: n(o.escalate_to_agent), unspecified: n(o.unspecified) }; }
+    var dep = obj(r.deposit_topic), ak = obj(r.ask_agent_clicks);
+    return {
+      price: trio(r.price), terms: trio(r.terms),
+      deposit: { answered: n(dep.answer_on_site), escalated: n(dep.escalate_to_agent) },
+      escalatedVisits: n(r.escalated_visits), escalatedThenContact: n(r.escalated_then_contact_visits),
+      askAgent: { visits: n(ak.visits), terms: n(ak.terms), deposit: n(ak.deposit) }
+    };
+  }
   function dims(a) {
     return arr(a).map(function (d) {
       return { key: String(d.key == null ? 'unknown' : d.key), visits: n(d.ask_visits), selfService: n(d.self_service_visits),
@@ -164,6 +180,11 @@
     chk(m.agentContactVisits <= m.highIntentVisits, 'Agent-contact visits exceed high-intent visits.');
     chk(m.clicks.viaAsk.total + m.clicks.direct.total + m.clicks.unlinked.total === m.clicks.total, 'Contact-click paths do not add up to the total.');
     chk(m.clicks.call + m.clicks.whatsapp === m.clicks.total, 'Call + WhatsApp clicks do not add up to the total.');
+    if (m.resolution) {
+      chk(m.resolution.escalatedThenContact <= m.resolution.escalatedVisits, 'Escalated-then-contacted visits exceed escalated visits.');
+      chk(m.resolution.escalatedVisits === m.escalatedVisits, 'Escalated visits differ between the intent block and the resolution block.');
+      chk(m.resolution.escalatedVisits <= v, 'Escalated visits exceed Ask visits.');
+    }
     return out;
   }
 
@@ -181,6 +202,9 @@
     }
     if (m.lowVolume) {
       c.push({ id: 'volume', level: 'info', text: 'Only ' + m.visits + ' Ask visit' + (m.visits === 1 ? '' : 's') + ' in this range (rates need at least ' + MIN_VISITS_FOR_RATES + '). Counts are shown; percentages are withheld.' });
+    }
+    if (!m.resolution) {
+      c.push({ id: 'resolution-missing', level: 'info', text: 'The Terms & utilities / Price & deposit resolution breakdown needs the database function update (migration 20261009000000). Until it is applied, every Price tap counts as self-service and Terms taps are not counted.' });
     }
     if (m.excluded.nullSession || m.excluded.nullProperty) {
       var bits = [];
@@ -250,6 +274,7 @@
           '<p class="cif-foot">Percentages are of all Ask visits. A visit that does several things is counted once per row.</p></div>' +
       '</div>';
 
+    var resBlock = resolutionHtml(m);
     var c = m.clicks;
     var recon = '<div class="chart-card cif-recon" data-block="reconciliation"><h3 class="cif-h3">All contact clicks in this range</h3>' +
       '<p>' + esc(c.total) + ' WhatsApp / call click' + (c.total === 1 ? '' : 's') + ' (' + esc(c.call) + ' call · ' + esc(c.whatsapp) + ' WhatsApp): ' +
@@ -258,7 +283,28 @@
 
     var diag = diagnostics(m);
     return '<div class="section-block cif" id="ci-funnel" data-testid="contact-intent-funnel">' +
-      '<div class="section-header"><h2>Contact Intent</h2></div>' + caveats + integrity + kpis + table + recon + diag + '</div>';
+      '<div class="section-header"><h2>Contact Intent</h2></div>' + caveats + integrity + kpis + table + resBlock + recon + diag + '</div>';
+  }
+
+  function resolutionHtml(m) {
+    var r = m.resolution;
+    if (!r) return '';
+    function row(label, t, key) {
+      var total = t.answered + t.escalated + (t.unspecified || 0);
+      var share = rate(t.escalated, total, MIN_LISTING_VISITS);
+      return '<tr data-resolution-row="' + esc(key) + '"><td>' + esc(label) + '</td><td>' + t.answered + '</td><td>' + t.escalated + '</td>' +
+        '<td>' + (t.unspecified == null ? '<span class="muted">—</span>' : t.unspecified) + '</td>' +
+        '<td' + (share.suppressed ? ' class="muted" title="Too few visits for a share"' : '') + '>' + esc(share.text) + '</td></tr>';
+    }
+    var a = r.askAgent;
+    return '<div class="chart-card cif-res" data-block="resolution"><h3 class="cif-h3">Resolution — answered on the site, or handed to the agent?</h3>' +
+      '<table class="an-table"><thead><tr><th>Question</th><th>Answered on site</th><th>Handed to agent</th><th>Not recorded</th><th>% handed over</th></tr></thead><tbody>' +
+      row('Price & deposit', r.price, 'price') + row('Terms & utilities', r.terms, 'terms') +
+      row('…of which about the deposit', { answered: r.deposit.answered, escalated: r.deposit.escalated, unspecified: null }, 'deposit') +
+      '</tbody></table>' +
+      '<p class="cif-res-line" data-res="escalated"><b>' + esc(r.escalatedVisits) + '</b> Ask visit' + (r.escalatedVisits === 1 ? '' : 's') + ' had a question handed to the agent; <b>' + esc(r.escalatedThenContact) + '</b> of them then contacted the agent.</p>' +
+      '<p class="cif-res-line" data-res="ask-agent"><b>' + esc(a.visits) + '</b> visit' + (a.visits === 1 ? '' : 's') + ' tapped “Ask the agent” (' + esc(a.terms) + ' about terms · ' + esc(a.deposit) + ' about the deposit). Each tap is one WhatsApp contact click.</p>' +
+      '<p class="cif-foot">“Answered on site” means the listing had that information to show; “handed to agent” means it did not, so the visitor was offered WhatsApp. “Not recorded” are taps from before this was tracked. A visit that did both is counted in both columns.</p></div>';
   }
 
   function diagnostics(m) {
