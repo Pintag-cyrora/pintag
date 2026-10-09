@@ -667,8 +667,11 @@ test('Lao / Chinese copy conventions for the NEW Terms & Price-deposit strings (
   for (const t of [label('terms', 'lo'), A('termsNotListed', 'lo'), q('terms', 'lo')]) assert.ok(t.includes('ຄ່າໄຟ ແລະ ຄ່ານ້ຳ'), t);
   // Chinese: 电费、水费、网络, and the site's own "通过WhatsApp咨询" form (no spaces around WhatsApp)
   assert.ok(q('terms', 'zh').includes('电费、水费、网络'));
+  assert.equal(A('askAgentTerms', 'zh'), '通过WhatsApp向经纪人咨询租赁条款');
+  assert.equal(A('askAgentDeposit', 'zh'), '通过WhatsApp向经纪人咨询押金');
+  assert.equal(A('askAgentMore', 'zh'), '通过WhatsApp向经纪人咨询其他未列出的内容');
   for (const k of ['askAgentTerms', 'askAgentDeposit', 'askAgentMore']) {
-    assert.ok(A(k, 'zh').includes('通过WhatsApp咨询'), k + ': ' + A(k, 'zh'));
+    assert.ok(A(k, 'zh').startsWith('通过WhatsApp向经纪人咨询'), k + ': ' + A(k, 'zh'));
     assert.ok(!/ WhatsApp|WhatsApp /.test(A(k, 'zh')), k + ' has no spaces around WhatsApp');
   }
   // English is unchanged
@@ -677,4 +680,20 @@ test('Lao / Chinese copy conventions for the NEW Terms & Price-deposit strings (
   assert.equal(A('askAgentMore', 'en'), 'Ask the agent about anything not listed');
   assert.equal(label('terms', 'en'), 'Terms & utilities');
   assert.match(q('terms', 'en'), /rental terms and utilities \(deposit, electricity, water, internet, lease length\)/);
+});
+
+test('Lao mobile-sheet contact group uses ນາຍໜ້າ and ຜ່ານ WhatsApp, consistent with the new strings', () => {
+  const ui = G.contactIntentUiText;
+  assert.equal(ui('contactGroup', 'lo'), 'ຕິດຕໍ່ນາຍໜ້າ');
+  assert.equal(ui('callAgent', 'lo'), 'ໂທຫານາຍໜ້າ');
+  assert.equal(ui('chatWhatsApp', 'lo'), 'ແຊັດກັບນາຍໜ້າຜ່ານ WhatsApp');
+  assert.equal(G.contactIntentLabel('contact_agent', 'lo'), 'ຕິດຕໍ່ນາຍໜ້າ');
+  for (const k of ['menuTitle', 'contactGroup', 'callAgent', 'chatWhatsApp', 'close', 'unitUnavailable']) {
+    assert.ok(!ui(k, 'lo').includes('ຕົວແທນ'), k);
+    assert.ok(!ui(k, 'lo').includes('ທາງ WhatsApp'), k);
+  }
+  // English and Chinese sheet strings are unchanged
+  assert.equal(ui('contactGroup', 'en'), 'Contact an agent');
+  assert.equal(ui('chatWhatsApp', 'en'), 'Chat with agent on WhatsApp');
+  assert.equal(ui('chatWhatsApp', 'zh'), '通过 WhatsApp 联系经纪人');
 });

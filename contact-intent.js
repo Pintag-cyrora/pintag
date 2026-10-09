@@ -106,7 +106,7 @@ var CONTACT_INTENTS = {
   },
   contact_agent: {
     id: 'contact_agent', kind: 'whatsapp', highIntent: true, eventId: 'contact_intent_contact_agent', labelEn: 'Contact agent', icon: '💬',
-    labels: { lo: 'ຕິດຕໍ່ຕົວແທນ', en: 'Contact agent', zh: '联系经纪人' },
+    labels: { lo: 'ຕິດຕໍ່ນາຍໜ້າ', en: 'Contact agent', zh: '联系经纪人' },
     surfaces: ['band', 'mobile_bar', 'unit_card'],
     // Every element_id a WhatsApp inquiry was recorded under before this model: the
     // desktop band, the mobile sticky bar and the per-unit Inquire button.
@@ -382,9 +382,9 @@ function resolveContactIntentMenu(summary, ctx, order) {
 var _CI_UI_TEXT = {
   menuTitle: { en: 'Ask about this property', lo: 'ສອບຖາມກ່ຽວກັບຊັບສິນນີ້', zh: '咨询此房源' },
   // The mobile sheet's last group: both rows are the contact_agent intent (channel call / whatsapp).
-  contactGroup: { en: 'Contact an agent',           lo: 'ຕິດຕໍ່ຕົວແທນ',              zh: '联系经纪人' },
-  callAgent:    { en: 'Call agent',                 lo: 'ໂທຫາຕົວແທນ',               zh: '致电经纪人' },
-  chatWhatsApp: { en: 'Chat with agent on WhatsApp', lo: 'ແຊັດກັບຕົວແທນທາງ WhatsApp', zh: '通过 WhatsApp 联系经纪人' },
+  contactGroup: { en: 'Contact an agent',           lo: 'ຕິດຕໍ່ນາຍໜ້າ',               zh: '联系经纪人' },
+  callAgent:    { en: 'Call agent',                 lo: 'ໂທຫານາຍໜ້າ',                zh: '致电经纪人' },
+  chatWhatsApp: { en: 'Chat with agent on WhatsApp', lo: 'ແຊັດກັບນາຍໜ້າຜ່ານ WhatsApp', zh: '通过 WhatsApp 联系经纪人' },
   close:     { en: 'Close',                   lo: 'ປິດ',                    zh: '关闭' },
   unitUnavailable: { en: 'Unit not available', lo: 'ຫ້ອງນີ້ບໍ່ວ່າງ',        zh: '该户型暂不可订' }
 };
@@ -428,9 +428,9 @@ function resolveContactIntentResolution(intent, facts) {
 var _CI_ANSWER_TEXT = {
   termsNotListed:   { en: "The terms and utilities for this property aren't listed yet.", lo: 'ເງື່ອນໄຂ, ຄ່າໄຟ ແລະ ຄ່ານ້ຳຂອງຊັບສິນນີ້ຍັງບໍ່ໄດ້ລະບຸ.', zh: '该房源的条款与水电杂费暂未列出。' },
   depositNotListed: { en: "The deposit for this property isn't listed.", lo: 'ເງິນມັດຈຳຂອງຊັບສິນນີ້ຍັງບໍ່ໄດ້ລະບຸ.', zh: '该房源的押金暂未列出。' },
-  askAgentTerms:    { en: 'Ask the agent about terms on WhatsApp', lo: 'ສອບຖາມນາຍໜ້າກ່ຽວກັບເງື່ອນໄຂຜ່ານ WhatsApp', zh: '通过WhatsApp咨询条款' },
-  askAgentDeposit:  { en: 'Ask the agent about the deposit on WhatsApp', lo: 'ສອບຖາມນາຍໜ້າກ່ຽວກັບເງິນມັດຈຳຜ່ານ WhatsApp', zh: '通过WhatsApp咨询押金' },
-  askAgentMore:     { en: 'Ask the agent about anything not listed', lo: 'ສອບຖາມນາຍໜ້າກ່ຽວກັບສິ່ງທີ່ບໍ່ໄດ້ລະບຸ', zh: '通过WhatsApp咨询其他未列出的内容' },
+  askAgentTerms:    { en: 'Ask the agent about terms on WhatsApp', lo: 'ສອບຖາມນາຍໜ້າກ່ຽວກັບເງື່ອນໄຂຜ່ານ WhatsApp', zh: '通过WhatsApp向经纪人咨询租赁条款' },
+  askAgentDeposit:  { en: 'Ask the agent about the deposit on WhatsApp', lo: 'ສອບຖາມນາຍໜ້າກ່ຽວກັບເງິນມັດຈຳຜ່ານ WhatsApp', zh: '通过WhatsApp向经纪人咨询押金' },
+  askAgentMore:     { en: 'Ask the agent about anything not listed', lo: 'ສອບຖາມນາຍໜ້າກ່ຽວກັບສິ່ງທີ່ບໍ່ໄດ້ລະບຸ', zh: '通过WhatsApp向经纪人咨询其他未列出的内容' },
   selectUnitToAsk:  { en: 'Select a unit above to ask the agent about it', lo: 'ເລືອກຫ້ອງກ່ອນ ແລ້ວຈຶ່ງສອບຖາມນາຍໜ້າ', zh: '请先选择户型，再向经纪人咨询' }
 };
 function contactIntentAnswerText(key, lang) {

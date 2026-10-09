@@ -347,8 +347,8 @@ test.describe('mobile sheet', () => {
     await expect(page.locator('#ci-sheet-root')).toBeVisible();
     await expect(page.locator('#ci-sheet-title')).toHaveText('ສອບຖາມກ່ຽວກັບຊັບສິນນີ້');
     await expect(page.locator('#ci-sheet-body .ci-item').first()).toContainText('ຢູ່ບ່ອນໃດ?');
-    await expect(page.locator('#ci-wa-sheet')).toContainText('ແຊັດກັບຕົວແທນທາງ WhatsApp');
-    await expect(page.locator('#ci-call-sheet')).toContainText('ໂທຫາຕົວແທນ');
+    await expect(page.locator('#ci-wa-sheet')).toContainText('ແຊັດກັບນາຍໜ້າຜ່ານ WhatsApp');
+    await expect(page.locator('#ci-call-sheet')).toContainText('ໂທຫານາຍໜ້າ');
     await page.evaluate(() => setLang('zh'));
     await page.waitForTimeout(500);
     await expect(page.locator('#ci-sheet-title')).toHaveText('咨询此房源');
@@ -756,7 +756,7 @@ test.describe('availability', () => {
     await page.setViewportSize({ width: 375, height: 760 });
     await page.waitForTimeout(300);
     await page.click(ASK);
-    expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(['ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ເງື່ອນໄຂ, ຄ່າໄຟ ແລະ ຄ່ານ້ຳ', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ', 'ນັດເບິ່ງຊັບສິນ', 'ໂທຫາຕົວແທນ', 'ແຊັດກັບຕົວແທນທາງ WhatsApp']);
+    expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(['ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ເງື່ອນໄຂ, ຄ່າໄຟ ແລະ ຄ່ານ້ຳ', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ', 'ນັດເບິ່ງຊັບສິນ', 'ໂທຫານາຍໜ້າ', 'ແຊັດກັບນາຍໜ້າຜ່ານ WhatsApp']);
   });
 });
 
