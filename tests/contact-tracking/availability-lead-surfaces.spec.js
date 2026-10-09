@@ -204,6 +204,31 @@ test.describe('an unavailable property has no live lead-creating CTA anywhere on
     });
   }
 
+  test('coming_soon has NO Notify Me / WhatsApp action: no button, no wa.me link, no lead, no navigation, on desktop and phone', async ({ page }) => {
+    for (const row of [prop('coming_soon'), prop('coming_soon', [OPEN('a'), OPEN('b')])]) {
+      for (const size of [undefined, { width: 375, height: 760 }]) {
+        const p2 = await page.context().newPage();
+        const { posts, errors } = await open(p2, row, size);
+        await expect(badge(p2)).toContainText('Coming Soon');
+        await expect(p2.locator('.price-value').first()).toContainText('450');                 // the normal advertised price stays
+        await expect(p2.locator('body')).not.toContainText(/Notify Me/i);
+        await expect(p2.locator('#agent-band-anchor .agent-ctas')).toHaveCount(0);
+        await expect(p2.locator('a[href^="https://wa.me"], a[href^="tel:"]')).toHaveCount(0);   // no WhatsApp or Call link anywhere on the page
+        await expect(p2.locator('.btn-wa, .btn-call, .unit-cta')).toHaveCount(0);
+        if (size) { await p2.click('#ci-open-sheet'); await p2.waitForTimeout(250); await expect(p2.locator('#ci-sheet-body .ci-item-status, #ci-sheet-body [data-ci-wa], #ci-sheet-body [data-ci-call]')).toHaveCount(0); }
+        else { await p2.click('#ci-toggle'); await p2.waitForTimeout(250); await expect(p2.locator('#ci-panel-body [data-ci-wa]')).toHaveCount(0); }
+        // even a forced click anywhere in the contact band cannot navigate or record a lead
+        await p2.locator('#agent-band-anchor').click({ force: true }).catch(() => {});
+        await p2.waitForTimeout(250);
+        expect(await navAttempts(p2)).toEqual([]); expect(await p2.evaluate(() => window.__opens)).toEqual([]);
+        expect(posts.lead_events).toEqual([]); expect(contactRows(posts)).toEqual([]);
+        expect(posts.ui_events.filter((e) => /status-cta/.test(e.element_id))).toEqual([]);
+        expect(errors).toEqual([]);
+        await p2.close();
+      }
+    }
+  });
+
   test('mobile: the Ask sheet of an unavailable property has no Call / WhatsApp / Book rows, only the status CTA', async ({ page }) => {
     for (const [, row] of STATES.slice(0, 5)) {
       const p2 = await page.context().newPage();
@@ -215,8 +240,8 @@ test.describe('an unavailable property has no live lead-creating CTA anywhere on
     }
   });
 
-  test('the existing status CTA (Notify Me / Find Similar / Waiting List) is unchanged and records NO lead', async ({ page }) => {
-    for (const [market, label] of [['coming_soon', /Notify Me/], ['sold', /Find Similar/], ['fully_occupied', /Waiting List/]]) {
+  test('the remaining status CTAs (Find Similar / Waiting List) are unchanged and record NO lead', async ({ page }) => {
+    for (const [market, label] of [['sold', /Find Similar/], ['fully_occupied', /Waiting List/]]) {
       const p2 = await page.context().newPage();
       const { posts } = await open(p2, prop(market));
       const cta = p2.locator('#agent-band-anchor .agent-ctas a.btn-primary');

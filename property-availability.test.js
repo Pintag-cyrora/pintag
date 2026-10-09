@@ -157,12 +157,17 @@ test('market_status unset or unknown is treated as available (matches resolveLis
   R(p); assert.equal(JSON.stringify(p), before);
 });
 
-test('every unavailable state has a status CTA key (so the contact area always has a replacement, never a live button)', () => {
+test('every unavailable "history" state has a status CTA key (so the contact area always has a replacement, never a live button)', () => {
   const seen = new Set();
   for (const m of ['available', 'reserved', 'rented', 'fully_occupied', 'sold', 'off_market', 'coming_soon']) {
     for (const units of Object.values(UNIT_SETS)) {
       const s = R(prop({ market_status: m, unit_types: units }));
-      if (!s.available) { seen.add(s.effectiveMarket); assert.ok(G.getListingStatusCTA(s.effectiveMarket, 'en'), 'no status CTA for ' + s.effectiveMarket); }
+      if (!s.available) {
+        seen.add(s.effectiveMarket);
+        // coming_soon ('upcoming') deliberately has NO replacement CTA: listing.html renders no contact path at all for it
+        if (s.presentation === 'upcoming') assert.equal(s.effectiveMarket, 'coming_soon');
+        else assert.ok(G.getListingStatusCTA(s.effectiveMarket, 'en'), 'no status CTA for ' + s.effectiveMarket);
+      }
     }
   }
   assert.deepEqual([...seen].sort(), ['coming_soon', 'fully_occupied', 'off_market', 'rented', 'reserved', 'sold']);

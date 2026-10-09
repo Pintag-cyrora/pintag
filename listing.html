@@ -2879,7 +2879,11 @@ function buildMockupLayout(){
     isPubliclyAvailable:ciSummary.presentation!=='history'
   };
   // The contact area's status CTA is keyed by the effective market of any property that cannot be contacted.
-  var ciStatusMarket=ciSummary.available?null:ciSummary.effectiveMarket;
+  // A coming_soon ('upcoming') property has NO contact path at all: no WhatsApp, Call, Book a viewing, per-unit
+  // Inquire -- and no Notify Me / waitlist WhatsApp action either (there is no status CTA for it). It shows its badge,
+  // its normal price and the Ask panel's page answers only.
+  var ciUpcoming=ciSummary.presentation==='upcoming';
+  var ciStatusMarket=(ciSummary.available||ciUpcoming)?null:ciSummary.effectiveMarket;
   // Rented Listings UX v2, Priority 2 -- a real transition date (never
   // fabricated: formatStatusChangeDate() returns null for any row with no
   // recorded market_status_changed_at, and the badge just shows the bare
@@ -3499,6 +3503,11 @@ function buildMockupLayout(){
       contactHtml='<div class="agent-band" id="agent-band-anchor"><div class="agent-ctas" style="width:100%;">'+statusCtaHtml+'</div>'+ciPanelHtml+'</div>';
       agentProfileHtml='';
     }
+  }
+  if(ciUpcoming){
+    // Replace the whole contact band (identity + WhatsApp + Call + picker) with the Ask panel's page answers.
+    contactHtml='<div class="agent-band" id="agent-band-anchor">'+ciPanelHtml+'</div>';
+    agentProfileHtml='';
   }
   var agentHtml=contactHtml+agentProfileHtml+'<div id="sp-fomo" class="sp-fomo-agent" style="display:none;"></div>';
 
