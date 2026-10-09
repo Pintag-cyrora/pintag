@@ -82,7 +82,7 @@ var CONTACT_INTENTS = {
   // (resolution escalate_to_agent). See resolveContactIntentResolution().
   terms: {
     id: 'terms', kind: 'answer', eventId: 'contact_intent_terms', labelEn: 'Terms & utilities', icon: '🧾',
-    labels: { lo: 'ເງື່ອນໄຂ ແລະ ຄ່າສາທາລະນູປະໂພກ', en: 'Terms & utilities', zh: '条款与水电杂费' }
+    labels: { lo: 'ເງື່ອນໄຂ, ຄ່າໄຟ ແລະ ຄ່ານ້ຳ', en: 'Terms & utilities', zh: '条款与水电杂费' }
   },
   availability: {
     id: 'availability', kind: 'answer', eventId: 'contact_intent_availability', labelEn: 'Is it available?', icon: '🏠',
@@ -426,12 +426,12 @@ function resolveContactIntentResolution(intent, facts) {
 // The Terms / deposit answer's own strings. DRAFT wording (lo/zh need native review before launch, like the
 // rest of the menu's first-release copy).
 var _CI_ANSWER_TEXT = {
-  termsNotListed:   { en: "The terms and utilities for this property aren't listed yet.", lo: 'ເງື່ອນໄຂ ແລະ ຄ່າສາທາລະນູປະໂພກຂອງຊັບສິນນີ້ຍັງບໍ່ໄດ້ລະບຸ.', zh: '该房源的条款与水电杂费暂未列出。' },
+  termsNotListed:   { en: "The terms and utilities for this property aren't listed yet.", lo: 'ເງື່ອນໄຂ, ຄ່າໄຟ ແລະ ຄ່ານ້ຳຂອງຊັບສິນນີ້ຍັງບໍ່ໄດ້ລະບຸ.', zh: '该房源的条款与水电杂费暂未列出。' },
   depositNotListed: { en: "The deposit for this property isn't listed.", lo: 'ເງິນມັດຈຳຂອງຊັບສິນນີ້ຍັງບໍ່ໄດ້ລະບຸ.', zh: '该房源的押金暂未列出。' },
-  askAgentTerms:    { en: 'Ask the agent about terms on WhatsApp', lo: 'ສອບຖາມຕົວແທນກ່ຽວກັບເງື່ອນໄຂທາງ WhatsApp', zh: '通过 WhatsApp 向经纪人咨询条款' },
-  askAgentDeposit:  { en: 'Ask the agent about the deposit on WhatsApp', lo: 'ສອບຖາມຕົວແທນກ່ຽວກັບເງິນມັດຈຳທາງ WhatsApp', zh: '通过 WhatsApp 向经纪人咨询押金' },
-  askAgentMore:     { en: 'Ask the agent about anything not listed', lo: 'ສອບຖາມຕົວແທນກ່ຽວກັບສິ່ງທີ່ບໍ່ໄດ້ລະບຸ', zh: '其他未列出的内容，向经纪人咨询' },
-  selectUnitToAsk:  { en: 'Select a unit above to ask the agent about it', lo: 'ເລືອກຫ້ອງກ່ອນ ແລ້ວຈຶ່ງສອບຖາມຕົວແທນ', zh: '请先选择户型，再向经纪人咨询' }
+  askAgentTerms:    { en: 'Ask the agent about terms on WhatsApp', lo: 'ສອບຖາມນາຍໜ້າກ່ຽວກັບເງື່ອນໄຂຜ່ານ WhatsApp', zh: '通过WhatsApp咨询条款' },
+  askAgentDeposit:  { en: 'Ask the agent about the deposit on WhatsApp', lo: 'ສອບຖາມນາຍໜ້າກ່ຽວກັບເງິນມັດຈຳຜ່ານ WhatsApp', zh: '通过WhatsApp咨询押金' },
+  askAgentMore:     { en: 'Ask the agent about anything not listed', lo: 'ສອບຖາມນາຍໜ້າກ່ຽວກັບສິ່ງທີ່ບໍ່ໄດ້ລະບຸ', zh: '通过WhatsApp咨询其他未列出的内容' },
+  selectUnitToAsk:  { en: 'Select a unit above to ask the agent about it', lo: 'ເລືອກຫ້ອງກ່ອນ ແລ້ວຈຶ່ງສອບຖາມນາຍໜ້າ', zh: '请先选择户型，再向经纪人咨询' }
 };
 function contactIntentAnswerText(key, lang) {
   var e = _CI_ANSWER_TEXT[key];
@@ -443,7 +443,7 @@ function contactIntentAnswerText(key, lang) {
 // Same shape as the other property messages (greeting, "Property: <name>", listing link; unknown
 // lines omitted). topic: 'terms' | 'deposit'. A selected unit is named so the agent knows which one.
 var WA_QUESTION_TOPIC = {
-  terms:   { en: 'rental terms and utilities (deposit, electricity, water, internet, lease length)', lo: 'ເງື່ອນໄຂການເຊົ່າ ແລະ ຄ່າສາທາລະນູປະໂພກ', zh: '租赁条款和水电杂费（押金、电、水、网络、租期）' },
+  terms:   { en: 'rental terms and utilities (deposit, electricity, water, internet, lease length)', lo: 'ເງື່ອນໄຂການເຊົ່າ, ຄ່າໄຟ ແລະ ຄ່ານ້ຳ', zh: '租赁条款和水电杂费（押金、电费、水费、网络、租期）' },
   deposit: { en: 'the deposit', lo: 'ເງິນມັດຈຳ', zh: '押金' }
 };
 var WA_QUESTION_MESSAGE_TEMPLATES = {

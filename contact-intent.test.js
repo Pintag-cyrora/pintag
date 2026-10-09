@@ -652,3 +652,29 @@ test('no Thai-block characters slipped into the Lao strings (U+0E00-0E7F are Tha
   const src = fs.readFileSync(new URL('./contact-intent.js', import.meta.url), 'utf8');
   assert.deepEqual(src.match(/[\u0E00-\u0E7F]/g), null);
 });
+
+test('Lao / Chinese copy conventions for the NEW Terms & Price-deposit strings (reviewed wording)', () => {
+  const A = G.contactIntentAnswerText, label = G.contactIntentLabel;
+  const q = (topic, lang) => G.buildQuestionWhatsAppMessage({ topic, propertyName: 'P' }, lang);
+  const laoNew = [A('termsNotListed', 'lo'), A('depositNotListed', 'lo'), A('askAgentTerms', 'lo'), A('askAgentDeposit', 'lo'), A('askAgentMore', 'lo'), A('selectUnitToAsk', 'lo'), label('terms', 'lo'), q('terms', 'lo'), q('deposit', 'lo')];
+  for (const t of laoNew) {
+    assert.ok(!t.includes('ຕົວແທນ'), 'agent is ນາຍໜ້າ in the new Lao copy: ' + t);
+    assert.ok(!t.includes('ທາງ WhatsApp'), 'WhatsApp is reached ຜ່ານ, not ທາງ: ' + t);
+    assert.ok(!t.includes('ຄ່າສາທາລະນູປະໂພກ'), 'electricity and water are ຄ່າໄຟ ແລະ ຄ່ານ້ຳ: ' + t);
+  }
+  for (const k of ['askAgentTerms', 'askAgentDeposit', 'askAgentMore', 'selectUnitToAsk']) assert.ok(A(k, 'lo').includes('ນາຍໜ້າ'), k);
+  for (const k of ['askAgentTerms', 'askAgentDeposit']) assert.ok(A(k, 'lo').includes('ຜ່ານ WhatsApp'), k);
+  for (const t of [label('terms', 'lo'), A('termsNotListed', 'lo'), q('terms', 'lo')]) assert.ok(t.includes('ຄ່າໄຟ ແລະ ຄ່ານ້ຳ'), t);
+  // Chinese: 电费、水费、网络, and the site's own "通过WhatsApp咨询" form (no spaces around WhatsApp)
+  assert.ok(q('terms', 'zh').includes('电费、水费、网络'));
+  for (const k of ['askAgentTerms', 'askAgentDeposit', 'askAgentMore']) {
+    assert.ok(A(k, 'zh').includes('通过WhatsApp咨询'), k + ': ' + A(k, 'zh'));
+    assert.ok(!/ WhatsApp|WhatsApp /.test(A(k, 'zh')), k + ' has no spaces around WhatsApp');
+  }
+  // English is unchanged
+  assert.equal(A('askAgentTerms', 'en'), 'Ask the agent about terms on WhatsApp');
+  assert.equal(A('askAgentDeposit', 'en'), 'Ask the agent about the deposit on WhatsApp');
+  assert.equal(A('askAgentMore', 'en'), 'Ask the agent about anything not listed');
+  assert.equal(label('terms', 'en'), 'Terms & utilities');
+  assert.match(q('terms', 'en'), /rental terms and utilities \(deposit, electricity, water, internet, lease length\)/);
+});

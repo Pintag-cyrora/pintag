@@ -752,11 +752,11 @@ test.describe('availability', () => {
     await expect(page.locator('#contact-intent-answer')).toContainText('已售出');
     await open(page, prop(), { lang: 'lo' });
     await toggle(page);
-    expect(await page.locator(PANEL + ' .ci-item .ci-label').allInnerTexts()).toEqual(['ນັດເບິ່ງຊັບສິນ', 'ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ເງື່ອນໄຂ ແລະ ຄ່າສາທາລະນູປະໂພກ', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ']);
+    expect(await page.locator(PANEL + ' .ci-item .ci-label').allInnerTexts()).toEqual(['ນັດເບິ່ງຊັບສິນ', 'ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ເງື່ອນໄຂ, ຄ່າໄຟ ແລະ ຄ່ານ້ຳ', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ']);
     await page.setViewportSize({ width: 375, height: 760 });
     await page.waitForTimeout(300);
     await page.click(ASK);
-    expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(['ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ເງື່ອນໄຂ ແລະ ຄ່າສາທາລະນູປະໂພກ', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ', 'ນັດເບິ່ງຊັບສິນ', 'ໂທຫາຕົວແທນ', 'ແຊັດກັບຕົວແທນທາງ WhatsApp']);
+    expect(await page.locator('#ci-sheet-body .ci-item .ci-label').allInnerTexts()).toEqual(['ຢູ່ບ່ອນໃດ?', 'ລາຄາເທົ່າໃດ?', 'ເງື່ອນໄຂ, ຄ່າໄຟ ແລະ ຄ່ານ້ຳ', 'ຍັງວ່າງຢູ່ບໍ?', 'ເບິ່ງຮູບພາບ', 'ນັດເບິ່ງຊັບສິນ', 'ໂທຫາຕົວແທນ', 'ແຊັດກັບຕົວແທນທາງ WhatsApp']);
   });
 });
 
