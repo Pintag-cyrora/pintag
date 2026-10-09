@@ -32,7 +32,11 @@ function activeProp(overrides) {
     bedrooms: 2, bathrooms: 1, sqm: 60,
     contacts: { id: 'c-1', role: 'agent', name: 'Somchai', phone: '+8562099999999', whatsapp: '+8562099999999' },
     managed_by_party_id: 'party-1', parties: null, unit_types: [],
-  }, overrides || {});
+  }, overrides || {}, (overrides && Array.isArray(overrides.unit_types)) ? {
+    // unit_types.is_available / available_count are NOT NULL (DEFAULT true / 1) and the page reads unit_types(*), so a real
+    // row always carries them; a fixture row must too, or resolveUnitAvailability() correctly reads it as closed.
+    unit_types: overrides.unit_types.map((u) => Object.assign({ is_available: true, available_count: 1 }, u)),
+  } : {});
 }
 
 async function mockRestAndCollect(page, propRow) {
