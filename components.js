@@ -590,30 +590,30 @@ function _ptHasOpenUnit(property) {
   return false;
 }
 
-// _ptIsUnavailableNow(property) -- the ONE availability gate both
-// ptResolveNextAvailable() and ptResolveListingFomo() ask. Unit rows win when
-// they exist; market_status answers for everything else. Returns the reason so
-// a caller can label a unit-derived closure correctly ('fully_occupied') rather
-// than reaching for market_status, which in that case still says 'available'.
+// _ptIsUnavailableNow(property) -> { unavailable, market, source } | null
 //
-// A genuinely OPEN unit outranks market_status for occupancy-shaped statuses
-// (reserved/rented/fully_occupied) -- not just the "close" direction the
-// comment above originally described. admin.html's per-unit Available
-// checkbox (saveUnitTypes()) never touches properties.market_status, and
-// nothing else in this codebase keeps the two in sync either; a listing
-// reopened at the unit level while market_status is still stuck on one of
-// those three must read as available again, or it stays stuck showing the
-// FOMO/unavailable treatment forever. sold/off_market are different in kind
-// -- they describe the PROPERTY leaving the market entirely, not a per-unit
-// occupancy fact -- so an open unit can never override them.
+// A thin adapter over property-availability.js resolvePropertyAvailability(), the canonical property
+// availability resolver (rules, matrix and rationale live there). Both ptResolveNextAvailable() and
+// ptResolveListingFomo() ask this; `market` is the status to SHOW (resolvePropertyAvailability().effectiveMarket,
+// a market_status value), and `source` says what decided it ('market_status' | 'unit_types' | null) so a caller
+// can label a unit-derived closure correctly.
 //
-// When the units AGREE the listing is closed (no open unit) and market_status
-// ALSO already says unavailable, market_status's own (possibly more specific)
-// reason is kept rather than downgraded to the generic unit-derived
-// 'fully_occupied' -- the two signals aren't in conflict there, so there is
-// nothing to override.
+// Where it differs from the pre-canonical gate (deliberately, per the Availability State Integration decisions):
+// coming_soon is unavailable; a single-unit property's own rented/reserved/fully_occupied wins over a lone open
+// unit row; a multi-unit property with an open unit stays available and shows as 'available' (not 'rented').
+//
+// TRANSITIONAL FALLBACK (removed in the browse-surfaces PR): listings.html / index.html / agent(s).html do not
+// load property-availability.js yet, so on those pages this still answers with the previous market-plus-units
+// logic below. It is not used on listing.html, which always loads the canonical file.
 var _UNIT_OVERRIDABLE_MARKET_STATUSES = ['reserved', 'rented', 'fully_occupied'];
 function _ptIsUnavailableNow(property) {
+  if (typeof resolvePropertyAvailability === 'function') {
+    var a = resolvePropertyAvailability(property);
+    return { unavailable: !a.available, market: a.effectiveMarket, source: a.source };
+  }
+  return _ptIsUnavailableNowLegacy(property);
+}
+function _ptIsUnavailableNowLegacy(property) {
   var status = (typeof resolveListingStatus === 'function') ? resolveListingStatus(property) : null;
   if (!status) return null;
 

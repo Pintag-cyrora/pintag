@@ -437,7 +437,7 @@ test.describe('Contact agent', () => {
   });
 
   test('waiting-list / status CTAs are not contact intents and keep their own ids', async ({ page }) => {
-    const { posts } = await open(page, prop({ market_status: 'coming_soon' }));
+    const { posts } = await open(page, prop({ market_status: 'fully_occupied' }));
     await page.locator('#agent-band-anchor a.btn-wa').click();
     await page.waitForTimeout(400);
     expect(posts.lead_events).toEqual([]);                                              // recordLead:false, as before
@@ -713,10 +713,11 @@ test.describe('availability', () => {
     expect(await sheetKeys(page)).toEqual([...SHEET_ANSWERS, 'status']);                     // the status CTA is the last row
   });
 
-  test('coming soon: OFF everywhere in the contact area; the existing Notify Me CTA replaces WhatsApp', async ({ page }) => {
+  test('coming soon: OFF everywhere in the contact area; no WhatsApp, Call or Notify Me at all', async ({ page }) => {
     const { posts } = await open(page, prop({ market_status: 'coming_soon' }));
     await expect(page.locator('#pt-wa-primary')).toHaveCount(0);
-    await expect(page.locator('#agent-band-anchor a.btn-wa')).toContainText('Notify Me When Available');
+    await expect(page.locator('#pt-call-primary')).toHaveCount(0);
+    await expect(page.locator('#agent-band-anchor a.btn-wa, #agent-band-anchor .agent-ctas')).toHaveCount(0);
     await toggle(page);
     expect(await ids(page.locator(PANEL + ' .ci-item'))).toEqual(ANSWER_ONLY);
     await page.locator(`${PANEL} [data-contact-intent="availability"]`).click();
@@ -725,13 +726,13 @@ test.describe('availability', () => {
     expect(posts.lead_events).toEqual([]);
   });
 
-  test('coming soon on a phone: the sheet shows answers, then Notify Me', async ({ page }) => {
+  test('coming soon on a phone: the sheet shows the page answers only (no status row)', async ({ page }) => {
     await phone(page, { row: prop({ market_status: 'coming_soon', unit_types: [UA, UB] }) });
     await expect(page.locator('#pt-wa-mobile')).toHaveCount(0);
     await expect(page.locator('#mobile-cta-bar .mcta-btn')).toHaveCount(0);
     await page.click(ASK);
-    expect(await sheetKeys(page)).toEqual([...SHEET_ANSWERS, 'status']);
-    await expect(page.locator('#ci-sheet-body .ci-item-status')).toContainText('Notify Me');
+    expect(await sheetKeys(page)).toEqual(SHEET_ANSWERS);
+    await expect(page.locator('#ci-sheet-body .ci-item-status')).toHaveCount(0);
   });
 
   test('multi-unit rented with an open unit: ON for that unit only (gated actions, unit-specific answer)', async ({ page }) => {
@@ -850,7 +851,7 @@ test.describe('unavailable listings: status CTA from the band and the Ask sheet'
     });
   }
 
-  for (const [status, label] of [['coming_soon', 'Notify Me'], ['fully_occupied', 'Waiting List']]) {
+  for (const [status, label] of [['fully_occupied', 'Waiting List']]) {
     test(`${status}: the ${label} CTA opens WhatsApp from the band and from the sheet; recordLead:false, no lead`, async ({ page }) => {
       const { posts, errors } = await phone(page, { row: prop({ market_status: status }) });
       const band = page.locator('#agent-band-anchor a.btn-wa');

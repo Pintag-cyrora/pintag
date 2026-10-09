@@ -266,6 +266,7 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 /* Multi-unit listing, no unit chosen yet: the WhatsApp CTA stays visible but is not a
    WhatsApp link -- it points the visitor at the unit picker (see ptWaNeedUnit()). */
 .btn-wa.wa-needs-unit,.mcta-btn.wa-needs-unit{opacity:.72;cursor:pointer;}
+.btn-call.wa-needs-unit{opacity:.72;cursor:pointer;}
 .btn-wa.wa-needs-unit:hover{transform:none;box-shadow:0 2px 10px rgba(35,107,107,0.18);}
 .agent-ctas-needs-unit{flex-wrap:wrap;}
 .wa-unit-hint{flex:none;width:100%;margin:0;font-size:12px;line-height:1.45;color:var(--muted,#5A6670);}
@@ -749,6 +750,7 @@ body.ci-sheet-open{overflow:hidden;}
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
+<script src="property-availability.js?v=__ASSET_VERSION__"></script>
 <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
 <script src="contact-intent.js?v=__ASSET_VERSION__"></script>
   <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
@@ -2090,6 +2092,8 @@ function ptCiAskAgentHtml(ctx,topic,labelKey){
   if(ctx.summary.requiresUnitSelection&&!selectedUnitTypeId){
     return '<a class="ci-answer-ask ci-item-gated" href="#units-section" role="button" aria-disabled="true" data-wa-needs-unit="1" onclick="return ptWaNeedUnit(event)">'+esc(contactIntentAnswerText('selectUnitToAsk',lang))+'</a>';
   }
+  // A selected unit that is closed cannot be asked about: no button at all (nothing to click, no lead).
+  if(ctx.summary.requiresUnitSelection&&!isPropertyUnitContactable(ctx.summary,selectedUnitTypeId)) return '';
   var msg=buildQuestionWhatsAppMessage({topic:topic,propertyName:ctx.tour.propertyName,canonicalUrl:ctx.tour.canonicalUrl,unitName:ctx.tour.unit?ctx.tour.unit.name:''},lang);
   // The CURRENT contact's number (the contact picker may have changed it since this render), like every other
   // WhatsApp control re-pointed by ptSelectContact().
@@ -2522,7 +2526,8 @@ function ptSelectContact(index){
   });
   var call=document.getElementById('pt-call-primary');
   if(call){
-    call.setAttribute('href',ptTelHref(c.phone));
+    // A gated Call (closed unit selected) has no tel: link to re-point; rewriting its href would make it live.
+    if(!call.getAttribute('data-wa-needs-unit')) call.setAttribute('href',ptTelHref(c.phone));
     call.setAttribute('data-contact-id', _currentContactId);
   }
   // The Ask sheet's own Call row follows the pick too (a gated one has no tel link to re-point).
@@ -2675,6 +2680,11 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
     return { raw:u, resolved: resolveUnitAvailability(u), sort_order: u.sort_order||0 };
   });
   pairs.sort(compareUnitTypesForDisplay);
+  // The per-unit Inquire button is a lead-creating CTA: it exists only for an OPEN unit of a contactable
+  // property (resolvePropertyAvailability / isPropertyUnitContactable). A closed unit -- or any unit of a
+  // sold / off-market / coming-soon / rented-single property -- renders no button at all, so there is nothing
+  // to click, no wa.me link and no lead.
+  var unitAvail=resolvePropertyAvailability(property);
 
   var cardsHtml=pairs.map(function(p){
     var u=p.raw;
@@ -2735,7 +2745,7 @@ function buildAvailableUnitsSection(property, lang, L, waMessageText, cleanPhone
     var coverHtml=coverImg?'<div class="unit-card-cover"><img src="'+esc(ptCardImageSrc(coverImg,'card'))+'" alt="" loading="lazy"'+ptCardImageFallbackAttrs(coverImg)+'></div>':'';
 
     var ctaHtml='';
-    if(cleanPhone){
+    if(cleanPhone&&isPropertyUnitContactable(unitAvail,u.id)){
       var waUnitMsg=encodeURIComponent(buildUnitWhatsAppMessage(property,unitName,priceText,p.resolved,lang,resolvedUnit.bedrooms,L.unitBeds[lang],getCanonicalListingUrl(property,lang)));
       var waUnitUrl='https://wa.me/'+cleanPhone+'?text='+waUnitMsg;
       // stopPropagation: the card itself is also a click target (selects
@@ -2852,37 +2862,28 @@ function buildMockupLayout(){
   var effectiveAmenities=selectedUnit?(Array.isArray(selectedUnit.resolved.amenities)?selectedUnit.resolved.amenities:[]):(Array.isArray(data.amenities)?data.amenities:[]);
   var effectiveFeatures =selectedUnit?(Array.isArray(selectedUnit.resolved.features) ?selectedUnit.resolved.features :[]):(Array.isArray(data.features) ?data.features :[]);
 
-  var listingStatusResolved=(typeof resolveListingStatus==='function')?resolveListingStatus(data):{market:'available',isPubliclyAvailable:true};
-  // UNIT ROWS OUTRANK properties.market_status when this listing has unit
-  // types -- _ptIsUnavailableNow()/_ptHasOpenUnit() (components.js) is the one
-  // shared gate the listing card uses too, so the two surfaces cannot disagree
-  // about whether a building is currently rentable.
-  //
-  // Why this is resolved ONCE here rather than at each call site: the status
-  // badge (below), the unavailable panel, the Similar heading, the price block
-  // and the CTA swap all read this object. Widening only the price block would
-  // have produced a listing showing "Available 15 Sep" beside a live-looking
-  // badge and a WhatsApp CTA. market_status is a standalone manual dropdown
-  // nothing derives from unit occupancy, so on the ordinary production row it
-  // says 'available' while every unit row says otherwise.
-  if(typeof _ptIsUnavailableNow==='function'){
-    var _dAvail=_ptIsUnavailableNow(data);
-    if(_dAvail) listingStatusResolved={
-      workflow:listingStatusResolved.workflow,
-      market:_dAvail.market,
-      isPubliclyAvailable:!_dAvail.unavailable
-    };
-  }
-  // CONTACT-INTENT AVAILABILITY (contact-intent.js) is the gate for the contact area. It is the same
-  // read of the same inputs as above EXCEPT in the two cases agreed for this system: coming_soon is
-  // OFF, and on a single-unit property the property's own rented/reserved/fully_occupied status wins
-  // over a lone open unit row. In those cases the contact area gets the existing status CTA for that
-  // status (Notify Me / Find Similar / Waiting List) instead of the WhatsApp button; everywhere else
-  // ciStatusMarket is exactly the market the code above already resolved, so nothing else changes.
-  var ciSummary=resolveContactIntentAvailability(data);
-  var ciStatusMarket=(listingStatusResolved&&!listingStatusResolved.isPubliclyAvailable)
-    ? listingStatusResolved.market
-    : (!ciSummary.available ? ciSummary.market : null);
+  // ONE availability read for the whole page: property-availability.js resolvePropertyAvailability() (the canonical
+  // resolver; its header has the rule table). The status badge, the unavailable panel, the Similar heading, the
+  // price block, the overlay, the contact area, the per-unit Inquire buttons and the tracking metadata all read this
+  // one summary, so they cannot disagree about whether the property -- or one of its units -- can be contacted.
+  //   available     may the visitor contact the agent at all (and, for a multi-unit listing, about which units)
+  //   presentation  'history' (sold/rented/...: original-asking-price + unavailable treatment), 'upcoming'
+  //                 (coming_soon: normal price and badge, no contact path, NOT the history treatment) or 'live'
+  var ciSummary=resolvePropertyAvailability(data);
+  // listingStatusResolved keeps its old shape for the many readers below. `isPubliclyAvailable` here means "do not
+  // show the unavailable/history treatment" (so a coming_soon listing keeps its normal price); whether the
+  // visitor may CONTACT anyone is ciSummary.available, never this flag.
+  var listingStatusResolved={
+    workflow:(typeof resolveListingStatus==='function')?resolveListingStatus(data).workflow:'active',
+    market:ciSummary.effectiveMarket,
+    isPubliclyAvailable:ciSummary.presentation!=='history'
+  };
+  // The contact area's status CTA is keyed by the effective market of any property that cannot be contacted.
+  // A coming_soon ('upcoming') property has NO contact path at all: no WhatsApp, Call, Book a viewing, per-unit
+  // Inquire -- and no Notify Me / waitlist WhatsApp action either (there is no status CTA for it). It shows its badge,
+  // its normal price and the Ask panel's page answers only.
+  var ciUpcoming=ciSummary.presentation==='upcoming';
+  var ciStatusMarket=(ciSummary.available||ciUpcoming)?null:ciSummary.effectiveMarket;
   // Rented Listings UX v2, Priority 2 -- a real transition date (never
   // fabricated: formatStatusChangeDate() returns null for any row with no
   // recorded market_status_changed_at, and the badge just shows the bare
@@ -3345,6 +3346,13 @@ function buildMockupLayout(){
   // conversation yet -- the lead would not say which unit it is about. (Per-unit Inquire buttons
   // already name their unit; the waiting-list / notify-me CTAs are not unit inquiries.)
   var waNeedsUnit=!!cleanPhone && !selectedUnit && typeof ptIsMultiUnit==='function' && ptIsMultiUnit(data);
+  // A unit IS selected but it is closed (or not an open unit of a multi-unit listing): the primary WhatsApp and Call
+  // buttons are gated exactly like the unit-picker prompt above -- not a wa.me / tel: link, no tracking, no lead
+  // (resolvePropertyAvailability / isPropertyUnitContactable; the contact-intent menu rows already apply the same
+  // 'unit_unavailable' gate).
+  var unitClosedGate=!!(cleanPhone&&selectedUnit&&ciSummary.available&&ciSummary.multiUnit&&!isPropertyUnitContactable(ciSummary,selectedUnit.raw.id));
+  var waGated=waNeedsUnit||unitClosedGate;
+  var unitClosedText=contactIntentUiText('unitUnavailable',lang);
   var waMessage=encodeURIComponent(waMessageText);
   var waUrl=cleanPhone?'https://wa.me/'+cleanPhone+'?text='+waMessage:'#';
   // (The main CTA built from waUrl below records its click through ptContactClick().)
@@ -3425,6 +3433,10 @@ function buildMockupLayout(){
   }
 
   var callBtn=(contact&&contact.phone)?'<a id="pt-call-primary" data-contact-id="'+escJs(contact.id||'')+'" href="'+esc(ptTelHref(contact.phone))+'" class="btn-primary btn-call" onclick="ptContactClick({channel:\'call\',listingId:\''+escJs(data.id||'')+'\',partyId:\''+escJs(data.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'contact-phone\',trackLabel:\'Call\'})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span class="lo-i">'+L.call.lo+'</span><span class="en-i">'+L.call.en+'</span><span class="zh-i">'+L.call.zh+'</span></a>':'';
+  if(callBtn&&unitClosedGate){
+    // The closed-unit gate for Call: same inert, untracked element as the gated WhatsApp button.
+    callBtn='<a id="pt-call-primary" data-contact-id="'+escJs(contact.id||'')+'" data-wa-needs-unit="1" data-unit-closed="1" role="button" aria-disabled="true" aria-describedby="pt-wa-unit-hint" href="#units-section" class="btn-primary btn-call wa-needs-unit" onclick="return ptWaNeedUnit(event)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 10.5 19.79 19.79 0 0 1 1.07 2.18 2 2 0 0 1 3.05 0h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 7.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>'+esc(unitClosedText)+'</span></a>';
+  }
   var contactHtml=(
     '<div class="agent-band" id="agent-band-anchor">'+
     '<div><p class="agent-presented"><span class="lo-i">'+roleLabel.lo+'</span><span class="en-i">'+roleLabel.en+'</span><span class="zh-i">'+roleLabel.zh+'</span></p>'+
@@ -3432,16 +3444,16 @@ function buildMockupLayout(){
     '<div><div class="agent-name-en">'+esc((contact&&contact.name)||roleLabel.en)+'</div></div>'+
     '</div></div>'+
     contactPickerHtml+
-    '<div class="agent-ctas'+(waNeedsUnit?' agent-ctas-needs-unit':'')+'">'+
+    '<div class="agent-ctas'+(waGated?' agent-ctas-needs-unit':'')+'">'+
     // id="pt-wa-primary" + data-contact-id let ptSelectContact() re-point BOTH
     // the href and the lead attribution when the buyer picks another number.
     // contactId comes from the RESOLVED primary, not propertyContext.contacts,
     // so the tracked contact and the dialled number can never disagree.
-(waNeedsUnit
-      ? '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" data-wa-needs-unit="1" role="button" aria-disabled="true" aria-describedby="pt-wa-unit-hint" href="#units-section" class="btn-primary btn-wa wa-needs-unit" onclick="return ptWaNeedUnit(event)">'+WA_SVG+'<span>'+esc(L.waPickUnitShort[lang])+'</span></a>'
+(waGated
+      ? '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" data-wa-needs-unit="1"'+(unitClosedGate?' data-unit-closed="1"':'')+' role="button" aria-disabled="true" aria-describedby="pt-wa-unit-hint" href="#units-section" class="btn-primary btn-wa wa-needs-unit" onclick="return ptWaNeedUnit(event)">'+WA_SVG+'<span>'+esc(unitClosedGate?unitClosedText:L.waPickUnitShort[lang])+'</span></a>'
       : '<a id="pt-wa-primary" data-contact-id="'+escJs(_currentContactId)+'" href="'+esc(waUrl)+'" target="_blank" rel="noopener noreferrer" class="btn-primary btn-wa" onclick="ptContactClick({channel:\'whatsapp\',listingId:\''+escJs(propertyContext&&propertyContext.id||'')+'\',partyId:\''+escJs(propertyContext&&propertyContext.managed_by_party_id||'')+'\',contactId:this.getAttribute(\'data-contact-id\')||\'\',unitTypeId:\''+escJs(selectedUnit?selectedUnit.raw.id:'')+'\',trackId:\'contact_intent_contact_agent\',trackLabel:\'WhatsApp\',trackMeta:ptCiMeta(\'contact_agent\',\'band\',\'\',\'whatsapp\')})">'+WA_SVG+'<span>'+L.wa[lang]+'</span></a>')+
     callBtn+
-    (waNeedsUnit?'<p class="wa-unit-hint" id="pt-wa-unit-hint" role="status">'+esc(L.waPickUnit[lang])+'</p>':'')+
+    (waGated?'<p class="wa-unit-hint" id="pt-wa-unit-hint" role="status">'+esc(unitClosedGate?unitClosedText:L.waPickUnit[lang])+'</p>':'')+
     '</div>'+ciPanelHtml+'</div>'
   );
 
@@ -3491,6 +3503,11 @@ function buildMockupLayout(){
       contactHtml='<div class="agent-band" id="agent-band-anchor"><div class="agent-ctas" style="width:100%;">'+statusCtaHtml+'</div>'+ciPanelHtml+'</div>';
       agentProfileHtml='';
     }
+  }
+  if(ciUpcoming){
+    // Replace the whole contact band (identity + WhatsApp + Call + picker) with the Ask panel's page answers.
+    contactHtml='<div class="agent-band" id="agent-band-anchor">'+ciPanelHtml+'</div>';
+    agentProfileHtml='';
   }
   var agentHtml=contactHtml+agentProfileHtml+'<div id="sp-fomo" class="sp-fomo-agent" style="display:none;"></div>';
 

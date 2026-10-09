@@ -28,26 +28,12 @@
 // Tracking lives in components.js (ptTrackContactIntent) and the page wiring in
 // listing.html. Nothing here reads a date to decide availability.
 //
-// AVAILABILITY IS A DELIBERATE BUSINESS STATE, not an inference:
-//   Inputs are exactly the two things staff set in admin -- properties.market_status
-//   and the unit_types availability rows (read ONLY through resolveUnitAvailability(),
-//   as unit-availability.js requires). Dates (next_available_date / available_from)
-//   are never consulted here: a date can label a state, it cannot create one.
-//
-//   market_status            single-unit / no units   multi-unit (>= 2 unit types)
-//   ---------------------    ----------------------   ---------------------------------
-//   sold, off_market         OFF                      OFF   (units never override)
-//   coming_soon              OFF (coming soon)        OFF   (units never override)
-//   reserved/rented/         OFF (property wins)      an explicitly open unit makes
-//     fully_occupied                                  THAT UNIT available (unit-specific)
-//   available                ON, or OFF when its      ON when >= 1 unit is open, and
-//                            unit row is closed       always reported unit-by-unit
-//
-// This is a NEW, separate read of the same inputs. It deliberately does not replace
-// or alter _ptIsUnavailableNow() (components.js), which the card, the badge, the
-// price block and the FOMO overlay keep using unchanged. Where the two differ is
-// intentional and pinned in contact-intent.test.js: coming_soon is OFF here, and a
-// lone unit row no longer overrides a rented/reserved property.
+// AVAILABILITY IS A DELIBERATE BUSINESS STATE, not an inference. It is decided by
+// property-availability.js resolvePropertyAvailability() -- the canonical property availability
+// resolver, which reads exactly two things staff set in admin (properties.market_status and the
+// unit_types availability rows, the latter ONLY through resolveUnitAvailability()) and never a date.
+// resolveContactIntentAvailability() below is a thin compatibility wrapper over it; the full rule
+// table lives in property-availability.js and is pinned in property-availability.test.js.
 //
 // COMPATIBILITY WITH HISTORY: before this model every tracked WhatsApp inquiry was
 // recorded in ui_events as element_id 'contact-whatsapp'. Those rows are NOT
@@ -165,88 +151,12 @@ function contactIntentLabel(intent, lang) {
 
 // ── Availability ─────────────────────────────────────────────────────────────
 
-var _CI_ALWAYS_OFF = { sold: true, off_market: true, coming_soon: true };            // units never override
-var _CI_OCCUPANCY = { reserved: true, rented: true, fully_occupied: true };          // an open unit can override on a multi-unit listing
-
-// Reason a listing with unit rows and NO open unit is off. A closed unit that is
-// fully occupied reads as such; all-coming-soon reads as coming soon; anything else
-// is the generic "temporarily unavailable" (no date is consulted to pick between them
-// beyond what resolveUnitAvailability() already decided).
-function _ciUnitsOffReason(units) {
-  var allComing = units.length > 0, anyFull = false;
-  for (var i = 0; i < units.length; i++) {
-    if (units[i].status !== 'coming_soon') allComing = false;
-    if (units[i].status === 'fully_occupied') anyFull = true;
-  }
-  if (allComing) return 'coming_soon';
-  if (anyFull) return 'fully_occupied';
-  return 'temporarily_unavailable';
-}
-
-// resolveContactIntentAvailability(property) -> summary
-//   available             ON/OFF for the contact-intent system
-//   reason                null when ON; else 'sold' | 'off_market' | 'coming_soon' |
-//                         'reserved' | 'rented' | 'fully_occupied' | 'temporarily_unavailable'
-//   market                the property's market_status ('available' when unset)
-//   source                'market_status' | 'unit_types' | null (what decided it)
-//   scope                 'property' | 'unit_specific'  -- 'unit_specific' for EVERY
-//                         multi-unit listing: availability is per unit, never "the
-//                         whole building is available"
-//   multiUnit             >= 2 unit_types (same threshold as ptIsMultiUnit())
-//   unitOverride          true when market_status says reserved/rented/fully_occupied
-//                         but an explicitly open unit keeps that unit available
-//   requiresUnitSelection true when ON and multiUnit: the high-intent intents will
-//                         need the visitor to name a unit (enforced in PR B)
-//   units                 [{ id, status, available }] in the property's own order
-//   openUnitIds / openUnitCount / totalUnits
-//   waitingListApplies    true when OFF: the existing waiting-list / status CTA is the
-//                         only contact path (that behaviour is unchanged)
-// Pure; never mutates the property.
+// resolveContactIntentAvailability(property) -> the availability summary (property-availability.js
+// resolvePropertyAvailability(), unchanged shape plus presentation / effectiveMarket). Kept as the
+// contact-intent system's name for it so callers, tracking metadata and tests do not change; there is
+// no second implementation here.
 function resolveContactIntentAvailability(property) {
-  var market = (property && property.market_status) || 'available';
-  var rows = (property && Array.isArray(property.unit_types)) ? property.unit_types : [];
-  var multi = (typeof ptIsMultiUnit === 'function') ? ptIsMultiUnit(property) : rows.length >= 2;
-
-  var units = rows.map(function (u) {
-    var r = resolveUnitAvailability(u);
-    return { id: (u && u.id != null) ? u.id : null, status: r.status, available: r.status === 'available' };
-  });
-  var open = units.filter(function (u) { return u.available; });
-  var openIds = open.map(function (u) { return u.id; });
-
-  function out(available, reason, source, unitOverride) {
-    return {
-      available: available,
-      reason: available ? null : reason,
-      market: market,
-      source: source,
-      scope: multi ? 'unit_specific' : 'property',
-      multiUnit: multi,
-      unitOverride: !!unitOverride,
-      requiresUnitSelection: !!(available && multi),
-      units: units,
-      openUnitIds: openIds,
-      openUnitCount: open.length,
-      totalUnits: units.length,
-      waitingListApplies: !available
-    };
-  }
-
-  // sold / off_market / coming_soon: the PROPERTY is off the market (or not on it
-  // yet); no unit row can turn that back on.
-  if (_CI_ALWAYS_OFF[market]) return out(false, market, 'market_status', false);
-
-  // reserved / rented / fully_occupied: the property-level status wins, EXCEPT that on
-  // a multi-unit listing an explicitly open unit keeps that unit available.
-  if (_CI_OCCUPANCY[market]) {
-    if (multi && open.length) return out(true, null, 'unit_types', true);
-    return out(false, market, 'market_status', false);
-  }
-
-  // market_status 'available' (or unset / any value that is not an off-market state).
-  if (!units.length) return out(true, null, null, false);
-  if (open.length) return out(true, null, 'unit_types', false);
-  return out(false, _ciUnitsOffReason(units), 'unit_types', false);
+  return resolvePropertyAvailability(property);
 }
 
 // Which intents show, and whether each can be used right now.

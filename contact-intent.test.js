@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
 
-for (const f of ['currency.js', 'terminology.js', 'unit-availability.js', 'listing-status.js', 'components.js', 'contact-intent.js']) {
+for (const f of ['currency.js', 'terminology.js', 'unit-availability.js', 'listing-status.js', 'property-availability.js', 'components.js', 'contact-intent.js']) {
   vm.runInThisContext(fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8'), { filename: f });
 }
 const G = globalThis;
@@ -109,12 +109,13 @@ for (const market of ['sold', 'off_market', 'coming_soon']) {
   });
 }
 
-test('coming_soon is OFF here even though the existing gate calls it publicly available', () => {
+test('coming_soon is OFF everywhere the canonical resolver is loaded (the listing-status.js flag is the browse-PR follow-up)', () => {
   const p = prop({ market_status: 'coming_soon' });
-  assert.equal(G.resolveListingStatus(p).isPubliclyAvailable, true);          // unchanged existing behaviour
-  assert.equal(_ptIsUnavailableNow(p).unavailable, false);                    // unchanged existing behaviour
-  assert.equal(avail(p).available, false);                                    // the contact-intent rule
+  assert.equal(G.resolveListingStatus(p).isPubliclyAvailable, true);          // listing-status.js itself is not changed in this PR
+  assert.equal(_ptIsUnavailableNow(p).unavailable, true);                     // _ptIsUnavailableNow now delegates to the canonical resolver
+  assert.equal(avail(p).available, false);
   assert.equal(avail(p).reason, 'coming_soon');
+  assert.equal(avail(p).presentation, 'upcoming');
 });
 
 test('dates never decide availability: a past, future or missing date changes nothing', () => {
@@ -139,31 +140,31 @@ test('pure: the property is never mutated', () => {
   assert.equal(JSON.stringify(p), before);
 });
 
-// ═══ Existing behaviour is untouched: parity with _ptIsUnavailableNow where the two should agree ═══
-test('parity: for every state EXCEPT the two intentional differences, the contact-intent state equals the existing gate', () => {
+// ═══ One resolver: the contact-intent summary and _ptIsUnavailableNow are the same answer ═══════════════
+test('parity: for EVERY market x unit-set state, _ptIsUnavailableNow() equals the contact-intent summary (both delegate to resolvePropertyAvailability)', () => {
   const markets = ['available', 'reserved', 'rented', 'fully_occupied', 'sold', 'off_market', 'coming_soon'];
   const unitSets = { none: [], oneOpen: [OPEN('a')], oneFull: [FULL('a')], twoOpen: [OPEN('a'), OPEN('b')], openAndFull: [OPEN('a'), FULL('b')], twoFull: [FULL('a'), FULL('b')], twoTemp: [TEMP('a'), TEMP('b')] };
-  let compared = 0; const differences = [];
+  let compared = 0;
   for (const m of markets) for (const [name, units] of Object.entries(unitSets)) {
     const p = prop({ market_status: m, unit_types: units });
-    const existingOff = _ptIsUnavailableNow(p).unavailable;
-    const newOff = !avail(p).available;
+    const e = _ptIsUnavailableNow(p), s = avail(p), c = G.resolvePropertyAvailability(p);
     compared++;
-    if (existingOff !== newOff) differences.push(`${m}/${name}`);
+    assert.equal(e.unavailable, !s.available, `${m}/${name}`);
+    assert.equal(e.market, s.effectiveMarket, `${m}/${name} market`);
+    assert.equal(e.source, s.source, `${m}/${name} source`);
+    assert.deepEqual(s, c, `${m}/${name}: the wrapper returns the canonical summary unchanged`);
   }
-  // Intentional differences only: coming_soon is OFF here; a LONE open unit no longer overrides rented/reserved/fully_occupied.
-  const allowed = new Set([
-    'coming_soon/none', 'coming_soon/oneOpen', 'coming_soon/twoOpen', 'coming_soon/openAndFull',
-    'reserved/oneOpen', 'rented/oneOpen', 'fully_occupied/oneOpen',
-  ]);
-  for (const d of differences) assert.ok(allowed.has(d), 'unexpected difference from the existing gate: ' + d);
   assert.equal(compared, 49);
-  assert.ok(differences.length > 0 && differences.every((d) => allowed.has(d)));
 });
 
-test('the existing resolvers are unchanged by this feature (still the same functions with the same results)', () => {
-  assert.equal(_ptIsUnavailableNow(prop({ market_status: 'rented', unit_types: [OPEN('a')] })).unavailable, false);   // lone open unit overrides, as before
+test('the deliberate behaviour changes of the Availability State Integration are pinned', () => {
+  // a lone open unit no longer overrides the property's own occupancy status (property status wins)
+  for (const m of ['rented', 'reserved', 'fully_occupied']) assert.equal(_ptIsUnavailableNow(prop({ market_status: m, unit_types: [OPEN('a')] })).unavailable, true, m);
   assert.equal(_ptIsUnavailableNow(prop({ market_status: 'sold', unit_types: [OPEN('a')] })).unavailable, true);
+  // a multi-unit property with an open unit stays available at unit level, and shows as available (not 'rented')
+  const multi = _ptIsUnavailableNow(prop({ market_status: 'rented', unit_types: [OPEN('a'), FULL('b')] }));
+  assert.deepEqual(multi, { unavailable: false, market: 'available', source: 'unit_types' });
+  // listing-status.js is untouched in this PR
   assert.deepEqual(G.resolveListingStatus(prop({ market_status: 'rented' })), { workflow: 'active', market: 'rented', isPubliclyAvailable: false });
 });
 
