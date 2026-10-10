@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
 
-for (const f of ['lang.js', 'currency.js', 'terminology.js', 'unit-availability.js', 'listing-status.js', 'components.js']) {
+for (const f of ['lang.js', 'currency.js', 'terminology.js', 'unit-availability.js', 'listing-status.js', 'property-availability.js', 'components.js']) {
   vm.runInThisContext(fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8'), { filename: f });
 }
 const { _ptListingHref } = globalThis;

@@ -552,82 +552,22 @@ function _ptLegacyRentText(property, lang) {
   var frequency = PT_RENT_PERIOD_FREQUENCY[property.rent_period] || 'monthly';
   return text + ' ' + _ptFrequencySuffix(frequency, lang);
 }
-// _ptHasOpenUnit(property) -> true | false | null
-//
-// "Is any unit type rentable TODAY?", resolved through
-// unit-availability.js' resolveUnitAvailability() -- that module's only
-// sanctioned read API (see its rule 3). This is the UNIT-LEVEL source of
-// truth for current availability, and for a listing that has unit types it
-// outranks properties.market_status.
-//
-// WHY IT EXISTS. properties.market_status is a standalone manual dropdown in
-// admin (f-market-status); nothing derives it from unit occupancy -- no
-// trigger, no save-path logic. resolveListingStatus() defaults a NULL
-// market_status to 'available'. So the ordinary production shape is: staff
-// switch off each unit type's Available checkbox and type a
-// next_available_date, and never touch the separate Market Status dropdown.
-// Both availability gates below used to read market_status ALONE, so they
-// went silent on exactly the listings that had something to say. Staff must
-// not have to restate in a second field what the unit rows already record.
-//
-// RETURNS NULL, NOT FALSE, when unit data cannot answer the question -- no
-// unit types, or a version-mismatched cache without unit-availability.js.
-// Callers must treat null as "ask market_status instead"; reading it as false
-// would mark every single-unit listing unavailable.
-//
-// DELIBERATELY NOT MERGED with ptResolveListingFomo's counting loop. That loop
-// answers a different question -- "how many units, exactly?" -- and needs a
-// trustworthy numeric available_count before it will claim "Only 1 left". This
-// one is a boolean: a unit that is open but tracks no count is still open.
-// Folding them together would either loosen FOMO's numeric rule or wrongly
-// treat a countless-but-open unit as closed.
-function _ptHasOpenUnit(property) {
-  var units = (property && Array.isArray(property.unit_types)) ? property.unit_types : [];
-  if (!units.length || typeof resolveUnitAvailability !== 'function') return null;
-  for (var i = 0; i < units.length; i++) {
-    if (resolveUnitAvailability(units[i]).status === 'available') return true;
-  }
-  return false;
-}
-
-// _ptIsUnavailableNow(property) -> { unavailable, market, source } | null
+// _ptIsUnavailableNow(property) -> { unavailable, market, source, presentation } | null
 //
 // A thin adapter over property-availability.js resolvePropertyAvailability(), the canonical property
-// availability resolver (rules, matrix and rationale live there). Both ptResolveNextAvailable() and
-// ptResolveListingFomo() ask this; `market` is the status to SHOW (resolvePropertyAvailability().effectiveMarket,
-// a market_status value), and `source` says what decided it ('market_status' | 'unit_types' | null) so a caller
-// can label a unit-derived closure correctly.
-//
-// Where it differs from the pre-canonical gate (deliberately, per the Availability State Integration decisions):
-// coming_soon is unavailable; a single-unit property's own rented/reserved/fully_occupied wins over a lone open
-// unit row; a multi-unit property with an open unit stays available and shows as 'available' (not 'rented').
-//
-// TRANSITIONAL FALLBACK (removed in the browse-surfaces PR): listings.html / index.html / agent(s).html do not
-// load property-availability.js yet, so on those pages this still answers with the previous market-plus-units
-// logic below. It is not used on listing.html, which always loads the canonical file.
-var _UNIT_OVERRIDABLE_MARKET_STATUSES = ['reserved', 'rented', 'fully_occupied'];
+// availability resolver (rules, matrix and rationale live there; there is no second implementation). Both
+// ptResolveNextAvailable() and ptResolveListingFomo() ask this.
+//   unavailable   !available -- coming_soon, sold, off_market, a single-unit property's own rented/reserved/
+//                 fully_occupied, a property with no open unit
+//   market        the status to SHOW (effectiveMarket, a market_status value)
+//   source        'market_status' | 'unit_types' | null (what decided it)
+//   presentation  'live' | 'upcoming' (coming_soon: normal price and badge) | 'history' (sold/rented/...)
+// Returns null when property-availability.js is not loaded on the page: callers treat null as "no answer" and
+// render nothing availability-specific (never a guessed state). Every page that renders property cards loads it.
 function _ptIsUnavailableNow(property) {
-  if (typeof resolvePropertyAvailability === 'function') {
-    var a = resolvePropertyAvailability(property);
-    return { unavailable: !a.available, market: a.effectiveMarket, source: a.source };
-  }
-  return _ptIsUnavailableNowLegacy(property);
-}
-function _ptIsUnavailableNowLegacy(property) {
-  var status = (typeof resolveListingStatus === 'function') ? resolveListingStatus(property) : null;
-  if (!status) return null;
-
-  var hasOpen = _ptHasOpenUnit(property);
-  if (hasOpen === true) {
-    if (!status.isPubliclyAvailable && _UNIT_OVERRIDABLE_MARKET_STATUSES.indexOf(status.market) === -1) {
-      return { unavailable: true, market: status.market, source: 'market_status' };
-    }
-    return { unavailable: false, market: status.market, source: 'unit_types' };
-  }
-
-  if (!status.isPubliclyAvailable) return { unavailable: true, market: status.market, source: 'market_status' };
-  if (hasOpen === false) return { unavailable: true, market: 'fully_occupied', source: 'unit_types' };
-  return { unavailable: false, market: status.market, source: null };
+  if (typeof resolvePropertyAvailability !== 'function') return null;
+  var a = resolvePropertyAvailability(property);
+  return { unavailable: !a.available, market: a.effectiveMarket, source: a.source, presentation: a.presentation };
 }
 
 // ptResolveNextAvailable(property, lang, nowIso) -- the FOURTH axis: when an
@@ -648,7 +588,7 @@ function _ptIsUnavailableNowLegacy(property) {
 // date. It is also not scarcity messaging: a date is a fact, not persuasion.
 //
 // GATED ON THE LISTING BEING UNAVAILABLE. A listing you can rent today does not
-// need a future date; resolveListingStatus().isPubliclyAvailable is the single
+// need a future date; _ptIsUnavailableNow() (the canonical property-availability.js resolver) is the single
 // gate, the same one every other consumer branches on.
 //
 // MULTI-UNIT: takes the EARLIEST qualifying date across all unit types, so a
@@ -703,7 +643,7 @@ function ptResolveNextAvailable(property, lang, nowIso) {
 // The three concepts this card renders are independent and must stay that way:
 //
 //   PRICE        what it costs                 -> formatPropertyPrice()
-//   AVAILABILITY inventory/market state        -> resolveListingStatus() /
+//   AVAILABILITY inventory/market state        -> resolvePropertyAvailability() /
 //                                                 resolveUnitAvailability()
 //   FOMO         derived persuasion messaging  -> here
 //
@@ -1344,9 +1284,12 @@ function renderPropertyCard(property, opts) {
   // never in place of it. The price block above has already been decided
   // without consulting either, which is the fix for unavailable listings
   // losing their price entirely.
-  var statusInfo = (typeof resolveListingStatus === 'function') ? resolveListingStatus(p) : null;
+  // The plain status line is for the sold/rented "history" family only: coming_soon keeps its normal (corner)
+  // Coming Soon badge and shows no extra unavailable line. Decided by the canonical resolver, so a property
+  // with no open unit reads "Fully Occupied" here even while its market_status column still says 'available'.
+  var statusInfo = (typeof _ptIsUnavailableNow === 'function') ? _ptIsUnavailableNow(p) : null;
   var availabilityHtml = '';
-  if (statusInfo && !statusInfo.isPubliclyAvailable && typeof getMarketStatusLabel === 'function') {
+  if (statusInfo && statusInfo.unavailable && statusInfo.presentation === 'history' && typeof getMarketStatusLabel === 'function') {
     var statusLabel = getMarketStatusLabel(statusInfo.market, lang);
     var statusEmoji = (typeof getMarketStatusEmoji === 'function') ? getMarketStatusEmoji(statusInfo.market) : '';
     if (statusLabel) {

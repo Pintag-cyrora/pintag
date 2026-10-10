@@ -15,6 +15,7 @@ on:
       - '*.html'
       - '*.js'
       - '*.css'
+      - 'cloudflare-worker/**'   # og-availability-parity.test.js pins the Worker's availability port to the browser resolver
       - 'tests/**'
       - '.github/workflows/frontend-regression-tests.yml'
   pull_request:
@@ -23,6 +24,7 @@ on:
       - '*.html'
       - '*.js'
       - '*.css'
+      - 'cloudflare-worker/**'   # og-availability-parity.test.js pins the Worker's availability port to the browser resolver
       - 'tests/**'
       - '.github/workflows/frontend-regression-tests.yml'
   workflow_dispatch:
