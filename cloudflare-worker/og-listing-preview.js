@@ -306,23 +306,24 @@ const LISTING_COLUMNS = [
   'rent_price_amount', 'rent_price_currency', 'rent_price_frequency',
   'sale_price', 'rent_price', 'rent_period',
   'district_en', 'district_lo', 'district_zh',
-  'unit_types(price_display,sale_price,rent_price,rent_period,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency)',
+  // is_available / available_count / total_units / next_available_date are the unit availability columns the
+  // availability port below reads (resolveAvailability), exactly as the browser's resolveUnitAvailability() does.
+  'unit_types(id,is_available,available_count,total_units,next_available_date,price_display,sale_price,rent_price,rent_period,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency)',
 ].join(',');
 
-// Mirrors listing-status.js's LISTING_UNAVAILABLE_MARKET_STATUSES /
-// MARKET_STATUS_LABELS / UNAVAILABLE_MESSAGE (only the subset needed for a
+// Mirrors listing-status.js's MARKET_STATUS_LABELS / UNAVAILABLE_MESSAGE (only the subset needed for a
 // crawler-visible title/description suffix) -- duplicated by hand for the
 // same reason every other shared vocabulary in this file is (OG_LOCALE,
 // HOME_META_I18N, ...): this Worker is a separate Cloudflare deploy that
 // can't import a browser file. Keep in sync manually whenever
 // listing-status.js's market_status vocabulary changes.
-const UNAVAILABLE_MARKET_STATUSES = ['reserved', 'rented', 'sold', 'fully_occupied', 'off_market'];
 const MARKET_STATUS_LABEL = {
   reserved: { en: 'Reserved', lo: 'ຖືກຈອງແລ້ວ', zh: '已预订' },
   rented: { en: 'Rented', lo: 'ເຊົ່າແລ້ວ', zh: '已出租' },
   sold: { en: 'Sold', lo: 'ຂາຍແລ້ວ', zh: '已售出' },
   fully_occupied: { en: 'Fully Occupied', lo: 'ເຕັມແລ້ວ', zh: '已满租' },
   off_market: { en: 'Off Market', lo: 'ຖອນອອກຈາກຕະຫຼາດ', zh: '已下架' },
+  coming_soon: { en: 'Coming Soon', lo: 'ກຳລັງຈະມາ', zh: '即将推出' },
 };
 // Mirrors listing-status.js's UNAVAILABLE_MESSAGE -- the status-specific
 // lead sentence, e.g. "This property has been rented." -- so the
@@ -335,6 +336,43 @@ const UNAVAILABLE_MESSAGE = {
   fully_occupied: { en: 'This property is fully occupied.', lo: 'ອະສັງຫາລາຍການນີ້ເຕັມແລ້ວ.', zh: '该房源目前已满租。' },
   off_market: { en: 'This listing is currently off market.', lo: 'ລາຍການນີ້ຖືກຖອນອອກຈາກຕະຫຼາດຊົ່ວຄາວ.', zh: '该房源已暂时下架。' },
 };
+// ── Availability: a hand port of property-availability.js + unit-availability.js ────────────────────────────────
+// The browser decides availability with resolvePropertyAvailability() (property-availability.js), which combines
+// properties.market_status with the unit_types rows through resolveUnitAvailability() (unit-availability.js). This
+// Worker cannot import a browser file, so the same rules are ported here and PINNED to the browser files by
+// og-availability-parity.test.js (every market x unit-set state must give the same available / presentation /
+// effectiveMarket). Change the browser rules and that test fails until this port is updated.
+//
+//   sold, off_market, coming_soon        unavailable, units never override
+//   reserved, rented, fully_occupied     unavailable, EXCEPT a multi-unit property (>= 2 unit types) with an open unit
+//                                        stays available at unit level (a single-unit property's own status wins)
+//   available (or unset)                 available unless it has unit rows and none is open
+//   dates (next_available_date) never create availability
+const AVAIL_UNIT_STATUS = (u) => {
+  if (u.is_available === false) return u.total_units != null ? 'coming_soon' : 'temporarily_unavailable';
+  if (u.available_count > 0) return 'available';
+  if (u.next_available_date != null) return 'fully_occupied';
+  return 'temporarily_unavailable';
+};
+function resolveAvailability(row) {
+  const market = (row && row.market_status) || 'available';
+  const rows = row && Array.isArray(row.unit_types) ? row.unit_types : [];
+  const multi = rows.length >= 2;
+  const statuses = rows.map((u) => AVAIL_UNIT_STATUS(u || {}));
+  const open = statuses.filter((st) => st === 'available').length;
+  const off = (reason) => ({
+    available: false,
+    presentation: reason === 'coming_soon' ? 'upcoming' : 'history',
+    reason,
+    effectiveMarket: reason === 'temporarily_unavailable' ? 'fully_occupied' : reason,
+  });
+  const on = { available: true, presentation: 'live', reason: null, effectiveMarket: 'available' };
+  if (market === 'sold' || market === 'off_market' || market === 'coming_soon') return off(market);
+  if (market === 'reserved' || market === 'rented' || market === 'fully_occupied') return multi && open ? on : off(market);
+  if (!statuses.length || open) return on;
+  if (statuses.every((st) => st === 'coming_soon')) return off('coming_soon');
+  return off(statuses.some((st) => st === 'fully_occupied') ? 'fully_occupied' : 'temporarily_unavailable');
+}
 const UNAVAILABLE_DESC_SUFFIX = {
   en: 'Browse similar available properties on Pintag.',
   lo: 'ຄົ້ນຫາອະສັງຫາລິມະຊັບທີ່ຄ້າຍຄືກັນທີ່ຍັງວ່າງຢູ່ໃນ Pintag.',
@@ -471,14 +509,20 @@ function buildOgFields(row, lang, supabaseUrl = DEFAULT_SUPABASE_URL) {
   // never let the crawler-visible title/description keep silently claiming
   // it's still available -- mirrors listing.html's own updateOGTags()
   // logic exactly (see that function's comment), just server-side.
-  const isUnavailable = UNAVAILABLE_MARKET_STATUSES.includes(row.market_status);
+  // Availability follows the browser's canonical resolver (ported above): the EFFECTIVE market, so a property with no
+  // open unit reads Fully Occupied even while market_status says 'available', and a stale 'rented' on a multi-unit
+  // property with an open unit reads as available. coming_soon gets the Coming Soon suffix but keeps its normal
+  // description (the "has been sold / browse similar" wording is for the sold/rented family only).
+  const avail = resolveAvailability(row);
   let title = titleBase;
-  if (isUnavailable) {
-    const statusLabel = MARKET_STATUS_LABEL[row.market_status];
+  if (!avail.available) {
+    const statusLabel = MARKET_STATUS_LABEL[avail.effectiveMarket];
     if (statusLabel) title += ` — ${statusLabel[lang] || statusLabel.en}`;
-    const lead = UNAVAILABLE_MESSAGE[row.market_status];
-    const leadText = (lead && (lead[lang] || lead.en)) || (statusLabel && (statusLabel[lang] || statusLabel.en)) || '';
-    desc = `${leadText} ${UNAVAILABLE_DESC_SUFFIX[lang] || UNAVAILABLE_DESC_SUFFIX.en}`.trim();
+    if (avail.presentation === 'history') {
+      const lead = UNAVAILABLE_MESSAGE[avail.effectiveMarket];
+      const leadText = (lead && (lead[lang] || lead.en)) || (statusLabel && (statusLabel[lang] || statusLabel.en)) || '';
+      desc = `${leadText} ${UNAVAILABLE_DESC_SUFFIX[lang] || UNAVAILABLE_DESC_SUFFIX.en}`.trim();
+    }
   }
   return { title: `${title} · Pintag`, desc, image, imageContentType, imageAlt, hasZh: !!row.title_zh, rawImage, isRendition };
 }
@@ -907,6 +951,7 @@ export default {
 // real fixture HTML from listing.html/index.html/listings.html) from Node.
 export {
   resolveLang,
+  resolveAvailability,
   buildOgFields,
   canonicalUrl,
   HOME_META_I18N,

@@ -149,6 +149,22 @@ for (const pageFile of ['agents.html', 'agent.html']) {
       expect(errors).toEqual([]);
     });
 
+    test('badges follow the canonical resolver (market_status + unit rows): coming soon keeps its badge, closed units read full, lone-unit rented stays rented, stale-rented multi-unit reads available', async ({ page }) => {
+      const UTR = (id, o) => Object.assign({ id, is_available: true, available_count: 2, total_units: null, next_available_date: null }, o || {});
+      const FULLU = (id) => UTR(id, { available_count: 0, next_available_date: '2999-01-01' });
+      const { seen, errors } = await openWith(page, [
+        listing({ slug: 'cs', market_status: 'coming_soon', unit_types: [UTR('1'), UTR('2')] }),
+        listing({ slug: 'closed', market_status: 'available', unit_types: [FULLU('c1')] }),
+        listing({ slug: 'lone', market_status: 'rented', unit_types: [UTR('l1')] }),
+        listing({ slug: 'multi', market_status: 'rented', unit_types: [UTR('m1'), FULLU('m2')] }),
+        listing({ slug: 'plain', market_status: 'available', unit_types: [UTR('p1')] }),
+      ]);
+      expect(seen.props, 'the portfolio query must embed the unit availability columns').toContain('unit_types');
+      const badges = await page.evaluate(() => [...document.querySelectorAll('.p-card .p-status')].map((b) => b.className.replace('p-status ', '') + ':' + b.textContent));
+      expect(badges).toEqual(['p-status-available:ກຳລັງຈະມາ', 'p-status-offer:ເຕັມແລ້ວ', 'p-status-rented:ເຊົ່າແລ້ວ', 'p-status-available:ວ່າງ', 'p-status-available:ວ່າງ']);
+      expect(errors).toEqual([]);
+    });
+
     test('with renditions ON: portfolio and hero photos are the sized WebP renditions, originals kept as the fallback', async ({ page }) => {
       // Both production flags on: renditions AND the image CDN.
       await page.route('**/config.js*', async (r) => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\nwindow.PINTAG.renditionsEnabled = true; window.PINTAG.imageCdn = true;' }); });

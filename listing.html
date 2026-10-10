@@ -1528,14 +1528,18 @@ var SEO_UNAVAILABLE_DESC_SUFFIX={
 function updateOGTags(data){
   var lang=getCurrentLang();
   var titleBase=resolveLangField(data,'title',lang,'Pintag Property');
-  var listingStatusForMeta=(typeof resolveListingStatus==='function')?resolveListingStatus(data):{market:'available',isPubliclyAvailable:true};
+  // Canonical availability (property-availability.js), the same read the page body and the OG Worker use: the title
+  // suffix and the unavailable description follow the EFFECTIVE market (a property with no open unit reads Fully
+  // Occupied even while market_status says 'available'; a stale 'rented' on a multi-unit property with an open unit
+  // reads as available). coming_soon gets the Coming Soon suffix but keeps its normal description.
+  var metaAvail=resolvePropertyAvailability(data);
   // SEO: never 404/redirect an unavailable listing, and never let its
   // <title>/meta description silently keep claiming it's still available --
   // both would either drop the page's existing search ranking (404/redirect)
   // or mislead a searcher into clicking through to a dead end (unchanged
   // metadata). Appending " — {Status}" and swapping the description keeps
   // the page indexable while being honest about what a visitor will find.
-  var title=titleBase+(!listingStatusForMeta.isPubliclyAvailable?' — '+getMarketStatusLabel(listingStatusForMeta.market,lang):'')+' · Pintag';
+  var title=titleBase+(!metaAvail.available?' — '+getMarketStatusLabel(metaAvail.effectiveMarket,lang):'')+' · Pintag';
   // Share Strategy: "the ideal preview contains price and neighborhood" --
   // this is what a WhatsApp/Messenger/Facebook link preview actually reads
   // (crawlers fetch the URL's OG tags, not the Web Share API's `text`
@@ -1554,8 +1558,8 @@ function updateOGTags(data){
     ||resolveLangField(data,'description',lang,null)
     ||OG_GENERIC_DESC[lang]||OG_GENERIC_DESC.en;
   var desc=ogPriceLocLine?(ogPriceLocLine+' — '+ogHighlight):ogHighlight;
-  if(!listingStatusForMeta.isPubliclyAvailable){
-    var unavailLead=(typeof getUnavailableMessage==='function')?getUnavailableMessage(listingStatusForMeta.market,lang):getMarketStatusLabel(listingStatusForMeta.market,lang);
+  if(!metaAvail.available&&metaAvail.presentation==='history'){
+    var unavailLead=(typeof getUnavailableMessage==='function')?getUnavailableMessage(metaAvail.effectiveMarket,lang):getMarketStatusLabel(metaAvail.effectiveMarket,lang);
     desc=unavailLead+' '+(SEO_UNAVAILABLE_DESC_SUFFIX[lang]||SEO_UNAVAILABLE_DESC_SUFFIX.en);
   }
   var imgs=Array.isArray(data.images)?data.images.filter(function(u){return u&&typeof u==='string';}):[];
@@ -1762,7 +1766,9 @@ async function fetchSimilarProperties(prop){
              'images,bedrooms,bathrooms,sqm,sqm_land,price_display,' +
              'price_amount,price_currency,price_frequency,' +
              'rent_price_amount,rent_price_currency,rent_price_frequency,' +
-             'transaction_type,status,workflow_status,market_status,property_type,created_at';
+             'transaction_type,status,workflow_status,market_status,property_type,created_at,' +
+             // the unit availability columns the canonical resolver reads (property-availability.js)
+             'unit_types(id,is_available,available_count,total_units,next_available_date)';
   var results = [];
 
   if(!prop.property_type){ PT.timeEnd('fetchSimilar'); hideSimilarSection(); return; }
@@ -1775,17 +1781,21 @@ async function fetchSimilarProperties(prop){
     var usedIds = [prop.id].concat(results.map(function(p){return p.id;}));
     var q = '/rest/v1/properties?property_type=eq.'+encodeURIComponent(prop.property_type)
       +'&'+excludeParam(usedIds)+extraFilters
-      +'&status=eq.active&order=created_at.desc&limit='+limit+'&select='+cols;
+      // Over-fetch: the availability filter below runs client-side (it needs the unit rows), so asking for exactly
+      // `limit` rows could leave the section short when the newest rows are unavailable.
+      +'&status=eq.active&order=created_at.desc&limit='+Math.min(limit*4,40)+'&select='+cols;
     var rows = await sbFetch(q);
     if(!Array.isArray(rows)) return [];
     // Similar Properties is the primary "keep browsing" conversion point,
     // especially once the listing being viewed is itself unavailable --
     // recommending a sold/rented listing right next to it would defeat the
-    // purpose. isPubliclyAvailable() is the same single gate used
-    // everywhere else on this page (listing-status.js).
+    // purpose. Only properties the canonical resolver (property-availability.js)
+    // says a visitor can contact right now are recommended: coming_soon, sold,
+    // off_market, a closed single-unit property and a property with no open unit
+    // are all excluded, whatever market_status says.
     return rows.filter(function(r){
-      return r && (typeof resolveListingStatus!=='function' || resolveListingStatus(r).isPubliclyAvailable);
-    });
+      return r && resolvePropertyAvailability(r).available;
+    }).slice(0,limit);
   }
 
   try{

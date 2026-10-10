@@ -658,6 +658,7 @@ html[lang="lo"] .filter-btn{line-height:1.6;}
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
+<script src="property-availability.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
   <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
@@ -714,20 +715,20 @@ let currentDistrictFilter = 'all';
 let currentPriceBand = 'all';
 let currentBedroomFilter = 'all';
 
-// "Available Only" excludes sold/rented/reserved/off_market/fully_occupied —
-// must read market_status via the canonical resolveListingStatus()
-// (listing-status.js), the ONE gate for "is this listing publicly
-// available" (see that file's header). The legacy properties.status column
-// this used to check is now kept in sync with workflow_status only
-// (20260729000000_listing_status_model.sql's trg_properties_status_sync
-// comment: "a sold listing stays visible/browsable" via legacy status) —
-// it is always 'active' for any live listing regardless of market_status,
-// so checking it here silently filtered out every listing once that
-// migration shipped. This is what made "Available Only" appear broken.
+// "Available Only" keeps exactly the listings a visitor can contact right now. That is decided by the canonical
+// property-availability.js resolvePropertyAvailability() (the one resolver every surface shares), NOT by the
+// market_status column alone, because market_status is a standalone manual dropdown:
+//   * coming_soon, sold, off_market are out, whatever their unit rows say
+//   * a single-unit property's own rented / reserved / fully_occupied is out, even with a lone open unit row
+//   * a multi-unit property stays in while at least one unit is genuinely open
+//   * a property whose unit rows are all closed is out even though market_status says 'available'
+// The legacy properties.status column this used to check is now kept in sync with workflow_status only
+// (20260729000000_listing_status_model.sql's trg_properties_status_sync comment: "a sold listing stays
+// visible/browsable" via legacy status) -- it is always 'active' for any live listing regardless of
+// market_status, so checking it here silently filtered out every listing once that migration shipped.
+// Draft/archived visibility is a different axis (the list query's status filter) and is untouched.
 function isAvailableStatus(p) {
-  return (typeof resolveListingStatus === 'function')
-    ? resolveListingStatus(p).isPubliclyAvailable
-    : (!p.status || p.status === 'available');
+  return resolvePropertyAvailability(p).available;
 }
 
 function setAvailFilter(val, btn) {
@@ -809,12 +810,16 @@ const MARKET_STATUS_BADGE_CLASS_MAP = {
 };
 function getBadgeHtml(p, lang, isFeaturedCard) {
   const L = { curated: { lo: 'ຄັດເລືອກ', en: 'Curated', zh: '精选' }, land: { lo: 'ທີ່ດິນ', en: 'Land', zh: '土地' } };
-  const market = (typeof resolveListingStatus === 'function') ? resolveListingStatus(p).market : 'available';
+  // The status shown is the canonical resolver's effective market: a stale 'rented' on a multi-unit property with
+  // an open unit shows Available, and a property whose units are all closed shows Fully Occupied even while its
+  // market_status column still says 'available'. coming_soon keeps its Coming Soon badge.
+  const avail = resolvePropertyAvailability(p);
+  const market = avail.effectiveMarket;
   // Rented Listings UX: the status badge must be impossible to miss --
   // an unavailable listing that also happens to be marked featured (an
   // admin oversight, not something this page should ever hide) still
   // shows Sold/Rented/etc., never the generic "Curated" badge.
-  const isUnavailable = (typeof resolveListingStatus === 'function') && !resolveListingStatus(p).isPubliclyAvailable;
+  const isUnavailable = !avail.available;
   if (isFeaturedCard && !isUnavailable) return '<span class="pt-badge-status pt-status-curated">' + L.curated[lang] + '</span>';
   if (market === 'available' && p.property_type === 'land') return '<span class="pt-badge-status pt-status-land">' + L.land[lang] + '</span>';
   const cls = MARKET_STATUS_BADGE_CLASS_MAP[market] || 'pt-status-available';

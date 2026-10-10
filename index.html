@@ -527,6 +527,7 @@ html[lang="lo"] .featured-title{line-height:1.5;}
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
+<script src="property-availability.js?v=__ASSET_VERSION__"></script>
 <script src="components.js?v=__ASSET_VERSION__"></script>
   <script src="image-renditions.js?v=__ASSET_VERSION__"></script>
 <script src="session.js?v=__ASSET_VERSION__"></script>
@@ -664,8 +665,10 @@ applyPintagLang(resolvePintagLang());
 // to also be marked featured, then trims to the 4 actually shown -- a
 // plain limit=4 query has no way to do that "prefer available, but keep
 // the featured+newest ordering otherwise" tie-break server-side.
+// "Available" is the canonical property-availability.js answer (coming_soon, sold, off_market, a closed
+// single-unit property and a property with no open unit all rank after genuinely contactable listings).
 function _homeAvailabilityRank(p) {
-  return (typeof resolveListingStatus === 'function' && resolveListingStatus(p).isPubliclyAvailable) ? 0 : 1;
+  return resolvePropertyAvailability(p).available ? 0 : 1;
 }
 async function loadFeatured() {
   try {
@@ -704,8 +707,9 @@ const IDX_MARKET_STATUS_BADGE_CLASS = {
   rented: 'pt-status-rented'
 };
 function idxStatusBadgeHtml(p, lang) {
-  if (typeof resolveListingStatus !== 'function') return '';
-  const market = resolveListingStatus(p).market;
+  // The effective market of the canonical resolver: a property with no open unit reads Fully Occupied even while
+  // market_status says 'available'; coming_soon keeps its Coming Soon badge.
+  const market = resolvePropertyAvailability(p).effectiveMarket;
   if (market === 'available') return ''; // normal case, no badge needed
   const cls = IDX_MARKET_STATUS_BADGE_CLASS[market] || 'pt-status-available';
   const label = (typeof getMarketStatusLabel === 'function') ? getMarketStatusLabel(market, lang) : market;

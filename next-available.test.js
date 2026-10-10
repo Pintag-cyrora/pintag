@@ -21,7 +21,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
 
-for (const f of ['currency.js', 'terminology.js', 'unit-availability.js', 'listing-status.js', 'components.js']) {
+for (const f of ['currency.js', 'terminology.js', 'unit-availability.js', 'listing-status.js', 'property-availability.js', 'components.js']) {
   vm.runInThisContext(fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8'), { filename: f });
 }
 const { ptResolveNextAvailable, formatPropertyPrice } = globalThis;
@@ -279,21 +279,26 @@ test('PROD-6. ONE unit still open → no suffix, and no unavailable line', () =>
   assert.ok(!f || f.kind !== 'missed', 'must not claim unavailable while a unit is open');
 });
 
-test('PROD-7. a REOPENED unit clears a stale "rented" market_status (production bug fix)', () => {
-  // This inverts what this test used to assert ("a listing marked rented
-  // stays rented even if a unit row was left switched on"). That was
-  // exactly the production bug: admin.html's per-unit Available checkbox
-  // (saveUnitTypes()) never touches properties.market_status, so a unit
-  // reopened at the unit level had no way to clear a stale reserved/rented/
-  // fully_occupied market_status, and the listing stayed stuck showing the
-  // unavailable/FOMO treatment forever. _ptIsUnavailableNow() now treats
-  // unit rows as authoritative for these three occupancy-shaped statuses in
-  // BOTH directions -- see components.js.
+test('PROD-7. single-unit: a REOPENED lone unit does NOT clear the property\'s own "rented" status (property status wins -- Availability State Integration)', () => {
+  // History: an earlier version of this suite asserted the opposite (a reopened unit cleared a stale 'rented'),
+  // because admin's per-unit Available checkbox never touches properties.market_status. The product decision since
+  // then: for a SINGLE-unit property (no unit rows or one lone row) the property's own rented / reserved /
+  // fully_occupied wins; only a MULTI-unit property is resolved unit by unit (PROD-7a).
   const p = prodShape({ market_status: 'rented' });
   p.unit_types[0].is_available = true;
   p.unit_types[0].available_count = 3;
   const f = ptResolveListingFomo(p, 'en');
-  assert.ok(!f || f.kind !== 'missed', 'a genuinely open unit must clear a stale rented market_status');
+  assert.ok(f && f.kind === 'missed', 'a lone open unit row must not make a rented single-unit property look available');
+});
+
+test('PROD-7a. multi-unit: a REOPENED unit clears a stale "rented" market_status (unit-level availability)', () => {
+  const p = prodShape({ market_status: 'rented' });
+  p.unit_types[0].is_available = true;
+  p.unit_types[0].available_count = 3;
+  p.unit_types.push({ id: 'pu9', name_en: '2BR', sort_order: 9, is_available: false, available_count: 0, total_units: null,
+                      next_available_date: null, price_amount: 500, price_currency: 'USD', price_frequency: 'monthly' });
+  const f = ptResolveListingFomo(p, 'en');
+  assert.ok(!f || f.kind !== 'missed', 'a genuinely open unit of a multi-unit property must clear a stale rented market_status');
 });
 
 test('PROD-7b. SOLD still wins even with a unit row left switched on -- a property-wide fact, never a per-unit one', () => {

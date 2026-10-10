@@ -24,6 +24,8 @@ const { test, expect } = require('@playwright/test');
 
 const UNAVAILABLE = ['reserved', 'rented', 'sold', 'fully_occupied', 'off_market'];
 const AVAILABLE = ['available', 'coming_soon'];
+// Available Only keeps what a visitor can contact now: coming_soon is unavailable too (it keeps its Coming Soon badge).
+const NOT_IN_AVAILABLE_ONLY = UNAVAILABLE.concat(['coming_soon']);
 
 function listing(i, over) {
   return Object.assign({
@@ -112,7 +114,7 @@ test('"Available Only" still narrows to available listings when the visitor opts
   const rows = oneOfEveryStatus();
   await mount(page, rows);
   await page.locator('.avail-btn[data-avail="available"]').click();
-  const expected = rows.filter(r => UNAVAILABLE.indexOf(r.market_status || 'available') === -1).length;
+  const expected = rows.filter(r => NOT_IN_AVAILABLE_ONLY.indexOf(r.market_status || 'available') === -1).length;
   await expect(cards(page)).toHaveCount(expected);
   expect(expected).toBeLessThan(rows.length); // proves the filter really is doing something
 });
@@ -217,4 +219,75 @@ test('a corrupted range price still renders its card rather than breaking the gr
   const errors = await mount(page, rows);
   await expect(cards(page)).toHaveCount(3);
   expect(errors).toEqual([]);
+});
+
+
+// ═══ Availability accuracy (Availability State Integration, PR 2) ══════════════════════════════════════════════
+// "Available Only", the availability sort and the status badge follow the canonical resolver
+// (property-availability.js), which reads market_status AND the unit rows -- not market_status alone.
+const UT = (id, o) => Object.assign({ id, is_available: true, available_count: 2, total_units: null, next_available_date: null }, o || {});
+const U_OPEN = (id) => UT(id), U_FULL = (id) => UT(id, { available_count: 0, next_available_date: '2999-01-01' }), U_TEMP = (id) => UT(id, { available_count: 0 });
+function stateRows() {
+  return [
+    listing(1, { title_en: 'A plain available', market_status: 'available', unit_types: [] }),
+    listing(2, { title_en: 'B available single open unit', market_status: 'available', unit_types: [U_OPEN('b1')] }),
+    listing(3, { title_en: 'C available but every unit closed', market_status: 'available', unit_types: [U_FULL('c1')] }),
+    listing(4, { title_en: 'D rented with a lone open unit', market_status: 'rented', unit_types: [U_OPEN('d1')] }),
+    listing(5, { title_en: 'E rented multi-unit with an open unit', market_status: 'rented', unit_types: [U_OPEN('e1'), U_FULL('e2')] }),
+    listing(6, { title_en: 'F coming soon', market_status: 'coming_soon', unit_types: [], price_amount: 777 }),
+    listing(7, { title_en: 'G sold with an open unit', market_status: 'sold', unit_types: [U_OPEN('g1')] }),
+    listing(8, { title_en: 'H available multi-unit none open', market_status: 'available', unit_types: [U_FULL('h1'), U_TEMP('h2')] }),
+    listing(9, { title_en: 'I open unit with a future date', market_status: 'available', unit_types: [UT('i1', { next_available_date: '2999-01-01' })] }),
+    listing(10, { title_en: 'J coming soon with open units', market_status: 'coming_soon', unit_types: [U_OPEN('j1'), U_OPEN('j2')] }),
+  ];
+}
+const IN_AVAILABLE_ONLY = ['A plain available', 'B available single open unit', 'E rented multi-unit with an open unit', 'I open unit with a future date'];
+const titles = async (page) => (await page.locator('#listings-container > .pt-card .pt-card-title, #listings-container > .pt-card h3, #listings-container > .pt-card [class*="title"]').allInnerTexts()).map((t) => t.trim()).filter(Boolean);
+const cardFor = (page, title) => page.locator('#listings-container > .pt-card', { hasText: title });
+
+test('Available Only keeps exactly the contactable properties (units and status), nothing that merely says available', async ({ page }) => {
+  await mount(page, stateRows());
+  await page.locator('.avail-btn[data-avail="available"]').click();
+  await expect(cards(page)).toHaveCount(IN_AVAILABLE_ONLY.length);
+  for (const t of IN_AVAILABLE_ONLY) await expect(cardFor(page, t)).toHaveCount(1);
+  for (const t of ['C available but every unit closed', 'D rented with a lone open unit', 'F coming soon', 'G sold with an open unit', 'H available multi-unit none open', 'J coming soon with open units']) {
+    await expect(cardFor(page, t)).toHaveCount(0);
+  }
+});
+
+test('All Listings still shows every property (nothing is hidden by default)', async ({ page }) => {
+  const rows = stateRows();
+  await mount(page, rows);
+  await expect(cards(page)).toHaveCount(rows.length);
+});
+
+test('availability sort: genuinely available properties rank before coming_soon / closed / sold ones', async ({ page }) => {
+  await mount(page, stateRows());
+  const order = await page.locator('#listings-container > .pt-card').evaluateAll((els) => els.map((e) => e.textContent));
+  const firstUnavailable = order.findIndex((t) => /coming soon|every unit closed|rented with a lone|sold with|none open/i.test(t));
+  const lastAvailable = Math.max(...IN_AVAILABLE_ONLY.map((t) => order.findIndex((o) => o.indexOf(t) !== -1)));
+  expect(firstUnavailable).toBeGreaterThan(-1);
+  expect(lastAvailable).toBeLessThan(firstUnavailable);
+});
+
+test('badges follow the effective status: closed units read Fully Occupied, a stale rented multi-unit reads Available, coming_soon keeps Coming Soon and its price', async ({ page }) => {
+  await mount(page, stateRows());
+  const badge = async (title) => ((await cardFor(page, title).locator('.pt-badge-status').first().textContent()) || '').trim();
+  expect(await badge('C available but every unit closed')).toBe('Fully Occupied');
+  expect(await badge('H available multi-unit none open')).toBe('Fully Occupied');
+  expect(await badge('D rented with a lone open unit')).toBe('Rented');
+  expect(await badge('G sold with an open unit')).toBe('Sold');
+  expect(await badge('E rented multi-unit with an open unit')).toBe('Available');
+  expect(await badge('F coming soon')).toBe('Coming Soon');
+  expect(await badge('J coming soon with open units')).toBe('Coming Soon');
+  await expect(cardFor(page, 'F coming soon')).toContainText('777');                  // the advertised price stays
+  await expect(cardFor(page, 'F coming soon').locator('.pt-card-availability-unavailable')).toHaveCount(0);   // no extra "unavailable" line for coming soon
+  await expect(cardFor(page, 'J coming soon with open units')).not.toContainText(/Only \d+ left|of \d+ available/i);   // no scarcity on a coming-soon property
+});
+
+test('draft visibility is unchanged: the list query still excludes drafts server-side', async ({ page }) => {
+  const urls = [];
+  page.on('request', (r) => { if (r.url().indexOf('/rest/v1/properties') !== -1) urls.push(r.url()); });
+  await mount(page, stateRows());
+  expect(urls.some((u) => u.indexOf('status.neq.draft') !== -1)).toBe(true);
 });
