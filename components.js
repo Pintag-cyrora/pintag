@@ -606,6 +606,10 @@ function ptResolveNextAvailable(property, lang, nowIso) {
 
   var avail = _ptIsUnavailableNow(property);
   if (!avail || !avail.unavailable) return null;            // rentable now -> no future date
+  // A coming_soon ('upcoming') property is not in the sold/rented "history" family: it keeps its Coming Soon badge and
+  // its advertised price and shows no "Available <date>" on the card, the overlay or the availability answer. The date
+  // stays display information only -- it never changes the canonical availability state.
+  if (avail.presentation === 'upcoming') return null;
 
   var today = nowIso || ptLocalIsoDate();
   var candidates = [];

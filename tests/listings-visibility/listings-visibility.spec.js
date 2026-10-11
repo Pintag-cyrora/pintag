@@ -291,3 +291,20 @@ test('draft visibility is unchanged: the list query still excludes drafts server
   await mount(page, stateRows());
   expect(urls.some((u) => u.indexOf('status.neq.draft') !== -1)).toBe(true);
 });
+
+test('coming_soon card: keeps its Coming Soon badge and price, and shows NO "Available <date>" (even with future dates on file)', async ({ page }) => {
+  await mount(page, [
+    listing(1, { title_en: 'Soon With Date', market_status: 'coming_soon', price_amount: 654, available_from: '2999-06-01', unit_types: [] }),
+    listing(2, { title_en: 'Soon With Unit Date', market_status: 'coming_soon', price_amount: 655, unit_types: [UT('s1', { next_available_date: '2999-07-01' })] }),
+    listing(3, { title_en: 'Rented With Date', market_status: 'rented', price_amount: 656, available_from: '2999-06-01', unit_types: [] }),
+  ]);
+  for (const t of ['Soon With Date', 'Soon With Unit Date']) {
+    const c = cardFor(page, t);
+    await expect(c.locator('.pt-badge-status').first()).toHaveText(/coming soon/i);
+    await expect(c).toContainText(t === 'Soon With Date' ? '654' : '655');
+    await expect(c.locator('.pt-card-next-available')).toHaveCount(0);
+    await expect(c).not.toContainText(/Available\s+\d|2999/);
+  }
+  // the sold/rented family keeps its date beside the price (unchanged)
+  await expect(cardFor(page, 'Rented With Date').locator('.pt-card-next-available')).toHaveCount(1);
+});

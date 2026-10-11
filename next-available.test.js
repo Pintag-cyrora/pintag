@@ -391,3 +391,25 @@ test('the default today is the visitor-local calendar date, not the UTC one', ()
     globalThis.Date = RealDate;
   }
 });
+
+// ═══ coming_soon shows NO "Available <date>" (card, overlay, detail availability answer) ═══════════════════════
+// coming_soon keeps its Coming Soon badge and advertised price but is not in the sold/rented "history" family, so a
+// date on file must not appear beside its price. The date never changes the availability state.
+test('COMING-SOON-1. a future available_from / unit date on a coming_soon property yields no next-available text', () => {
+  for (const units of [[], [{ id: 'a', is_available: true, available_count: 2, next_available_date: '2999-01-01' }],
+    [{ id: 'a', is_available: false, total_units: 5, available_count: 0, next_available_date: '2999-01-01' }]]) {
+    const p = { market_status: 'coming_soon', available_from: '2999-06-01', unit_types: units };
+    assert.equal(ptResolveNextAvailable(p, 'en', '2026-10-10'), null);
+    assert.equal(globalThis.ptResolveFomoOverlay(p, 'en', '2026-10-10'), null, 'no overlay or overlay date either');
+  }
+});
+
+test('COMING-SOON-2. the same dates still show for the sold/rented family (unchanged), and the state is not derived from them', () => {
+  const rented = { market_status: 'rented', available_from: '2999-06-01', unit_types: [] };
+  assert.equal(ptResolveNextAvailable(rented, 'en', '2026-10-10').isoDate, '2999-06-01');
+  const soon = { market_status: 'coming_soon', available_from: '2999-06-01', unit_types: [] };
+  assert.equal(globalThis._ptIsUnavailableNow(soon).unavailable, true);          // still unavailable ...
+  assert.equal(globalThis._ptIsUnavailableNow(soon).presentation, 'upcoming');   // ... and still the upcoming presentation
+  const noDate = Object.assign({}, soon, { available_from: null });
+  assert.deepEqual(globalThis._ptIsUnavailableNow(noDate), globalThis._ptIsUnavailableNow(soon), 'a date neither creates nor removes the state');
+});
