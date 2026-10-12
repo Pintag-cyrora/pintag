@@ -15,10 +15,21 @@
 # Definitions (chosen for a DR registry):
 #   missing_files  = ACTIVE registry rows in our bucket with no storage object
 #                    (a photo the listing shows but whose file is gone).
-#   orphaned_files = storage objects with NO registry row in ANY status
-#                    (an object we cannot map to any listing — the real DR risk;
-#                    objects merely removed from a gallery are still mapped via a
-#                    status='removed' row and are NOT counted as orphaned).
+#   orphaned_files = storage objects we cannot map to a listing: NO registry row
+#                    in ANY status, and NOT one of the two kinds of object that
+#                    are legitimately outside the registry (below). Objects merely
+#                    removed from a gallery are still mapped via a status='removed'
+#                    row and are NOT counted as orphaned.
+#   Legitimately outside the registry (reported separately, never failed on):
+#     derived_renditions     = renditions/<original stem>/<thumbnail|card|gallery|hero>.webp
+#                              whose ORIGINAL is known (registry row in any status, or a
+#                              unit-type gallery image). image-renditions.js derives their
+#                              paths from the original and never registers them.
+#     unit_gallery_originals = the originals of unit_types.images (a unit type's own
+#                              gallery). The registry never tracks them (its sync trigger is
+#                              on properties.images only; see backfill-renditions.mjs).
+#   A rendition whose original is unknown, an unrecognised file under renditions/, or an
+#   unregistered file that no unit type references is STILL an orphan (still fails).
 #   invalid_property        = registry rows whose property_id is not a listing.
 #   listings_missing_images = properties.images URLs (our bucket) with no object.
 #   cover/order issues      = a listing whose active images don't have exactly
@@ -30,6 +41,33 @@ METRICS_SQL = r"""
 WITH
 active AS (SELECT * FROM property_images WHERE status='active'),
 obj    AS (SELECT name FROM storage.objects WHERE bucket_id='property-images'),
+-- unit_types.images: a text[] of full public URLs (each unit type's own gallery), mapped back to the object name.
+unit_img AS (
+  SELECT split_part(substring(img FROM position('/storage/v1/object/public/property-images/' IN img)
+                                     + length('/storage/v1/object/public/property-images/')), '?', 1) AS name
+  FROM unit_types ut
+  CROSS JOIN LATERAL unnest(coalesce(ut.images, ARRAY[]::text[])) AS img
+  WHERE position('/storage/v1/object/public/property-images/' IN img) > 0
+),
+unit_orig AS (SELECT DISTINCT name FROM unit_img WHERE name <> '' AND name NOT LIKE 'renditions/%'),
+-- stems of every original we can map (renditionStem() in image-renditions.js: the object name minus its extension)
+known_stem AS (
+  SELECT regexp_replace(storage_path,'\.[A-Za-z0-9]+$','') AS stem FROM property_images
+  UNION
+  SELECT regexp_replace(name,'\.[A-Za-z0-9]+$','') FROM unit_orig
+),
+-- objects with no registry row, split into: derived rendition / unit gallery original / true orphan
+unreg AS (
+  SELECT o.name,
+    CASE
+      WHEN o.name ~ '^renditions/.+/(thumbnail|card|gallery|hero)\.webp$'
+           AND substring(o.name from '^renditions/(.+)/[^/]+$') IN (SELECT stem FROM known_stem) THEN 'rendition'
+      WHEN o.name IN (SELECT name FROM unit_orig) THEN 'unit_original'
+      ELSE 'orphan'
+    END AS kind
+  FROM obj o
+  WHERE NOT EXISTS (SELECT 1 FROM property_images pi WHERE pi.storage_path=o.name)
+),
 listing_urls AS (
   SELECT p.id AS property_id,
          regexp_replace(u.url,'^.*/property-images/','') AS path
@@ -54,8 +92,10 @@ SELECT json_build_object(
   'missing_files',          (SELECT count(*) FROM active a
                               WHERE a.storage_bucket='property-images'
                                 AND NOT EXISTS (SELECT 1 FROM obj o WHERE o.name=a.storage_path)),
-  'orphaned_files',         (SELECT count(*) FROM obj o
-                              WHERE NOT EXISTS (SELECT 1 FROM property_images pi WHERE pi.storage_path=o.name)),
+  'orphaned_files',         (SELECT count(*) FROM unreg WHERE kind='orphan'),
+  'orphaned_raw',           (SELECT count(*) FROM unreg),
+  'derived_renditions',     (SELECT count(*) FROM unreg WHERE kind='rendition'),
+  'unit_gallery_originals', (SELECT count(*) FROM unreg WHERE kind='unit_original'),
   'invalid_property',       (SELECT count(*) FROM active a
                               WHERE NOT EXISTS (SELECT 1 FROM properties p WHERE p.id=a.property_id)),
   'listings_missing_images',(SELECT count(*) FROM listing_urls lu
@@ -132,6 +172,8 @@ def main():
         f'Images verified:     {fmt(verified):>10}',
         f'Missing files:       {fmt(m["missing_files"]):>10}',
         f'Orphaned files:      {fmt(m["orphaned_files"]):>10}',
+        f'  (not counted) derived renditions:     {fmt(m["derived_renditions"]):>10}',
+        f'  (not counted) unit gallery originals: {fmt(m["unit_gallery_originals"]):>10}',
         f'Hash mismatches:     {fmt(hmis):>10}',
         f'Hash coverage:       {fmt(m["hash_coverage"])} / {fmt(m["registered"])}',
         f"STATUS: {status}",
