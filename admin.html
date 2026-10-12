@@ -280,6 +280,7 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
 .btn-import:hover{background:rgba(45,140,140,0.22);}
 /* Draft status badge */
 .status-draft{background:rgba(122,144,152,0.13);color:var(--ink-muted);}
+.status-conflict{background:rgba(180,83,9,0.12);color:#92400e;cursor:help;}
 /* Import progress steps */
 .import-step{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-muted);}
 .import-step.active{color:var(--teal);font-weight:500;}
@@ -527,6 +528,7 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
                 <option value="off_market">Off Market</option>
               </select>
               <p style="font-size:10.5px;color:var(--ink-muted);margin-top:4px;">Public — drives the status badge, price area, and CTA on the listing page. A Sold/Rented listing stays browsable, it just stops looking available.</p>
+              <div id="availability-conflict-warning" role="status" hidden style="margin-top:8px;padding:8px 10px;border-radius:3px;border:1px solid rgba(180,83,9,.35);background:rgba(180,83,9,.08);color:#92400e;font-size:11.5px;line-height:1.5;"></div>
             </div>
             <div class="form-group">
               <label class="form-label">Available From <span style="color:var(--ink-muted);font-weight:400;">— optional</span></label>
@@ -1080,6 +1082,8 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
 <script src="rental-terms.js?v=__ASSET_VERSION__"></script>
 <script src="lease-pricing.js?v=__ASSET_VERSION__"></script>
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
+<script src="listing-status.js?v=__ASSET_VERSION__"></script>
+<script src="property-availability.js?v=__ASSET_VERSION__"></script>
 <script src="provinces.js?v=__ASSET_VERSION__"></script>
 <script src="listing-title.js?v=__ASSET_VERSION__"></script>
 <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
@@ -2806,6 +2810,47 @@ function _utReadCardPrice(card, isSor, isRental) {
     rent_period: isSor ? (FREQUENCY_TO_LEGACY_PERIOD[rentFrequency] || 'month') : null
   };
 }
+// ── Availability consistency warnings ────────────────────────────────────────────────────────────────────────────
+// Market Status is a standalone manual dropdown and each unit type has its own Available checkbox / count; nothing keeps
+// them in sync. Visitors see the CANONICAL result (property-availability.js: market_status + unit rows), so staff are
+// warned, never blocked, when the two disagree in a way that changes what visitors see or whether anyone can contact
+// the agent. describePropertyAvailabilityConflict() reads the same summary the public site uses, so a warning always
+// describes real behaviour. Nothing here writes data.
+function availabilityConflictBadge(p) {
+  if (typeof describePropertyAvailabilityConflict !== 'function' || !p || p.workflow_status === 'draft') return '';
+  const c = describePropertyAvailabilityConflict(p);
+  return c ? ` <span class="status-badge status-conflict" data-conflict="${esc(c.code)}" title="${esc(c.message)}">⚠ availability mismatch</span>` : '';
+}
+function adminRefreshAvailabilityWarning() {
+  const box = document.getElementById('availability-conflict-warning');
+  const sel = document.getElementById('f-market-status');
+  if (!box || !sel || typeof describePropertyAvailabilityConflict !== 'function') return;
+  let conflict = null;
+  try {
+    const units = [...document.querySelectorAll('.ut-card')].map((card, i) => ({
+      id: card.dataset.id || ('new-' + i),
+      is_available: card.querySelector('.ut-is-available').checked,
+      available_count: card.querySelector('.ut-available-count').value.trim() === '' ? 1 : Number(card.querySelector('.ut-available-count').value),
+      total_units: card.querySelector('.ut-total-units').value.trim() === '' ? null : Number(card.querySelector('.ut-total-units').value),
+      next_available_date: card.querySelector('.ut-next-available-date').value || null
+    }));
+    conflict = describePropertyAvailabilityConflict({ market_status: sel.value || 'available', unit_types: units });
+  } catch (_) { conflict = null; }
+  box.hidden = !conflict;
+  box.textContent = conflict ? '⚠ ' + conflict.message : '';
+  if (conflict) box.setAttribute('data-conflict', conflict.code); else box.removeAttribute('data-conflict');
+}
+(function wireAvailabilityWarning() {
+  let t = null;
+  const later = () => { clearTimeout(t); t = setTimeout(adminRefreshAvailabilityWarning, 120); };
+  document.addEventListener('input', later, true);
+  document.addEventListener('change', later, true);
+  document.addEventListener('click', later, true);          // add / remove a unit type
+  // cards are added programmatically when a listing loads: observe the DOM too (debounced; cheap when the editor is closed)
+  new MutationObserver(later).observe(document.body, { childList: true, subtree: true });
+  later();
+})();
+
 function getUnitTypesFromDom() {
   const txType = document.getElementById('f-transaction').value;
   const isSor = txType === 'sale_or_rent';
@@ -3627,7 +3672,7 @@ async function loadListings() {
   // exists on that table at all). It is safe here because admin.html only
   // ever queries with a staff JWT; it must never be copied into a public
   // page's select. See 20260728000000_owners_internal_contacts.sql.
-  const LISTINGS_QS = 'order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,village_en,view_count,contacts(role,name,phone),owner_id,owners(id,name,phone,whatsapp)';
+  const LISTINGS_QS = 'order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,village_en,view_count,contacts(role,name,phone),owner_id,owners(id,name,phone,whatsapp),unit_types(id,is_available,available_count,total_units,next_available_date)';
   let data;
   try {
     // Soft-deleted listings (20260806020000) stay out of the working list.
@@ -3688,7 +3733,7 @@ async function loadListings() {
       <td>${p.price_display ? esc(p.price_display) : '<em style="color:var(--ink-muted)">On request</em>'}</td>
       <td>${agentDisplay}</td>
       <td>${renderOwnerPhoneCell(p.owners)}</td>
-      <td><span class="status-badge status-${marketStatusCls}">${marketStatusCls.replace(/_/g,' ')}</span>${isDraft ? ` <span class="status-badge status-draft">${esc(p.workflow_status)}</span>` : ''}</td>
+      <td><span class="status-badge status-${marketStatusCls}">${marketStatusCls.replace(/_/g,' ')}</span>${isDraft ? ` <span class="status-badge status-draft">${esc(p.workflow_status)}</span>` : ''}${availabilityConflictBadge(p)}</td>
       <td style="white-space:nowrap;font-size:12px;color:var(--ink-muted);"><span style="color:var(--ink);">${v}</span> views · <span style="color:var(--teal);font-weight:600;">${l}</span> leads${v > 0 ? ` <span style="opacity:0.6;">(${conv}%)</span>` : ''}</td>
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="action-btn btn-edit" onclick="editListing('${escJs(p.id)}')">Edit</button>

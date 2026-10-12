@@ -51,8 +51,9 @@ export function rankDemandSegments(segments) {
 
 // Classifies one segment's supply adequacy against its demand.
 // `supplyCount` is active_inventory.available_by_segment[segmentKey(seg)] —
-// genuinely bookable inventory (market_status='available' AND
-// workflow_status='active', see the migration) — or null when unavailable
+// genuinely bookable inventory (the canonical availability rules of
+// property-availability.js, ported to SQL in 20261012000000_intelligence_
+// canonical_availability.sql, AND workflow_status='active') — or null when unavailable
 // (any day other than the single most-recently-finalized one; a stock
 // metric is never fabricated for a historical day). Four states:
 // 'insufficient_data' (⚪ — below MIN_SEARCH_SAMPLE, or supply isn't known

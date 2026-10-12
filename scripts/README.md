@@ -53,7 +53,7 @@ is opt-in, as it was before the regression was introduced. See
 
 **Scripts:**
 - [`verify-listings-count.sh`](verify-listings-count.sh) — confirms the exact query `listings.html` sends returns every non-draft row (not just the ones with a "nice" `market_status`). Needs network access to Supabase, so it cannot run from a sandboxed session — run it from a machine that has it.
-- [`market-status-report.sql`](market-status-report.sql) — read-only. Breaks down every listing by `market_status`/`workflow_status`, and flags listings marked unavailable suspiciously soon after creation. This incident revealed that production's `market_status` distribution has likely never been reviewed by a human — run this once to confirm the values it contains are real, not a second, independent data bug.
+- [`market-status-report.sql`](market-status-report.sql) — read-only. Breaks down every listing by `market_status`/`workflow_status`, flags listings marked unavailable suspiciously soon after creation, and (sections 3, 6–8) compares the stored `market_status` with the CANONICAL availability the site shows (market_status + unit rows; the same rules as `property-availability.js`), counting the listings where they disagree. Run each numbered query on its own. This incident revealed that production's `market_status` distribution has likely never been reviewed by a human — run this once to confirm the values it contains are real, not a second, independent data bug.
 
 **To do once run:** if `market-status-report.sql` shows an implausibly large share of listings marked unavailable, that's a separate bug from the one fixed here (client-side filtering vs. bad underlying data) and needs its own investigation.
 

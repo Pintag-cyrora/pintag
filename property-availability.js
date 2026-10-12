@@ -150,3 +150,43 @@ function isPropertyUnitContactable(summary, unitId) {
   if (unitId == null || unitId === '') return false;
   return summary.openUnitIds.indexOf(unitId) !== -1;
 }
+
+// describePropertyAvailabilityConflict(property) -> null | { code, message }
+//
+// For STAFF (admin): is the property's market_status contradicted by its unit rows, in a way that changes what
+// visitors see or whether anyone can contact the agent? It reads the same canonical summary the site uses, so a
+// warning here always describes real public behaviour, and returns null when the two agree. English only (the admin
+// is an internal English surface). Never blocks a save: it explains, it does not change any data.
+//
+//   available_units_closed     market_status 'available' but unit rows exist and none is open: shown as Fully Occupied
+//                              (or Coming Soon) and not contactable
+//   single_unit_status_wins    single-unit rented / reserved / fully_occupied with an open unit: the property status
+//                              wins; the open unit is not offered
+//   multi_unit_status_stale    multi-unit rented / reserved / fully_occupied with an open unit: shown as available
+//                              (unit level); the dropdown is stale
+//   closed_property_open_units sold / off_market with an open unit: the unit is not contactable
+//   coming_soon_open_units     coming_soon with an open unit: not contactable until the status is changed
+var _PA_OCCUPANCY_NAMES = { reserved: 'Reserved', rented: 'Rented', fully_occupied: 'Fully Occupied' };
+function describePropertyAvailabilityConflict(property) {
+  var s = resolvePropertyAvailability(property);
+  var label = function (m) {
+    return (typeof getMarketStatusLabel === 'function') ? getMarketStatusLabel(m, 'en') : m;
+  };
+  var market = s.market;
+  if (s.openUnitCount > 0 && _PA_ALWAYS_OFF[market]) {
+    if (market === 'coming_soon') {
+      return { code: 'coming_soon_open_units', message: 'Market Status is Coming Soon, so visitors cannot contact anyone for this listing even though ' + s.openUnitCount + ' unit type(s) are marked available. Change Market Status to Available when it is ready to take enquiries.' };
+    }
+    return { code: 'closed_property_open_units', message: 'Market Status is ' + label(market) + ', so this listing is unavailable and visitors cannot contact anyone for it, even though ' + s.openUnitCount + ' unit type(s) are marked available.' };
+  }
+  if (s.openUnitCount > 0 && _PA_OCCUPANCY[market]) {
+    if (s.multiUnit) {
+      return { code: 'multi_unit_status_stale', message: 'Market Status is ' + label(market) + ', but ' + s.openUnitCount + ' of ' + s.totalUnits + ' unit types are available, so visitors see this listing as available (per unit). Update Market Status to Available to remove this mismatch.' };
+    }
+    return { code: 'single_unit_status_wins', message: 'Market Status is ' + label(market) + ', so this single-unit listing is shown as ' + label(market) + ' and cannot be contacted, even though its unit is marked available. Set Market Status to Available to offer it.' };
+  }
+  if (!s.available && market !== 'coming_soon' && !_PA_ALWAYS_OFF[market] && !_PA_OCCUPANCY[market] && s.totalUnits > 0 && s.openUnitCount === 0) {
+    return { code: 'available_units_closed', message: 'Market Status is Available, but no unit type is available, so visitors see this listing as ' + label(s.effectiveMarket) + ' and cannot contact anyone. Mark a unit type Available (with a count above 0), or set Market Status to match.' };
+  }
+  return null;
+}
