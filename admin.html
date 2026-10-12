@@ -3849,7 +3849,8 @@ function onTransactionChange() {
 // worst when creating listings back to back, since "+ New Listing" is the obvious next tap after "Saved".
 let _returnToListingsTimer = null;
 function scheduleReturnToListings(ms, beforeReturn) {
-  cancelReturnToListings();
+  // A second save inside the window just restarts it; the Save button stays on "Saved ✓" until the return fires.
+  if (_returnToListingsTimer !== null) clearTimeout(_returnToListingsTimer);
   _returnToListingsTimer = setTimeout(() => {
     _returnToListingsTimer = null;
     if (beforeReturn) beforeReturn();
@@ -3906,6 +3907,8 @@ function revealFormPanel(titleText, id) {
 // transaction default, lease-basis=monthly, featured=false, ...); this function
 // only clears the JS/DOM state that native reset() doesn't reach.
 function resetListingForm() {
+  // "+ New Listing" (showImportPanel) right after "Saved ✓" must stay on the new listing, not be pulled back to the list.
+  cancelReturnToListings();
   document.getElementById('listing-form').reset();
   clearImportReviewFlags();
   document.getElementById('nearby-list').innerHTML = '';
@@ -5448,7 +5451,6 @@ async function generateAIContent() {
 // ── SMART IMPORT ─────────────────────────────────────────────────
 
 function showImportPanel() {
-  cancelReturnToListings();   // "+ New Listing" right after "Saved ✓" must stay on the new listing
   // New Listing entry point. Reset the listing form to a genuine blank slate
   // BEFORE Smart Import repopulates it, so a previously-edited listing's Unit
   // Types / Rental Terms / Owner / lease-duration tiers can never leak in (and
