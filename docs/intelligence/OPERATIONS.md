@@ -177,6 +177,66 @@ WHERE jobid IN (SELECT jobid FROM cron.job WHERE jobname LIKE 'intelligence-repo
 ORDER BY start_time DESC LIMIT 20;
 ```
 
+### Reading the run results correctly (pg_net 5-second timeout)
+
+`net.http_post` is asynchronous and, unless `timeout_milliseconds` is passed
+(the jobs above do not), pg_net gives up on each request after **5000 ms**.
+The Edge Function sends no response until the very end of the run (the
+snapshot step, the insight sweep, the Gemini call(s) and the report insert all
+happen first), so a daily run takes well over 5 seconds (about 20 seconds when
+last observed). Expect this on every run:
+
+- **`cron.job_run_details.status = 'succeeded'` (`return_message = '1 row'`)
+  only means the SQL command `SELECT net.http_post(...)` completed.** It
+  returns a request id as soon as the request is queued. It says nothing about
+  whether the Edge Function ran, failed or finished.
+- **A `net._http_response` row with `timed_out = true`, `status_code IS NULL`
+  and `error_msg = 'Timeout of 5000 ms reached'` does not mean the Edge
+  Function failed.** pg_net stopped waiting; it did not cancel the function.
+  Observed in production: the request timed out while the snapshot row had
+  already been written about 2 seconds in and the report finished about 20
+  seconds in. The snapshot is written by a separate database call
+  (`ensure_daily_metrics_snapshot`, `index.ts` `fetchDailyMetrics`) that
+  commits on its own, so the timeout cannot roll it back. A 401 or other fast
+  error, by contrast, returns inside 5 seconds and is expected to be recorded
+  with its `status_code`. `net._http_response` rows may also be pruned after a while.
+
+**Verify that a run actually completed from the tables the function writes,
+not from cron or pg_net:**
+
+```sql
+-- 1. The report for the target day (status 'generated'; read error_message if 'failed')
+SELECT report_type, period_start, period_end, status, generated_at, error_message
+FROM intelligence_reports
+WHERE report_type = 'daily'
+ORDER BY generated_at DESC LIMIT 5;
+
+-- 2. The snapshot row for the target day (finalized_at is when it was written)
+SELECT day, finalized_at
+FROM daily_metrics_snapshot
+ORDER BY day DESC LIMIT 5;
+```
+
+(For the weekly and monthly jobs, change `report_type`.) A run is complete
+when the expected `intelligence_reports` row has `status = 'generated'` and the
+`daily_metrics_snapshot` row for its target day exists.
+
+**Target day versus cron time.** The cron schedule is in UTC; the report
+calendar is Asia/Vientiane (UTC+7, no daylight saving). The daily job fires at
+00:05 UTC, which is 07:05 the same calendar date in Vientiane. A daily run
+targets *yesterday in Vientiane* (`yesterdayVientiane()` in `date-boundary.js`,
+and `v_end` in `ensure_daily_metrics_snapshot`), so:
+
+| Cron fires (UTC) | Vientiane time | Target day (row `day` / report `period_end`) |
+|---|---|---|
+| 2026-10-12 00:05 | 2026-10-12 07:05 | **2026-10-11** |
+| 2026-10-13 00:05 | 2026-10-13 07:05 | **2026-10-12** |
+
+The row for a given day cannot exist until Vientiane midnight has passed
+(17:00 UTC on that same date), and `finalized_at` is the UTC moment the row
+was written, so for the scheduled run it falls on the UTC date *after* the
+row's `day`. Do not look for a row dated the same UTC date as the cron run.
+
 ## Auth model reference
 
 `requireStaffOrService()` (in `index.ts`) accepts exactly two forms of
@@ -200,7 +260,9 @@ happens, not a security hole (it fails closed).
 ## Troubleshooting
 
 - **Reports silently stop appearing.** Check `cron.job_run_details` above
-  first. If jobs are firing but every response is a 401, the Vault
+  first (a `succeeded` status only means the request was queued; confirm
+  completion in `intelligence_reports` as described in "Reading the run
+  results correctly"). If jobs are firing but every response is a 401, the Vault
   secret (`intelligence_report_service_key`) most likely no longer
   matches the project's current service-role key — this is exactly what
   happened in the incident this document exists to prevent. Compare the
