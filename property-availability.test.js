@@ -180,7 +180,7 @@ test('parity: _ptIsUnavailableNow() and resolveContactIntentAvailability() are t
       const p = prop({ market_status: m, unit_types: units });
       const s = R(p);
       assert.deepEqual(G.resolveContactIntentAvailability(p), s, `${m}/${name}: wrapper`);
-      assert.deepEqual(G._ptIsUnavailableNow(p), { unavailable: !s.available, market: s.effectiveMarket, source: s.source }, `${m}/${name}: _ptIsUnavailableNow`);
+      assert.deepEqual(G._ptIsUnavailableNow(p), { unavailable: !s.available, market: s.effectiveMarket, source: s.source, presentation: s.presentation }, `${m}/${name}: _ptIsUnavailableNow`);
     }
   }
 });
@@ -197,12 +197,15 @@ test('downstream of _ptIsUnavailableNow: coming_soon makes no scarcity claim and
   assert.ok(!f || f.tone !== 'unavailable', 'an available multi-unit property is not labelled rented');
 });
 
-test('transitional fallback: where property-availability.js is not loaded, _ptIsUnavailableNow still answers (browse pages, until their PR)', () => {
+test('no transitional fallback: without property-availability.js, _ptIsUnavailableNow answers null (never a guessed state)', () => {
   const ctx = vm.createContext({});
   for (const f of ['currency.js', 'terminology.js', 'unit-availability.js', 'listing-status.js', 'components.js']) {
     vm.runInContext(fs.readFileSync(new URL('./' + f, import.meta.url), 'utf8'), ctx, { filename: f });
   }
   assert.equal(vm.runInContext("typeof resolvePropertyAvailability", ctx), 'undefined');
-  assert.deepEqual(JSON.parse(vm.runInContext("JSON.stringify(_ptIsUnavailableNow({market_status:'sold',unit_types:[]}))", ctx)), { unavailable: true, market: 'sold', source: 'market_status' });
-  assert.equal(vm.runInContext("_ptIsUnavailableNow({market_status:'available',unit_types:[]}).unavailable", ctx), false);
+  assert.equal(vm.runInContext("_ptIsUnavailableNow({market_status:'sold',unit_types:[]})", ctx), null);
+  assert.equal(vm.runInContext("typeof _ptIsUnavailableNowLegacy", ctx), 'undefined');
+  assert.equal(vm.runInContext("typeof _ptHasOpenUnit", ctx), 'undefined');
+  // and the callers degrade to "nothing availability-specific", not to a wrong claim
+  assert.equal(vm.runInContext("ptResolveListingFomo({market_status:'sold',unit_types:[]},'en')", ctx), null);
 });

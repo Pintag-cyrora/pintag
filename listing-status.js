@@ -20,10 +20,10 @@
 // 2. Pure, portable: no document/window references in any function here --
 //    same browser-<script>-or-edge-function portability unit-availability.js
 //    already relies on.
-// 3. isPubliclyAvailable() is the ONE gate deciding "does this listing show
-//    a normal price + Contact CTA, or the unavailable treatment" -- callers
-//    branch on this, they never re-derive it from a market_status list of
-//    their own.
+// 3. isPubliclyAvailable here is the MARKET-STATUS-ONLY flag. It is not the page gate any more: whether a
+//    listing is available (Available-only, sorting, badges, Similar Properties, contact paths, previews) is decided
+//    by property-availability.js resolvePropertyAvailability(), which reads this file's market AND the unit rows.
+//    This file stays the market_status vocabulary (labels, badge classes, messages, status CTAs).
 
 var LISTING_UNAVAILABLE_MARKET_STATUSES = ['reserved','rented','sold','fully_occupied','off_market'];
 
@@ -103,8 +103,10 @@ var _AGENT_PORTFOLIO_BADGE_CLASS = {
   'status-pending':     'p-status-offer',
   'status-unavailable': 'p-status-rented'
 };
-function ptAgentPortfolioBadge(property) {
-  var market = resolveListingStatus(property).market;
+// `market` is optional: the status to show when the caller has resolved it through property-availability.js
+// (the canonical resolver, which also reads the unit rows); omitted, the property's own market_status is used.
+function ptAgentPortfolioBadge(property, market) {
+  if (!market) market = resolveListingStatus(property).market;
   var cls = market === 'sold' ? 'p-status-sold' : (_AGENT_PORTFOLIO_BADGE_CLASS[getMarketStatusBadgeClass(market)] || 'p-status-available');
   return [cls, getMarketStatusLabel(market, 'lo')];
 }

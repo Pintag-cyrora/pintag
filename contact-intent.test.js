@@ -163,7 +163,7 @@ test('the deliberate behaviour changes of the Availability State Integration are
   assert.equal(_ptIsUnavailableNow(prop({ market_status: 'sold', unit_types: [OPEN('a')] })).unavailable, true);
   // a multi-unit property with an open unit stays available at unit level, and shows as available (not 'rented')
   const multi = _ptIsUnavailableNow(prop({ market_status: 'rented', unit_types: [OPEN('a'), FULL('b')] }));
-  assert.deepEqual(multi, { unavailable: false, market: 'available', source: 'unit_types' });
+  assert.deepEqual(multi, { unavailable: false, market: 'available', source: 'unit_types', presentation: 'live' });
   // listing-status.js is untouched in this PR
   assert.deepEqual(G.resolveListingStatus(prop({ market_status: 'rented' })), { workflow: 'active', market: 'rented', isPubliclyAvailable: false });
 });

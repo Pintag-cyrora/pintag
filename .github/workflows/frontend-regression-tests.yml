@@ -15,6 +15,7 @@ on:
       - '*.html'
       - '*.js'
       - '*.css'
+      - 'cloudflare-worker/**'   # og-availability-parity.test.js pins the Worker's availability port to the browser resolver
       - 'tests/**'
       - '.github/workflows/frontend-regression-tests.yml'
   pull_request:
@@ -23,6 +24,7 @@ on:
       - '*.html'
       - '*.js'
       - '*.css'
+      - 'cloudflare-worker/**'   # og-availability-parity.test.js pins the Worker's availability port to the browser resolver
       - 'tests/**'
       - '.github/workflows/frontend-regression-tests.yml'
   workflow_dispatch:
@@ -54,6 +56,13 @@ jobs:
       - name: map-location unit suite
         working-directory: tests/map-location
         run: node --test *.test.js
+
+      # The Workers carry hand ports of browser rules (og-listing-preview.js ports the canonical availability
+      # resolver; og-availability-parity.test.js, in the root suite above, pins the port to the browser files) and
+      # their own unit/end-to-end suites. These were not run by any workflow before; the path filters above now also
+      # trigger on cloudflare-worker/**.
+      - name: Cloudflare Worker unit suites
+        run: node --test cloudflare-worker/*.test.js
 
       - name: Smart Import prompt unit suite
         run: node --test tests/smart-import-prompt/*.test.mjs

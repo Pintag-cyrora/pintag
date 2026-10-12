@@ -207,8 +207,8 @@ test('PRICING D: no property-level price, but unit_types has real pricing -> che
   const row = Object.assign({}, ROW, {
     transaction_type: 'for_rent', price_amount: null, price_display: null,
     unit_types: [
-      { price_amount: 450, price_currency: 'USD', price_frequency: 'monthly' },
-      { price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' }, // cheaper -- must win
+      { is_available: true, available_count: 1, price_amount: 450, price_currency: 'USD', price_frequency: 'monthly' },
+      { is_available: true, available_count: 1, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' }, // cheaper -- must win
     ],
   });
   assert.match(buildOgFields(row, 'en').desc, /^\$300 \/ month/);
@@ -221,8 +221,8 @@ test('PRICING D2: sale-or-rent unit_types pricing resolves both legs per unit, c
   const row = Object.assign({}, ROW, {
     transaction_type: 'sale_or_rent', price_amount: null, price_display: null,
     unit_types: [
-      { price_amount: 300000, price_currency: 'USD', rent_price_amount: 1500, rent_price_currency: 'USD', rent_price_frequency: 'monthly' },
-      { price_amount: 200000, price_currency: 'USD', rent_price_amount: 1000, rent_price_currency: 'USD', rent_price_frequency: 'monthly' },
+      { is_available: true, available_count: 1, price_amount: 300000, price_currency: 'USD', rent_price_amount: 1500, rent_price_currency: 'USD', rent_price_frequency: 'monthly' },
+      { is_available: true, available_count: 1, price_amount: 200000, price_currency: 'USD', rent_price_amount: 1000, rent_price_currency: 'USD', rent_price_frequency: 'monthly' },
     ],
   });
   assert.match(buildOgFields(row, 'en').desc, /^\$200,000 · \$1,000 \/ month/);
@@ -539,7 +539,7 @@ test('rewriteListingHead END-TO-END: the actual generated og:description (and me
 
   const unitRow = Object.assign({}, ROW, {
     transaction_type: 'for_rent', price_amount: null, price_display: null,
-    unit_types: [{ price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' }],
+    unit_types: [{ is_available: true, available_count: 1, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' }],
   });
   const unitHtml = await (await rewriteListingHead(LISTING_FIXTURE, unitRow, 'en', unitRow.slug)).text();
   assert.match(unitHtml, /<meta property="og:description" content="\$300 \/ month/, 'unit_types fallback: og:description carries the cheapest unit price');
