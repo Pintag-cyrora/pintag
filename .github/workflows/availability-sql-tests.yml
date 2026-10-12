@@ -1,0 +1,68 @@
+name: Availability SQL Tests
+
+# Pins the SQL port of the canonical availability rules to the browser resolver.
+#
+#   * supabase/migrations/20261012000000_intelligence_canonical_availability.sql  (point_in_time_supply_snapshot)
+#   * scripts/market-status-report.sql
+#
+# tests/security/regression/run-availability-canonical-pg.sh generates EVERY market_status x unit-configuration state
+# from property-availability.js (the browser resolver), loads it into a throwaway PostgreSQL, applies the migration
+# twice, and checks the SQL's availability for each state, the ACL, idempotency and the report. It reads no real data and
+# needs no credentials. (The migration itself is applied to production by hand, never by this workflow.)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'property-availability.js'
+      - 'unit-availability.js'
+      - 'listing-status.js'
+      - 'scripts/market-status-report.sql'
+      - 'supabase/migrations/20261012000000_intelligence_canonical_availability.sql'
+      - 'supabase/migrations/20260922000000_intelligence_unit_type_demand.sql'
+      - 'tests/security/regression/run-availability-canonical-pg.sh'
+      - 'tests/security/regression/availability_canonical_regression.sql'
+      - 'tests/security/regression/schema_availability_canonical.sql'
+      - 'tests/security/regression/gen-availability-matrix.mjs'
+      - '.github/workflows/availability-sql-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'property-availability.js'
+      - 'unit-availability.js'
+      - 'listing-status.js'
+      - 'scripts/market-status-report.sql'
+      - 'supabase/migrations/20261012000000_intelligence_canonical_availability.sql'
+      - 'supabase/migrations/20260922000000_intelligence_unit_type_demand.sql'
+      - 'tests/security/regression/run-availability-canonical-pg.sh'
+      - 'tests/security/regression/availability_canonical_regression.sql'
+      - 'tests/security/regression/schema_availability_canonical.sql'
+      - 'tests/security/regression/gen-availability-matrix.mjs'
+      - '.github/workflows/availability-sql-tests.yml'
+  workflow_dispatch:
+
+# Least privilege: reads code and runs tests, nothing else.
+permissions:
+  contents: read
+
+jobs:
+  sql-parity:
+    name: Availability SQL parity (browser resolver vs Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Install PostgreSQL server binaries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql
+
+      - name: Availability SQL parity (supply snapshot + market-status report)
+        run: bash tests/security/regression/run-availability-canonical-pg.sh

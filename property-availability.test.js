@@ -209,3 +209,48 @@ test('no transitional fallback: without property-availability.js, _ptIsUnavailab
   // and the callers degrade to "nothing availability-specific", not to a wrong claim
   assert.equal(vm.runInContext("ptResolveListingFomo({market_status:'sold',unit_types:[]},'en')", ctx), null);
 });
+
+// ═══ Admin warnings: describePropertyAvailabilityConflict ═══════════════════════════════════════════════════════════
+const conflict = (m, units) => G.describePropertyAvailabilityConflict(prop({ market_status: m, unit_types: units }));
+const code = (m, units) => (conflict(m, units) || {}).code || null;
+
+test('conflict codes: the full market x unit-configuration table (null = consistent, no warning)', () => {
+  const EXPECT = {
+    available:      { none: null, oneOpen: null, oneFull: 'available_units_closed', oneTemp: 'available_units_closed', oneSoon: 'available_units_closed',
+                      twoOpen: null, openAndFull: null, twoFull: 'available_units_closed', twoTemp: 'available_units_closed', twoSoon: 'available_units_closed' },
+    reserved:       { none: null, oneOpen: 'single_unit_status_wins', oneFull: null, oneTemp: null, oneSoon: null,
+                      twoOpen: 'multi_unit_status_stale', openAndFull: 'multi_unit_status_stale', twoFull: null, twoTemp: null, twoSoon: null },
+    sold:           { none: null, oneOpen: 'closed_property_open_units', oneFull: null, oneTemp: null, oneSoon: null,
+                      twoOpen: 'closed_property_open_units', openAndFull: 'closed_property_open_units', twoFull: null, twoTemp: null, twoSoon: null },
+    coming_soon:    { none: null, oneOpen: 'coming_soon_open_units', oneFull: null, oneTemp: null, oneSoon: null,
+                      twoOpen: 'coming_soon_open_units', openAndFull: 'coming_soon_open_units', twoFull: null, twoTemp: null, twoSoon: null },
+  };
+  EXPECT.rented = EXPECT.fully_occupied = EXPECT.reserved;
+  EXPECT.off_market = EXPECT.sold;
+  for (const [m, row] of Object.entries(EXPECT)) for (const [name, want] of Object.entries(row)) {
+    assert.equal(code(m, UNIT_SETS[name]), want, `${m}/${name}`);
+  }
+});
+
+test('conflict messages explain the PUBLIC behaviour and name the market status; a consistent property returns null', () => {
+  assert.match(conflict('rented', [OPEN('a')]).message, /Market Status is Rented.*single-unit.*cannot be contacted/);
+  assert.match(conflict('rented', [OPEN('a'), FULL('b')]).message, /1 of 2 unit types are available.*see this listing as available/);
+  assert.match(conflict('available', [FULL('a')]).message, /no unit type is available.*Fully Occupied/);
+  assert.match(conflict('available', [SOON('a'), SOON('b')]).message, /Coming Soon/);
+  assert.match(conflict('coming_soon', [OPEN('a')]).message, /Coming Soon.*cannot contact/);
+  assert.match(conflict('sold', [OPEN('a')]).message, /Sold.*unavailable/);
+  assert.equal(conflict('available', []), null);
+  assert.equal(G.describePropertyAvailabilityConflict({}), null);
+});
+
+test('conflict is derived from the SAME summary as the site: a warning exists exactly when the shown status differs from the dropdown or a unit is open but not contactable', () => {
+  for (const m of ['available', 'reserved', 'rented', 'fully_occupied', 'sold', 'off_market', 'coming_soon']) {
+    for (const [name, units] of Object.entries(UNIT_SETS)) {
+      const p = prop({ market_status: m, unit_types: units });
+      const s = R(p), c = G.describePropertyAvailabilityConflict(p);
+      const openButUnreachable = s.openUnitCount > 0 && (!s.available || s.unitOverride);
+      const shownDiffers = s.effectiveMarket !== m && !(m === 'available' && s.effectiveMarket === 'available');
+      assert.equal(!!c, openButUnreachable || (shownDiffers && s.openUnitCount === 0 && m === 'available'), `${m}/${name}`);
+    }
+  }
+});
