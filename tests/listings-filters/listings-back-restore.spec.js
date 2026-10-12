@@ -226,17 +226,30 @@ test.describe('listings.html -- back-navigation restoration', () => {
     // normal single first-page render rather than jumping back to the
     // previously-restored count.
     //
-    // scrollY is deliberately NOT asserted to be exactly 0 here: a same-URL
-    // reload also triggers the BROWSER's own native scroll-position memory
-    // (history.scrollRestoration, independent of sessionStorage and of
-    // anything in this fix), which was already the case before this change
-    // and is out of scope -- overriding it site-wide was not part of this
-    // fix and risks unrelated side effects on every other page's reload
-    // behavior. What matters here is that OUR mechanism didn't re-fire.
+    // The BROWSER's own native scroll memory (history.scrollRestoration, independent of
+    // sessionStorage and of anything in this fix; overriding it site-wide is out of
+    // scope) is switched off for THIS history entry before the reload. Left on, it
+    // races with the grid's organic infinite scroll: the reload re-renders the first
+    // 12 cards, the browser scrolls back toward the old depth as soon as the page is
+    // tall enough (how far it gets depends on layout timing), the sentinel enters the
+    // viewport and loads the next 8 cards -- 20 cards on ~1 run in 5, from infinite
+    // scroll, with our mechanism never involved (sessionStorage key empty and
+    // _ptRestoreApplied unset in every failing run). With it off, only OUR mechanism
+    // can change what the reload renders, which is exactly what this test is about.
+    await page.evaluate(() => { history.scrollRestoration = 'manual'; });
     await page.reload();
     await page.waitForFunction(() => window._listingsLoaded === true);
     await page.waitForTimeout(300);
     expect(await cardCount(page)).toBeLessThanOrEqual(12);
+    expect(await scrollY(page)).toBe(0);
+    // And the one-shot itself, asserted directly rather than inferred from the count:
+    // the entry was deleted when first consumed, and the restore routine did not run again.
+    const state = await page.evaluate(() => ({
+      stored: sessionStorage.getItem('pt_listings_restore_v1'),
+      applied: window._ptRestoreApplied === true,
+    }));
+    expect(state.stored).toBeNull();
+    expect(state.applied).toBe(false);
   });
 
   test('Listings (filtered) -> listing -> "Back to Listings" link itself now carries the exact filters/sort forward, and clicking it restores cards + scroll', async ({ page }) => {
