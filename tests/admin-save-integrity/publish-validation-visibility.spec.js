@@ -17,19 +17,20 @@ const { fakeBackend, boot, FORM_STATE } = require('./fixtures');
 const AGENT = { id: 'agent-keomany', name_en: 'Keomany', whatsapp: '+85620 5551234', agency_name: 'Pintag', is_active: true };
 const SAVE_BTN = '#submit-btn';
 
-async function openNewListingWithAgent(page, backend) {
+async function openNewListingWithAgent(page, backend, propertyType) {
+  propertyType = propertyType || 'condo';
   await boot(page, backend);
   // Serve the agent through the real loader (loadAgentsForDropdown) rather than poking _agentsAll,
   // which that async load would otherwise overwrite.
   await page.route('**/rest/v1/parties*', (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify([AGENT]) }));
-  await page.evaluate(() => {
+  await page.evaluate((propertyType) => {
     showForm();
-    document.getElementById('f-type').value = 'condo'; renderPropertyTypeFields('condo');
+    document.getElementById('f-type').value = propertyType; renderPropertyTypeFields(propertyType);
     document.getElementById('f-transaction').value = 'for_sale'; onTransactionChange();
     document.getElementById('f-workflow-status').value = 'active';
-    document.getElementById('f-title-en').value = 'Visibility Test Condo';
-  });
+    document.getElementById('f-title-en').value = 'Visibility Test Listing';
+  }, propertyType);
   await page.waitForFunction((id) => !!document.querySelector('#f-agent-id option[value="' + id + '"]'), AGENT.id);
 }
 const writes = (backend) => backend.state.requests.filter((r) => r.method !== 'GET').map((r) => r.method + ' ' + r.table);
@@ -106,5 +107,55 @@ test.describe('publish validation is visible and actionable', () => {
     await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
     expect(backend.count('POST', 'properties')).toBe(1);
     expect(backend.count('POST', 'unit_types')).toBe(1);
+    expect(backend.count('POST', 'contacts')).toBe(1);
+    // Exactly the records of one listing exist -- no duplicate listing, contact or unit type.
+    expect(Object.keys(backend.state.properties)).toHaveLength(1);
+    expect(Object.keys(backend.state.unitTypes)).toHaveLength(1);
+    expect(Object.keys(backend.state.contacts)).toHaveLength(1);
+    // A second tap on Save after success edits that listing instead of creating another.
+    await page.evaluate(() => saveListing({ preventDefault() {} }));
+    expect(Object.keys(backend.state.properties)).toHaveLength(1);
+    expect(Object.keys(backend.state.unitTypes)).toHaveLength(1);
+    expect(backend.count('POST', 'properties')).toBe(1);
+  });
+});
+
+// The report came from a phone: touch taps, a ~390px viewport, and the failing fields below the fold.
+test.describe('publish validation on a phone-sized touch screen', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('tapping through the reported state: first missing field is scrolled into view, outlined, nothing overflows sideways', async ({ page }) => {
+    const backend = fakeBackend();
+    // 'land' on purpose: house/condo currently widen the whole page past a 390px phone (the property-details
+    // check-grid), a separate pre-existing layout issue that is not what this spec is about.
+    await openNewListingWithAgent(page, backend, 'land');
+    await page.selectOption('#f-agent-id', AGENT.id);
+    const add = page.locator('.btn-add-row', { hasText: 'Add Unit Type' });
+    await add.tap(); await add.tap();
+    await page.locator('.ut-card').first().locator('.ut-head').tap();
+    await page.locator('.ut-card').first().locator('.ut-name-en').fill('1 Bedroom');
+    await page.locator('.ut-card').first().locator('.ut-head').tap();
+
+    await page.locator(SAVE_BTN).tap();
+    const s = await page.evaluate(FORM_STATE);
+    expect(s.msg).toContain('Required before publishing');
+    expect(writes(backend)).toEqual([]);
+
+    // Smooth scrolling: wait for the focused field to settle inside the viewport.
+    await expect.poll(() => page.evaluate(() => {
+      const el = document.getElementById('f-contact-phone'); const r = el.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= window.innerHeight;
+    })).toBe(true);
+    await expect(page.locator('#f-contact-phone')).toHaveClass(/field-missing/);
+
+    // Every unit-type field named in the error is now reachable, and the page is not wider than the phone.
+    expect(await page.locator('.ut-card.expanded').count()).toBe(2);
+    const dims = await page.evaluate(() => ({
+      docW: document.documentElement.scrollWidth, winW: window.innerWidth,
+      fields: [...document.querySelectorAll('.field-missing')].map((el) => { const r = el.getBoundingClientRect(); return { w: r.width, right: r.right }; }),
+    }));
+    expect(dims.docW).toBeLessThanOrEqual(dims.winW);
+    expect(dims.fields.length).toBe(7);                       // phone + 6 unit-type fields
+    dims.fields.forEach((f) => { expect(f.w).toBeGreaterThan(0); expect(f.right).toBeLessThanOrEqual(dims.winW); });
   });
 });
