@@ -1543,6 +1543,38 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); addCustomTag();
   }
 });
+// Return/Enter in a single-line field must NEVER save the listing. The browser's implicit form submission (iPhone Safari's
+// Return/Go key included) would otherwise run saveListing() from ANY text/number/date field -- and a Smart Import form is a
+// Draft, which skips the required-field checks, so one stray Return created a listing and sent the user back to the list.
+// Saving is only ever the Save Listing button. Return now moves to the next field instead (the "Next" key), or dismisses
+// the keyboard on the last one. Untouched: textareas (newlines), the Save/other buttons (Enter activates them as usual),
+// selects, file inputs, IME composition (Lao/Chinese candidate confirmation), and the custom-tag box, which has its own
+// Return handler above. enterkeyhint="next" is only the keyboard's label; the keydown guard is what prevents the submit.
+const _ENTER_EXEMPT_INPUT_TYPES = ['submit', 'button', 'image', 'reset', 'file', 'hidden'];
+function _formFieldIsGuarded(t) {
+  if (!t || t.tagName !== 'INPUT' || !t.closest('#listing-form') || t.id === 'custom-tag-input') return false;
+  return _ENTER_EXEMPT_INPUT_TYPES.indexOf((t.getAttribute('type') || 'text').toLowerCase()) === -1;
+}
+function _focusNextFormField(from) {
+  const fields = [...document.querySelectorAll('#listing-form input, #listing-form select, #listing-form textarea')]
+    .filter(el => !el.disabled && el.type !== 'hidden' && el.type !== 'file' && el.offsetParent !== null);
+  const next = fields[fields.indexOf(from) + 1];
+  if (next) next.focus(); else from.blur();
+}
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.keyCode !== 13) return;
+  if (e.isComposing || e.keyCode === 229) return;
+  if (!_formFieldIsGuarded(e.target)) return;
+  e.preventDefault();
+  _focusNextFormField(e.target);
+});
+// "Next" on the iPhone keyboard for the form's single-line fields, including ones added later (unit types, nearby places,
+// extra phone numbers): set when a field gains focus.
+document.addEventListener('focusin', e => {
+  if (_formFieldIsGuarded(e.target) && !e.target.hasAttribute('enterkeyhint') && ['checkbox', 'radio'].indexOf(e.target.type) === -1) {
+    e.target.setAttribute('enterkeyhint', 'next');
+  }
+});
 function renderCustomTags() {
   const el = document.getElementById('highlights-custom');
   el.innerHTML = customTags.map((t, i) =>
