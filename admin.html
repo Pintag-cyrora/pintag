@@ -3937,6 +3937,8 @@ function resetListingForm() {
 
 async function showForm(id) {
   revealFormPanel(id ? 'Edit Listing' : 'New Listing', id);
+  // Outlines from a previous failed save (revealMissingFields) must not follow the user into the next listing.
+  document.querySelectorAll('.field-missing').forEach(el => el.classList.remove('field-missing'));
   if (!id) resetListingForm();
   // Always reset agent selection UI (both New Listing and Edit)
   document.getElementById('f-agent-search').value = '';

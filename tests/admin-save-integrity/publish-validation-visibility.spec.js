@@ -76,6 +76,15 @@ test.describe('publish validation is visible and actionable', () => {
     await expect(page.locator('.ut-card').first().locator('.ut-bathrooms')).toHaveClass(/field-missing/);
   });
 
+  test('outlines from a failed save do not carry over to the next listing', async ({ page }) => {
+    const backend = fakeBackend();
+    await openNewListingWithAgent(page, backend);
+    await page.click(SAVE_BTN);
+    await expect(page.locator('#f-contact-phone')).toHaveClass(/field-missing/);
+    await page.evaluate(() => showForm());
+    await expect(page.locator('.field-missing')).toHaveCount(0);
+  });
+
   test('no agent selected: same validation, no agent hint', async ({ page }) => {
     const backend = fakeBackend();
     await openNewListingWithAgent(page, backend);
