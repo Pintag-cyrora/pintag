@@ -1582,6 +1582,26 @@ document.addEventListener('keydown', e => {
   if (Date.now() - _lastCompositionEndAt < 60) return;   // IME confirm: block the submit, keep the focus
   _focusNextFormField(e.target);
 });
+// Submit-level guard (does not depend on keydown, which iPhone Safari's soft keyboard is not guaranteed to deliver for every
+// input type). Implicit submission raises a submit whose `submitter` is the Save button, with NO pointer/keyboard activity on
+// that button and focus still inside a single-line field. A real Save has at least one of: a pointer/touch/mouse press on the
+// button, Enter/Space on the focused button, or focus on the button itself (VoiceOver / Switch Control activation). Direct
+// calls (tests, requestSubmit() without a submitter) carry no submitter and are not affected.
+let _saveIntentAt = 0;
+(function wireSaveIntent() {
+  const btn = document.getElementById('submit-btn');
+  if (!btn) return;
+  const mark = () => { _saveIntentAt = Date.now(); };
+  ['pointerdown', 'touchstart', 'mousedown'].forEach(t => btn.addEventListener(t, mark, { capture: true, passive: true }));
+  btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ' || e.keyCode === 13 || e.keyCode === 32) mark(); }, true);
+})();
+function _isUnintendedSubmit(e) {
+  if (!e || !e.submitter || e.submitter.id !== 'submit-btn') return false;
+  if (Date.now() - _saveIntentAt < 1500) return false;                    // a press/keypress on the Save button just happened
+  const a = document.activeElement;
+  if (a === e.submitter) return false;                                     // the button itself has focus (keyboard / assistive tech)
+  return _formFieldIsGuarded(a);                                           // focus is in a single-line field: this is implicit submission
+}
 // "Next" on the iPhone keyboard for the form's single-line fields, including ones added later (unit types, nearby places,
 // extra phone numbers): set when a field gains focus.
 document.addEventListener('focusin', e => {
@@ -4381,6 +4401,10 @@ async function saveExtraContacts(propertyId, primaryContactId) {
 // ── SAVE ──────────────────────────────────────────────────────────
 async function saveListing(e) {
   e.preventDefault();
+  // Second line of defence behind the Return-key guard: a submit that the browser raised itself (implicit submission from a
+  // text field -- the engine fires a synthetic click on the Save button and then submits) is never a Save. See
+  // _isUnintendedSubmit() for exactly what counts, and why genuine taps, clicks and assistive-technology activation pass.
+  if (_isUnintendedSubmit(e)) return;
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
   btn.textContent = 'Saving...';
