@@ -1595,6 +1595,21 @@ document.addEventListener('keydown', e => {
 let _saveIntentAt = 0;
 const _SAVE_INTENT_MS = 1500;
 function _saveIntentFresh() { return Date.now() - _saveIntentAt < _SAVE_INTENT_MS; }
+// Never fail silently: if a deliberate activation that carried no pointer evidence (e.g. a screen reader's) is ever refused,
+// say so in an aria-live region next to the button, so the person knows nothing was saved and can activate Save again.
+function _noteSaveNotTriggered() {
+  const btn = document.getElementById('submit-btn'); if (!btn) return;
+  let n = document.getElementById('save-guard-note');
+  if (!n) {
+    n = document.createElement('div'); n.id = 'save-guard-note';
+    n.setAttribute('role', 'status'); n.setAttribute('aria-live', 'polite');
+    n.style.cssText = 'font-size:13px;margin-top:8px;';
+    btn.insertAdjacentElement('afterend', n);
+  }
+  n.textContent = 'Nothing was saved. To save, activate the \u201cSave Listing\u201d button.';
+  clearTimeout(n._t); n._t = setTimeout(() => { n.textContent = ''; }, 8000);
+}
+function _clearSaveGuardNote() { const n = document.getElementById('save-guard-note'); if (n) n.textContent = ''; }
 function _implicitSubmitSuspected() {
   if (_saveIntentFresh()) return false;
   const a = document.activeElement;
@@ -1604,17 +1619,17 @@ function _implicitSubmitSuspected() {
 (function wireSaveIntent() {
   const btn = document.getElementById('submit-btn');
   if (!btn) return;
-  const mark = () => { _saveIntentAt = Date.now(); };
+  const mark = () => { _saveIntentAt = Date.now(); _clearSaveGuardNote(); };
   ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup'].forEach(t => btn.addEventListener(t, mark, { capture: true, passive: true }));
   ['keydown', 'keyup'].forEach(t => btn.addEventListener(t, e => { if (e.key === 'Enter' || e.key === ' ' || e.keyCode === 13 || e.keyCode === 32) mark(); }, true));
   btn.addEventListener('click', e => {
     if (e.detail > 0 || e.pointerType) { mark(); return; }          // pointer-originated click (touch, mouse, pen, assistive tap)
-    if (_implicitSubmitSuspected()) e.preventDefault();             // the engine's own click: cancelling it cancels the submit
+    if (_implicitSubmitSuspected()) { e.preventDefault(); _noteSaveNotTriggered(); }   // the engine's own click: cancelling it cancels the submit
   }, true);
 })();
 function _isUnintendedSubmit(e) {
   if (!e || !e.submitter || e.submitter.id !== 'submit-btn') return false;
-  if (_implicitSubmitSuspected()) return true;
+  if (_implicitSubmitSuspected()) { _noteSaveNotTriggered(); return true; }
   _saveIntentAt = 0;                                                  // single use: this submit has now consumed the activity
   return false;
 }

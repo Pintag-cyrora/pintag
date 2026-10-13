@@ -9,7 +9,7 @@
 // Chromium only (WebKit is not installable in this environment): see the report for what that does and does not prove.
 
 const { test, expect } = require('@playwright/test');
-const { fakeBackend, boot, FORM_STATE } = require('./fixtures');
+const { fakeBackend, boot, FORM_STATE, FILL_NEW_LISTING } = require('./fixtures');
 
 const IMPORT = { title_en: 'Imported Condo', property_type: 'condo', transaction_type: 'for_sale', description_en: 'x', price_amount: 100000, bedrooms: 2, bathrooms: 1 };
 const EXISTING = { id: 'p-edit', title_en: 'Existing listing', slug: 'existing', workflow_status: 'active', market_status: 'available', status: 'active',
@@ -195,19 +195,104 @@ test.describe('submit-level guard: false-positive and bypass edge cases', () => 
     expect(backend.count('POST', 'properties')).toBe(1);
   });
 
-  test('the activity is SINGLE-USE: after a Save attempt that failed validation, an implicit submit within the window cannot ride on it', async ({ page }) => {
-    const backend = fakeBackend(); await boot(page, backend); await logEvents(page);
-    await page.evaluate(() => { showForm(); });                          // blank Active form: validation will fail
-    await page.fill('#f-title-en', 'abc');
-    await page.click('#submit-btn');                                       // genuine Save press -> validation banner, no writes
-    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('error');
-    const bannerAfterPress = await page.evaluate(() => document.getElementById('form-message').textContent);
-    await page.focus('#f-title-en');
-    await page.evaluate(() => document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')));   // < 1.5 s later
+  // Counts how many times the app navigates back to the listings (the post-save timer) -- the "jumped back to Admin" symptom.
+  const countNavigation = (page) => page.evaluate(() => {
+    window.__nav = 0; const f = window.showListings;
+    window.showListings = function () { window.__nav++; return f.apply(this, arguments); };
+  });
+
+  test('SINGLE-USE on a VALID form: a genuine Save consumes the activity, so an implicit submit right after cannot save again (1 write, 1 navigation)', async ({ page }) => {
+    const { backend } = await setup(page);
+    await countNavigation(page);
+    await page.click('#submit-btn');                                         // genuine press on a complete, valid form
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
+    const afterSave = writes(backend);
+    expect(backend.count('POST', 'properties')).toBe(1);
+    await page.focus('#f-title-en');                                         // focus in a text field, well inside the 1.5 s window
+    await page.evaluate(() => document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')));
     await page.waitForTimeout(300);
-    // the second, implicit submit was refused before validation ran: no writes (and the first banner is untouched)
-    expect(await page.evaluate(() => document.getElementById('form-message').textContent)).toBe(bannerAfterPress);
+    expect(writes(backend)).toEqual(afterSave);                              // the implicit submit added NOTHING (no PATCH, no second POST)
+    await page.waitForTimeout(1900);
+    expect(await page.evaluate(() => window.__nav)).toBe(1);                 // and exactly one navigation: the normal post-save return
+    expect(backend.count('POST', 'properties')).toBe(1);
+    expect(backend.count('PATCH', 'properties')).toBe(0);
+  });
+
+  test('REPEATED Return presses (keydown guard defeated): three implicit submissions, zero writes, zero navigation, value kept', async ({ page }) => {
+    const { backend, price } = await setup(page);
+    await bypassKeydown(page); await countNavigation(page);
+    await page.evaluate(() => { window.__log.length = 0; });
+    for (let i = 0; i < 3; i++) { await page.keyboard.press('Enter'); await page.waitForTimeout(150); }
+    await page.waitForTimeout(1900);
+    const log = await page.evaluate(() => window.__log);
+    expect(log.filter((l) => /^click on Save/.test(l)).length).toBe(3);
+    expect(log.filter((l) => /^submit event|^saveListing/.test(l))).toEqual([]);
     expect(writes(backend)).toEqual([]);
+    expect(await page.evaluate(() => window.__nav)).toBe(0);
+    expect(await page.evaluate(() => document.getElementById('form-panel').style.display)).toBe('block');
+    expect(await price.inputValue()).toBe('123456');
+  });
+
+  test('REPEATED Return presses with the keydown guard working: zero writes, zero navigation', async ({ page }) => {
+    const { backend, price } = await setup(page);
+    await countNavigation(page);
+    for (let i = 0; i < 3; i++) { await price.focus(); await page.keyboard.press('Enter'); }
+    await page.waitForTimeout(1900);
+    expect(writes(backend)).toEqual([]);
+    expect(await page.evaluate(() => window.__nav)).toBe(0);
+  });
+
+  test('FAILED validation, then a Return inside the window (blocked), then a deliberate Save of the corrected form: saves exactly once', async ({ page }) => {
+    const backend = fakeBackend(); await boot(page, backend); await logEvents(page);
+    await page.evaluate(() => { showForm(); });                              // blank Active form: validation fails
+    await page.evaluate(() => document.getElementById('submit-btn').addEventListener('mousedown', (e) => e.preventDefault()));
+    await page.fill('#f-title-en', 'abc');
+    await page.click('#submit-btn');
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('error');
+    expect(writes(backend)).toEqual([]);
+    await bypassKeydown(page);
+    await page.focus('#f-title-en'); await page.keyboard.press('Enter'); await page.waitForTimeout(300);   // implicit submit riding the failed press
+    expect(writes(backend)).toEqual([]);
+    await page.evaluate(FILL_NEW_LISTING);                                   // the user fixes the form...
+    await page.click('#submit-btn');                                         // ...and deliberately saves
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
+    expect(backend.count('POST', 'properties')).toBe(1);
+  });
+
+  test('a REFUSED implicit submit never poisons the next deliberate Save, and tells the user (aria-live) that nothing was saved', async ({ page }) => {
+    const { backend } = await setup(page);
+    await page.evaluate(() => document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')));
+    await page.waitForTimeout(200);
+    expect(writes(backend)).toEqual([]);
+    const note = page.locator('#save-guard-note');
+    await expect(note).toHaveText(/Nothing was saved/);
+    expect(await note.getAttribute('role')).toBe('status');
+    expect(await note.getAttribute('aria-live')).toBe('polite');
+    await page.click('#submit-btn');
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
+    expect(backend.count('POST', 'properties')).toBe(1);
+    await expect(note).toHaveText('');                                       // cleared as soon as Save is pressed
+  });
+
+  test('BACK-TO-BACK deliberate saves of an existing listing: two clicks 1 s apart in one window still save once; a later Save after the return saves again', async ({ page }) => {
+    const backend = fakeBackend({ seedProperties: [EXISTING], seedContacts: [CONTACT] }); await boot(page, backend); await logEvents(page);
+    await countNavigation(page);
+    await page.evaluate(() => editListing('p-edit'));
+    await page.waitForFunction(() => document.getElementById('f-title-en').value === 'Existing listing');
+    await page.evaluate(() => document.getElementById('submit-btn').addEventListener('mousedown', (e) => e.preventDefault()));
+    const price = pricePoint(page); await price.fill('260000'); await price.focus();
+    await page.click('#submit-btn');
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
+    await page.locator('#submit-btn').click({ force: true });                // second click while "Saved ✓" is disabled: nothing
+    await page.waitForTimeout(1900);
+    expect(backend.count('PATCH', 'properties')).toBe(1);
+    expect(await page.evaluate(() => window.__nav)).toBe(1);
+    await page.evaluate(() => editListing('p-edit'));                         // open it again and save again: a new deliberate press
+    await page.waitForFunction(() => document.getElementById('listings-panel').style.display === 'none' && document.getElementById('f-title-en').value === 'Existing listing');
+    await page.evaluate(() => document.getElementById('submit-btn').addEventListener('mousedown', (e) => e.preventDefault()));
+    await pricePoint(page).focus();
+    await page.click('#submit-btn');
+    await expect.poll(async () => backend.count('PATCH', 'properties')).toBe(2);
   });
 
   test('an old, unused press (no submit followed) expires: after 1.5 s an implicit submit is blocked again', async ({ page }) => {
