@@ -129,3 +129,93 @@ test.describe('submit-level guard on a touch screen', () => {
     expect(backend.count('POST', 'properties')).toBe(1);
   });
 });
+
+// ── The 1.5 s activity window and the click-level cancel: edge cases ─────────────────────────────────────────────
+test.describe('submit-level guard: false-positive and bypass edge cases', () => {
+  async function setup(page, opts) {
+    opts = opts || {};
+    const backend = fakeBackend(); await boot(page, backend);
+    await openSmartImport(page, backend, opts.import);
+    const price = pricePoint(page); await price.fill('123456'); await price.focus();
+    // iOS Safari does not move focus to a button on tap, so the field keeps focus; mimic that for mouse presses.
+    await page.evaluate(() => document.getElementById('submit-btn').addEventListener('mousedown', (e) => e.preventDefault()));
+    return { backend, price };
+  }
+  const bypassKeydown = (page) => page.evaluate(() => window.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.stopImmediatePropagation(); }, true));
+
+  test('keydown NEVER reaches the guard (stopped before it) -> the engine\'s implicit click is cancelled: no submit, no save, form kept', async ({ page }) => {
+    const { backend, price } = await setup(page);
+    await bypassKeydown(page);
+    await page.evaluate(() => { window.__log.length = 0; });
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(1900);
+    const log = await page.evaluate(() => window.__log);
+    console.log('EVENT ORDER (keydown stopped before the guard):', JSON.stringify(log));
+    expect(log.filter((l) => /^click on Save/.test(l)).length).toBe(1);        // the engine did click Save for the user...
+    expect(log.filter((l) => /^submit event|^saveListing/.test(l))).toEqual([]);   // ...but the click was cancelled
+    expect(writes(backend)).toEqual([]);
+    expect(await page.evaluate(() => document.getElementById('form-panel').style.display)).toBe('block');
+    expect(await price.inputValue()).toBe('123456');
+  });
+
+  test('same on an EXISTING listing: no PATCH, still in the editor', async ({ page }) => {
+    const backend = fakeBackend({ seedProperties: [EXISTING], seedContacts: [CONTACT] }); await boot(page, backend);
+    await logEvents(page);
+    await page.evaluate(() => editListing('p-edit'));
+    await page.waitForFunction(() => document.getElementById('f-title-en').value === 'Existing listing');
+    const price = pricePoint(page); await price.fill('999999'); await price.focus();
+    await bypassKeydown(page);
+    await page.keyboard.press('Enter'); await page.waitForTimeout(1900);
+    expect(writes(backend)).toEqual([]);
+    expect(backend.state.properties['p-edit'].price_amount).toBe(250000);
+    expect(await page.evaluate(() => document.getElementById('form-panel').style.display)).toBe('block');
+  });
+
+  test('a LONG press on Save (held 2.2 s, longer than the window) with focus still in the Price field still saves once', async ({ page }) => {
+    const { backend } = await setup(page);
+    await page.locator('#submit-btn').scrollIntoViewIfNeeded();
+    const box = await page.locator('#submit-btn').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down(); await page.waitForTimeout(2200); await page.mouse.up();
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
+    expect(backend.count('POST', 'properties')).toBe(1);
+  });
+
+  test('assistive-style activation: a click with detail>0 but no pointer/touch events, focus still in a field, saves once', async ({ page }) => {
+    const { backend } = await setup(page);
+    await page.evaluate(() => document.getElementById('submit-btn').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 })));
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
+    expect(backend.count('POST', 'properties')).toBe(1);
+  });
+
+  test('Space on the focused Save button saves once', async ({ page }) => {
+    const backend = fakeBackend(); await boot(page, backend); await openSmartImport(page, backend);
+    await page.focus('#submit-btn'); await page.keyboard.press('Space');
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
+    expect(backend.count('POST', 'properties')).toBe(1);
+  });
+
+  test('the activity is SINGLE-USE: after a Save attempt that failed validation, an implicit submit within the window cannot ride on it', async ({ page }) => {
+    const backend = fakeBackend(); await boot(page, backend); await logEvents(page);
+    await page.evaluate(() => { showForm(); });                          // blank Active form: validation will fail
+    await page.fill('#f-title-en', 'abc');
+    await page.click('#submit-btn');                                       // genuine Save press -> validation banner, no writes
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('error');
+    const bannerAfterPress = await page.evaluate(() => document.getElementById('form-message').textContent);
+    await page.focus('#f-title-en');
+    await page.evaluate(() => document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')));   // < 1.5 s later
+    await page.waitForTimeout(300);
+    // the second, implicit submit was refused before validation ran: no writes (and the first banner is untouched)
+    expect(await page.evaluate(() => document.getElementById('form-message').textContent)).toBe(bannerAfterPress);
+    expect(writes(backend)).toEqual([]);
+  });
+
+  test('an old, unused press (no submit followed) expires: after 1.5 s an implicit submit is blocked again', async ({ page }) => {
+    const { backend } = await setup(page);
+    await page.evaluate(() => document.getElementById('submit-btn').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));   // a press that never became a click
+    await page.waitForTimeout(1700);
+    await page.evaluate(() => document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')));
+    await page.waitForTimeout(500);
+    expect(writes(backend)).toEqual([]);
+  });
+});

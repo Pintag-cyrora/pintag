@@ -1583,24 +1583,40 @@ document.addEventListener('keydown', e => {
   _focusNextFormField(e.target);
 });
 // Submit-level guard (does not depend on keydown, which iPhone Safari's soft keyboard is not guaranteed to deliver for every
-// input type). Implicit submission raises a submit whose `submitter` is the Save button, with NO pointer/keyboard activity on
-// that button and focus still inside a single-line field. A real Save has at least one of: a pointer/touch/mouse press on the
-// button, Enter/Space on the focused button, or focus on the button itself (VoiceOver / Switch Control activation). Direct
-// calls (tests, requestSubmit() without a submitter) carry no submitter and are not affected.
+// input type). Implicit submission is the engine clicking the Save button on the user's behalf, then submitting: the click has
+// no pointer (detail 0, empty pointerType), the button has not been pressed, and focus is still in a single-line field.
+// "Suspected implicit" therefore means ALL of: focus in a single-line field of the form, AND no recent activity on the Save
+// button. Activity = a press or release (pointer/touch/mouse), Enter/Space, or a pointer-originated click -- refreshed on
+// BOTH press and release so a long press is not mistaken for implicit submission -- and it is SINGLE-USE: the submit it
+// leads to consumes it, so a Return typed right after a Save attempt (e.g. one that failed validation) cannot ride on it.
+// Not suspected (never blocked): focus on the Save button itself (keyboard, VoiceOver/Switch Control), a programmatic
+// call to saveListing() (no event), requestSubmit() without a submitter. Where possible the click itself is cancelled (works
+// without SubmitEvent.submitter, which iOS < 15.4 lacks); saveListing() re-checks via the submitter as a second layer.
 let _saveIntentAt = 0;
+const _SAVE_INTENT_MS = 1500;
+function _saveIntentFresh() { return Date.now() - _saveIntentAt < _SAVE_INTENT_MS; }
+function _implicitSubmitSuspected() {
+  if (_saveIntentFresh()) return false;
+  const a = document.activeElement;
+  if (a && a.id === 'submit-btn') return false;
+  return _formFieldIsGuarded(a);
+}
 (function wireSaveIntent() {
   const btn = document.getElementById('submit-btn');
   if (!btn) return;
   const mark = () => { _saveIntentAt = Date.now(); };
-  ['pointerdown', 'touchstart', 'mousedown'].forEach(t => btn.addEventListener(t, mark, { capture: true, passive: true }));
-  btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ' || e.keyCode === 13 || e.keyCode === 32) mark(); }, true);
+  ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup'].forEach(t => btn.addEventListener(t, mark, { capture: true, passive: true }));
+  ['keydown', 'keyup'].forEach(t => btn.addEventListener(t, e => { if (e.key === 'Enter' || e.key === ' ' || e.keyCode === 13 || e.keyCode === 32) mark(); }, true));
+  btn.addEventListener('click', e => {
+    if (e.detail > 0 || e.pointerType) { mark(); return; }          // pointer-originated click (touch, mouse, pen, assistive tap)
+    if (_implicitSubmitSuspected()) e.preventDefault();             // the engine's own click: cancelling it cancels the submit
+  }, true);
 })();
 function _isUnintendedSubmit(e) {
   if (!e || !e.submitter || e.submitter.id !== 'submit-btn') return false;
-  if (Date.now() - _saveIntentAt < 1500) return false;                    // a press/keypress on the Save button just happened
-  const a = document.activeElement;
-  if (a === e.submitter) return false;                                     // the button itself has focus (keyboard / assistive tech)
-  return _formFieldIsGuarded(a);                                           // focus is in a single-line field: this is implicit submission
+  if (_implicitSubmitSuspected()) return true;
+  _saveIntentAt = 0;                                                  // single use: this submit has now consumed the activity
+  return false;
 }
 // "Next" on the iPhone keyboard for the form's single-line fields, including ones added later (unit types, nearby places,
 // extra phone numbers): set when a field gains focus.
