@@ -34,6 +34,11 @@ async function openSmartImport(page, backend, importOverride) {
   await page.locator('.btn-import').click(); await page.fill('#import-description', 'x'); await page.locator('#import-gen-btn').click();
   await page.waitForFunction(() => document.getElementById('form-panel').style.display === 'block');
 }
+// Defeats #146's keydown guard (a window-capture listener that stops the event before the document-level guard sees it) so the
+// engine performs its own implicit submission; the submit-level guard's evidence listener runs earlier still.
+const stopKeydownGuard = (page) => page.evaluate(() => { if (window.__kdStopped) return; window.__kdStopped = true;
+  window.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.stopImmediatePropagation(); }, true); });
+const engineReturn = async (page) => { await stopKeydownGuard(page); await page.keyboard.press('Enter'); };
 const pricePoint = (page) => page.locator('#f-price-amount:visible, #f-sale-amount:visible').first();
 
 async function pressReturnInPrice(page, backend) {
@@ -76,8 +81,8 @@ test('EXISTING listing opened for editing: Return in Price does not PATCH it or 
 });
 
 // ── Defence in depth: what if iPhone Safari's soft Return key raises the submit WITHOUT a (cancellable) keydown? ──
-// requestSubmit(Save button) with focus in the Price field and no pointer/keyboard activity on the button is exactly the
-// engine's implicit submission minus the keydown. It must not save, while every genuine way of saving still does.
+// A Return press whose keydown the first guard never sees still produces the engine's implicit click + submit; the second
+// layer must refuse it, while every deliberate way of saving -- including activation that carries no Return press -- still works.
 test.describe('submit-level guard', () => {
   async function setup(page) {
     const backend = fakeBackend(); await boot(page, backend);
@@ -85,9 +90,10 @@ test.describe('submit-level guard', () => {
     const price = pricePoint(page); await price.fill('123456'); await price.focus();
     return { backend, price };
   }
-  test('an implicit submission that bypasses keydown (requestSubmit from the Price field) saves nothing and keeps the form', async ({ page }) => {
+  test('Return whose keydown never reaches the first guard: the engine\'s implicit submission is refused (zero writes, form kept, no navigation)', async ({ page }) => {
     const { backend, price } = await setup(page);
-    await page.evaluate(() => { window.__log.length = 0; document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')); });
+    await page.evaluate(() => { window.__log.length = 0; });
+    await engineReturn(page);
     await page.waitForTimeout(1900);
     const log = await page.evaluate(() => window.__log);
     console.log('EVENT ORDER (keydown bypassed):', JSON.stringify(log));
@@ -95,6 +101,40 @@ test.describe('submit-level guard', () => {
     expect(await page.evaluate(() => document.getElementById('listings-panel').style.display)).toBe('none');
     expect(await page.evaluate(() => document.getElementById('submit-btn').textContent)).toBe('Save Listing');
     expect(await price.inputValue()).toBe('123456');
+  });
+  test('BACKSTOP in isolation: a Return press followed by a submit that carries Save as submitter but NO click (e.g. engines that skip the synthetic click) is refused by saveListing', async ({ page }) => {
+    const { backend, price } = await setup(page);
+    await stopKeydownGuard(page);
+    await page.evaluate(() => {
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true }));
+      document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn'));
+    });
+    await page.waitForTimeout(400);
+    expect(writes(backend)).toEqual([]);
+    await expect(page.locator('#save-guard-note')).toHaveText(/Nothing was saved/);
+    expect(await price.inputValue()).toBe('123456');
+  });
+  test('ACCESSIBLE activation with focus still in Price and NO Return press (requestSubmit / click() with detail 0, as AT or Voice Control may issue) is a deliberate Save and saves once', async ({ page }) => {
+    const { backend } = await setup(page);
+    await page.evaluate(() => document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')));
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
+    expect(backend.count('POST', 'properties')).toBe(1);
+    await expect(page.locator('#save-guard-note')).toHaveCount(0);           // nothing was refused, so no warning was raised
+  });
+  test('ACCESSIBLE activation via element.click() (detail 0, no pointer events, focus in Price) saves once', async ({ page }) => {
+    const { backend } = await setup(page);
+    await page.evaluate(() => document.getElementById('submit-btn').click());
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
+    expect(backend.count('POST', 'properties')).toBe(1);
+  });
+  test('activation more than 500 ms after the last Return press is not treated as that Return', async ({ page }) => {
+    const { backend } = await setup(page);
+    await page.keyboard.press('Enter');                                       // guarded by the first layer: moves focus to the next field
+    await pricePoint(page).focus();
+    await page.waitForTimeout(700);
+    await page.evaluate(() => document.getElementById('submit-btn').click());
+    await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
+    expect(backend.count('POST', 'properties')).toBe(1);
   });
   test('a genuine click on Save while the Price field still has focus saves once (iOS leaves focus in the field when a button is tapped)', async ({ page }) => {
     const { backend } = await setup(page);
@@ -117,13 +157,14 @@ test.describe('submit-level guard', () => {
 });
 test.describe('submit-level guard on a touch screen', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-  test('tapping Save with the Price field focused saves once; a keydown-less implicit submit does not', async ({ page }) => {
+  test('tapping Save with the Price field focused saves once; a Return whose keydown is not seen by the first guard does not', async ({ page }) => {
     // 'land': house/condo pages are currently wider than a 390px phone (pre-existing layout issue), which skews touch coordinates
     const backend = fakeBackend(); await boot(page, backend); await openSmartImport(page, backend, { property_type: 'land' });
     const price = pricePoint(page); await price.fill('123456'); await price.focus();
-    await page.evaluate(() => document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')));
+    await engineReturn(page);
     await page.waitForTimeout(500);
     expect(writes(backend)).toEqual([]);
+    await price.focus();
     await page.locator('#submit-btn').tap();
     await expect.poll(async () => (await page.evaluate(FORM_STATE)).msgClass).toContain('success');
     expect(backend.count('POST', 'properties')).toBe(1);
@@ -141,7 +182,7 @@ test.describe('submit-level guard: false-positive and bypass edge cases', () => 
     await page.evaluate(() => document.getElementById('submit-btn').addEventListener('mousedown', (e) => e.preventDefault()));
     return { backend, price };
   }
-  const bypassKeydown = (page) => page.evaluate(() => window.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.stopImmediatePropagation(); }, true));
+  const bypassKeydown = stopKeydownGuard;
 
   test('keydown NEVER reaches the guard (stopped before it) -> the engine\'s implicit click is cancelled: no submit, no save, form kept', async ({ page }) => {
     const { backend, price } = await setup(page);
@@ -209,7 +250,8 @@ test.describe('submit-level guard: false-positive and bypass edge cases', () => 
     const afterSave = writes(backend);
     expect(backend.count('POST', 'properties')).toBe(1);
     await page.focus('#f-title-en');                                         // focus in a text field, well inside the 1.5 s window
-    await page.evaluate(() => document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')));
+    await page.evaluate(() => { document.getElementById('submit-btn').disabled = false; });   // the button is disabled ("Saved ✓") for 1.5 s; enable it so the engine really performs implicit submission
+    await engineReturn(page);                                                // Return the guard-1 never sees: engine click + submit
     await page.waitForTimeout(300);
     expect(writes(backend)).toEqual(afterSave);                              // the implicit submit added NOTHING (no PATCH, no second POST)
     await page.waitForTimeout(1900);
@@ -261,7 +303,7 @@ test.describe('submit-level guard: false-positive and bypass edge cases', () => 
 
   test('a REFUSED implicit submit never poisons the next deliberate Save, and tells the user (aria-live) that nothing was saved', async ({ page }) => {
     const { backend } = await setup(page);
-    await page.evaluate(() => document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')));
+    await engineReturn(page);
     await page.waitForTimeout(200);
     expect(writes(backend)).toEqual([]);
     const note = page.locator('#save-guard-note');
@@ -299,7 +341,7 @@ test.describe('submit-level guard: false-positive and bypass edge cases', () => 
     const { backend } = await setup(page);
     await page.evaluate(() => document.getElementById('submit-btn').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));   // a press that never became a click
     await page.waitForTimeout(1700);
-    await page.evaluate(() => document.getElementById('listing-form').requestSubmit(document.getElementById('submit-btn')));
+    await engineReturn(page);
     await page.waitForTimeout(500);
     expect(writes(backend)).toEqual([]);
   });
