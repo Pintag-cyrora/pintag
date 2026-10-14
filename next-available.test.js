@@ -367,28 +367,31 @@ test('GUARD: the suite covers a fixture that never populates market_status', () 
 });
 
 // ═══ Default "today" is the LOCAL calendar date ═══════════════════════════
-// Every case above passes TODAY explicitly. Production never does, and the
-// default used toISOString()'s UTC date: between 00:00 and 07:00 in Laos
-// (UTC+7) that is still yesterday, so a date that had already passed was
-// still advertised as "Available <yesterday>".
-test('the default today is the visitor-local calendar date, not the UTC one', () => {
+// Every case above passes TODAY explicitly. Production never does: the default is the calendar day in ASIA/VIENTIANE
+// (availabilityTodayLao, unit-availability.js) -- the stored columns are Laos calendar days -- not the UTC day (which
+// is still "yesterday" in Laos between 00:00 and 07:00) and not the visitor's own timezone.
+test('the default today is the Lao calendar date, whatever timezone the visitor is in', () => {
   const RealDate = Date;
   // 2026-08-19 23:30 UTC == 2026-08-20 06:30 in Vientiane (UTC+7)
-  class FakeDate extends RealDate {
-    constructor(...a) { super(...(a.length ? a : ['2026-08-19T23:30:00Z'])); }
-    getTimezoneOffset() { return -420; }
-  }
-  globalThis.Date = FakeDate;
-  try {
-    assert.equal(globalThis.ptLocalIsoDate(), '2026-08-20');
-    const p = { transaction_type: 'for_rent', market_status: 'rented',
-      price_amount: 450, price_currency: 'USD', price_frequency: 'monthly', available_from: '2026-08-19' };
-    assert.equal(ptResolveNextAvailable(p, 'en'), null,
-      'a date that is already yesterday in Laos must not be advertised');
-    const q = Object.assign({}, p, { available_from: '2026-08-21' });
-    assert.equal(ptResolveNextAvailable(q, 'en').isoDate, '2026-08-21');
-  } finally {
-    globalThis.Date = RealDate;
+  for (const visitorOffsetMin of [-420 /* Laos */, 0 /* UTC */, 300 /* US Eastern */, 480 /* US Pacific */]) {
+    class FakeDate extends RealDate {
+      constructor(...a) { super(...(a.length ? a : ['2026-08-19T23:30:00Z'])); }
+      getTimezoneOffset() { return visitorOffsetMin; }
+    }
+    globalThis.Date = FakeDate;
+    try {
+      assert.equal(globalThis.availabilityTodayLao(), '2026-08-20', 'visitor offset ' + visitorOffsetMin);
+      const p = { transaction_type: 'for_rent', market_status: 'rented',
+        price_amount: 450, price_currency: 'USD', price_frequency: 'monthly', available_from: '2026-08-19' };
+      assert.equal(ptResolveNextAvailable(p, 'en'), null,
+        'a date that is already yesterday in Laos must not be advertised (visitor offset ' + visitorOffsetMin + ')');
+      const same = Object.assign({}, p, { available_from: '2026-08-20' });
+      assert.equal(ptResolveNextAvailable(same, 'en').isoDate, '2026-08-20', 'today in Laos is still live');
+      const q = Object.assign({}, p, { available_from: '2026-08-21' });
+      assert.equal(ptResolveNextAvailable(q, 'en').isoDate, '2026-08-21');
+    } finally {
+      globalThis.Date = RealDate;
+    }
   }
 });
 

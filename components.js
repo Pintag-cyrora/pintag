@@ -179,16 +179,6 @@ function ptImageUrl(url, profile) {
   return renditionPublicUrl(url, profile, P.supabaseUrl) || url;
 }
 
-// Today's calendar date as YYYY-MM-DD in the VISITOR's timezone. The stored
-// availability columns are date-only (local calendar days); comparing them
-// against toISOString()'s UTC date made every "Available <date>" one day
-// stale between midnight and 07:00 in Laos (UTC+7), advertising a date that
-// had already passed.
-function ptLocalIsoDate(now) {
-  var d = now instanceof Date ? now : new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-}
-
 // Attributes that make a rendition safe to serve before the backfill has run.
 // Emitted next to src so a 404/decode failure falls back to the original ONCE
 // (the marker stops any loop) and the visitor still sees the photo.
@@ -596,10 +586,12 @@ function _ptIsUnavailableNow(property) {
 // property-level available_from is considered alongside them, so a building
 // that also carries a listing-level date cannot be missed.
 //
-// "Genuine future" is >= today, compared as ISO date strings (both are `date`
-// columns, so this is timezone-robust and needs no Date arithmetic). A date in
-// the PAST is stale data and is discarded -- "Available 3 Jan 2020" would be
-// worse than showing nothing.
+// "Genuine future" means not before TODAY IN LAOS (availabilityTodayLao, unit-availability.js): the columns are Laos
+// calendar days, so the visitor's own timezone must not move the expiry moment. A date equal to today is live for the
+// whole Lao day. An expired or malformed (strict YYYY-MM-DD, real calendar date) value is stale data and is discarded
+// -- "Available 3 Jan 2020" would be worse than showing nothing. liveAvailabilityDate() is the one implementation of
+// that rule; the per-unit resolver uses the same function, so unit lines and this property-level line cannot disagree.
+// `nowIso` (optional, 'YYYY-MM-DD') overrides today for tests and servers.
 function ptResolveNextAvailable(property, lang, nowIso) {
   lang = lang || 'en';
   if (!property) return null;
@@ -611,13 +603,13 @@ function ptResolveNextAvailable(property, lang, nowIso) {
   // stays display information only -- it never changes the canonical availability state.
   if (avail.presentation === 'upcoming') return null;
 
-  var today = nowIso || ptLocalIsoDate();
+  var today = (typeof isValidAvailabilityDate === 'function' && isValidAvailabilityDate(nowIso)) ? nowIso : availabilityTodayLao();
   var candidates = [];
 
   var units = Array.isArray(property.unit_types) ? property.unit_types : [];
   if (units.length && typeof resolveUnitAvailability === 'function') {
     for (var i = 0; i < units.length; i++) {
-      var d = resolveUnitAvailability(units[i]).nextAvailableDate;
+      var d = resolveUnitAvailability(units[i], null, today).nextAvailableDate;
       if (d) candidates.push(d);
     }
   }
@@ -625,9 +617,8 @@ function ptResolveNextAvailable(property, lang, nowIso) {
 
   var earliest = null;
   for (var j = 0; j < candidates.length; j++) {
-    var c = candidates[j];
-    if (typeof c !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(c)) continue;  // malformed -> ignore
-    if (c < today) continue;                                                 // stale -> ignore
+    var c = liveAvailabilityDate(candidates[j], today);   // malformed or expired -> null -> ignored
+    if (c === null) continue;
     if (earliest === null || c < earliest) earliest = c;
   }
   if (!earliest) return null;

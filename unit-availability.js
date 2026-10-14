@@ -21,7 +21,9 @@
 //    resolveUnitAvailability()/formatAvailabilityDisplay()/
 //    compareUnitTypesForDisplay(), so the same file works from a browser
 //    <script> tag and a Deno edge function unchanged. Never mutates its
-//    inputs.
+//    inputs. The one implicit input is the clock, used only to expire stale
+//    availability dates (the Lao calendar day, see "AVAILABILITY DATES"
+//    below); pass `today` to make it explicit.
 //
 // 4. Availability is deliberately flat columns, not JSONB — this is
 //    operational/occupancy state (and will connect to lease data in a
@@ -36,7 +38,68 @@
 //    collapses into "Currently Unavailable". This is the seam a future
 //    richer public copy plugs into without a resolver change.
 
-// resolveUnitAvailability(unitType, computedNextAvailableDate?)
+// ---------------------------------------------------------------------------
+// AVAILABILITY DATES: what "today" is, and when a date has expired. The ONE implementation -- the property-level
+// date (ptResolveNextAvailable, components.js), the per-unit resolver below and every formatter read it.
+//
+// A stored availability date (unit_types.next_available_date, properties.available_from) is a Laos calendar day
+// (`date` column, no time, no zone). "Today" is therefore the calendar day in Asia/Vientiane -- the same zone the
+// Intelligence pipeline and the Admin Analytics page use (laos-date.js; a test pins the two together) -- NOT the
+// visitor's or the server's local day, so a visitor in another timezone sees the same expiry moment as staff.
+//
+//   * a date EQUAL to today is still live for the whole Lao calendar day; only dates BEFORE today are expired
+//   * the string must be a real calendar date in strict YYYY-MM-DD form: '2026-02-31', '2026-2-3', '26-02-03',
+//     '2026-02-03T00:00:00' and non-strings are malformed
+//   * an expired or malformed date is treated exactly as "no date on file": it is never shown ("Available from ...",
+//     "Fully Occupied -- Available from ..."), never used to pick the fully_occupied label, and never sorts a unit into
+//     "Available Soon". It changes NOTHING else: is_available, available_count, total_units and market_status keep
+//     deciding availability, so an expired date can never make a unit available, and never makes one unavailable.
+//
+// Pure/portable (no document/window), like the rest of this file. Every function takes an optional explicit `today`
+// ('YYYY-MM-DD') so tests and servers never depend on the machine clock or timezone.
+// ---------------------------------------------------------------------------
+var _AVAIL_TZ = 'Asia/Vientiane';          // no DST; fixed UTC+7 (the fallback below relies on that)
+var _AVAIL_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+// availabilityTodayLao(now?) -> 'YYYY-MM-DD', the calendar day in Asia/Vientiane of an instant (Date or epoch ms;
+// default: the current instant).
+function availabilityTodayLao(now) {
+  var d = (now instanceof Date) ? now : (typeof now === 'number' ? new Date(now) : new Date());
+  if (isNaN(d.getTime())) d = new Date();
+  try {
+    var parts = new Intl.DateTimeFormat('en-CA', { timeZone: _AVAIL_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+    var get = function (t) { for (var i = 0; i < parts.length; i++) if (parts[i].type === t) return parts[i].value; return ''; };
+    var out = get('year') + '-' + get('month') + '-' + get('day');
+    if (_AVAIL_DATE_RE.test(out)) return out;
+  } catch (e) { /* Intl/timeZone unavailable: use the fixed offset below */ }
+  return new Date(d.getTime() + 7 * 3600000).toISOString().slice(0, 10);
+}
+
+// isValidAvailabilityDate(value) -> true only for a real calendar date written exactly YYYY-MM-DD.
+function isValidAvailabilityDate(value) {
+  if (typeof value !== 'string') return false;
+  var m = _AVAIL_DATE_RE.exec(value);
+  if (!m) return false;
+  var y = +m[1], mo = +m[2], da = +m[3];
+  if (mo < 1 || mo > 12 || da < 1) return false;
+  var dt = new Date(Date.UTC(y, mo - 1, da));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === da;
+}
+
+// liveAvailabilityDate(value, today?) -> the date itself when it is well-formed and not before `today`
+// (default: the Lao calendar day now), else null. YYYY-MM-DD strings compare correctly as plain strings.
+function liveAvailabilityDate(value, today) {
+  if (!isValidAvailabilityDate(value)) return null;
+  var t = isValidAvailabilityDate(today) ? today : availabilityTodayLao();
+  return value >= t ? value : null;
+}
+
+// resolveUnitAvailability(unitType, computedNextAvailableDate?, today?)
+//
+// `today` ('YYYY-MM-DD', default: the Lao calendar day now) is the expiry reference for the date -- see
+// liveAvailabilityDate() above. An expired or malformed date is dropped BEFORE the status is chosen, so the unit
+// resolves exactly as if no date had been entered; `ignoredNextAvailableDate` carries the dropped value so the admin
+// can say why (it is never for public display).
 //
 // `computedNextAvailableDate` is optional and unused today — reserved for
 // a future inventory-management phase, where a caller computes it from
@@ -46,9 +109,19 @@
 // silently overridden by automation. This lets the manual field become a
 // fallback/override with zero change to this function's contract when
 // that phase arrives.
-function resolveUnitAvailability(unitType, computedNextAvailableDate) {
-  var manualDate = (unitType.next_available_date != null) ? unitType.next_available_date : null;
-  var nextAvailableDate = (manualDate != null) ? manualDate : (computedNextAvailableDate || null);
+function resolveUnitAvailability(unitType, computedNextAvailableDate, today) {
+  var manualDate = (unitType.next_available_date != null && unitType.next_available_date !== '') ? unitType.next_available_date : null;
+  var nextAvailableDate = null, ignoredDate = null;
+  if (manualDate != null) {
+    // An explicit manual entry still wins over a computed one -- but only while it is a live date. A stale manual
+    // date no longer overrides (or blocks) a computed one.
+    nextAvailableDate = liveAvailabilityDate(manualDate, today);
+    if (nextAvailableDate == null) ignoredDate = manualDate;
+  }
+  if (nextAvailableDate == null && computedNextAvailableDate) {
+    nextAvailableDate = liveAvailabilityDate(computedNextAvailableDate, today);
+    if (nextAvailableDate == null && ignoredDate == null) ignoredDate = computedNextAvailableDate;
+  }
   var count = unitType.available_count;
   var total = (unitType.total_units != null) ? unitType.total_units : null;
 
@@ -66,7 +139,8 @@ function resolveUnitAvailability(unitType, computedNextAvailableDate) {
   return {
     availableCount: count,
     totalUnits: total,
-    nextAvailableDate: nextAvailableDate,
+    nextAvailableDate: nextAvailableDate,           // a LIVE date or null -- never an expired/malformed one
+    ignoredNextAvailableDate: ignoredDate,          // the expired/malformed value that was dropped (admin hint only)
     note: unitType.availability_note || null,
     status: status // 'available' | 'fully_occupied' | 'coming_soon' | 'temporarily_unavailable'
   };
@@ -168,12 +242,14 @@ function formatMoveInDate(resolved, lang) {
 // listing complement to unit_types.next_available_date. Reuses the exact same
 // date formatter and the same "Available from" wording as the unit-level
 // fully_occupied message, so a plain apartment (no unit_types) and a
-// multi-unit building read identically. Returns null when no date is set --
+// multi-unit building read identically. Returns null when no date is set, or
+// when it has expired / is malformed (liveAvailabilityDate, `today` optional) --
 // the listing then just shows its price, which is a valid state. Pure/
 // portable; composes with the frozen contract, never replaces it.
 var _AVAILABLE_FROM_LABEL = { en: 'Available from', lo: 'ວ່າງຕັ້ງແຕ່', zh: '可入住时间' };
-function formatAvailableFromLine(isoDate, lang) {
+function formatAvailableFromLine(isoDate, lang, today) {
   lang = lang || 'en';
+  isoDate = liveAvailabilityDate(isoDate, today);
   if (!isoDate) return null;
   var d = _formatAvailabilityDate(isoDate, lang);
   if (!d) return null;

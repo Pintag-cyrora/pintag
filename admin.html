@@ -2277,6 +2277,7 @@ function addUnitType(data) {
             <input class="form-input ut-next-available-date" type="date" value="${nextAvailableDate}" oninput="_utOnAvailabilityFieldChange(this)">
             <button type="button" class="ut-clear-date-btn" onclick="_utClearNextAvailableDate(this)">Clear</button>
           </div>
+          <p class="ut-date-expired-hint" role="status" style="display:none;font-size:10.5px;color:var(--ink-muted);margin-top:4px;">This date has passed (or is not a valid date), so the site ignores it. Update or clear it.</p>
         </div>
         <div class="ut-field ut-field-full">
           <label>Availability Note <span style="color:var(--ink-muted);font-weight:400;">— optional, shown alongside (never instead of) the status</span></label>
@@ -2485,6 +2486,11 @@ function _utUpdateAvailabilityBadge(card) {
   const badge = card.querySelector('.ut-avail-badge');
   badge.textContent = formatAvailabilityAdminSummary(resolved);
   badge.className = 'ut-avail-badge ut-avail-' + resolved.status;
+  // An expired / malformed date is ignored by the resolver (unit-availability.js) and so by the badge above; say why
+  // right under the field so staff see it is stale rather than wondering where it went. The stored value is left
+  // untouched in the input -- the admin edits or clears it, nothing rewrites it.
+  const hint = card.querySelector('.ut-date-expired-hint');
+  if (hint) hint.style.display = resolved.ignoredNextAvailableDate ? '' : 'none';
 }
 
 function _utOnAvailabilityFieldChange(inputEl) {
