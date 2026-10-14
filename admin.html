@@ -532,8 +532,9 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
             </div>
             <div class="form-group">
               <label class="form-label">Available From <span style="color:var(--ink-muted);font-weight:400;">— optional</span></label>
-              <input class="form-input" id="f-available-from" type="date">
+              <input class="form-input" id="f-available-from" type="date" oninput="updateAvailableFromHint()" onchange="updateAvailableFromHint()" aria-describedby="available-from-expired-hint">
               <p style="font-size:10.5px;color:var(--ink-muted);margin-top:4px;">Optional. When set, an unavailable listing shows “Available from {date}”. Leave blank if unknown — the price still shows. For a listing with Unit Types, set the date on each Unit Type below instead.</p>
+              <p id="available-from-expired-hint" role="status" style="display:none;font-size:10.5px;color:var(--ink-muted);margin-top:4px;">This date has passed (or is not a valid date), so the site ignores it. Update or clear it.</p>
             </div>
           </div>
 
@@ -3932,8 +3933,18 @@ function revealFormPanel(titleText, id) {
 // HTML-declared defaults (market_status='available', workflow_status default,
 // transaction default, lease-basis=monthly, featured=false, ...); this function
 // only clears the JS/DOM state that native reset() doesn't reach.
+// An expired / malformed listing-level Available From is ignored by the site (liveAvailabilityDate, unit-availability.js),
+// exactly like an expired unit-type date. Say so next to the field; the value itself is never touched.
+function updateAvailableFromHint() {
+  const input = document.getElementById('f-available-from');
+  const hint = document.getElementById('available-from-expired-hint');
+  if (!input || !hint) return;
+  hint.style.display = (input.value && !liveAvailabilityDate(input.value)) ? '' : 'none';
+}
+
 function resetListingForm() {
   document.getElementById('listing-form').reset();
+  updateAvailableFromHint();       // form.reset() fires no input event
   clearImportReviewFlags();
   document.getElementById('nearby-list').innerHTML = '';
   addNearby();
@@ -4027,6 +4038,7 @@ async function editListing(id, from) {
   document.getElementById('f-workflow-status').value = p.workflow_status || 'active';
   document.getElementById('f-market-status').value   = p.market_status || 'available';
   document.getElementById('f-available-from').value  = p.available_from || '';
+  updateAvailableFromHint();
   document.getElementById('publish-btn').style.display = ((p.workflow_status || 'active') === 'draft') ? 'inline-block' : 'none';
   // Structured fields are the source of truth; price_display/sale_price/
   // rent_price/rent_period are legacy-derived and never read back here.
@@ -5948,6 +5960,7 @@ function populateFormFromImport(data) {
   document.getElementById('f-workflow-status').value = 'draft';
   document.getElementById('f-market-status').value   = 'available';
   document.getElementById('f-available-from').value  = '';
+  updateAvailableFromHint();
   // Smart Import still returns a free-text price string until the
   // importer itself emits structured amount/currency (a later pass) --
   // best-effort parsed here so the new Price fields stay usable meanwhile.

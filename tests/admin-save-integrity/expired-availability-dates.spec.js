@@ -97,3 +97,60 @@ test('saving does not rewrite an expired date (the admin sends exactly what is i
   expect(sent).toEqual([{ d: '2026-10-01', c: 0, a: true, t: 5 }]);
   await expect(card.locator('.ut-next-available-date')).toHaveValue('2026-10-01');
 });
+
+// ── Listing-level "Available From" (properties.available_from) ──────────────────────────────────────────────────
+// Same rule, same wording as the unit cards: an expired date is ignored by the site, staff are told, the value is left
+// exactly as entered.
+const EXISTING = (o) => Object.assign({ id: 'p-edit', title_en: 'Existing listing', slug: 'existing', workflow_status: 'active', market_status: 'rented', status: 'active',
+  property_type: 'house', transaction_type: 'for_rent', price_amount: 450, price_currency: 'USD', price_frequency: 'monthly', contact_id: 'c1', images: [], deleted_at: null,
+  available_from: null }, o || {});
+const CONTACT = { id: 'c1', role: 'owner', name: 'Owner', phone: '02055512345', whatsapp: null };
+const AF = '#f-available-from', AF_HINT = '#available-from-expired-hint';
+async function openExisting(page, o) {
+  await page.clock.setFixedTime(NOW);
+  const backend = fakeBackend({ seedProperties: [EXISTING(o)], seedContacts: [CONTACT] }); await boot(page, backend);
+  await page.evaluate(() => editListing('p-edit'));
+  await page.waitForFunction(() => document.getElementById('f-title-en').value === 'Existing listing');
+  return backend;
+}
+
+test('listing-level: an expired Available From shows the hint and keeps the stored value', async ({ page }) => {
+  await openExisting(page, { available_from: '2026-10-13' });          // yesterday in Laos (still "today" in UTC / the US)
+  await expect(page.locator(AF)).toHaveValue('2026-10-13');
+  await expect(page.locator(AF_HINT)).toBeVisible();
+  await expect(page.locator(AF_HINT)).toContainText('has passed');
+});
+
+test('listing-level: today (Laos), future and empty dates show no hint', async ({ page }) => {
+  await openExisting(page, { available_from: '2026-10-14' });
+  await expect(page.locator(AF_HINT)).toBeHidden();
+  await page.locator(AF).fill('2026-12-31'); await expect(page.locator(AF_HINT)).toBeHidden();
+  await page.locator(AF).fill('');           await expect(page.locator(AF_HINT)).toBeHidden();
+});
+
+test('listing-level: the hint follows edits live and disappears when the date is cleared', async ({ page }) => {
+  await openExisting(page, { available_from: '2026-11-01' });
+  await expect(page.locator(AF_HINT)).toBeHidden();
+  await page.locator(AF).fill('2026-10-12');  await expect(page.locator(AF_HINT)).toBeVisible();
+  await page.locator(AF).fill('2026-10-14');  await expect(page.locator(AF_HINT)).toBeHidden();
+  await page.locator(AF).fill('2026-01-01');  await expect(page.locator(AF_HINT)).toBeVisible();
+  await page.locator(AF).fill('');            await expect(page.locator(AF_HINT)).toBeHidden();
+});
+
+test('listing-level: opening a new blank form after an expired one does not leave a stale hint', async ({ page }) => {
+  await openExisting(page, { available_from: '2026-10-01' });
+  await expect(page.locator(AF_HINT)).toBeVisible();
+  await page.evaluate(() => { showForm(); });
+  await expect(page.locator(AF)).toHaveValue('');
+  await expect(page.locator(AF_HINT)).toBeHidden();
+});
+
+test('listing-level: saving does not rewrite an expired date or any other availability setting', async ({ page }) => {
+  const backend = await openExisting(page, { available_from: '2026-10-01', market_status: 'rented' });
+  await page.evaluate(() => { document.getElementById('submit-btn').scrollIntoView(); });
+  await page.click('#submit-btn');
+  await expect.poll(() => backend.count('PATCH', 'properties')).toBe(1);
+  const row = backend.state.properties['p-edit'];
+  expect(row.available_from).toBe('2026-10-01');            // exactly as entered
+  expect(row.market_status).toBe('rented');                 // untouched
+});

@@ -55,6 +55,8 @@
 //     "Available Soon". It changes NOTHING else: is_available, available_count, total_units and market_status keep
 //     deciding availability, so an expired date can never make a unit available, and never makes one unavailable.
 //
+// The default `today` is the device clock (`new Date()`) read as a Lao day -- no page has a server-supplied date, and a
+// wrong device clock only moves WHEN a display-only date stops showing (never availability). See ARCHITECTURE.md.
 // Pure/portable (no document/window), like the rest of this file. Every function takes an optional explicit `today`
 // ('YYYY-MM-DD') so tests and servers never depend on the machine clock or timezone.
 // ---------------------------------------------------------------------------

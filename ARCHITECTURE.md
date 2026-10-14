@@ -293,6 +293,17 @@ date they still pick the `fully_occupied` reason where the browser now says
 `temporarily_unavailable`; both are unavailable with the same effective status,
 so nothing user-visible differs.
 
+*Where "now" comes from.* The browser's own clock (`new Date()`), converted to a
+Lao calendar day with `Intl` (`timeZone: 'Asia/Vientiane'`; a fixed UTC+7
+fallback if `Intl` cannot answer — Laos has no DST). The pages have no
+server-supplied date (no server-time RPC, and no code reads a response's `Date`
+header; that header is not CORS-readable by default), and adding a network call
+or a header-plumbing change for a display-only date is not worth it. So a visitor
+whose device clock is wrong sees expiry at the wrong moment, by as much as the
+error. The impact is limited to a stale or early-hidden "Available from" label:
+availability and contactability never depend on a date. The admin note for the
+unit-type and listing-level dates uses the same clock.
+
 ---
 
 ## 2. Canonical APIs
