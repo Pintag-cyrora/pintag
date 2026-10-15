@@ -4111,7 +4111,7 @@ function wireMobileGalleryTrack(){
 
 // ── Gallery swipe hint ────────────────────────────────────────────────────────────────────────────────────────
 // The mobile gallery is a native horizontal scroll-snap track (#mg-track-el) with small dots as its only cue, so a
-// visitor can easily assume the first photo is the only one. Once per device, on the INITIAL view of a listing with 2+
+// visitor can easily assume the first photo is the only one. At most once per browser SESSION, on the INITIAL view of a listing with 2+
 // photos, a finger demonstrates the swipe: the real slides slide ~15% to the left (revealing the start of the next real
 // photo) and spring back, twice, ~3 s in total.
 //
@@ -4126,7 +4126,8 @@ function wireMobileGalleryTrack(){
 //   * it only starts when the gallery is actually on screen (IntersectionObserver) and the first two photos are already
 //     loaded -- it never changes loading attributes or requests an image
 //   * prefers-reduced-motion: no hint at all (the dots remain)
-//   * once per device (localStorage), and once per page load (a unit re-render never re-triggers it)
+//   * at most once per browser session (sessionStorage: a returning visitor on a later visit sees it again), and once per page
+//     load even when storage is blocked (a unit re-render never re-triggers it)
 var PT_SWIPE_HINT_KEY = 'pt_gallery_swipe_hint_v1';
 var _ptSwipeHintDone = false;
 function ptStartGallerySwipeHint(track) {
@@ -4137,11 +4138,11 @@ function ptStartGallerySwipeHint(track) {
   var slides = track.querySelectorAll('.mg-slide[data-idx]');
   if (slides.length < 2) return;                             // one photo (or the no-photo placeholder): nothing to swipe to
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  try { if (localStorage.getItem(PT_SWIPE_HINT_KEY) === '1') return; } catch (e) { /* storage blocked: fall through, once per page load */ }
+  try { if (sessionStorage.getItem(PT_SWIPE_HINT_KEY) === '1') return; } catch (e) { /* storage blocked: fall through, once per page load */ }
 
   var cancelled = false, hint = null, anims = [], timers = [], io = null, visible = false;
   var EVENTS = ['pointerdown', 'touchstart', 'mousedown', 'wheel', 'keydown', 'click'];
-  function markSeen() { try { localStorage.setItem(PT_SWIPE_HINT_KEY, '1'); } catch (e) { /* ignore */ } }
+  function markSeen() { try { sessionStorage.setItem(PT_SWIPE_HINT_KEY, '1'); } catch (e) { /* ignore */ } }
   function cleanup() {
     cancelled = true;
     anims.forEach(function (a) { try { a.cancel(); } catch (e) { /* ignore */ } });
@@ -4172,7 +4173,7 @@ function ptStartGallerySwipeHint(track) {
 
   function play() {
     if (cancelled || !visible || track.scrollLeft > 2 || document.hidden) return cleanup();
-    markSeen();                                              // shown once per device, whether or not it is watched to the end
+    markSeen();                                              // shown once per session, whether or not it is watched to the end
     var w = track.offsetWidth; if (!w) return cleanup();
     var dx = Math.round(w * 0.15);                           // how far the real slides move: 15% of the photo width
     hint = document.createElement('div');

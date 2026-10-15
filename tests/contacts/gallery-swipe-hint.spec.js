@@ -1,6 +1,6 @@
 // The one-time swipe hint on the mobile photo gallery of listing.html (ptStartGallerySwipeHint). The REAL page, a stubbed
 // supabase, real images from this suite's static server. What is pinned:
-//   * shown only for 2+ photos, on the initial view, once per device; never for one photo / no photos / reduced motion
+//   * shown only for 2+ photos, on the initial view, at most once per browser SESSION (sessionStorage); never for one photo / no photos / reduced motion
 //   * it demonstrates the REAL swipe: the real slides move left and reveal the start of the next real photo
 //   * any interaction cancels it at once; it also ends by itself; it never comes back (reload, unit re-render, more swipes)
 //   * native swiping, dots, and navigation are untouched; gallery order / sources / image requests / layout are identical
@@ -24,7 +24,7 @@ const HINT = '.mg-swipe-hint';
 const KEY = 'pt_gallery_swipe_hint_v1';
 const slideTx = (page, i) => page.evaluate((n) => { const m = new DOMMatrix(getComputedStyle(document.querySelectorAll('#mg-track-el .mg-slide')[n]).transform); return m.m41; }, i);
 const fingerOpacity = (page) => page.evaluate(() => { const f = document.querySelector('.mg-swipe-finger'); return f ? Number(getComputedStyle(f).opacity) : null; });
-const seen = (page) => page.evaluate((k) => localStorage.getItem(k), KEY);
+const seen = (page) => page.evaluate((k) => sessionStorage.getItem(k), KEY);
 const geometry = (page) => page.evaluate(() => {
   const r = (el) => { const b = el.getBoundingClientRect(); return [Math.round(b.x), Math.round(b.y + scrollY), Math.round(b.width), Math.round(b.height)]; };
   return { gallery: r(document.querySelector('.mobile-gallery')), track: r(document.getElementById('mg-track-el')), dots: r(document.getElementById('mg-dots-box')),
@@ -95,7 +95,7 @@ test.describe('when it shows', () => {
     expect(await seen(page)).toBeNull();
     for (let i = 0; i < 3; i++) expect(await slideTx(page, i)).toBe(0);
   });
-  test('already seen on this device: not shown again after a reload', async ({ page }) => {
+  test('already seen in this session: not shown again after a reload', async ({ page }) => {
     await openListing(page, MULTI);
     await expect(page.locator(HINT)).toBeAttached({ timeout: 8000 });
     await expect(page.locator(HINT)).toHaveCount(0, { timeout: 6000 });
@@ -103,8 +103,41 @@ test.describe('when it shows', () => {
     await page.waitForSelector('#mg-track-el');
     await expectNoHint(page, 5000);
   });
+  test('NOT once per device: it may appear again in a NEW session (new tab / new browser context), but not again in the same one', async ({ page, browser }) => {
+    await openListing(page, MULTI);
+    await expect(page.locator(HINT)).toBeAttached({ timeout: 8000 });
+    await expect(page.locator(HINT)).toHaveCount(0, { timeout: 6000 });
+    expect(await seen(page)).toBe('1');
+    // same session (same tab): navigating to another listing and back, or reloading, does not repeat it
+    await page.reload(); await page.waitForSelector('#mg-track-el');
+    await expectNoHint(page, 4500);
+    // a new tab = a new sessionStorage = a new session: it can be shown again
+    const tab2 = await page.context().newPage();
+    await openListing(tab2, MULTI);
+    await expect(tab2.locator(HINT)).toBeAttached({ timeout: 8000 });
+    // a brand-new browser context (e.g. a returning visit after the browser was closed) behaves the same
+    const ctx = await browser.newContext({ viewport: MOBILE, hasTouch: true, isMobile: true });
+    const p3 = await ctx.newPage();
+    await openListing(p3, MULTI);
+    await expect(p3.locator(HINT)).toBeAttached({ timeout: 8000 });
+    await ctx.close();
+  });
+  test('a persistent (localStorage) flag from an earlier build no longer suppresses it', async ({ page }) => {
+    await page.addInitScript((k) => localStorage.setItem(k, '1'), KEY);
+    await openListing(page, MULTI);
+    await expect(page.locator(HINT)).toBeAttached({ timeout: 8000 });
+    expect(await page.evaluate((k) => localStorage.getItem(k), KEY)).toBe('1');          // untouched: the hint no longer writes localStorage
+    expect(await seen(page)).toBe('1');
+  });
+  test('it never writes its flag to localStorage', async ({ page }) => {
+    await page.addInitScript(() => { const o = Storage.prototype.setItem; window.__lsWrites = 0; Storage.prototype.setItem = function (k) { if (this === window.localStorage && k === 'pt_gallery_swipe_hint_v1') window.__lsWrites++; return o.apply(this, arguments); }; });
+    await openListing(page, MULTI);
+    await expect(page.locator(HINT)).toBeAttached({ timeout: 8000 });
+    await expect(page.locator(HINT)).toHaveCount(0, { timeout: 6000 });
+    expect(await page.evaluate(() => window.__lsWrites)).toBe(0);
+  });
   test('storage blocked: still works once per page load and does not throw', async ({ page }) => {
-    await page.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new Error('blocked'); } }); });
+    await page.addInitScript(() => { Object.defineProperty(window, 'sessionStorage', { get() { throw new Error('blocked'); } }); });
     const errors = await openListing(page, MULTI);
     await expect(page.locator(HINT)).toBeAttached({ timeout: 8000 });
     await expect(page.locator(HINT)).toHaveCount(0, { timeout: 6000 });
@@ -149,7 +182,7 @@ test.describe('dismissal', () => {
     await expect.poll(() => activeDot(page), { timeout: 4000 }).toBe(3);
   });
   test('once per PAGE LOAD even when storage is blocked: a unit re-render of the gallery does not start it again', async ({ page }) => {
-    await page.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new Error('blocked'); } }); });
+    await page.addInitScript(() => { Object.defineProperty(window, 'sessionStorage', { get() { throw new Error('blocked'); } }); });
     const errors = await openListing(page, TWO_UNITS);
     await expect(page.locator(HINT)).toBeAttached({ timeout: 8000 });
     await expect(page.locator(HINT)).toHaveCount(0, { timeout: 6000 });
@@ -177,10 +210,10 @@ test.describe('does not interfere', () => {
     await expect(page.locator(HINT)).toHaveCount(0, { timeout: 6000 });
     const after = await slideSources(page);
     expect(after).toEqual(during);
-    // a second page where the hint is suppressed from the start (seen flag pre-set): same markup
+    // a second page where the hint is suppressed from the start (session flag pre-set): same markup
     const ctx = await browser.newContext({ viewport: MOBILE, hasTouch: true, isMobile: true });
     const p2 = await ctx.newPage();
-    await p2.addInitScript((k) => localStorage.setItem(k, '1'), KEY);
+    await p2.addInitScript((k) => sessionStorage.setItem(k, '1'), KEY);
     await openListing(p2, MULTI);
     await p2.waitForTimeout(1500);
     expect(await slideSources(p2)).toEqual(after);
@@ -196,7 +229,7 @@ test.describe('does not interfere', () => {
     await expect(page.locator(HINT)).toHaveCount(0, { timeout: 6000 });
     const ctx = await browser.newContext({ viewport: MOBILE, hasTouch: true, isMobile: true });
     const p2 = await ctx.newPage();
-    await p2.addInitScript((k) => localStorage.setItem(k, '1'), KEY);
+    await p2.addInitScript((k) => sessionStorage.setItem(k, '1'), KEY);
     const b = collect(p2);
     await openListing(p2, MULTI);
     await p2.waitForTimeout(6000);
