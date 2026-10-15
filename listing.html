@@ -198,6 +198,12 @@ html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .mg-dots{display:flex;justify-content:center;gap:5px;padding:10px 0 8px;background:var(--white);}
 .mg-dot{width:5px;height:5px;border-radius:50%;background:var(--ink-muted);opacity:0.28;transition:opacity 0.2s,background 0.2s;cursor:pointer;}
 .mg-dot.active{opacity:1;background:var(--teal);}
+/* One-time swipe hint (ptStartGallerySwipeHint): an overlay exactly over the photo area -- absolutely positioned,
+   pointer-events:none, so it adds no layout and can never intercept a touch. The finger and the slide peek are animated
+   with transform/opacity only. */
+.mg-swipe-hint{position:absolute;left:0;right:0;top:0;aspect-ratio:4/3;pointer-events:none;z-index:4;overflow:hidden;}
+.mg-swipe-finger{position:absolute;left:50%;top:62%;width:46px;height:46px;margin:-23px 0 0 -23px;opacity:0;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.38));will-change:transform,opacity;}
+.mg-swipe-finger svg{display:block;width:100%;height:100%;}
 /* Available Units — multi-unit buildings only (2+ unit types); see
    buildAvailableUnitsSection() in the script below. */
 .units-section{padding:32px 48px;border-bottom:1px solid var(--border-mid);background:var(--white);}
@@ -4099,6 +4105,114 @@ function wireMobileGalleryTrack(){
       if(slides[idx]&&c[idx])checkSmartFitLayout(c[idx],slides[idx]);
     },60);
   },{passive:true});
+  ptStartGallerySwipeHint(track);   // one-time, initial view only; see the comment block above
+}
+
+
+// ── Gallery swipe hint ────────────────────────────────────────────────────────────────────────────────────────
+// The mobile gallery is a native horizontal scroll-snap track (#mg-track-el) with small dots as its only cue, so a
+// visitor can easily assume the first photo is the only one. At most once per browser SESSION, on the INITIAL view of a listing with 2+
+// photos, a finger demonstrates the swipe: the real slides slide ~15% to the left (revealing the start of the next real
+// photo) and spring back, twice, ~3 s in total.
+//
+// Why transforms and not scrollLeft: the track is scroll-snap mandatory, so a partial programmatic scroll would snap
+// back, fire scroll handlers (dots, hydrateMobileSlides) and could fight a real touch. A transform on the slides moves
+// the real images without touching the scroll position, scroll events, snapping, or layout (no layout shift).
+//
+// Safety:
+//   * the overlay is pointer-events:none and aria-hidden; no listener is attached that could stop a touch
+//   * ANY interaction with the gallery (pointer/touch/mouse down, wheel, key, click, or a scroll of the track) cancels
+//     the animation immediately (animations are cancel()ed -> slides are back at rest) and counts as "seen"
+//   * it only starts when the gallery is actually on screen (IntersectionObserver) and the first two photos are already
+//     loaded -- it never changes loading attributes or requests an image
+//   * prefers-reduced-motion: no hint at all (the dots remain)
+//   * at most once per browser session (sessionStorage: a returning visitor on a later visit sees it again), and once per page
+//     load even when storage is blocked (a unit re-render never re-triggers it)
+var PT_SWIPE_HINT_KEY = 'pt_gallery_swipe_hint_v1';
+var _ptSwipeHintDone = false;
+function ptStartGallerySwipeHint(track) {
+  if (_ptSwipeHintDone) return;
+  _ptSwipeHintDone = true;                                   // first wiring only: later re-renders (unit selection) never retry
+  var gallery = track && track.parentElement;
+  if (!gallery || typeof track.animate !== 'function') return;
+  var slides = track.querySelectorAll('.mg-slide[data-idx]');
+  if (slides.length < 2) return;                             // one photo (or the no-photo placeholder): nothing to swipe to
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  try { if (sessionStorage.getItem(PT_SWIPE_HINT_KEY) === '1') return; } catch (e) { /* storage blocked: fall through, once per page load */ }
+
+  var cancelled = false, hint = null, anims = [], timers = [], io = null, visible = false;
+  var EVENTS = ['pointerdown', 'touchstart', 'mousedown', 'wheel', 'keydown', 'click'];
+  function markSeen() { try { sessionStorage.setItem(PT_SWIPE_HINT_KEY, '1'); } catch (e) { /* ignore */ } }
+  function cleanup() {
+    cancelled = true;
+    anims.forEach(function (a) { try { a.cancel(); } catch (e) { /* ignore */ } });
+    anims = [];
+    timers.forEach(function (t) { clearTimeout(t); clearInterval(t); });
+    timers = [];
+    if (io) { io.disconnect(); io = null; }
+    if (hint && hint.parentNode) hint.parentNode.removeChild(hint);
+    hint = null;
+    EVENTS.forEach(function (t) { gallery.removeEventListener(t, onUser, true); });
+    track.removeEventListener('scroll', onScroll);
+    document.removeEventListener('visibilitychange', onHide);
+  }
+  function onUser() { markSeen(); cleanup(); }               // the visitor found the gallery themselves
+  // A scroll of the track stops the demo, but is not by itself proof the visitor saw it (layout/snap can scroll programmatically): only
+  // real input events (above) mark the hint as seen.
+  function onScroll() { cleanup(); }
+  function onHide() { if (document.hidden) cleanup(); }
+  EVENTS.forEach(function (t) { gallery.addEventListener(t, onUser, { capture: true, passive: true }); });
+  track.addEventListener('scroll', onScroll, { passive: true });
+  document.addEventListener('visibilitychange', onHide);
+
+  if ('IntersectionObserver' in window) {
+    io = new IntersectionObserver(function (entries) { entries.forEach(function (e) { visible = e.isIntersecting && e.intersectionRatio >= 0.6; }); }, { threshold: [0, 0.6, 1] });
+    io.observe(track);
+  } else { visible = true; }
+  function ready(i) { var img = slides[i].querySelector('img'); return !!(img && img.complete && img.naturalWidth > 0); }
+
+  function play() {
+    if (cancelled || !visible || track.scrollLeft > 2 || document.hidden) return cleanup();
+    markSeen();                                              // shown once per session, whether or not it is watched to the end
+    var w = track.offsetWidth; if (!w) return cleanup();
+    var dx = Math.round(w * 0.15);                           // how far the real slides move: 15% of the photo width
+    hint = document.createElement('div');
+    hint.className = 'mg-swipe-hint';
+    hint.setAttribute('aria-hidden', 'true');
+    hint.innerHTML = '<div class="mg-swipe-finger"><svg viewBox="0 0 48 48" focusable="false"><circle cx="24" cy="26" r="20" fill="rgba(255,255,255,0.28)"/>' +
+      '<path d="M20 9a3.2 3.2 0 0 1 6.4 0v15l5.3-1.3c2.3-.5 4.2 1 4.6 3.2l1.4 8c.5 3.2-1.6 6.3-4.8 6.9l-10.5 1.6c-2.6.4-5-.9-6-3.2l-3.9-8.8c-.7-1.7.6-3.6 2.5-3.4l2.2.3V9z" fill="#fff" stroke="rgba(26,36,40,0.55)" stroke-width="1.4" stroke-linejoin="round"/></svg></div>';
+    gallery.appendChild(hint);
+    var finger = hint.firstChild, DUR = 1500, CYCLES = 2;
+    var ease = 'cubic-bezier(0.45, 0, 0.25, 1)';
+    anims.push(finger.animate([
+      { opacity: 0, transform: 'translate(' + Math.round(dx / 2) + 'px,0) scale(1)', offset: 0 },
+      { opacity: 1, transform: 'translate(' + Math.round(dx / 2) + 'px,0) scale(0.92)', offset: 0.15, easing: ease },     // touch down
+      { opacity: 1, transform: 'translate(' + (-Math.round(dx / 2)) + 'px,0) scale(0.92)', offset: 0.62 },                // drag left
+      { opacity: 1, transform: 'translate(' + (-Math.round(dx / 2)) + 'px,0) scale(1)', offset: 0.72 },                   // lift
+      { opacity: 0, transform: 'translate(' + (-Math.round(dx / 2)) + 'px,0) scale(1)', offset: 0.86 },
+      { opacity: 0, transform: 'translate(' + Math.round(dx / 2) + 'px,0) scale(1)', offset: 1 }
+    ], { duration: DUR, iterations: CYCLES }));
+    var peek = [
+      { transform: 'translateX(0)', offset: 0 },
+      { transform: 'translateX(0)', offset: 0.15, easing: ease },
+      { transform: 'translateX(-15%)', offset: 0.62 },
+      { transform: 'translateX(-15%)', offset: 0.7, easing: ease },
+      { transform: 'translateX(0)', offset: 0.92 },
+      { transform: 'translateX(0)', offset: 1 }
+    ];
+    for (var i = 0; i < Math.min(3, slides.length); i++) anims.push(slides[i].animate(peek, { duration: DUR, iterations: CYCLES }));
+    anims[0].onfinish = cleanup;                              // done after two cycles; slides are back at rest
+    timers.push(setTimeout(cleanup, DUR * CYCLES + 600));      // hard stop
+  }
+
+  // wait (max ~8 s) until the gallery is on screen and photos 1 and 2 are already loaded, then a short grace period
+  var waited = 0, poll = setInterval(function () {
+    waited += 250;
+    if (cancelled) return;
+    if (waited > 8000) return cleanup();
+    if (visible && ready(0) && ready(1)) { clearInterval(poll); timers.push(setTimeout(play, 700)); }
+  }, 250);
+  timers.push(poll);
 }
 
 function checkSmartFitLayout(){}
