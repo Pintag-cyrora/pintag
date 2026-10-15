@@ -276,6 +276,34 @@ precedence when staff has set it (an explicit human correction always
 wins over automation). No resolver contract change is needed when this
 phase arrives — see §5.
 
+**Expired availability dates.** A stored availability date
+(`unit_types.next_available_date`, `properties.available_from`) is a Laos
+calendar day. "Today" is the Asia/Vientiane day (`availabilityTodayLao()` in
+`unit-availability.js`; pinned to `laos-date.js` by a test), a date equal to
+today is live all day, and only well-formed `YYYY-MM-DD` dates before today are
+expired. `liveAvailabilityDate()` is the single implementation: the resolver
+(`resolveUnitAvailability(unit, computed?, today?)`) and
+`ptResolveNextAvailable()` both use it, so an expired or malformed date behaves
+exactly as "no date" everywhere (no "Available from", no
+"Fully Occupied — Available from", not in the Available Soon sort bucket). It
+never changes availability itself — `is_available`, `available_count`,
+`total_units` and `market_status` still decide that. The Worker's OG port and
+the intelligence SQL do not read `today`, so for a closed unit with an expired
+date they still pick the `fully_occupied` reason where the browser now says
+`temporarily_unavailable`; both are unavailable with the same effective status,
+so nothing user-visible differs.
+
+*Where "now" comes from.* The browser's own clock (`new Date()`), converted to a
+Lao calendar day with `Intl` (`timeZone: 'Asia/Vientiane'`; a fixed UTC+7
+fallback if `Intl` cannot answer — Laos has no DST). The pages have no
+server-supplied date (no server-time RPC, and no code reads a response's `Date`
+header; that header is not CORS-readable by default), and adding a network call
+or a header-plumbing change for a display-only date is not worth it. So a visitor
+whose device clock is wrong sees expiry at the wrong moment, by as much as the
+error. The impact is limited to a stale or early-hidden "Available from" label:
+availability and contactability never depend on a date. The admin note for the
+unit-type and listing-level dates uses the same clock.
+
 ---
 
 ## 2. Canonical APIs
@@ -290,7 +318,7 @@ new formatter, filter, or query.
 | `resolveRentalTerms(property, unitType)` | `rental-terms.js` | Merging building-level Rental Terms defaults with a unit type's overrides. Returns the frozen `{version, values, overriddenKeys}` contract. | You need any Rental Terms value for display, AI copy, or an edge function. Never read `properties.rental_terms` / `unit_types.rental_terms_overrides` directly. |
 | `resolveLeasePricing(property, unitType?)` | `lease-pricing.js` | Resolving a listing's — or one unit type's — Daily / Monthly / 3 / 6 / 12-month rental rates into the frozen `{version, basis, currency, source, baseAmount, terms, hasTiers}` contract. Never does arithmetic; never inherits a tier across the building/unit boundary. | You need any lease-term rate for display, AI copy, or an edge function. Never read `rent_price_daily`/`_3mo`/`_6mo`/`_12mo`/`lease_price_basis` directly. |
 | `getRentalTermAmount(property, unitType, fieldKey)` | `rental-terms.js` | The machine-readable read for `included_or_amount` Rental Terms (the Trash Fee today): `{included, amount, currency, period}`. Calls `resolveRentalTerms()` internally. | You need to compare, sum, sort or filter on a rental-term amount. `formatRentalTermValue()` returns display text — never re-parse that string to get the number back. |
-| `resolveUnitAvailability(unitType, computedNextAvailableDate?)` | `unit-availability.js` | Turning `available_count`/`total_units`/`next_available_date`/`availability_note` into one of the 3 frozen public statuses. | You need to display or reason about a unit type's availability. Never read the 4 raw columns directly. |
+| `resolveUnitAvailability(unitType, computedNextAvailableDate?, today?)` | `unit-availability.js` | Turning `available_count`/`total_units`/`next_available_date`/`availability_note` into one of the 3 frozen public statuses. | You need to display or reason about a unit type's availability. Never read the 4 raw columns directly. |
 | `resolveUnitType(property, unitType)` | `terminology.js` | Merging a building's own fields with one unit type's overrides for every *other* typed field (price, name, specs — not Rental Terms or Availability, which have their own resolvers above). | Rendering a specific unit type variant anywhere (admin preview, listing page, future search). |
 | `resolvePartyDisplay(party, listingCount, lang)` | `components.js` | Deriving a party's display name/photo/agency/verified-badge/bio with graceful placeholders and language-aware name precedence (Lao-first vs. English-first). | Any UI that shows an agent/owner/party, in any card, preview, or profile. |
 | `renderPropertyCard(property, opts)` | `components.js` | The one property card implementation. `opts` controls page-specific behavior (link vs. div, which sections show) — never a parallel card. | Search results, homepage, dashboard listings grid — anywhere a compact property card appears. |

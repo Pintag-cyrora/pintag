@@ -105,6 +105,6 @@ test('available_from set/unset is independent of the unit-type price fallback', 
   // Price still resolves from the unit type regardless of available_from.
   assert.equal(displayedPrice(p, 'en').text, '$450 / month');
   // available_from formats when set, null when unset — unchanged by the fix.
-  assert.equal(formatAvailableFromLine(p.available_from, 'en'), 'Available from 22 Aug 2026');
+  assert.equal(formatAvailableFromLine(p.available_from, 'en', '2026-08-01'), 'Available from 22 Aug 2026');
   assert.equal(formatAvailableFromLine(null, 'en'), null);
 });

@@ -15,6 +15,9 @@ const {
   formatMoveInDate, formatUnitInventory, formatAvailableFromLine
 } = globalThis;
 
+// Date cases pass an explicit TODAY so nothing depends on the machine clock (the fixture dates are all >= it).
+const TODAY = '2026-08-01';
+
 function unitType(overrides) {
   return Object.assign({ is_available: true, available_count: 0, total_units: null, next_available_date: null, availability_note: null }, overrides);
 }
@@ -26,7 +29,7 @@ test('status: available when count > 0', () => {
 });
 
 test('status: fully_occupied when count = 0 and a date is known', () => {
-  const r = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }));
+  const r = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }), undefined, TODAY);
   assert.equal(r.status, 'fully_occupied');
 });
 
@@ -47,12 +50,12 @@ test('status: is_available=false with no total_units falls back to temporarily_u
 
 // ── Manual date overrides computed date (Phase 2 compatibility) ─────────
 test('manual next_available_date wins over a computed date when both present', () => {
-  const r = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }), '2026-09-01');
+  const r = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }), '2026-09-01', TODAY);
   assert.equal(r.nextAvailableDate, '2026-08-15');
 });
 
 test('computed date is used as fallback when manual date is absent', () => {
-  const r = resolveUnitAvailability(unitType({ available_count: 0 }), '2026-09-01');
+  const r = resolveUnitAvailability(unitType({ available_count: 0 }), '2026-09-01', TODAY);
   assert.equal(r.nextAvailableDate, '2026-09-01');
   assert.equal(r.status, 'fully_occupied');
 });
@@ -67,7 +70,7 @@ test('neither manual nor computed date present -> null, temporarily_unavailable'
 test('resolveUnitAvailability: never mutates its input', () => {
   const ut = unitType({ available_count: 2, next_available_date: '2026-08-15' });
   const snapshot = JSON.stringify(ut);
-  resolveUnitAvailability(ut, '2026-09-01');
+  resolveUnitAvailability(ut, '2026-09-01', TODAY);
   assert.equal(JSON.stringify(ut), snapshot);
 });
 
@@ -77,7 +80,7 @@ test('formatAvailabilityDisplay: available -> "Available Now"', () => {
 });
 
 test('formatAvailabilityDisplay: fully_occupied -> "Fully Occupied — Available from {date}"', () => {
-  const resolved = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }));
+  const resolved = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }), undefined, TODAY);
   assert.equal(formatAvailabilityDisplay(resolved, 'en'), 'Fully Occupied — Available from 15 Aug 2026');
 });
 
@@ -120,7 +123,7 @@ test('formatUnitInventory: null when the unit is not currently available', () =>
   // Fully occupied (0 available, a date known) and temporarily unavailable
   // are both already described by formatAvailabilityDisplay() -- inventory
   // self-suppresses rather than printing "0 of 24 units available".
-  const occupied = resolveUnitAvailability(unitType({ available_count: 0, total_units: 24, next_available_date: '2026-09-01' }));
+  const occupied = resolveUnitAvailability(unitType({ available_count: 0, total_units: 24, next_available_date: '2026-09-01' }), undefined, TODAY);
   assert.equal(formatUnitInventory(occupied, 'en'), null);
   const unavailable = resolveUnitAvailability(unitType({ available_count: 0, total_units: 24 }));
   assert.equal(formatUnitInventory(unavailable, 'en'), null);
@@ -145,7 +148,7 @@ test('formatUnitInventory: never mutates the resolved input', () => {
 // identically to the unit-level "Available from {date}" wording and format,
 // and self-suppress when no date is set (so the listing just shows its price).
 test('formatAvailableFromLine: "Available from {date}" for a set date', () => {
-  assert.equal(formatAvailableFromLine('2026-09-01', 'en'), 'Available from 1 Sep 2026');
+  assert.equal(formatAvailableFromLine('2026-09-01', 'en', TODAY), 'Available from 1 Sep 2026');
 });
 
 test('formatAvailableFromLine: null when no date set (listing shows price only)', () => {
@@ -155,23 +158,23 @@ test('formatAvailableFromLine: null when no date set (listing shows price only)'
 });
 
 test('formatAvailableFromLine: localized (lo/zh) and defaults to en', () => {
-  assert.equal(formatAvailableFromLine('2026-09-01', 'lo'), 'ວ່າງຕັ້ງແຕ່ 1 ກ.ຍ 2026');
-  assert.equal(formatAvailableFromLine('2026-09-01', 'zh'), '可入住时间 1 9月 2026');
-  assert.equal(formatAvailableFromLine('2026-09-01'), 'Available from 1 Sep 2026'); // no lang -> en
+  assert.equal(formatAvailableFromLine('2026-09-01', 'lo', TODAY), 'ວ່າງຕັ້ງແຕ່ 1 ກ.ຍ 2026');
+  assert.equal(formatAvailableFromLine('2026-09-01', 'zh', TODAY), '可入住时间 1 9月 2026');
+  assert.equal(formatAvailableFromLine('2026-09-01', undefined, TODAY), 'Available from 1 Sep 2026'); // no lang -> en
 });
 
 test('formatAvailableFromLine: date wording matches the unit-level fully_occupied message', () => {
   // Both paths must render the same "Available from {date}" so a plain
   // apartment and a multi-unit building read identically.
   const unitMsg = formatAvailabilityDisplay(
-    resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-09-01' })), 'en');
+    resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-09-01' }), undefined, TODAY), 'en');
   assert.equal(unitMsg, 'Fully Occupied — Available from 1 Sep 2026');
-  assert.ok(unitMsg.endsWith(formatAvailableFromLine('2026-09-01', 'en')));
+  assert.ok(unitMsg.endsWith(formatAvailableFromLine('2026-09-01', 'en', TODAY)));
 });
 
 // ── Note is always supplementary ─────────────────────────────────────────
 test('note never appears inside formatAvailabilityDisplay output, only via getAvailabilityNoteLine', () => {
-  const resolved = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15', availability_note: 'Renovation finishing next week.' }));
+  const resolved = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15', availability_note: 'Renovation finishing next week.' }), undefined, TODAY);
   assert.equal(formatAvailabilityDisplay(resolved, 'en').includes('Renovation'), false);
   assert.equal(getAvailabilityNoteLine(resolved), 'Renovation finishing next week.');
 });
@@ -182,7 +185,7 @@ test('getAvailabilityNoteLine: null when no note set', () => {
 
 // ── formatMoveInDate: the standalone date, separate from the composed message ──
 test('formatMoveInDate: returns the formatted date when one is resolved', () => {
-  const resolved = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }));
+  const resolved = resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }), undefined, TODAY);
   assert.equal(formatMoveInDate(resolved, 'en'), '15 Aug 2026');
 });
 
@@ -207,7 +210,7 @@ test('compareUnitTypesForDisplay: Available Now before Fully Occupied before Una
   const items = [
     { resolved: resolveUnitAvailability(unitType({ available_count: 0 })), sort_order: 0 },              // unavailable
     { resolved: resolveUnitAvailability(unitType({ available_count: 2 })), sort_order: 1 },               // available
-    { resolved: resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' })), sort_order: 2 } // occupied w/ date
+    { resolved: resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }), undefined, TODAY), sort_order: 2 } // occupied w/ date
   ];
   const sorted = items.slice().sort(compareUnitTypesForDisplay);
   assert.deepEqual(sorted.map(i => i.resolved.status), ['available', 'fully_occupied', 'temporarily_unavailable']);
@@ -215,8 +218,8 @@ test('compareUnitTypesForDisplay: Available Now before Fully Occupied before Una
 
 test('compareUnitTypesForDisplay: within fully_occupied bucket, soonest date first', () => {
   const items = [
-    { resolved: resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-12-01' })), sort_order: 0 },
-    { resolved: resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' })), sort_order: 1 }
+    { resolved: resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-12-01' }), undefined, TODAY), sort_order: 0 },
+    { resolved: resolveUnitAvailability(unitType({ available_count: 0, next_available_date: '2026-08-15' }), undefined, TODAY), sort_order: 1 }
   ];
   const sorted = items.slice().sort(compareUnitTypesForDisplay);
   assert.equal(sorted[0].resolved.nextAvailableDate, '2026-08-15');
