@@ -53,6 +53,7 @@ async function feed(page, rows, opts) {
     const sel = sp.get('select') || '';
     if (sp.has('limit') && sel.includes('available_from')) {  // the Availability Issues paged fetch
       if (opts.fail) return json(500, { message: 'boom' });
+      if (opts.beforePage) opts.beforePage(log.issuePages.length + 1, rows);     // lets a test change the data between pages
       let pool = rows.filter((r) => (sp.get('workflow_status') || '') === 'eq.active' ? r.workflow_status === 'active' : true);
       if ((sp.get('deleted_at') || '') === 'is.null') pool = pool.filter((r) => !r.deleted_at);
       pool = pool.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -259,6 +260,88 @@ test.describe('completeness: the data cap', () => {
     await page.click('#availability-tab');
     await expect(page.locator('#ai-warning')).toContainText('The check failed');
     await expect(page.locator('#ai-warning')).toContainText('Nothing was changed');
+  });
+});
+
+test.describe('consistency: the total moving during a scan', () => {
+  const ids = (n) => Array.from({ length: n }, (_, i) => 'r-' + String(i).padStart(4, '0'));
+  // 1000 published listings, 500 per page; the ONLY issue sits exactly on the page boundary (index 500).
+  const boundary = () => ids(1000).map((id, i) => i === 500 ? P(id, 'Boundary Sold Open', 'sold', [OPEN('bu')]) : P(id, 'Fine ' + i, 'available', [OPEN('u' + i)]));
+  const st = (page) => page.evaluate(() => ({ complete: _aiState.complete, changed: _aiState.changed, fetched: _aiState.fetched, total: _aiState.total, status: _aiState.status }));
+
+  test('REGRESSION (confirmed case): a row deleted between page 1 and 2 -> fewer rows read, total drops by one -> NOT a complete scan', async ({ page }) => {
+    const rows = boundary();
+    let done = false;
+    const { log } = await open(page, rows, { cap: 500, beforePage: (n, r) => { if (n === 2 && !done) { done = true; r.splice(10, 1); } } });
+    await expect(tabCount(page)).toHaveText('0+');                  // the boundary row was skipped, and the "+" says so
+    expect(log.issuePages.map((p) => p.n)).toEqual([500, 499]);      // page 2 started one row late: that row was never read
+    expect(await st(page)).toEqual({ complete: false, changed: true, fetched: 999, total: 999, status: 'ok' });   // 999 rows == the NEW total, yet not complete
+    await expect(banner(page)).toBeHidden();                         // no issues were found, and nothing claims a clean bill of health
+    await page.click('#availability-tab');
+    const w = page.locator('#ai-warning');
+    await expect(w).toBeVisible();
+    await expect(w).toContainText('listings changed while they were being read');
+    await expect(w).toContainText('Refresh');
+    await expect(page.locator('#ai-warning')).not.toContainText('Checked 1000');
+  });
+  test('Refresh after an inconsistent scan retries and, with a stable total, finds the skipped issue and clears the warning', async ({ page }) => {
+    const rows = boundary();
+    let done = false;
+    const { log } = await open(page, rows, { cap: 500, beforePage: (n, r) => { if (n === 2 && !done) { done = true; r.splice(10, 1); } } });
+    await expect(tabCount(page)).toHaveText('0+');
+    await page.click('#availability-tab');
+    await page.click('button:has-text("Refresh")');
+    await expect(tabCount(page)).toHaveText('1');                    // no "+": consistent and complete
+    await expect(page.locator('#ai-warning')).toBeHidden();
+    await expect(page.locator('.ai-card')).toHaveCount(1);
+    await expect(page.locator('.ai-card')).toContainText('Boundary Sold Open');
+    expect(await st(page)).toEqual({ complete: true, changed: false, fetched: 999, total: 999, status: 'ok' });
+  });
+  test('a row INSERTED between pages (total rises) is also not a verified complete scan', async ({ page }) => {
+    const rows = ids(1000).map((id, i) => P(id, 'Fine ' + i, 'available', [OPEN('u' + i)]));
+    let done = false;
+    await open(page, rows, { cap: 500, beforePage: (n, r) => { if (n === 2 && !done) { done = true; r.splice(10, 0, P('r-0009a', 'Inserted', 'sold', [OPEN('iu')])); } } });
+    await expect(tabCount(page)).toHaveText(/\+$/);
+    expect(await st(page)).toMatchObject({ complete: false, changed: true });
+  });
+  test('a STABLE total across pages is still a complete, verified scan (no warning, no "+")', async ({ page }) => {
+    const { log } = await open(page, boundary(), { cap: 500 });
+    await expect(tabCount(page)).toHaveText('1');
+    expect(log.issuePages.map((p) => p.n)).toEqual([500, 500]);
+    expect(await st(page)).toEqual({ complete: true, changed: false, fetched: 1000, total: 1000, status: 'ok' });
+    await page.click('#availability-tab');
+    await expect(page.locator('#ai-warning')).toBeHidden();
+    await expect(page.locator('#ai-notes')).toContainText('Checked 1000 published listings');
+    await expect(banner(page)).toContainText('1 published listing has availability issues');
+    await expect(banner(page)).not.toContainText('partial');
+  });
+  test('an inconsistent scan is flagged on the banner too, and a later FAILED refresh leaves no stale results shown as current', async ({ page }) => {
+    const rows = ids(1000).map((id, i) => i === 3 ? P(id, 'Early Sold Open', 'sold', [OPEN('eu')]) : P(id, 'Fine ' + i, 'available', [OPEN('u' + i)]));
+    let phase = 'change';
+    await open(page, rows, { cap: 500, beforePage: (n, r) => { if (phase === 'change' && n === 2) { phase = 'stable'; r.splice(700, 1); } } });
+    await expect(tabCount(page)).toHaveText('1+');                   // the issue on page 1 is shown, but flagged as partial
+    await expect(banner(page)).toContainText('partial check');
+    await page.click('#availability-tab');
+    await expect(page.locator('.ai-card')).toHaveCount(1);
+    await expect(page.locator('#ai-warning')).toContainText('listings changed while they were being read');
+    // next refresh fails: nothing from the previous (inconsistent) scan may remain on screen
+    await page.unroute('**/rest/v1/properties?*');
+    await page.route('**/rest/v1/properties?*', (route) => {
+      const u = new URL(route.request().url());
+      if (u.searchParams.has('limit') && (u.searchParams.get('select') || '').includes('available_from')) return route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"boom"}' });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+    await page.click('button:has-text("Refresh")');
+    await expect(tabCount(page)).toHaveText('!');
+    await expect(page.locator('.ai-card')).toHaveCount(0);
+    await expect(page.locator('#ai-warning')).toContainText('The check failed');
+    await expect(page.locator('#ai-warning')).not.toContainText('changed while');
+    await expect(banner(page)).toBeHidden();
+  });
+  test('the first page already complete (single page): unaffected by the new check', async ({ page }) => {
+    await open(page, DATASET(), {});
+    await expect(tabCount(page)).toHaveText('7');
+    expect(await st(page)).toMatchObject({ complete: true, changed: false });
   });
 });
 

@@ -3420,7 +3420,7 @@ async function loadAvailabilityIssues() {
   renderAvailabilityIssuesChrome(); if (_aiVisible) renderAvailabilityIssuesPanel();
   try {
     const rows = [];
-    let offset = 0, total = null, pages = 0, withDeleted = true, complete = true;
+    let offset = 0, total = null, pages = 0, withDeleted = true, complete = true, totalChanged = false;
     for (;;) {
       let page;
       try { page = await _aiGetPage(withDeleted, offset); }
@@ -3430,6 +3430,10 @@ async function loadAvailabilityIssues() {
         throw e;
       }
       if (token !== _aiToken) return;                                // a newer load superseded this one
+      // Offset paging has no snapshot: a row deleted/inserted between pages shifts later rows, so one can be skipped
+      // while the rows read still add up to the (new) total. If the server's exact total moves during the scan, the
+      // result cannot be vouched for -- it is shown, but never as a verified complete check.
+      if (page.total != null && total != null && page.total !== total) totalChanged = true;
       if (page.total != null) total = page.total;
       rows.push(...page.rows);
       offset += page.rows.length;                                    // continue from what the server really returned
@@ -3439,9 +3443,9 @@ async function loadAvailabilityIssues() {
       if (total == null && page.rows.length < _AI_PAGE) break;
       if (pages >= _AI_MAX_PAGES) { complete = false; break; }
     }
-    if (total == null || rows.length < total) complete = false;       // could not confirm every published listing was read
+    if (total == null || rows.length < total || totalChanged) complete = false;   // could not confirm every published listing was read
     const result = collectAvailabilityIssues(rows);
-    _aiState = { status: 'ok', result, fetched: rows.length, total, complete, error: null };
+    _aiState = { status: 'ok', result, fetched: rows.length, total, complete, changed: totalChanged, error: null };
   } catch (e) {
     if (token !== _aiToken) return;
     console.error('loadAvailabilityIssues:', e);
@@ -3547,7 +3551,9 @@ function renderAvailabilityIssuesPanel(keepFocus) {
     ' (drafts, archived and deleted listings are not checked). One listing can have more than one issue, so the type counts below can add up to more than the number of listings. This list is read-only: nothing is changed automatically.';
   if (!st.complete) {
     warn.hidden = false;
-    warn.textContent = '⚠ Partial check: read ' + st.fetched + (st.total != null ? ' of ' + st.total : '') + ' published listings, so some issues may be missing. Use Refresh to try again.';
+    warn.textContent = st.changed
+      ? '⚠ Partial check: the listings changed while they were being read (the total moved), so some issues may be missing. Use Refresh to run it again.'
+      : '⚠ Partial check: read ' + st.fetched + (st.total != null ? ' of ' + st.total : '') + ' published listings, so some issues may be missing. Use Refresh to try again.';
   }
   const types = AVAIL_ISSUE_TYPES.filter(t => r.byType[t.type] > 0);
   if (_aiFilter !== 'all' && !types.some(t => t.type === _aiFilter)) _aiFilter = 'all';
