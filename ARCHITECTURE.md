@@ -304,6 +304,22 @@ error. The impact is limited to a stale or early-hidden "Available from" label:
 availability and contactability never depend on a date. The admin note for the
 unit-type and listing-level dates uses the same clock.
 
+**Admin → Availability Issues** (`availability-issues.js`, read-only). A tab
+(with a count of distinct affected listings), a banner above the listings table,
+and a filterable list of published, non-deleted listings whose availability is
+contradictory or whose stored availability date has expired. It defines no
+availability rule of its own: mismatches are
+`describePropertyAvailabilityConflict()` (the detector behind the listings-table
+badge and the editor warning; its five codes), unit state is
+`resolveUnitAvailability()`, dates are `liveAvailabilityDate()` (Lao day). One
+issue per listing per type; a listing with two types is one affected listing.
+It does not read the table's `loadListings()` fetch (un-paged, so silently capped
+at PostgREST `max_rows`, and without `available_from`); it pages its own query
+(`limit`/`offset` + `Prefer: count=exact`) and says "partial check" whenever it
+cannot confirm every published listing was read. Deep link:
+`admin.html?edit=<id>[&unit=<unit id>]` — the unit is expanded only if the opened
+listing owns it.
+
 ---
 
 ## 2. Canonical APIs

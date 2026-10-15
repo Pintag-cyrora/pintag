@@ -281,6 +281,39 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
 /* Draft status badge */
 .status-draft{background:rgba(122,144,152,0.13);color:var(--ink-muted);}
 .status-conflict{background:rgba(180,83,9,0.12);color:#92400e;cursor:help;}
+/* Availability Issues: tab count, banner, panel */
+.tab-count{display:inline-block;min-width:18px;padding:1px 6px;margin-left:6px;border-radius:9px;font-size:10.5px;font-weight:600;background:rgba(122,144,152,0.15);color:var(--ink-muted);text-align:center;}
+.tab-count.has-issues{background:rgba(180,83,9,0.14);color:#92400e;}
+.avail-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:14px 0;padding:10px 14px;border-radius:3px;border:1px solid rgba(180,83,9,0.35);background:rgba(180,83,9,0.08);color:#92400e;font-size:13px;line-height:1.5;}
+.avail-banner[hidden]{display:none;}
+.avail-banner button{font:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:3px;border:1px solid rgba(180,83,9,0.35);background:var(--white);color:#92400e;cursor:pointer;}
+.ai-summary{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:6px 0 4px;}
+.ai-summary strong{font-size:15px;color:var(--ink);font-weight:600;}
+.ai-note{font-size:11.5px;color:var(--ink-muted);line-height:1.5;margin:4px 0;}
+.ai-warn{margin:10px 0;padding:8px 12px;border-radius:3px;border:1px solid rgba(180,83,9,0.35);background:rgba(180,83,9,0.08);color:#92400e;font-size:12.5px;line-height:1.5;}
+.ai-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0;}
+.ai-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.ai-chip{font:inherit;font-size:12px;padding:6px 12px;border-radius:14px;border:1px solid var(--border-mid);background:var(--white);color:var(--ink-soft);cursor:pointer;}
+.ai-chip[aria-pressed="true"]{background:rgba(45,140,140,0.12);border-color:var(--teal);color:var(--teal);font-weight:600;}
+.ai-list{display:flex;flex-direction:column;gap:12px;margin-top:8px;}
+.ai-card{background:var(--white);border:1px solid var(--border-mid);border-radius:6px;padding:14px 16px;}
+.ai-card-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.ai-card-head strong{color:var(--ink);font-weight:500;font-size:14px;}
+.ai-type{font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:rgba(180,83,9,0.12);color:#92400e;}
+.ai-loc{font-size:12px;color:var(--ink-muted);margin-top:2px;}
+.ai-why{font-size:13px;color:var(--ink-soft);line-height:1.55;margin:8px 0;}
+.ai-units{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:6px;}
+.ai-units li{font-size:12.5px;color:var(--ink-soft);display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 10px;background:var(--warm);border-radius:4px;}
+.ai-units li .ai-unit-name{font-weight:600;color:var(--ink);}
+.ai-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.ai-actions .action-btn{text-decoration:none;display:inline-block;}
+.ut-card.ai-focus{outline:2px solid var(--teal);outline-offset:2px;}
+@media(max-width:640px){
+  .ai-controls .listings-search{width:100%;}
+  .ai-card{padding:12px;}
+  .ai-actions .action-btn{flex:1 1 auto;text-align:center;}
+  .avail-banner{align-items:flex-start;}
+}
 /* Import progress steps */
 .import-step{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-muted);}
 .import-step.active{color:var(--teal);font-weight:500;}
@@ -343,6 +376,7 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
     <div id="listings-panel">
       <div class="tabs" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <button class="tab active" id="listings-tab" onclick="setAnalyticsView(false)">All Listings</button>
+        <button class="tab" id="availability-tab" onclick="showAvailabilityIssuesView()" aria-controls="availability-panel">⚠ Availability Issues <span class="tab-count" id="availability-tab-count" aria-live="polite">…</span></button>
         <button class="tab" onclick="toggleAnalytics()" id="analytics-tab">📊 Analytics</button>
         <a class="tab" href="intelligence.html" style="text-decoration:none;">🧠 Intelligence</a>
         <a class="tab" href="analytics.html" style="text-decoration:none;">📈 Full Analytics</a>
@@ -448,6 +482,23 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
             <tbody id="adm-top-agent-contacts"></tbody></table>
           </div>
         </div>
+      </div>
+
+      <div id="availability-banner" class="avail-banner" role="status" hidden>
+        <span id="availability-banner-text"></span>
+        <button type="button" onclick="showAvailabilityIssuesView()">Review issues</button>
+      </div>
+
+      <div id="availability-panel" style="display:none;padding:12px 0 20px;">
+        <div class="ai-summary" id="ai-summary"></div>
+        <p class="ai-note" id="ai-notes"></p>
+        <div id="ai-warning" class="ai-warn" role="status" hidden></div>
+        <div class="ai-controls">
+          <div class="ai-chips" id="ai-chips" role="group" aria-label="Filter by issue type"></div>
+          <input id="ai-search" class="listings-search" type="search" placeholder="Search by listing…" oninput="setAvailabilityIssuesSearch(this.value)" autocomplete="off" aria-label="Search availability issues">
+          <button type="button" class="action-btn btn-view" onclick="loadAvailabilityIssues()" style="cursor:pointer;">Refresh</button>
+        </div>
+        <div class="ai-list" id="ai-list"></div>
       </div>
 
       <div id="listings-container"><div class="loading">Loading listings...</div></div>
@@ -1085,6 +1136,7 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
 <script src="unit-availability.js?v=__ASSET_VERSION__"></script>
 <script src="listing-status.js?v=__ASSET_VERSION__"></script>
 <script src="property-availability.js?v=__ASSET_VERSION__"></script>
+<script src="availability-issues.js?v=__ASSET_VERSION__"></script>
 <script src="provinces.js?v=__ASSET_VERSION__"></script>
 <script src="listing-title.js?v=__ASSET_VERSION__"></script>
 <script src="contact-languages.js?v=__ASSET_VERSION__"></script>
@@ -3126,7 +3178,8 @@ function showAdminScreen() {
   const editId = _dl.get('edit');
   // from=recovery (set by Gallery Recovery's goComplete) → affirm the handoff:
   // scroll to the gallery and confirm the photos are now attached to this listing.
-  if (editId) editListing(editId, _dl.get('from'));
+  const unitParam = _dl.get('unit');
+  if (editId) Promise.resolve(editListing(editId, _dl.get('from'))).then(() => { if (unitParam) focusUnitCardForListing(editId, unitParam); });
 }
 
 // admin-auth.js injects its own full-screen login overlay, validates the session
@@ -3313,13 +3366,233 @@ var _analyticsVisible = false;
 // changed.
 function setAnalyticsView(on) {
   _analyticsVisible = !!on;
+  _aiVisible = false;                                    // the Availability Issues view is a third, mutually exclusive view
+  document.getElementById('availability-panel').style.display = 'none';
+  document.getElementById('availability-tab').classList.remove('active');
   document.getElementById('analytics-panel').style.display = _analyticsVisible ? 'block' : 'none';
   document.getElementById('listings-container').style.display = _analyticsVisible ? 'none' : 'block';
   document.getElementById('analytics-tab').classList.toggle('active', _analyticsVisible);
   document.getElementById('listings-tab').classList.toggle('active', !_analyticsVisible);
+  renderAvailabilityIssuesChrome();                      // the banner belongs to the listings view only
   if (_analyticsVisible) loadAnalytics();
 }
 function toggleAnalytics() { setAnalyticsView(!_analyticsVisible); }
+
+// ── AVAILABILITY ISSUES ──────────────────────────────────────────────────────────────────────────
+// A proactive, READ-ONLY list of published listings whose availability is contradictory or whose stored availability date
+// has expired. Detection is availability-issues.js, which reuses describePropertyAvailabilityConflict() (the detector the
+// listings-table badge and the editor warning already use), resolvePropertyAvailability() / resolveUnitAvailability() and
+// the Lao-calendar-day date rule -- it defines no availability rules of its own. Nothing here writes anything.
+//
+// WHY ITS OWN FETCH. loadListings() issues one un-paged GET, which PostgREST silently truncates at max_rows (1000), and it
+// does not select available_from or unit names. Counting issues from it could undercount without any sign. This fetch
+// pages with limit/offset + Prefer: count=exact, continues from however many rows the server actually returned, and the
+// panel says "checked X of Y" (and warns) whenever it could not confirm that every published listing was read.
+var _aiVisible = false;
+var _aiFilter = 'all';
+var _aiSearch = '';
+var _aiState = { status: 'idle', result: null, fetched: 0, total: null, complete: true, error: null };
+var _aiToken = 0;
+const _AI_PAGE = 500;
+const _AI_MAX_PAGES = 60;
+const _AI_SELECT = 'id,slug,title_en,district_en,workflow_status,market_status,available_from,unit_types(id,name_en,sort_order,is_available,available_count,total_units,next_available_date)';
+const _AI_STATUS_LABEL = { available: 'Available', fully_occupied: 'Fully occupied', temporarily_unavailable: 'Currently unavailable', coming_soon: 'Coming soon' };
+
+async function _aiGetPage(withDeleted, offset) {
+  const q = 'properties?workflow_status=eq.active' + (withDeleted ? '&deleted_at=is.null' : '') +
+            '&order=id.asc&limit=' + _AI_PAGE + '&offset=' + offset + '&select=' + _AI_SELECT;
+  const token = _adminToken || SUPABASE_ANON;
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + q, {
+    method: 'GET',
+    headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + token, 'Prefer': 'count=exact' }
+  });
+  if (!res.ok) throw new Error('Supabase ' + res.status + ': ' + (await res.text()).slice(0, 200));
+  const range = res.headers.get('content-range');                  // "0-499/1234" or "*/1234"
+  const totalStr = range ? range.split('/')[1] : null;
+  const total = (totalStr && totalStr !== '*') ? parseInt(totalStr, 10) : null;
+  const text = await res.text();
+  return { rows: text ? JSON.parse(text) : [], total: Number.isFinite(total) ? total : null };
+}
+
+async function loadAvailabilityIssues() {
+  const token = ++_aiToken;
+  _aiState = { status: 'loading', result: null, fetched: 0, total: null, complete: true, error: null };
+  renderAvailabilityIssuesChrome(); if (_aiVisible) renderAvailabilityIssuesPanel();
+  try {
+    const rows = [];
+    let offset = 0, total = null, pages = 0, withDeleted = true, complete = true, totalChanged = false;
+    for (;;) {
+      let page;
+      try { page = await _aiGetPage(withDeleted, offset); }
+      catch (e) {
+        // Pre-migration fallback, same as loadListings(): no deleted_at column yet -> read without the filter.
+        if (withDeleted && offset === 0 && /deleted_at/.test(e.message)) { withDeleted = false; continue; }
+        throw e;
+      }
+      if (token !== _aiToken) return;                                // a newer load superseded this one
+      // Offset paging has no snapshot: a row deleted/inserted between pages shifts later rows, so one can be skipped
+      // while the rows read still add up to the (new) total. If the server's exact total moves during the scan, the
+      // result cannot be vouched for -- it is shown, but never as a verified complete check.
+      if (page.total != null && total != null && page.total !== total) totalChanged = true;
+      if (page.total != null) total = page.total;
+      rows.push(...page.rows);
+      offset += page.rows.length;                                    // continue from what the server really returned
+      pages++;
+      if (page.rows.length === 0) break;
+      if (total != null && offset >= total) break;
+      if (total == null && page.rows.length < _AI_PAGE) break;
+      if (pages >= _AI_MAX_PAGES) { complete = false; break; }
+    }
+    if (total == null || rows.length < total || totalChanged) complete = false;   // could not confirm every published listing was read
+    const result = collectAvailabilityIssues(rows);
+    _aiState = { status: 'ok', result, fetched: rows.length, total, complete, changed: totalChanged, error: null };
+  } catch (e) {
+    if (token !== _aiToken) return;
+    console.error('loadAvailabilityIssues:', e);
+    _aiState = { status: 'error', result: null, fetched: 0, total: null, complete: false, error: e.message || String(e) };
+  }
+  renderAvailabilityIssuesChrome(); if (_aiVisible) renderAvailabilityIssuesPanel();
+}
+
+// Tab count + banner. Distinct listings affected (never the issue count): one listing can carry more than one issue.
+function renderAvailabilityIssuesChrome() {
+  const tabCount = document.getElementById('availability-tab-count');
+  const banner = document.getElementById('availability-banner');
+  const bannerText = document.getElementById('availability-banner-text');
+  if (!tabCount || !banner) return;
+  const st = _aiState, r = st.result;
+  if (st.status === 'ok') {
+    tabCount.textContent = String(r.listingsAffected) + (st.complete ? '' : '+');
+    tabCount.classList.toggle('has-issues', r.listingsAffected > 0);
+    tabCount.title = r.listingsAffected + ' listing(s) affected, ' + r.issueCount + ' issue(s)' + (st.complete ? '' : ' (partial check)');
+  } else {
+    tabCount.textContent = st.status === 'error' ? '!' : '…';
+    tabCount.classList.remove('has-issues');
+    tabCount.title = st.status === 'error' ? 'Could not check availability issues' : 'Checking…';
+  }
+  const showBanner = st.status === 'ok' && r.listingsAffected > 0 && !_aiVisible && !_analyticsVisible;
+  banner.hidden = !showBanner;
+  if (showBanner) {
+    const n = r.listingsAffected, m = r.issueCount;
+    bannerText.textContent = '⚠ ' + n + (n === 1 ? ' published listing has' : ' published listings have') + ' availability issues' +
+      (m !== n ? ' (' + m + ' issues in total)' : '') + (st.complete ? '.' : ' — partial check, not every listing could be read.');
+  }
+}
+
+function showAvailabilityIssuesView() {
+  setAnalyticsView(false);                                          // resets the other views, then take over
+  _aiVisible = true;
+  document.getElementById('listings-container').style.display = 'none';
+  document.getElementById('availability-panel').style.display = 'block';
+  document.getElementById('listings-tab').classList.remove('active');
+  document.getElementById('availability-tab').classList.add('active');
+  renderAvailabilityIssuesChrome();
+  renderAvailabilityIssuesPanel();
+  if (_aiState.status === 'idle' || _aiState.status === 'error') loadAvailabilityIssues();
+}
+function setAvailabilityIssuesFilter(type) { _aiFilter = type; renderAvailabilityIssuesPanel(); }
+function setAvailabilityIssuesSearch(v) { _aiSearch = String(v || ''); renderAvailabilityIssuesPanel(true); }
+
+function _aiFmtDate(d) {
+  return (typeof isValidAvailabilityDate === 'function' && isValidAvailabilityDate(d) && typeof _formatAvailabilityDate === 'function')
+    ? _formatAvailabilityDate(d, 'en') : String(d);
+}
+function _aiUnitLine(issue, u) {
+  const bits = [];
+  bits.push(_AI_STATUS_LABEL[u.status] || u.status);
+  if (u.availableCount != null) bits.push(u.availableCount + (u.totalUnits != null ? ' of ' + u.totalUnits : '') + ' available');
+  if (u.date) bits.push('Available from ' + _aiFmtDate(u.date));
+  if (u.ignoredDate && issue.type === 'expired_date') bits.push('stored date ' + _aiFmtDate(u.ignoredDate) + (typeof isValidAvailabilityDate === 'function' && isValidAvailabilityDate(u.ignoredDate) ? ' has passed' : ' is not a valid date') + ' (ignored)');
+  const name = u.name || 'Unit type';
+  const link = u.id != null
+    ? ` <a class="ai-unit-link" href="${esc(availabilityIssueEditHref(issue.propertyId, u.id))}" onclick="return openAvailabilityIssue(event,'${escJs(String(issue.propertyId))}','${escJs(String(u.id))}')">Edit unit</a>` : '';
+  return `<li data-unit-id="${esc(u.id == null ? '' : String(u.id))}"><span class="ai-unit-name">${esc(name)}</span><span>${esc(bits.join(' · '))}</span>${link}</li>`;
+}
+function _aiCard(issue) {
+  const info = _aiTypeInfo(issue.type);
+  const market = esc(issue.marketStatus || 'available');
+  const units = (issue.units || []).map(u => _aiUnitLine(issue, u)).join('');
+  const ld = issue.listingDate
+    ? `<p class="ai-note">Listing-level Available From: ${esc(_aiFmtDate(issue.listingDate.value))} (${typeof isValidAvailabilityDate === 'function' && isValidAvailabilityDate(issue.listingDate.value) ? 'has passed' : 'not a valid date'}, ignored)</p>` : '';
+  const view = 'listing.html?' + (issue.slug ? 'slug=' + encodeURIComponent(issue.slug) : 'id=' + encodeURIComponent(issue.propertyId));
+  return `<article class="ai-card" data-property-id="${esc(String(issue.propertyId))}" data-issue-type="${esc(issue.type)}">
+      <div class="ai-card-head"><strong>${esc(issue.title || '—')}</strong>
+        <span class="status-badge status-${market}">${market.replace(/_/g, ' ')}</span>
+        <span class="ai-type">${esc(info.label)}</span></div>
+      ${issue.district ? `<div class="ai-loc">${esc(issue.district)}</div>` : ''}
+      <p class="ai-why">${esc(issue.message)}</p>
+      ${units ? `<ul class="ai-units">${units}</ul>` : ''}${ld}
+      <div class="ai-actions">
+        <a class="action-btn btn-edit" href="${esc(availabilityIssueEditHref(issue.propertyId))}" onclick="return openAvailabilityIssue(event,'${escJs(String(issue.propertyId))}','')">Edit listing</a>
+        <a class="action-btn btn-view" href="${esc(view)}" target="_blank" rel="noopener">View public page</a>
+      </div>
+    </article>`;
+}
+
+function renderAvailabilityIssuesPanel(keepFocus) {
+  const st = _aiState, r = st.result;
+  const summary = document.getElementById('ai-summary'), notes = document.getElementById('ai-notes');
+  const warn = document.getElementById('ai-warning'), chips = document.getElementById('ai-chips'), list = document.getElementById('ai-list');
+  if (!summary) return;
+  warn.hidden = true;
+  if (st.status === 'loading' || st.status === 'idle') {
+    summary.innerHTML = '<span class="loading" style="padding:8px;">Checking published listings…</span>';
+    notes.textContent = ''; chips.innerHTML = ''; list.innerHTML = ''; return;
+  }
+  if (st.status === 'error') {
+    summary.innerHTML = '<strong>Could not check availability issues</strong>';
+    notes.textContent = '';
+    warn.hidden = false; warn.textContent = 'The check failed (' + st.error + '). Nothing was changed. Use Refresh to try again.';
+    chips.innerHTML = ''; list.innerHTML = ''; return;
+  }
+  summary.innerHTML = `<strong>${r.listingsAffected} ${r.listingsAffected === 1 ? 'listing' : 'listings'} affected</strong>` +
+    `<span style="font-size:13px;color:var(--ink-soft);">${r.issueCount} ${r.issueCount === 1 ? 'issue' : 'issues'} in total</span>`;
+  notes.textContent = 'Checked ' + r.listingsChecked + ' published listing' + (r.listingsChecked === 1 ? '' : 's') +
+    ' (drafts, archived and deleted listings are not checked). One listing can have more than one issue, so the type counts below can add up to more than the number of listings. This list is read-only: nothing is changed automatically.';
+  if (!st.complete) {
+    warn.hidden = false;
+    warn.textContent = st.changed
+      ? '⚠ Partial check: the listings changed while they were being read (the total moved), so some issues may be missing. Use Refresh to run it again.'
+      : '⚠ Partial check: read ' + st.fetched + (st.total != null ? ' of ' + st.total : '') + ' published listings, so some issues may be missing. Use Refresh to try again.';
+  }
+  const types = AVAIL_ISSUE_TYPES.filter(t => r.byType[t.type] > 0);
+  if (_aiFilter !== 'all' && !types.some(t => t.type === _aiFilter)) _aiFilter = 'all';
+  chips.innerHTML = [`<button type="button" class="ai-chip" data-filter="all" aria-pressed="${_aiFilter === 'all'}" onclick="setAvailabilityIssuesFilter('all')">All (${r.issueCount})</button>`]
+    .concat(types.map(t => `<button type="button" class="ai-chip" data-filter="${esc(t.type)}" aria-pressed="${_aiFilter === t.type}" title="${esc(t.hint)}" onclick="setAvailabilityIssuesFilter('${escJs(t.type)}')">${esc(t.label)} (${r.byType[t.type]})</button>`)).join('');
+  const q = _aiSearch.trim().toLowerCase();
+  const shown = r.issues.filter(i => (_aiFilter === 'all' || i.type === _aiFilter) &&
+    (!q || (i.title || '').toLowerCase().includes(q) || (i.district || '').toLowerCase().includes(q)));
+  if (!r.issueCount) {
+    list.innerHTML = '<div class="empty"><p class="empty-title">No availability issues found</p><p>Every published listing’s status agrees with its units, and no stored availability date has expired.</p></div>';
+  } else if (!shown.length) {
+    list.innerHTML = '<div class="empty"><p>No issues match this filter.</p></div>';
+  } else {
+    list.innerHTML = shown.map(_aiCard).join('');
+  }
+}
+
+// "Edit listing" / "Edit unit": same-tab open for a plain click (ctrl/cmd/shift/middle click keep the real href, which
+// opens admin.html?edit=...&unit=... in a new tab). The unit is only focused if it belongs to the listing just opened.
+function openAvailabilityIssue(ev, propertyId, unitId) {
+  if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button === 1)) return true;
+  if (ev) ev.preventDefault();
+  Promise.resolve(editListing(propertyId)).then(() => { if (unitId) focusUnitCardForListing(propertyId, unitId); });
+  return false;
+}
+// Expands and scrolls to ONE unit card, and only when (a) the editor is open on exactly propertyId and (b) a card in
+// that editor carries exactly unitId. The editor only ever contains the opened listing's own unit rows, and ids are
+// compared as strings (never used in a selector), so a unit id from another listing -- or garbage -- does nothing.
+function focusUnitCardForListing(propertyId, unitId) {
+  if (!propertyId || !unitId) return false;
+  const editing = document.getElementById('edit-id');
+  if (!editing || editing.value !== String(propertyId)) return false;
+  const card = [...document.querySelectorAll('#unit-types-list .ut-card')].find(c => c.dataset.id === String(unitId));
+  if (!card) return false;
+  card.classList.add('expanded', 'ai-focus');
+  card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  setTimeout(() => card.classList.remove('ai-focus'), 4000);
+  return true;
+}
 
 const RECIPIENT_TYPE_LABELS = {
   owner: 'Owner', agent: 'Agent', property_manager: 'Property Manager',
@@ -3719,6 +3992,7 @@ function renderOwnerPhoneCell(owner) {
 }
 
 async function loadListings() {
+  loadAvailabilityIssues();            // independent, read-only; never blocks or breaks the listings table
   const container = document.getElementById('listings-container');
   container.innerHTML = '<div class="loading">Loading...</div>';
   // owners(...) is an INTERNAL embed -- staff-only by RLS (no anon policy
