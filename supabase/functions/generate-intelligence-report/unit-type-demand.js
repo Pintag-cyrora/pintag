@@ -1,11 +1,18 @@
 // Unit-Type Demand. Pure functions turning already-computed unit-type-level
 // demand (unit_type_demand_segments, intelligence_daily_metrics()) and supply
-// (active_inventory.available_unit_types, see
-// 20260922000000_intelligence_unit_type_demand.sql) into ranked, classified
+// (active_inventory.available_unit_types, defined by
+// point_in_time_supply_snapshot() in 20261012000000_intelligence_canonical_
+// availability.sql, which is applied to production) into ranked, classified
 // rows report-composer.js narrates. Same "AI computes nothing" contract as
 // trend-calculator.js/demand-supply-gap.js: every value here is a direct,
 // reproducible function of its inputs; Gemini explains, it never recomputes
 // or invents a classification itself.
+//
+// PRODUCTION STATUS (2026-10): unit_type_demand_segments comes from
+// intelligence_daily_metrics() as redefined in 20260922000000_intelligence_
+// unit_type_demand.sql. That migration has NOT been applied to production, so
+// the unit-type demand block does not render there yet; the supply side
+// (available_unit_types) is already live via 20261012000000.
 //
 // WHY THIS IS A SEPARATE, SIMPLER MODULE THAN demand-supply-gap.js. That
 // module compares market-wide SEARCH demand (which has no listing/unit-type
@@ -70,7 +77,8 @@ export function rankUnitTypeDemand(segments) {
 // Classifies one unit type's supply adequacy against its own demand.
 // `availableCount` is active_inventory.available_unit_types[unit_type_id] —
 // that exact unit type's own available_count when its parent property is
-// genuinely bookable (see the migration) — or null when unavailable (any day
+// genuinely bookable under the canonical availability rules (see that
+// migration) — or null when unavailable (any day
 // other than the single most-recently-finalized one). Four states, matching
 // classifySupplyStatus's (demand-supply-gap.js) own vocabulary exactly so a
 // report can use one shared status legend: 'insufficient_data' (⚪),
