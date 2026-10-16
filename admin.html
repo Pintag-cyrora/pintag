@@ -4002,8 +4002,9 @@ async function loadListings() {
   // KNOWN LIMITATION (separate follow-up): this is ONE un-paged GET, so PostgREST truncates it at max_rows (1000, see
   // supabase/config.toml) -- the oldest listings beyond that are neither shown nor searchable, by ANY search field. The
   // search itself (filterListings) is client-side over this loaded set; property_contacts(contacts(role,name)) is
-  // embedded here only so owner-role buyer contacts can be searched without a per-keystroke or per-listing request.
-  const LISTINGS_QS = 'order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,village_en,view_count,contacts(role,name,phone),property_contacts(contacts(role,name)),owner_id,owners(id,name,phone,whatsapp),unit_types(id,is_available,available_count,total_units,next_available_date)';
+  // embedded here only so owner-role buyer contacts (name, phone, WhatsApp) can be searched without a per-keystroke or
+  // per-listing request. Only contacts whose role is exactly 'owner' are ever matched; the rest are fetched but ignored.
+  const LISTINGS_QS = 'order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,village_en,view_count,contacts(role,name,phone,whatsapp),property_contacts(contacts(role,name,phone,whatsapp)),owner_id,owners(id,name,phone,whatsapp),unit_types(id,is_available,available_count,total_units,next_available_date)';
   let data;
   try {
     // Soft-deleted listings (20260806020000) stay out of the working list.
@@ -4105,6 +4106,28 @@ function _nameSearchMatch(name, query) {
   return q.split(' ').every(w => n.includes(w) || (/[^\u0000-ɏ]/.test(w) && compact.includes(w)));
 }
 
+// ── Phone search helpers ───────────────────────────────────────────────────────────────────────
+// Canonical form of a Lao phone number for comparison: digits only, minus the country code (856 / 00856) and ONE trunk
+// zero, so "+856 20 5551 2345", "00856-20-55512345", "020 5551 2345" and "(20) 5551-2345" all become "2055512345".
+function _phoneCanon(v) {
+  let d = _digitsOnly(v);
+  if (d.startsWith('00856')) d = d.slice(5); else if (d.startsWith('856')) d = d.slice(3);
+  return d.replace(/^0/, '');
+}
+// Does the query match this stored number? Two tests, either is enough:
+//   1. EXISTING behaviour, unchanged: the query's digits (>= 3) appear in the number's digits.
+//   2. Country-code / trunk-zero tolerant: the canonical query (needs >= 3 meaningful digits AFTER stripping) appears in
+//      the canonical number. So "020 5551" finds "+856 20 5551 2345" and vice versa, but "+856" or "020" alone add nothing.
+function _phoneSearchMatch(stored, query) {
+  const sd = _digitsOnly(query);
+  if (sd.length < 3) return false;
+  const td = _digitsOnly(stored);
+  if (!td) return false;
+  if (td.includes(sd)) return true;
+  const sc = _phoneCanon(query);
+  return sc.length >= 3 && _phoneCanon(stored).includes(sc);
+}
+
 function filterListings() {
   const raw = (document.getElementById('listings-search') || {}).value || '';
   const s = raw.trim().toLowerCase();
@@ -4150,10 +4173,10 @@ function filterListings() {
       const val = fields[i][1];
       if (val && String(val).toLowerCase().includes(s)) { reason = fields[i][0]; break; }
     }
-    // A ≥3-digit query also matches an owner's phone/whatsapp (digits-only on
-    // both sides), preserving the original phone-lookup behavior.
+    // A ≥3-digit query also matches an owner's phone/whatsapp (digits-only on both sides, plus the country-code / trunk-zero
+    // tolerant comparison in _phoneSearchMatch), preserving the original phone-lookup behavior.
     const phoneHit = sDigits.length >= 3 && owner &&
-      (_digitsOnly(owner.phone).includes(sDigits) || _digitsOnly(owner.whatsapp).includes(sDigits));
+      (_phoneSearchMatch(owner.phone, raw) || _phoneSearchMatch(owner.whatsapp, raw));
     if (!reason && phoneHit) reason = 'phone';
     // Owner NAME, normalised (punctuation / extra whitespace / width / multi-word in any order / Lao + Chinese). Only
     // adds matches the plain substring checks above missed, so nothing that matched before stops matching.
@@ -4162,8 +4185,12 @@ function filterListings() {
     //                    contacts with any other role are never matched
     if (!reason && owner && _nameSearchMatch(owner.name, raw)) reason = 'owner';
     if (!reason && p) {
-      const cs = [p.contacts].concat((Array.isArray(p.property_contacts) ? p.property_contacts : []).map(pc => pc && pc.contacts));
-      if (cs.some(c => c && c.role === 'owner' && _nameSearchMatch(c.name, raw))) reason = 'owner (contact)';
+      // ONLY contacts whose role is exactly 'owner' are considered, for name AND phone/WhatsApp; agent, reception and every
+      // other role never match by either.
+      const cs = [p.contacts].concat((Array.isArray(p.property_contacts) ? p.property_contacts : []).map(pc => pc && pc.contacts))
+        .filter(c => c && c.role === 'owner');
+      if (cs.some(c => _nameSearchMatch(c.name, raw))) reason = 'owner (contact)';
+      else if (cs.some(c => _phoneSearchMatch(c.phone, raw) || _phoneSearchMatch(c.whatsapp, raw))) reason = 'phone (contact)';
     }
 
     const match = !!reason;

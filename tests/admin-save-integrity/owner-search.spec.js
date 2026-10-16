@@ -15,7 +15,7 @@ const ROWS = [
   row('a1', 'Draft Villa', 'draft',     { owner_id: 'ow1', owners: { id: 'ow1', name: 'Mr. Somchai   Phommachanh', phone: '02055512345', whatsapp: null } }),
   row('a2', 'Live Flat',   'active',    { owner_id: 'ow2', owners: { id: 'ow2', name: 'Daeng Vongsa', phone: null, whatsapp: null } }),
   row('a3', 'Old House',   'archived',  { owner_id: 'ow3', owners: { id: 'ow3', name: 'ນາງ ສົມຈິດ ຈຳປາ', phone: null, whatsapp: null } }),
-  row('a4', 'Contact Owned', 'active',  { contacts: { role: 'agent', name: 'Agent Only', phone: '020' }, property_contacts: [{ contacts: { role: 'owner', name: '李 小龙' } }, { contacts: { role: 'agent', name: 'Khamla Helper' } }] }),
+  row('a4', 'Contact Owned', 'active',  { contacts: { role: 'agent', name: 'Agent Only', phone: '020' }, property_contacts: [{ contacts: { role: 'owner', name: '李 小龙', phone: '+856 20 6666 5555', whatsapp: '030 111 2222' } }, { contacts: { role: 'agent', name: 'Khamla Helper', phone: '020 1212 3434', whatsapp: null } }] }),
   row('a5', 'Deleted Place', 'active',  { deleted_at: '2026-10-01T00:00:00Z', owner_id: 'ow9', owners: { id: 'ow9', name: 'Zed Deletedowner', phone: null, whatsapp: null } }),
 ];
 
@@ -48,7 +48,9 @@ test('it reuses the ONE listings request: owner-role contacts are an embed in it
   const { log } = await open(page);
   expect(log.listQueries.length).toBe(1);
   const q = decodeURIComponent(log.listQueries[0]);
-  expect(q).toContain('property_contacts(contacts(role,name))');          // the new embed: role + name only (no phone, no ids)
+  expect(q).toContain('property_contacts(contacts(role,name,phone,whatsapp))');   // owner-role contact search needs name + phone + WhatsApp (no ids, no email/notes)
+  expect(q).toContain('contacts(role,name,phone,whatsapp),property_contacts');     // the legacy single contact, same fields
+  expect(q).not.toMatch(/contacts\([^)]*(email|notes|party_id|created_by)/);
   expect(q).toContain('owners(id,name,phone,whatsapp)');                    // unchanged: the existing staff-only embed
   expect(q).not.toMatch(/owners\([^)]*(email|notes)/);                       // no new private owner fields
   expect(q).toContain('deleted_at=is.null');
@@ -87,6 +89,20 @@ test('composes with the status dropdown and existing searches still work', async
   await search(page, 'live flat');      expect(await visible(page)).toEqual(['a2']); expect((await chips(page)).a2).toBe('');
   await search(page, 'sisattanak');     expect(await visible(page)).toEqual(['a1', 'a2', 'a3', 'a4']);
   await search(page, '');               expect(await visible(page)).toEqual(['a1', 'a2', 'a3', 'a4']);
+});
+
+test('phone search: an owner-role contact is found by phone / WhatsApp in any format; an agent-role contact on the same listing is not', async ({ page }) => {
+  await open(page);
+  for (const q of ['6666 5555', '020 6666 5555', '+856 20 6666 5555', '00856-20-6666-5555', '030 111 2222', '+856 30 111 2222']) {
+    await search(page, q);
+    expect(await visible(page), q).toEqual(['a4']);
+    expect((await chips(page)).a4, q).toBe('phone (contact)');
+  }
+  await search(page, '1212 3434'); expect(await visible(page)).toEqual([]);          // the agent's number
+  await search(page, '020 1212');  expect(await visible(page)).toEqual([]);
+  await search(page, '555123');    expect(await visible(page)).toEqual(['a1']);        // internal owner phone: unchanged, label "phone"
+  expect((await chips(page)).a1).toBe('phone');
+  await search(page, '+856 20 5551 2345'); expect(await visible(page)).toEqual(['a1']);   // stored 02055512345: country-code tolerant
 });
 
 test('typing issues NO network requests (client-side), and nothing is ever written', async ({ page }) => {

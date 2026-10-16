@@ -27,6 +27,8 @@ const filterListings = extractFn('admin.html', 'filterListings');
 const digitsOnly     = extractFn('admin.html', '_digitsOnly');
 const normalizeText  = extractFn('admin.html', '_normalizeSearchText');
 const nameMatch      = extractFn('admin.html', '_nameSearchMatch');
+const phoneCanon     = extractFn('admin.html', '_phoneCanon');
+const phoneMatch     = extractFn('admin.html', '_phoneSearchMatch');
 
 // Roster (managing agents) and listings, mirroring the fields the real
 // LISTINGS_QS select provides. workflow_status is the canonical status axis.
@@ -58,7 +60,7 @@ function tableHtml(L) {
 async function boot(page, listings) {
   const L = listings || LISTINGS;
   await page.setContent(tableHtml(L));
-  await page.evaluate(({ fL, dO, nT, nM, agents, listings }) => {
+  await page.evaluate(({ fL, dO, nT, nM, pC, pM, agents, listings }) => {
     window._agentsAll = agents;
     window._listingsAll = listings;
     // eslint-disable-next-line no-eval
@@ -68,8 +70,12 @@ async function boot(page, listings) {
     // eslint-disable-next-line no-eval
     (0, eval)(nM); // _nameSearchMatch
     // eslint-disable-next-line no-eval
+    (0, eval)(pC); // _phoneCanon
+    // eslint-disable-next-line no-eval
+    (0, eval)(pM); // _phoneSearchMatch
+    // eslint-disable-next-line no-eval
     (0, eval)(fL); // filterListings
-  }, { fL: filterListings, dO: digitsOnly, nT: normalizeText, nM: nameMatch, agents: AGENTS, listings: L });
+  }, { fL: filterListings, dO: digitsOnly, nT: normalizeText, nM: nameMatch, pC: phoneCanon, pM: phoneMatch, agents: AGENTS, listings: L });
 }
 
 // Set search + status, run filterListings, return which rows are visible,
@@ -347,5 +353,225 @@ test.describe('owner-name search: existing behaviour unchanged', () => {
     expect(r.visible).toEqual(['o1']);
     const all = await ownerRun(page, '', 'all');
     expect(all.visible.length).toBe(OWNER_LISTINGS.length);
+  });
+});
+
+// ── Phone search: internal owner + owner-role contacts, country-code / trunk-zero tolerant ─────────────────────────
+// 'phone'           = the INTERNAL owners record's phone / WhatsApp (existing label)
+// 'phone (contact)' = the phone / WhatsApp of a buyer contact whose role is exactly 'owner' (legacy contacts embed or a
+//                     property_contacts row). Agent / reception / every other role is never matched by number.
+// Numbers are compared as digits (spaces, hyphens, parentheses, dots, + ignored) and ALSO with the country code (856 /
+// 00856) and one trunk zero removed, so "+856 20 5551 2345" == "020 5551 2345". A query needs >= 3 digits, and >= 3
+// meaningful digits after the country code / zero are stripped for the tolerant comparison.
+const PHONE_LISTINGS = [
+  { id: 'ph1', title_en: 'Phone One',   district_en: 'A1', village_en: 'B1', workflow_status: 'draft',    owners: { name: 'Ann', phone: '+856 20 5551 2345', whatsapp: '020-9900-1122' }, price_display: '$11' },
+  { id: 'ph2', title_en: 'Phone Two',   district_en: 'A2', village_en: 'B2', workflow_status: 'active',   owners: { name: 'Bob', phone: '020 7777 8888', whatsapp: '' }, price_display: '$12' },
+  { id: 'ph3', title_en: 'Phone Three', district_en: 'A3', village_en: 'B3', workflow_status: 'archived', owners: null, contacts: { role: 'owner', name: 'Cat', phone: '(020) 4444-3333', whatsapp: '+856 30 222 1111' }, price_display: '$13' },
+  { id: 'ph4', title_en: 'Phone Four',  district_en: 'A4', village_en: 'B4', workflow_status: 'active',   owners: null, contacts: null,
+    property_contacts: [{ contacts: { role: 'owner', name: 'Dan', phone: '00856 20 6666 5555', whatsapp: null } }, { contacts: { role: 'agent', name: 'Agt', phone: '020 1212 3434', whatsapp: '030 5656 7878' } }], price_display: '$14' },
+  { id: 'ph5', title_en: 'Phone Five',  district_en: 'A5', village_en: 'B5', workflow_status: 'draft',    owners: null, contacts: { role: 'agent', name: 'Agent Five', phone: '020 9191 9292', whatsapp: '020 8181 8282' },
+    property_contacts: [{ contacts: { role: 'reception', name: 'R', phone: '020 3131 3232', whatsapp: '020 3232 3131' } }, { contacts: { role: 'property_manager', name: 'P', phone: '020 4141 4242', whatsapp: null } },
+      { contacts: { role: 'other', name: 'O', phone: '020 5151 5252', whatsapp: null } }, { contacts: { role: 'sales_office', name: 'S', phone: '020 6161 6262', whatsapp: null } },
+      { contacts: { role: 'developer', name: 'D', phone: '020 7171 7272', whatsapp: null } }, { contacts: { role: 'family_representative', name: 'F', phone: '020 8282 8383', whatsapp: null } }], price_display: '$15' },
+  { id: 'ph6', title_en: 'Phone Six',   district_en: 'A6', village_en: 'B6', workflow_status: 'archived', owners: null,
+    property_contacts: [{ contacts: { role: 'owner', name: 'Eve', phone: null, whatsapp: '856 20 3030 4040' } }], price_display: '$16' },
+  { id: 'ph7', title_en: 'Phone Seven', district_en: 'A7', village_en: 'B7', workflow_status: 'active',   owners: null, price_display: '$17' },
+  { id: 'ph8', title_en: 'Phone Eight', district_en: 'A8', village_en: 'B8', workflow_status: 'active',   owners: null, contacts: { role: 'owner', name: 'Gus', phone: 208889999, whatsapp: undefined },
+    property_contacts: [null, { contacts: null }, { contacts: { role: 'owner', name: null, phone: null, whatsapp: null } }, 'x'], price_display: '$18' },
+];
+const phoneRun = async (page, q, status) => { await boot(page, PHONE_LISTINGS); return run(page, q, status || 'all'); };
+const ids = async (page, q, status) => (await phoneRun(page, q, status)).visible;
+
+test.describe('phone helpers (_phoneCanon / _phoneSearchMatch)', () => {
+  test('canonical form: country code and one trunk zero removed, all formatting ignored', async ({ page }) => {
+    await boot(page);
+    const out = await page.evaluate(() => ['+856 20 5551 2345', '00856-20-55512345', '856 20 5551 2345', '020 5551 2345', '(20) 5551-2345', '20.5551.2345', '2055512345', '0', '', null, undefined, 205551234, '00', '+856']
+      .map((v) => _phoneCanon(v)));
+    expect(out).toEqual(['2055512345', '2055512345', '2055512345', '2055512345', '2055512345', '2055512345', '2055512345', '', '', '', '', '205551234', '0', '']);   // only ONE trunk zero is stripped ("00" -> "0")
+  });
+  test('match rules: >= 3 digits; tolerant comparison needs >= 3 digits AFTER stripping; either direction', async ({ page }) => {
+    await boot(page);
+    const m = await page.evaluate(() => {
+      const t = (stored, q) => _phoneSearchMatch(stored, q);
+      return {
+        existing: t('020 5551 2345', '5551'), existingExactDigits: t('020 5551 2345', '02055512345'),
+        intlQueryLocalStored: t('020 5551 2345', '+856 20 5551 2345'), localQueryIntlStored: t('+856 20 5551 2345', '020 5551 2345'),
+        zeroZeroForms: t('00856 20 5551 2345', '020-5551-2345'), parens: t('+856 20 5551 2345', '(020) 5551'),
+        partialAfterStrip: t('+856 20 5551 2345', '020 5551'),
+        twoDigits: t('020 5551 2345', '20'), oneDigit: t('020 5551 2345', '5'), empty: t('020 5551 2345', ''), noStored: t('', '5551'), nullStored: t(null, '5551'),
+        justCountryCode: t('+856 20 5551 2345', '+856'), justZeroPrefix: t('+856 20 5551 2345', '020'),
+        afterStripTooShort: t('+856 20 5551 2345', '+856 20'), wrong: t('020 5551 2345', '020 5552'), letters: t('020 5551 2345', 'abc'),
+      };
+    });
+    expect(m).toEqual({
+      existing: true, existingExactDigits: true,
+      intlQueryLocalStored: true, localQueryIntlStored: true, zeroZeroForms: true, parens: true, partialAfterStrip: true,
+      twoDigits: false, oneDigit: false, empty: false, noStored: false, nullStored: false,
+      justCountryCode: true,                 // 3 raw digits "856" appear in the stored digits: the EXISTING behaviour, unchanged
+      justZeroPrefix: false,                 // "020" is not a raw substring of "856205551 2345", and only 2 digits remain after the zero: no tolerant match
+      afterStripTooShort: true,              // "+856 20" = raw "85620": the existing raw substring test still applies
+      wrong: false, letters: false,
+    });
+  });
+});
+
+test.describe('phone search: internal owner record (existing label "phone"), now country-code tolerant', () => {
+  test('every common formatting of the stored number finds the listing', async ({ page }) => {
+    for (const q of ['5551 2345', '55512345', '(20) 5551', '+856 20 5551 2345', '020 5551 2345', '020-5551-2345', '00856 20 5551 2345', '856205551234', '+856-20-5551-2345', '020.5551.2345']) {
+      const r = await phoneRun(page, q);
+      expect(r.visible, q).toEqual(['ph1']);
+      expect(r.reasons.ph1, q).toBe('phone');
+    }
+  });
+  test('WhatsApp of the internal owner, local and international forms', async ({ page }) => {
+    for (const q of ['9900 1122', '020 9900 1122', '+856 20 9900 1122']) {
+      const r = await phoneRun(page, q);
+      expect(r.visible, q).toEqual(['ph1']);
+      expect(r.reasons.ph1).toBe('phone');
+    }
+  });
+  test('a local stored number is found by the international query and vice versa', async ({ page }) => {
+    expect((await ids(page, '+856 20 7777 8888'))).toEqual(['ph2']);
+    expect((await ids(page, '00856-20-77778888'))).toEqual(['ph2']);
+    expect((await ids(page, '020 7777'))).toEqual(['ph2']);
+  });
+  test('a different number does not match', async ({ page }) => {
+    expect(await ids(page, '020 5551 2346')).toEqual([]);
+    expect(await ids(page, '+856 20 0000 0000')).toEqual([]);
+  });
+});
+
+test.describe('phone search: owner-role contacts (label "phone (contact)")', () => {
+  test('legacy contact with role owner: phone and WhatsApp, any formatting', async ({ page }) => {
+    for (const q of ['4444 3333', '020 4444 3333', '(020) 4444-3333', '+856 20 4444 3333', '030 222 1111', '+856 30 222 1111', '00856 30 222 1111']) {
+      const r = await phoneRun(page, q);
+      expect(r.visible, q).toEqual(['ph3']);
+      expect(r.reasons.ph3, q).toBe('phone (contact)');
+    }
+  });
+  test('property_contacts row with role owner: phone (stored with 00856) in local / international / partial forms', async ({ page }) => {
+    for (const q of ['6666 5555', '020 6666 5555', '+856 20 6666 5555', '00856 20 6666 5555', '2066665555', '020 6666']) {
+      const r = await phoneRun(page, q);
+      expect(r.visible, q).toEqual(['ph4']);
+      expect(r.reasons.ph4, q).toBe('phone (contact)');
+    }
+  });
+  test('an owner-role contact with ONLY a WhatsApp number (phone null)', async ({ page }) => {
+    for (const q of ['3030 4040', '020 3030 4040', '+856 20 3030 4040']) {
+      const r = await phoneRun(page, q);
+      expect(r.visible, q).toEqual(['ph6']);
+      expect(r.reasons.ph6).toBe('phone (contact)');
+    }
+  });
+  test('a numeric phone value, null names and null phones never throw', async ({ page }) => {
+    const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+    expect(await ids(page, '8889 999')).toEqual(['ph8']);
+    expect(await ids(page, '99999999')).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('phone search: contacts with any OTHER role are never matched by number', () => {
+  test('agent / reception / property_manager / other / sales_office / developer / family_representative', async ({ page }) => {
+    for (const q of ['1212 3434', '020 1212 3434', '+856 20 1212 3434', '5656 7878', '030 5656 7878',      // agent on ph4 (an owner-role contact sits on the same listing)
+                     '9191 9292', '8181 8282', '020 3131 3232', '3232 3131', '4141 4242', '5151 5252', '6161 6262', '7171 7272', '8282 8383']) {
+      expect(await ids(page, q), q).toEqual([]);
+    }
+  });
+  test('the owner-role contact on the same listing as an agent is still found, and only for its own number', async ({ page }) => {
+    expect(await ids(page, '6666 5555')).toEqual(['ph4']);
+    expect(await ids(page, '1212 3434')).toEqual([]);
+  });
+});
+
+test.describe('phone search: the 3-digit minimum', () => {
+  test('1 or 2 digits never trigger phone search', async ({ page }) => {
+    // (digits can still hit a title / price / district by the existing plain-text search; what must never happen is a PHONE match)
+    for (const q of ['5', '55', '20', '+8', '0 2', '(2)', '85', '6', '66']) {
+      const r = await phoneRun(page, q);
+      Object.values(r.reasons).forEach((label) => expect(['phone', 'phone (contact)'], q).not.toContain(label));
+    }
+  });
+  test('3 raw digits still work exactly as before (existing behaviour), e.g. "555" and "856"', async ({ page }) => {
+    expect((await ids(page, '555')).sort()).toEqual(['ph1', 'ph4']);
+    expect((await ids(page, '856')).sort()).toEqual(['ph1', 'ph3', 'ph4', 'ph6']);
+  });
+  test('"020" alone adds no tolerant match: only numbers that literally contain 020 (internationally stored ones are not found by it)', async ({ page }) => {
+    const v = await ids(page, '020');
+    expect(v.includes('ph4')).toBe(false);                       // stored 00856 20 6666 5555: no literal "020"
+    expect(v.includes('ph2')).toBe(true);                        // stored 020 7777 8888
+  });
+  test('the tolerant comparison needs 3 digits after stripping: "+856 20" finds only literal "85620" numbers', async ({ page }) => {
+    const v = (await ids(page, '+856 20')).sort();
+    expect(v).toEqual(['ph1', 'ph4', 'ph6']);
+  });
+});
+
+test.describe('phone search: statuses and existing labels', () => {
+  test('internal-owner and contact phone matches respect the status filter (draft / published / archived)', async ({ page }) => {
+    expect(await ids(page, '5551 2345', 'draft')).toEqual(['ph1']);
+    expect(await ids(page, '5551 2345', 'active')).toEqual([]);
+    expect(await ids(page, '7777 8888', 'active')).toEqual(['ph2']);
+    expect(await ids(page, '7777 8888', 'archived')).toEqual([]);
+    expect(await ids(page, '4444 3333', 'archived')).toEqual(['ph3']);
+    expect(await ids(page, '4444 3333', 'draft')).toEqual([]);
+    expect(await ids(page, '6666 5555', 'active')).toEqual(['ph4']);
+    expect(await ids(page, '3030 4040', 'archived')).toEqual(['ph6']);
+    expect(await ids(page, '3030 4040', 'active')).toEqual([]);
+  });
+  test('labels stay distinct: phone / phone (contact) / owner (contact) / owner', async ({ page }) => {
+    expect((await phoneRun(page, '5551 2345')).reasons.ph1).toBe('phone');
+    expect((await phoneRun(page, '4444 3333')).reasons.ph3).toBe('phone (contact)');
+    expect((await phoneRun(page, 'cat')).reasons.ph3).toBe('owner (contact)');
+    expect((await phoneRun(page, 'ann')).reasons.ph1).toBe('owner');
+  });
+  test('owner-name search is unchanged next to phone listings', async ({ page }) => {
+    expect(await ids(page, 'dan')).toEqual(['ph4']);
+    expect(await ids(page, 'agt')).toEqual([]);                 // agent-role name
+    expect(await ids(page, 'bob')).toEqual(['ph2']);
+  });
+});
+
+// ── Differential: the new filterListings vs the version merged in #151 ──────────────────────────────────────────────
+// For a large generated set of queries x status filters, EVERY row the old version showed must still be shown with the
+// SAME label; any newly shown row must be a phone / phone (contact) hit. (The old version is a frozen copy in fixtures/.)
+test.describe('differential: nothing that matched before is lost or relabelled', () => {
+  test('old (#151) vs new over generated queries and all four status filters', async ({ page }) => {
+    const OLD_SRC = fs.readFileSync(path.join(__dirname, 'fixtures', 'filterListings.before-contact-phone.js'), 'utf8').replace(/^\/\/.*$/gm, '');
+    const ALL = LISTINGS.concat(OWNER_LISTINGS, PHONE_LISTINGS);
+    const queries = new Set(['', '  ', 'x', '$', '$500', '500', '300', 'tower', 'TOWER', 'villa', 'sisattanak', 'ban', 'daeng', 'somphone', 'acme', 'owner', 'mr owner', '555123', '020', '856', '+856', '20', '0', '.', '...']);
+    const addVals = (v) => { if (v == null) return; const t = String(v); queries.add(t); t.split(/\s+/).forEach((w) => { if (w) { queries.add(w); for (let k = 1; k <= Math.min(4, w.length); k++) { queries.add(w.slice(0, k)); queries.add(w.slice(-k)); } } }); };
+    ALL.forEach((p) => { [p.title_en, p.district_en, p.village_en, p.price_display].forEach(addVals);
+      if (p.owners) [p.owners.name, p.owners.phone, p.owners.whatsapp].forEach(addVals);
+      [p.contacts].concat((Array.isArray(p.property_contacts) ? p.property_contacts : []).map((x) => x && x.contacts)).forEach((c) => { if (c && typeof c === 'object') [c.name, c.phone, c.whatsapp].forEach(addVals); }); });
+    AGENTS.forEach((a) => [a.name_en, a.name_lo, a.agency_name].forEach(addVals));
+    // phone variants of every stored number
+    ['+856 20 5551 2345', '020 5551 2345', '00856 20 5551 2345', '(20) 5551-2345', '2055512345', '020 6666', '+856 20 6666 5555', '030 222 1111'].forEach((q) => queries.add(q));
+    const res = await page.evaluate(({ oldSrc, newSrc, helpers, agents, listings, queries }) => {
+      const mkRun = (src) => (q, st) => {
+        document.body.innerHTML = '<input id="listings-search"><select id="listings-status-filter"><option value="all">a</option><option value="draft">d</option><option value="active">p</option><option value="archived">r</option></select><span id="listings-search-count"></span><table class="listings-table"><tbody>' + listings.map((p) => '<tr data-property-id="' + p.id + '"><td><span class="match-why"></span></td></tr>').join('') + '</tbody></table>';
+        window._agentsAll = agents; window._listingsAll = listings;
+        (0, eval)(helpers); (0, eval)(src);
+        document.getElementById('listings-search').value = q; document.getElementById('listings-status-filter').value = st;
+        window.filterListings();
+        const out = {}; document.querySelectorAll('.listings-table tbody tr').forEach((t) => { if (t.style.display !== 'none') out[t.dataset.propertyId] = t.querySelector('.match-why').textContent; });
+        return out;
+      };
+      const runOld = mkRun(oldSrc), runNew = mkRun(newSrc);
+      const problems = []; let added = 0, total = 0;
+      const labels = {};
+      for (const q of queries) for (const st of ['all', 'draft', 'active', 'archived']) {
+        total++;
+        const a = runOld(q, st), b = runNew(q, st);
+        for (const id of Object.keys(a)) { if (!(id in b)) problems.push(['LOST', q, st, id]); else if (a[id] !== b[id]) problems.push(['RELABELLED', q, st, id, a[id], b[id]]); }
+        for (const id of Object.keys(b)) if (!(id in a)) { added++; labels[b[id]] = (labels[b[id]] || 0) + 1; if (b[id] !== 'phone' && b[id] !== 'phone (contact)') problems.push(['NEW_NON_PHONE', q, st, id, b[id]]); if (_digitsOnly(q).length < 3) problems.push(['NEW_UNDER_3_DIGITS', q, st, id]); }
+      }
+      return { problems: problems.slice(0, 10), nProblems: problems.length, added, total, labels };
+    }, { oldSrc: OLD_SRC, newSrc: filterListings, helpers: [digitsOnly, normalizeText, nameMatch, phoneCanon, phoneMatch].join('\n'), agents: AGENTS, listings: ALL, queries: [...queries] });
+    expect(res.problems).toEqual([]);
+    expect(res.nProblems).toBe(0);
+    expect(res.total).toBeGreaterThan(800);
+    expect(res.added).toBeGreaterThan(0);                                     // the new feature does add matches...
+    expect(Object.keys(res.labels).sort()).toEqual(['phone', 'phone (contact)']);   // ...and only phone ones
   });
 });
