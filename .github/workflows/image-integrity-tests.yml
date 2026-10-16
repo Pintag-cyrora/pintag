@@ -1,0 +1,41 @@
+name: Image Integrity Script Tests
+
+# Pins what scripts/image-integrity.py reports and when it fails, against a throwaway PostgreSQL with stand-in tables.
+# It reads no real data and needs no credentials; the production check itself (image-integrity.yml) is unchanged.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/image-integrity.py'
+      - 'tests/image-integrity/**'
+      - 'image-renditions.js'
+      - '.github/workflows/image-integrity-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/image-integrity.py'
+      - 'tests/image-integrity/**'
+      - 'image-renditions.js'
+      - '.github/workflows/image-integrity-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-integrity-script:
+    name: Image integrity script (renditions, unit galleries, fail-closed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install PostgreSQL server binaries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql
+
+      - name: Image integrity script tests
+        run: bash tests/image-integrity/run-image-integrity-pg.sh
