@@ -4202,7 +4202,32 @@ function onTransactionChange() {
 }
 
 // ── FORM SHOW/HIDE ────────────────────────────────────────────────
+// After a successful save/publish the editor returns to the listings after a short "Saved" confirmation. That
+// return is TRACKED: opening any other view in the meantime (another New Listing, Smart Import, Edit) cancels it.
+// Untracked, the old bare setTimeout fired no matter where the user had gone and threw them back to the list --
+// worst when creating listings back to back, since "+ New Listing" is the obvious next tap after "Saved".
+let _returnToListingsTimer = null;
+function scheduleReturnToListings(ms, beforeReturn) {
+  // A second save inside the window just restarts it; the Save button stays on "Saved ✓" until the return fires.
+  if (_returnToListingsTimer !== null) clearTimeout(_returnToListingsTimer);
+  _returnToListingsTimer = setTimeout(() => {
+    _returnToListingsTimer = null;
+    if (beforeReturn) beforeReturn();
+    showListings();
+  }, ms);
+}
+function cancelReturnToListings() {
+  if (_returnToListingsTimer === null) return;
+  clearTimeout(_returnToListingsTimer);
+  _returnToListingsTimer = null;
+  // The Save button is held on "Saved ✓" (disabled) for exactly this window; leave it usable for the next form.
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = false;
+  btn.textContent = 'Save Listing';
+}
+
 function showListings() {
+  cancelReturnToListings();
   // Returning from New Listing / the edit form must land on the listings, even
   // if the in-page Analytics view was open when the visitor left.
   setAnalyticsView(false);
@@ -4216,6 +4241,7 @@ function showListings() {
 // by runSmartImport() (which has already populated fields itself via
 // populateFormFromImport() and must not have them wiped out again here).
 function revealFormPanel(titleText, id) {
+  cancelReturnToListings();   // a pending post-save return must not pull the user off the form they just opened
   document.getElementById('listings-panel').style.display = 'none';
   document.getElementById('import-panel').style.display  = 'none';
   document.getElementById('form-panel').style.display = 'block';
@@ -4249,6 +4275,8 @@ function updateAvailableFromHint() {
 }
 
 function resetListingForm() {
+  // "+ New Listing" (showImportPanel) right after "Saved ✓" must stay on the new listing, not be pulled back to the list.
+  cancelReturnToListings();
   document.getElementById('listing-form').reset();
   updateAvailableFromHint();       // form.reset() fires no input event
   clearImportReviewFlags();
@@ -5076,11 +5104,10 @@ async function saveListing(e) {
     msg.className = 'form-message success';
     msg.textContent = editId ? '✓ Listing updated successfully.' : '✓ Listing created successfully.';
     msg.style.display = 'block';
-    setTimeout(() => {
+    scheduleReturnToListings(1500, () => {
       btn.disabled = false;
       btn.textContent = 'Save Listing';
-      showListings();
-    }, 1500);
+    });
   } else {
     btn.disabled = false;
     btn.textContent = 'Save Listing';
@@ -6504,7 +6531,7 @@ async function publishDraft() {
     msg.className = 'form-message success';
     msg.textContent = '✓ Listing published and now live on the site.';
     msg.style.display = 'block';
-    setTimeout(() => showListings(), 1800);
+    scheduleReturnToListings(1800);
   } catch (err) {
     const msg = document.getElementById('form-message');
     msg.className = 'form-message error';
