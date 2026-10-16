@@ -3999,7 +3999,11 @@ async function loadListings() {
   // exists on that table at all). It is safe here because admin.html only
   // ever queries with a staff JWT; it must never be copied into a public
   // page's select. See 20260728000000_owners_internal_contacts.sql.
-  const LISTINGS_QS = 'order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,village_en,view_count,contacts(role,name,phone),owner_id,owners(id,name,phone,whatsapp),unit_types(id,is_available,available_count,total_units,next_available_date)';
+  // KNOWN LIMITATION (separate follow-up): this is ONE un-paged GET, so PostgREST truncates it at max_rows (1000, see
+  // supabase/config.toml) -- the oldest listings beyond that are neither shown nor searchable, by ANY search field. The
+  // search itself (filterListings) is client-side over this loaded set; property_contacts(contacts(role,name)) is
+  // embedded here only so owner-role buyer contacts can be searched without a per-keystroke or per-listing request.
+  const LISTINGS_QS = 'order=created_at.desc&select=id,slug,title_en,price_display,property_type,transaction_type,status,workflow_status,market_status,is_featured,managed_by_party_id,district_en,village_en,view_count,contacts(role,name,phone),property_contacts(contacts(role,name)),owner_id,owners(id,name,phone,whatsapp),unit_types(id,is_available,available_count,total_units,next_available_date)';
   let data;
   try {
     // Soft-deleted listings (20260806020000) stay out of the working list.
@@ -4027,7 +4031,7 @@ async function loadListings() {
   // inside link hrefs, and are normalized before comparison).
   _listingsAll = data;
   let html = `<div class="listings-controls">
-      <input id="listings-search" class="listings-search" type="search" placeholder="Search by location, agent, or listing…" oninput="filterListings()" autocomplete="off">
+      <input id="listings-search" class="listings-search" type="search" placeholder="Search by listing, location, agent, owner name or phone…" oninput="filterListings()" autocomplete="off">
       <select id="listings-status-filter" class="listings-status-filter" onchange="filterListings()" aria-label="Filter by status">
         <option value="all">All statuses</option>
         <option value="draft">Draft</option>
@@ -4083,6 +4087,24 @@ let _listingsAll = [];
 
 function _digitsOnly(v) { return String(v || '').replace(/[^0-9]/g, ''); }
 
+// ── Owner-name search helpers ──────────────────────────────────────────────────────────────────
+// Normalises a name for matching: Unicode NFKC (full-width Latin, compatibility forms), lower case, every run of
+// non-letter/number/combining-mark characters (punctuation, symbols, whitespace) collapsed to ONE space. \p{M} is kept
+// on purpose: Lao vowel and tone marks are combining marks, and dropping them would corrupt Lao names.
+function _normalizeSearchText(v) {
+  return String(v == null ? '' : v).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ').trim();
+}
+// Does the query match this name? Every word of the query must appear (as a partial match) in the name, in any order.
+// Chinese (and often Lao) names are written without spaces, so a word containing a non-Latin character is also tried
+// against the name with spaces removed ("王小明" finds "王 小明", and the reverse); Latin words are never matched across
+// word boundaries.
+function _nameSearchMatch(name, query) {
+  const n = _normalizeSearchText(name), q = _normalizeSearchText(query);
+  if (!n || !q) return false;                                   // a query of only punctuation matches nothing
+  const compact = n.replace(/ /g, '');
+  return q.split(' ').every(w => n.includes(w) || (/[^\u0000-ɏ]/.test(w) && compact.includes(w)));
+}
+
 function filterListings() {
   const raw = (document.getElementById('listings-search') || {}).value || '';
   const s = raw.trim().toLowerCase();
@@ -4133,6 +4155,16 @@ function filterListings() {
     const phoneHit = sDigits.length >= 3 && owner &&
       (_digitsOnly(owner.phone).includes(sDigits) || _digitsOnly(owner.whatsapp).includes(sDigits));
     if (!reason && phoneHit) reason = 'phone';
+    // Owner NAME, normalised (punctuation / extra whitespace / width / multi-word in any order / Lao + Chinese). Only
+    // adds matches the plain substring checks above missed, so nothing that matched before stops matching.
+    //   'owner'          the internal, staff-only owners record
+    //   'owner (contact)' a buyer contact whose role is 'owner' (legacy single contact or a property_contacts row);
+    //                    contacts with any other role are never matched
+    if (!reason && owner && _nameSearchMatch(owner.name, raw)) reason = 'owner';
+    if (!reason && p) {
+      const cs = [p.contacts].concat((Array.isArray(p.property_contacts) ? p.property_contacts : []).map(pc => pc && pc.contacts));
+      if (cs.some(c => c && c.role === 'owner' && _nameSearchMatch(c.name, raw))) reason = 'owner (contact)';
+    }
 
     const match = !!reason;
     tr.style.display = match ? '' : 'none';
