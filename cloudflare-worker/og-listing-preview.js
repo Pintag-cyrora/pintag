@@ -761,8 +761,10 @@ function withNoStore(response) {
   out.headers.set('Cache-Control', 'no-store');
   // The body is rewritten, so the origin's range metadata no longer describes it,
   // and advertising byte ranges just invites crawlers to send Range requests.
+  // Content-Length likewise describes the origin's bytes, not the rewritten ones.
   out.headers.delete('Content-Range');
   out.headers.delete('Accept-Ranges');
+  out.headers.delete('Content-Length');
   return out;
 }
 
