@@ -1012,3 +1012,126 @@ function escapeRe(s) {
 function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
+
+// ── Range requests (Facebook's scraper sends one) must not turn into a 206 ──
+// The Worker passes the visitor's Request straight through to origin, so a
+// `Range:` header reaches an origin that honours it and comes back as
+// 206 Partial Content (+ Content-Range / Accept-Ranges). The HTMLRewriter then
+// rewrites only that PARTIAL body while the status and Content-Range survive,
+// so a crawler sees 206 with a body that no longer matches the range it claims.
+// The Worker must always answer an HTML page request with a complete 200.
+function rangeHonouringOrigin(fullHtml, seen) {
+  return (input) => {
+    if (seen) seen.push(input);
+    const range = input && input.headers && input.headers.get && input.headers.get('range');
+    const m = range && /^bytes=(\d+)-(\d*)$/.exec(range);
+    if (!m) return new Response(fullHtml, { status: 200, headers: { 'content-type': 'text/html', 'accept-ranges': 'bytes' } });
+    const bytes = Buffer.from(fullHtml);
+    const start = Number(m[1]);
+    const end = Math.min(m[2] === '' ? bytes.length - 1 : Number(m[2]), bytes.length - 1);
+    return new Response(bytes.subarray(start, end + 1), {
+      status: 206,
+      headers: {
+        'content-type': 'text/html',
+        'accept-ranges': 'bytes',
+        'content-range': `bytes ${start}-${end}/${bytes.length}`,
+      },
+    });
+  };
+}
+
+for (const range of ['bytes=0-524287', 'bytes=0-99']) {
+  test(`fetch(): "/listings.html?lang=en" with Range: ${range} still answers a complete 200 (no 206 / Content-Range) with English metadata`, async () => {
+    const seen = [];
+    const { result: res, calls } = await withStubbedFetch(
+      rangeHonouringOrigin(LISTINGS_FIXTURE, seen),
+      () => ogWorker.fetch(new Request('https://pintag.io/listings.html?lang=en', {
+        headers: { range, 'user-agent': 'facebookexternalhit/1.1' },
+      }), {}, fakeCtx())
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-range'), null);
+    assert.equal(res.headers.get('accept-ranges'), null);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    const body = await res.text();
+    assert.match(body, /<meta property="og:title" content="Properties for Rent &amp; Sale in Laos \| Pintag">/);
+    assert.match(body, /<\/head>/, 'the whole document, not a truncated slice');
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].headers.get('range'), null, 'the Range header must not reach origin');
+  });
+}
+
+test('fetch(): "/listings.html" with a conditional/range pair (If-Range, If-None-Match) is forwarded as a plain GET', async () => {
+  const seen = [];
+  const { result: res } = await withStubbedFetch(
+    rangeHonouringOrigin(LISTINGS_FIXTURE, seen),
+    () => ogWorker.fetch(new Request('https://pintag.io/listings.html', {
+      headers: { range: 'bytes=0-9', 'if-range': '"abc"', 'if-none-match': '"abc"', 'if-modified-since': 'Wed, 01 Jan 2020 00:00:00 GMT' },
+    }), {}, fakeCtx())
+  );
+  assert.equal(res.status, 200);
+  for (const h of ['range', 'if-range', 'if-none-match', 'if-modified-since']) assert.equal(seen[0].headers.get(h), null, h);
+});
+
+test('fetch(): "/listing.html?slug=..." with a Range header also answers a complete 200 (rewritten and fall-back paths)', async () => {
+  {   // row-not-found fall-back path
+    const seen = [];
+    const origin = rangeHonouringOrigin('<html><head><title>x</title></head><body>hello world</body></html>', seen);
+    const { result: res } = await withStubbedFetch(
+      (u, init) => isSupabaseHost(u) ? new Response('[]', { status: 200 }) : origin(u, init),
+      () => ogWorker.fetch(new Request('https://pintag.io/listing.html?slug=nope', { headers: { range: 'bytes=0-9' } }), {}, fakeCtx())
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-range'), null);
+    assert.match(await res.text(), /hello world/);
+    assert.equal(seen[0].headers.get('range'), null);
+  }
+});
+
+// ── Range fix: response headers, HEAD, origin errors, ordinary requests ──────
+const originWithStaleHeaders = (body, status = 200) => (r) => new Response(r && r.method === 'HEAD' ? null : body, {
+  status,
+  headers: { 'content-type': 'text/html', 'content-length': String(Buffer.byteLength(body)), 'accept-ranges': 'bytes', 'content-range': 'bytes 0-9/99' },
+});
+
+test('fetch(): a rewritten /listings.html response carries no stale Content-Length / Content-Range / Accept-Ranges', async () => {
+  const { result: res } = await withStubbedFetch(originWithStaleHeaders(LISTINGS_FIXTURE),
+    () => ogWorker.fetch(new Request('https://pintag.io/listings.html?lang=en'), {}, fakeCtx()));
+  assert.equal(res.status, 200);
+  for (const h of ['content-length', 'content-range', 'accept-ranges']) assert.equal(res.headers.get(h), null, h);
+  assert.equal(res.headers.get('content-type'), 'text/html');
+});
+
+test('fetch(): HEAD /listings.html reaches origin as HEAD, answers 200 with no body and no stale range/length headers', async () => {
+  const methods = [];
+  const { result: res } = await withStubbedFetch((r) => { methods.push(r.method); return originWithStaleHeaders(LISTINGS_FIXTURE)(r); },
+    () => ogWorker.fetch(new Request('https://pintag.io/listings.html?lang=en', { method: 'HEAD', headers: { range: 'bytes=0-9' } }), {}, fakeCtx()));
+  assert.deepEqual(methods, ['HEAD']);
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), '');
+  for (const h of ['content-length', 'content-range', 'accept-ranges']) assert.equal(res.headers.get(h), null, h);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+});
+
+test('fetch(): origin error statuses are preserved (404 / 500 are not turned into 200) and stay no-store', async () => {
+  for (const status of [404, 500]) {
+    const { result: res } = await withStubbedFetch(originWithStaleHeaders('<html><head><title>err</title></head><body>origin error</body></html>', status),
+      () => ogWorker.fetch(new Request('https://pintag.io/listings.html', { headers: { range: 'bytes=0-9' } }), {}, fakeCtx()));
+    assert.equal(res.status, status);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.equal(res.headers.get('content-range'), null);
+  }
+});
+
+test('fetch(): an ordinary browser request is forwarded to origin unchanged (all non-range headers, method, URL), still with cf cacheTtl 0', async () => {
+  const seen = [];
+  const { result: res, calls } = await withStubbedFetch((r) => { seen.push(r); return originWithStaleHeaders(LISTINGS_FIXTURE)(); },
+    () => ogWorker.fetch(new Request('https://pintag.io/listings.html?lang=zh&pet=1', {
+      headers: { 'user-agent': 'Mozilla/5.0', 'accept-language': 'en-US', cookie: 'a=b', accept: 'text/html' },
+    }), {}, fakeCtx()));
+  assert.equal(res.status, 200);
+  assert.equal(seen[0].method, 'GET');
+  assert.equal(seen[0].url, 'https://pintag.io/listings.html?lang=zh&pet=1');
+  for (const [h, v] of [['user-agent', 'Mozilla/5.0'], ['accept-language', 'en-US'], ['cookie', 'a=b'], ['accept', 'text/html']]) assert.equal(seen[0].headers.get(h), v, h);
+  assert.deepEqual(calls[0].init.cf, { cacheTtl: 0 });
+});
