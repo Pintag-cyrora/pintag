@@ -620,6 +620,20 @@ function escapeAttr(s) {
 // zone and after both GitHub Pages and this Worker were freshly redeployed.
 const BYPASS_ORIGIN_CACHE = { cf: { cacheTtl: 0 } };
 
+// The origin fetch must be a plain, complete GET of the page. Passing the visitor's
+// Request through verbatim forwards `Range` (Facebook's scraper sends one) and the
+// conditional headers to an origin that honours them, which answers 206 Partial
+// Content / 304: the HTMLRewriter then rewrites a TRUNCATED body while the 206 status
+// and Content-Range survive, so the crawler gets a partial document labelled with a
+// range that no longer matches it. These pages are rewritten per request and served
+// no-store, so range and conditional requests have nothing to offer.
+const RANGE_AND_CONDITIONAL_HEADERS = ['range', 'if-range', 'if-none-match', 'if-modified-since', 'if-match', 'if-unmodified-since'];
+function originRequest(request) {
+  const headers = new Headers(request.headers);
+  for (const h of RANGE_AND_CONDITIONAL_HEADERS) headers.delete(h);
+  return new Request(request, { headers });
+}
+
 async function rewriteListingHead(response, row, lang, slug, supabaseUrl = DEFAULT_SUPABASE_URL) {
   const fields = buildOgFields(row, lang, supabaseUrl);
   const { title, desc, imageAlt, hasZh } = fields;
@@ -745,6 +759,10 @@ function rewriteGenericHead(response, lang, i18n, pageUrl) {
 function withNoStore(response) {
   const out = new Response(response.body, response);
   out.headers.set('Cache-Control', 'no-store');
+  // The body is rewritten, so the origin's range metadata no longer describes it,
+  // and advertising byte ranges just invites crawlers to send Range requests.
+  out.headers.delete('Content-Range');
+  out.headers.delete('Accept-Ranges');
   return out;
 }
 
@@ -863,7 +881,7 @@ export default {
     // title/description/image — the original, most involved case.
     if (path === '/listing.html' || path.endsWith('/listing.html')) {
       const slug = url.searchParams.get('slug');
-      const origin = await fetch(request, BYPASS_ORIGIN_CACHE);
+      const origin = await fetch(originRequest(request), BYPASS_ORIGIN_CACHE);
       // Every response this branch can return — rewritten or a fallback to
       // the unmodified origin — must carry the same Cache-Control: no-store
       // as the rewrite path below. A cache in front of this Worker cannot
@@ -920,7 +938,7 @@ export default {
     // same never-break-the-real-page try/catch as the listing.html path.
     const isListings = path === '/listings.html' || path.endsWith('/listings.html');
     if (isListings) {
-      const origin = await fetch(request, BYPASS_ORIGIN_CACHE);
+      const origin = await fetch(originRequest(request), BYPASS_ORIGIN_CACHE);
       const lang = resolveLang(url.searchParams.get('lang'));
       try {
         return withSecurityHeaders(withNoStore(await rewriteGenericHead(origin, lang, LISTINGS_META_I18N, listingsPageUrl(request.url, lang))));
@@ -937,7 +955,7 @@ export default {
     // /listings.html -- i.e. still a same-zone fetch that could return an
     // HTML page, so it gets the same origin-cache bypass as the branches
     // above rather than being assumed to be a cacheable static asset.
-    return withSecurityHeaders(await fetch(request, BYPASS_ORIGIN_CACHE));
+    return withSecurityHeaders(await fetch(originRequest(request), BYPASS_ORIGIN_CACHE));
   },
 };
 

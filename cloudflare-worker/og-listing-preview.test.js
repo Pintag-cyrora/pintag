@@ -1012,3 +1012,78 @@ function escapeRe(s) {
 function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
+
+// ── Range requests (Facebook's scraper sends one) must not turn into a 206 ──
+// The Worker passes the visitor's Request straight through to origin, so a
+// `Range:` header reaches an origin that honours it and comes back as
+// 206 Partial Content (+ Content-Range / Accept-Ranges). The HTMLRewriter then
+// rewrites only that PARTIAL body while the status and Content-Range survive,
+// so a crawler sees 206 with a body that no longer matches the range it claims.
+// The Worker must always answer an HTML page request with a complete 200.
+function rangeHonouringOrigin(fullHtml, seen) {
+  return (input) => {
+    if (seen) seen.push(input);
+    const range = input && input.headers && input.headers.get && input.headers.get('range');
+    const m = range && /^bytes=(\d+)-(\d*)$/.exec(range);
+    if (!m) return new Response(fullHtml, { status: 200, headers: { 'content-type': 'text/html', 'accept-ranges': 'bytes' } });
+    const bytes = Buffer.from(fullHtml);
+    const start = Number(m[1]);
+    const end = Math.min(m[2] === '' ? bytes.length - 1 : Number(m[2]), bytes.length - 1);
+    return new Response(bytes.subarray(start, end + 1), {
+      status: 206,
+      headers: {
+        'content-type': 'text/html',
+        'accept-ranges': 'bytes',
+        'content-range': `bytes ${start}-${end}/${bytes.length}`,
+      },
+    });
+  };
+}
+
+for (const range of ['bytes=0-524287', 'bytes=0-99']) {
+  test(`fetch(): "/listings.html?lang=en" with Range: ${range} still answers a complete 200 (no 206 / Content-Range) with English metadata`, async () => {
+    const seen = [];
+    const { result: res, calls } = await withStubbedFetch(
+      rangeHonouringOrigin(LISTINGS_FIXTURE, seen),
+      () => ogWorker.fetch(new Request('https://pintag.io/listings.html?lang=en', {
+        headers: { range, 'user-agent': 'facebookexternalhit/1.1' },
+      }), {}, fakeCtx())
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-range'), null);
+    assert.equal(res.headers.get('accept-ranges'), null);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    const body = await res.text();
+    assert.match(body, /<meta property="og:title" content="Properties for Rent &amp; Sale in Laos \| Pintag">/);
+    assert.match(body, /<\/head>/, 'the whole document, not a truncated slice');
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].headers.get('range'), null, 'the Range header must not reach origin');
+  });
+}
+
+test('fetch(): "/listings.html" with a conditional/range pair (If-Range, If-None-Match) is forwarded as a plain GET', async () => {
+  const seen = [];
+  const { result: res } = await withStubbedFetch(
+    rangeHonouringOrigin(LISTINGS_FIXTURE, seen),
+    () => ogWorker.fetch(new Request('https://pintag.io/listings.html', {
+      headers: { range: 'bytes=0-9', 'if-range': '"abc"', 'if-none-match': '"abc"', 'if-modified-since': 'Wed, 01 Jan 2020 00:00:00 GMT' },
+    }), {}, fakeCtx())
+  );
+  assert.equal(res.status, 200);
+  for (const h of ['range', 'if-range', 'if-none-match', 'if-modified-since']) assert.equal(seen[0].headers.get(h), null, h);
+});
+
+test('fetch(): "/listing.html?slug=..." with a Range header also answers a complete 200 (rewritten and fall-back paths)', async () => {
+  {   // row-not-found fall-back path
+    const seen = [];
+    const origin = rangeHonouringOrigin('<html><head><title>x</title></head><body>hello world</body></html>', seen);
+    const { result: res } = await withStubbedFetch(
+      (u, init) => isSupabaseHost(u) ? new Response('[]', { status: 200 }) : origin(u, init),
+      () => ogWorker.fetch(new Request('https://pintag.io/listing.html?slug=nope', { headers: { range: 'bytes=0-9' } }), {}, fakeCtx())
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-range'), null);
+    assert.match(await res.text(), /hello world/);
+    assert.equal(seen[0].headers.get('range'), null);
+  }
+});
