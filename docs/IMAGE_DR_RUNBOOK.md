@@ -62,6 +62,13 @@ no competing writer.
 3. Run the integrity check (`image-integrity.yml`, manual dispatch) — expect
    `STATUS: HEALTHY` (orphaned>0 only if old removed-from-gallery objects exist;
    those are still mapped via `status='removed'` rows, so they are NOT orphaned).
+   The report breaks unmapped objects into categories (classification in
+   `scripts/image_integrity_lib.py`): delivery renditions (`renditions/<stem>/<profile>.webp`)
+   whose original is still referenced are accounted for; renditions whose original is
+   removed/unreferenced/missing, malformed `renditions/` names and any other unmapped
+   object are ORPHANED and fail the check; unit-type images (not in the registry yet) and
+   agent photos (`parties.photo_url`) are listed but do not fail. Hash coverage is a
+   separate NOTE and never gates the check.
 
 Nothing here deletes or renames a storage object or edits `properties.images`.
 
