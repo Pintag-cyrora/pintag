@@ -6,7 +6,10 @@
 -- extensions grant to PUBLIC (so every role has them): cron.job_run_details, net._http_response, net.http_request_queue and
 -- net.http_request_queue_id_seq -- exact schema.name AND kind, and only while every privilege the role holds on them is itself
 -- granted to PUBLIC (no direct grant, not the owner). Anything else is a FAIL, with its name printed.
--- Output: "area | item | status" rows; the last two rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
+-- Part C (area 'reconcile-schema') checks the extra tables/columns only 3-reconcile.sql / 4-source-health.sql need (the recovery
+-- and import history tables). It has its OWN verdict, so a missing history column never hides the stage-2 diagnostic, and it
+-- never loosens Parts A/B: those verdicts are computed exactly as before.
+-- Output: "area | item | status" rows; the last three rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
 WITH need(sch, tbl, col, typ) AS (VALUES
     ('storage',  'objects',                'bucket_id',    NULL::text),
     ('storage',  'objects',                'name',         NULL),
@@ -18,6 +21,31 @@ WITH need(sch, tbl, col, typ) AS (VALUES
     ('public',   'listing_image_snapshots','listing_id',   NULL),
     ('public',   'listing_image_snapshots','storage_path', NULL),
     ('public',   'import_images',          'storage_path', NULL)),
+need3(sch, tbl, col, typ) AS (VALUES   -- stage 3 only (reconciliation); judged by the separate 'reconcile-schema' verdict
+    ('storage',  'objects',                'created_at',   NULL::text),
+    ('storage',  'objects',                'metadata',     'jsonb'),
+    ('public',   'property_images',        'status',       NULL),
+    ('public',   'gallery_assignments',    'id',           NULL),
+    ('public',   'gallery_assignments',    'op',           NULL),
+    ('public',   'gallery_assignments',    'listing_id',   NULL),
+    ('public',   'gallery_assignments',    'photo_paths',  'jsonb'),
+    ('public',   'gallery_assignments',    'created_at',   NULL),
+    ('public',   'properties_row_snapshots','id',          NULL),
+    ('public',   'properties_row_snapshots','property_id', NULL),
+    ('public',   'properties_row_snapshots','op',          NULL),
+    ('public',   'properties_row_snapshots','row_data',    'jsonb'),
+    ('public',   'properties_row_snapshots','created_at',  NULL),
+    ('public',   'import_records',         'id',           NULL),
+    ('public',   'import_records',         'listing_id',   NULL),
+    ('public',   'import_records',         'raw_payload',  'jsonb'),
+    ('public',   'import_records',         'imported_at',  NULL),
+    ('public',   'listing_image_snapshots','id',           NULL),
+    ('public',   'listing_image_snapshots','storage_url',  NULL),
+    ('public',   'listing_image_snapshots','created_at',   NULL),
+    ('public',   'import_images',          'id',           NULL),
+    ('public',   'import_images',          'listing_id',   NULL),
+    ('public',   'import_images',          'storage_url',  NULL),
+    ('public',   'import_images',          'uploaded_at',  NULL)),
 have AS (
   SELECT n.nspname AS sch, c.relname AS tbl, a.attname AS col, format_type(a.atttypid, a.atttypmod) AS typ, c.oid AS relid
   FROM pg_attribute a
@@ -68,6 +96,20 @@ rows_all AS (
               WHEN NOT has_table_privilege(h.relid, 'SELECT') THEN 'NO_SELECT'
               ELSE 'ok' END AS status
     FROM need x LEFT JOIN have h ON h.sch = x.sch AND h.tbl = x.tbl AND h.col = x.col
+  UNION ALL
+  SELECT 12, 'reconcile-schema', x.sch || '.' || x.tbl || '.' || x.col,
+         CASE WHEN h.col IS NULL THEN 'MISSING'
+              WHEN x.typ IS NOT NULL AND h.typ <> x.typ THEN 'WRONG_TYPE (is ' || h.typ || ', expected ' || x.typ || ')'
+              WHEN NOT has_table_privilege(h.relid, 'SELECT') THEN 'NO_SELECT'
+              ELSE 'ok' END
+    FROM need3 x LEFT JOIN have h ON h.sch = x.sch AND h.tbl = x.tbl AND h.col = x.col
+  UNION ALL SELECT 13, 'reconcile-schema', 'tables read only by the reconciliation with row-level security this role cannot bypass (counts would be UNTRUSTWORTHY)',
+         CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ': ' || coalesce(names, '') || ')' END
+    FROM (SELECT count(*) AS n, string_agg(DISTINCT c.relnamespace::regnamespace::text || '.' || c.relname, ', ') AS names
+            FROM pg_class c, me
+           WHERE c.oid IN (SELECT relid FROM have WHERE (sch, tbl) IN (SELECT sch, tbl FROM need3))
+             AND c.relrowsecurity
+             AND NOT (me.rolsuper OR me.rolbypassrls OR (c.relowner = me.oid AND NOT c.relforcerowsecurity))) q
   UNION ALL SELECT 21, 'role', 'rolsuper',       CASE WHEN rolsuper       THEN 'FAIL (true)' ELSE 'ok' END FROM me
   UNION ALL SELECT 22, 'role', 'rolcreaterole',  CASE WHEN rolcreaterole  THEN 'FAIL (true)' ELSE 'ok' END FROM me
   UNION ALL SELECT 23, 'role', 'rolcreatedb',    CASE WHEN rolcreatedb    THEN 'FAIL (true)' ELSE 'ok' END FROM me
@@ -119,4 +161,6 @@ SELECT area, item, status FROM (
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 91, 'VERDICT', 'role+session',
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area IN ('role', 'session') AND status LIKE 'FAIL%') THEN 'FAIL' ELSE 'PASS' END
+  UNION ALL SELECT 92, 'VERDICT', 'reconcile-schema',
+         CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'reconcile-schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
 ) t ORDER BY ord, item;
