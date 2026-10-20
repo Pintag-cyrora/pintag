@@ -45,6 +45,124 @@ def human(n):
         n /= 1024
 
 
+def agg(rs):
+    """(objects, bytes, objects with unknown size) for a list of report rows."""
+    return len(rs), sum(int(r["size_bytes"]) for r in rs if r["size_bytes"] != ""), sum(1 for r in rs if r["size_bytes"] == "")
+
+
+def cell(t):
+    c, b, unk = t
+    return f"{c} | {human(b)}" + (f" (+{unk} unknown size)" if unk else "")
+
+
+SIZE_BUCKETS = [("under 100 KB", 0, 100 * 1024), ("100-500 KB", 100 * 1024, 500 * 1024), ("500 KB-1 MB", 500 * 1024, 1024 * 1024),
+                ("1-2 MB", 1024 * 1024, 2 * 1024 * 1024), ("2 MB and over", 2 * 1024 * 1024, None)]
+
+
+def bucket(size):
+    if size == "":
+        return "unknown size"
+    v = int(size)
+    for label, lo, hi in SIZE_BUCKETS:
+        if v >= lo and (hi is None or v < hi):
+            return label
+
+
+def breakdowns(rows, totals, cutoff_day, errors):
+    """Aggregate-only tables (counts, sizes, distinct-id COUNTS). Never prints a name, path, id, title, contact or payload.
+    Every table is checked against the category totals above it; a mismatch is an error, not a quiet inconsistency."""
+    out = ["", "### Breakdowns (aggregate only: no object names, paths, record or listing ids)", ""]
+    by_cat = {c[0]: [r for r in rows if r["category"] == c[0]] for c in CATEGORIES}
+
+    def check(label, groups, cat_names):
+        want = [0, 0, 0]
+        for cn in cat_names:
+            want = [x + y for x, y in zip(want, totals[cn])]
+        got = [sum(g[i] for g in groups) for i in range(3)]
+        if got != want:
+            errors.append(f"breakdown '{label}' does not add up to its categories: {got} vs {want}")
+
+    # 1. gallery-recovery history
+    g = by_cat["history_gallery_assignment_only"]
+    out += [f"#### 1. `history_gallery_assignment_only` ({len(g)} objects): by recovery operation and date of the MOST RECENT matching record", "",
+            "| Operation | Date | Objects | Size | Distinct latest assignment records | Distinct listings (of those records) |", "|---|---|---:|---:|---:|---:|"]
+    groups = {}
+    for r in g:
+        groups.setdefault((r["gallery_assignment_op"] or "(none)", r["gallery_assignment_last_date"][:10] or "(none)"), []).append(r)
+    sizes = []
+    for (op, day), rs in sorted(groups.items()):
+        t = agg(rs); sizes.append(t)
+        recs = {r["gallery_assignment_record"] for r in rs if r["gallery_assignment_record"]}
+        lsts = {r["gallery_assignment_listing"] for r in rs if r["gallery_assignment_listing"]}
+        out.append(f"| {op} | {day} | {cell(t)} | {len(recs)} | {len(lsts)} |")
+    check("gallery by operation/date", sizes, ["history_gallery_assignment_only"])
+    all_recs = {r["gallery_assignment_record"] for r in g if r["gallery_assignment_record"]}
+    all_lsts = {r["gallery_assignment_listing"] for r in g if r["gallery_assignment_listing"]}
+    multi = sum(1 for r in g if int(r["gallery_assignment_hits"] or 0) > 1)
+    out += ["", f"Overall: {len(all_recs)} distinct latest assignment records and {len(all_lsts)} distinct listings. {multi} of {len(g)} objects are named more than once "
+            "in assignment history (only the most recent record is counted per object, so older records are not included). Dates are in the database session time zone.", ""]
+
+    # 2. multiple evidence
+    m = by_cat["multiple_evidence"]
+    out += [f"#### 2. `multiple_evidence` ({len(m)} objects, FLAGGED): by combination of evidence sources", "", "| Evidence sources | Objects | Size |", "|---|---:|---:|"]
+    groups = {}
+    for r in m:
+        groups.setdefault(r["matched_sources"], []).append(r)
+    sizes = []
+    for combo, rs in sorted(groups.items()):
+        t = agg(rs); sizes.append(t)
+        out.append(f"| `{combo}` | {cell(t)} |")
+    check("multiple_evidence by sources", sizes, ["multiple_evidence"])
+    out += ["", "`duplicate_candidate` is the eTag+size candidate, not a history source. These objects are not forced into a single category.", ""]
+
+    # 3. duplicate candidates
+    d = by_cat["duplicate_of_live_image_only"]
+    out += [f"#### 3. `duplicate_of_live_image_only` ({len(d)} objects): CANDIDATES only (same eTag and size as a live-referenced object); not proof of anything", "",
+            "| Matching live object | Objects | Size |", "|---|---:|---:|"]
+    uniq = [r for r in d if int(r["duplicate_candidate_count"]) == 1]
+    amb = [r for r in d if int(r["duplicate_candidate_count"]) > 1]
+    tu, ta = agg(uniq), agg(amb)
+    out += [f"| unique (exactly one live object matches) | {cell(tu)} |", f"| ambiguous (more than one live object matches) | {cell(ta)} |"]
+    check("duplicates by match uniqueness", [tu, ta], ["duplicate_of_live_image_only"])
+    live_distinct = len({r["duplicate_of_live_object"] for r in uniq})
+    out += ["", f"The {len(uniq)} unique candidates point at {live_distinct} distinct live objects (a live object can have several unreferenced copies).", "",
+            "| Size bucket | Objects | Size |", "|---|---:|---:|"]
+    labels = [b[0] for b in SIZE_BUCKETS] + ["unknown size"]
+    sizes = []
+    for lab in labels:
+        t = agg([r for r in d if bucket(r["size_bytes"]) == lab]); sizes.append(t)
+        out.append(f"| {lab} | {cell(t)} |")
+    check("duplicates by size bucket", sizes, ["duplicate_of_live_image_only"])
+    out += ["", "A matching eTag and size does not show an object is unused, abandoned or safe to remove.", ""]
+
+    # 4. no history
+    before, after = by_cat["no_evidence_uploaded_before_provenance"], by_cat["no_evidence_uploaded_after_provenance"]
+    unk = by_cat["unclassifiable_no_evidence"]
+    out += [f"#### 4. No-history objects ({len(before) + len(after) + len(unk)}): by upload month (from the file name), split at the INFERRED provenance cutoff", "",
+            f"Inferred cutoff: {cutoff_day or 'unknown'} (earliest `listing_image_snapshots` row). It is an inference, not proof that an object is abandoned or was never saved.", "",
+            "| Upload month | Before cutoff: objects | Before: size | After cutoff: objects | After: size |", "|---|---:|---:|---:|---:|"]
+    months = sorted({(r["name_upload_ts"][:7] or "unknown") for r in before + after})
+    bs, as_ = [], []
+    for mo in months:
+        tb_ = agg([r for r in before if (r["name_upload_ts"][:7] or "unknown") == mo])
+        ta_ = agg([r for r in after if (r["name_upload_ts"][:7] or "unknown") == mo])
+        bs.append(tb_); as_.append(ta_)
+        out.append(f"| {mo} | {tb_[0]} | {human(tb_[1])} | {ta_[0]} | {human(ta_[1])} |")
+    check("no-evidence before cutoff by month", bs, ["no_evidence_uploaded_before_provenance"])
+    check("no-evidence after cutoff by month", as_, ["no_evidence_uploaded_after_provenance"])
+    if cutoff_day:   # coarse day-level consistency of the split with the cutoff
+        for r in before:
+            if r["name_upload_ts"][:10] > cutoff_day:
+                errors.append("a 'before cutoff' object has an upload date after the cutoff")
+                break
+        for r in after:
+            if r["name_upload_ts"][:10] < cutoff_day:
+                errors.append("an 'after cutoff' object has an upload date before the cutoff")
+                break
+    out += ["", f"`unclassifiable_no_evidence` (no usable upload time or no cutoff): {cell(agg(unk))}.", ""]
+    return out
+
+
 def read_csv(path):
     with open(path, newline="", encoding="utf-8") as fh:
         rd = csv.DictReader(fh)
@@ -68,28 +186,29 @@ def main(argv):
     seen = set()
     totals = {c[0]: [0, 0, 0] for c in CATEGORIES}   # objects, bytes, objects with unknown size
     renditions = {"with": 0, "without": 0}
-    for r in rows:
+    for idx, r in enumerate(rows, start=1):
         name = r["object_name"]
+        who = f"row {idx}"   # errors name the row number, never the object (these messages go to the workflow log)
         if name in seen:
-            errors.append(f"duplicate object row: {name!r}")
+            errors.append(f"duplicate object name at {who}")
         seen.add(name)
         cat = r["category"]
         if cat not in KNOWN:
-            errors.append(f"unknown category {cat!r} for {name!r}")
+            errors.append(f"unknown category {cat!r} for {who}")
             continue
         if any(r[k] != "f" for k in ("ref_listing", "ref_unit", "ref_agent", "ref_registry")):
-            errors.append(f"{name!r} is marked as currently referenced, so it is not an unreferenced original")
+            errors.append(f"{who} is marked as currently referenced, so it is not an unreferenced original")
         try:
             hist = sum(1 for k in HITS if int(r[k] or 0) > 0)
             ev = int(r["evidence_count"])
             dup = int(r["duplicate_candidate_count"] or 0) > 0
         except ValueError:
-            errors.append(f"non-numeric count for {name!r}")
+            errors.append(f"non-numeric count for {who}")
             continue
         if ev != hist + (1 if dup else 0) or ev != len([s for s in r["matched_sources"].split(",") if s]):
-            errors.append(f"evidence_count does not match the matched sources for {name!r}")
+            errors.append(f"evidence_count does not match the matched sources for {who}")
         if (ev >= 2) != (cat == "multiple_evidence"):
-            errors.append(f"category {cat!r} contradicts evidence_count {ev} for {name!r}")
+            errors.append(f"category {cat!r} contradicts evidence_count {ev} for {who}")
         t = totals[cat]
         t[0] += 1
         if r["size_bytes"] == "":
@@ -103,17 +222,19 @@ def main(argv):
     if a.expected is not None and n != a.expected:
         errors.append(f"the reconciliation lists {n} objects but the stage-2 diagnostic counted {a.expected}")
 
-    health_lines, warnings = [], []
+    health_lines, warnings, cutoff_day = [], [], ""
     if a.health:
         try:
             _, health = read_csv(a.health)
             got = {h["source"]: h for h in health}
+            cutoff_day = (got.get("listing_image_snapshots") or {}).get("first_date", "")[:10]
             if set(got) != set(SOURCES):
                 errors.append("source-health must list exactly the five history sources; got: " + ", ".join(sorted(got)))
-            health_lines = ["", "### How much history could be read", "", "| Source | Rows | Readable | Unreadable | First | Last |", "|---|---:|---:|---:|---|---|"]
+            health_lines = ["", "### How much history could be read", "", "| Source | Rows | Readable | Unreadable | Status | First | Last |", "|---|---:|---:|---:|---|---|---|"]
             for h in health:
-                health_lines.append(f"| `{h['source']}` | {h['rows_total']} | {h['rows_usable']} | {h['rows_unusable']} | {h['first_date'][:10]} | {h['last_date'][:10]} |")
                 total, usable = int(h["rows_total"]), int(h["rows_usable"])
+                status = "OK" if total == usable else ("UNREADABLE (none usable)" if usable == 0 else f"PARTIAL ({total - usable} unreadable)")
+                health_lines.append(f"| `{h['source']}` | {h['rows_total']} | {h['rows_usable']} | {h['rows_unusable']} | {status} | {h['first_date'][:10]} | {h['last_date'][:10]} |")
                 if total > 0 and usable == 0:   # a whole source that cannot be searched would make "no evidence" meaningless
                     errors.append(f"history source {h['source']} has {total} rows and none is readable: the no-evidence categories would be misleading")
                 elif total > usable:
@@ -123,6 +244,8 @@ def main(argv):
             errors.append(f"source-health file unreadable: {e}")
     else:
         errors.append("no source-health file: history coverage is unknown")
+
+    breakdown_lines = breakdowns(rows, totals, cutoff_day, errors) if not errors else []
 
     if not errors:   # the downloadable per-object report exists only for a reconciliation that fully checked out
         with open(a.out_objects, "w", newline="", encoding="utf-8") as fh:
@@ -149,7 +272,7 @@ def main(argv):
             "", "No object is deleted or moved by this report. `duplicate_of_live_image_only` is a candidate only (same eTag and size), "
             "never proof that an object is safe to remove."]
 
-    out += health_lines
+    out += breakdown_lines + health_lines
     with open(a.out_summary, "w", encoding="utf-8") as fh:
         fh.write("\n".join(out) + "\n")
     for e in errors:

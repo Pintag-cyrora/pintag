@@ -272,7 +272,7 @@ test('end to end: the real runner, a read-only role and the fixture -> validated
   psqlRaw('postgres', [], 'DROP ROLE IF EXISTS recon_ro; CREATE ROLE recon_ro LOGIN BYPASSRLS;');
   const db = makeDb('GRANT USAGE ON SCHEMA public, storage TO recon_ro; GRANT SELECT ON ALL TABLES IN SCHEMA public, storage TO recon_ro;');
   const work = fs.mkdtempSync(path.join(dir, 'e2e-'));
-  for (const f of fs.readdirSync(D)) fs.copyFileSync(path.join(D, f), path.join(work, f));
+  for (const f of fs.readdirSync(D)) if (fs.statSync(path.join(D, f)).isFile()) fs.copyFileSync(path.join(D, f), path.join(work, f));
   const pathEnv = `${path.dirname(PSQL.includes('/') ? PSQL : path.join(PGBIN, 'psql'))}${path.delimiter}${PGBIN}${path.delimiter}${process.env.PATH}`;
   const r = spawnSync('bash', [path.join(work, 'run.sh')], { encoding: 'utf8', input: '',
     env: { PATH: pathEnv, HOME: dir, PINTAG_PROD_DB_URL: `postgresql://recon_ro@/${db}?host=${sock}&port=${port}` } });
@@ -281,7 +281,11 @@ test('end to end: the real runner, a read-only role and the fixture -> validated
   assert.match(r.stdout, /11 objects\. Counts reconcile to the stage-2 total \(11\)/);
   const rows = parseCsv(fs.readFileSync(path.join(work, 'reconcile-objects.csv'), 'utf8'));
   assert.equal(rows.length, 11);
-  assert.ok(fs.readFileSync(path.join(work, 'reconcile-summary.md'), 'utf8').includes('multiple_evidence'));
+  const md = fs.readFileSync(path.join(work, 'reconcile-summary.md'), 'utf8');
+  assert.ok(md.includes('multiple_evidence'));
+  assert.match(md, /#### 1\. `history_gallery_assignment_only` \(1 objects\)/);
+  assert.match(md, /#### 4\. No-history objects \(4\)/);
+  for (const secret of [...Object.values(N), LID, 'SECRET TITLE']) assert.ok(!md.includes(secret), `the job summary must not contain ${secret}`);
 });
 
 // ── summarize.py ──
@@ -329,7 +333,7 @@ test('summarize.py: names with commas, quotes and newlines survive the round tri
 for (const [label, rowsFn, extra, msg] of [
   ['a count different from the stage-2 total', () => [mk()], { expected: 551 }, /lists 1 objects but the stage-2 diagnostic counted 551/],
   ['an unknown category', () => [mk({ category: 'safe_to_delete' })], {}, /unknown category 'safe_to_delete'/],
-  ['a duplicate object row', () => [mk(), mk()], {}, /duplicate object row/],
+  ['a duplicate object row', () => [mk(), mk()], {}, /duplicate object name at row 2/],
   ['an object marked as currently referenced', () => [mk({ ref_unit: 't' })], {}, /marked as currently referenced/],
   ['multiple_evidence with fewer than two sources', () => [mk({ category: 'multiple_evidence' })], {}, /contradicts evidence_count/],
   ['evidence_count that does not match the matched sources', () => [mk({ evidence_count: '1', category: 'history_import_image_only' })], {}, /evidence_count does not match/],
