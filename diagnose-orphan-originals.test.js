@@ -26,7 +26,7 @@ const PASS2 = 'schema | public.properties.id | ok\nVERDICT | schema | PASS\nVERD
 const PASS3 = PASS2 + 'VERDICT | reconcile-schema | PASS\n';
 const DIAG = ' 1 TOTAL | 4000 bytes | 2\n';
 const COLS = fs.readFileSync(path.join(SRC, 'summarize.py'), 'utf8').match(/COLUMNS = \[([\s\S]*?)\n\]/)[1].match(/"([a-z_]+)"/g).map((c) => c.slice(1, -1));
-const objRow = (name) => COLS.map((c) => ({ object_name: name, size_bytes: '10', ref_listing: 'f', ref_unit: 'f', ref_agent: 'f', ref_registry: 'f', evidence_count: '0',
+const objRow = (name) => COLS.map((c) => ({ object_name: name, size_bytes: '10', name_upload_ts: '2026-09-01 00:00:00+00', ref_listing: 'f', ref_unit: 'f', ref_agent: 'f', ref_registry: 'f', evidence_count: '0',
   gallery_assignment_hits: '0', deleted_snapshot_hits: '0', import_record_hits: '0', listing_snapshot_hits: '0', import_image_hits: '0',
   duplicate_candidate_count: '0', category: 'no_evidence_uploaded_after_provenance', explanation: 'x' }[c] ?? '')).join(',');
 const RECON = COLS.join(',') + '\n' + objRow('a.jpg') + '\n' + objRow('b.jpg') + '\n';
