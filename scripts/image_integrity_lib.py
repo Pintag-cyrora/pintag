@@ -17,6 +17,7 @@
 # is missing, removed from its gallery, or referenced by nothing are reported as ORPHANED and fail the check.
 
 import re
+from urllib.parse import unquote
 
 PROFILES = ("thumbnail", "card", "gallery", "hero")
 RENDITION_PREFIX = "renditions/"
@@ -61,6 +62,19 @@ def name_from_url(url):
     return name or None
 
 
+def _forms(names):
+    """Each reference name in its stored form AND percent-decoded. Public URLs are percent-encoded
+    (a space is %20) while storage.objects.name is the raw name, so a reference to "my%20unit.jpg" must
+    match the object "my unit.jpg" (and the rendition stem derived from the raw upload name). Matching either
+    form can only ever EXCUSE an object that a live reference really names; it never hides an unreferenced one."""
+    out = set()
+    for n in names:
+        if n:
+            out.add(n)
+            out.add(unquote(n))
+    return out
+
+
 def _stems(names):
     out = set()
     for n in names:
@@ -84,10 +98,10 @@ def classify(objects, registry_all, registry_active, listing_refs, unit_refs, ag
     """
     objects = set(objects)
     reg_all, reg_active = set(registry_all), set(registry_active)
-    listing, units, agents = set(listing_refs), set(unit_refs), set(agent_refs)
+    listing, units, agents = _forms(listing_refs), _forms(unit_refs), _forms(agent_refs)
 
-    live_stems = _stems(reg_active | listing | units | agents)
-    history_stems = _stems(reg_all)
+    live_stems = _stems(_forms(reg_active) | listing | units | agents)
+    history_stems = _stems(_forms(reg_all))
     storage_stems = _stems(objects)
 
     cats = {k: [] for k in CATEGORIES}
@@ -123,13 +137,20 @@ def classify(objects, registry_all, registry_active, listing_refs, unit_refs, ag
         else:
             cats["orphan_original"].append(o)
     unmapped = sum(len(v) for v in cats.values())
-    return {"mapped": mapped, "unmapped": unmapped, "categories": cats, "reasons": reasons}
+
+    # References the other checks never verify: a unit-type / agent-photo URL whose object is not in storage.
+    # (The registry's missing_files and listings_missing_images cover gallery photos only.)
+    def absent(refs_in):
+        return sorted(r for r in set(refs_in) if r and r not in objects and unquote(r) not in objects)
+    referenced_missing = {"unit": absent(unit_refs), "agent": absent(agent_refs)}
+    return {"mapped": mapped, "unmapped": unmapped, "categories": cats, "reasons": reasons,
+            "referenced_missing": referenced_missing}
 
 
 def failing_count(result, fail_on_unit_images=False):
     n = sum(len(result["categories"][k]) for k, (_, fails) in CATEGORIES.items() if fails)
     if fail_on_unit_images:
-        n += len(result["categories"]["unit_image_unregistered"])
+        n += len(result["categories"]["unit_image_unregistered"]) + len(result["referenced_missing"]["unit"])
     return n
 
 
@@ -144,6 +165,15 @@ def format_breakdown(result, samples=5, fail_on_unit_images=False):
         for n in names[:samples]:
             why = result["reasons"].get(n)
             lines.append(f"      {n}" + (f"   <- {why}" if why else ""))
+        if len(names) > samples:
+            lines.append(f"      … and {len(names) - samples:,} more")
+    rm = result.get("referenced_missing", {"unit": [], "agent": []})
+    for key, label, fails in (("unit", "Unit-type image references missing from storage", fail_on_unit_images),
+                              ("agent", "Agent photo references missing from storage", False)):
+        names = rm[key]
+        lines.append(f"  {label}: {len(names):,}" + (" [FAILS]" if fails else ""))
+        for n in names[:samples]:
+            lines.append(f"      {n}")
         if len(names) > samples:
             lines.append(f"      … and {len(names) - samples:,} more")
     return lines

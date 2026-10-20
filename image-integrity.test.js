@@ -100,6 +100,27 @@ test('classify: a reference that is itself a rendition path never excuses anothe
   assert.deepEqual(r.categories.orphan_rendition, [R_(weird)]);
 });
 
+test('classify: percent-encoded URL references match raw object names (and their renditions) -- no false orphans for names with spaces', () => {
+  const r = classify({
+    objects: ['my unit.jpg', R_('my unit.jpg'), 'agents/a b/1.jpg', 'plain.jpg', 'my other.jpg', R_('my other.jpg')],
+    unit_refs: ['my%20unit.jpg'], agent_refs: ['agents/a%20b/1.jpg'], listing_refs: ['plain.jpg'],
+  });
+  assert.deepEqual(r.categories.unit_image_unregistered, ['my unit.jpg']);
+  assert.deepEqual(r.categories.agent_photo, ['agents/a b/1.jpg']);
+  assert.deepEqual(r.categories.rendition_ok, [R_('my unit.jpg')]);
+  // an encoded-looking name that nothing references is still an orphan, along with its rendition
+  assert.deepEqual(r.categories.orphan_original.sort(), ['my other.jpg']);
+  assert.deepEqual(r.categories.orphan_rendition, [R_('my other.jpg')]);
+});
+
+test('classify: unit-type and agent-photo references whose object is missing from storage are reported (and fail for unit images under the strict flag)', () => {
+  const r = classify({ objects: ['u.jpg'], unit_refs: ['u.jpg', 'gone%20u.jpg'], agent_refs: ['agents/1/gone.jpg'] });
+  assert.deepEqual(r.referenced_missing, { unit: ['gone%20u.jpg'], agent: ['agents/1/gone.jpg'] });
+  const n = (flag) => py('print(L.failing_count(d["r"], d["flag"]))', { r, flag });
+  assert.equal(n(false), 0);
+  assert.equal(n(true), 2);                 // unit_image_unregistered (u.jpg) + the missing unit reference
+});
+
 test('classify: agent photos are accepted only when parties.photo_url actually references them', () => {
   const r = classify({ objects: ['agents/1/1.jpg', 'agents/2/2.jpg', R_('agents/1/1.jpg')], agent_refs: ['agents/1/1.jpg'] });
   assert.deepEqual(r.categories.agent_photo, ['agents/1/1.jpg']);
@@ -136,6 +157,7 @@ test('script: renditions of referenced originals + unit images pass; hash covera
   assert.match(r.stdout, /Orphaned files:\s+0/);
   assert.match(r.stdout, /Renditions of referenced originals \(accounted for\): 3/);
   assert.match(r.stdout, /Unit-type images not in the registry \(known gap\): 1/);
+  assert.match(r.stdout, /Unit-type image references missing from storage: 0/);
   assert.match(r.stdout, /Hash coverage:\s+1 \/ 2/);
   assert.match(r.stdout, /NOTE \(not pass\/fail\): 1 registered image\(s\) have no sha256/);
   assert.ok(!(r.stdout + r.stderr).includes('S3cr3tPassw0rd') && !(r.stdout + r.stderr).includes('db.example.invalid'));
