@@ -6,3 +6,6 @@
 tests/*/node_modules/
 tests/*/playwright-report/
 tests/*/test-results/
+
+# Python bytecode (scripts/*.py are imported by tests)
+__pycache__/
