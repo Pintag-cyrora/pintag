@@ -202,6 +202,8 @@ test('no history: before / after the first gallery snapshot, or inconclusive whe
   const rows = by(run(makeDb(), '3-reconcile.sql'));
   assert.equal(rows[N.noevOld].category, 'no_evidence_uploaded_before_provenance');
   assert.equal(rows[N.noevNew].category, 'no_evidence_uploaded_after_provenance');
+  assert.match(rows[N.noevNew].explanation, /inferred, not proven/);
+  assert.match(rows[N.noevOld].explanation, /INFERRED/);
   assert.equal(rows[N.noTs].category, 'unclassifiable_no_evidence');
   assert.match(rows[N.noTs].explanation, /^inconclusive/);
   assert.equal(rows[N.noTs].name_upload_ts, '');
@@ -292,6 +294,12 @@ function summarize(rowObjs, { expected, header = COLS, health = true } = {}) {
   return { r, out: fs.existsSync(path.join(w, 'o.csv')) ? fs.readFileSync(path.join(w, 'o.csv'), 'utf8') : '', md: fs.readFileSync(path.join(w, 's.md'), 'utf8') };
 }
 
+test('summarize.py: provenance cutoff is labelled as an inference', () => {
+  const { md } = summarize([mk()], { expected: 1 });
+  assert.match(md, /Provenance start is an INFERENCE/);
+  assert.match(md, /INFERRED/);
+});
+
 test('summarize.py: counts and bytes per category, flagged categories, reconciles to the expected total', () => {
   const { r, md } = summarize([mk({ object_name: 'a' }), mk({ object_name: 'b', size_bytes: '' }),
     mk({ object_name: 'c', category: 'multiple_evidence', evidence_count: '2', gallery_assignment_hits: '1', import_image_hits: '1', matched_sources: 'gallery_assignment,import_image' })], { expected: 3 });
@@ -324,6 +332,6 @@ for (const [label, rowsFn, extra, msg] of [
     assert.equal(r.status, 1);
     assert.match(r.stderr, msg);
     assert.match(md, /RECONCILIATION FAILED/);
-    assert.doesNotMatch(out, /owner_phone|\+1/);
+    assert.equal(out, '', 'no per-object report is written for a reconciliation that failed');
   });
 }

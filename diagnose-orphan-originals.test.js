@@ -125,6 +125,7 @@ test('stage 3 refuses to publish when the object count differs from the stage-2 
   const r = run({ diag: ' 1 TOTAL | 4000 bytes | 551\n' });
   assert.equal(r.status, 1, r.output);
   assert.match(r.read('reconcile-summary.md'), /RECONCILIATION FAILED/);
+  assert.ok(!r.has('reconcile-objects.csv'), 'no per-object report for a failed reconciliation');
   assert.match(r.output, /lists 2 objects but the stage-2 diagnostic counted 551/);
 });
 

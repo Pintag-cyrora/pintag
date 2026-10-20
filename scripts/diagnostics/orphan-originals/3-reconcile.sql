@@ -17,7 +17,7 @@
 --   >= 2 pieces of evidence ............................ multiple_evidence            (flagged, not forced into one source)
 --   exactly one history source ......................... history_<source>_only
 --   duplicate candidate only ........................... duplicate_of_live_image_only
---   no evidence, upload time before the first gallery snapshot ever recorded ... no_evidence_uploaded_before_provenance
+--   no evidence, upload time before the first gallery snapshot ever recorded (an INFERRED provenance start, not a documented date) ... no_evidence_uploaded_before_provenance
 --   no evidence, upload time after it .................. no_evidence_uploaded_after_provenance
 --   no evidence and no usable upload time / no provenance start ... unclassifiable_no_evidence
 WITH obj_all AS (
@@ -46,12 +46,12 @@ names_raw AS (   -- every candidate name, tagged with its source; n = text after
   SELECT 'live_agent', NULL, NULL, NULL, NULL, split_part(regexp_replace(photo_url, '^.*/property-images/', ''), '?', 1)
     FROM parties WHERE photo_url LIKE '%/property-images/%'
   UNION ALL
-  SELECT 'gallery_assignment', g.id::text, g.created_at, g.op, g.listing_id::text,
+  SELECT 'gallery_assignment', g.id::text, g.created_at, g.op::text, g.listing_id::text,
          split_part(regexp_replace(v #>> '{}', '^.*/property-images/', ''), '?', 1)
     FROM gallery_assignments g, LATERAL jsonb_path_query(g.photo_paths, 'strict $.**') AS v
    WHERE jsonb_typeof(v) = 'string'
   UNION ALL
-  SELECT 'deleted_listing_snapshot', r.id::text, r.created_at, r.op, r.property_id::text,
+  SELECT 'deleted_listing_snapshot', r.id::text, r.created_at, r.op::text, r.property_id::text,
          split_part(regexp_replace(v #>> '{}', '^.*/property-images/', ''), '?', 1)
     FROM properties_row_snapshots r, LATERAL jsonb_path_query(r.row_data -> 'images', 'strict $.**') AS v
    WHERE jsonb_typeof(v) = 'string'
@@ -162,7 +162,7 @@ SELECT s.name AS object_name, s.size AS size_bytes, s.created_at AS storage_crea
             WHEN s.dup_count > 0 THEN 'same eTag and size as a live-referenced object: duplicate CANDIDATE only, not proof'
             WHEN s.name_ts IS NULL THEN 'inconclusive: no history and the name has no usable upload time'
             WHEN s.first_snapshot IS NULL THEN 'inconclusive: no history and no gallery snapshot exists to date provenance'
-            WHEN s.name_ts < s.first_snapshot THEN 'inconclusive: uploaded before gallery provenance existed, so it may have been in an unrecorded gallery'
-            ELSE 'uploaded after provenance began and found in no gallery history: most likely never saved in a gallery (provenance writes are best effort)' END AS explanation
+            WHEN s.name_ts < s.first_snapshot THEN 'inconclusive (provenance start INFERRED from the earliest gallery snapshot): uploaded before it, so it may have been in an unrecorded gallery'
+            ELSE 'inferred, not proven: uploaded after the earliest gallery snapshot and found in no history; most likely never saved in a gallery (history writes are best effort)' END AS explanation
   FROM scored s
  ORDER BY s.name;

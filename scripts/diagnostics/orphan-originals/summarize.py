@@ -4,7 +4,7 @@
 Reads the psql --csv files, checks that the report is internally consistent and reconciles to the stage-2 total, and writes
   reconcile-objects.csv   per-object report, re-written with a fixed column whitelist (this is the downloadable artifact)
   reconcile-summary.md    aggregate counts and sizes per category (this goes in the job summary; no object names)
-Exit status 1 when anything does not reconcile (the files are still written so the failure can be read).
+Exit status 1 when anything does not reconcile: then reconcile-objects.csv is NOT written (only the summary, which says why).
 """
 import argparse
 import csv
@@ -27,8 +27,8 @@ CATEGORIES = [   # (name, flagged, meaning)
     ("history_listing_snapshot_only", False, "named only in a saved gallery snapshot"),
     ("history_import_image_only", False, "named only in the import-image mapping"),
     ("duplicate_of_live_image_only", False, "same eTag and size as a live-referenced object (candidate only, not proof)"),
-    ("no_evidence_uploaded_before_provenance", False, "no history; uploaded before gallery provenance existed (inconclusive)"),
-    ("no_evidence_uploaded_after_provenance", False, "no history; uploaded after provenance began (probably never saved)"),
+    ("no_evidence_uploaded_before_provenance", False, "no history; uploaded before the first recorded gallery snapshot (INFERRED provenance start; inconclusive)"),
+    ("no_evidence_uploaded_after_provenance", False, "no history; uploaded after the first recorded gallery snapshot (INFERRED; probably never saved)"),
     ("multiple_evidence", True, "matches two or more sources: flagged, not forced into one"),
     ("unclassifiable_no_evidence", True, "no history and no usable upload time or provenance start: cannot be classified"),
 ]
@@ -102,11 +102,12 @@ def main(argv):
     if a.expected is not None and n != a.expected:
         errors.append(f"the reconciliation lists {n} objects but the stage-2 diagnostic counted {a.expected}")
 
-    with open(a.out_objects, "w", newline="", encoding="utf-8") as fh:
-        w = csv.writer(fh)
-        w.writerow(COLUMNS)
-        for r in sorted(rows, key=lambda r: (r["category"], r["object_name"])):
-            w.writerow([r[c] for c in COLUMNS])
+    if not errors:   # the downloadable per-object report exists only for a reconciliation that fully checked out
+        with open(a.out_objects, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(COLUMNS)
+            for r in sorted(rows, key=lambda r: (r["category"], r["object_name"])):
+                w.writerow([r[c] for c in COLUMNS])
 
     out = ["## Reconciliation of the unreferenced originals (read-only)", ""]
     if errors:
@@ -121,7 +122,9 @@ def main(argv):
     out += [f"| **total** | **{sum(t[0] for t in totals.values())}** | **{human(tb)}** | |", "",
             f"Renditions: {renditions['with']} objects have at least one rendition file, {renditions['without']} have none.", "",
             "Category meanings:", ""] + [f"- `{n_}`: {m}" for n_, _, m in CATEGORIES]
-    out += ["", "No object is deleted or moved by this report. `duplicate_of_live_image_only` is a candidate only (same eTag and size), "
+    out += ["", "Provenance start is an INFERENCE: the earliest `listing_image_snapshots` row (see its First date below), not a documented launch date. "
+            "The `no_evidence_*` categories are therefore hypotheses about why an object is unreferenced, not findings.",
+            "", "No object is deleted or moved by this report. `duplicate_of_live_image_only` is a candidate only (same eTag and size), "
             "never proof that an object is safe to remove."]
 
     if a.health:
