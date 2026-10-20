@@ -13,7 +13,9 @@ name: Diagnose orphan originals (read-only)
 #   * run.sh lints both SQL files (each must be exactly one plain SELECT/WITH; no write/transaction/session
 #     keywords), runs a catalog-only PREFLIGHT first (schema, role privileges, RLS, session read-only), STOPS unless
 #     it is clean (both verdicts PASS and no WARN), and only then runs the data SELECT. Every statement runs inside
-#     `BEGIN READ ONLY` ... `ROLLBACK`, with default_transaction_read_only=on also required of the session.
+#     `BEGIN READ ONLY` ... `ROLLBACK`; the preflight requires transaction_read_only=on. (default_transaction_read_only is
+#     only reported: the Supabase pooler drops startup options. The only write privileges tolerated are the four
+#     pg_cron / pg_net objects Supabase grants to PUBLIC -- see 1-preflight.sql.)
 #   * It reads data; it changes nothing. Delete this workflow once the investigation is done.
 
 on:

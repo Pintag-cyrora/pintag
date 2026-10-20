@@ -2,6 +2,10 @@
 -- Part A checks that every table/column the diagnostic needs exists, has the expected type and is readable.
 -- Part B audits the connected role and the session. It is a conservative WARNING system (it can FAIL on things that are
 -- harmless, never PASS on the things it checks if they are present), NOT a proof that no write path exists.
+-- Write-type privileges (rows 30-32): the ONLY ones tolerated are the four platform objects that Supabase's pg_cron / pg_net
+-- extensions grant to PUBLIC (so every role has them): cron.job_run_details, net._http_response, net.http_request_queue and
+-- net.http_request_queue_id_seq -- exact schema.name AND kind, and only while every privilege the role holds on them is itself
+-- granted to PUBLIC (no direct grant, not the owner). Anything else is a FAIL, with its name printed.
 -- Output: "area | item | status" rows; the last two rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
 WITH need(sch, tbl, col, typ) AS (VALUES
     ('storage',  'objects',                'bucket_id',    NULL::text),
@@ -22,8 +26,41 @@ have AS (
   WHERE a.attnum > 0 AND NOT a.attisdropped AND c.relkind IN ('r', 'p', 'v', 'm', 'f')),
 me AS (SELECT * FROM pg_roles WHERE rolname = current_user),
 scope AS (   -- every non-system relation/schema, for the privilege counts
-  SELECT c.oid, c.relkind, n.oid AS nsp FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+  SELECT c.oid, c.relkind, n.oid AS nsp, n.nspname AS sch, c.relname AS name, c.relacl, c.relowner
+  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'),
+allowed(sch, name, kind) AS (VALUES   -- the ONLY tolerated write-type privileges (see the header comment)
+    ('cron', 'job_run_details',           'r'),
+    ('net',  '_http_response',            'r'),
+    ('net',  'http_request_queue',        'r'),
+    ('net',  'http_request_queue_id_seq', 'S')),
+wr AS (   -- per relation: the write-type privileges the role holds (each function is only called on the kinds it accepts)
+  SELECT s.*,
+         CASE WHEN s.relkind IN ('r', 'p')
+              THEN ARRAY(SELECT p FROM unnest(ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) p WHERE has_table_privilege(s.oid, p))
+              ELSE ARRAY[]::text[] END AS tbl_privs,
+         CASE WHEN s.relkind = 'S'
+              THEN ARRAY(SELECT p FROM unnest(ARRAY['USAGE', 'UPDATE']) p WHERE has_sequence_privilege(s.oid, p))
+              ELSE ARRAY[]::text[] END AS seq_privs,
+         CASE WHEN s.relkind IN ('r', 'p', 'v', 'm', 'f') THEN has_any_column_privilege(s.oid, 'INSERT,UPDATE') ELSE false END AS col_any
+  FROM scope s),
+wr2 AS (   -- only relations where the role holds something; flag what PUBLIC does NOT explain
+  SELECT w.*,
+         EXISTS (SELECT 1 FROM unnest(w.tbl_privs || w.seq_privs) p
+                  WHERE NOT EXISTS (SELECT 1 FROM aclexplode(w.relacl) x WHERE x.grantee = 0 AND x.privilege_type = p)) AS direct_tbl,
+         CASE WHEN w.relkind IN ('r', 'p', 'v', 'm', 'f')
+              THEN EXISTS (SELECT 1 FROM pg_attribute a, unnest(ARRAY['INSERT', 'UPDATE']) p
+                            WHERE a.attrelid = w.oid AND a.attnum > 0 AND NOT a.attisdropped
+                              AND has_column_privilege(w.oid, a.attnum, p)
+                              AND NOT EXISTS (SELECT 1 FROM aclexplode(w.relacl) x WHERE x.grantee = 0 AND x.privilege_type = p)
+                              AND NOT EXISTS (SELECT 1 FROM aclexplode(a.attacl) y WHERE y.grantee = 0 AND y.privilege_type = p))
+              ELSE false END AS direct_col,
+         (w.relowner = (SELECT oid FROM me)) AS is_owner,
+         EXISTS (SELECT 1 FROM allowed al WHERE al.sch = w.sch AND al.name = w.name AND al.kind = w.relkind::text) AS on_allowlist
+  FROM wr w
+  WHERE cardinality(w.tbl_privs) > 0 OR cardinality(w.seq_privs) > 0 OR w.col_any),
+wr3 AS (
+  SELECT *, (on_allowlist AND NOT direct_tbl AND NOT direct_col AND NOT is_owner) AS allowed_ok FROM wr2),
 rows_all AS (
   SELECT 10 AS ord, 'schema' AS area, x.sch || '.' || x.tbl || '.' || x.col AS item,
          CASE WHEN h.col IS NULL THEN 'MISSING'
@@ -45,15 +82,18 @@ rows_all AS (
            WHERE c.oid IN (SELECT relid FROM have WHERE (sch, tbl) IN (SELECT sch, tbl FROM need))
              AND c.relrowsecurity
              AND NOT (me.rolsuper OR me.rolbypassrls OR (c.relowner = me.oid AND NOT c.relforcerowsecurity))) q
-  UNION ALL SELECT 30, 'role', 'tables with table-level INSERT/UPDATE/DELETE/TRUNCATE',
-         CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ')' END
-    FROM (SELECT count(*) AS n FROM scope WHERE CASE WHEN relkind IN ('r', 'p') THEN has_table_privilege(oid, 'INSERT,UPDATE,DELETE,TRUNCATE') ELSE false END) q
-  UNION ALL SELECT 31, 'role', 'relations with column-level INSERT/UPDATE',
-         CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ')' END
-    FROM (SELECT count(*) AS n FROM scope WHERE CASE WHEN relkind IN ('r', 'p', 'v', 'm', 'f') THEN has_any_column_privilege(oid, 'INSERT,UPDATE') ELSE false END) q
-  UNION ALL SELECT 32, 'role', 'sequences with USAGE/UPDATE',
-         CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ')' END
-    FROM (SELECT count(*) AS n FROM scope WHERE CASE WHEN relkind = 'S' THEN has_sequence_privilege(oid, 'USAGE,UPDATE') ELSE false END) q
+  UNION ALL SELECT 30, 'role', 'tables with table-level INSERT/UPDATE/DELETE/TRUNCATE (other than the 4 allowed PUBLIC-granted platform objects)',
+         CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ': ' || coalesce(names, '') || ')' END
+    FROM (SELECT count(*) AS n, array_to_string((array_agg(sch || '.' || name ORDER BY sch, name))[1:20], ', ') AS names
+            FROM wr3 WHERE NOT allowed_ok AND cardinality(tbl_privs) > 0) q
+  UNION ALL SELECT 31, 'role', 'relations with column-level INSERT/UPDATE (other than the 4 allowed PUBLIC-granted platform objects)',
+         CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ': ' || coalesce(names, '') || ')' END
+    FROM (SELECT count(*) AS n, array_to_string((array_agg(sch || '.' || name ORDER BY sch, name))[1:20], ', ') AS names
+            FROM wr3 WHERE NOT allowed_ok AND col_any) q
+  UNION ALL SELECT 32, 'role', 'sequences with USAGE/UPDATE (other than the allowed PUBLIC-granted platform sequence)',
+         CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ': ' || coalesce(names, '') || ')' END
+    FROM (SELECT count(*) AS n, array_to_string((array_agg(sch || '.' || name ORDER BY sch, name))[1:20], ', ') AS names
+            FROM wr3 WHERE NOT allowed_ok AND cardinality(seq_privs) > 0) q
   UNION ALL SELECT 33, 'role', 'non-system schemas with CREATE',
          CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ')' END
     FROM (SELECT count(DISTINCT nsp) AS n FROM scope WHERE has_schema_privilege(nsp, 'CREATE')) q
@@ -66,10 +106,13 @@ rows_all AS (
            WHERE p.prosecdef AND s.nspname !~ '^pg_' AND s.nspname <> 'information_schema' AND has_function_privilege(p.oid, 'EXECUTE')) q
   UNION ALL SELECT 36, 'role', 'database CREATE/TEMP (info only)',
          'info create=' || has_database_privilege(current_database(), 'CREATE')::text || ' temp=' || has_database_privilege(current_database(), 'TEMP')::text
+  UNION ALL SELECT 37, 'role', 'allowed PUBLIC-granted platform write privileges present (info: pg_cron / pg_net objects every role has)',
+         'info ' || n::text || ' of 4' || CASE WHEN n > 0 THEN ': ' || names ELSE '' END
+    FROM (SELECT count(*) AS n, array_to_string(array_agg(sch || '.' || name ORDER BY sch, name), ', ') AS names FROM wr3 WHERE allowed_ok) q
   UNION ALL SELECT 40, 'session', 'transaction_read_only (must be on: the READ ONLY transaction is open)',
          CASE WHEN current_setting('transaction_read_only') = 'on' THEN 'ok' ELSE 'FAIL (' || current_setting('transaction_read_only') || ')' END
-  UNION ALL SELECT 41, 'session', 'default_transaction_read_only (must be on: PGOPTIONS was applied by the server or pooler)',
-         CASE WHEN current_setting('default_transaction_read_only') = 'on' THEN 'ok' ELSE 'FAIL (' || current_setting('default_transaction_read_only') || ')' END)
+  UNION ALL SELECT 41, 'session', 'default_transaction_read_only (info only: a connection pooler may drop startup options; the READ ONLY transaction above is what is enforced)',
+         'info ' || current_setting('default_transaction_read_only'))
 SELECT area, item, status FROM (
   SELECT ord, area, item, status FROM rows_all
   UNION ALL SELECT 90, 'VERDICT', 'schema',

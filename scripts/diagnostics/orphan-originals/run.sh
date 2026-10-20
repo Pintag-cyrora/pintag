@@ -2,7 +2,8 @@
 # run.sh -- READ-ONLY diagnostic for the Image Integrity line "Originals referenced by nothing".
 # stage 0: lint the SQL files; stage 1: preflight (stop unless both verdicts PASS and there is no WARN); stage 2: data
 # diagnostic. Everything runs inside a READ ONLY transaction that psql opens on the command line (the SQL files contain
-# no transaction control), with the server-side default also set to read-only.
+# no transaction control); that transaction is what the server enforces and what the preflight REQUIRES. The server-side
+# default (PGOPTIONS below) is best effort only: a connection pooler drops startup options, so it is reported, not required.
 # The URL comes from $PINTAG_PROD_DB_URL (GitHub Actions) or a hidden prompt / stdin (local). It is never printed or
 # written to a file. Results: preflight.txt and diagnostic.txt next to this script (names and counts only).
 set -euo pipefail
