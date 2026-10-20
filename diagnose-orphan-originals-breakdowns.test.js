@@ -172,3 +172,65 @@ print(json.dumps(errors))`;
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /breakdown 'gallery by operation\/date' does not add up/);
 });
+
+// ── failure paths: nothing from the report may leak into stderr (workflow log) or the failure summary ──
+function rawRun(csvText, { health = true } = {}) {
+  const w = fs.mkdtempSync(path.join(os.tmpdir(), 'bd-raw-'));
+  fs.writeFileSync(path.join(w, 'in.csv'), csvText);
+  const hs = SRC.map((x) => `${x},10,10,0,2026-08-07 00:00:00+00,2026-10-20 00:00:00+00`).join('\n');
+  fs.writeFileSync(path.join(w, 'h.csv'), 'source,rows_total,rows_usable,rows_unusable,first_date,last_date\n' + hs + '\n');
+  const r = spawnSync('python3', ['-I', '-B', SUM, '--objects', path.join(w, 'in.csv'), ...(health ? ['--health', path.join(w, 'h.csv')] : []), '--expected', '1',
+    '--out-objects', path.join(w, 'o.csv'), '--out-summary', path.join(w, 's.md')], { encoding: 'utf8' });
+  return { r, md: fs.existsSync(path.join(w, 's.md')) ? fs.readFileSync(path.join(w, 's.md'), 'utf8') : '', csv: fs.existsSync(path.join(w, 'o.csv')) };
+}
+const line = (o) => COLS.map((c) => esc(o[c] ?? '')).join(',');
+
+test('malformed inputs fail safely and leak nothing: garbage category / size / count, short and long rows, invalid UTF-8, empty file', () => {
+  const secret = 'SECRETNAME-leak.jpg';
+  const good = base({ category: 'unclassifiable_no_evidence', name_upload_ts: '' });
+  const cases = {
+    'garbage category': COLS.join(',') + '\n' + line({ ...good, category: secret }) + '\n',
+    'garbage size': COLS.join(',') + '\n' + line({ ...good, size_bytes: secret }) + '\n',
+    'garbage count': COLS.join(',') + '\n' + line({ ...good, evidence_count: secret }) + '\n',
+    'garbage in a hits column': COLS.join(',') + '\n' + line({ ...good, gallery_assignment_hits: secret }) + '\n',
+    'short row': COLS.join(',') + '\n' + `${secret},1\n`,
+    'long row': COLS.join(',') + '\n' + line(good) + `,${secret},${secret}\n`,
+    'empty file': '',
+    'header only': COLS.join(',') + '\n',
+  };
+  for (const [label, text] of Object.entries(cases)) {
+    const { r, md, csv } = rawRun(text);
+    assert.notEqual(r.status, 0, `${label}: must fail`);
+    assert.equal(csv, false, `${label}: no per-object report`);
+    assert.doesNotMatch(r.stderr + r.stdout + md, /SECRETNAME|\.jpg|Traceback/, `${label}: leaked\n${r.stderr}`);
+  }
+  const bad = spawnSync('python3', ['-I', '-B', SUM, '--objects', '/nonexistent/SECRETDIR/in.csv', '--expected', '1'], { encoding: 'utf8', cwd: fs.mkdtempSync(path.join(os.tmpdir(), 'bd-cwd-')) });
+  assert.equal(bad.status, 1);
+  assert.doesNotMatch(bad.stderr, /Traceback|SECRETDIR/);
+  const utf = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bd-u-')), 'in.csv');
+  fs.writeFileSync(utf, Buffer.concat([Buffer.from(COLS.join(',') + '\n'), Buffer.from([0xff, 0xfe, 0x53, 0x45, 0x43, 0x52, 0x45, 0x54, 0x0a])]));
+  const u = spawnSync('python3', ['-I', '-B', SUM, '--objects', utf, '--expected', '1'], { encoding: 'utf8', cwd: path.dirname(utf) });
+  assert.equal(u.status, 1);
+  assert.doesNotMatch(u.stderr, /Traceback|SECRET/);
+  assert.match(u.stderr, /UnicodeDecodeError/);
+});
+
+test('the failure summary lists only generic messages (row numbers, column names, counts)', () => {
+  const secret = 'SECRETNAME-leak.jpg';
+  const { md } = rawRun(COLS.join(',') + '\n' + line({ ...base({ category: secret, name_upload_ts: '' }) }) + '\n');
+  assert.match(md, /RECONCILIATION FAILED/);
+  assert.match(md, /unknown category at row 1/);
+  assert.doesNotMatch(md, /SECRETNAME/);
+});
+
+test('source health Status: OK, EMPTY (0 rows), PARTIAL (n unreadable), UNREADABLE (none usable) are distinguished', () => {
+  const hs = [[SRC[0], 10, 10, 0], [SRC[1], 0, 0, 0], [SRC[2], 10, 7, 3], [SRC[3], 10, 10, 0], [SRC[4], 10, 10, 0]].map((x) => [...x, '2026-08-07']);
+  const ok = summarize(ROWS, { healthRows: hs });
+  assert.equal(ok.r.status, 0, ok.r.stderr);
+  assert.match(ok.md, /\| `gallery_assignments\.photo_paths` \| 10 \| 10 \| 0 \| OK \|/);
+  assert.match(ok.md, /\| `properties_row_snapshots\.row_data->images` \| 0 \| 0 \| 0 \| EMPTY \(0 rows\) \|/);
+  assert.match(ok.md, /\| `import_records\.raw_payload` \| 10 \| 7 \| 3 \| PARTIAL \(3 unreadable\) \|/);
+  const none = summarize(ROWS, { healthRows: hs.map((x, i) => (i === 3 ? [x[0], 10, 0, 10, x[4]] : x)) });
+  assert.equal(none.r.status, 1);
+  assert.match(none.md, /\| `listing_image_snapshots` \| 10 \| 0 \| 10 \| UNREADABLE \(none usable\) \|/);
+});

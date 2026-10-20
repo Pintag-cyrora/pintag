@@ -8,6 +8,7 @@ Exit status 1 when anything does not reconcile: then reconcile-objects.csv is NO
 """
 import argparse
 import csv
+import re
 import sys
 
 COLUMNS = [
@@ -166,7 +167,14 @@ def breakdowns(rows, totals, cutoff_day, errors):
 def read_csv(path):
     with open(path, newline="", encoding="utf-8") as fh:
         rd = csv.DictReader(fh)
-        return rd.fieldnames or [], list(rd)
+        # a short row gives None values, a long one an extra list under key None: both are flagged, never silently repaired
+        out = []
+        for row in rd:
+            ragged = None in row or any(v is None for v in row.values())
+            clean = {k: (v if v is not None else "") for k, v in row.items() if k is not None}
+            clean["__ragged__"] = ragged
+            out.append(clean)
+        return rd.fieldnames or [], out
 
 
 def main(argv):
@@ -189,12 +197,18 @@ def main(argv):
     for idx, r in enumerate(rows, start=1):
         name = r["object_name"]
         who = f"row {idx}"   # errors name the row number, never the object (these messages go to the workflow log)
+        if r.pop("__ragged__", False):
+            errors.append(f"malformed row (wrong number of fields) at {who}")
+            continue
         if name in seen:
             errors.append(f"duplicate object name at {who}")
         seen.add(name)
         cat = r["category"]
+        if r["size_bytes"] != "" and not re.fullmatch(r"[0-9]{1,15}", r["size_bytes"]):
+            errors.append(f"malformed size_bytes at {who}")
+            continue
         if cat not in KNOWN:
-            errors.append(f"unknown category {cat!r} for {who}")
+            errors.append(f"unknown category at {who}")
             continue
         if any(r[k] != "f" for k in ("ref_listing", "ref_unit", "ref_agent", "ref_registry")):
             errors.append(f"{who} is marked as currently referenced, so it is not an unreferenced original")
@@ -208,7 +222,7 @@ def main(argv):
         if ev != hist + (1 if dup else 0) or ev != len([s for s in r["matched_sources"].split(",") if s]):
             errors.append(f"evidence_count does not match the matched sources for {who}")
         if (ev >= 2) != (cat == "multiple_evidence"):
-            errors.append(f"category {cat!r} contradicts evidence_count {ev} for {who}")
+            errors.append(f"category contradicts evidence_count at {who}")
         t = totals[cat]
         t[0] += 1
         if r["size_bytes"] == "":
@@ -226,6 +240,8 @@ def main(argv):
     if a.health:
         try:
             _, health = read_csv(a.health)
+            if any(h.pop("__ragged__", False) for h in health):
+                raise ValueError("ragged source-health row")
             got = {h["source"]: h for h in health}
             cutoff_day = (got.get("listing_image_snapshots") or {}).get("first_date", "")[:10]
             if set(got) != set(SOURCES):
@@ -233,7 +249,7 @@ def main(argv):
             health_lines = ["", "### How much history could be read", "", "| Source | Rows | Readable | Unreadable | Status | First | Last |", "|---|---:|---:|---:|---|---|---|"]
             for h in health:
                 total, usable = int(h["rows_total"]), int(h["rows_usable"])
-                status = "OK" if total == usable else ("UNREADABLE (none usable)" if usable == 0 else f"PARTIAL ({total - usable} unreadable)")
+                status = "EMPTY (0 rows)" if total == 0 else "OK" if total == usable else ("UNREADABLE (none usable)" if usable == 0 else f"PARTIAL ({total - usable} unreadable)")
                 health_lines.append(f"| `{h['source']}` | {h['rows_total']} | {h['rows_usable']} | {h['rows_unusable']} | {status} | {h['first_date'][:10]} | {h['last_date'][:10]} |")
                 if total > 0 and usable == 0:   # a whole source that cannot be searched would make "no evidence" meaningless
                     errors.append(f"history source {h['source']} has {total} rows and none is readable: the no-evidence categories would be misleading")
@@ -241,7 +257,7 @@ def main(argv):
                     warnings.append(f"WARNING: {total - usable} of {total} `{h['source']}` rows hold no readable path and could match nothing.")
             health_lines += [""] + [f"- {w}" for w in warnings] + ["", "Unreadable rows hold no usable path string (null, scalar or empty), so they could match nothing."]
         except (OSError, KeyError, ValueError, csv.Error) as e:
-            errors.append(f"source-health file unreadable: {e}")
+            errors.append(f"source-health file unreadable or malformed ({type(e).__name__})")
     else:
         errors.append("no source-health file: history coverage is unknown")
 
@@ -280,5 +296,22 @@ def main(argv):
     return 1 if errors else 0
 
 
+def safe_main(argv):
+    """Never let an unexpected failure print a traceback: its text could carry a row's content into the workflow log."""
+    try:
+        return main(argv)
+    except Exception as e:   # noqa: BLE001 - deliberate catch-all, reports the exception TYPE only
+        print(f"RECONCILIATION ERROR: unexpected {type(e).__name__} while summarising (details withheld: they could contain report data)", file=sys.stderr)
+        try:
+            a = argparse.ArgumentParser()
+            a.add_argument("--out-summary", default="reconcile-summary.md")
+            args, _ = a.parse_known_args(argv)
+            with open(args.out_summary, "w", encoding="utf-8") as fh:
+                fh.write(f"## Reconciliation of the unreferenced originals (read-only)\n\n**RECONCILIATION FAILED - do not rely on these numbers:**\n\n- unexpected {type(e).__name__} while summarising\n")
+        except OSError:
+            pass
+        return 1
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(safe_main(sys.argv[1:]))

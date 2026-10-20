@@ -332,7 +332,7 @@ test('summarize.py: names with commas, quotes and newlines survive the round tri
 
 for (const [label, rowsFn, extra, msg] of [
   ['a count different from the stage-2 total', () => [mk()], { expected: 551 }, /lists 1 objects but the stage-2 diagnostic counted 551/],
-  ['an unknown category', () => [mk({ category: 'safe_to_delete' })], {}, /unknown category 'safe_to_delete'/],
+  ['an unknown category', () => [mk({ category: 'safe_to_delete' })], {}, /unknown category at row 1/],
   ['a duplicate object row', () => [mk(), mk()], {}, /duplicate object name at row 2/],
   ['an object marked as currently referenced', () => [mk({ ref_unit: 't' })], {}, /marked as currently referenced/],
   ['multiple_evidence with fewer than two sources', () => [mk({ category: 'multiple_evidence' })], {}, /contradicts evidence_count/],
