@@ -1,0 +1,74 @@
+name: Diagnose orphan originals (read-only)
+
+# MANUAL, READ-ONLY diagnostic for the Image Integrity Check line "Originals referenced by nothing".
+# It answers: what are those objects (naming pattern, upload month, are they only in the no-FK provenance tables,
+# which listings, ...) -- see scripts/diagnostics/orphan-originals/.
+#
+# SAFETY, in order of importance:
+#   * workflow_dispatch ONLY -- no push / pull_request / schedule trigger, so it can never run by itself.
+#   * Same protected `production-backup` environment and the same read-only DB secret the weekly Image Integrity
+#     Check already uses -- no new secret, no new credential. The secret is exposed to ONE step only.
+#   * `contents: read`. The workflow cannot write to the repository, and it publishes nothing but a job summary
+#     and annotations containing table/column names, counts and a few storage object names (no URLs, no secrets).
+#   * run.sh lints both SQL files (each must be exactly one plain SELECT/WITH; no write/transaction/session
+#     keywords), runs a catalog-only PREFLIGHT first (schema, role privileges, RLS, session read-only), STOPS unless
+#     it is clean (both verdicts PASS and no WARN), and only then runs the data SELECT. Every statement runs inside
+#     `BEGIN READ ONLY` ... `ROLLBACK`, with default_transaction_read_only=on also required of the session.
+#   * It reads data; it changes nothing. Delete this workflow once the investigation is done.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-orphan-originals
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: production-backup
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify DB URL secret is present
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL (read-only connection) in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Run read-only diagnostic (lint, preflight, then data SELECT)
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+        run: bash scripts/diagnostics/orphan-originals/run.sh
+
+      - name: Publish results (names and counts only)
+        if: always()
+        working-directory: scripts/diagnostics/orphan-originals
+        run: |
+          emit() {   # $1 = annotation title, $2 = file, $3 = optional grep -v filter
+            [ -f "$2" ] || return 0
+            local msg
+            msg="$(grep -v -e "${3:-^\$}" "$2" | head -c 3500)"
+            msg="${msg//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
+            echo "::notice title=${1}::${msg}"
+          }
+          {
+            echo "## Orphan originals diagnostic (read-only)"
+            echo
+            if [ -f preflight.txt ]; then echo "### Stage 1: preflight"; echo '```'; cat preflight.txt; echo '```'; else echo "Preflight did not produce output."; fi
+            if [ -f diagnostic.txt ]; then echo "### Stage 2: data diagnostic"; echo '```'; cat diagnostic.txt; echo '```'; else echo "**The data diagnostic was NOT run.**"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          emit "Preflight (rows that are not ok)" preflight.txt ' | ok$'
+          emit "Data diagnostic" diagnostic.txt

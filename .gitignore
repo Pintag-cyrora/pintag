@@ -9,3 +9,7 @@ tests/*/test-results/
 
 # Python bytecode (scripts/*.py are imported by tests)
 __pycache__/
+
+# Diagnostic result files (scripts/diagnostics/orphan-originals/run.sh writes these next to itself)
+scripts/diagnostics/orphan-originals/preflight.txt
+scripts/diagnostics/orphan-originals/diagnostic.txt
