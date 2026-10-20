@@ -5,11 +5,14 @@
 # no transaction control); that transaction is what the server enforces and what the preflight REQUIRES. The server-side
 # default (PGOPTIONS below) is best effort only: a connection pooler drops startup options, so it is reported, not required.
 # The URL comes from $PINTAG_PROD_DB_URL (GitHub Actions) or a hidden prompt / stdin (local). It is never printed or
-# written to a file. Results: preflight.txt and diagnostic.txt next to this script (names and counts only).
+# written to a file. Results next to this script: preflight.txt and diagnostic.txt (names and counts only) and, when the
+# reconcile-schema verdict passed, stage 3: reconcile.csv (per object, names/sizes/dates/ids only), source-health.csv and the
+# validated reconcile-objects.csv + reconcile-summary.md written by summarize.py. Nothing is ever written to the database.
 set -euo pipefail
 cd "$(dirname "$0")"
 command -v psql >/dev/null || { echo "psql not found - install it first (brew install libpq)"; exit 1; }
 command -v perl >/dev/null || { echo "perl not found"; exit 1; }
+command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
 
 # The checks below end in `grep -q` / `head -c`, which exit early. Under `set -o pipefail` the writer on the left then dies
 # with SIGPIPE and a SUCCESSFUL match looks like a failure (valid files rejected at random; a rejection could even be
@@ -35,7 +38,9 @@ lint_checks() {   # refuse to run any file that is not exactly one plain read-on
 }
 lint 1-preflight.sql
 lint 2-diagnostic.sql
-rm -f preflight.txt diagnostic.txt   # never leave results from an earlier run lying around
+lint 3-reconcile.sql
+lint 4-source-health.sql
+rm -f preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md   # never leave results from an earlier run lying around
 
 if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
   read -rsp "Paste PINTAG_PROD_DB_URL (hidden), then press Enter: " PINTAG_PROD_DB_URL || true; echo
@@ -52,7 +57,7 @@ run() {   # $1 = file, $2... = extra psql display options
 
 echo; echo "=== stage 1: preflight (catalog only) ==="
 run 1-preflight.sql -A -t -F ' | ' | tee preflight.txt
-if [ "$(grep -c '^VERDICT | .* | PASS$' preflight.txt)" != 2 ]; then
+if ! grep -qx 'VERDICT | schema | PASS' preflight.txt || ! grep -qx 'VERDICT | role+session | PASS' preflight.txt; then
   echo; echo "PREFLIGHT DID NOT PASS - stopping. The data diagnostic was NOT run."
   echo "See preflight.txt / the job summary (it contains only table/column names and counts)."
   exit 1
@@ -67,5 +72,19 @@ fi
 
 echo; echo "=== stage 2: data diagnostic (read-only) ==="
 run 2-diagnostic.sql | tee diagnostic.txt
-echo; echo "Done. diagnostic.txt holds aggregate counts and a few storage object names."
 echo "The preflight had no FAIL and no WARN, so section 1 can be compared with the 551 in the report."
+
+# stage 3 needs its own verdict: the history tables/columns it reads exist, are readable and are not hidden by RLS
+if ! grep -qx 'VERDICT | reconcile-schema | PASS' preflight.txt; then
+  echo; echo "RECONCILE-SCHEMA VERDICT DID NOT PASS - the reconciliation (stage 3) was NOT run. See the reconcile-schema lines in preflight.txt."
+  exit 1
+fi
+expected="$(awk -F' [|] ' '/ 1 TOTAL/ { print $NF; exit }' diagnostic.txt | tr -d ' ')"
+case "$expected" in ''|*[!0-9]*) echo "Could not read the stage-2 object total - stage 3 NOT run."; exit 1;; esac
+
+echo; echo "=== stage 3: reconciliation of the $expected objects (read-only) ==="
+run 3-reconcile.sql --csv > reconcile.csv
+run 4-source-health.sql --csv > source-health.csv
+python3 summarize.py --objects reconcile.csv --health source-health.csv --expected "$expected"
+cat reconcile-summary.md
+echo; echo "Done. diagnostic.txt holds aggregate counts; reconcile-objects.csv holds the per-object report."

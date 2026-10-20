@@ -53,8 +53,11 @@ CREATE TABLE public.properties (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), i
 CREATE TABLE public.unit_types (images text[]);
 CREATE TABLE public.parties (photo_url text);
 CREATE TABLE public.property_images (storage_path text, status text, sha256 text);
-CREATE TABLE public.listing_image_snapshots (listing_id uuid, storage_path text);
-CREATE TABLE public.import_images (storage_path text);
+CREATE TABLE public.listing_image_snapshots (id uuid, listing_id uuid, storage_url text, storage_path text, created_at timestamptz);
+CREATE TABLE public.import_images (id uuid, import_id uuid, listing_id uuid, storage_url text, storage_path text, uploaded_at timestamptz);
+CREATE TABLE public.gallery_assignments (id uuid, op text, listing_id uuid, photo_paths jsonb, created_at timestamptz);
+CREATE TABLE public.properties_row_snapshots (id uuid, property_id uuid, op text, row_data jsonb, created_at timestamptz);
+CREATE TABLE public.import_records (id uuid, listing_id uuid, raw_payload jsonb, imported_at timestamptz);
 -- the four platform objects, granted to PUBLIC the way pg_cron / pg_net do it
 CREATE TABLE cron.job_run_details (runid bigserial PRIMARY KEY, command text);
 CREATE TABLE net._http_response (id bigint, status int);
@@ -202,4 +205,34 @@ test('the other gates are unchanged: superuser, membership, RLS without bypass, 
 
   const schema = scenario('ALTER TABLE public.import_images DROP COLUMN storage_path;');
   assert.equal(schema.verdict('schema'), 'FAIL');
+});
+
+// ── Part C: the reconcile-schema verdict (stage 3 only). Its own verdict; it never changes the other two. ──
+test('reconcile-schema: baseline PASS; the existing two verdicts are unchanged', opts, () => {
+  const s = scenario();
+  assert.equal(s.verdict('reconcile-schema'), 'PASS');
+  assert.equal(s.verdict('schema'), 'PASS');
+  assert.equal(s.verdict('role+session'), 'PASS');
+});
+
+for (const [name, sql, want] of [
+  ['a missing history table', 'DROP TABLE public.import_records;', /MISSING/],
+  ['a missing history column', 'ALTER TABLE public.gallery_assignments DROP COLUMN photo_paths;', /MISSING/],
+  ['a history column of the wrong type (photo_paths text)', 'ALTER TABLE public.gallery_assignments ALTER COLUMN photo_paths TYPE text;', /WRONG_TYPE/],
+  ['a history table the role cannot read', 'REVOKE SELECT ON public.properties_row_snapshots FROM backup_ro;', /NO_SELECT/],
+]) {
+  test(`reconcile-schema FAILS on ${name} -- and only that verdict (stage 2 stays runnable)`, opts, () => {
+    const s = scenario(sql);
+    assert.equal(s.verdict('reconcile-schema'), 'FAIL');
+    assert.equal(s.verdict('schema'), 'PASS');
+    assert.equal(s.verdict('role+session'), 'PASS');
+    assert.ok(s.rows.some((r) => r.area === 'reconcile-schema' && want.test(r.status)));
+  });
+}
+
+test('reconcile-schema: row-level security hiding a history table from the role FAILS that verdict only', opts, () => {
+  const s = scenario('ALTER TABLE public.import_records ENABLE ROW LEVEL SECURITY;', { user: 'rls_ro' });
+  assert.match(s.get('tables read only by the reconciliation with row-level security'), /^FAIL \(1: public\.import_records\)$/);
+  assert.equal(s.verdict('reconcile-schema'), 'FAIL');
+  assert.equal(s.verdict('schema'), 'PASS');
 });

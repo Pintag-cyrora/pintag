@@ -22,26 +22,36 @@ const SRC = path.join(ROOT, 'scripts', 'diagnostics', 'orphan-originals');
 const WORKFLOW = path.join(ROOT, '.github', 'workflows', 'diagnose-orphan-originals.yml');
 const SECRET = 'postgres://backup_ro:S3cr3tPassw0rd@db.example.invalid:5432/postgres';
 
-const PASS2 = 'schema | public.properties.id | ok\nVERDICT | schema | PASS\nVERDICT | role+session | PASS\n';
-const DIAG = ' 1 TOTAL | 4000 bytes | 551\n';
+const PASS2 = 'schema | public.properties.id | ok\nVERDICT | schema | PASS\nVERDICT | role+session | PASS\n';   // stages 1+2 only
+const PASS3 = PASS2 + 'VERDICT | reconcile-schema | PASS\n';
+const DIAG = ' 1 TOTAL | 4000 bytes | 2\n';
+const COLS = fs.readFileSync(path.join(SRC, 'summarize.py'), 'utf8').match(/COLUMNS = \[([\s\S]*?)\n\]/)[1].match(/"([a-z_]+)"/g).map((c) => c.slice(1, -1));
+const objRow = (name) => COLS.map((c) => ({ object_name: name, size_bytes: '10', ref_listing: 'f', ref_unit: 'f', ref_agent: 'f', ref_registry: 'f', evidence_count: '0',
+  gallery_assignment_hits: '0', deleted_snapshot_hits: '0', import_record_hits: '0', listing_snapshot_hits: '0', import_image_hits: '0',
+  duplicate_candidate_count: '0', category: 'no_evidence_uploaded_after_provenance', explanation: 'x' }[c] ?? '')).join(',');
+const RECON = COLS.join(',') + '\n' + objRow('a.jpg') + '\n' + objRow('b.jpg') + '\n';
+const SOURCES = ['gallery_assignments.photo_paths', 'properties_row_snapshots.row_data->images', 'import_records.raw_payload', 'listing_image_snapshots', 'import_images'];
+const HEALTH = 'source,rows_total,rows_usable,rows_unusable,first_date,last_date\n' + SOURCES.map((x) => `${x},3,3,0,2026-01-01,2026-02-01`).join('\n') + '\n';
 
 // Builds a temp copy of the diagnostic folder plus a fake psql, runs run.sh, returns what happened.
-function run({ preflight = PASS2, env = {}, url = SECRET, tamper, replace, stale = false } = {}) {
+function run({ preflight = PASS3, env = {}, url = SECRET, tamper, replace, stale = false, recon = RECON, diag = DIAG } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orphan-diag-'));
   const work = path.join(dir, 'work');
   fs.mkdirSync(work);
-  for (const f of ['1-preflight.sql', '2-diagnostic.sql', 'run.sh']) fs.copyFileSync(path.join(SRC, f), path.join(work, f));
+  for (const f of ['1-preflight.sql', '2-diagnostic.sql', '3-reconcile.sql', '4-source-health.sql', 'summarize.py', 'run.sh']) fs.copyFileSync(path.join(SRC, f), path.join(work, f));
   if (tamper) fs.appendFileSync(path.join(work, tamper.file), tamper.text);
   if (replace) fs.writeFileSync(path.join(work, replace.file), replace.text);
-  if (stale) fs.writeFileSync(path.join(work, 'diagnostic.txt'), 'STALE RESULTS FROM AN EARLIER RUN\n');
+  if (stale) for (const f of ['diagnostic.txt', 'reconcile.csv', 'reconcile-objects.csv', 'reconcile-summary.md', 'source-health.csv']) fs.writeFileSync(path.join(work, f), 'STALE RESULTS FROM AN EARLIER RUN\n');
   fs.mkdirSync(path.join(dir, 'bin'));
   const log = path.join(dir, 'psql.log');
   fs.writeFileSync(path.join(dir, 'preflight.out'), preflight);
-  fs.writeFileSync(path.join(dir, 'diag.out'), DIAG);
+  fs.writeFileSync(path.join(dir, 'diag.out'), diag);
+  fs.writeFileSync(path.join(dir, 'recon.out'), recon);
+  fs.writeFileSync(path.join(dir, 'health.out'), HEALTH);
   fs.writeFileSync(path.join(dir, 'bin', 'psql'), `#!/bin/bash
 # fake psql: log every argument except the connection string (arg 1), then answer from canned files
 { echo "CALL"; shift_args=("\$@"); for a in "\${shift_args[@]:1}"; do echo "ARG:\$a"; done; echo "PGOPTIONS=\${PGOPTIONS:-}"; } >> "${log}"
-case "\$*" in *1-preflight.sql*) cat "${dir}/preflight.out";; *2-diagnostic.sql*) cat "${dir}/diag.out";; esac
+case "\$*" in *1-preflight.sql*) cat "${dir}/preflight.out";; *2-diagnostic.sql*) cat "${dir}/diag.out";; *3-reconcile.sql*) cat "${dir}/recon.out";; *4-source-health.sql*) cat "${dir}/health.out";; esac
 `, { mode: 0o755 });
   const childEnv = { PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, HOME: dir, ...env };
   if (url !== null) childEnv.PINTAG_PROD_DB_URL = url;
@@ -58,8 +68,12 @@ test('clean preflight: lint ok, both stages run, results saved, stale file repla
   assert.match(r.output, /lint ok: 1-preflight\.sql/);
   assert.match(r.output, /lint ok: 2-diagnostic\.sql/);
   assert.match(r.output, /=== stage 2/);
-  assert.equal(r.calls.length, 2);
+  assert.match(r.output, /lint ok: 3-reconcile\.sql/);
+  assert.match(r.output, /lint ok: 4-source-health\.sql/);
+  assert.equal(r.calls.length, 4);
   assert.equal(r.read('diagnostic.txt'), DIAG);                       // fresh, not the stale text
+  assert.match(r.read('reconcile-summary.md'), /2 objects\. Counts reconcile to the stage-2 total \(2\)/);   // fresh too
+  assert.match(r.read('reconcile-objects.csv'), /^object_name,/);
   assert.match(r.read('preflight.txt'), /VERDICT \| schema \| PASS/);
 });
 
@@ -79,9 +93,10 @@ for (const [name, preflight] of [
   ['a FAIL verdict', 'VERDICT | schema | PASS\nVERDICT | role+session | FAIL\n'],
   ['a schema FAIL verdict', 'VERDICT | schema | FAIL\nVERDICT | role+session | PASS\n'],
   ['only one PASS verdict', 'VERDICT | schema | PASS\n'],
+  ['a missing role+session verdict', 'VERDICT | schema | PASS\nVERDICT | reconcile-schema | PASS\n'],
   ['no verdict rows at all', 'schema | public.properties.id | ok\n'],
   ['empty preflight output', ''],
-  ['a WARN row (even with both verdicts PASS)', 'role | rolbypassrls (...) | WARN false: see the row-level-security check below\n' + PASS2],
+  ['a WARN row (even with every verdict PASS)', 'role | rolbypassrls (...) | WARN false: see the row-level-security check below\n' + PASS3],
 ]) {
   test(`stops before the data stage on ${name}; stale diagnostic.txt is removed`, () => {
     const r = run({ preflight, stale: true });
@@ -90,9 +105,37 @@ for (const [name, preflight] of [
     assert.ok(!/=== stage 2/.test(r.output));
     assert.match(r.output, /The data diagnostic was NOT run/);
     assert.ok(!r.has('diagnostic.txt'), 'stale diagnostic.txt must not survive');
+    for (const f of ['reconcile.csv', 'reconcile-objects.csv', 'reconcile-summary.md', 'source-health.csv']) assert.ok(!r.has(f), `stale ${f} must not survive`);
     assert.ok(r.has('preflight.txt'), 'preflight.txt is kept for inspection');
   });
 }
+
+test('reconcile-schema FAIL / missing: stage 2 still runs, stage 3 does not, the job fails visibly, stale reports are removed', () => {
+  for (const preflight of [PASS2 + 'VERDICT | reconcile-schema | FAIL\n', PASS2]) {
+    const r = run({ preflight, stale: true });
+    assert.equal(r.status, 1, r.output);
+    assert.equal(r.calls.length, 2, r.log);
+    assert.match(r.output, /RECONCILE-SCHEMA VERDICT DID NOT PASS/);
+    assert.ok(!/=== stage 3/.test(r.output));
+    assert.ok(r.has('diagnostic.txt'));
+    for (const f of ['reconcile.csv', 'reconcile-objects.csv', 'reconcile-summary.md', 'source-health.csv']) assert.ok(!r.has(f), `${f} must not exist`);
+  }
+});
+
+test('stage 3 refuses to publish when the object count differs from the stage-2 total (job fails, failure is explained)', () => {
+  const r = run({ diag: ' 1 TOTAL | 4000 bytes | 551\n' });
+  assert.equal(r.status, 1, r.output);
+  assert.match(r.read('reconcile-summary.md'), /RECONCILIATION FAILED/);
+  assert.ok(!r.has('reconcile-objects.csv'), 'no per-object report for a failed reconciliation');
+  assert.match(r.output, /lists 2 objects but the stage-2 diagnostic counted 551/);
+});
+
+test('stage 3: an unreadable stage-2 total stops before any reconciliation query', () => {
+  const r = run({ diag: 'nothing useful\n' });
+  assert.equal(r.status, 1);
+  assert.equal(r.calls.length, 2);
+  assert.match(r.output, /Could not read the stage-2 object total/);
+});
 
 test('a missing or empty database URL is refused before psql is ever called', () => {
   for (const url of [null, '']) {
@@ -106,6 +149,8 @@ test('a missing or empty database URL is refused before psql is ever called', ()
 for (const [name, tamper] of [
   ['a trailing DELETE', { file: '2-diagnostic.sql', text: '\nDELETE FROM import_images;\n' }],
   ['a COMMIT after the preflight', { file: '1-preflight.sql', text: '\nCOMMIT;\n' }],
+  ['a trailing UPDATE in the reconciliation', { file: '3-reconcile.sql', text: '\nUPDATE storage.objects SET name = name;\n' }],
+  ['a trailing DELETE in the source-health query', { file: '4-source-health.sql', text: '\nDELETE FROM import_images;\n' }],
   ['a set_config() call', { file: '2-diagnostic.sql', text: "\n-- x\n" + "SELECT set_config('transaction_read_only','off',false);\n" }],
   ['a psql meta-command', { file: '1-preflight.sql', text: '\n\\set x 1\n' }],
 ]) {
@@ -141,7 +186,7 @@ test('lint rejects a meta-command on line 1 of a LARGE file, for the right reaso
 test('the real SQL files pass the lint on every one of 12 consecutive runs (no intermittent rejection)', () => {
   for (let i = 0; i < 12; i++) {
     const r = run();
-    assert.match(r.output, /lint ok: 1-preflight\.sql[\s\S]*lint ok: 2-diagnostic\.sql/, `run ${i}: ${r.output.slice(0, 300)}`);
+    assert.match(r.output, /lint ok: 1-preflight\.sql[\s\S]*lint ok: 2-diagnostic\.sql[\s\S]*lint ok: 3-reconcile\.sql[\s\S]*lint ok: 4-source-health\.sql/, `run ${i}: ${r.output.slice(0, 300)}`);
   }
 });
 
@@ -150,6 +195,7 @@ test('the database URL (password, host) never appears in the script output or th
   assert.ok(!r.output.includes('S3cr3tPassw0rd') && !r.output.includes('db.example.invalid'));
   assert.ok(!r.read('preflight.txt').includes('S3cr3tPassw0rd'));
   assert.ok(!r.read('diagnostic.txt').includes('S3cr3tPassw0rd'));
+  for (const f of ['reconcile.csv', 'reconcile-objects.csv', 'reconcile-summary.md']) assert.ok(!r.read(f).includes('S3cr3tPassw0rd'));
 });
 
 // ── the workflow ────────────────────────────────────────────────────────────
@@ -181,8 +227,26 @@ test('workflow: the DB secret is scoped to individual steps (never the job or wo
   assert.ok(!steps.filter((s) => /Publish results/.test(s)).some((s) => /secrets\./.test(s)));
 });
 
-test('workflow: runs nothing but the lint-gated runner (no other scripts, no git/gh/curl writes, no uploads)', () => {
-  assert.ok(!/\b(git (push|commit|tag)|gh (api|pr|release)|curl|wget|upload-artifact|rclone)\b/.test(code));
+test('workflow: runs nothing but the lint-gated runner (no other scripts, no git/gh/curl writes)', () => {
+  assert.ok(!/\b(git (push|commit|tag)|gh (api|pr|release)|curl|wget|rclone)\b/.test(code));
   assert.ok(!/^\s*psql\b/m.test(code), 'psql is only ever run by the lint-gated runner');
   assert.equal((code.match(/scripts\/diagnostics\/orphan-originals\/run\.sh/g) || []).length, 1);
+});
+
+test('workflow: exactly one artifact upload -- pinned, no secret, only the two validated report files, short retention', () => {
+  const steps = code.split(/^ {6}- /m).slice(1);
+  const uploads = steps.filter((st) => /upload-artifact/.test(st));
+  assert.equal(uploads.length, 1);
+  const u = uploads[0];
+  assert.match(u, /uses: actions\/upload-artifact@[0-9a-f]{40} # v4/);
+  assert.ok(!/secrets\./.test(u) && !/PINTAG_PROD_DB_URL/.test(u));
+  const paths = u.match(/path: \|\n((?: {12}.*\n?)+)/)[1].split('\n').map((l) => l.trim()).filter(Boolean);
+  assert.deepEqual(paths.sort(), ['scripts/diagnostics/orphan-originals/reconcile-objects.csv', 'scripts/diagnostics/orphan-originals/reconcile-summary.md']);
+  assert.match(u, /if-no-files-found: ignore/);
+  assert.match(u, /retention-days: [1-9]\b/);
+  assert.match(u, /if: always\(\) && hashFiles\('scripts\/diagnostics\/orphan-originals\/reconcile-objects\.csv'\) != ''/);   // only after a validated reconciliation
+});
+
+test('workflow: the job summary shows the validated reconcile-summary.md (aggregate counts, no object names)', () => {
+  assert.match(code, /reconcile-summary\.md/);
 });

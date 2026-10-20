@@ -8,11 +8,14 @@ name: Diagnose orphan originals (read-only)
 #   * workflow_dispatch ONLY -- no push / pull_request / schedule trigger, so it can never run by itself.
 #   * Same protected `production-backup` environment and the same read-only DB secret the weekly Image Integrity
 #     Check already uses -- no new secret, no new credential. The secret is exposed to ONE step only.
-#   * `contents: read`. The workflow cannot write to the repository, and it publishes nothing but a job summary
-#     and annotations containing table/column names, counts and a few storage object names (no URLs, no secrets).
+#   * `contents: read`. The workflow cannot write to the repository. It publishes a job summary and annotations (table/column
+#     names, counts, a few storage object names; the reconciliation summary holds counts and sizes per category only), plus ONE
+#     short-lived artifact with the validated per-object report (object names, sizes, dates, record ids -- no URLs, titles,
+#     contacts, payloads or secrets). Nothing is uploaded unless run.sh produced and validated it.
 #   * run.sh lints both SQL files (each must be exactly one plain SELECT/WITH; no write/transaction/session
 #     keywords), runs a catalog-only PREFLIGHT first (schema, role privileges, RLS, session read-only), STOPS unless
-#     it is clean (both verdicts PASS and no WARN), and only then runs the data SELECT. Every statement runs inside
+#     it is clean (both verdicts PASS and no WARN), and only then runs the data SELECTs (stage 2 counts; stage 3, only when the
+#     separate reconcile-schema verdict also passed, reconciles the same objects against the history tables). Every statement runs inside
 #     `BEGIN READ ONLY` ... `ROLLBACK`; the preflight requires transaction_read_only=on. (default_transaction_read_only is
 #     only reported: the Supabase pooler drops startup options. The only write privileges tolerated are the four
 #     pg_cron / pg_net objects Supabase grants to PUBLIC -- see 1-preflight.sql.)
@@ -71,6 +74,20 @@ jobs:
             echo
             if [ -f preflight.txt ]; then echo "### Stage 1: preflight"; echo '```'; cat preflight.txt; echo '```'; else echo "Preflight did not produce output."; fi
             if [ -f diagnostic.txt ]; then echo "### Stage 2: data diagnostic"; echo '```'; cat diagnostic.txt; echo '```'; else echo "**The data diagnostic was NOT run.**"; fi
+            if [ -f reconcile-summary.md ]; then echo; cat reconcile-summary.md; echo; echo "The per-object report is the \`orphan-originals-reconciliation\` artifact of this run."; else echo "**The reconciliation (stage 3) was NOT run.**"; fi
           } >> "$GITHUB_STEP_SUMMARY"
           emit "Preflight (rows that are not ok)" preflight.txt ' | ok$'
           emit "Data diagnostic" diagnostic.txt
+          emit "Reconciliation summary" reconcile-summary.md
+
+      - name: Upload per-object reconciliation report
+        # only when run.sh + summarize.py fully reconciled: reconcile-objects.csv is not written for a failed reconciliation
+        if: always() && hashFiles('scripts/diagnostics/orphan-originals/reconcile-objects.csv') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: orphan-originals-reconciliation
+          path: |
+            scripts/diagnostics/orphan-originals/reconcile-objects.csv
+            scripts/diagnostics/orphan-originals/reconcile-summary.md
+          if-no-files-found: ignore
+          retention-days: 7
