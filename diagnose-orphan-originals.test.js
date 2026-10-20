@@ -30,7 +30,8 @@ const objRow = (name) => COLS.map((c) => ({ object_name: name, size_bytes: '10',
   gallery_assignment_hits: '0', deleted_snapshot_hits: '0', import_record_hits: '0', listing_snapshot_hits: '0', import_image_hits: '0',
   duplicate_candidate_count: '0', category: 'no_evidence_uploaded_after_provenance', explanation: 'x' }[c] ?? '')).join(',');
 const RECON = COLS.join(',') + '\n' + objRow('a.jpg') + '\n' + objRow('b.jpg') + '\n';
-const HEALTH = 'source,rows_total,rows_usable,rows_unusable,first_date,last_date\nimport_images,3,2,1,2026-01-01,2026-02-01\n';
+const SOURCES = ['gallery_assignments.photo_paths', 'properties_row_snapshots.row_data->images', 'import_records.raw_payload', 'listing_image_snapshots', 'import_images'];
+const HEALTH = 'source,rows_total,rows_usable,rows_unusable,first_date,last_date\n' + SOURCES.map((x) => `${x},3,3,0,2026-01-01,2026-02-01`).join('\n') + '\n';
 
 // Builds a temp copy of the diagnostic folder plus a fake psql, runs run.sh, returns what happened.
 function run({ preflight = PASS3, env = {}, url = SECRET, tamper, replace, stale = false, recon = RECON, diag = DIAG } = {}) {
@@ -243,7 +244,7 @@ test('workflow: exactly one artifact upload -- pinned, no secret, only the two v
   assert.deepEqual(paths.sort(), ['scripts/diagnostics/orphan-originals/reconcile-objects.csv', 'scripts/diagnostics/orphan-originals/reconcile-summary.md']);
   assert.match(u, /if-no-files-found: ignore/);
   assert.match(u, /retention-days: [1-9]\b/);
-  assert.match(u, /if: always\(\)/);
+  assert.match(u, /if: always\(\) && hashFiles\('scripts\/diagnostics\/orphan-originals\/reconcile-objects\.csv'\) != ''/);   // only after a validated reconciliation
 });
 
 test('workflow: the job summary shows the validated reconcile-summary.md (aggregate counts, no object names)', () => {

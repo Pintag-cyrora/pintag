@@ -33,6 +33,7 @@ CATEGORIES = [   # (name, flagged, meaning)
     ("unclassifiable_no_evidence", True, "no history and no usable upload time or provenance start: cannot be classified"),
 ]
 KNOWN = {c[0] for c in CATEGORIES}
+SOURCES = ["gallery_assignments.photo_paths", "properties_row_snapshots.row_data->images", "import_records.raw_payload", "listing_image_snapshots", "import_images"]
 HITS = ["gallery_assignment_hits", "deleted_snapshot_hits", "import_record_hits", "listing_snapshot_hits", "import_image_hits"]
 
 
@@ -102,6 +103,27 @@ def main(argv):
     if a.expected is not None and n != a.expected:
         errors.append(f"the reconciliation lists {n} objects but the stage-2 diagnostic counted {a.expected}")
 
+    health_lines, warnings = [], []
+    if a.health:
+        try:
+            _, health = read_csv(a.health)
+            got = {h["source"]: h for h in health}
+            if set(got) != set(SOURCES):
+                errors.append("source-health must list exactly the five history sources; got: " + ", ".join(sorted(got)))
+            health_lines = ["", "### How much history could be read", "", "| Source | Rows | Readable | Unreadable | First | Last |", "|---|---:|---:|---:|---|---|"]
+            for h in health:
+                health_lines.append(f"| `{h['source']}` | {h['rows_total']} | {h['rows_usable']} | {h['rows_unusable']} | {h['first_date'][:10]} | {h['last_date'][:10]} |")
+                total, usable = int(h["rows_total"]), int(h["rows_usable"])
+                if total > 0 and usable == 0:   # a whole source that cannot be searched would make "no evidence" meaningless
+                    errors.append(f"history source {h['source']} has {total} rows and none is readable: the no-evidence categories would be misleading")
+                elif total > usable:
+                    warnings.append(f"WARNING: {total - usable} of {total} `{h['source']}` rows hold no readable path and could match nothing.")
+            health_lines += [""] + [f"- {w}" for w in warnings] + ["", "Unreadable rows hold no usable path string (null, scalar or empty), so they could match nothing."]
+        except (OSError, KeyError, ValueError, csv.Error) as e:
+            errors.append(f"source-health file unreadable: {e}")
+    else:
+        errors.append("no source-health file: history coverage is unknown")
+
     if not errors:   # the downloadable per-object report exists only for a reconciliation that fully checked out
         with open(a.out_objects, "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
@@ -127,16 +149,7 @@ def main(argv):
             "", "No object is deleted or moved by this report. `duplicate_of_live_image_only` is a candidate only (same eTag and size), "
             "never proof that an object is safe to remove."]
 
-    if a.health:
-        try:
-            _, health = read_csv(a.health)
-            out += ["", "### How much history could be read", "", "| Source | Rows | Readable | Unreadable | First | Last |", "|---|---:|---:|---:|---|---|"]
-            for h in health:
-                out.append(f"| `{h['source']}` | {h['rows_total']} | {h['rows_usable']} | {h['rows_unusable']} | {h['first_date'][:10]} | {h['last_date'][:10]} |")
-            out += ["", "Unreadable rows hold no usable path string (null, scalar or empty), so they could match nothing."]
-        except (OSError, KeyError, csv.Error) as e:
-            errors.append(f"source-health file unreadable: {e}")
-            out += ["", f"Source-health file unreadable: {e}"]
+    out += health_lines
     with open(a.out_summary, "w", encoding="utf-8") as fh:
         fh.write("\n".join(out) + "\n")
     for e in errors:

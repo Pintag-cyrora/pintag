@@ -1,4 +1,4 @@
--- 4-source-health.sql -- READ-ONLY. How much of each history source can 3-reconcile.sql actually read? ONE plain SELECT, aggregate
+-- 4-source-health.sql -- READ-ONLY (always returns one row per history source, even an empty one). How much of each history source can 3-reconcile.sql actually read? ONE plain SELECT, aggregate
 -- counts and dates only (no names, no payload text). A row counts as "usable" when it yields at least one non-empty candidate
 -- name by the same rules 3-reconcile.sql uses (JSON read with jsonb_path_query('strict $.**'), string values only; raw_payload
 -- strings must contain /property-images/). Rows that are null, scalar, or contain no usable string are "unusable": they match
@@ -21,6 +21,8 @@ WITH rows_all AS (
   UNION ALL
   SELECT 'import_images', m.uploaded_at, coalesce(m.storage_url, '') <> '' OR coalesce(m.storage_path, '') <> ''
     FROM import_images m)
-SELECT source, count(*) AS rows_total, count(*) FILTER (WHERE usable) AS rows_usable, count(*) FILTER (WHERE NOT usable) AS rows_unusable,
-       min(rec_date) AS first_date, max(rec_date) AS last_date
-  FROM rows_all GROUP BY source ORDER BY source;
+SELECT s.source, count(r.source) AS rows_total, count(r.source) FILTER (WHERE r.usable) AS rows_usable, count(r.source) FILTER (WHERE NOT r.usable) AS rows_unusable,
+       min(r.rec_date) AS first_date, max(r.rec_date) AS last_date
+  FROM (VALUES ('gallery_assignments.photo_paths'), ('properties_row_snapshots.row_data->images'), ('import_records.raw_payload'),
+               ('listing_image_snapshots'), ('import_images')) AS s(source)
+  LEFT JOIN rows_all r ON r.source = s.source GROUP BY s.source ORDER BY s.source;

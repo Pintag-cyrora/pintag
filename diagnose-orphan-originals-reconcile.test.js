@@ -250,6 +250,12 @@ test('the reconciliation leaves every table unchanged (before/after row counts a
   assert.notEqual(w.status, 0); assert.match(w.stderr, /read-only transaction/);
 });
 
+test('4-source-health: an EMPTY history table still yields its row (rows_total 0), so a missing source can only mean a failure', opts, () => {
+  const h = run(makeDb('DELETE FROM import_images; DELETE FROM import_records;'), '4-source-health.sql');
+  assert.equal(h.length, 5);
+  assert.equal(h.find((r) => r.source === 'import_images').rows_total, '0');
+});
+
 test('4-source-health: usable vs unusable rows per history source', opts, () => {
   const h = Object.fromEntries(run(makeDb(), '4-source-health.sql').map((r) => [r.source, r]));
   assert.equal(h['gallery_assignments.photo_paths'].rows_total, '5');
@@ -285,10 +291,12 @@ const esc = (v) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 const mk = (o = {}) => ({ object_name: 'a.jpg', size_bytes: '1000', ref_listing: 'f', ref_unit: 'f', ref_agent: 'f', ref_registry: 'f', evidence_count: '0',
   gallery_assignment_hits: '0', deleted_snapshot_hits: '0', import_record_hits: '0', listing_snapshot_hits: '0', import_image_hits: '0',
   duplicate_candidate_count: '0', matched_sources: '', renditions_present: '', category: 'unclassifiable_no_evidence', explanation: 'x', ...o });
-function summarize(rowObjs, { expected, header = COLS, health = true } = {}) {
+const SRC = ['gallery_assignments.photo_paths', 'properties_row_snapshots.row_data->images', 'import_records.raw_payload', 'listing_image_snapshots', 'import_images'];
+function summarize(rowObjs, { expected, header = COLS, health = true, healthRows } = {}) {
   const w = fs.mkdtempSync(path.join(dir, 'sum-'));
   fs.writeFileSync(path.join(w, 'in.csv'), [header.join(','), ...rowObjs.map((o) => header.map((c) => esc(o[c] ?? '')).join(','))].join('\n') + '\n');
-  fs.writeFileSync(path.join(w, 'h.csv'), 'source,rows_total,rows_usable,rows_unusable,first_date,last_date\nimport_images,3,2,1,2026-01-01 00:00:00+00,2026-02-01 00:00:00+00\n');
+  const hs = healthRows ?? SRC.map((x) => [x, 3, 3, 0]);
+  fs.writeFileSync(path.join(w, 'h.csv'), 'source,rows_total,rows_usable,rows_unusable,first_date,last_date\n' + hs.map(([x, t, u, n]) => `${x},${t},${u},${n},2026-01-01 00:00:00+00,2026-02-01 00:00:00+00`).join('\n') + '\n');
   const r = spawnSync('python3', ['-I', SUM, '--objects', path.join(w, 'in.csv'), ...(health ? ['--health', path.join(w, 'h.csv')] : []),
     ...(expected != null ? ['--expected', String(expected)] : []), '--out-objects', path.join(w, 'o.csv'), '--out-summary', path.join(w, 's.md')], { encoding: 'utf8' });
   return { r, out: fs.existsSync(path.join(w, 'o.csv')) ? fs.readFileSync(path.join(w, 'o.csv'), 'utf8') : '', md: fs.readFileSync(path.join(w, 's.md'), 'utf8') };
@@ -335,3 +343,28 @@ for (const [label, rowsFn, extra, msg] of [
     assert.equal(out, '', 'no per-object report is written for a reconciliation that failed');
   });
 }
+
+test('summarize.py fails closed on history coverage: no health file, a missing source, or a wholly unreadable source -> no per-object report', () => {
+  for (const [label, o, msg] of [
+    ['no health file', { health: false }, /no source-health file/],
+    ['a missing source', { healthRows: SRC.slice(1).map((x) => [x, 3, 3, 0]) }, /exactly the five history sources/],
+    ['a source whose rows are all unreadable', { healthRows: SRC.map((x, i) => [x, 4, i === 2 ? 0 : 4, i === 2 ? 4 : 0]) }, /none is readable/],
+  ]) {
+    const { r, md, out } = summarize([mk()], { expected: 1, ...o });
+    assert.equal(r.status, 1, label);
+    assert.match(r.stderr, msg);
+    assert.match(md, /RECONCILIATION FAILED/);
+    assert.equal(out, '', `${label}: no per-object report`);
+  }
+});
+
+test('summarize.py: partly unreadable history is a visible WARNING in the summary, not a silent success', () => {
+  const { r, md } = summarize([mk()], { expected: 1, healthRows: SRC.map((x, i) => [x, 5, i === 0 ? 3 : 5, i === 0 ? 2 : 0]) });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(md, /WARNING: 2 of 5 `gallery_assignments\.photo_paths` rows hold no readable path/);
+});
+
+test('privacy: the report columns are exactly the approved whitelist (no title/contact/payload/url/operator column)', () => {
+  assert.ok(!COLS.some((c) => /title|phone|email|contact|payload|operator|actor|url|row_data|raw/.test(c)), COLS.join());
+  assert.equal(COLS.length, 37);
+});
