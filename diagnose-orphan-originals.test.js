@@ -26,12 +26,13 @@ const PASS2 = 'schema | public.properties.id | ok\nVERDICT | schema | PASS\nVERD
 const DIAG = ' 1 TOTAL | 4000 bytes | 551\n';
 
 // Builds a temp copy of the diagnostic folder plus a fake psql, runs run.sh, returns what happened.
-function run({ preflight = PASS2, env = {}, url = SECRET, tamper, stale = false } = {}) {
+function run({ preflight = PASS2, env = {}, url = SECRET, tamper, replace, stale = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orphan-diag-'));
   const work = path.join(dir, 'work');
   fs.mkdirSync(work);
   for (const f of ['1-preflight.sql', '2-diagnostic.sql', 'run.sh']) fs.copyFileSync(path.join(SRC, f), path.join(work, f));
   if (tamper) fs.appendFileSync(path.join(work, tamper.file), tamper.text);
+  if (replace) fs.writeFileSync(path.join(work, replace.file), replace.text);
   if (stale) fs.writeFileSync(path.join(work, 'diagnostic.txt'), 'STALE RESULTS FROM AN EARLIER RUN\n');
   fs.mkdirSync(path.join(dir, 'bin'));
   const log = path.join(dir, 'psql.log');
@@ -85,7 +86,7 @@ for (const [name, preflight] of [
   test(`stops before the data stage on ${name}; stale diagnostic.txt is removed`, () => {
     const r = run({ preflight, stale: true });
     assert.equal(r.status, 1, r.output);
-    assert.equal(r.calls.length, 1, 'only the preflight ran');
+    assert.equal(r.calls.length, 1, `only the preflight ran -- script output:\n${r.output}\npsql log:\n${r.log}`);
     assert.ok(!/=== stage 2/.test(r.output));
     assert.match(r.output, /The data diagnostic was NOT run/);
     assert.ok(!r.has('diagnostic.txt'), 'stale diagnostic.txt must not survive');
@@ -115,6 +116,34 @@ for (const [name, tamper] of [
     assert.equal(r.calls.length, 0, 'psql must not be called');
   });
 }
+
+// Regression: the lint's `grep -q` / `head -c` stages used to die with SIGPIPE under `set -o pipefail`, so a VALID file was
+// rejected at random (and always when large) and a rejection could be skipped. The lint now runs with pipefail off.
+const bigSelect = 'SELECT ' + Array.from({ length: 40000 }, (_, i) => `${i} AS a${i}`).join(', ') + ';\n';
+
+test('lint accepts a LARGE valid single-SELECT file every time (no pipefail/SIGPIPE false rejection)', () => {
+  for (let i = 0; i < 4; i++) {
+    const r = run({ replace: { file: '2-diagnostic.sql', text: bigSelect } });
+    assert.equal(r.status, 0, r.output.slice(0, 400));
+    assert.match(r.output, /lint ok: 2-diagnostic\.sql/);
+  }
+});
+
+test('lint rejects a meta-command on line 1 of a LARGE file, for the right reason, every time', () => {
+  for (let i = 0; i < 4; i++) {
+    const r = run({ replace: { file: '2-diagnostic.sql', text: '\\set x 1\n' + bigSelect } });
+    assert.notEqual(r.status, 0);
+    assert.match(r.output, /LINT FAIL 2-diagnostic\.sql: psql meta-command/);
+    assert.equal(r.calls.length, 0);
+  }
+});
+
+test('the real SQL files pass the lint on every one of 12 consecutive runs (no intermittent rejection)', () => {
+  for (let i = 0; i < 12; i++) {
+    const r = run();
+    assert.match(r.output, /lint ok: 1-preflight\.sql[\s\S]*lint ok: 2-diagnostic\.sql/, `run ${i}: ${r.output.slice(0, 300)}`);
+  }
+});
 
 test('the database URL (password, host) never appears in the script output or the saved result files', () => {
   const r = run();

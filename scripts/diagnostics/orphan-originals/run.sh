@@ -10,7 +10,12 @@ cd "$(dirname "$0")"
 command -v psql >/dev/null || { echo "psql not found - install it first (brew install libpq)"; exit 1; }
 command -v perl >/dev/null || { echo "perl not found"; exit 1; }
 
-lint() {   # refuse to run any file that is not exactly one plain read-only SELECT/WITH statement
+# The checks below end in `grep -q` / `head -c`, which exit early. Under `set -o pipefail` the writer on the left then dies
+# with SIGPIPE and a SUCCESSFUL match looks like a failure (valid files rejected at random; a rejection could even be
+# skipped). So the lint runs in a subshell with pipefail OFF, where each pipeline's status is its last command's.
+lint() { ( set +o pipefail; lint_checks "$1" ); }
+
+lint_checks() {   # refuse to run any file that is not exactly one plain read-only SELECT/WITH statement
   local f="$1" clean
   # one pass, left to right: strings, "--" comments and /* */ comments are each consumed whole, so a quote inside a
   # comment or "--" inside a string cannot confuse the stripping
