@@ -47,12 +47,21 @@ if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
 fi
 [ -n "${PINTAG_PROD_DB_URL:-}" ] || { echo "No database URL supplied - nothing was run."; exit 1; }
 export PINTAG_PROD_DB_URL
-trap 'unset PINTAG_PROD_DB_URL' EXIT
+trap 'unset PINTAG_PROD_DB_URL; rm -f reconcile.csv source-health.csv' EXIT   # the raw per-object CSV never outlives the run
 export PGOPTIONS='-c default_transaction_read_only=on'
 
 run() {   # $1 = file, $2... = extra psql display options
   local f="$1"; shift
   psql "$PINTAG_PROD_DB_URL" -X -q -v ON_ERROR_STOP=1 "$@" -c 'BEGIN READ ONLY' -f "$f" -c 'ROLLBACK'
+}
+
+run_data() {   # the data stages: psql error text can quote data, so it is withheld; only a 5-character SQLSTATE is shown
+  local err rc=0; err="$(mktemp)"
+  run "$@" -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never 2>"$err" || rc=$?
+  if [ "$rc" != 0 ]; then
+    echo "psql failed (exit $rc); its error text is withheld because it could contain report data. SQLSTATE: $(grep -Eo '^ERROR: +[0-9A-Z]{5}$' "$err" | head -n 1 | tr -s ' ' || true)" >&2
+  fi
+  rm -f "$err"; return "$rc"
 }
 
 echo; echo "=== stage 1: preflight (catalog only) ==="
@@ -71,7 +80,9 @@ if grep -q ' | WARN' preflight.txt; then
 fi
 
 echo; echo "=== stage 2: data diagnostic (read-only) ==="
-run 2-diagnostic.sql | tee diagnostic.txt
+# stdout goes to the file first and is shown only after success: a failed run must not publish or print partial output
+run_data 2-diagnostic.sql > diagnostic.txt || { rm -f diagnostic.txt; exit 1; }
+cat diagnostic.txt
 echo "The preflight had no FAIL and no WARN, so section 1 can be compared with the 551 in the report."
 
 # stage 3 needs its own verdict: the history tables/columns it reads exist, are readable and are not hidden by RLS
@@ -83,8 +94,8 @@ expected="$(awk -F' [|] ' '/ 1 TOTAL/ { print $NF; exit }' diagnostic.txt | tr -
 case "$expected" in ''|*[!0-9]*) echo "Could not read the stage-2 object total - stage 3 NOT run."; exit 1;; esac
 
 echo; echo "=== stage 3: reconciliation of the $expected objects (read-only) ==="
-run 3-reconcile.sql --csv > reconcile.csv
-run 4-source-health.sql --csv > source-health.csv
+run_data 3-reconcile.sql --csv > reconcile.csv
+run_data 4-source-health.sql --csv > source-health.csv
 python3 summarize.py --objects reconcile.csv --health source-health.csv --expected "$expected"
 cat reconcile-summary.md
 echo; echo "Done. diagnostic.txt holds aggregate counts; reconcile-objects.csv holds the per-object report."

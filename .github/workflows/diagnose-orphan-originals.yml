@@ -9,7 +9,7 @@ name: Diagnose orphan originals (read-only)
 #   * Same protected `production-backup` environment and the same read-only DB secret the weekly Image Integrity
 #     Check already uses -- no new secret, no new credential. The secret is exposed to ONE step only.
 #   * `contents: read`. The workflow cannot write to the repository. It publishes a job summary and annotations (table/column
-#     names, counts, a few storage object names; the reconciliation summary holds counts and sizes per category only), plus ONE
+#     names and counts only: no storage object names, paths or filenames; the reconciliation summary holds counts and sizes per category only), plus ONE
 #     short-lived artifact with the validated per-object report (object names, sizes, dates, record ids -- no URLs, titles,
 #     contacts, payloads or secrets). Nothing is uploaded unless run.sh produced and validated it.
 #   * run.sh lints both SQL files (each must be exactly one plain SELECT/WITH; no write/transaction/session

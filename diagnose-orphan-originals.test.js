@@ -195,7 +195,8 @@ test('the database URL (password, host) never appears in the script output or th
   assert.ok(!r.output.includes('S3cr3tPassw0rd') && !r.output.includes('db.example.invalid'));
   assert.ok(!r.read('preflight.txt').includes('S3cr3tPassw0rd'));
   assert.ok(!r.read('diagnostic.txt').includes('S3cr3tPassw0rd'));
-  for (const f of ['reconcile.csv', 'reconcile-objects.csv', 'reconcile-summary.md']) assert.ok(!r.read(f).includes('S3cr3tPassw0rd'));
+  for (const f of ['reconcile-objects.csv', 'reconcile-summary.md']) assert.ok(!r.read(f).includes('S3cr3tPassw0rd'));
+  assert.ok(!r.has('reconcile.csv'), 'the raw per-object CSV is removed when the run ends');
 });
 
 // ── the workflow ────────────────────────────────────────────────────────────

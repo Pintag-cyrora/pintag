@@ -1,8 +1,8 @@
 -- 2-diagnostic.sql -- READ-ONLY data diagnostic for "Originals referenced by nothing". ONE plain SELECT: no
 -- transaction control, no SET/RESET, no procedural code, no temp tables, no writes. Run it only after 1-preflight.sql
 -- passed, inside a READ ONLY transaction opened by the psql command line (not by this file).
--- Output = aggregate counts, a byte total and, in section 7 only, up to 2 storage object NAMES per naming pattern
--- (no URLs, credentials, titles or user data).
+-- Output = aggregate counts and a byte total ONLY: no object name, path or original filename is ever selected (the former
+-- section 7 sample names were removed; per-object detail belongs in the validated reconciliation report).
 --
 -- Orphan selection == scripts/image-integrity.py + image_integrity_lib.py classify() "orphan_original":
 --   bucket property-images, not under renditions/, no property_images row (ANY status), and the name is not
@@ -73,7 +73,4 @@ SELECT section, label, n FROM (
          LEFT JOIN properties p ON p.id::text = s.listing_id::text GROUP BY 3
   UNION ALL SELECT 6, '6 names with characters that could hide an encoding mismatch (space % ( ) + non-ascii)', '', count(*)
          FROM orph WHERE name ~ '[ %()+]' OR name ~ '[^\x01-\x7f]'
-  UNION ALL SELECT 7, '7 sample object names (2 oldest per pattern)',
-         pattern || ' | ' || name || ' | ' || coalesce(to_char(created_at, 'YYYY-MM-DD'), 'unknown'), 1
-         FROM (SELECT *, row_number() OVER (PARTITION BY pattern ORDER BY created_at NULLS LAST, name) rn FROM orph) x WHERE rn <= 2
 ) t ORDER BY s, label;
