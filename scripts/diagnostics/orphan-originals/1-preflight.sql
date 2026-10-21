@@ -9,7 +9,8 @@
 -- Part C (area 'reconcile-schema') checks the extra tables/columns only 3-reconcile.sql / 4-source-health.sql need (the recovery
 -- and import history tables). It has its OWN verdict, so a missing history column never hides the stage-2 diagnostic, and it
 -- never loosens Parts A/B: those verdicts are computed exactly as before.
--- Part D (area 'gallery-schema') checks the two extra gallery_assignments columns only 5-gallery-listing-state.sql reads, with its OWN
+-- Part D (area 'gallery-schema') checks the extra columns only 5-gallery-listing-state.sql reads (gallery_assignments.cluster_id/confidence and
+-- properties.deleted_at as a timestamptz, so a listing is never called active when its deletion state is unknown), with its OWN
 -- verdict (the other verdicts are computed exactly as before).
 -- Output: "area | item | status" rows; the last four rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
 WITH need(sch, tbl, col, typ) AS (VALUES
@@ -51,6 +52,7 @@ need3(sch, tbl, col, typ) AS (VALUES   -- stage 3 only (reconciliation); judged 
 need5(sch, tbl, col, typ) AS (VALUES   -- gallery listing-state stage only; judged by the separate 'gallery-schema' verdict
     ('public',   'gallery_assignments',    'cluster_id',   NULL::text),
     ('public',   'gallery_assignments',    'confidence',   NULL),
+    ('public',   'properties',             'deleted_at',   'timestamp with time zone'),   -- required: an unknown deletion state must never read as "active"
     ('public',   'properties',             'id',           NULL),
     ('public',   'properties',             'images',       'jsonb')),
 have AS (

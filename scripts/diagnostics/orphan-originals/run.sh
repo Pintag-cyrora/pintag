@@ -43,7 +43,7 @@ lint 2-diagnostic.sql
 lint 3-reconcile.sql
 lint 4-source-health.sql
 lint 5-gallery-listing-state.sql
-rm -f preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md gallery-state.csv gallery-listing-detail.csv gallery-listing-summary.md   # never leave results from an earlier run lying around
+rm -f gallery-listing-detail.csv.tmp preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md gallery-state.csv gallery-listing-detail.csv gallery-listing-summary.md   # never leave results from an earlier run lying around
 
 if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
   read -rsp "Paste PINTAG_PROD_DB_URL (hidden), then press Enter: " PINTAG_PROD_DB_URL || true; echo
@@ -108,7 +108,8 @@ if [ "$MODE" = gallery ]; then
   fi
   echo; echo "=== stage 5: Gallery Recovery records vs current listing galleries, for the $expected objects (read-only) ==="
   run_data 5-gallery-listing-state.sql --csv > gallery-state.csv
-  python3 summarize_gallery.py --objects gallery-state.csv --expected "$expected"
+  # a failed or crashed summary must leave no detail file behind (the workflow also requires this step to have succeeded)
+  python3 summarize_gallery.py --objects gallery-state.csv --expected "$expected" || { rm -f gallery-listing-detail.csv gallery-listing-detail.csv.tmp; exit 1; }
   cat gallery-listing-summary.md
   echo; echo "Done. gallery-listing-detail.csv is the PRIVATE per-object review file (it is never printed)."
   exit 0

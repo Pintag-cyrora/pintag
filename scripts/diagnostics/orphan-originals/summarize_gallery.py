@@ -164,10 +164,16 @@ def main(argv):
         out = [out[0], "", "**RECONCILIATION FAILED - do not rely on these numbers:**", ""] + [f"- {e}" for e in errors]
         detail = []
     else:
-        with open(a.out_detail, "w", newline="", encoding="utf-8") as fh:
-            w = csv.DictWriter(fh, fieldnames=DETAIL_COLS)
-            w.writeheader()
-            w.writerows(detail)
+        tmp = a.out_detail + ".tmp"   # write aside and rename: a crash can never leave a partial detail file under the real name
+        try:
+            with open(tmp, "w", newline="", encoding="utf-8") as fh:
+                w = csv.DictWriter(fh, fieldnames=DETAIL_COLS)
+                w.writeheader()
+                w.writerows(detail)
+            os.replace(tmp, a.out_detail)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
     with open(a.out_summary, "w", encoding="utf-8") as fh:
         fh.write("\n".join(out) + "\n")
     for e in errors:

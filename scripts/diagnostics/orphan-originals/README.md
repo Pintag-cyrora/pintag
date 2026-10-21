@@ -55,4 +55,6 @@ defined as referenced by no listing) and is checked as a consistency probe: a no
   (objects WITH history only: `object_name`, `latest_op`, `outcome`, `listing_id`, `record_id`, `record_date`, `tied_records`, `tied_listings`,
   `listing_gallery_size`, `listing_changed_after_record`, `confidence`, `recorded_via`, `size_bytes`) and `gallery-listing-summary.md`.
   Download it only on your own computer, keep it outside the repository, and never paste it into chats, tickets or logs.
+* `properties.deleted_at` (timestamptz) is required by the `gallery-schema` verdict: if it is missing or of another type the run stops before the query, so a listing is never called active when its deletion state is unknown.
+* The private artifact is uploaded only if the reconciliation step succeeded AND the detail file exists.
 * Optional input `expected_objects` (e.g. 551): the run stops if stage 2 counts a different number.

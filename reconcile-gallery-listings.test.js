@@ -340,10 +340,11 @@ test('mutation guard: the group sums really are checked (a doctored input cannot
 });
 
 // ── run.sh gallery mode against a fake psql ──
-function runFake({ preflight, diag = ' 1 TOTAL | 4000 bytes | 16\n', env = {}, failOn, stale = false, rows = ROWS } = {}) {
+function runFake({ preflight, diag = ' 1 TOTAL | 4000 bytes | 16\n', env = {}, failOn, stale = false, rows = ROWS, stubSummarizer } = {}) {
   const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'gr-'));
   const work = path.join(dir2, 'work'); fs.mkdirSync(work); fs.mkdirSync(path.join(dir2, 'bin'));
   for (const f of fs.readdirSync(D)) if (fs.statSync(path.join(D, f)).isFile()) fs.copyFileSync(path.join(D, f), path.join(work, f));
+  if (stubSummarizer) fs.writeFileSync(path.join(work, 'summarize_gallery.py'), stubSummarizer);
   if (stale) for (const f of ['gallery-listing-detail.csv', 'gallery-listing-summary.md', 'gallery-state.csv', 'diagnostic.txt']) fs.writeFileSync(path.join(work, f), 'STALE\n');
   fs.writeFileSync(path.join(dir2, 'pre.out'), preflight ?? 'VERDICT | schema | PASS\nVERDICT | role+session | PASS\nVERDICT | reconcile-schema | PASS\nVERDICT | gallery-schema | PASS\n');
   fs.writeFileSync(path.join(dir2, 'diag.out'), diag);
@@ -503,7 +504,7 @@ test('workflow: exactly one artifact -- pinned, no secret, private name, exactly
   assert.match(u, /name: gallery-listing-state-private/);
   const paths = u.match(/path: \|\n((?: {12}.*\n?)+)/)[1].split('\n').map((l) => l.trim()).filter(Boolean).sort();
   assert.deepEqual(paths, ['scripts/diagnostics/orphan-originals/gallery-listing-detail.csv', 'scripts/diagnostics/orphan-originals/gallery-listing-summary.md']);
-  assert.match(u, /if: always\(\) && hashFiles\('scripts\/diagnostics\/orphan-originals\/gallery-listing-detail\.csv'\) != ''/);
+  assert.match(u, /if: always\(\) && steps\.reconcile\.outcome == 'success' && hashFiles\('scripts\/diagnostics\/orphan-originals\/gallery-listing-detail\.csv'\) != ''/);
   assert.match(u, /retention-days: 3\b/);
   assert.match(u, /if-no-files-found: ignore/);
 });
@@ -518,4 +519,77 @@ test('repository hygiene: no detail / summary / raw state file is tracked and ea
   const tracked = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).stdout.split('\n');
   assert.deepEqual(tracked.filter((f) => /(^|\/)(gallery-listing-detail\.csv|gallery-listing-summary\.md|gallery-state\.csv)$/.test(f)), []);
   for (const f of ['some/dir/gallery-listing-detail.csv', 'scripts/diagnostics/orphan-originals/gallery-state.csv']) assert.equal(spawnSync('git', ['check-ignore', '-q', f], { cwd: ROOT }).status, 0, f);
+});
+
+// ── the reconciliation step must have SUCCEEDED for anything to be uploaded ──
+const uploadStep = steps.find((s) => /upload-artifact/.test(s));
+const uploadIf = uploadStep.match(/^ {8}if: (.*)$/m)[1];
+// a minimal evaluator for exactly the three terms the condition may contain (an unknown term throws, so the condition cannot drift unnoticed)
+function evalIf(cond, { outcome, detailExists }) {
+  return cond.split(' && ').every((term) => {
+    if (term === 'always()') return true;
+    const o = term.match(/^steps\.reconcile\.outcome == '([a-z]+)'$/);
+    if (o) return outcome === o[1];
+    if (/^hashFiles\('scripts\/diagnostics\/orphan-originals\/gallery-listing-detail\.csv'\) != ''$/.test(term)) return detailExists;
+    throw new Error(`unexpected term in the upload condition: ${term}`);
+  });
+}
+
+test('workflow: the reconciliation step has the id the upload condition reads, and the condition needs BOTH success and a detail file', () => {
+  const rec = steps.find((s) => /run\.sh gallery/.test(s) && /secrets\.PINTAG_PROD_DB_URL/.test(s));
+  assert.match(rec, /^ {8}id: reconcile$/m);
+  assert.equal(evalIf(uploadIf, { outcome: 'success', detailExists: true }), true);
+  for (const outcome of ['failure', 'cancelled', 'skipped'])
+    assert.equal(evalIf(uploadIf, { outcome, detailExists: true }), false, `a ${outcome} reconciliation step must not upload a (leftover or partial) detail file`);
+  assert.equal(evalIf(uploadIf, { outcome: 'success', detailExists: false }), false);
+  assert.equal(evalIf(uploadIf, { outcome: 'failure', detailExists: false }), false);
+});
+
+test('a failed reconciliation (summary crashes after a partial detail write, with a stale detail file already present) exits non-zero and leaves no detail file', () => {
+  const stub = `import sys\nopen("gallery-listing-detail.csv", "w").write("object_name,listing_id\\nPARTIAL-ROW,")\nsys.exit(1)\n`;
+  const { r, files } = runFake({ stubSummarizer: stub, stale: true });
+  assert.notEqual(r.status, 0, 'the step fails, so steps.reconcile.outcome is not success and the upload is skipped');
+  assert.ok(!('gallery-listing-detail.csv' in files), 'no leftover or partially written detail file survives');
+  assert.ok(!('gallery-listing-detail.csv.tmp' in files));
+});
+
+test('a stale detail file from an earlier run is removed up front, and a run that stops at the preflight leaves none (step fails or no file: nothing to upload)', () => {
+  const pre = runFake({ stale: true, preflight: 'VERDICT | schema | PASS\nVERDICT | role+session | FAIL\n' });
+  assert.equal(pre.r.status, 1);
+  assert.ok(!('gallery-listing-detail.csv' in pre.files));
+});
+
+test('summarize_gallery writes the detail file atomically: a crash while writing leaves nothing under the real name', () => {
+  const src = fs.readFileSync(SUM, 'utf8');
+  assert.match(src, /tmp = a\.out_detail \+ "\.tmp"/);
+  assert.match(src, /os\.replace\(tmp, a\.out_detail\)/);
+  assert.match(src, /finally:\n\s+if os\.path\.exists\(tmp\):\n\s+os\.remove\(tmp\)/);
+});
+
+// ── properties.deleted_at is required: an unknown deletion state must never read as "active" ──
+for (const [label, sql] of [
+  ['missing', 'ALTER TABLE properties DROP COLUMN deleted_at;'],
+  ['of type text', 'ALTER TABLE properties ALTER COLUMN deleted_at TYPE text USING deleted_at::text;'],
+  ['of type timestamp without time zone', 'ALTER TABLE properties ALTER COLUMN deleted_at TYPE timestamp;'],
+]) {
+  test(`run.sh gallery on real Postgres with properties.deleted_at ${label}: the preflight fails, stage 5 never runs, no detail file, exit 1`, opts, () => {
+    const db = makeDb(sql + '\n');
+    const work = fs.mkdtempSync(path.join(dir, 'nodel-'));
+    for (const f of fs.readdirSync(D)) if (fs.statSync(path.join(D, f)).isFile()) fs.copyFileSync(path.join(D, f), path.join(work, f));
+    const r = spawnSync('bash', [path.join(work, 'run.sh'), 'gallery'], { encoding: 'utf8', input: '',
+      env: { PATH: `${PGBIN}${path.delimiter}${process.env.PATH}`, HOME: dir, PINTAG_PROD_DB_URL: `postgresql://gl_ro@/${db}?host=${sock}&port=${port}` } });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /VERDICT \| gallery-schema \| FAIL/);
+    assert.match(r.stdout, /gallery-schema \| public\.properties\.deleted_at \| (MISSING|WRONG_TYPE)/);
+    assert.match(r.stdout + r.stderr, /GALLERY-SCHEMA VERDICT DID NOT PASS/);
+    assert.doesNotMatch(r.stdout, /=== stage 5/);
+    assert.ok(!fs.existsSync(path.join(work, 'gallery-listing-detail.csv')) && !fs.existsSync(path.join(work, 'gallery-state.csv')));
+    assert.doesNotMatch(r.stdout + r.stderr, IDENT);
+  });
+}
+
+test('the query reads properties.deleted_at directly (no to_jsonb fallback that could hide an unknown deletion state)', () => {
+  const sql = fs.readFileSync(path.join(D, '5-gallery-listing-state.sql'), 'utf8').replace(/--.*$/gm, '');
+  assert.match(sql, /WHEN p\.deleted_at IS NOT NULL THEN 'listing_soft_deleted'/);
+  assert.doesNotMatch(sql, /to_jsonb\(p\)->>'deleted_at'/);
 });

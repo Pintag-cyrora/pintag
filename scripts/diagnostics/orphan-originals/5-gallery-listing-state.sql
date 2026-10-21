@@ -19,7 +19,9 @@
 --   listing_soft_deleted (row exists, deleted_at set) | listing_active (row exists, not deleted). photo_in_gallery says whether that
 --   listing's CURRENT properties.images references the object (raw or decoded, the same matching as the population rule), so it can
 --   only be true if the population definition were inconsistent: summarize_gallery.py treats any 't' as an error.
--- Optional columns (properties.deleted_at / updated_at) are read through to_jsonb(): missing -> NULL -> 'listing_active' / 'unknown'.
+-- properties.deleted_at is read DIRECTLY and is required by the preflight's gallery-schema verdict (a timestamptz): if it were missing or of the
+-- wrong type the run stops before this query, so a listing is never classified 'active' because its deletion state was unknown.
+-- properties.updated_at stays optional (read through to_jsonb(); missing -> 'unknown' for the changed-after-record signal only).
 -- Vocabulary is closed: operation, confidence and how-it-was-recorded print only known values, otherwise 'other' / 'n/a' / '(other)'.
 -- No titles, contacts, operators or payload text are selected.
 WITH obj_all AS (
@@ -77,7 +79,7 @@ state AS (
          CASE WHEN l.name IS NULL OR l.tied_variants > 1 THEN NULL
               WHEN l.listing_id IS NULL OR l.listing_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN 'no_usable_listing_id'
               WHEN p.id IS NULL THEN 'listing_missing'
-              WHEN to_jsonb(p)->>'deleted_at' IS NOT NULL THEN 'listing_soft_deleted'
+              WHEN p.deleted_at IS NOT NULL THEN 'listing_soft_deleted'
               ELSE 'listing_active' END AS listing_state,
          (p.id IS NOT NULL AND EXISTS (SELECT 1 FROM live_forms f WHERE f.pid = p.id::text AND f.b = convert_to(o.name, 'UTF8'))) AS photo_in_gallery,
          CASE WHEN p.id IS NULL THEN NULL WHEN jsonb_typeof(p.images) = 'array' THEN jsonb_array_length(p.images) ELSE 0 END AS gallery_size,
