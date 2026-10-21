@@ -17,3 +17,7 @@ scripts/diagnostics/orphan-originals/reconcile.csv
 scripts/diagnostics/orphan-originals/source-health.csv
 scripts/diagnostics/orphan-originals/reconcile-objects.csv
 scripts/diagnostics/orphan-originals/reconcile-summary.md
+# a downloaded reconciliation artifact holds real object names and ids: never commit it, wherever it is saved
+reconcile-objects.csv
+reconcile-summary.md
+orphan-artifact/
