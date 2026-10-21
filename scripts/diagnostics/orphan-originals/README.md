@@ -38,3 +38,21 @@ The script prints **aggregates only** (counts, sizes, dates, ranges): no object 
 It analyzes the gallery-history matches and the eTag+size duplicate candidates, their overlap, evidence strength, the questions the
 report cannot answer, and read-only review steps. It never says anything is safe to delete; do not delete or move storage objects
 based on it. To investigate individual objects, work from the CSV on your own machine and keep identifiers out of tickets, logs and chats.
+
+## Gallery Recovery records vs current listing galleries (`reconcile-gallery-listings.yml`)
+
+A second manual, read-only workflow (`workflow_dispatch` only, same protected `production-backup` environment and read-only secret) runs
+`run.sh gallery`: lint, the same preflight (plus the `gallery-schema` verdict), a stage-2 cross-check, then
+`5-gallery-listing-state.sql` (one SELECT inside `BEGIN READ ONLY ... ROLLBACK`). It does not run stages 3 and 4 again.
+
+For each unreferenced original it takes the LATEST `gallery_assignments` record (records that disagree on listing or operation at the same
+instant make the object `ambiguous`; no listing is picked) and reports whether that record's listing is **missing**, **soft-deleted**, or
+**active with a gallery that no longer references the photo**. "Photo present in the gallery" is zero by construction (the population is
+defined as referenced by no listing) and is checked as a consistency probe: a non-zero value fails the run.
+
+* Job log / summary: aggregate counts, sizes and distinct-listing counts only. No object name, path, listing id or record id.
+* Private artifact `gallery-listing-state-private` (kept **3 days**, only after a fully reconciled run): `gallery-listing-detail.csv`
+  (objects WITH history only: `object_name`, `latest_op`, `outcome`, `listing_id`, `record_id`, `record_date`, `tied_records`, `tied_listings`,
+  `listing_gallery_size`, `listing_changed_after_record`, `confidence`, `recorded_via`, `size_bytes`) and `gallery-listing-summary.md`.
+  Download it only on your own computer, keep it outside the repository, and never paste it into chats, tickets or logs.
+* Optional input `expected_objects` (e.g. 551): the run stops if stage 2 counts a different number.
