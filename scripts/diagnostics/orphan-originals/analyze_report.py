@@ -2,7 +2,8 @@
 """READ-ONLY local analysis of the reconciliation artifact (reconcile-objects.csv, optionally reconcile-summary.md).
 
 Run it on your own computer against the downloaded artifact; see README.md in this folder. It needs only Python 3 and the
-standard library: no database, no credentials, no network. It writes nothing except an optional --out text file.
+standard library: no database, no credentials, no network. It writes nothing except an optional --out text file, which must be a NEW file (never an input, never an existing
+file unless --overwrite, and even then never an input).
 
 It focuses on the two groups that need a decision before any cleanup:
   A. objects named in gallery-recovery history (category history_gallery_assignment_only, plus multiple_evidence rows that
@@ -215,12 +216,31 @@ def analyze(rows):
     return out
 
 
+def out_path_problem(out, inputs, overwrite):
+    """Why --out may not be written, or None. Checked BEFORE any analysis and again at open time (exclusive create)."""
+    for src in inputs:
+        if os.path.realpath(out) == os.path.realpath(src) or (os.path.exists(out) and os.path.exists(src) and os.path.samefile(out, src)):
+            return "--out is the same file as an input (it would overwrite the artifact); choose a new file name"
+    if os.path.lexists(out):
+        if not overwrite:
+            return "--out already exists; refusing to overwrite it (choose a new file name, or pass --overwrite to replace an existing regular file)"
+        if os.path.islink(out) or not os.path.isfile(out):
+            return "--out exists and is not a plain file (symlink or directory); refusing even with --overwrite"
+    return None
+
+
 def main(argv):
     ap = argparse.ArgumentParser(description="Aggregate-only analysis of reconcile-objects.csv (read-only, offline).")
     ap.add_argument("--objects", required=True, help="path to the downloaded reconcile-objects.csv")
     ap.add_argument("--summary", help="optional path to reconcile-summary.md to cross-check category counts")
-    ap.add_argument("--out", help="optional file to write the same text to (default: stdout only)")
+    ap.add_argument("--out", help="optional NEW file to write the same text to (default: stdout only). Never an input file; never an existing file unless --overwrite")
+    ap.add_argument("--overwrite", action="store_true", help="allow --out to replace an existing plain file (still never an input file)")
     a = ap.parse_args(argv)
+    if a.out:
+        problem = out_path_problem(a.out, [p for p in (a.objects, a.summary) if p], a.overwrite)
+        if problem:
+            print("ANALYSIS ERROR:", problem, file=sys.stderr)
+            return 1
     rows, problems = load(a.objects)
     if not problems and a.summary:
         problems += ["CSV and summary disagree - " + p for p in check_summary(rows, a.summary)]
@@ -229,10 +249,10 @@ def main(argv):
             print("ANALYSIS ERROR:", p, file=sys.stderr)
         return 1
     text = "\n".join(analyze(rows)) + "\n"
-    sys.stdout.write(text)
-    if a.out:
-        with open(a.out, "w", encoding="utf-8") as fh:
+    if a.out:   # exclusive create ("x") unless --overwrite: even a race cannot clobber a file that appeared after the check
+        with open(a.out, "w" if a.overwrite else "x", encoding="utf-8") as fh:
             fh.write(text)
+    sys.stdout.write(text)
     return 0
 
 

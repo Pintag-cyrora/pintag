@@ -184,7 +184,7 @@ test('read-only and offline: nothing is written unless --out is given; the sourc
   assert.doesNotMatch(src, /\b(import|from)\s+(socket|ssl|http|urllib|requests|subprocess|psycopg2?|sqlite3|ftplib|smtplib|shutil|boto3)\b/);
   assert.doesNotMatch(src, /os\.(remove|unlink|rename|system|popen|rmdir)|rmtree/);
   assert.equal((src.match(/open\(/g) || []).length, 2);   // reading the summary, and the one write that exists only for --out
-  assert.equal((src.match(/open\([^)]*"w"/g) || []).length, 1);
+  assert.match(src, /open\(a\.out, "w" if a\.overwrite else "x"/);   // exclusive create unless --overwrite
   const before = fs.statSync(path.join(d, 'o.csv')).mtimeMs;
   run(['--objects', path.join(d, 'o.csv')], d);
   assert.equal(fs.statSync(path.join(d, 'o.csv')).mtimeMs, before);
@@ -199,4 +199,83 @@ test('repository hygiene: no real artifact data is tracked, downloaded reports a
   for (const must of ['gh api repos/Pintag-cyrora/pintag/actions/artifacts/12313874351/zip', 'sha256sum', 'shasum -a 256', '26a60cf742f5c8a0a45e16e1db4ffdb8ae10bace691b1f25cffb2895d5605afa',
     'python3 -I -B scripts/diagnostics/orphan-originals/analyze_report.py', '--objects', '--summary', 'outside the repository', '2026-10-28'])
     assert.ok(readme.includes(must), `README mentions ${must}`);
+});
+
+// ── --out safeguards: never an input file, never an existing file by default ──
+const sha = (f) => spawnSync('python3', ['-I', '-B', '-c', 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())', f], { encoding: 'utf8' }).stdout.trim();
+function withSummary() {
+  const counts = Object.fromEntries(KNOWN.map((k) => [k, 0])); for (const r of ROWS) counts[r.category] += 1;
+  const md = Object.entries(counts).map(([k, v]) => `| \`${k}\` | ${v} | 1.0 MB |  |`).join('\n') + `\n| **total** | **${ROWS.length}** | **1 MB** | |\n`;
+  return tmp({ 'o.csv': csv(ROWS), 's.md': md });
+}
+
+test('--out equal to the objects CSV or the summary is refused, and both inputs are byte-for-byte unchanged', () => {
+  const d = withSummary();
+  const before = { o: sha(path.join(d, 'o.csv')), s: sha(path.join(d, 's.md')) };
+  fs.symlinkSync(path.join(d, 'o.csv'), path.join(d, 'link-to-o.csv'));
+  fs.linkSync(path.join(d, 's.md'), path.join(d, 'hardlink-to-s.md'));
+  fs.mkdirSync(path.join(d, 'sub'));
+  for (const out of ['o.csv', 's.md', './o.csv', 'sub/../o.csv', 'link-to-o.csv', 'hardlink-to-s.md', path.join(d, 'o.csv')]) {
+    for (const extra of [[], ['--overwrite']]) {
+      const r = run(['--objects', path.join(d, 'o.csv'), '--summary', path.join(d, 's.md'), '--out', out, ...extra], d);
+      assert.equal(r.status, 1, `${out} ${extra}: ${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /same file as an input/);
+      assert.equal(r.stdout, '', 'nothing is analyzed or printed when the output path is refused');
+    }
+  }
+  assert.equal(sha(path.join(d, 'o.csv')), before.o);
+  assert.equal(sha(path.join(d, 's.md')), before.s);
+});
+
+test('--out refuses an existing file by default (content untouched); a new file is created; --overwrite replaces a plain existing file only', () => {
+  const d = withSummary();
+  fs.writeFileSync(path.join(d, 'precious.txt'), 'DO NOT CLOBBER');
+  const args = ['--objects', path.join(d, 'o.csv'), '--summary', path.join(d, 's.md')];
+  const refused = run([...args, '--out', 'precious.txt'], d);
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /already exists; refusing to overwrite/);
+  assert.equal(refused.stdout, '');
+  assert.equal(fs.readFileSync(path.join(d, 'precious.txt'), 'utf8'), 'DO NOT CLOBBER');
+  const fresh = run([...args, '--out', 'new-analysis.txt'], d);
+  assert.equal(fresh.status, 0, fresh.stderr);
+  assert.equal(fs.readFileSync(path.join(d, 'new-analysis.txt'), 'utf8'), fresh.stdout);
+  const again = run([...args, '--out', 'new-analysis.txt'], d);   // a second run must not silently replace it either
+  assert.equal(again.status, 1);
+  const forced = run([...args, '--out', 'precious.txt', '--overwrite'], d);
+  assert.equal(forced.status, 0, forced.stderr);
+  assert.match(fs.readFileSync(path.join(d, 'precious.txt'), 'utf8'), /== Report ==/);
+});
+
+test('--overwrite never follows a symlink or replaces a directory, and a dangling symlink is not a free name', () => {
+  const d = withSummary();
+  fs.writeFileSync(path.join(d, 'target.txt'), 'TARGET');
+  fs.symlinkSync(path.join(d, 'target.txt'), path.join(d, 'sym.txt'));
+  fs.symlinkSync(path.join(d, 'nowhere'), path.join(d, 'dangling.txt'));
+  fs.mkdirSync(path.join(d, 'adir'));
+  const args = ['--objects', path.join(d, 'o.csv')];
+  for (const out of ['sym.txt', 'adir']) {
+    const r = run([...args, '--out', out, '--overwrite'], d);
+    assert.equal(r.status, 1, out);
+    assert.match(r.stderr, /not a plain file/);
+  }
+  assert.equal(fs.readFileSync(path.join(d, 'target.txt'), 'utf8'), 'TARGET');
+  const dang = run([...args, '--out', 'dangling.txt'], d);
+  assert.equal(dang.status, 1);
+  assert.ok(!fs.existsSync(path.join(d, 'nowhere')), 'nothing was created through the dangling symlink');
+});
+
+test('refused --out paths do not leak identifiers and happen before the input is even read (a bad CSV plus a bad --out reports only the output problem)', () => {
+  const d = tmp({ 'o.csv': 'not,the,report\nSYNTH-SECRET-leak,1,2\n' });
+  const r = run(['--objects', path.join(d, 'o.csv'), '--out', 'o.csv'], d);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /same file as an input/);
+  assert.doesNotMatch(r.stderr + r.stdout, /SYNTH-SECRET/);
+  assert.equal(fs.readFileSync(path.join(d, 'o.csv'), 'utf8'), 'not,the,report\nSYNTH-SECRET-leak,1,2\n');
+});
+
+test('a failed analysis writes no --out file', () => {
+  const d = tmp({ 'o.csv': 'wrong,header\n1,2\n' });
+  const r = run(['--objects', path.join(d, 'o.csv'), '--out', 'result.txt'], d);
+  assert.equal(r.status, 1);
+  assert.ok(!fs.existsSync(path.join(d, 'result.txt')));
 });

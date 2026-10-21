@@ -30,7 +30,9 @@ expires on **2026-10-28**. Treat the CSV as sensitive: keep it **outside the rep
          --summary ~/orphan-artifact/reconcile-summary.md \
          --out ~/orphan-artifact/analysis.txt
 
-   `--summary` cross-checks the category counts against the CSV (the run fails closed if they disagree); `--out` is optional.
+   `--summary` cross-checks the category counts against the CSV (the run fails closed if they disagree). `--out` is optional and must be a
+   **new** file: the script refuses to write over either input file (including via symlinks or hard links) and over any existing file
+   unless you pass `--overwrite` (which still never replaces an input file, a symlink or a directory).
 
 The script prints **aggregates only** (counts, sizes, dates, ranges): no object name, path, record id, listing id or live-object name.
 It analyzes the gallery-history matches and the eTag+size duplicate candidates, their overlap, evidence strength, the questions the
