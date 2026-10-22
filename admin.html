@@ -106,6 +106,7 @@ body{font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-seri
 .form-label .required{color:var(--red);}
 .form-input,.form-select,.form-textarea{padding:10px 13px;border:1px solid var(--border);background:var(--white);font-size:14px;font-weight:300;font-family:'DM Sans','Phetsarath','Noto Sans Lao','Noto Sans SC',sans-serif;color:var(--ink);border-radius:4px;transition:border-color 0.2s;width:100%;}
 .form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--teal);}
+.form-input.field-missing,.form-select.field-missing{border-color:#c0392b;box-shadow:0 0 0 2px rgba(192,57,43,.18);}
 .form-textarea{resize:vertical;min-height:72px;line-height:1.7;}
 /* AI Enrichment found a value but reported low confidence in it — same
    amber-for-review language as flagContactSectionForReview(), scoped to
@@ -4332,6 +4333,8 @@ function resetListingForm() {
 
 async function showForm(id) {
   revealFormPanel(id ? 'Edit Listing' : 'New Listing', id);
+  // Outlines from a previous failed save (revealMissingFields) must not follow the user into the next listing.
+  document.querySelectorAll('.field-missing').forEach(el => el.classList.remove('field-missing'));
   if (!id) resetListingForm();
   // Always reset agent selection UI (both New Listing and Edit)
   document.getElementById('f-agent-search').value = '';
@@ -4729,6 +4732,24 @@ async function saveExtraContacts(propertyId, primaryContactId) {
   }
 }
 
+// After a failed publish validation: unit-type cards are collapsed by default, so the
+// fields named in the error would otherwise be invisible. Open every card that has a
+// missing field, outline the empty inputs (cleared as soon as they are edited) and scroll
+// the first one into view.
+function revealMissingFields(els) {
+  const targets = (els || []).filter(Boolean);
+  document.querySelectorAll('.field-missing').forEach(el => el.classList.remove('field-missing'));
+  targets.forEach(el => {
+    const card = el.closest('.ut-card');
+    if (card) card.classList.add('expanded');
+    el.classList.add('field-missing');
+    el.addEventListener('input', () => el.classList.remove('field-missing'), { once: true });
+  });
+  if (targets.length) {
+    try { targets[0].scrollIntoView({ block: 'center', behavior: 'smooth' }); targets[0].focus({ preventScroll: true }); } catch (_) {}
+  }
+}
+
 // ── SAVE ──────────────────────────────────────────────────────────
 async function saveListing(e) {
   e.preventDefault();
@@ -4792,6 +4813,10 @@ async function saveListing(e) {
       [contactPhone,                                    'Buyer Contact phone'],
     ];
     const missingLabels = requiredChecks.filter(([v]) => !v).map(([, label]) => label);
+    // The inputs behind each message, so a failed save can OPEN the collapsed
+    // unit-type cards and point at the empty fields (see revealMissingFields()).
+    const missingEls = [];
+    if (!contactPhone) missingEls.push(document.getElementById('f-contact-phone'));
     // Unit Types: Name, Bedrooms, Bathrooms are required per card.
     // Price is required too, but only for Available units — an
     // unavailable/sold-out unit isn't part of the calculated Price Range
@@ -4805,15 +4830,17 @@ async function saveListing(e) {
     const isSorForValidation = document.getElementById('f-transaction').value === 'sale_or_rent';
     getUnitTypesFromDom().forEach((ut, i) => {
       const label = 'Unit Type #' + (i + 1) + (ut.name_en ? ' (' + ut.name_en + ')' : '');
-      if (!ut.name_en) missingLabels.push(label + ': Name');
-      if (ut.bedrooms === null) missingLabels.push(label + ': Bedrooms');
-      if (ut.bathrooms === null) missingLabels.push(label + ': Bathrooms');
+      const card = document.querySelectorAll('.ut-card')[i];
+      const need = (text, sel) => { missingLabels.push(label + ': ' + text); if (card) missingEls.push(card.querySelector(sel)); };
+      if (!ut.name_en) need('Name', '.ut-name-en');
+      if (ut.bedrooms === null) need('Bedrooms', '.ut-bedrooms');
+      if (ut.bathrooms === null) need('Bathrooms', '.ut-bathrooms');
       if (ut.is_available) {
         if (isSorForValidation) {
-          if (ut.price_amount == null) missingLabels.push(label + ': Sale Price');
-          if (ut.rent_price_amount == null) missingLabels.push(label + ': Rent Price');
+          if (ut.price_amount == null) need('Sale Price', '.ut-sale-amount');
+          if (ut.rent_price_amount == null) need('Rent Price', '.ut-rent-amount');
         } else if (ut.price_amount == null) {
-          missingLabels.push(label + ': Price');
+          need('Price', '.ut-price-amount');
         }
       }
     });
@@ -4822,8 +4849,12 @@ async function saveListing(e) {
       btn.textContent = 'Save Listing';
       const msg = document.getElementById('form-message');
       msg.className = 'form-message error';
-      msg.textContent = '✗ Required before publishing: ' + missingLabels.join(', ') + '.';
+      msg.textContent = '✗ Required before publishing: ' + missingLabels.join(', ') + '.' +
+        (!contactPhone && _selAgentId
+          ? ' Selecting an agent does not fill the Buyer Contact -- type the phone, or tap "Same as selected agent" in the Buyer Contact section.'
+          : '');
       msg.style.display = 'block';
+      revealMissingFields(missingEls);
       return;
     }
   }
