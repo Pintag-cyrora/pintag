@@ -1635,6 +1635,75 @@ document.addEventListener('keydown', e => {
   if (Date.now() - _lastCompositionEndAt < 60) return;   // IME confirm: block the submit, keep the focus
   _focusNextFormField(e.target);
 });
+// Submit-level guard (does not depend on the keydown being cancellable, which iPhone Safari is not guaranteed to allow).
+// Implicit submission is the engine clicking the Save button on the user's behalf, then submitting: that click has no pointer
+// (detail 0, empty pointerType) and focus is still in a single-line field. "Suspected implicit" means ALL of:
+//   * a Return/Enter key event reached a single-line field of the form in the last 500 ms (_enterEvidenceAt), AND
+//   * focus is in such a field (not on the Save button), AND
+//   * no recent activity on the Save button. Activity = a press or release (pointer/touch/mouse), Enter/Space on the button,
+//     or a pointer-originated click -- refreshed on BOTH press and release so a long press is not mistaken for implicit
+//     submission -- and it is SINGLE-USE: the submit it leads to consumes it, so a Return typed right after a Save attempt
+//     (e.g. one that failed validation) cannot ride on it.
+// Not suspected (never blocked): focus on the Save button itself, a click with no preceding Return press (screen reader /
+// Voice Control / Switch Control activation, scripts), a programmatic call to saveListing() (no event). Where possible the
+// click itself is cancelled (works without SubmitEvent.submitter, which iOS < 15.4 lacks); saveListing() re-checks via the
+// submitter as a second layer.
+let _saveIntentAt = 0;
+const _SAVE_INTENT_MS = 1500;
+function _saveIntentFresh() { return Date.now() - _saveIntentAt < _SAVE_INTENT_MS; }
+// Never fail silently: if a deliberate activation that carried no pointer evidence (e.g. a screen reader's) is ever refused,
+// say so in an aria-live region next to the button, so the person knows nothing was saved and can activate Save again.
+function _noteSaveNotTriggered() {
+  const btn = document.getElementById('submit-btn'); if (!btn) return;
+  let n = document.getElementById('save-guard-note');
+  if (!n) {
+    n = document.createElement('div'); n.id = 'save-guard-note';
+    n.setAttribute('role', 'status'); n.setAttribute('aria-live', 'polite');
+    n.style.cssText = 'font-size:13px;margin-top:8px;';
+    btn.insertAdjacentElement('afterend', n);
+  }
+  n.textContent = 'Nothing was saved. To save, activate the \u201cSave Listing\u201d button.';
+  clearTimeout(n._t); n._t = setTimeout(() => { n.textContent = ''; }, 8000);
+}
+function _clearSaveGuardNote() { const n = document.getElementById('save-guard-note'); if (n) n.textContent = ''; }
+// Positive evidence of the cause: implicit submission is the default action of a Return/Enter key press in a single-line
+// field, so the key event (or the insertLineBreak beforeinput) reaches the page in the same task, just before the engine's
+// synthetic click. A click on Save with NO such evidence -- a screen reader's or Voice Control's "activate", a script -- is a
+// deliberate activation and is never refused. Captured on window in the capture phase, so it is recorded even if a later
+// handler stops propagation or the keydown is not cancellable.
+let _enterEvidenceAt = 0;
+const _ENTER_EVIDENCE_MS = 500;
+function _noteEnterEvidence(e) {
+  if (!_formFieldIsGuarded(e.target)) return;
+  const enter = e.type === 'beforeinput' ? (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph')
+                                         : (e.key === 'Enter' || e.keyCode === 13);
+  if (enter) _enterEvidenceAt = Date.now();
+}
+['keydown', 'keypress', 'beforeinput'].forEach(t => window.addEventListener(t, _noteEnterEvidence, true));
+function _implicitSubmitSuspected() {
+  if (_saveIntentFresh()) return false;
+  const a = document.activeElement;
+  if (a && a.id === 'submit-btn') return false;
+  if (Date.now() - _enterEvidenceAt > _ENTER_EVIDENCE_MS) return false;   // no Return press just happened: not implicit submission
+  return _formFieldIsGuarded(a);
+}
+(function wireSaveIntent() {
+  const btn = document.getElementById('submit-btn');
+  if (!btn) return;
+  const mark = () => { _saveIntentAt = Date.now(); _clearSaveGuardNote(); };
+  ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup'].forEach(t => btn.addEventListener(t, mark, { capture: true, passive: true }));
+  ['keydown', 'keyup'].forEach(t => btn.addEventListener(t, e => { if (e.key === 'Enter' || e.key === ' ' || e.keyCode === 13 || e.keyCode === 32) mark(); }, true));
+  btn.addEventListener('click', e => {
+    if (e.detail > 0 || e.pointerType) { mark(); return; }          // pointer-originated click (touch, mouse, pen, assistive tap)
+    if (_implicitSubmitSuspected()) { e.preventDefault(); _noteSaveNotTriggered(); }   // the engine's own click: cancelling it cancels the submit
+  }, true);
+})();
+function _isUnintendedSubmit(e) {
+  if (!e || !e.submitter || e.submitter.id !== 'submit-btn') return false;
+  if (_implicitSubmitSuspected()) { _noteSaveNotTriggered(); return true; }
+  _saveIntentAt = 0;                                                  // single use: this submit has now consumed the activity
+  return false;
+}
 // "Next" on the iPhone keyboard for the form's single-line fields, including ones added later (unit types, nearby places,
 // extra phone numbers): set when a field gains focus.
 document.addEventListener('focusin', e => {
@@ -4732,6 +4801,10 @@ async function saveExtraContacts(propertyId, primaryContactId) {
 // ── SAVE ──────────────────────────────────────────────────────────
 async function saveListing(e) {
   e.preventDefault();
+  // Second line of defence behind the Return-key guard: a submit that the browser raised itself (implicit submission from a
+  // text field -- the engine fires a synthetic click on the Save button and then submits) is never a Save. See
+  // _isUnintendedSubmit() for exactly what counts, and why genuine taps, clicks and assistive-technology activation pass.
+  if (_isUnintendedSubmit(e)) return;
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
   btn.textContent = 'Saving...';
