@@ -123,38 +123,86 @@ test('history available: global row counts, listings and date ranges of the two 
   assert.deepEqual(h.get('4 '), { '2026-08-01 to 2026-08-20': '2/2' });
 });
 
-test('gallery states vs the latest record: states AFTER it (a window exists), only BEFORE it (cannot be bracketed), none at all', opts, () => {
+test('gallery states vs the latest record: a state AFTER it (the image is then checked against the first one), only BEFORE it (cannot be bounded), none at all', opts, () => {
   const h = history(makeDb());
   assert.deepEqual(h.get('5 assign'), {
-    'at least one state AFTER the latest record (removal window exists)': '3/2',
-    'states exist, none AFTER the latest record (removal cannot be bracketed)': '1/1',
+    'at least one state AFTER the latest record (the image is checked against the FIRST one in section 6)': '3/2',
+    'states exist, none AFTER the latest record (removal cannot be bounded)': '1/1',
     'no gallery state recorded at all': '1/1' });
-  assert.deepEqual(h.get('5 unassign'), { 'at least one state AFTER the latest record (removal window exists)': '1/1', 'no gallery state recorded at all': '1/1' });
+  assert.deepEqual(h.get('5 unassign'), { 'at least one state AFTER the latest record (the image is checked against the FIRST one in section 6)': '1/1', 'no gallery state recorded at all': '1/1' });
 });
 
-test('removal window = latest record to the FIRST later state (an upper bound), with its buckets and date range', opts, () => {
+const ABSENT = 'image ABSENT from the first later state: removal bounded (upper bound = that state)';
+const PRESENT = 'image STILL PRESENT in the first later state; removal not yet bounded';
+
+test('the image is looked up in the FIRST later state: in the base data every later state excludes it, so each is a CONFIRMED bound', opts, () => {
   const h = history(makeDb());
-  assert.deepEqual(h.get('6 assign'), { '2-7 days': '2/1', 'over 30 days': '1/1' });   // listing 1: 5.6 days (2 objects); listing 4: 55 days
-  assert.deepEqual(h.get('6 unassign'), { 'within 1 day': '1/1' });                  // listing 5: 6 hours
-  assert.deepEqual(h.get('7 assign'), { '2026-08-12 to 2026-10-01': '3/2' });
-  assert.deepEqual(h.get('7 unassign'), { '2026-08-08 to 2026-08-08': '1/1' });
-  assert.ok(h.rows.some((r) => /UPPER bound/.test(r.section)), 'the output says the window is an upper bound');
+  assert.deepEqual(h.get('6 assign'), { [ABSENT]: '3/2' });
+  assert.deepEqual(h.get('6 unassign'), { [ABSENT]: '1/1' });
+});
+
+test('confirmed removal window = latest record to the first later state that EXCLUDES the image (an upper bound), with buckets and date range', opts, () => {
+  const h = history(makeDb());
+  assert.deepEqual(h.get('7 assign'), { '2-7 days': '2/1', 'over 30 days': '1/1' });   // listing 1: 5.6 days (2 objects); listing 4: 55 days
+  assert.deepEqual(h.get('7 unassign'), { 'within 1 day': '1/1' });                  // listing 5: 6 hours
+  assert.deepEqual(h.get('8 assign'), { '2026-08-12 to 2026-10-01': '3/2' });
+  assert.deepEqual(h.get('8 unassign'), { '2026-08-08 to 2026-08-08': '1/1' });
+  assert.ok(h.rows.some((r) => /CONFIRMED removal window/.test(r.section) && /UPPER bound/.test(r.section)), 'the output says the window is a confirmed upper bound');
+});
+
+// A later state that STILL CONTAINS the image must never be counted as a removal window.
+const PRESENT_CASE = `
+  INSERT INTO storage.objects VALUES ('property-images', 'SYN-OBJ-10.jpg', now(), '{"size": 1000}');
+  INSERT INTO properties VALUES ('${L(6)}', 'SYN-TITLE-6', ${q(JSON.stringify([IMG('m')]))}::jsonb, NULL);
+  ${ga('assign', 6, ['SYN-OBJ-10.jpg'], '2026-08-09')}
+  ${snap(6, 7, ['m'], '2026-08-15')}
+  INSERT INTO listing_image_snapshots (listing_id, provenance_event_id, storage_path, created_at) VALUES ('${L(6)}', '${E(7)}', 'SYN-OBJ-10.jpg', '2026-08-15');
+  ${snap(6, 8, ['m'], '2026-09-10')}`;   // the FIRST later state (08-15) holds the image; the second (09-10) does not -- the second must not be consulted
+
+test('image STILL PRESENT in the first later state: classified separately, never counted as a bound (even if a still-later state lacks it)', opts, () => {
+  const h = history(makeDb(PRESENT_CASE));
+  assert.deepEqual(h.get('2 '), { assign: '6/5', unassign: '2/2' });
+  assert.deepEqual(h.get('5 assign')['at least one state AFTER the latest record (the image is checked against the FIRST one in section 6)'], '4/3');
+  assert.deepEqual(h.get('6 assign'), { [ABSENT]: '3/2', [PRESENT]: '1/1' });
+  assert.deepEqual(h.get('7 assign'), { '2-7 days': '2/1', 'over 30 days': '1/1' });   // unchanged: the present image adds NO window
+  assert.deepEqual(h.get('8 assign'), { '2026-08-12 to 2026-10-01': '3/2' });          // nor a date to the bounding-state range
+});
+
+test('presence is found however the snapshot stored the name: a full URL with a query string, an empty path, a percent-encoded name', opts, () => {
+  const db = makeDb(`
+    INSERT INTO storage.objects VALUES ('property-images', 'SYN-OBJ-11.jpg', now(), '{}'), ('property-images', 'SYN-OBJ-enc d.jpg', now(), '{}');
+    INSERT INTO properties VALUES ('${L(7)}', 'SYN-TITLE-7', '[]', NULL), ('${L(8)}', 'SYN-TITLE-8', '[]', NULL);
+    ${ga('assign', 7, ['SYN-OBJ-11.jpg'], '2026-08-09')}
+    INSERT INTO listing_image_snapshots (listing_id, provenance_event_id, storage_path, storage_url, created_at) VALUES ('${L(7)}', '${E(9)}', '', ${q(IMG('zz').replace('SYN-IMG-zz', 'SYN-OBJ-11') + '?x=1')}, '2026-08-10');
+    ${ga('assign', 8, ['SYN-OBJ-enc%20d.jpg'], '2026-08-09')}
+    INSERT INTO listing_image_snapshots (listing_id, provenance_event_id, storage_path, storage_url, created_at) VALUES ('${L(8)}', '${E(10)}', NULL, ${q(IMG('zz').replace('SYN-IMG-zz', 'SYN-OBJ-enc%20d'))}, '2026-08-10');`);
+  const h = history(db);
+  assert.deepEqual(h.get('6 assign'), { [ABSENT]: '3/2', [PRESENT]: '2/2' });
+});
+
+test('image absent from the first later state is still ABSENT when other images with similar names are present (no prefix / substring matching)', opts, () => {
+  const db = makeDb(`
+    INSERT INTO storage.objects VALUES ('property-images', 'SYN-OBJ-12.jpg', now(), '{}');
+    INSERT INTO properties VALUES ('${L(7)}', 'SYN-TITLE-7', '[]', NULL);
+    ${ga('assign', 7, ['SYN-OBJ-12.jpg'], '2026-08-09')}
+    INSERT INTO listing_image_snapshots (listing_id, provenance_event_id, storage_path, created_at) VALUES ('${L(7)}', '${E(9)}', 'SYN-OBJ-120.jpg', '2026-08-10'), ('${L(7)}', '${E(9)}', 'XSYN-OBJ-12.jpg', '2026-08-10'), ('${L(7)}', '${E(9)}', 'SYN-OBJ-12.jpg.bak', '2026-08-10');`);
+  assert.deepEqual(history(db).get('6 assign'), { [ABSENT]: '4/3' });
 });
 
 test('first later state vs current gallery image counts, and the listing-level latest snapshot vs current gallery set', opts, () => {
   const h = history(makeDb());
-  assert.deepEqual(h.get('8 assign'), { 'same count': '2/1', 'state larger than the current gallery': '1/1' });
-  assert.deepEqual(h.get('8 unassign'), { 'state larger than the current gallery': '1/1' });
-  assert.deepEqual(h.get('9 assign'), { 'no snapshot': '1/1', 'same image set': '2/2', 'snapshot has images the gallery lacks': '1/1' });
-  assert.deepEqual(h.get('9 unassign'), { 'no snapshot': '1/1', 'snapshot has images the gallery lacks': '1/1' });
+  assert.deepEqual(h.get('9 assign'), { 'same count': '2/1', 'state larger than the current gallery': '1/1' });
+  assert.deepEqual(h.get('9 unassign'), { 'state larger than the current gallery': '1/1' });
+  assert.deepEqual(h.get('10 assign'), { 'no snapshot': '1/1', 'same image set': '2/2', 'snapshot has images the gallery lacks': '1/1' });
+  assert.deepEqual(h.get('10 unassign'), { 'no snapshot': '1/1', 'snapshot has images the gallery lacks': '1/1' });
 });
 
 test('Smart Import after the record, and the empty-gallery / missing-listing blind spots are reported plainly', opts, () => {
   const h = history(makeDb());
-  assert.deepEqual(h.get('10 assign'), { 'at least one (first: 2026-08)': '1/1', none: '4/3' });
-  assert.deepEqual(h.get('10 unassign'), { none: '2/2' });
-  assert.deepEqual(h.get('11 assign'), { 'current gallery has images': '4/3', 'current gallery has no property-images entries': '1/1' });
-  assert.deepEqual(h.get('11 unassign'), { 'current gallery has no property-images entries': '1/1', 'no listing row': '1/1' });
+  assert.deepEqual(h.get('11 assign'), { 'at least one (first: 2026-08)': '1/1', none: '4/3' });
+  assert.deepEqual(h.get('11 unassign'), { none: '2/2' });
+  assert.deepEqual(h.get('12 assign'), { 'current gallery has images': '4/3', 'current gallery has no property-images entries': '1/1' });
+  assert.deepEqual(h.get('12 unassign'), { 'current gallery has no property-images entries': '1/1', 'no listing row': '1/1' });
   assert.ok(h.rows.some((r) => /no snapshot is written when a save empties the gallery/.test(r.section)));
 });
 
@@ -166,7 +214,7 @@ test('percent-encoded names match across history and the current gallery (canoni
     INSERT INTO listing_image_snapshots (listing_id, provenance_event_id, storage_path, created_at) VALUES ('${L(6)}', '${E(6)}', 'SYN-IMG-enc%20e.jpg', '2026-08-10');`);
   const h = history(db);
   assert.deepEqual(h.get('2 '), { assign: '6/5', unassign: '2/2' });
-  assert.equal(h.get('9 assign')['same image set'], '3/3');   // listing 6: the snapshot's encoded name equals the gallery's encoded name
+  assert.equal(h.get('10 assign')['same image set'], '3/3');   // listing 6: the snapshot's encoded name equals the gallery's encoded name
 });
 
 test('READ ONLY guard: outside a READ ONLY transaction every count is zero and the guard row says so; nothing is changed', opts, () => {
