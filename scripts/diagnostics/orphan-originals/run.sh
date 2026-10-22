@@ -10,8 +10,9 @@
 # validated reconcile-objects.csv + reconcile-summary.md written by summarize.py. Nothing is ever written to the database.
 set -euo pipefail
 cd "$(dirname "$0")"
-MODE="${1:-diagnostic}"   # diagnostic = stages 1-4 (the reconciliation report); gallery = stages 1, 2 (cross-check) and 5 (Gallery Recovery vs listing galleries)
-case "$MODE" in diagnostic|gallery) ;; *) echo "usage: run.sh [diagnostic|gallery]"; exit 2;; esac
+MODE="${1:-diagnostic}"   # diagnostic = stages 1-4 (the reconciliation report); gallery = stages 1, 2 (cross-check) and 5 (Gallery Recovery vs listing galleries);
+                          # probe = stages 1 and 6 (aggregate catalog/count probe of properties.updated_at; no object is enumerated)
+case "$MODE" in diagnostic|gallery|probe) ;; *) echo "usage: run.sh [diagnostic|gallery|probe]"; exit 2;; esac
 command -v psql >/dev/null || { echo "psql not found - install it first (brew install libpq)"; exit 1; }
 command -v perl >/dev/null || { echo "perl not found"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
@@ -43,7 +44,8 @@ lint 2-diagnostic.sql
 lint 3-reconcile.sql
 lint 4-source-health.sql
 lint 5-gallery-listing-state.sql
-rm -f gallery-listing-detail.csv.tmp preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md gallery-state.csv gallery-listing-detail.csv gallery-listing-summary.md   # never leave results from an earlier run lying around
+lint 6-properties-updated-at-probe.sql
+rm -f updated-at-probe.txt gallery-listing-detail.csv.tmp preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md gallery-state.csv gallery-listing-detail.csv gallery-listing-summary.md   # never leave results from an earlier run lying around
 
 if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
   read -rsp "Paste PINTAG_PROD_DB_URL (hidden), then press Enter: " PINTAG_PROD_DB_URL || true; echo
@@ -80,6 +82,19 @@ if grep -q ' | WARN' preflight.txt; then
   echo "A WARN means a total could be untrustworthy (for example: the role cannot bypass row-level security)."
   echo "See preflight.txt / the job summary (it contains only table/column names and counts)."
   exit 1
+fi
+
+if [ "$MODE" = probe ]; then
+  # the probe reads gallery_assignments.listing_id / created_at, which the reconcile-schema verdict covers
+  if ! grep -qx 'VERDICT | reconcile-schema | PASS' preflight.txt; then
+    echo; echo "RECONCILE-SCHEMA VERDICT DID NOT PASS - the updated_at probe (stage 6) was NOT run. See the reconcile-schema lines in preflight.txt."
+    exit 1
+  fi
+  echo; echo "=== stage 6: properties.updated_at probe (read-only; counts, dates and catalog facts only) ==="
+  run_data 6-properties-updated-at-probe.sql > updated-at-probe.txt || { rm -f updated-at-probe.txt; exit 1; }
+  cat updated-at-probe.txt
+  echo; echo "Done. updated-at-probe.txt holds aggregates only."
+  exit 0
 fi
 
 echo; echo "=== stage 2: data diagnostic (read-only) ==="

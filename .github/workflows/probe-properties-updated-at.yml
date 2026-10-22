@@ -1,0 +1,73 @@
+name: Probe properties.updated_at (read-only)
+
+# MANUAL, READ-ONLY aggregate probe: can "did the listing change after the Gallery Recovery record?" be answered? The gallery listing-state report
+# said "unknown" for all 107 assign objects. This reports whether properties.updated_at exists, its type/default, whether its update trigger exists,
+# how many rows have a value (earliest/latest date, per-month counts), and for listings with Gallery Recovery records how many changed after their
+# latest record. See scripts/diagnostics/orphan-originals/6-properties-updated-at-probe.sql.
+#
+# SAFETY, in order of importance:
+#   * workflow_dispatch ONLY -- no push / pull_request / schedule trigger, so it can never run by itself.
+#   * Same protected `production-backup` environment and the same read-only DB secret as the other diagnostics -- no new secret or credential.
+#   * `contents: read`. NO artifact is uploaded: the output is catalog facts, counts and dates only (no object name, listing id, record id, title or
+#     payload), shown in the job log and job summary.
+#   * Same run.sh gates: SQL lint (each file exactly one plain SELECT/WITH), catalog-only PREFLIGHT (any FAIL/WARN stops the run), then the single
+#     query inside `BEGIN READ ONLY` ... `ROLLBACK`. Nothing is written to the database, Storage, R2 or backups. No object is enumerated.
+#   * Delete this workflow once the investigation is done.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probe-properties-updated-at
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: production-backup
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify DB URL secret is present
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL (read-only connection) in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Run read-only probe (lint, preflight, then the single aggregate SELECT)
+        id: probe
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+        run: bash scripts/diagnostics/orphan-originals/run.sh probe
+
+      - name: Publish results (counts, dates and catalog facts only)
+        if: always()
+        working-directory: scripts/diagnostics/orphan-originals
+        run: |
+          emit() {   # $1 = annotation title, $2 = file, $3 = optional grep -v filter
+            [ -f "$2" ] || return 0
+            local msg
+            msg="$(grep -v -e "${3:-^\$}" "$2" | head -c 3500)"
+            msg="${msg//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
+            echo "::notice title=${1}::${msg}"
+          }
+          {
+            echo "## properties.updated_at probe (read-only)"
+            echo
+            if [ -f preflight.txt ]; then echo "### Preflight"; echo '```'; cat preflight.txt; echo '```'; else echo "Preflight did not produce output."; fi
+            if [ -f updated-at-probe.txt ]; then echo "### Probe (aggregate)"; echo '```'; cat updated-at-probe.txt; echo '```'; else echo "**The probe (stage 6) was NOT run.**"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          emit "Preflight (rows that are not ok)" preflight.txt ' | ok$'
+          emit "updated_at probe" updated-at-probe.txt

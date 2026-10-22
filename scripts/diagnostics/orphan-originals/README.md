@@ -58,3 +58,11 @@ defined as referenced by no listing) and is checked as a consistency probe: a no
 * `properties.deleted_at` (timestamptz) is required by the `gallery-schema` verdict: if it is missing or of another type the run stops before the query, so a listing is never called active when its deletion state is unknown.
 * The private artifact is uploaded only if the reconciliation step succeeded AND the detail file exists.
 * Optional input `expected_objects` (e.g. 551): the run stops if stage 2 counts a different number.
+
+## `properties.updated_at` probe (`probe-properties-updated-at.yml`)
+
+A third manual, read-only workflow (`workflow_dispatch` only, same protected environment and read-only secret, **no artifact**) runs `run.sh probe`:
+lint, the same preflight, then `6-properties-updated-at-probe.sql` (one SELECT inside `BEGIN READ ONLY ... ROLLBACK`). It prints catalog facts, counts and
+dates only: whether `properties.updated_at` exists (type, default), whether `trg_properties_updated_at` exists and is enabled, how many rows have a value
+(earliest/latest date, per-month counts), and for listings with Gallery Recovery records how many changed after their latest record. No object is
+enumerated and no listing id, record id, title or object name is printed.
