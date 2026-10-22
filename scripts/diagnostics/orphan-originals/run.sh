@@ -10,6 +10,8 @@
 # validated reconcile-objects.csv + reconcile-summary.md written by summarize.py. Nothing is ever written to the database.
 set -euo pipefail
 cd "$(dirname "$0")"
+MODE="${1:-diagnostic}"   # diagnostic = stages 1-4 (the reconciliation report); gallery = stages 1, 2 (cross-check) and 5 (Gallery Recovery vs listing galleries)
+case "$MODE" in diagnostic|gallery) ;; *) echo "usage: run.sh [diagnostic|gallery]"; exit 2;; esac
 command -v psql >/dev/null || { echo "psql not found - install it first (brew install libpq)"; exit 1; }
 command -v perl >/dev/null || { echo "perl not found"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
@@ -40,14 +42,15 @@ lint 1-preflight.sql
 lint 2-diagnostic.sql
 lint 3-reconcile.sql
 lint 4-source-health.sql
-rm -f preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md   # never leave results from an earlier run lying around
+lint 5-gallery-listing-state.sql
+rm -f gallery-listing-detail.csv.tmp preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md gallery-state.csv gallery-listing-detail.csv gallery-listing-summary.md   # never leave results from an earlier run lying around
 
 if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
   read -rsp "Paste PINTAG_PROD_DB_URL (hidden), then press Enter: " PINTAG_PROD_DB_URL || true; echo
 fi
 [ -n "${PINTAG_PROD_DB_URL:-}" ] || { echo "No database URL supplied - nothing was run."; exit 1; }
 export PINTAG_PROD_DB_URL
-trap 'unset PINTAG_PROD_DB_URL; rm -f reconcile.csv source-health.csv' EXIT   # the raw per-object CSV never outlives the run
+trap 'unset PINTAG_PROD_DB_URL; rm -f reconcile.csv source-health.csv gallery-state.csv' EXIT   # the raw per-object CSV never outlives the run
 export PGOPTIONS='-c default_transaction_read_only=on'
 
 run() {   # $1 = file, $2... = extra psql display options
@@ -92,6 +95,25 @@ if ! grep -qx 'VERDICT | reconcile-schema | PASS' preflight.txt; then
 fi
 expected="$(awk -F' [|] ' '/ 1 TOTAL/ { print $NF; exit }' diagnostic.txt | tr -d ' ')"
 case "$expected" in ''|*[!0-9]*) echo "Could not read the stage-2 object total - stage 3 NOT run."; exit 1;; esac
+
+if [ "$MODE" = gallery ]; then
+  # the stage-5 query reads gallery_assignments / properties columns that have their own verdict
+  if ! grep -qx 'VERDICT | gallery-schema | PASS' preflight.txt; then
+    echo; echo "GALLERY-SCHEMA VERDICT DID NOT PASS - the gallery listing-state stage (5) was NOT run. See the gallery-schema lines in preflight.txt."
+    exit 1
+  fi
+  if [ -n "${EXPECTED_OBJECTS:-}" ]; then
+    case "$EXPECTED_OBJECTS" in *[!0-9]*) echo "expected_objects must be a number - stage 5 NOT run."; exit 1;; esac
+    [ "$EXPECTED_OBJECTS" = "$expected" ] || { echo "Stage 2 counted $expected objects but expected_objects is $EXPECTED_OBJECTS - stage 5 NOT run."; exit 1; }
+  fi
+  echo; echo "=== stage 5: Gallery Recovery records vs current listing galleries, for the $expected objects (read-only) ==="
+  run_data 5-gallery-listing-state.sql --csv > gallery-state.csv
+  # a failed or crashed summary must leave no detail file behind (the workflow also requires this step to have succeeded)
+  python3 summarize_gallery.py --objects gallery-state.csv --expected "$expected" || { rm -f gallery-listing-detail.csv gallery-listing-detail.csv.tmp; exit 1; }
+  cat gallery-listing-summary.md
+  echo; echo "Done. gallery-listing-detail.csv is the PRIVATE per-object review file (it is never printed)."
+  exit 0
+fi
 
 echo; echo "=== stage 3: reconciliation of the $expected objects (read-only) ==="
 run_data 3-reconcile.sql --csv > reconcile.csv

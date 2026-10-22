@@ -1,0 +1,97 @@
+name: Reconcile Gallery Recovery records vs listing galleries (read-only)
+
+# MANUAL, READ-ONLY follow-up to "Diagnose orphan originals": for the unreferenced originals that Gallery Recovery history names, did the
+# listing of the latest record disappear (missing / soft-deleted), or is it an active listing whose gallery no longer references the photo?
+# See scripts/diagnostics/orphan-originals/5-gallery-listing-state.sql.
+#
+# SAFETY, in order of importance:
+#   * workflow_dispatch ONLY -- no push / pull_request / schedule trigger, so it can never run by itself.
+#   * Same protected `production-backup` environment and the same read-only DB secret as the other diagnostic -- no new secret, no new
+#     credential. The secret is exposed to ONE runner step plus the presence check.
+#   * `contents: read`. The workflow cannot write to the repository. The job log and job summary hold aggregate counts and sizes only: no
+#     object name, path, listing id or record id (the stage-2 cross-check is aggregate-only too).
+#   * It runs the same run.sh gates as the other diagnostic: SQL lint (each file exactly one plain SELECT/WITH), the catalog-only
+#     PREFLIGHT (schema, gallery-schema, reconcile-schema, role privileges, RLS, session read-only; any FAIL/WARN stops the run), then
+#     every query inside `BEGIN READ ONLY` ... `ROLLBACK`. Nothing is written to the database, Storage, R2 or backups.
+#   * ONE private, short-lived artifact (3 days) holds the per-object review file for objects WITH Gallery Recovery history: object_name,
+#     listing_id, record_id and the classification -- no titles, contacts, operators or payloads. It exists only if the run reconciled to
+#     the stage-2 total and every consistency check passed. Download it on your own computer; never paste it into chats, tickets or logs.
+#   * Delete this workflow once the investigation is done.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_objects:
+        description: 'Optional: the object count you expect (e.g. 551). The run stops if stage 2 counts a different number. Leave empty to skip.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reconcile-gallery-listings
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    environment: production-backup
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify DB URL secret is present
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL (read-only connection) in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Run read-only reconciliation (lint, preflight, stage-2 cross-check, then the gallery listing-state SELECT)
+        id: reconcile
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+          EXPECTED_OBJECTS: ${{ inputs.expected_objects }}
+        run: bash scripts/diagnostics/orphan-originals/run.sh gallery
+
+      - name: Publish results (aggregate counts only)
+        if: always()
+        working-directory: scripts/diagnostics/orphan-originals
+        run: |
+          emit() {   # $1 = annotation title, $2 = file, $3 = optional grep -v filter
+            [ -f "$2" ] || return 0
+            local msg
+            msg="$(grep -v -e "${3:-^\$}" "$2" | head -c 3500)"
+            msg="${msg//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
+            echo "::notice title=${1}::${msg}"
+          }
+          {
+            echo "## Gallery Recovery vs listing galleries (read-only)"
+            echo
+            if [ -f preflight.txt ]; then echo "### Preflight"; echo '```'; cat preflight.txt; echo '```'; else echo "Preflight did not produce output."; fi
+            if [ -f diagnostic.txt ]; then echo "### Stage 2 cross-check (aggregate)"; echo '```'; cat diagnostic.txt; echo '```'; else echo "**The stage-2 cross-check was NOT run.**"; fi
+            if [ -f gallery-listing-summary.md ]; then echo; cat gallery-listing-summary.md; echo; echo "The private per-object review file is the \`gallery-listing-state-private\` artifact of this run (3 days)."; else echo "**The gallery listing-state stage (5) was NOT run.**"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          emit "Preflight (rows that are not ok)" preflight.txt ' | ok$'
+          emit "Gallery listing-state summary" gallery-listing-summary.md
+
+      - name: Upload private per-object review file
+        # only when the reconciliation step SUCCEEDED (run.sh + summarize_gallery.py fully reconciled) AND the detail file exists:
+        # a failed step can never publish a leftover or partially written detail file
+        if: always() && steps.reconcile.outcome == 'success' && hashFiles('scripts/diagnostics/orphan-originals/gallery-listing-detail.csv') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gallery-listing-state-private
+          path: |
+            scripts/diagnostics/orphan-originals/gallery-listing-detail.csv
+            scripts/diagnostics/orphan-originals/gallery-listing-summary.md
+          if-no-files-found: ignore
+          retention-days: 3

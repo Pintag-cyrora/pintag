@@ -49,13 +49,13 @@ function psql(db, user, args, input) {
 const FIXTURE = `
 CREATE SCHEMA storage; CREATE SCHEMA cron; CREATE SCHEMA net;
 CREATE TABLE storage.objects (bucket_id text, name text, created_at timestamptz, metadata jsonb);
-CREATE TABLE public.properties (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), images jsonb);
+CREATE TABLE public.properties (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), images jsonb, deleted_at timestamptz);
 CREATE TABLE public.unit_types (images text[]);
 CREATE TABLE public.parties (photo_url text);
 CREATE TABLE public.property_images (storage_path text, status text, sha256 text);
 CREATE TABLE public.listing_image_snapshots (id uuid, listing_id uuid, storage_url text, storage_path text, created_at timestamptz);
 CREATE TABLE public.import_images (id uuid, import_id uuid, listing_id uuid, storage_url text, storage_path text, uploaded_at timestamptz);
-CREATE TABLE public.gallery_assignments (id uuid, op text, listing_id uuid, photo_paths jsonb, created_at timestamptz);
+CREATE TABLE public.gallery_assignments (id uuid, op text, listing_id uuid, cluster_id text, photo_paths jsonb, confidence text, created_at timestamptz);
 CREATE TABLE public.properties_row_snapshots (id uuid, property_id uuid, op text, row_data jsonb, created_at timestamptz);
 CREATE TABLE public.import_records (id uuid, listing_id uuid, raw_payload jsonb, imported_at timestamptz);
 -- the four platform objects, granted to PUBLIC the way pg_cron / pg_net do it
@@ -235,4 +235,36 @@ test('reconcile-schema: row-level security hiding a history table from the role 
   assert.match(s.get('tables read only by the reconciliation with row-level security'), /^FAIL \(1: public\.import_records\)$/);
   assert.equal(s.verdict('reconcile-schema'), 'FAIL');
   assert.equal(s.verdict('schema'), 'PASS');
+});
+
+// ── Part D: the gallery-schema verdict (gallery listing-state stage only). Its own verdict; it never changes the others. ──
+test('gallery-schema: baseline PASS; the other three verdicts are unchanged', opts, () => {
+  const s = scenario();
+  assert.equal(s.verdict('gallery-schema'), 'PASS');
+  for (const v of ['schema', 'role+session', 'reconcile-schema']) assert.equal(s.verdict(v), 'PASS', v);
+});
+
+for (const [name, sql, want] of [
+  ['a missing gallery_assignments.cluster_id', 'ALTER TABLE public.gallery_assignments DROP COLUMN cluster_id;', /MISSING/],
+  ['a missing gallery_assignments.confidence', 'ALTER TABLE public.gallery_assignments DROP COLUMN confidence;', /MISSING/],
+  ['gallery_assignments unreadable by the role', 'REVOKE SELECT ON public.gallery_assignments FROM backup_ro;', /NO_SELECT/],
+  ['properties.images of the wrong type', 'ALTER TABLE public.properties ALTER COLUMN images TYPE text USING images::text;', /WRONG_TYPE/],
+  ['a missing properties.deleted_at (deletion state unknown)', 'ALTER TABLE public.properties DROP COLUMN deleted_at;', /^MISSING$/],
+  ['properties.deleted_at of type text', 'ALTER TABLE public.properties ALTER COLUMN deleted_at TYPE text USING deleted_at::text;', /WRONG_TYPE \(is text, expected timestamp with time zone\)/],
+  ['properties.deleted_at of type timestamp WITHOUT time zone', 'ALTER TABLE public.properties ALTER COLUMN deleted_at TYPE timestamp;', /WRONG_TYPE \(is timestamp without time zone, expected timestamp with time zone\)/],
+  ['properties.deleted_at of type boolean', 'ALTER TABLE public.properties DROP COLUMN deleted_at; ALTER TABLE public.properties ADD COLUMN deleted_at boolean;', /WRONG_TYPE/],
+]) {
+  test(`gallery-schema FAILS on ${name}`, opts, () => {
+    const s = scenario(sql);
+    assert.equal(s.verdict('gallery-schema'), 'FAIL');
+    assert.ok(s.rows.some((r) => r.area === 'gallery-schema' && want.test(r.status)));
+    assert.equal(s.verdict('role+session'), 'PASS', 'the role + session verdict is unaffected');
+  });
+}
+
+test('gallery-schema lists properties.deleted_at as a required timestamptz column (and ok when present)', opts, () => {
+  const s = scenario();
+  assert.equal(s.rows.find((r) => r.area === 'gallery-schema' && r.item === 'public.properties.deleted_at').status, 'ok');
+  const sql = fs.readFileSync(PREFLIGHT, 'utf8');
+  assert.match(sql, /\('public',\s+'properties',\s+'deleted_at',\s+'timestamp with time zone'\)/);
 });
