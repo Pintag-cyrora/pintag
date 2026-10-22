@@ -1,0 +1,82 @@
+name: Gallery history vs recorded gallery states (read-only)
+
+# MANUAL, READ-ONLY, aggregate-only follow-up to "Reconcile Gallery Recovery records vs listing galleries": can listing_image_snapshots and
+# import_records bracket WHEN the Gallery Recovery 'assign' / 'unassign' images left their listing galleries? Snapshots are RECORDS OF A GALLERY
+# STATE (written by the admin listing editor on create / image changes), not records of removals; the output separates "a state was recorded after the
+# record" (an upper bound on removal time) from "no later state" (cannot be bounded). See scripts/diagnostics/orphan-originals/7-gallery-history-vs-snapshots.sql.
+#
+# SAFETY, in order of importance:
+#   * workflow_dispatch ONLY -- no push / pull_request / schedule trigger, so it can never run by itself.
+#   * Same protected `production-backup` environment and the same read-only DB secret as the other diagnostics -- no new secret or credential. The
+#     secret is exposed to ONE runner step plus the presence check.
+#   * `contents: read`. NO artifact is uploaded: the output is counts and date ranges only (no object name, path, listing id, record id, title or
+#     payload), shown in the job log and job summary.
+#   * Same run.sh gates: SQL lint (each file exactly one plain SELECT/WITH), catalog-only PREFLIGHT (schema, reconcile-schema, gallery-schema,
+#     history-schema, role privileges, RLS, session read-only; any FAIL/WARN stops the run), the aggregate stage-2 cross-check, then the single query
+#     inside `BEGIN READ ONLY` ... `ROLLBACK`. Nothing is written to the database, Storage, R2 or backups.
+#   * Delete this workflow once the investigation is done.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_objects:
+        description: 'Optional: the object count you expect (e.g. 551). The run stops if stage 2 counts a different number. Leave empty to skip.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gallery-history-vs-snapshots
+  cancel-in-progress: false
+
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    environment: production-backup
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify DB URL secret is present
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL (read-only connection) in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Run read-only analysis (lint, preflight, stage-2 cross-check, then the single aggregate SELECT)
+        id: history
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+          EXPECTED_OBJECTS: ${{ inputs.expected_objects }}
+        run: bash scripts/diagnostics/orphan-originals/run.sh history
+
+      - name: Publish results (counts and date ranges only)
+        if: always()
+        working-directory: scripts/diagnostics/orphan-originals
+        run: |
+          emit() {   # $1 = annotation title, $2 = file, $3 = optional grep -v filter
+            [ -f "$2" ] || return 0
+            local msg
+            msg="$(grep -v -e "${3:-^\$}" "$2" | head -c 3500)"
+            msg="${msg//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
+            echo "::notice title=${1}::${msg}"
+          }
+          {
+            echo "## Gallery history vs recorded gallery states (read-only)"
+            echo
+            if [ -f preflight.txt ]; then echo "### Preflight"; echo '```'; cat preflight.txt; echo '```'; else echo "Preflight did not produce output."; fi
+            if [ -f diagnostic.txt ]; then echo "### Stage 2 cross-check (aggregate)"; echo '```'; cat diagnostic.txt; echo '```'; else echo "**The stage-2 cross-check was NOT run.**"; fi
+            if [ -f history-vs-gallery.txt ]; then echo "### Gallery history vs snapshots / import records (aggregate)"; echo '```'; cat history-vs-gallery.txt; echo '```'; else echo "**The history stage (7) was NOT run.**"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          emit "Preflight (rows that are not ok)" preflight.txt ' | ok$'
+          emit "Gallery history vs snapshots" history-vs-gallery.txt

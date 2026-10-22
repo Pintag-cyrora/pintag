@@ -53,7 +53,7 @@ CREATE TABLE public.properties (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), i
 CREATE TABLE public.unit_types (images text[]);
 CREATE TABLE public.parties (photo_url text);
 CREATE TABLE public.property_images (storage_path text, status text, sha256 text);
-CREATE TABLE public.listing_image_snapshots (id uuid, listing_id uuid, storage_url text, storage_path text, created_at timestamptz);
+CREATE TABLE public.listing_image_snapshots (id uuid, listing_id uuid, provenance_event_id uuid, storage_url text, storage_path text, created_at timestamptz);
 CREATE TABLE public.import_images (id uuid, import_id uuid, listing_id uuid, storage_url text, storage_path text, uploaded_at timestamptz);
 CREATE TABLE public.gallery_assignments (id uuid, op text, listing_id uuid, cluster_id text, photo_paths jsonb, confidence text, created_at timestamptz);
 CREATE TABLE public.properties_row_snapshots (id uuid, property_id uuid, op text, row_data jsonb, created_at timestamptz);
@@ -268,3 +268,24 @@ test('gallery-schema lists properties.deleted_at as a required timestamptz colum
   const sql = fs.readFileSync(PREFLIGHT, 'utf8');
   assert.match(sql, /\('public',\s+'properties',\s+'deleted_at',\s+'timestamp with time zone'\)/);
 });
+
+// ── Part E: the history-schema verdict (gallery history vs snapshots stage only). Its own verdict; it never changes the others. ──
+test('history-schema: baseline PASS; the other four verdicts are unchanged', opts, () => {
+  const s = scenario();
+  assert.equal(s.verdict('history-schema'), 'PASS');
+  for (const v of ['schema', 'role+session', 'reconcile-schema', 'gallery-schema']) assert.equal(s.verdict(v), 'PASS', v);
+});
+
+for (const [name, sql, want] of [
+  ['a missing listing_image_snapshots.provenance_event_id', 'ALTER TABLE public.listing_image_snapshots DROP COLUMN provenance_event_id;', /MISSING/],
+  ['provenance_event_id of the wrong type (text)', 'ALTER TABLE public.listing_image_snapshots ALTER COLUMN provenance_event_id TYPE text USING provenance_event_id::text;', /WRONG_TYPE \(is text, expected uuid\)/],
+  ['listing_image_snapshots unreadable by the role', 'REVOKE SELECT ON public.listing_image_snapshots FROM backup_ro;', /NO_SELECT/],
+  ['a missing import_records.imported_at', 'ALTER TABLE public.import_records DROP COLUMN imported_at;', /MISSING/],
+]) {
+  test(`history-schema FAILS on ${name}`, opts, () => {
+    const s = scenario(sql);
+    assert.equal(s.verdict('history-schema'), 'FAIL');
+    assert.ok(s.rows.some((r) => r.area === 'history-schema' && want.test(r.status)));
+    assert.equal(s.verdict('role+session'), 'PASS');
+  });
+}
