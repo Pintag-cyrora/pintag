@@ -15,6 +15,16 @@
 --   * Gallery Recovery itself writes no snapshots, and the editor writes none when a save leaves the gallery EMPTY (snapshotImages returns early).
 --     So "no later state" means the history cannot bound the removal, not that nothing changed.
 --   * Importing again (import_records after the record) shows a re-import happened; it does not show it replaced the gallery.
+--   * The removal-window sections (6-8) are about 'assign' records ONLY. An 'unassign' record IS the removal (an operator detached the image at that
+--     time), so for those objects "absent from the first later state" is expected and carries no window; it is reported under its own wording, and a
+--     "still present again" result there would be an anomaly (re-added), not an unbounded removal.
+--   * Names are compared EXACTLY (bytes, as stored or percent-decoded), never by prefix or substring. A snapshot row stores BOTH storage_path (only the
+--     last URL segment, written by the editor) and storage_url (the full URL). The image's name is taken from the URL's path after /property-images/ when
+--     there is one (so a nested name such as agents/abc/1.jpg keeps its directories); an external URL is its URL without the query string; storage_path is
+--     used only when there is no URL. If the two disagree
+--     (the stored path is not simply the tail of the URL's name) BOTH names count for the presence lookup, never one at the expense of the other.
+--   * Galleries are compared with ONE normalization on both sides: an entry under /property-images/ is its relative path, any other (external) URL is the
+--     URL without its query string, and external URLs are counted on both sides.
 --
 -- Population and latest record: EXACTLY as 5-gallery-listing-state.sql (the objects 2-diagnostic.sql counts; latest gallery_assignments record per
 -- object; objects whose latest records conflict at one instant are left out). Output is counts, dates and catalog-free labels only: no object name,
@@ -68,23 +78,33 @@ scope AS (   -- unambiguous latest record, operation assign or unassign, with a 
     FROM latest l
    WHERE l.tied_variants = 1 AND l.op IN ('assign', 'unassign')
      AND l.listing_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'),
-nm AS (   -- image names of the scoped listings: every snapshot row and the CURRENT gallery (property-images entries only)
-  SELECT 'snap' AS kind, s.listing_id::text AS lid, coalesce(s.provenance_event_id::text, s.created_at::text) AS sk, s.created_at AS ts,
-         split_part(regexp_replace(coalesce(nullif(s.storage_path, ''), s.storage_url, ''), '^.*/property-images/', ''), '?', 1) AS n
-    FROM listing_image_snapshots s WHERE EXISTS (SELECT 1 FROM scope sc WHERE sc.listing_id = s.listing_id::text)
+nm0 AS (   -- image names of the scoped listings: every snapshot row and the CURRENT gallery, one normalization for both sides
+  SELECT 'snap' AS kind, s.listing_id::text AS lid, coalesce(s.provenance_event_id::text, s.created_at::text) AS sk, s.created_at AS ts, x.n, x.n2
+    FROM listing_image_snapshots s
+    CROSS JOIN LATERAL (
+      SELECT CASE WHEN y.nu IS NOT NULL THEN y.nu WHEN y.ne IS NOT NULL THEN y.ne ELSE coalesce(y.np, '') END AS n,
+             CASE WHEN y.nu IS NOT NULL AND y.np IS NOT NULL AND y.nu <> y.np AND right(y.nu, length(y.np) + 1) <> ('/' || y.np) THEN y.np END AS n2
+        FROM (SELECT nullif(split_part(regexp_replace(coalesce(s.storage_path, ''), '^.*/property-images/', ''), '?', 1), '') AS np,
+                     CASE WHEN s.storage_url LIKE '%/property-images/%' THEN nullif(split_part(regexp_replace(s.storage_url, '^.*/property-images/', ''), '?', 1), '') END AS nu,
+                     nullif(split_part(coalesce(s.storage_url, ''), '?', 1), '') AS ne) y) x
+   WHERE EXISTS (SELECT 1 FROM scope sc WHERE sc.listing_id = s.listing_id::text)
   UNION ALL
-  SELECT 'cur', p.id::text, NULL, NULL, split_part(regexp_replace(u.url, '^.*/property-images/', ''), '?', 1)
+  SELECT 'cur', p.id::text, NULL, NULL,
+         CASE WHEN u.url LIKE '%/property-images/%' THEN split_part(regexp_replace(u.url, '^.*/property-images/', ''), '?', 1) ELSE split_part(u.url, '?', 1) END, NULL
     FROM properties p, LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(p.images) = 'array' THEN p.images ELSE '[]'::jsonb END) AS u(url)
-   WHERE u.url LIKE '%/property-images/%' AND EXISTS (SELECT 1 FROM scope sc WHERE sc.listing_id = p.id::text)),
+   WHERE EXISTS (SELECT 1 FROM scope sc WHERE sc.listing_id = p.id::text)),
+nm AS (   -- role p = the image's name; role a = a second name only when the stored path and the URL disagree (used for the presence lookup only)
+  SELECT kind, lid, sk, ts, n, 'p' AS role FROM nm0
+  UNION ALL SELECT kind, lid, sk, ts, n2, 'a' FROM nm0 WHERE n2 IS NOT NULL),
 nmc AS (   -- canonical bytes b: percent-decoded when the name has %XX escapes, as stored otherwise; rb: the name exactly as stored
-  SELECT kind, lid, sk, ts, n, convert_to(n, 'UTF8') AS rb,
+  SELECT kind, lid, sk, ts, role, n, convert_to(n, 'UTF8') AS rb,
          CASE WHEN n ~ '%[0-9A-Fa-f]{2}'
               THEN coalesce((SELECT decode(string_agg(CASE WHEN m.a[1] IS NOT NULL THEN lower(m.a[1]) ELSE encode(convert_to(m.a[2], 'UTF8'), 'hex') END, '' ORDER BY m.i), 'hex')
                                FROM regexp_matches(n, '%([0-9A-Fa-f]{2})|(%|[^%])', 'g') WITH ORDINALITY AS m(a, i)), convert_to(n, 'UTF8'))
               ELSE convert_to(n, 'UTF8') END AS b
     FROM nm WHERE n <> ''),
-states AS (SELECT lid, sk, min(ts) AS state_ts, count(DISTINCT b) AS state_n FROM nmc WHERE kind = 'snap' GROUP BY lid, sk),
-cur AS (SELECT lid, count(DISTINCT b) AS cur_n FROM nmc WHERE kind = 'cur' GROUP BY lid),
+states AS (SELECT lid, sk, min(ts) AS state_ts, count(DISTINCT b) AS state_n FROM nmc WHERE kind = 'snap' AND role = 'p' GROUP BY lid, sk),
+cur AS (SELECT lid, count(DISTINCT b) AS cur_n FROM nmc WHERE kind = 'cur' AND role = 'p' GROUP BY lid),
 scope_b AS (   -- each scoped object's own name, as stored (rb) and percent-decoded (b), for the lookup in a state's image set
   SELECT sc.*, convert_to(sc.name, 'UTF8') AS rb,
          CASE WHEN sc.name ~ '%[0-9A-Fa-f]{2}'
@@ -108,8 +128,8 @@ obj AS (
     LEFT JOIN LATERAL (SELECT st.sk, st.state_ts, st.state_n FROM states st WHERE st.lid = sc.listing_id AND st.state_ts > sc.rec_ts ORDER BY st.state_ts, st.sk LIMIT 1) fa ON true),
 lst AS (   -- one row per (listing, latest-record operation): is the listing's LATEST snapshot the same image set as its current gallery?
   SELECT DISTINCT ON (o.lid, o.op) o.lid, o.op, ls.sk,
-         (SELECT count(*) FROM (SELECT b FROM nmc WHERE kind = 'snap' AND lid = o.lid AND sk = ls.sk EXCEPT SELECT b FROM nmc WHERE kind = 'cur' AND lid = o.lid) x) AS only_snap,
-         (SELECT count(*) FROM (SELECT b FROM nmc WHERE kind = 'cur' AND lid = o.lid EXCEPT SELECT b FROM nmc WHERE kind = 'snap' AND lid = o.lid AND sk = ls.sk) x) AS only_cur,
+         (SELECT count(*) FROM (SELECT b FROM nmc WHERE kind = 'snap' AND role = 'p' AND lid = o.lid AND sk = ls.sk EXCEPT SELECT b FROM nmc WHERE kind = 'cur' AND role = 'p' AND lid = o.lid) x) AS only_snap,
+         (SELECT count(*) FROM (SELECT b FROM nmc WHERE kind = 'cur' AND role = 'p' AND lid = o.lid EXCEPT SELECT b FROM nmc WHERE kind = 'snap' AND role = 'p' AND lid = o.lid AND sk = ls.sk) x) AS only_cur,
          coalesce((SELECT c.cur_n FROM cur c WHERE c.lid = o.lid), 0) AS cur_n
     FROM obj o
     LEFT JOIN LATERAL (SELECT st.sk FROM states st WHERE st.lid = o.lid ORDER BY st.state_ts DESC, st.sk LIMIT 1) ls ON true
@@ -125,24 +145,27 @@ SELECT section, label, n, listings FROM (
   UNION ALL SELECT 5, '5 ' || op || ': gallery states recorded for the object''s listing',
          CASE WHEN n_states = 0 THEN 'no gallery state recorded at all' WHEN n_after = 0 THEN 'states exist, none AFTER the latest record (removal cannot be bounded)' ELSE 'at least one state AFTER the latest record (the image is checked against the FIRST one in section 6)' END,
          count(*), count(DISTINCT lid) FROM obj GROUP BY op, 3
-  UNION ALL SELECT 6, '6 ' || op || ': is the image in the FIRST gallery state recorded after the latest record?',
-         CASE WHEN in_first_after THEN 'image STILL PRESENT in the first later state; removal not yet bounded' ELSE 'image ABSENT from the first later state: removal bounded (upper bound = that state)' END,
+  UNION ALL SELECT 6, '6 ' || op || CASE WHEN op = 'assign' THEN ': is the image in the FIRST gallery state recorded after the latest record?' ELSE ': after an UNASSIGN record (the record itself is the removal; no window applies) is the image in the first later state?' END,
+         CASE WHEN op = 'assign' AND in_first_after THEN 'image STILL PRESENT in the first later state; removal not yet bounded'
+              WHEN op = 'assign' THEN 'image ABSENT from the first later state: removal bounded (upper bound = that state)'
+              WHEN in_first_after THEN 'image PRESENT AGAIN in the first later state after the unassign (anomaly: re-added?)'
+              ELSE 'image absent from the first later state (expected after an unassign; NOT a removal window)' END,
          count(*), count(DISTINCT lid) FROM obj WHERE first_after_ts IS NOT NULL GROUP BY op, 3
-  UNION ALL SELECT 7, '7 ' || op || ': CONFIRMED removal window = latest record to the first later state that excludes the image (an UPPER bound on when it left)',
+  UNION ALL SELECT 7, '7 assign: CONFIRMED removal window = latest assign record to the first later state that excludes the image (an UPPER bound on when it left)',
          CASE WHEN first_after_ts - rec_ts <= interval '1 day' THEN 'within 1 day' WHEN first_after_ts - rec_ts <= interval '7 days' THEN '2-7 days'
               WHEN first_after_ts - rec_ts <= interval '30 days' THEN '8-30 days' ELSE 'over 30 days' END,
-         count(*), count(DISTINCT lid) FROM obj WHERE first_after_ts IS NOT NULL AND NOT in_first_after GROUP BY op, 3
-  UNION ALL SELECT 8, '8 ' || op || ': dates of those bounding states (earliest to latest; images absent from them only)', coalesce(to_char(min(first_after_ts), 'YYYY-MM-DD') || ' to ' || to_char(max(first_after_ts), 'YYYY-MM-DD'), 'none'), count(*), count(DISTINCT lid)
-         FROM obj WHERE first_after_ts IS NOT NULL AND NOT in_first_after GROUP BY op
-  UNION ALL SELECT 9, '9 ' || op || ': image count of the first later state vs the current gallery (property-images entries)',
+         count(*), count(DISTINCT lid) FROM obj WHERE op = 'assign' AND first_after_ts IS NOT NULL AND NOT in_first_after GROUP BY 3
+  UNION ALL SELECT 8, '8 assign: dates of those bounding states (earliest to latest; images absent from them only)', coalesce(to_char(min(first_after_ts), 'YYYY-MM-DD') || ' to ' || to_char(max(first_after_ts), 'YYYY-MM-DD'), 'none'), count(*), count(DISTINCT lid)
+         FROM obj WHERE op = 'assign' AND first_after_ts IS NOT NULL AND NOT in_first_after
+  UNION ALL SELECT 9, '9 ' || op || ': image count of the first later state vs the current gallery (all entries, external URLs included on both sides)',
          CASE WHEN first_after_n = cur_n THEN 'same count' WHEN first_after_n > cur_n THEN 'state larger than the current gallery' ELSE 'state smaller than the current gallery' END,
          count(*), count(DISTINCT lid) FROM obj WHERE first_after_ts IS NOT NULL GROUP BY op, 3
-  UNION ALL SELECT 10, '10 ' || op || ': listing''s LATEST snapshot vs its current gallery (listings)',
+  UNION ALL SELECT 10, '10 ' || op || ': listing''s LATEST snapshot vs its current gallery (listings; all entries, external URLs included on both sides)',
          CASE WHEN sk IS NULL THEN 'no snapshot' WHEN only_snap = 0 AND only_cur = 0 THEN 'same image set'
               WHEN only_snap > 0 AND only_cur = 0 THEN 'snapshot has images the gallery lacks' WHEN only_snap = 0 AND only_cur > 0 THEN 'gallery has images the snapshot lacks' ELSE 'both differ' END,
          count(*), count(DISTINCT lid) FROM lst GROUP BY op, 3
   UNION ALL SELECT 11, '11 ' || op || ': Smart Import records AFTER the latest record',
          CASE WHEN imports_after = 0 THEN 'none' ELSE 'at least one (first: ' || to_char(first_import_after, 'YYYY-MM') || ')' END, count(*), count(DISTINCT lid) FROM obj GROUP BY op, 3
   UNION ALL SELECT 12, '12 ' || op || ': listing row and current gallery (no snapshot is written when a save empties the gallery)',
-         CASE WHEN NOT listing_row THEN 'no listing row' WHEN cur_n = 0 THEN 'current gallery has no property-images entries' ELSE 'current gallery has images' END, count(*), count(DISTINCT lid) FROM obj GROUP BY op, 3
+         CASE WHEN NOT listing_row THEN 'no listing row' WHEN cur_n = 0 THEN 'current gallery has no entries' ELSE 'current gallery has images' END, count(*), count(DISTINCT lid) FROM obj GROUP BY op, 3
 ) t ORDER BY s, section, label;

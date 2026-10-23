@@ -134,19 +134,21 @@ test('gallery states vs the latest record: a state AFTER it (the image is then c
 
 const ABSENT = 'image ABSENT from the first later state: removal bounded (upper bound = that state)';
 const PRESENT = 'image STILL PRESENT in the first later state; removal not yet bounded';
+const UNASSIGN_ABSENT = 'image absent from the first later state (expected after an unassign; NOT a removal window)';
+const UNASSIGN_AGAIN = 'image PRESENT AGAIN in the first later state after the unassign (anomaly: re-added?)';
 
 test('the image is looked up in the FIRST later state: in the base data every later state excludes it, so each is a CONFIRMED bound', opts, () => {
   const h = history(makeDb());
   assert.deepEqual(h.get('6 assign'), { [ABSENT]: '3/2' });
-  assert.deepEqual(h.get('6 unassign'), { [ABSENT]: '1/1' });
+  assert.deepEqual(h.get('6 unassign'), { [UNASSIGN_ABSENT]: '1/1' });   // an unassign IS the removal: expected, and explicitly NOT a window
 });
 
 test('confirmed removal window = latest record to the first later state that EXCLUDES the image (an upper bound), with buckets and date range', opts, () => {
   const h = history(makeDb());
   assert.deepEqual(h.get('7 assign'), { '2-7 days': '2/1', 'over 30 days': '1/1' });   // listing 1: 5.6 days (2 objects); listing 4: 55 days
-  assert.deepEqual(h.get('7 unassign'), { 'within 1 day': '1/1' });                  // listing 5: 6 hours
+  assert.deepEqual(h.get('7 unassign'), {});   // no removal window is ever computed for unassign records (listing 5's 6 hours is not one)
+  assert.deepEqual(h.get('8 unassign'), {});
   assert.deepEqual(h.get('8 assign'), { '2026-08-12 to 2026-10-01': '3/2' });
-  assert.deepEqual(h.get('8 unassign'), { '2026-08-08 to 2026-08-08': '1/1' });
   assert.ok(h.rows.some((r) => /CONFIRMED removal window/.test(r.section) && /UPPER bound/.test(r.section)), 'the output says the window is a confirmed upper bound');
 });
 
@@ -201,8 +203,8 @@ test('Smart Import after the record, and the empty-gallery / missing-listing bli
   const h = history(makeDb());
   assert.deepEqual(h.get('11 assign'), { 'at least one (first: 2026-08)': '1/1', none: '4/3' });
   assert.deepEqual(h.get('11 unassign'), { none: '2/2' });
-  assert.deepEqual(h.get('12 assign'), { 'current gallery has images': '4/3', 'current gallery has no property-images entries': '1/1' });
-  assert.deepEqual(h.get('12 unassign'), { 'current gallery has no property-images entries': '1/1', 'no listing row': '1/1' });
+  assert.deepEqual(h.get('12 assign'), { 'current gallery has images': '4/3', 'current gallery has no entries': '1/1' });
+  assert.deepEqual(h.get('12 unassign'), { 'current gallery has no entries': '1/1', 'no listing row': '1/1' });
   assert.ok(h.rows.some((r) => /no snapshot is written when a save empties the gallery/.test(r.section)));
 });
 
@@ -390,4 +392,100 @@ test('workflow: the log and job summary come only from preflight.txt, diagnostic
 test('repository hygiene: the result file is ignored and not tracked', () => {
   assert.equal(spawnSync('git', ['check-ignore', '-q', 'scripts/diagnostics/orphan-originals/history-vs-gallery.txt'], { cwd: ROOT }).status, 0);
   assert.ok(!spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).stdout.split('\n').some((f) => /history-vs-gallery\.txt$/.test(f)));
+});
+
+// ── fix: names with directories, conflicting path/url evidence, unassign semantics, external URLs ──
+const U = (rel) => `https://x.supabase.co/storage/v1/object/public/property-images/${rel}`;
+const row = (listing, ev, ts, path, url) => `INSERT INTO listing_image_snapshots (listing_id, provenance_event_id, storage_path, storage_url, created_at) VALUES ('${L(listing)}', '${E(ev)}', ${path == null ? 'NULL' : q(path)}, ${url == null ? 'NULL' : q(url)}, ${q(ts)});`;
+const objRow = (name) => `INSERT INTO storage.objects VALUES ('property-images', ${q(name)}, now(), '{"size": 1000}');`;
+
+test('REGRESSION: an image whose name has directories, present in the first later state, is PRESENT (the editor stores only the last URL segment as storage_path)', opts, () => {
+  const db = makeDb(`
+    ${objRow('SYN-OBJ-agents/abc/1.jpg')} ${objRow('SYN-OBJ-flat.jpg')}
+    INSERT INTO properties VALUES ('${L(7)}', 'SYN-TITLE-7', '[]', NULL);
+    ${ga('assign', 7, ['SYN-OBJ-agents/abc/1.jpg', 'SYN-OBJ-flat.jpg'], '2026-08-09')}
+    ${row(7, 9, '2026-08-10', '1.jpg', U('SYN-OBJ-agents/abc/1.jpg'))}
+    ${row(7, 9, '2026-08-10', 'SYN-OBJ-flat.jpg', U('SYN-OBJ-agents/x/SYN-OBJ-flat.jpg'))}`);   // the second is a DIFFERENT image that merely shares a basename
+  const h = history(db);
+  assert.deepEqual(h.get('6 assign'), { [ABSENT]: '4/3', [PRESENT]: '1/1' });   // base 3 absent + the flat image absent; the nested image present
+  assert.deepEqual(h.get('7 assign'), { '2-7 days': '2/1', 'over 30 days': '1/1', 'within 1 day': '1/1' });   // only the flat image adds a window; the nested one adds none
+  assert.deepEqual(h.get('8 assign'), { '2026-08-10 to 2026-10-01': '4/3' });   // the nested image (present) contributes no date
+});
+
+test('path-only rows keep working (storage_path with directories, no URL), and the stored basename is never preferred over a longer URL path', opts, () => {
+  const db = makeDb(`
+    ${objRow('SYN-OBJ-d/e/2.jpg')}
+    INSERT INTO properties VALUES ('${L(7)}', 'SYN-TITLE-7', '[]', NULL);
+    ${ga('assign', 7, ['SYN-OBJ-d/e/2.jpg'], '2026-08-09')}
+    ${row(7, 9, '2026-08-10', 'SYN-OBJ-d/e/2.jpg', null)}`);
+  assert.deepEqual(history(db).get('6 assign'), { [ABSENT]: '3/2', [PRESENT]: '1/1' });
+});
+
+test('conflicting path and URL evidence: BOTH names count for the presence lookup (conservative: never a false bound)', opts, () => {
+  const db = makeDb(`
+    ${objRow('SYN-OBJ-pathname.jpg')} ${objRow('SYN-OBJ-urlname.jpg')} ${objRow('SYN-OBJ-b.jpg')}
+    INSERT INTO properties VALUES ('${L(7)}', 'SYN-TITLE-7', '[]', NULL);
+    ${ga('assign', 7, ['SYN-OBJ-pathname.jpg', 'SYN-OBJ-urlname.jpg', 'SYN-OBJ-b.jpg'], '2026-08-09')}
+    ${row(7, 9, '2026-08-10', 'SYN-OBJ-pathname.jpg', U('SYN-OBJ-urlname.jpg'))}
+    ${row(7, 9, '2026-08-10', 'SYN-OBJ-b.jpg', U('XSYN-OBJ-b.jpg'))}`);   // the path is NOT a directory-boundary tail of the URL name: two different claims
+  assert.deepEqual(history(db).get('6 assign'), { [ABSENT]: '3/2', [PRESENT]: '3/1' });
+});
+
+test('exact matching only: a different directory, a longer name or a suffix of the right name never matches', opts, () => {
+  const db = makeDb(`
+    ${objRow('SYN-OBJ-m.jpg')} ${objRow('SYN-OBJ-dir/n.jpg')}
+    INSERT INTO properties VALUES ('${L(7)}', 'SYN-TITLE-7', '[]', NULL);
+    ${ga('assign', 7, ['SYN-OBJ-m.jpg', 'SYN-OBJ-dir/n.jpg'], '2026-08-09')}
+    ${row(7, 9, '2026-08-10', 'SYN-OBJ-m.jpg2', U('SYN-OBJ-m.jpg2'))}
+    ${row(7, 9, '2026-08-10', 'n.jpg', U('other/SYN-OBJ-dir/n.jpg'))}`);
+  assert.deepEqual(history(db).get('6 assign'), { [ABSENT]: '5/3' });
+});
+
+test('percent-decoding still applies to nested names (encoded directory in the URL, decoded object name)', opts, () => {
+  const db = makeDb(`
+    ${objRow('SYN-OBJ-my dir/3.jpg')}
+    INSERT INTO properties VALUES ('${L(7)}', 'SYN-TITLE-7', '[]', NULL);
+    ${ga('assign', 7, ['SYN-OBJ-my dir/3.jpg'], '2026-08-09')}
+    ${row(7, 9, '2026-08-10', '3.jpg', U('SYN-OBJ-my%20dir/3.jpg'))}`);
+  assert.deepEqual(history(db).get('6 assign'), { [ABSENT]: '3/2', [PRESENT]: '1/1' });
+});
+
+test('UNASSIGN records get no removal window and are labelled so: absent is expected, present again is an anomaly', opts, () => {
+  const db = makeDb(`
+    ${objRow('SYN-OBJ-u1.jpg')}
+    INSERT INTO properties VALUES ('${L(7)}', 'SYN-TITLE-7', '[]', NULL);
+    ${ga('unassign', 7, ['SYN-OBJ-u1.jpg'], '2026-08-09')}
+    ${row(7, 9, '2026-08-10', 'SYN-OBJ-u1.jpg', U('SYN-OBJ-u1.jpg'))}`);
+  const h = history(db);
+  assert.deepEqual(h.get('6 unassign'), { [UNASSIGN_ABSENT]: '1/1', [UNASSIGN_AGAIN]: '1/1' });
+  assert.deepEqual(h.get('7 unassign'), {});
+  assert.deepEqual(h.get('8 unassign'), {});
+  assert.ok(h.rows.every((r) => !(/unassign/.test(r.section) && /CONFIRMED removal window|bounded/.test(r.section + r.label))), 'no unassign row speaks of a bound or a window');
+  assert.ok(h.rows.some((r) => /^6 unassign/.test(r.section) && /the record itself is the removal; no window applies/.test(r.section)));
+});
+
+test('REGRESSION: external image URLs are compared on BOTH sides, so they cannot fake "snapshot has images the gallery lacks"', opts, () => {
+  const EXT = 'https://cdn.example.org/pics/ext-1.jpg?w=800';
+  const db = makeDb(`
+    ${objRow('SYN-OBJ-e1.jpg')} ${objRow('SYN-OBJ-e2.jpg')} ${objRow('SYN-OBJ-e3.jpg')}
+    INSERT INTO properties VALUES ('${L(7)}', 'SYN-TITLE-7', ${q(JSON.stringify([IMG('keep'), EXT]))}::jsonb, NULL),
+      ('${L(8)}', 'SYN-TITLE-8', ${q(JSON.stringify([IMG('keep')]))}::jsonb, NULL), ('${L(9)}', 'SYN-TITLE-9', ${q(JSON.stringify([IMG('keep'), EXT]))}::jsonb, NULL);
+    ${ga('assign', 7, ['SYN-OBJ-e1.jpg'], '2026-08-09')} ${ga('assign', 8, ['SYN-OBJ-e2.jpg'], '2026-08-09')} ${ga('assign', 9, ['SYN-OBJ-e3.jpg'], '2026-08-09')}
+    ${row(7, 9, '2026-08-10', 'SYN-IMG-keep.jpg', IMG('keep'))} ${row(7, 9, '2026-08-10', 'ext-1.jpg', EXT)}
+    ${row(8, 10, '2026-08-10', 'SYN-IMG-keep.jpg', IMG('keep'))} ${row(8, 10, '2026-08-10', 'ext-1.jpg', EXT)}
+    ${row(9, 11, '2026-08-10', 'SYN-IMG-keep.jpg', IMG('keep'))}`);
+  const h = history(db);
+  const base = { 'no snapshot': '1/1', 'same image set': '2/2', 'snapshot has images the gallery lacks': '1/1' };
+  assert.deepEqual(h.get('10 assign'), { ...base, 'same image set': '3/3', 'snapshot has images the gallery lacks': '2/2', 'gallery has images the snapshot lacks': '1/1' });
+  // listing 7: gallery [keep, ext] vs snapshot [keep, ext] -> same (the external URL is on both sides); listing 8: snapshot has the external URL the gallery lacks;
+  // listing 9: the gallery has the external URL the snapshot lacks
+  assert.ok(h.rows.some((r) => /^10 assign/.test(r.section) && /all entries, external URLs included on both sides/.test(r.section)));
+});
+
+test('the query output stays aggregate-only after the matching change (no name, path, URL or id)', opts, () => {
+  const h = history(makeDb(`${objRow('SYN-OBJ-agents/abc/1.jpg')}
+    INSERT INTO properties VALUES ('${L(7)}', 'SYN-TITLE-7', ${q(JSON.stringify(['https://cdn.example.org/ext-9.jpg']))}::jsonb, NULL);
+    ${ga('assign', 7, ['SYN-OBJ-agents/abc/1.jpg'], '2026-08-09')} ${row(7, 9, '2026-08-10', '1.jpg', U('SYN-OBJ-agents/abc/1.jpg'))}`));
+  assert.doesNotMatch(h.text, IDENT);
+  assert.doesNotMatch(h.text, /cdn\.example|agents|abc/);
 });
