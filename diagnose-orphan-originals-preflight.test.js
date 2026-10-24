@@ -55,7 +55,8 @@ CREATE TABLE public.parties (photo_url text);
 CREATE TABLE public.property_images (storage_path text, status text, sha256 text);
 CREATE TABLE public.listing_image_snapshots (id uuid, listing_id uuid, provenance_event_id uuid, storage_url text, storage_path text, created_at timestamptz);
 CREATE TABLE public.import_images (id uuid, import_id uuid, listing_id uuid, storage_url text, storage_path text, uploaded_at timestamptz);
-CREATE TABLE public.gallery_assignments (id uuid, op text, listing_id uuid, cluster_id text, photo_paths jsonb, confidence text, created_at timestamptz);
+CREATE TABLE public.gallery_assignments (id uuid, op text, listing_id uuid, cluster_id text, photo_paths jsonb, confidence text, operator text, created_at timestamptz);
+CREATE TABLE public.listing_provenance (id uuid, listing_id uuid, event_type text, field_name text, old_value jsonb, new_value jsonb, actor text, created_at timestamptz);
 CREATE TABLE public.properties_row_snapshots (id uuid, property_id uuid, op text, row_data jsonb, created_at timestamptz);
 CREATE TABLE public.import_records (id uuid, listing_id uuid, raw_payload jsonb, imported_at timestamptz);
 -- the four platform objects, granted to PUBLIC the way pg_cron / pg_net do it
@@ -289,3 +290,34 @@ for (const [name, sql, want] of [
     assert.equal(s.verdict('role+session'), 'PASS');
   });
 }
+
+// ── Part F: the provenance-schema verdict (gallery provenance-events stage only). Its own verdict; it never changes the others. ──
+test('provenance-schema: baseline PASS; the other five verdicts are unchanged', opts, () => {
+  const s = scenario();
+  assert.equal(s.verdict('provenance-schema'), 'PASS');
+  for (const v of ['schema', 'role+session', 'reconcile-schema', 'gallery-schema', 'history-schema']) assert.equal(s.verdict(v), 'PASS', v);
+});
+
+for (const [name, sql, want] of [
+  ['a missing listing_provenance table', 'DROP TABLE public.listing_provenance;', /MISSING/],
+  ['a missing listing_provenance.old_value', 'ALTER TABLE public.listing_provenance DROP COLUMN old_value;', /MISSING/],
+  ['new_value of the wrong type (text)', 'ALTER TABLE public.listing_provenance ALTER COLUMN new_value TYPE text USING new_value::text;', /WRONG_TYPE \(is text, expected jsonb\)/],
+  ['created_at of the wrong type (text)', 'ALTER TABLE public.listing_provenance ALTER COLUMN created_at TYPE text USING created_at::text;', /WRONG_TYPE/],
+  ['listing_provenance.id of the wrong type', 'ALTER TABLE public.listing_provenance ALTER COLUMN id TYPE text USING id::text;', /WRONG_TYPE \(is text, expected uuid\)/],
+  ['a missing gallery_assignments.operator', 'ALTER TABLE public.gallery_assignments DROP COLUMN operator;', /MISSING/],
+  ['listing_provenance unreadable by the role', 'REVOKE SELECT ON public.listing_provenance FROM backup_ro;', /NO_SELECT/],
+]) {
+  test(`provenance-schema FAILS on ${name}`, opts, () => {
+    const s = scenario(sql);
+    assert.equal(s.verdict('provenance-schema'), 'FAIL');
+    assert.ok(s.rows.some((r) => r.area === 'provenance-schema' && want.test(r.status)));
+    assert.equal(s.verdict('role+session'), 'PASS');
+  });
+}
+
+test('provenance-schema: row-level security hiding listing_provenance from the role FAILS that verdict only', opts, () => {
+  const s = scenario('ALTER TABLE public.listing_provenance ENABLE ROW LEVEL SECURITY;', { user: 'rls_ro' });
+  assert.match(s.get('listing_provenance read with row-level security'), /^FAIL \(1\)$/);
+  assert.equal(s.verdict('provenance-schema'), 'FAIL');
+  assert.equal(s.verdict('schema'), 'PASS');
+});
