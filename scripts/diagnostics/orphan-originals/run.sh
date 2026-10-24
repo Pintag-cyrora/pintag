@@ -14,7 +14,8 @@ MODE="${1:-diagnostic}"   # diagnostic = stages 1-4 (the reconciliation report);
                           # probe = stages 1 and 6 (aggregate catalog/count probe of properties.updated_at; no object is enumerated)
                           # history = stages 1, 2 (cross-check) and 7 (gallery history vs listing_image_snapshots / import_records; aggregates only)
                           # provenance = stages 1, 2 (cross-check) and 8 (gallery 'assign' images vs the editor's photos_changed events; aggregates only)
-case "$MODE" in diagnostic|gallery|probe|history|provenance) ;; *) echo "usage: run.sh [diagnostic|gallery|probe|history|provenance]"; exit 2;; esac
+                          # unusable = stages 1, 2 (cross-check) and 9 (only the objects stage 8 calls 'unusable': why, and what other records say; aggregates only)
+case "$MODE" in diagnostic|gallery|probe|history|provenance|unusable) ;; *) echo "usage: run.sh [diagnostic|gallery|probe|history|provenance|unusable]"; exit 2;; esac
 command -v psql >/dev/null || { echo "psql not found - install it first (brew install libpq)"; exit 1; }
 command -v perl >/dev/null || { echo "perl not found"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
@@ -49,7 +50,8 @@ lint 5-gallery-listing-state.sql
 lint 6-properties-updated-at-probe.sql
 lint 7-gallery-history-vs-snapshots.sql
 lint 8-gallery-provenance-photos-changed.sql
-rm -f provenance-events.txt history-vs-gallery.txt updated-at-probe.txt gallery-listing-detail.csv.tmp preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md gallery-state.csv gallery-listing-detail.csv gallery-listing-summary.md   # never leave results from an earlier run lying around
+lint 9-unusable-provenance-events.sql
+rm -f unusable-events.txt provenance-events.txt history-vs-gallery.txt updated-at-probe.txt gallery-listing-detail.csv.tmp preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md gallery-state.csv gallery-listing-detail.csv gallery-listing-summary.md   # never leave results from an earlier run lying around
 
 if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
   read -rsp "Paste PINTAG_PROD_DB_URL (hidden), then press Enter: " PINTAG_PROD_DB_URL || true; echo
@@ -115,29 +117,31 @@ fi
 expected="$(awk -F' [|] ' '/ 1 TOTAL/ { print $NF; exit }' diagnostic.txt | tr -d ' ')"
 case "$expected" in ''|*[!0-9]*) echo "Could not read the stage-2 object total - stage 3 NOT run."; exit 1;; esac
 
-if [ "$MODE" = provenance ]; then
-  # stage 8 reads gallery_assignments / properties (gallery-schema), the snapshot tables (history-schema) and listing_provenance (provenance-schema)
+if [ "$MODE" = provenance ] || [ "$MODE" = unusable ]; then
+  # stage 8 / 9 read gallery_assignments / properties (gallery-schema), the snapshot tables (history-schema) and listing_provenance (provenance-schema)
+  if [ "$MODE" = unusable ]; then STAGE=9; SQLF=9-unusable-provenance-events.sql; OUTF=unusable-events.txt; WHAT="the objects stage 8 calls unusable"
+  else STAGE=8; SQLF=8-gallery-provenance-photos-changed.sql; OUTF=provenance-events.txt; WHAT="gallery 'assign' images vs the editor's photos_changed events"; fi
   for v in gallery-schema history-schema provenance-schema; do
     if ! grep -qx "VERDICT | $v | PASS" preflight.txt; then
-      echo; echo "$(echo "$v" | tr a-z A-Z) VERDICT DID NOT PASS - the provenance-events stage (8) was NOT run. See the $v lines in preflight.txt."
+      echo; echo "$(echo "$v" | tr a-z A-Z) VERDICT DID NOT PASS - the provenance-events stage ($STAGE) was NOT run. See the $v lines in preflight.txt."
       exit 1
     fi
   done
   if [ -n "${EXPECTED_OBJECTS:-}" ]; then
-    case "$EXPECTED_OBJECTS" in *[!0-9]*) echo "expected_objects must be a number - stage 8 NOT run."; exit 1;; esac
-    [ "$EXPECTED_OBJECTS" = "$expected" ] || { echo "Stage 2 counted $expected objects but expected_objects is $EXPECTED_OBJECTS - stage 8 NOT run."; exit 1; }
+    case "$EXPECTED_OBJECTS" in *[!0-9]*) echo "expected_objects must be a number - stage $STAGE NOT run."; exit 1;; esac
+    [ "$EXPECTED_OBJECTS" = "$expected" ] || { echo "Stage 2 counted $expected objects but expected_objects is $EXPECTED_OBJECTS - stage $STAGE NOT run."; exit 1; }
   fi
-  echo; echo "=== stage 8: gallery 'assign' images vs the editor's photos_changed events, for the $expected objects (read-only; aggregates only) ==="
-  run_data 8-gallery-provenance-photos-changed.sql > provenance-events.txt || { rm -f provenance-events.txt; exit 1; }
+  echo; echo "=== stage $STAGE: $WHAT, for the $expected objects (read-only; aggregates only) ==="
+  run_data "$SQLF" > "$OUTF" || { rm -f "$OUTF"; exit 1; }
   # the query rebuilds the population itself: it must equal the stage-2 total or the numbers are not about the same objects
-  got="$(awk -F'|' '/^ *1 unreferenced originals/ { gsub(/[^0-9]/, "", $3); print $3; exit }' provenance-events.txt)"
+  got="$(awk -F'|' '/^ *1 unreferenced originals/ { gsub(/[^0-9]/, "", $3); print $3; exit }' "$OUTF")"
   if [ "$got" != "$expected" ]; then
-    rm -f provenance-events.txt
-    echo "Stage 8 rebuilt a population of '${got:-?}' objects but stage 2 counted $expected - the result was discarded."
+    rm -f "$OUTF"
+    echo "Stage $STAGE rebuilt a population of '${got:-?}' objects but stage 2 counted $expected - the result was discarded."
     exit 1
   fi
-  cat provenance-events.txt
-  echo; echo "Done. provenance-events.txt holds aggregates only."
+  cat "$OUTF"
+  echo; echo "Done. $OUTF holds aggregates only."
   exit 0
 fi
 
