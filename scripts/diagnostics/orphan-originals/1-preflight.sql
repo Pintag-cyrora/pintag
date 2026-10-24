@@ -12,7 +12,9 @@
 -- Part D (area 'gallery-schema') checks the extra columns only 5-gallery-listing-state.sql reads (gallery_assignments.cluster_id/confidence and
 -- properties.deleted_at as a timestamptz, so a listing is never called active when its deletion state is unknown), with its OWN
 -- verdict (the other verdicts are computed exactly as before).
--- Output: "area | item | status" rows; the last four rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
+-- Part E (area 'history-schema') checks listing_image_snapshots.provenance_event_id, which only 7-gallery-history-vs-snapshots.sql groups gallery
+-- states by, with its OWN verdict (the other verdicts are computed exactly as before).
+-- Output: "area | item | status" rows; the last five rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
 WITH need(sch, tbl, col, typ) AS (VALUES
     ('storage',  'objects',                'bucket_id',    NULL::text),
     ('storage',  'objects',                'name',         NULL),
@@ -55,6 +57,9 @@ need5(sch, tbl, col, typ) AS (VALUES   -- gallery listing-state stage only; judg
     ('public',   'properties',             'deleted_at',   'timestamp with time zone'),   -- required: an unknown deletion state must never read as "active"
     ('public',   'properties',             'id',           NULL),
     ('public',   'properties',             'images',       'jsonb')),
+need6(sch, tbl, col, typ) AS (VALUES   -- gallery history vs snapshots stage only; judged by the separate 'history-schema' verdict
+    ('public',   'listing_image_snapshots','provenance_event_id', 'uuid'),
+    ('public',   'import_records',         'imported_at',        NULL)),
 have AS (
   SELECT n.nspname AS sch, c.relname AS tbl, a.attname AS col, format_type(a.atttypid, a.atttypmod) AS typ, c.oid AS relid
   FROM pg_attribute a
@@ -119,6 +124,13 @@ rows_all AS (
               WHEN NOT has_table_privilege(h.relid, 'SELECT') THEN 'NO_SELECT'
               ELSE 'ok' END
     FROM need5 x LEFT JOIN have h ON h.sch = x.sch AND h.tbl = x.tbl AND h.col = x.col
+  UNION ALL
+  SELECT 15, 'history-schema', x.sch || '.' || x.tbl || '.' || x.col,
+         CASE WHEN h.col IS NULL THEN 'MISSING'
+              WHEN x.typ IS NOT NULL AND h.typ <> x.typ THEN 'WRONG_TYPE (is ' || h.typ || ', expected ' || x.typ || ')'
+              WHEN NOT has_table_privilege(h.relid, 'SELECT') THEN 'NO_SELECT'
+              ELSE 'ok' END
+    FROM need6 x LEFT JOIN have h ON h.sch = x.sch AND h.tbl = x.tbl AND h.col = x.col
   UNION ALL SELECT 13, 'reconcile-schema', 'tables read only by the reconciliation with row-level security this role cannot bypass (counts would be UNTRUSTWORTHY)',
          CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ': ' || coalesce(names, '') || ')' END
     FROM (SELECT count(*) AS n, string_agg(DISTINCT c.relnamespace::regnamespace::text || '.' || c.relname, ', ') AS names
@@ -177,6 +189,8 @@ SELECT area, item, status FROM (
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 91, 'VERDICT', 'role+session',
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area IN ('role', 'session') AND status LIKE 'FAIL%') THEN 'FAIL' ELSE 'PASS' END
+  UNION ALL SELECT 94, 'VERDICT', 'history-schema',
+         CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'history-schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 93, 'VERDICT', 'gallery-schema',
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'gallery-schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 92, 'VERDICT', 'reconcile-schema',

@@ -66,3 +66,14 @@ lint, the same preflight, then `6-properties-updated-at-probe.sql` (one SELECT i
 dates only: whether `properties.updated_at` exists (type, default), whether `trg_properties_updated_at` exists and is enabled, how many rows have a value
 (earliest/latest date, per-month counts), and for listings with Gallery Recovery records how many changed after their latest record. No object is
 enumerated and no listing id, record id, title or object name is printed.
+
+## Gallery history vs recorded gallery states (`gallery-history-vs-snapshots.yml`)
+
+A fourth manual, read-only workflow (`workflow_dispatch` only, same protected environment and read-only secret, **no artifact**) runs `run.sh history`: lint,
+the same preflight (plus the `history-schema` verdict), the aggregate stage-2 cross-check, then `7-gallery-history-vs-snapshots.sql` (one SELECT inside
+`BEGIN READ ONLY ... ROLLBACK`). It asks whether `listing_image_snapshots` / `import_records` can bound WHEN the Gallery Recovery `assign` / `unassign`
+images left their listings' galleries. A snapshot is a record of a gallery STATE as the admin editor saved it, not of a removal: a removal is only BOUNDED when
+the first state recorded AFTER the Gallery Recovery record demonstrably EXCLUDES that specific image (looked up by its normalized name), and then that state is
+only an UPPER bound on when the image left. An image still present in the first later state is reported separately as not yet bounded; removal windows are computed for `assign` records only (an `unassign` record is itself the removal, so its rows are labelled and never carry a window). Image names are compared exactly, as stored or percent-decoded, using the full path from the snapshot's URL (the editor stores only the last URL segment as `storage_path`), and galleries are compared with one normalization on both sides (external URLs included), and "no later state" means the history cannot bound it (the editor writes no
+snapshot when a save empties a gallery, and Gallery Recovery writes none). The output is counts and date ranges only; the run fails if the population it
+rebuilds differs from the stage-2 total.
