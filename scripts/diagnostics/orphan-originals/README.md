@@ -77,3 +77,15 @@ the first state recorded AFTER the Gallery Recovery record demonstrably EXCLUDES
 only an UPPER bound on when the image left. An image still present in the first later state is reported separately as not yet bounded; removal windows are computed for `assign` records only (an `unassign` record is itself the removal, so its rows are labelled and never carry a window). Image names are compared exactly, as stored or percent-decoded, using the full path from the snapshot's URL (the editor stores only the last URL segment as `storage_path`), and galleries are compared with one normalization on both sides (external URLs included), and "no later state" means the history cannot bound it (the editor writes no
 snapshot when a save empties a gallery, and Gallery Recovery writes none). The output is counts and date ranges only; the run fails if the population it
 rebuilds differs from the stage-2 total.
+
+## Gallery Recovery images vs the editor's change log (`gallery-provenance-events.yml`)
+
+A fifth manual, read-only workflow (`workflow_dispatch` only, same protected environment and read-only secret, **no artifact**) runs `run.sh provenance`: lint,
+the same preflight (plus the `provenance-schema` verdict), the aggregate stage-2 cross-check, then `8-gallery-provenance-photos-changed.sql` (one SELECT inside
+`BEGIN READ ONLY ... ROLLBACK`). It asks whether the admin listing editor's `listing_provenance` `photos_changed` events can explain why the Gallery Recovery
+`assign` images (the ones whose first later gallery state excludes them) are missing. Each such event stores the gallery BEFORE and AFTER the edit, so it can show
+direct before/after membership for one image; but it is written BEFORE the save (a failed save leaves it behind), its timestamp is the browser clock, and the
+`actor` is the single shared admin login. So an event counts as direct, confirmed evidence only when a snapshot linked to its id proves the save; an event whose
+before-list already lacks the image shows that edit did NOT remove it; and an event that only falls inside the time window is circumstantial and is never called a
+cause. Gallery Recovery itself writes no `photos_changed` events, and events are best-effort, so "no event" is not "no edit". The output is counts and fixed labels
+only; the run fails if the population it rebuilds differs from the stage-2 total. It never shows that any object is safe to delete.

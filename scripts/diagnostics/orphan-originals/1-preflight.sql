@@ -14,7 +14,9 @@
 -- verdict (the other verdicts are computed exactly as before).
 -- Part E (area 'history-schema') checks listing_image_snapshots.provenance_event_id, which only 7-gallery-history-vs-snapshots.sql groups gallery
 -- states by, with its OWN verdict (the other verdicts are computed exactly as before).
--- Output: "area | item | status" rows; the last five rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
+-- Part F (area 'provenance-schema') checks listing_provenance (the editor's change log) and gallery_assignments.operator, which only
+-- 8-gallery-provenance-photos-changed.sql reads, with its OWN verdict (the other verdicts are computed exactly as before).
+-- Output: "area | item | status" rows; the last six rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
 WITH need(sch, tbl, col, typ) AS (VALUES
     ('storage',  'objects',                'bucket_id',    NULL::text),
     ('storage',  'objects',                'name',         NULL),
@@ -60,6 +62,15 @@ need5(sch, tbl, col, typ) AS (VALUES   -- gallery listing-state stage only; judg
 need6(sch, tbl, col, typ) AS (VALUES   -- gallery history vs snapshots stage only; judged by the separate 'history-schema' verdict
     ('public',   'listing_image_snapshots','provenance_event_id', 'uuid'),
     ('public',   'import_records',         'imported_at',        NULL)),
+need7(sch, tbl, col, typ) AS (VALUES   -- gallery provenance-events stage only; judged by the separate 'provenance-schema' verdict
+    ('public',   'listing_provenance',     'id',           'uuid'),
+    ('public',   'listing_provenance',     'listing_id',   'uuid'),
+    ('public',   'listing_provenance',     'event_type',   NULL),
+    ('public',   'listing_provenance',     'old_value',    'jsonb'),
+    ('public',   'listing_provenance',     'new_value',    'jsonb'),
+    ('public',   'listing_provenance',     'actor',        NULL),
+    ('public',   'listing_provenance',     'created_at',   'timestamp with time zone'),
+    ('public',   'gallery_assignments',    'operator',     NULL)),
 have AS (
   SELECT n.nspname AS sch, c.relname AS tbl, a.attname AS col, format_type(a.atttypid, a.atttypmod) AS typ, c.oid AS relid
   FROM pg_attribute a
@@ -131,6 +142,20 @@ rows_all AS (
               WHEN NOT has_table_privilege(h.relid, 'SELECT') THEN 'NO_SELECT'
               ELSE 'ok' END
     FROM need6 x LEFT JOIN have h ON h.sch = x.sch AND h.tbl = x.tbl AND h.col = x.col
+  UNION ALL
+  SELECT 16, 'provenance-schema', x.sch || '.' || x.tbl || '.' || x.col,
+         CASE WHEN h.col IS NULL THEN 'MISSING'
+              WHEN x.typ IS NOT NULL AND h.typ <> x.typ THEN 'WRONG_TYPE (is ' || h.typ || ', expected ' || x.typ || ')'
+              WHEN NOT has_table_privilege(h.relid, 'SELECT') THEN 'NO_SELECT'
+              ELSE 'ok' END
+    FROM need7 x LEFT JOIN have h ON h.sch = x.sch AND h.tbl = x.tbl AND h.col = x.col
+  UNION ALL SELECT 17, 'provenance-schema', 'listing_provenance read with row-level security this role cannot bypass (counts would be UNTRUSTWORTHY)',
+         CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ')' END
+    FROM (SELECT count(*) AS n
+            FROM pg_class c, me
+           WHERE c.oid IN (SELECT relid FROM have WHERE (sch, tbl) IN (SELECT sch, tbl FROM need7))
+             AND c.relrowsecurity
+             AND NOT (me.rolsuper OR me.rolbypassrls OR (c.relowner = me.oid AND NOT c.relforcerowsecurity))) q
   UNION ALL SELECT 13, 'reconcile-schema', 'tables read only by the reconciliation with row-level security this role cannot bypass (counts would be UNTRUSTWORTHY)',
          CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ': ' || coalesce(names, '') || ')' END
     FROM (SELECT count(*) AS n, string_agg(DISTINCT c.relnamespace::regnamespace::text || '.' || c.relname, ', ') AS names
@@ -189,6 +214,8 @@ SELECT area, item, status FROM (
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 91, 'VERDICT', 'role+session',
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area IN ('role', 'session') AND status LIKE 'FAIL%') THEN 'FAIL' ELSE 'PASS' END
+  UNION ALL SELECT 95, 'VERDICT', 'provenance-schema',
+         CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'provenance-schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 94, 'VERDICT', 'history-schema',
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'history-schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 93, 'VERDICT', 'gallery-schema',
