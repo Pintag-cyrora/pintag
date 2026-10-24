@@ -1,0 +1,84 @@
+name: Gallery provenance - unusable events (read-only)
+
+# MANUAL, READ-ONLY, aggregate-only follow-up to "Gallery provenance events vs missing Gallery Recovery images": the objects that run classified
+# 'unusable' have photos_changed events in their window but none with a before-list AND an after-list. This run asks WHY (the jsonb type of each stored side)
+# and whether the other existing records about those same objects (the event's linked snapshot, delete snapshots of the listing row, other Gallery Recovery
+# records, import records, other change-log events, the current gallery) add anything. Direct and circumstantial evidence are kept apart in the output.
+# See scripts/diagnostics/orphan-originals/9-unusable-provenance-events.sql.
+#
+# SAFETY, in order of importance (identical to the provenance workflow):
+#   * workflow_dispatch ONLY -- no push / pull_request / schedule trigger, so it can never run by itself.
+#   * Same protected `production-backup` environment and the same read-only DB secret as the other diagnostics -- no new secret or credential. The
+#     secret is exposed to ONE runner step plus the presence check.
+#   * `contents: read`. NO artifact is uploaded: the output is counts and fixed labels only (no object name, image list, listing id, event id, record id,
+#     actor, title or payload), shown in the job log and job summary.
+#   * Same run.sh gates: SQL lint (each file exactly one plain SELECT/WITH), catalog-only PREFLIGHT (schema, reconcile-schema, gallery-schema,
+#     history-schema, provenance-schema, role privileges, RLS, session read-only; any FAIL/WARN stops the run), the aggregate stage-2 cross-check, then
+#     the single query inside `BEGIN READ ONLY` ... `ROLLBACK`. Nothing is written to the database, Storage, R2 or backups.
+#   * Only the objects stage 8 classifies 'unusable' are analysed; the other objects are not counted or described.
+#   * Delete this workflow once the investigation is done.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_objects:
+        description: 'Optional: the object count you expect (e.g. 551). The run stops if stage 2 counts a different number. Leave empty to skip.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gallery-provenance-unusable
+  cancel-in-progress: false
+
+jobs:
+  unusable:
+    runs-on: ubuntu-latest
+    environment: production-backup
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify DB URL secret is present
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL (read-only connection) in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Run read-only analysis (lint, preflight, stage-2 cross-check, then the single aggregate SELECT for the unusable objects only)
+        id: unusable
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+          EXPECTED_OBJECTS: ${{ inputs.expected_objects }}
+        run: bash scripts/diagnostics/orphan-originals/run.sh unusable
+
+      - name: Publish results (counts and date ranges only)
+        if: always()
+        working-directory: scripts/diagnostics/orphan-originals
+        run: |
+          emit() {   # $1 = annotation title, $2 = file, $3 = optional grep -v filter
+            [ -f "$2" ] || return 0
+            local msg
+            msg="$(grep -v -e "${3:-^\$}" "$2" | head -c 3500)"
+            msg="${msg//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
+            echo "::notice title=${1}::${msg}"
+          }
+          {
+            echo "## Gallery provenance - unusable events (read-only)"
+            echo
+            if [ -f preflight.txt ]; then echo "### Preflight"; echo '```'; cat preflight.txt; echo '```'; else echo "Preflight did not produce output."; fi
+            if [ -f diagnostic.txt ]; then echo "### Stage 2 cross-check (aggregate)"; echo '```'; cat diagnostic.txt; echo '```'; else echo "**The stage-2 cross-check was NOT run.**"; fi
+            if [ -f unusable-events.txt ]; then echo "### The unusable objects: why, and what the other records say (aggregate)"; echo '```'; cat unusable-events.txt; echo '```'; else echo "**The unusable-events stage (9) was NOT run.**"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          emit "Preflight (rows that are not ok)" preflight.txt ' | ok$'
+          emit "Gallery provenance unusable events" unusable-events.txt

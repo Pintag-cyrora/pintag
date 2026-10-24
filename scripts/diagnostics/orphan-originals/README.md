@@ -89,3 +89,13 @@ direct before/after membership for one image; but it is written BEFORE the save 
 before-list already lacks the image shows that edit did NOT remove it; and an event that only falls inside the time window is circumstantial and is never called a
 cause. Gallery Recovery itself writes no `photos_changed` events, and events are best-effort, so "no event" is not "no edit". The output is counts and fixed labels
 only; the run fails if the population it rebuilds differs from the stage-2 total. It never shows that any object is safe to delete.
+
+## Why stage 8 calls objects "unusable" (`gallery-provenance-unusable.yml`)
+
+A fifth manual, read-only workflow (`workflow_dispatch` only, same protected environment and read-only secret, **no artifact**) runs `run.sh unusable`: lint, the
+same preflight (including `provenance-schema`), the stage-2 cross-check, then `9-unusable-provenance-events.sql` (one SELECT inside `BEGIN READ ONLY ... ROLLBACK`).
+It analyses ONLY the objects `8-gallery-provenance-photos-changed.sql` classifies `unusable` (events in the record-to-snapshot window, none with a before-list AND an
+after-list) and reports, as counts and fixed labels: the jsonb type of each stored side (SQL NULL, JSON null, string, object, empty list, list); what each side that
+IS a list says about the image (exact matching, no prefix / substring); the event's linked snapshot (the saved gallery); delete snapshots of the listing row;
+and, as circumstantial context only, other Gallery Recovery records, import records, other change-log events and the listing's current state. A JSON string
+is not parsed. The run fails if the population it rebuilds differs from the stage-2 total. It never says anything is safe to delete or who caused a change.
