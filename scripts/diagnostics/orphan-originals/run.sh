@@ -14,7 +14,8 @@ MODE="${1:-diagnostic}"   # diagnostic = stages 1-4 (the reconciliation report);
                           # probe = stages 1 and 6 (aggregate catalog/count probe of properties.updated_at; no object is enumerated)
                           # history = stages 1, 2 (cross-check) and 7 (gallery history vs listing_image_snapshots / import_records; aggregates only)
                           # provenance = stages 1, 2 (cross-check) and 8 (gallery 'assign' images vs the editor's photos_changed events; aggregates only)
-case "$MODE" in diagnostic|gallery|probe|history|provenance) ;; *) echo "usage: run.sh [diagnostic|gallery|probe|history|provenance]"; exit 2;; esac
+                          # registry = stages 1, 2 (cross-check) and 10 (unregistered originals vs the registry activation instant, registry history, trigger status; aggregates only)
+case "$MODE" in diagnostic|gallery|probe|history|provenance|registry) ;; *) echo "usage: run.sh [diagnostic|gallery|probe|history|provenance|registry]"; exit 2;; esac
 command -v psql >/dev/null || { echo "psql not found - install it first (brew install libpq)"; exit 1; }
 command -v perl >/dev/null || { echo "perl not found"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
@@ -49,7 +50,8 @@ lint 5-gallery-listing-state.sql
 lint 6-properties-updated-at-probe.sql
 lint 7-gallery-history-vs-snapshots.sql
 lint 8-gallery-provenance-photos-changed.sql
-rm -f provenance-events.txt history-vs-gallery.txt updated-at-probe.txt gallery-listing-detail.csv.tmp preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md gallery-state.csv gallery-listing-detail.csv gallery-listing-summary.md   # never leave results from an earlier run lying around
+lint 10-registry-activation-boundary.sql
+rm -f registry-boundary.txt provenance-events.txt history-vs-gallery.txt updated-at-probe.txt gallery-listing-detail.csv.tmp preflight.txt diagnostic.txt reconcile.csv source-health.csv reconcile-objects.csv reconcile-summary.md gallery-state.csv gallery-listing-detail.csv gallery-listing-summary.md   # never leave results from an earlier run lying around
 
 if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
   read -rsp "Paste PINTAG_PROD_DB_URL (hidden), then press Enter: " PINTAG_PROD_DB_URL || true; echo
@@ -138,6 +140,40 @@ if [ "$MODE" = provenance ]; then
   fi
   cat provenance-events.txt
   echo; echo "Done. provenance-events.txt holds aggregates only."
+  exit 0
+fi
+
+if [ "$MODE" = registry ]; then
+  # stage 10 reads gallery_assignments / properties (gallery-schema), the snapshot / import tables (history-schema), listing_provenance (provenance-schema),
+  # property_images and the trigger catalogs (registry-schema)
+  for v in gallery-schema history-schema provenance-schema registry-schema; do
+    if ! grep -qx "VERDICT | $v | PASS" preflight.txt; then
+      echo; echo "$(echo "$v" | tr a-z A-Z) VERDICT DID NOT PASS - the registry stage (10) was NOT run. See the $v lines in preflight.txt."
+      exit 1
+    fi
+  done
+  if [ -n "${EXPECTED_OBJECTS:-}" ]; then
+    case "$EXPECTED_OBJECTS" in *[!0-9]*) echo "expected_objects must be a number - stage 10 NOT run."; exit 1;; esac
+    [ "$EXPECTED_OBJECTS" = "$expected" ] || { echo "Stage 2 counted $expected objects but expected_objects is $EXPECTED_OBJECTS - stage 10 NOT run."; exit 1; }
+  fi
+  echo; echo "=== stage 10: unregistered originals vs the registry activation instant, registry history and trigger status, for the $expected objects (read-only; aggregates only) ==="
+  run_data 10-registry-activation-boundary.sql > registry-boundary.txt || { rm -f registry-boundary.txt; exit 1; }
+  # the query rebuilds the population itself: it must equal the stage-2 total or the numbers are not about the same objects
+  got="$(awk -F'|' '/^ *1 unreferenced originals/ { gsub(/[^0-9]/, "", $3); print $3; exit }' registry-boundary.txt)"
+  if [ "$got" != "$expected" ]; then
+    rm -f registry-boundary.txt
+    echo "Stage 10 rebuilt a population of '${got:-?}' objects but stage 2 counted $expected - the result was discarded."
+    exit 1
+  fi
+  # the evidence buckets must add up to the population (a bucket lost or counted twice would make the split meaningless)
+  tot="$(awk -F'|' '/^ *3 unregistered originals.*total of the buckets/ { gsub(/[^0-9]/, "", $3); print $3; exit }' registry-boundary.txt)"
+  if [ "$tot" != "$expected" ]; then
+    rm -f registry-boundary.txt
+    echo "Stage 10 evidence buckets add up to '${tot:-?}' but the population is $expected - the result was discarded."
+    exit 1
+  fi
+  cat registry-boundary.txt
+  echo; echo "Done. registry-boundary.txt holds aggregates only."
   exit 0
 fi
 

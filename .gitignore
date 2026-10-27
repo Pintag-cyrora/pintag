@@ -24,6 +24,7 @@ orphan-artifact/
 scripts/diagnostics/orphan-originals/updated-at-probe.txt
 scripts/diagnostics/orphan-originals/history-vs-gallery.txt
 scripts/diagnostics/orphan-originals/provenance-events.txt
+scripts/diagnostics/orphan-originals/registry-boundary.txt
 scripts/diagnostics/orphan-originals/gallery-state.csv
 scripts/diagnostics/orphan-originals/gallery-listing-detail.csv
 scripts/diagnostics/orphan-originals/gallery-listing-summary.md

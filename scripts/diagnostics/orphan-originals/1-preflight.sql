@@ -16,7 +16,10 @@
 -- states by, with its OWN verdict (the other verdicts are computed exactly as before).
 -- Part F (area 'provenance-schema') checks listing_provenance (the editor's change log) and gallery_assignments.operator, which only
 -- 8-gallery-provenance-photos-changed.sql reads, with its OWN verdict (the other verdicts are computed exactly as before).
--- Output: "area | item | status" rows; the last six rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
+-- Part G (area 'registry-schema') checks what only 10-registry-activation-boundary.sql reads beyond the other parts (property_images.created_at / status /
+-- property_id, import_images.listing_id / storage_url) and that the trigger catalogs it inspects are readable, with its OWN verdict (the other verdicts are
+-- computed exactly as before).
+-- Output: "area | item | status" rows; the last seven rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
 WITH need(sch, tbl, col, typ) AS (VALUES
     ('storage',  'objects',                'bucket_id',    NULL::text),
     ('storage',  'objects',                'name',         NULL),
@@ -71,6 +74,13 @@ need7(sch, tbl, col, typ) AS (VALUES   -- gallery provenance-events stage only; 
     ('public',   'listing_provenance',     'actor',        NULL),
     ('public',   'listing_provenance',     'created_at',   'timestamp with time zone'),
     ('public',   'gallery_assignments',    'operator',     NULL)),
+need8(sch, tbl, col, typ) AS (VALUES   -- registry activation-boundary stage only; judged by the separate 'registry-schema' verdict
+    ('public',   'property_images',        'created_at',   'timestamp with time zone'),
+    ('public',   'property_images',        'status',       NULL),
+    ('public',   'property_images',        'property_id',  'uuid'),
+    ('public',   'import_images',          'listing_id',   NULL),
+    ('public',   'import_images',          'storage_url',  NULL),
+    ('public',   'properties',             'deleted_at',   'timestamp with time zone')),
 have AS (
   SELECT n.nspname AS sch, c.relname AS tbl, a.attname AS col, format_type(a.atttypid, a.atttypmod) AS typ, c.oid AS relid
   FROM pg_attribute a
@@ -156,6 +166,15 @@ rows_all AS (
            WHERE c.oid IN (SELECT relid FROM have WHERE (sch, tbl) IN (SELECT sch, tbl FROM need7))
              AND c.relrowsecurity
              AND NOT (me.rolsuper OR me.rolbypassrls OR (c.relowner = me.oid AND NOT c.relforcerowsecurity))) q
+  UNION ALL
+  SELECT 18, 'registry-schema', x.sch || '.' || x.tbl || '.' || x.col,
+         CASE WHEN h.col IS NULL THEN 'MISSING'
+              WHEN x.typ IS NOT NULL AND h.typ <> x.typ THEN 'WRONG_TYPE (is ' || h.typ || ', expected ' || x.typ || ')'
+              WHEN NOT has_table_privilege(h.relid, 'SELECT') THEN 'NO_SELECT'
+              ELSE 'ok' END
+    FROM need8 x LEFT JOIN have h ON h.sch = x.sch AND h.tbl = x.tbl AND h.col = x.col
+  UNION ALL SELECT 19, 'registry-schema', 'catalogs pg_catalog.pg_trigger / pg_proc / pg_attribute readable (trigger status is reported from them)',
+         CASE WHEN has_table_privilege('pg_catalog.pg_trigger', 'SELECT') AND has_table_privilege('pg_catalog.pg_proc', 'SELECT') AND has_table_privilege('pg_catalog.pg_attribute', 'SELECT') THEN 'ok' ELSE 'NO_SELECT' END
   UNION ALL SELECT 13, 'reconcile-schema', 'tables read only by the reconciliation with row-level security this role cannot bypass (counts would be UNTRUSTWORTHY)',
          CASE WHEN n = 0 THEN 'ok' ELSE 'FAIL (' || n || ': ' || coalesce(names, '') || ')' END
     FROM (SELECT count(*) AS n, string_agg(DISTINCT c.relnamespace::regnamespace::text || '.' || c.relname, ', ') AS names
@@ -214,6 +233,8 @@ SELECT area, item, status FROM (
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 91, 'VERDICT', 'role+session',
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area IN ('role', 'session') AND status LIKE 'FAIL%') THEN 'FAIL' ELSE 'PASS' END
+  UNION ALL SELECT 96, 'VERDICT', 'registry-schema',
+         CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'registry-schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 95, 'VERDICT', 'provenance-schema',
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'provenance-schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 94, 'VERDICT', 'history-schema',
