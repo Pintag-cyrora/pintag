@@ -33,9 +33,13 @@
 -- excludes it (no row of the state names the object), and all of those states dated before the boundary. A later snapshot is never read as "gone" because it
 -- exists: if the later state(s) cannot be reconstructed, or there is no later state in some listing, the object stays indeterminate. The editor writes NO
 -- snapshot when a save leaves the gallery empty, so an emptied gallery is invisible here: it is never read as exclusion either. Absence is only ever shown
--- by a recorded state; it is not inferred from a missing record, an old timestamp or an empty list. Limits: a state that names the object in a spelling the
--- matcher cannot see (e.g. a different host form of the URL) would be read as excluding; a re-add made without any record (editor logging is best-effort)
--- would be missed.
+-- by a recorded state; it is not inferred from a missing record, an old timestamp or an empty list.
+-- LIMIT: a recorded exclusion is NOT proof that the object stayed out of every gallery afterwards (bucket 4 is "recorded exclusion", not "removed"). Writers that
+-- leave no, or an incomplete, record exist: edit-listing.html and add-property.html write properties.images with no editor event and no snapshot; the admin editor's
+-- change log and snapshots are best-effort (a failure never blocks a save); Gallery Recovery inserts its gallery_assignments record AFTER the update and only logs a
+-- failed insert. An unrecorded re-add (and a later unrecorded removal) can therefore still be classified into bucket 4 and would then hide a discrepancy. Only buckets
+-- 1-3 are positive evidence of membership at or after the instant; every other bucket can confirm nothing about absence. Likewise a state that names the object in a
+-- spelling the matcher cannot see would be read as excluding it.
 -- Spelling: the registry stores the path as written in the URL (percent-encoded); an unreferenced object whose registry row exists only under another
 -- spelling is counted separately.
 -- Output is counts, dates of registry rows and fixed labels only: no object name, image list, listing id, event id, record id, actor or payload is selected.
@@ -87,9 +91,14 @@ ent0 AS (   -- every name any evidence source mentions, one normalization (path 
   SELECT CASE WHEN EXISTS (SELECT 1 FROM evt e WHERE e.eid = s.provenance_event_id::text) THEN 'snap_linked' ELSE 'snap_other' END, s.listing_id::text, s.created_at,
          coalesce(s.provenance_event_id::text, s.created_at::text), x.n
     FROM listing_image_snapshots s
-    CROSS JOIN LATERAL (VALUES
-      (CASE WHEN s.storage_url LIKE '%/property-images/%' THEN nullif(split_part(regexp_replace(s.storage_url, '^.*/property-images/', ''), '?', 1), '') END),
-      (nullif(split_part(regexp_replace(coalesce(s.storage_path, ''), '^.*/property-images/', ''), '?', 1), ''))) AS x(n)
+    CROSS JOIN LATERAL (   -- the image's name, exactly as stage 8 builds it: the URL path when the URL is ours, else the URL itself, else the stored path; the stored path is a
+                           -- SECOND name only when it is not just the tail of the URL path (the editor stores the last URL segment as storage_path, so a basename alone must
+                           -- never name a different, root-level object)
+      SELECT y.n FROM (SELECT nullif(split_part(regexp_replace(coalesce(s.storage_path, ''), '^.*/property-images/', ''), '?', 1), '') AS np,
+                              CASE WHEN s.storage_url LIKE '%/property-images/%' THEN nullif(split_part(regexp_replace(s.storage_url, '^.*/property-images/', ''), '?', 1), '') END AS nu,
+                              nullif(split_part(coalesce(s.storage_url, ''), '?', 1), '') AS ne) z,
+           LATERAL (VALUES (CASE WHEN z.nu IS NOT NULL THEN z.nu WHEN z.ne IS NOT NULL THEN z.ne ELSE z.np END),
+                           (CASE WHEN z.nu IS NOT NULL AND z.np IS NOT NULL AND z.nu <> z.np AND right(z.nu, length(z.np) + 1) <> ('/' || z.np) THEN z.np END)) AS y(n)) AS x(n)
    WHERE current_setting('transaction_read_only') = 'on'
   UNION ALL
   SELECT CASE WHEN lk.linked_ts IS NOT NULL THEN 'ev_old_linked' ELSE 'ev_old_browser' END, e.lid, coalesce(lk.linked_ts, e.cts), NULL::text,
@@ -104,9 +113,14 @@ ent0 AS (   -- every name any evidence source mentions, one normalization (path 
   UNION ALL
   SELECT 'imp', i.listing_id::text, NULL::timestamptz, NULL::text, x.n
     FROM import_images i
-    CROSS JOIN LATERAL (VALUES
-      (nullif(split_part(regexp_replace(coalesce(i.storage_path, ''), '^.*/property-images/', ''), '?', 1), '')),
-      (CASE WHEN i.storage_url LIKE '%/property-images/%' THEN nullif(split_part(regexp_replace(i.storage_url, '^.*/property-images/', ''), '?', 1), '') END)) AS x(n)
+    CROSS JOIN LATERAL (   -- the image's name, exactly as stage 8 builds it: the URL path when the URL is ours, else the URL itself, else the stored path; the stored path is a
+                           -- SECOND name only when it is not just the tail of the URL path (the editor stores the last URL segment as storage_path, so a basename alone must
+                           -- never name a different, root-level object)
+      SELECT y.n FROM (SELECT nullif(split_part(regexp_replace(coalesce(i.storage_path, ''), '^.*/property-images/', ''), '?', 1), '') AS np,
+                              CASE WHEN i.storage_url LIKE '%/property-images/%' THEN nullif(split_part(regexp_replace(i.storage_url, '^.*/property-images/', ''), '?', 1), '') END AS nu,
+                              nullif(split_part(coalesce(i.storage_url, ''), '?', 1), '') AS ne) z,
+           LATERAL (VALUES (CASE WHEN z.nu IS NOT NULL THEN z.nu WHEN z.ne IS NOT NULL THEN z.ne ELSE z.np END),
+                           (CASE WHEN z.nu IS NOT NULL AND z.np IS NOT NULL AND z.nu <> z.np AND right(z.nu, length(z.np) + 1) <> ('/' || z.np) THEN z.np END)) AS y(n)) AS x(n)
    WHERE current_setting('transaction_read_only') = 'on'
   UNION ALL
   SELECT 'reg', pi.property_id::text, NULL::timestamptz, NULL::text, pi.storage_path FROM property_images pi WHERE current_setting('transaction_read_only') = 'on'),
@@ -147,7 +161,7 @@ cb AS (
          CASE WHEN mx_ts >= (SELECT b FROM bnd) THEN '1 direct, server time: in a gallery ON/AFTER activation (a registry row is expected if the sync worked)'
               WHEN apx_ts > (SELECT b FROM bnd) + interval '1 day' THEN '2 direct, browser clock: in a gallery MORE THAN A DAY after activation (approximate; a row is expected if the sync worked)'
               WHEN apx_ts >= (SELECT b FROM bnd) - interval '1 day' THEN '3 direct, browser clock: in a gallery within a day of activation (cannot be placed before or after)'
-              WHEN mx_ts IS NOT NULL AND all_excl AND max_excl < (SELECT b FROM bnd) THEN '4 REMOVED BEFORE activation: in every listing a complete recorded gallery state before it demonstrably excludes the object (no row possible)'
+              WHEN mx_ts IS NOT NULL AND all_excl AND max_excl < (SELECT b FROM bnd) THEN '4 RECORDED EXCLUSION before activation: in every listing a complete recorded gallery state before it excludes the object (does NOT prove it stayed absent: an unrecorded re-add is possible)'
               WHEN mx_ts IS NOT NULL AND all_excl THEN '5 excluded by complete recorded states, but at least one such state is on/after activation (removal date undecidable)'
               WHEN mx_ts IS NOT NULL AND any_unrecon THEN '6 INDETERMINATE: a later recorded state exists but its membership cannot be reconstructed (missing names or image order), so absence is not shown'
               WHEN mx_ts IS NOT NULL THEN '7 INDETERMINATE: last in a gallery before activation; no later recorded gallery state in some listing (an emptied gallery leaves no snapshot)'
@@ -190,6 +204,7 @@ SELECT section, label, n, listings FROM (
   SELECT 0 AS s, '0 session guard (must be on, else every count below is deliberately zero)' AS section, 'transaction_read_only=' || current_setting('transaction_read_only') AS label, NULL::bigint AS n, NULL::bigint AS listings
   UNION ALL SELECT 1, '1 unreferenced originals (must equal the stage-2 total)', '', count(*), NULL FROM orph
   UNION ALL SELECT 2, '2 activation boundary used (apply-migration run 32142932661, server time)', to_char((SELECT b FROM bnd) AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') || ' UTC', NULL, NULL
+  UNION ALL SELECT 2, '2 limitation (read bucket 4 with this)', 'records can be missing: edit-listing.html and add-property.html write galleries with no event or snapshot, and editor logging and the Gallery Recovery record are best-effort, so a recorded exclusion does not prove an object stayed absent; only buckets 1-3 are positive evidence of membership', NULL, NULL
   UNION ALL SELECT 3, '3 unregistered originals: strongest evidence of when each was in a gallery, against the boundary (exclusive; the buckets add up to section 1)', bucket, count(*), count(DISTINCT coalesce(mx_lid, '')) FILTER (WHERE mx_lid IS NOT NULL) FROM cb GROUP BY bucket
   UNION ALL SELECT 3, '3 unregistered originals: strongest evidence of when each was in a gallery, against the boundary (exclusive; the buckets add up to section 1)', 'total of the buckets (must equal section 1)', count(*), NULL FROM cb
   UNION ALL SELECT 4, '4 bucket 1 by the source of the latest server-time evidence (objects)',

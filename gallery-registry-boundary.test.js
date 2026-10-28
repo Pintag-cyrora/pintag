@@ -153,6 +153,15 @@ add(57, { bucket: 1, src: 'recorded snapshot state not linked to a photos_change
 add(58, { bucket: 4, sql: () => `${rec(58, 'assign', [nm(58)], T(-10 * D))}\n${state(58, null, [X], T(-5 * D))}\n${state(58, null, [X], T(D))}` });   // the FIRST excluding complete state (before the boundary) decides, not a later one
 add(59, { bucket: 6, sql: () => `${rec(59, 'assign', [nm(59)], T(-10 * D))}\n${rawstate(59, null, [{ name: X, order: 0 }, { name: 'SYN-IMG-y.jpg', order: 0 }, { name: 'SYN-IMG-z.jpg', order: 2 }], T(-5 * D))}` });   // a repeated order hidden by a gap: not 0..n-1
 add(60, { bucket: 6, sql: () => `${rec(60, 'assign', [nm(60)], T(-10 * D))}\n${rawstate(60, null, [{ name: X, order: -1 }, { name: 'SYN-IMG-y.jpg', order: 0 }, { name: 'SYN-IMG-z.jpg', order: 2 }], T(-5 * D))}` });  // distinct, right maximum, but starts below 0
+// name matching: the editor stores ONLY the last URL segment as storage_path, so a basename must never name a different root-level object (stage 8's guard)
+const snapraw = (n, url, path, ts, ev = null) => `INSERT INTO listing_image_snapshots (listing_id, provenance_event_id, storage_path, storage_url, image_order, created_at) VALUES ('${L(n)}', ${ev == null ? 'NULL' : q(EV(ev))}, ${path == null ? 'NULL' : q(path)}, ${url == null ? 'NULL' : q(url)}, 0, ${q(ts)});`;
+add(61, { bucket: 10, sql: () => snapraw(61, U('dir/SYN-OBJ-61.jpg'), 'SYN-OBJ-61.jpg', T(D)) });                                              // URL path is dir/..., path is only the basename: a DIFFERENT object than the root one
+add(62, { bucket: 10, sql: () => snapraw(62, 'https://cdn.ext.example/SYN-OBJ-62.jpg', 'SYN-OBJ-62.jpg', T(D)) });                              // external URL: its basename is not a bucket object
+add(63, { bucket: 1, src: 'recorded snapshot state not linked to a photos_changed event', sql: () => snapraw(63, U('dir/other-63.jpg'), 'SYN-OBJ-63.jpg', T(D)) });   // path and URL DISAGREE: the stored path is a second name
+add(64, { name: 'SYN-OBJ-dir/n64.jpg', bucket: 1, src: 'recorded snapshot state not linked to a photos_changed event', sql: () => snapraw(64, U('SYN-OBJ-dir/n64.jpg'), 'n64.jpg', T(D)) });   // the nested object IS the URL path (basename path is its tail)
+add(65, { bucket: 1, src: 'recorded snapshot state not linked to a photos_changed event', sql: () => snapraw(65, null, 'SYN-OBJ-65.jpg', T(D)) });   // no URL at all: the stored path names it
+add(66, { bucket: 10, sql: () => `INSERT INTO import_images (listing_id, storage_path, storage_url) VALUES ('${L(66)}', 'SYN-OBJ-66.jpg', ${q(U('dir/SYN-OBJ-66.jpg'))});` });   // the same basename-only rule for import rows (circumstantial)
+add(67, { bucket: 9, sql: () => `INSERT INTO import_images (listing_id, storage_path, storage_url) VALUES ('${L(67)}', 'SYN-OBJ-67.jpg', ${q(U('SYN-OBJ-67.jpg'))});` });   // a flat import row still counts (circumstantial)
 // September / October uploads, and uploads on/after the boundary
 add(31, { created: '2026-09-15T08:00:00Z', bucket: 1, src: 'Gallery Recovery assign record', sql: () => rec(31, 'assign', [nm(31)], '2026-09-20T08:00:00Z') });
 add(32, { created: '2026-10-02T08:00:00Z', bucket: 2, sql: () => event(321, 32, urls(nm(32), X), urls(X), '2026-10-05T08:00:00Z') });
@@ -214,7 +223,7 @@ const BUCKETS = {
   1: '1 direct, server time: in a gallery ON/AFTER activation (a registry row is expected if the sync worked)',
   2: '2 direct, browser clock: in a gallery MORE THAN A DAY after activation (approximate; a row is expected if the sync worked)',
   3: '3 direct, browser clock: in a gallery within a day of activation (cannot be placed before or after)',
-  4: '4 REMOVED BEFORE activation: in every listing a complete recorded gallery state before it demonstrably excludes the object (no row possible)',
+  4: '4 RECORDED EXCLUSION before activation: in every listing a complete recorded gallery state before it excludes the object (does NOT prove it stayed absent: an unrecorded re-add is possible)',
   5: '5 excluded by complete recorded states, but at least one such state is on/after activation (removal date undecidable)',
   6: '6 INDETERMINATE: a later recorded state exists but its membership cannot be reconstructed (missing names or image order), so absence is not shown',
   7: '7 INDETERMINATE: last in a gallery before activation; no later recorded gallery state in some listing (an emptied gallery leaves no snapshot)',
@@ -231,7 +240,13 @@ test('population and guard: the stage-2 population, nothing referenced, nothing 
   assert.deepEqual(h.get('1 '), { '': `${POP.length}/` });
   const d = psqlRaw(makeDb(), ['-A', '-t', '-F', ' | ', '-c', 'BEGIN READ ONLY', '-f', path.join(D_, '2-diagnostic.sql'), '-c', 'ROLLBACK']);
   assert.equal(Number(d.stdout.split('\n').find((l) => /TOTAL/.test(l)).split(' | ').pop()), POP.length, 'stage 2 counts the same set');
-  assert.deepEqual(h.get('2 '), { '2026-08-18 13:32:37 UTC': '/' });
+  const sec2 = h.get('2 ');
+  assert.equal(sec2['2026-08-18 13:32:37 UTC'], '/');
+  const lim = Object.keys(sec2).find((k) => /^records can be missing/.test(k));
+  assert.ok(lim, 'the limitation is part of the printed output, not only of the documentation');
+  assert.match(lim, /edit-listing\.html and add-property\.html/);
+  assert.match(lim, /does not prove an object stayed absent/);
+  assert.match(lim, /only buckets 1-3 are positive evidence/);
 });
 
 test('every object lands in exactly ONE bucket, the buckets add up to the population, and each bucket holds exactly the planted objects', opts, () => {
@@ -256,11 +271,30 @@ for (const n of POP) {
   });
 }
 
+test('name matching: a basename-only stored path never names a root-level object while the URL points into a directory (the exact case), and the legitimate forms still match', opts, () => {
+  const only = (n) => reg(makeDb(scenario(n), '')).get('3 ');
+  assert.equal(only(61)[BUCKETS[10]].split('/')[0], '1');       // the false positive that was found: now no evidence
+  assert.equal(only(62)[BUCKETS[10]].split('/')[0], '1');       // external URL with a basename path
+  assert.equal(only(66)[BUCKETS[10]].split('/')[0], '1');       // import rows follow the same rule
+  assert.equal(only(63)[BUCKETS[1]].split('/')[0], '1');        // path and URL disagree: the path is a second name
+  assert.equal(only(64)[BUCKETS[1]].split('/')[0], '1');        // nested object named by the URL path
+  assert.equal(only(65)[BUCKETS[1]].split('/')[0], '1');        // no URL: the path
+  assert.equal(only(67)[BUCKETS[9]].split('/')[0], '1');        // flat import row: circumstantial, still counted
+});
+
+test('bucket 4 is a RECORDED EXCLUSION, not a removal: the label, the printed limitation and the documentation name the unrecorded writers', () => {
+  const sqlText = fs.readFileSync(path.join(D_, '10-registry-activation-boundary.sql'), 'utf8');
+  assert.doesNotMatch(sqlText.replace(/--.*$/gm, ''), /'4 REMOVED BEFORE/);
+  for (const w of ['edit-listing.html', 'add-property.html', 'best-effort', 'Gallery Recovery inserts its gallery_assignments record AFTER the update', 'unrecorded re-add']) assert.ok(sqlText.includes(w), w);
+  const readme = fs.readFileSync(path.join(D_, 'README.md'), 'utf8');
+  for (const w of ['edit-listing.html', 'add-property.html', 'recorded exclusion', 'unrecorded re-add']) assert.ok(readme.includes(w), `README: ${w}`);
+});
+
 test('bucket 1 by source: Gallery Recovery records, snapshot states of saved edits, other snapshots and saved before-lists are kept apart', opts, () => {
   assert.deepEqual(reg(makeDb()).get('4 '), {
     'Gallery Recovery assign record': '5/5',                                                                   // objects 1, 3, 25, 31, 35
     'recorded snapshot state of a saved editor edit (linked to a photos_changed event)': '1/1',              // 6
-    'recorded snapshot state not linked to a photos_changed event': '2/2',                                    // 4, 57
+    'recorded snapshot state not linked to a photos_changed event': '5/5',                                    // 4, 57, 63, 64, 65
     'before-list of a saved editor edit (save confirmed by a linked snapshot)': '1/1' });                    // 5
 });
 
@@ -268,7 +302,7 @@ test('each source on its own: dated before / on-or-after the boundary (server ti
   const g = reg(makeDb()).get('5 ');
   assert.equal(g['direct: Gallery Recovery assign record: latest on/after the boundary'].split('/')[0], '5');
   assert.equal(g['direct: Gallery Recovery assign record: latest before the boundary'].split('/')[0], '24');   // 2, 7, 8, 9, 22, 24, 28 and 40, 41, 43-50, 52, 54, 55, 57, 58, 59, 60
-  assert.equal(g['direct: other snapshot state: latest on/after the boundary'].split('/')[0], '2');            // 4, 57
+  assert.equal(g['direct: other snapshot state: latest on/after the boundary'].split('/')[0], '5');            // 4, 57, 63, 64, 65
   assert.equal(g['direct: other snapshot state: latest before the boundary'].split('/')[0], '2');              // 40, 41
   assert.equal(g['direct: snapshot state of a saved editor edit: latest on/after the boundary'].split('/')[0], '1');
   assert.equal(g['direct: editor before-list, save confirmed: latest on/after the boundary'].split('/')[0], '1');
@@ -277,7 +311,7 @@ test('each source on its own: dated before / on-or-after the boundary (server ti
   assert.equal(g['direct, browser clock: editor before-list, save not confirmed: latest more than a day BEFORE'].split('/')[0], '3');   // 13, 17, 46
   assert.equal(g['circumstantial: Gallery Recovery unassign record: latest on/after the boundary'].split('/')[0], '2');
   assert.equal(g['circumstantial, browser clock: editor after-list, save not confirmed: latest more than a day AFTER'].split('/')[0], '1');
-  assert.equal(g['circumstantial: import_images row (not dated): no time used'].split('/')[0], '1');
+  assert.equal(g['circumstantial: import_images row (not dated): no time used'].split('/')[0], '2');   // 20, 67 (66 is basename-only: no match)
   assert.ok(!Object.keys(g).some((k) => /registry/.test(k)), 'registry rows are not evidence of gallery membership');
 });
 
