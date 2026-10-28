@@ -62,7 +62,7 @@ CREATE TABLE public.properties (id uuid PRIMARY KEY, title text, images jsonb, d
 CREATE TABLE public.unit_types (images text[]); CREATE TABLE public.parties (photo_url text);
 CREATE TABLE public.property_images (id uuid DEFAULT gen_random_uuid(), property_id uuid, storage_path text, status text, sha256 text, created_at timestamptz DEFAULT now());
 CREATE TABLE public.gallery_assignments (id uuid DEFAULT gen_random_uuid(), op text, listing_id uuid, cluster_id text, photo_paths jsonb, confidence text, operator text, created_at timestamptz);
-CREATE TABLE public.listing_image_snapshots (id uuid DEFAULT gen_random_uuid(), listing_id uuid, provenance_event_id uuid, storage_url text, storage_path text, created_at timestamptz);
+CREATE TABLE public.listing_image_snapshots (id uuid DEFAULT gen_random_uuid(), listing_id uuid, provenance_event_id uuid, storage_url text, storage_path text, image_order int, created_at timestamptz);
 CREATE TABLE public.import_records (id uuid DEFAULT gen_random_uuid(), listing_id uuid, raw_payload jsonb, imported_at timestamptz);
 CREATE TABLE public.import_images (id uuid DEFAULT gen_random_uuid(), import_id uuid, listing_id uuid, storage_url text, storage_path text, uploaded_at timestamptz);
 CREATE TABLE public.properties_row_snapshots (id uuid, property_id uuid, op text, row_data jsonb, created_at timestamptz);
@@ -72,7 +72,9 @@ const obj = (name) => `INSERT INTO storage.objects VALUES ('property-images', ${
 const listing = (n) => `INSERT INTO properties VALUES ('${L(n)}', 'SYN-TITLE-${n}', '[]', NULL);`;
 const assign = (n, names, ts = '2026-08-06 10:00', operator = 'ops@example.com') => `INSERT INTO gallery_assignments (op, listing_id, photo_paths, operator, created_at) VALUES ('assign', '${L(n)}', ${J(names)}, ${operator == null ? 'NULL' : q(operator)}, ${q(ts)});`;
 // a snapshot state (what the editor saved): names -> rows, anchored to an event id (or to nothing)
-const state = (n, ev, names, ts) => names.map((nm) => `INSERT INTO listing_image_snapshots (listing_id, provenance_event_id, storage_path, storage_url, created_at) VALUES ('${L(n)}', ${ev == null ? 'NULL' : q(EV(ev))}, ${q(nm.split('/').pop())}, ${q(U(nm))}, ${q(ts)});`).join('\n');
+const state = (n, ev, names, ts) => names.map((nm, i) => `INSERT INTO listing_image_snapshots (listing_id, provenance_event_id, storage_path, storage_url, image_order, created_at) VALUES ('${L(n)}', ${ev == null ? 'NULL' : q(EV(ev))}, ${q(nm.split('/').pop())}, ${q(U(nm))}, ${i}, ${q(ts)});`).join('\n');
+// a state written row by row, to plant rows whose membership cannot be reconstructed: rows = [{ name | null, order | null }]
+const rawstate = (n, ev, rows, ts) => rows.map((r) => `INSERT INTO listing_image_snapshots (listing_id, provenance_event_id, storage_path, storage_url, image_order, created_at) VALUES ('${L(n)}', ${ev == null ? 'NULL' : q(EV(ev))}, ${r.name == null ? 'NULL' : q(r.name.split('/').pop())}, ${r.name == null ? 'NULL' : q(U(r.name))}, ${r.order == null ? 'NULL' : r.order}, ${q(ts)});`).join('\n');
 const event = (id, n, oldL, newL, ts, actor = 'ops@example.com', type = 'photos_changed') =>
   `INSERT INTO listing_provenance (id, listing_id, event_type, field_name, old_value, new_value, source, actor, created_at) VALUES ('${EV(id)}', '${L(n)}', ${q(type)}, 'images', ${oldL === undefined ? 'NULL' : J(oldL)}, ${newL === undefined ? 'NULL' : J(newL)}, 'manual', ${actor == null ? 'NULL' : q(actor)}, ${q(ts)});`;
 const urls = (...rels) => rels.map(U);
@@ -99,7 +101,7 @@ const add = (n, o) => { S[n] = { name: `SYN-OBJ-${pad(n)}.jpg`, created: '2026-0
 const nm = (n) => S[n].name;
 // exact (server-time) evidence ON/AFTER the boundary: bucket 1, with the source of the latest evidence
 add(1, { bucket: 1, src: 'Gallery Recovery assign record', sql: () => rec(1, 'assign', [nm(1)], T(0)) });                                      // exactly AT the boundary counts as on/after
-add(2, { bucket: 6, sql: () => rec(2, 'assign', [nm(2)], T(-1000)) });                                                                        // one second BEFORE: no later state
+add(2, { bucket: 7, sql: () => rec(2, 'assign', [nm(2)], T(-1000)) });                                                                        // one second BEFORE: no later state
 add(3, { bucket: 1, src: 'Gallery Recovery assign record', sql: () => rec(3, 'assign', [nm(3)], T(1000)) });
 add(4, { bucket: 1, src: 'recorded snapshot state not linked to a photos_changed event', sql: () => state(4, null, [nm(4), X], T(H)) });
 add(5, { bucket: 1, src: 'before-list of a saved editor edit (save confirmed by a linked snapshot)', sql: () => `${event(51, 5, urls(nm(5), X), urls(X), T(2 * H))}\n${state(5, 51, [X], T(2 * H))}` });
@@ -107,41 +109,59 @@ add(6, { bucket: 1, src: 'recorded snapshot state of a saved editor edit (linked
 // before the boundary: removal bounded / undecidable
 add(7, { bucket: 4, sql: () => `${rec(7, 'assign', [nm(7)], T(-10 * D))}\n${state(7, null, [X], T(-5 * D))}` });                               // first later recorded state (without it) is BEFORE the boundary
 add(8, { bucket: 5, sql: () => `${rec(8, 'assign', [nm(8)], T(-10 * D))}\n${state(8, null, [X], T(D))}` });                                   // first later recorded state is AFTER the boundary
-add(9, { bucket: 6, sql: () => rec(9, 'assign', [nm(9)], T(-10 * D)) });
+add(9, { bucket: 7, sql: () => rec(9, 'assign', [nm(9)], T(-10 * D)) });
 // browser-clock evidence (editor before-list, no linked snapshot): one-day margin on each side
 add(10, { bucket: 2, sql: () => event(101, 10, urls(nm(10), X), urls(X), T(3 * D)) });
 add(11, { bucket: 3, sql: () => event(111, 11, urls(nm(11), X), urls(X), T(12 * H)) });
 add(12, { bucket: 3, sql: () => event(121, 12, urls(nm(12), X), urls(X), T(-12 * H)) });
-add(13, { bucket: 7, sql: () => event(131, 13, urls(nm(13), X), urls(X), T(-3 * D)) });
+add(13, { bucket: 8, sql: () => event(131, 13, urls(nm(13), X), urls(X), T(-3 * D)) });
 add(14, { bucket: 3, sql: () => event(141, 14, urls(nm(14), X), urls(X), T(D)) });                                                              // exactly +1 day: still inside the margin
 add(15, { bucket: 2, sql: () => event(151, 15, urls(nm(15), X), urls(X), T(D + 1000)) });
 add(16, { bucket: 3, sql: () => event(161, 16, urls(nm(16), X), urls(X), T(-D)) });                                                             // exactly -1 day
-add(17, { bucket: 7, sql: () => event(171, 17, urls(nm(17), X), urls(X), T(-D - 1000)) });
+add(17, { bucket: 8, sql: () => event(171, 17, urls(nm(17), X), urls(X), T(-D - 1000)) });
 // circumstantial only
-add(18, { bucket: 8, sql: () => rec(18, 'unassign', [nm(18)], T(D)) });
-add(19, { bucket: 8, sql: () => event(191, 19, undefined, urls(nm(19)), T(2 * D)) });                                                           // missing before side + unconfirmed after-list
-add(20, { bucket: 8, sql: () => `INSERT INTO import_images (listing_id, storage_path, storage_url) VALUES ('${L(20)}', ${q(nm(20))}, ${q(U(nm(20)))});` });
-add(21, { bucket: 9, sql: () => '' });
+add(18, { bucket: 9, sql: () => rec(18, 'unassign', [nm(18)], T(D)) });
+add(19, { bucket: 9, sql: () => event(191, 19, undefined, urls(nm(19)), T(2 * D)) });                                                           // missing before side + unconfirmed after-list
+add(20, { bucket: 9, sql: () => `INSERT INTO import_images (listing_id, storage_path, storage_url) VALUES ('${L(20)}', ${q(nm(20))}, ${q(U(nm(20)))});` });
+add(21, { bucket: 10, sql: () => '' });
 // missing / malformed sides never read as presence or removal
 add(22, { bucket: 5, sql: () => `${rec(22, 'assign', [nm(22)], T(-10 * D))}\n${event(221, 22, undefined, urls(X), T(D))}\n${state(22, 221, [X], T(D))}` });   // old_value NULL + later state without it: undecidable, not "removed before"
-add(23, { bucket: 9, sql: () => event(231, 23, `a string that mentions ${nm(23)}`, 'x', T(5 * D)) });                                          // a JSON string is not parsed
+add(23, { bucket: 10, sql: () => event(231, 23, `a string that mentions ${nm(23)}`, 'x', T(5 * D)) });                                          // a JSON string is not parsed
 add(24, { bucket: 2, sql: () => `${rec(24, 'assign', [nm(24)], T(-10 * D))}\n${event(241, 24, urls(nm(24), X), urls(X), T(5 * D))}` });        // exact before + browser-clock evidence a few days after: the later one wins
 // exact matching
 add(25, { name: 'SYN-OBJ-dir/n 25.jpg', bucket: 1, src: 'Gallery Recovery assign record', sql: () => rec(25, 'assign', [U('SYN-OBJ-dir/n%2025.jpg?v=2')], T(D)) });   // nested + percent-encoded + query string
-add(26, { bucket: 9, sql: () => rec(26, 'assign', ['other/SYN-OBJ-26.jpg', 'SYN-OBJ-26.jpg.bak', 'xSYN-OBJ-26.jpg'], T(D)) });                   // look-alikes are not this object
-add(27, { name: 'SYN-OBJ-27 sp.jpg', bucket: 9, sql: () => regrow(L(27), 'SYN-OBJ-27%20sp.jpg', 'active', T(D)) });                            // registry row under another spelling
-add(28, { bucket: 6, sql: () => `${rec(28, 'assign', [nm(28)], T(-10 * D))}\n${event(281, 28, [], urls(X), T(D))}` });                          // an EMPTY before-list is not a removal and not presence
+add(26, { bucket: 10, sql: () => rec(26, 'assign', ['other/SYN-OBJ-26.jpg', 'SYN-OBJ-26.jpg.bak', 'xSYN-OBJ-26.jpg'], T(D)) });                   // look-alikes are not this object
+add(27, { name: 'SYN-OBJ-27 sp.jpg', bucket: 10, sql: () => regrow(L(27), 'SYN-OBJ-27%20sp.jpg', 'active', T(D)) });                            // registry row under another spelling
+add(28, { bucket: 7, sql: () => `${rec(28, 'assign', [nm(28)], T(-10 * D))}\n${event(281, 28, [], urls(X), T(D))}` });                          // an EMPTY before-list is not a removal and not presence
 // a saved edit BEFORE the boundary whose own recorded state (same instant) already lacks the object: removed before activation
 add(39, { bucket: 4, sql: () => `${event(391, 39, urls(nm(39), X), urls(X), T(-5 * D))}\n${state(39, 391, [X], T(-5 * D))}` });
+// ── gallery STATES: a later snapshot proves absence only when it is reconstructable (every row named, image_order 0..n-1) and does not name the object ──
+add(40, { bucket: 7, sql: () => `${rec(40, 'assign', [nm(40)], T(-10 * D))}\n${state(40, null, [nm(40), X], T(-5 * D))}` });                  // the first later snapshot still CONTAINS the image: presence, not removal
+add(41, { bucket: 4, sql: () => `${rec(41, 'assign', [nm(41)], T(-10 * D))}\n${state(41, null, [nm(41), X], T(-5 * D))}\n${state(41, null, [X], T(-3 * D))}` });   // contains first, a later complete state excludes it
+add(43, { bucket: 6, sql: () => `${rec(43, 'assign', [nm(43)], T(-10 * D))}\n${rawstate(43, null, [{ name: null, order: 0 }, { name: X, order: 1 }], T(-5 * D))}` });   // a row with neither URL nor path
+add(44, { bucket: 6, sql: () => `${rec(44, 'assign', [nm(44)], T(-10 * D))}\n${rawstate(44, null, [{ name: X, order: 0 }, { name: 'SYN-IMG-y.jpg', order: 2 }], T(-5 * D))}` });   // image_order gap: a row is missing
+add(45, { bucket: 6, sql: () => `${rec(45, 'assign', [nm(45)], T(-10 * D))}\n${rawstate(45, null, [{ name: X, order: null }], T(-5 * D))}` });                 // image_order null
+add(46, { bucket: 7, sql: () => `${rec(46, 'assign', [nm(46)], T(-10 * D))}\n${event(461, 46, urls(nm(46), X), [], T(-5 * D))}` });                              // the save EMPTIED the gallery: no snapshot is written, so nothing shows absence
+add(47, { bucket: 4, sql: () => `${rec(47, 'assign', [nm(47)], T(-10 * D))}\n${state(47, null, [X], T(-1000))}` });                                              // excluding complete state ONE SECOND before the boundary
+add(48, { bucket: 5, sql: () => `${rec(48, 'assign', [nm(48)], T(-10 * D))}\n${state(48, null, [X], T(0))}` });                                                  // ... exactly AT the boundary: not before it
+add(49, { bucket: 5, sql: () => `${rec(49, 'assign', [nm(49)], T(-10 * D))}\n${state(49, null, [X], T(1000))}` });                                               // ... one second after
+add(50, { bucket: 7, sql: () => `${rec(50, 'assign', [nm(50)], T(-10 * D))}\n${state(50, null, [X], T(-5 * D))}\n${rec(51, 'assign', [nm(50)], T(-9 * D))}` });   // excluded in listing 50, but ALSO evidenced in listing 51 with no later state
+add(52, { bucket: 4, sql: () => `${rec(52, 'assign', [nm(52)], T(-10 * D))}\n${state(52, null, [X], T(-5 * D))}\n${rec(53, 'assign', [nm(52)], T(-9 * D))}\n${state(53, null, [X], T(-4 * D))}` });   // excluded in BOTH listings, both before
+add(54, { bucket: 4, sql: () => `${rec(54, 'assign', [nm(54)], T(-10 * D))}\n${rawstate(54, null, [{ name: null, order: 0 }], T(-6 * D))}\n${state(54, null, [X], T(-5 * D))}` });   // an unreadable earlier state does not hide a later complete excluding one
+add(55, { bucket: 5, sql: () => `${rec(55, 'assign', [nm(55)], T(-10 * D))}\n${rawstate(55, null, [{ name: null, order: 0 }], T(-6 * D))}\n${state(55, null, [X], T(D))}` });   // the only complete excluding state is after the boundary
+add(57, { bucket: 1, src: 'recorded snapshot state not linked to a photos_changed event', sql: () => `${rec(57, 'assign', [nm(57)], T(-10 * D))}\n${state(57, null, [nm(57), X], T(D))}` });   // a state AFTER the boundary names it
+add(58, { bucket: 4, sql: () => `${rec(58, 'assign', [nm(58)], T(-10 * D))}\n${state(58, null, [X], T(-5 * D))}\n${state(58, null, [X], T(D))}` });   // the FIRST excluding complete state (before the boundary) decides, not a later one
+add(59, { bucket: 6, sql: () => `${rec(59, 'assign', [nm(59)], T(-10 * D))}\n${rawstate(59, null, [{ name: X, order: 0 }, { name: 'SYN-IMG-y.jpg', order: 0 }, { name: 'SYN-IMG-z.jpg', order: 2 }], T(-5 * D))}` });   // a repeated order hidden by a gap: not 0..n-1
+add(60, { bucket: 6, sql: () => `${rec(60, 'assign', [nm(60)], T(-10 * D))}\n${rawstate(60, null, [{ name: X, order: -1 }, { name: 'SYN-IMG-y.jpg', order: 0 }, { name: 'SYN-IMG-z.jpg', order: 2 }], T(-5 * D))}` });  // distinct, right maximum, but starts below 0
 // September / October uploads, and uploads on/after the boundary
 add(31, { created: '2026-09-15T08:00:00Z', bucket: 1, src: 'Gallery Recovery assign record', sql: () => rec(31, 'assign', [nm(31)], '2026-09-20T08:00:00Z') });
 add(32, { created: '2026-10-02T08:00:00Z', bucket: 2, sql: () => event(321, 32, urls(nm(32), X), urls(X), '2026-10-05T08:00:00Z') });
-add(33, { created: '2026-09-20T08:00:00Z', bucket: 8, sql: () => rec(33, 'unassign', [nm(33)], '2026-09-21T08:00:00Z') });
-add(34, { created: '2026-10-10T08:00:00Z', bucket: 9, sql: () => '' });
+add(33, { created: '2026-09-20T08:00:00Z', bucket: 9, sql: () => rec(33, 'unassign', [nm(33)], '2026-09-21T08:00:00Z') });
+add(34, { created: '2026-10-10T08:00:00Z', bucket: 10, sql: () => '' });
 add(35, { created: '2026-09-25T08:00:00Z', bucket: 1, src: 'Gallery Recovery assign record', sql: () => rec(35, 'assign', [nm(35)], '2026-09-01T08:00:00Z') });   // evidence dated BEFORE the object's own upload
-add(36, { created: '2026-08-20T08:00:00Z', bucket: 9, sql: () => '' });
-add(37, { created: '2026-08-10T08:00:00Z', bucket: 9, sql: () => '' });
-add(38, { created: null, bucket: 9, sql: () => '' });
+add(36, { created: '2026-08-20T08:00:00Z', bucket: 10, sql: () => '' });
+add(37, { created: '2026-08-10T08:00:00Z', bucket: 10, sql: () => '' });
+add(38, { created: null, bucket: 10, sql: () => '' });
 const POP = Object.keys(S).map(Number);                                // 36 objects in the population
 const listingRow = (n, images = "'[]'", deleted = 'NULL') => `INSERT INTO properties VALUES ('${L(n)}', 'SYN-TITLE-${n}', ${images}, ${deleted});`;
 const scenario = (n) => `${listingRow(n)}\n${objc(S[n].name, S[n].created)}\n${S[n].sql()}`;
@@ -194,22 +214,23 @@ const BUCKETS = {
   1: '1 direct, server time: in a gallery ON/AFTER activation (a registry row is expected if the sync worked)',
   2: '2 direct, browser clock: in a gallery MORE THAN A DAY after activation (approximate; a row is expected if the sync worked)',
   3: '3 direct, browser clock: in a gallery within a day of activation (cannot be placed before or after)',
-  4: '4 REMOVED BEFORE activation: a recorded gallery state before it already excludes the object (no row possible)',
-  5: '5 last in a gallery before activation; first recorded state without it is on/after activation (removal date undecidable)',
-  6: '6 last in a gallery before activation; no later recorded gallery state (removal date undecidable)',
-  7: '7 direct, browser clock only: in a gallery more than a day before activation (removal date unknown)',
-  8: '8 circumstantial evidence only (unassign record, unconfirmed after-list or import row): no proof it was ever in a gallery',
-  9: '9 no evidence of any kind' };
+  4: '4 REMOVED BEFORE activation: in every listing a complete recorded gallery state before it demonstrably excludes the object (no row possible)',
+  5: '5 excluded by complete recorded states, but at least one such state is on/after activation (removal date undecidable)',
+  6: '6 INDETERMINATE: a later recorded state exists but its membership cannot be reconstructed (missing names or image order), so absence is not shown',
+  7: '7 INDETERMINATE: last in a gallery before activation; no later recorded gallery state in some listing (an emptied gallery leaves no snapshot)',
+  8: '8 direct, browser clock only: in a gallery more than a day before activation (removal date unknown)',
+  9: '9 circumstantial evidence only (unassign record, unconfirmed after-list or import row): no proof it was ever in a gallery',
+  10: '10 no evidence of any kind' };
 const SRC = ['Gallery Recovery assign record', 'recorded snapshot state of a saved editor edit (linked to a photos_changed event)', 'recorded snapshot state not linked to a photos_changed event',
   'before-list of a saved editor edit (save confirmed by a linked snapshot)'];
 const cnt = (arr) => arr.reduce((m, k) => { m[k] = (m[k] || 0) + 1; return m; }, {});
 
-test('population and guard: the stage-2 population (37 here), nothing referenced, nothing with a registry row of the same spelling; boundary shown', opts, () => {
+test('population and guard: the stage-2 population, nothing referenced, nothing with a registry row of the same spelling; boundary shown', opts, () => {
   const h = reg(makeDb());
   assert.deepEqual(h.get('0'), { 'transaction_read_only=on': '/' });
-  assert.deepEqual(h.get('1 '), { '': '37/' });
+  assert.deepEqual(h.get('1 '), { '': `${POP.length}/` });
   const d = psqlRaw(makeDb(), ['-A', '-t', '-F', ' | ', '-c', 'BEGIN READ ONLY', '-f', path.join(D_, '2-diagnostic.sql'), '-c', 'ROLLBACK']);
-  assert.equal(Number(d.stdout.split('\n').find((l) => /TOTAL/.test(l)).split(' | ').pop()), 37, 'stage 2 counts the same set');
+  assert.equal(Number(d.stdout.split('\n').find((l) => /TOTAL/.test(l)).split(' | ').pop()), POP.length, 'stage 2 counts the same set');
   assert.deepEqual(h.get('2 '), { '2026-08-18 13:32:37 UTC': '/' });
 });
 
@@ -218,7 +239,7 @@ test('every object lands in exactly ONE bucket, the buckets add up to the popula
   const got = h.get('3 ');
   const want = cnt(POP.map((n) => BUCKETS[S[n].bucket]));
   for (const [label, k] of Object.entries(want)) assert.equal(got[label].split('/')[0], String(k), label);
-  assert.equal(got['total of the buckets (must equal section 1)'], '37/');
+  assert.equal(got['total of the buckets (must equal section 1)'], `${POP.length}/`);
   assert.equal(Object.keys(got).length, Object.keys(want).length + 1, 'no bucket that was not planted');
 });
 
@@ -239,20 +260,21 @@ test('bucket 1 by source: Gallery Recovery records, snapshot states of saved edi
   assert.deepEqual(reg(makeDb()).get('4 '), {
     'Gallery Recovery assign record': '5/5',                                                                   // objects 1, 3, 25, 31, 35
     'recorded snapshot state of a saved editor edit (linked to a photos_changed event)': '1/1',              // 6
-    'recorded snapshot state not linked to a photos_changed event': '1/1',                                    // 4
+    'recorded snapshot state not linked to a photos_changed event': '2/2',                                    // 4, 57
     'before-list of a saved editor edit (save confirmed by a linked snapshot)': '1/1' });                    // 5
 });
 
 test('each source on its own: dated before / on-or-after the boundary (server time exact, browser clock with a one-day margin), circumstantial ones labelled', opts, () => {
   const g = reg(makeDb()).get('5 ');
   assert.equal(g['direct: Gallery Recovery assign record: latest on/after the boundary'].split('/')[0], '5');
-  assert.equal(g['direct: Gallery Recovery assign record: latest before the boundary'].split('/')[0], '7');   // 2, 7, 8, 9, 22, 24, 28
-  assert.equal(g['direct: other snapshot state: latest on/after the boundary'].split('/')[0], '1');
+  assert.equal(g['direct: Gallery Recovery assign record: latest before the boundary'].split('/')[0], '24');   // 2, 7, 8, 9, 22, 24, 28 and 40, 41, 43-50, 52, 54, 55, 57, 58, 59, 60
+  assert.equal(g['direct: other snapshot state: latest on/after the boundary'].split('/')[0], '2');            // 4, 57
+  assert.equal(g['direct: other snapshot state: latest before the boundary'].split('/')[0], '2');              // 40, 41
   assert.equal(g['direct: snapshot state of a saved editor edit: latest on/after the boundary'].split('/')[0], '1');
   assert.equal(g['direct: editor before-list, save confirmed: latest on/after the boundary'].split('/')[0], '1');
   assert.equal(g['direct, browser clock: editor before-list, save not confirmed: latest more than a day AFTER'].split('/')[0], '4');   // 10, 15, 24, 32
   assert.equal(g['direct, browser clock: editor before-list, save not confirmed: latest within a day of the boundary'].split('/')[0], '4');   // 11, 12, 14, 16
-  assert.equal(g['direct, browser clock: editor before-list, save not confirmed: latest more than a day BEFORE'].split('/')[0], '2');   // 13, 17
+  assert.equal(g['direct, browser clock: editor before-list, save not confirmed: latest more than a day BEFORE'].split('/')[0], '3');   // 13, 17, 46
   assert.equal(g['circumstantial: Gallery Recovery unassign record: latest on/after the boundary'].split('/')[0], '2');
   assert.equal(g['circumstantial, browser clock: editor after-list, save not confirmed: latest more than a day AFTER'].split('/')[0], '1');
   assert.equal(g['circumstantial: import_images row (not dated): no time used'].split('/')[0], '1');
@@ -268,8 +290,8 @@ test('September/October uploads (storage created_at, stage 2 month rule): direct
   assert.equal(g['strongest evidence: none'].split('/')[0], '1');                                               // 34
   assert.equal(g['bucket ' + BUCKETS[1]].split('/')[0], '2');
   assert.equal(g['bucket ' + BUCKETS[2]].split('/')[0], '1');
-  assert.equal(g['bucket ' + BUCKETS[8]].split('/')[0], '1');
   assert.equal(g['bucket ' + BUCKETS[9]].split('/')[0], '1');
+  assert.equal(g['bucket ' + BUCKETS[10]].split('/')[0], '1');
   assert.equal(g["server-time evidence dated BEFORE the object's own upload time (inconsistent: clock or re-upload)"].split('/')[0], '1');   // 35
   const p = reg(makeDb()).get('7 ');
   assert.equal(p['all such objects'].split('/')[0], '6');                                                         // 31-36
@@ -286,6 +308,26 @@ test('registry history: first / last row time, rows by status, rows before the b
   assert.equal(g['rows created BEFORE the activation instant (expected 0)'].split('/')[0], '1');
   assert.equal(g['rows created within 1 minute AFTER the activation instant (the one-time backfill)'].split('/')[0], '3');
   assert.equal(g['rows created more than 1 minute after the activation instant (the trigger)'].split('/')[0], '4');
+});
+
+test('recorded gallery states: reconstructable only when every row is named and image_order is exactly 0..n-1; the other states prove nothing', opts, () => {
+  const g = reg(makeDb([41, 43, 44, 45].map(scenario).join('\n'), '')).get('12 ');
+  assert.equal(g.states, '5/4');                                                                  // 41 has two states, 43/44/45 one each
+  assert.equal(g['complete: every row named, image_order exactly 0..n-1'], '2/1');               // both states of 41
+  assert.equal(g['NOT reconstructable: a row with neither URL nor path'], '1/1');               // 43
+  assert.equal(g['NOT reconstructable: image_order null, repeated, not starting at 0 or with a gap'], '2/2');   // 44 (gap), 45 (null)
+});
+
+test('removal is only shown by a recorded state that excludes the object: a later snapshot that still names it, an unreadable state, an emptied gallery and a second listing all stay indeterminate', opts, () => {
+  const only = (ns) => reg(makeDb(ns.map(scenario).join('\n'), '')).get('3 ');
+  const b = (k) => BUCKETS[k];
+  assert.equal(only([40])[b(7)].split('/')[0], '1');
+  assert.equal(only([43, 44, 45])[b(6)].split('/')[0], '3');
+  assert.equal(only([46])[b(7)].split('/')[0], '1');
+  assert.equal(only([50])[b(7)].split('/')[0], '1');
+  assert.equal(only([52])[b(4)].split('/')[0], '1');
+  assert.equal(only([47, 48, 49]) [b(4)].split('/')[0], '1');
+  assert.equal(only([47, 48, 49])[b(5)].split('/')[0], '2');
 });
 
 test('registry history on an EMPTY registry: no rows, "none" for the dates, nothing fails', opts, () => {
@@ -336,7 +378,7 @@ test('malformed galleries: SQL NULL and JSON null counted separately from string
   assert.equal(n('object; listing not soft-deleted'), 1);
   assert.equal(n('number; listing not soft-deleted'), 1);
   assert.equal(n('boolean; listing not soft-deleted'), 1);
-  assert.equal(n('array, empty; listing not soft-deleted'), 38);       // the 37 scenario listings plus L30; L29 holds a non-empty gallery
+  assert.equal(n('array, empty; listing not soft-deleted'), POP.length + 1);       // the scenario listings plus L30; L29 holds a non-empty gallery
   assert.equal(n('array, non-empty; listing not soft-deleted'), 3);    // L29, [null], [""]
   assert.equal(n('array, non-empty; listing soft-deleted'), 1);
   assert.equal(n('SQL NULL; listing soft-deleted'), 1);
@@ -345,7 +387,7 @@ test('malformed galleries: SQL NULL and JSON null counted separately from string
 
 test('spelling: an unreferenced object whose registry row exists only under another (percent-encoded) spelling is counted, and is not evidence of gallery membership', opts, () => {
   assert.equal(reg(makeDb()).rows.find((r) => /^11 /.test(r.section)).n.replace(/ \|$/, ''), '1');
-  assert.equal(reg(makeDb(scenario(27), '')).get('3 ')[BUCKETS[9]].split('/')[0], '1');
+  assert.equal(reg(makeDb(scenario(27), '')).get('3 ')[BUCKETS[10]].split('/')[0], '1');
 });
 
 test('READ ONLY guard: outside a READ ONLY transaction every count is zero and the guard row says so; nothing is changed', opts, () => {
@@ -375,7 +417,7 @@ test('the query selects no title, payload, actor value or id (output columns are
   assert.doesNotMatch(sql, /raw_payload|title|phone|email|row_data|\bactor\b|::jsonb\s*\)?\s*FROM\s+\(?\s*SELECT.*#>>/);
   const tables = new Set([...sql.matchAll(/\b(?:FROM|JOIN)\s+(?:public\.|storage\.)?([a-z_]+)/gi)].map((m) => m[1].toLowerCase()));
   const allowed = ['properties', 'unit_types', 'parties', 'property_images', 'gallery_assignments', 'listing_image_snapshots', 'listing_provenance', 'import_images', 'objects', 'pg_trigger', 'pg_class', 'pg_namespace', 'pg_proc', 'pg_attribute',
-    'obj_all', 'live_raw', 'live_forms', 'orph', 'evt', 'lk', 'stt', 'ent0', 'ent', 'mt', 'mxa', 'apx', 'circ', 'regm', 'rem', 'ob', 'cb', 'grp', 'trg', 'trgc', 'gal', 'bnd', 'lateral', 'q', 'regexp_matches', 'trg', 'jsonb_array_elements_text', 'jsonb_path_query', 'jsonb_array_elements', 'unnest', 'listing_provenance', 'x', 'm', 'u', 'g', 't', 'p', 'e', 'c', 'n', 'o', 'a', 's', 'r', 'i', 'd', 'v', 'st', 'pi', 'so'];
+    'obj_all', 'live_raw', 'live_forms', 'orph', 'evt', 'lk', 'stt', 'ent0', 'ent', 'stm', 'stc', 'plx', 'rl', 'pob', 'mt', 'mxa', 'apx', 'circ', 'regm', 'rem', 'ob', 'cb', 'grp', 'trg', 'trgc', 'gal', 'bnd', 'lateral', 'q', 'regexp_matches', 'trg', 'jsonb_array_elements_text', 'jsonb_path_query', 'jsonb_array_elements', 'unnest', 'listing_provenance', 'x', 'm', 'u', 'g', 't', 'p', 'e', 'c', 'n', 'o', 'a', 's', 'r', 'i', 'd', 'v', 'st', 'pi', 'so'];
   for (const t of tables) assert.ok(allowed.includes(t), `unexpected relation ${t}`);
   assert.ok(!/to_jsonb\([a-z_.]+\)\s*->>\s*'(old_value|new_value|images)'/.test(sql));
 });
@@ -490,12 +532,12 @@ test('end to end (real Postgres, read-only role): `run.sh registry` passes every
   const work = fs.mkdtempSync(path.join(dir, 'e2e-'));
   for (const f of fs.readdirSync(D_)) if (fs.statSync(path.join(D_, f)).isFile()) fs.copyFileSync(path.join(D_, f), path.join(work, f));
   const r = spawnSync('bash', [path.join(work, 'run.sh'), 'registry'], { encoding: 'utf8', input: '',
-    env: { PATH: `${PGBIN}${path.delimiter}${process.env.PATH}`, HOME: dir, EXPECTED_OBJECTS: '37', PINTAG_PROD_DB_URL: `postgresql://rb_ro@/${db}?host=${sock}&port=${port}` } });
+    env: { PATH: `${PGBIN}${path.delimiter}${process.env.PATH}`, HOME: dir, EXPECTED_OBJECTS: String(POP.length), PINTAG_PROD_DB_URL: `postgresql://rb_ro@/${db}?host=${sock}&port=${port}` } });
   assert.equal(r.status, 0, r.stdout + r.stderr);
   for (const v of ['schema', 'role+session', 'reconcile-schema', 'gallery-schema', 'history-schema', 'provenance-schema', 'registry-schema']) assert.ok(r.stdout.includes(`VERDICT | ${v} | PASS`), v);
   assert.match(r.stdout, /transaction_read_only=on/);
-  assert.match(r.stdout, /1 unreferenced originals[^\n]*\|\s+37 \|/);
-  assert.match(r.stdout, /total of the buckets \(must equal section 1\)[^\n]*\|\s+37 \|/);
+  assert.match(r.stdout, new RegExp(`1 unreferenced originals[^\\n]*\\|\\s+${POP.length} \\|`));
+  assert.match(r.stdout, new RegExp(`total of the buckets \\(must equal section 1\\)[^\\n]*\\|\\s+${POP.length} \\|`));
   assert.match(r.stdout, /earliest row created_at 2026-08-17 13:32:37 UTC/);
   assert.doesNotMatch(r.stdout + r.stderr, IDENT);
   assert.doesNotMatch(fs.readFileSync(path.join(work, 'registry-boundary.txt'), 'utf8'), IDENT);
@@ -514,6 +556,11 @@ test('registry-schema preflight: a missing registry column or wrong type fails O
   assert.match(bad, /public\.property_images\.created_at \| WRONG_TYPE/);
   assert.match(bad, /VERDICT \| registry-schema \| FAIL/);
   for (const v of ['schema', 'reconcile-schema', 'gallery-schema', 'history-schema', 'provenance-schema']) assert.match(bad, new RegExp(`VERDICT \\| ${v} \\| PASS`), v);
+  // the state model needs listing_image_snapshots.image_order: a missing column or another type fails only this verdict
+  const noOrder = pre('ALTER TABLE public.listing_image_snapshots DROP COLUMN image_order;');
+  assert.match(noOrder, /public\.listing_image_snapshots\.image_order \| MISSING/);
+  assert.match(noOrder, /VERDICT \| registry-schema \| FAIL/);
+  assert.match(pre("ALTER TABLE public.listing_image_snapshots ALTER COLUMN image_order TYPE text USING image_order::text;"), /image_order \| WRONG_TYPE/);
 });
 
 // ── the workflow ──

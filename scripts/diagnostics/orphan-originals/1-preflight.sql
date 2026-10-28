@@ -17,7 +17,7 @@
 -- Part F (area 'provenance-schema') checks listing_provenance (the editor's change log) and gallery_assignments.operator, which only
 -- 8-gallery-provenance-photos-changed.sql reads, with its OWN verdict (the other verdicts are computed exactly as before).
 -- Part G (area 'registry-schema') checks what only 10-registry-activation-boundary.sql reads beyond the other parts (property_images.created_at / status /
--- property_id, import_images.listing_id / storage_url) and that the trigger catalogs it inspects are readable, with its OWN verdict (the other verdicts are
+-- property_id, import_images.listing_id / storage_url, listing_image_snapshots.image_order) and that the trigger catalogs it inspects are readable, with its OWN verdict (the other verdicts are
 -- computed exactly as before).
 -- Output: "area | item | status" rows; the last seven rows are "VERDICT | ... | PASS/FAIL". Contains only names and counts.
 WITH need(sch, tbl, col, typ) AS (VALUES
@@ -80,6 +80,7 @@ need8(sch, tbl, col, typ) AS (VALUES   -- registry activation-boundary stage onl
     ('public',   'property_images',        'property_id',  'uuid'),
     ('public',   'import_images',          'listing_id',   NULL),
     ('public',   'import_images',          'storage_url',  NULL),
+    ('public',   'listing_image_snapshots','image_order',  'integer'),   -- a recorded gallery state is only reconstructable when image_order is 0..n-1
     ('public',   'properties',             'deleted_at',   'timestamp with time zone')),
 have AS (
   SELECT n.nspname AS sch, c.relname AS tbl, a.attname AS col, format_type(a.atttypid, a.atttypmod) AS typ, c.oid AS relid

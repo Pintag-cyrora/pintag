@@ -25,7 +25,17 @@
 --   gallery was empty, so a missing side is never read as a removal.
 -- An object is only "expected to have a row" when direct evidence puts it in a gallery at or after the boundary: then either the one-time backfill (image
 -- already in the gallery at the boundary) or the trigger (image added later) should have registered it. Before the boundary nothing could: the table did
--- not exist. "Removed before activation" needs a recorded gallery state before the boundary that already EXCLUDES the object.
+-- not exist.
+-- Gallery STATES and absence. A listing_image_snapshots state is the set of rows sharing one provenance_event_id (or, with none, one created_at): one row per image
+-- of the saved gallery, image_order 0..n-1, written in one request. A state is RECONSTRUCTABLE ("complete") only when every row has a usable name (a URL or a path)
+-- and image_order is exactly 0..n-1 with no gap, repeat or null; otherwise its membership is unknown and it proves nothing. "Removed before activation" needs,
+-- for EVERY listing in which the object has direct evidence, a complete state recorded AFTER the object's last evidence in that listing, that demonstrably
+-- excludes it (no row of the state names the object), and all of those states dated before the boundary. A later snapshot is never read as "gone" because it
+-- exists: if the later state(s) cannot be reconstructed, or there is no later state in some listing, the object stays indeterminate. The editor writes NO
+-- snapshot when a save leaves the gallery empty, so an emptied gallery is invisible here: it is never read as exclusion either. Absence is only ever shown
+-- by a recorded state; it is not inferred from a missing record, an old timestamp or an empty list. Limits: a state that names the object in a spelling the
+-- matcher cannot see (e.g. a different host form of the URL) would be read as excluding; a re-add made without any record (editor logging is best-effort)
+-- would be missed.
 -- Spelling: the registry stores the path as written in the URL (percent-encoded); an unreferenced object whose registry row exists only under another
 -- spelling is counted separately.
 -- Output is counts, dates of registry rows and fixed labels only: no object name, image list, listing id, event id, record id, actor or payload is selected.
@@ -62,70 +72,88 @@ orph AS (   -- the stage-2 population, with the object's own bytes as stored (rb
 evt AS (SELECT lp.id::text AS eid, lp.listing_id::text AS lid, lp.created_at AS cts, lp.old_value, lp.new_value
           FROM listing_provenance lp WHERE lp.event_type = 'photos_changed' AND current_setting('transaction_read_only') = 'on'),
 lk AS (SELECT e.eid, min(s.created_at) AS linked_ts FROM evt e JOIN listing_image_snapshots s ON s.provenance_event_id::text = e.eid GROUP BY e.eid),
-stt AS (SELECT s.listing_id::text AS lid, coalesce(s.provenance_event_id::text, s.created_at::text) AS sk, min(s.created_at) AS ts   -- recorded gallery states
-          FROM listing_image_snapshots s WHERE current_setting('transaction_read_only') = 'on' GROUP BY 1, 2),
+stm AS (   -- recorded gallery STATES (snapshot rows sharing an event id, else a timestamp), with whether their membership can be reconstructed
+  SELECT s.listing_id::text AS lid, coalesce(s.provenance_event_id::text, s.created_at::text) AS sk, min(s.created_at) AS ts, count(*) AS n_rows,
+         bool_and(coalesce(nullif(btrim(s.storage_url), ''), nullif(btrim(s.storage_path), '')) IS NOT NULL) AS all_named,
+         (count(s.image_order) = count(*) AND count(DISTINCT s.image_order) = count(*) AND min(s.image_order) = 0 AND max(s.image_order) = count(*) - 1) AS order_ok
+    FROM listing_image_snapshots s WHERE current_setting('transaction_read_only') = 'on' GROUP BY 1, 2),
+stc AS (SELECT lid, sk, ts, (all_named AND order_ok) AS complete, all_named, order_ok FROM stm),
 ent0 AS (   -- every name any evidence source mentions, one normalization (path after /property-images/, query dropped)
-  SELECT CASE WHEN g.op = 'assign' THEN 'ga_assign' ELSE 'ga_unassign' END AS src, g.listing_id::text AS lid, g.created_at AS ts,
+  SELECT CASE WHEN g.op = 'assign' THEN 'ga_assign' ELSE 'ga_unassign' END AS src, g.listing_id::text AS lid, g.created_at AS ts, NULL::text AS sk,
          split_part(regexp_replace(v #>> '{}', '^.*/property-images/', ''), '?', 1) AS n
     FROM gallery_assignments g, LATERAL jsonb_path_query(g.photo_paths, 'strict $.**') AS v
    WHERE jsonb_typeof(v) = 'string' AND current_setting('transaction_read_only') = 'on'
   UNION ALL
-  SELECT CASE WHEN EXISTS (SELECT 1 FROM evt e WHERE e.eid = s.provenance_event_id::text) THEN 'snap_linked' ELSE 'snap_other' END, s.listing_id::text, s.created_at, x.n
+  SELECT CASE WHEN EXISTS (SELECT 1 FROM evt e WHERE e.eid = s.provenance_event_id::text) THEN 'snap_linked' ELSE 'snap_other' END, s.listing_id::text, s.created_at,
+         coalesce(s.provenance_event_id::text, s.created_at::text), x.n
     FROM listing_image_snapshots s
     CROSS JOIN LATERAL (VALUES
       (CASE WHEN s.storage_url LIKE '%/property-images/%' THEN nullif(split_part(regexp_replace(s.storage_url, '^.*/property-images/', ''), '?', 1), '') END),
       (nullif(split_part(regexp_replace(coalesce(s.storage_path, ''), '^.*/property-images/', ''), '?', 1), ''))) AS x(n)
    WHERE current_setting('transaction_read_only') = 'on'
   UNION ALL
-  SELECT CASE WHEN lk.linked_ts IS NOT NULL THEN 'ev_old_linked' ELSE 'ev_old_browser' END, e.lid, coalesce(lk.linked_ts, e.cts),
+  SELECT CASE WHEN lk.linked_ts IS NOT NULL THEN 'ev_old_linked' ELSE 'ev_old_browser' END, e.lid, coalesce(lk.linked_ts, e.cts), NULL::text,
          CASE WHEN u.url LIKE '%/property-images/%' THEN split_part(regexp_replace(u.url, '^.*/property-images/', ''), '?', 1) ELSE split_part(u.url, '?', 1) END
     FROM evt e LEFT JOIN lk ON lk.eid = e.eid,
          LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(e.old_value) = 'array' THEN e.old_value ELSE '[]'::jsonb END) AS u(url)
   UNION ALL   -- after-lists only when the save is NOT confirmed (a confirmed one is the linked snapshot state above)
-  SELECT 'ev_new_browser', e.lid, e.cts,
+  SELECT 'ev_new_browser', e.lid, e.cts, NULL::text,
          CASE WHEN u.url LIKE '%/property-images/%' THEN split_part(regexp_replace(u.url, '^.*/property-images/', ''), '?', 1) ELSE split_part(u.url, '?', 1) END
     FROM evt e LEFT JOIN lk ON lk.eid = e.eid,
          LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(e.new_value) = 'array' AND lk.linked_ts IS NULL THEN e.new_value ELSE '[]'::jsonb END) AS u(url)
   UNION ALL
-  SELECT 'imp', i.listing_id::text, NULL::timestamptz, x.n
+  SELECT 'imp', i.listing_id::text, NULL::timestamptz, NULL::text, x.n
     FROM import_images i
     CROSS JOIN LATERAL (VALUES
       (nullif(split_part(regexp_replace(coalesce(i.storage_path, ''), '^.*/property-images/', ''), '?', 1), '')),
       (CASE WHEN i.storage_url LIKE '%/property-images/%' THEN nullif(split_part(regexp_replace(i.storage_url, '^.*/property-images/', ''), '?', 1), '') END)) AS x(n)
    WHERE current_setting('transaction_read_only') = 'on'
   UNION ALL
-  SELECT 'reg', pi.property_id::text, NULL::timestamptz, pi.storage_path FROM property_images pi WHERE current_setting('transaction_read_only') = 'on'),
+  SELECT 'reg', pi.property_id::text, NULL::timestamptz, NULL::text, pi.storage_path FROM property_images pi WHERE current_setting('transaction_read_only') = 'on'),
 ent AS (
-  SELECT src, lid, ts, n, convert_to(n, 'UTF8') AS rb,
+  SELECT src, lid, ts, sk, n, convert_to(n, 'UTF8') AS rb,
          CASE WHEN n ~ '%[0-9A-Fa-f]{2}'
               THEN coalesce((SELECT decode(string_agg(CASE WHEN m.a[1] IS NOT NULL THEN lower(m.a[1]) ELSE encode(convert_to(m.a[2], 'UTF8'), 'hex') END, '' ORDER BY m.i), 'hex')
                                FROM regexp_matches(n, '%([0-9A-Fa-f]{2})|(%|[^%])', 'g') WITH ORDINALITY AS m(a, i)), convert_to(n, 'UTF8'))
               ELSE convert_to(n, 'UTF8') END AS b
     FROM ent0 WHERE n IS NOT NULL AND n <> ''),
-mt AS (SELECT o.name, x.src, x.lid, x.ts FROM orph o JOIN ent x ON x.b = o.b OR x.b = o.rb OR x.rb = o.rb OR x.rb = o.b),
+mt AS (SELECT o.name, x.src, x.lid, x.ts, x.sk FROM orph o JOIN ent x ON x.b = o.b OR x.b = o.rb OR x.rb = o.rb OR x.rb = o.b),
 mxa AS (   -- per object: its LATEST direct server-time evidence of gallery membership (ties: snapshot of a saved edit, then editor before-list, other snapshot, assign record)
   SELECT DISTINCT ON (name) name, lid, ts, src FROM mt WHERE src IN ('ga_assign', 'snap_linked', 'snap_other', 'ev_old_linked')
    ORDER BY name, ts DESC, CASE src WHEN 'snap_linked' THEN 1 WHEN 'ev_old_linked' THEN 2 WHEN 'snap_other' THEN 3 ELSE 4 END),
 apx AS (SELECT name, max(ts) AS ts FROM mt WHERE src = 'ev_old_browser' GROUP BY name),
 circ AS (SELECT DISTINCT name FROM mt WHERE src IN ('ga_unassign', 'ev_new_browser', 'imp')),
 regm AS (SELECT DISTINCT name FROM mt WHERE src = 'reg'),
-rem AS (   -- first recorded gallery state of that listing AFTER the latest evidence (for a saved edit's before-list, the save's own state): an UPPER bound on removal
-  SELECT m.name, min(st.ts) AS rem_ts FROM mxa m JOIN stt st ON st.lid = m.lid AND (st.ts > m.ts OR (st.ts = m.ts AND m.src = 'ev_old_linked')) GROUP BY m.name),
+plx AS (   -- per object AND listing: the latest direct server-time evidence in THAT listing (the same tie order as above)
+  SELECT DISTINCT ON (name, lid) name, lid, ts, src FROM mt WHERE src IN ('ga_assign', 'snap_linked', 'snap_other', 'ev_old_linked')
+   ORDER BY name, lid, ts DESC, CASE src WHEN 'snap_linked' THEN 1 WHEN 'ev_old_linked' THEN 2 WHEN 'snap_other' THEN 3 ELSE 4 END),
+rl AS (   -- per object and listing: recorded states AFTER that evidence (for a saved edit's before-list, its own state at the same instant), and the first one that is
+          -- COMPLETE and demonstrably EXCLUDES the object (no snapshot row of that state names it)
+  SELECT p.name, p.lid, count(c.sk) AS n_later,
+         min(c.ts) FILTER (WHERE c.complete AND NOT EXISTS (SELECT 1 FROM mt m2 WHERE m2.name = p.name AND m2.lid = c.lid AND m2.sk = c.sk)) AS excl_ts
+    FROM plx p LEFT JOIN stc c ON c.lid = p.lid AND (c.ts > p.ts OR (c.ts = p.ts AND p.src = 'ev_old_linked'))
+   GROUP BY p.name, p.lid),
+pob AS (
+  SELECT name, bool_and(excl_ts IS NOT NULL) AS all_excl, max(excl_ts) AS max_excl,
+         bool_or(excl_ts IS NULL AND n_later > 0) AS any_unrecon, bool_or(n_later = 0) AS any_nolater
+    FROM rl GROUP BY name),
 ob AS (
-  SELECT o.name, o.created_at, m.ts AS mx_ts, m.src AS mx_src, m.lid AS mx_lid, r.rem_ts, a.ts AS apx_ts, (c.name IS NOT NULL) AS has_circ, (g.name IS NOT NULL) AS has_reg
-    FROM orph o LEFT JOIN mxa m ON m.name = o.name LEFT JOIN rem r ON r.name = o.name LEFT JOIN apx a ON a.name = o.name
+  SELECT o.name, o.created_at, m.ts AS mx_ts, m.src AS mx_src, m.lid AS mx_lid, r.all_excl, r.max_excl, r.any_unrecon, r.any_nolater, a.ts AS apx_ts,
+         (c.name IS NOT NULL) AS has_circ, (g.name IS NOT NULL) AS has_reg
+    FROM orph o LEFT JOIN mxa m ON m.name = o.name LEFT JOIN pob r ON r.name = o.name LEFT JOIN apx a ON a.name = o.name
          LEFT JOIN circ c ON c.name = o.name LEFT JOIN regm g ON g.name = o.name),
 cb AS (
   SELECT ob.*, (SELECT b FROM bnd) AS bb,
          CASE WHEN mx_ts >= (SELECT b FROM bnd) THEN '1 direct, server time: in a gallery ON/AFTER activation (a registry row is expected if the sync worked)'
               WHEN apx_ts > (SELECT b FROM bnd) + interval '1 day' THEN '2 direct, browser clock: in a gallery MORE THAN A DAY after activation (approximate; a row is expected if the sync worked)'
               WHEN apx_ts >= (SELECT b FROM bnd) - interval '1 day' THEN '3 direct, browser clock: in a gallery within a day of activation (cannot be placed before or after)'
-              WHEN mx_ts IS NOT NULL AND rem_ts IS NOT NULL AND rem_ts < (SELECT b FROM bnd) THEN '4 REMOVED BEFORE activation: a recorded gallery state before it already excludes the object (no row possible)'
-              WHEN mx_ts IS NOT NULL AND rem_ts IS NOT NULL THEN '5 last in a gallery before activation; first recorded state without it is on/after activation (removal date undecidable)'
-              WHEN mx_ts IS NOT NULL THEN '6 last in a gallery before activation; no later recorded gallery state (removal date undecidable)'
-              WHEN apx_ts IS NOT NULL THEN '7 direct, browser clock only: in a gallery more than a day before activation (removal date unknown)'
-              WHEN has_circ THEN '8 circumstantial evidence only (unassign record, unconfirmed after-list or import row): no proof it was ever in a gallery'
-              ELSE '9 no evidence of any kind' END AS bucket,
+              WHEN mx_ts IS NOT NULL AND all_excl AND max_excl < (SELECT b FROM bnd) THEN '4 REMOVED BEFORE activation: in every listing a complete recorded gallery state before it demonstrably excludes the object (no row possible)'
+              WHEN mx_ts IS NOT NULL AND all_excl THEN '5 excluded by complete recorded states, but at least one such state is on/after activation (removal date undecidable)'
+              WHEN mx_ts IS NOT NULL AND any_unrecon THEN '6 INDETERMINATE: a later recorded state exists but its membership cannot be reconstructed (missing names or image order), so absence is not shown'
+              WHEN mx_ts IS NOT NULL THEN '7 INDETERMINATE: last in a gallery before activation; no later recorded gallery state in some listing (an emptied gallery leaves no snapshot)'
+              WHEN apx_ts IS NOT NULL THEN '8 direct, browser clock only: in a gallery more than a day before activation (removal date unknown)'
+              WHEN has_circ THEN '9 circumstantial evidence only (unassign record, unconfirmed after-list or import row): no proof it was ever in a gallery'
+              ELSE '10 no evidence of any kind' END AS bucket,
          CASE WHEN mx_ts IS NOT NULL THEN 'direct, server time' WHEN apx_ts IS NOT NULL THEN 'direct, browser clock only' WHEN has_circ THEN 'circumstantial only' ELSE 'none' END AS strength
     FROM ob),
 grp AS (   -- the two upload groups asked about
@@ -206,5 +234,9 @@ SELECT section, label, n, listings FROM (
          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname = 'pintag_sync_property_images' AND current_setting('transaction_read_only') = 'on'
   UNION ALL SELECT 10, '10 properties.images value shape (listings; a non-array value is skipped by the sync, and a string or object makes it raise an error the trigger swallows)', shape || '; ' || st, count(*), count(*) FROM gal GROUP BY shape, st
   UNION ALL SELECT 10, '10 properties.images value shape (listings; a non-array value is skipped by the sync, and a string or object makes it raise an error the trigger swallows)', 'array with an entry that is not a non-empty string', count(*), count(*) FROM gal WHERE odd_entry
+  UNION ALL SELECT 12, '12 recorded gallery states (listing_image_snapshots grouped by event id / timestamp; all listings): can their membership be reconstructed?', 'states', count(*), count(DISTINCT lid) FROM stc
+  UNION ALL SELECT 12, '12 recorded gallery states (listing_image_snapshots grouped by event id / timestamp; all listings): can their membership be reconstructed?', 'complete: every row named, image_order exactly 0..n-1', count(*), count(DISTINCT lid) FROM stc WHERE complete
+  UNION ALL SELECT 12, '12 recorded gallery states (listing_image_snapshots grouped by event id / timestamp; all listings): can their membership be reconstructed?', 'NOT reconstructable: a row with neither URL nor path', count(*), count(DISTINCT lid) FROM stc WHERE NOT all_named
+  UNION ALL SELECT 12, '12 recorded gallery states (listing_image_snapshots grouped by event id / timestamp; all listings): can their membership be reconstructed?', 'NOT reconstructable: image_order null, repeated, not starting at 0 or with a gap', count(*), count(DISTINCT lid) FROM stc WHERE NOT order_ok
   UNION ALL SELECT 11, '11 unregistered originals that match a registry row only under ANOTHER spelling (stored percent-encoded vs raw name)', 'objects', count(*), NULL FROM cb WHERE has_reg
 ) t ORDER BY s, section, label;

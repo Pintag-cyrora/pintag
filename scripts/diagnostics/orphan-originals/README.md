@@ -93,7 +93,7 @@ only; the run fails if the population it rebuilds differs from the stage-2 total
 ## Registry activation boundary vs the unregistered originals (`gallery-registry-boundary.yml`)
 
 A manual, read-only workflow (`workflow_dispatch` only, same protected environment and read-only secret, **no artifact**) runs `run.sh registry`: lint, the same
-preflight (plus the `registry-schema` verdict: `property_images.created_at` / `status` / `property_id`, `import_images.listing_id` / `storage_url`, and readable trigger
+preflight (plus the `registry-schema` verdict: `property_images.created_at` / `status` / `property_id`, `import_images.listing_id` / `storage_url`, `listing_image_snapshots.image_order`, and readable trigger
 catalogs), the stage-2 cross-check, then `10-registry-activation-boundary.sql` (one SELECT inside `BEGIN READ ONLY ... ROLLBACK`). The registry was applied to production by
 apply-migration run 32142932661 at **2026-08-18 13:32:37 UTC** (the migration file's 2026-08-13 version is only its name). It reports, as counts and fixed labels only:
 
@@ -101,7 +101,7 @@ apply-migration run 32142932661 at **2026-08-18 13:32:37 UTC** (the migration fi
   evidence that each was **in a gallery** before or on/after that instant. Direct: a Gallery Recovery `assign` record, a recorded snapshot state, the before-list of a saved
   editor edit (server time); the before-list of an unsaved edit (browser clock, compared with a one-day margin on each side, never as exact). Circumstantial, never
   promoted to membership: `unassign` records, unconfirmed after-lists, `import_images` rows. A null, missing, empty or non-array side is neither presence nor removal;
-  a JSON string is not parsed. "Removed before activation" needs a recorded state before it that already excludes the object;
+  a JSON string is not parsed. A recorded gallery STATE (snapshot rows sharing an event id or timestamp) is only reconstructable when every row has a name and `image_order` is exactly 0..n-1. "Removed before activation" needs, in every listing where the object has direct evidence, a complete recorded state after its last evidence that demonstrably excludes it, all before the instant; a later snapshot that still names it is presence, an unreadable state, an emptied gallery (the editor writes no snapshot for it) or a listing with no later state stay indeterminate;
 * the September/October uploads (same month rule as stage 2) and the uploads on/after the instant, by strongest evidence;
 * registry history: earliest / latest row time, rows by status, rows before the instant (expected 0), the backfill minute, the trigger period;
 * trigger `trg_property_images_sync` from the catalog: present, table, enabled mode, AFTER ... FOR EACH ROW, INSERT / UPDATE / UPDATE OF images, function, error handler;
