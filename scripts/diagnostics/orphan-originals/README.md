@@ -89,3 +89,24 @@ direct before/after membership for one image; but it is written BEFORE the save 
 before-list already lacks the image shows that edit did NOT remove it; and an event that only falls inside the time window is circumstantial and is never called a
 cause. Gallery Recovery itself writes no `photos_changed` events, and events are best-effort, so "no event" is not "no edit". The output is counts and fixed labels
 only; the run fails if the population it rebuilds differs from the stage-2 total. It never shows that any object is safe to delete.
+
+## Registry activation boundary vs the unregistered originals (`gallery-registry-boundary.yml`)
+
+A manual, read-only workflow (`workflow_dispatch` only, same protected environment and read-only secret, **no artifact**) runs `run.sh registry`: lint, the same
+preflight (plus the `registry-schema` verdict: `property_images.created_at` / `status` / `property_id`, `import_images.listing_id` / `storage_url`, `listing_image_snapshots.image_order`, and readable trigger
+catalogs), the stage-2 cross-check, then `10-registry-activation-boundary.sql` (one SELECT inside `BEGIN READ ONLY ... ROLLBACK`). The registry was applied to production by
+apply-migration run 32142932661 at **2026-08-18 13:32:37 UTC** (the migration file's 2026-08-13 version is only its name). It reports, as counts and fixed labels only:
+
+* for the unregistered originals (the same population as stage 2; the run fails if the count differs, or if the evidence buckets do not add up to it), the strongest
+  evidence that each was **in a gallery** before or on/after that instant. Direct: a Gallery Recovery `assign` record, a recorded snapshot state, the before-list of a saved
+  editor edit (server time); the before-list of an unsaved edit (browser clock, compared with a one-day margin on each side, never as exact). Circumstantial, never
+  promoted to membership: `unassign` records, unconfirmed after-lists, `import_images` rows. A null, missing, empty or non-array side is neither presence nor removal;
+  a JSON string is not parsed. A recorded gallery STATE (snapshot rows sharing an event id or timestamp) is only reconstructable when every row has a name and `image_order` is exactly 0..n-1. Bucket 4 is a **recorded exclusion**, not a proof of removal: it needs, in every listing where the object has direct evidence, a complete recorded state after its last evidence that excludes it, all before the instant; a later snapshot that still names it is presence, an unreadable state, an emptied gallery (the editor writes no snapshot for it) or a listing with no later state stay indeterminate. **Limitation:** some writers leave no, or an incomplete, record (`edit-listing.html` and `add-property.html` write `properties.images` with no editor event and no snapshot; the admin editor's change log and snapshots are best-effort; Gallery Recovery inserts its `gallery_assignments` record after the update and only logs a failed insert), so an unrecorded re-add can still be classified into bucket 4 and would hide a discrepancy. Only buckets 1-3 are positive evidence of membership at or after the instant; the run prints this limitation next to the boundary. Image names are matched as stage 8 does: the URL path when the URL is ours, else the URL, else the stored path, and the stored path only as a second name when it is not just the tail of the URL path (the editor stores the last URL segment as `storage_path`);
+* the September/October uploads (same month rule as stage 2) and the uploads on/after the instant, by strongest evidence;
+* registry history: earliest / latest row time, rows by status, rows before the instant (expected 0), the backfill minute, the trigger period;
+* trigger `trg_property_images_sync` from the catalog: present, table, enabled mode, AFTER ... FOR EACH ROW, INSERT / UPDATE / UPDATE OF images, function, error handler;
+* `properties.images` shapes (SQL NULL and JSON null apart, string / object / number / boolean, empty vs non-empty arrays, entries that are not non-empty strings);
+* unregistered originals that match a registry row only under another (percent-encoded) spelling.
+
+An object is only "expected to have a row" when direct evidence puts it in a gallery at or after the instant (the one-time backfill or the trigger would have registered
+it); this diagnostic reports that, it never claims a sync failure on timing alone and never says anything is safe to delete.

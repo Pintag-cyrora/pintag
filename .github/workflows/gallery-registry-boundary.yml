@@ -1,0 +1,85 @@
+name: Registry activation boundary vs unregistered originals (read-only)
+
+# MANUAL, READ-ONLY, aggregate-only follow-up to the image integrity check (553 "orphaned originals" = no property_images row in any status, referenced by
+# nothing). The registry (table, trigger trg_property_images_sync, one-time backfill) was applied to production at 2026-08-18 13:32:37 UTC. This run asks:
+# (1) for the unregistered objects, does the strongest evidence put them in a gallery before or on/after that instant (Gallery Recovery records, editor
+# photos_changed events and linked snapshots kept apart, browser clocks treated as approximate); (2) what evidence exists for the September/October uploads;
+# (3) when registry rows were created and in which status; (4) whether trg_property_images_sync exists, is enabled and is attached to the expected table
+# and event; (5) how many listings hold a non-array properties.images value. See scripts/diagnostics/orphan-originals/10-registry-activation-boundary.sql.
+#
+# SAFETY, in order of importance (identical to the other gallery diagnostics):
+#   * workflow_dispatch ONLY -- no push / pull_request / schedule trigger, so it can never run by itself.
+#   * Same protected `production-backup` environment and the same read-only DB secret as the other diagnostics -- no new secret or credential. The
+#     secret is exposed to ONE runner step plus the presence check.
+#   * `contents: read`. NO artifact is uploaded: the output is counts, registry row dates and fixed labels only (no object name, image list, listing id,
+#     event id, record id, actor, title or payload), shown in the job log and job summary.
+#   * Same run.sh gates: SQL lint (each file exactly one plain SELECT/WITH), catalog-only PREFLIGHT (schema, reconcile-schema, gallery-schema,
+#     history-schema, provenance-schema, registry-schema, role privileges, RLS, session read-only; any FAIL/WARN stops the run), the aggregate stage-2
+#     cross-check, then the single query inside `BEGIN READ ONLY` ... `ROLLBACK`. The population it rebuilds must equal the stage-2 total and its
+#     evidence buckets must add up to it, or the result is discarded. Nothing is written to the database, Storage, R2 or backups.
+#   * Delete this workflow once the investigation is done.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_objects:
+        description: 'Optional: the object count you expect (e.g. 553). The run stops if stage 2 counts a different number. Leave empty to skip.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: registry-activation-boundary
+  cancel-in-progress: false
+
+jobs:
+  registry:
+    runs-on: ubuntu-latest
+    environment: production-backup
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify DB URL secret is present
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL (read-only connection) in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Run read-only analysis (lint, preflight, stage-2 cross-check, then the single aggregate SELECT for the registry boundary)
+        id: registry
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+          EXPECTED_OBJECTS: ${{ inputs.expected_objects }}
+        run: bash scripts/diagnostics/orphan-originals/run.sh registry
+
+      - name: Publish results (counts and date ranges only)
+        if: always()
+        working-directory: scripts/diagnostics/orphan-originals
+        run: |
+          emit() {   # $1 = annotation title, $2 = file, $3 = optional grep -v filter
+            [ -f "$2" ] || return 0
+            local msg
+            msg="$(grep -v -e "${3:-^\$}" "$2" | head -c 3500)"
+            msg="${msg//'%'/'%25'}"; msg="${msg//$'\r'/'%0D'}"; msg="${msg//$'\n'/'%0A'}"
+            echo "::notice title=${1}::${msg}"
+          }
+          {
+            echo "## Registry activation boundary vs unregistered originals (read-only)"
+            echo
+            if [ -f preflight.txt ]; then echo "### Preflight"; echo '```'; cat preflight.txt; echo '```'; else echo "Preflight did not produce output."; fi
+            if [ -f diagnostic.txt ]; then echo "### Stage 2 cross-check (aggregate)"; echo '```'; cat diagnostic.txt; echo '```'; else echo "**The stage-2 cross-check was NOT run.**"; fi
+            if [ -f registry-boundary.txt ]; then echo "### Unregistered originals vs the registry activation boundary (aggregate)"; echo '```'; cat registry-boundary.txt; echo '```'; else echo "**The registry stage (10) was NOT run.**"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          emit "Preflight (rows that are not ok)" preflight.txt ' | ok$'
+          emit "Registry activation boundary" registry-boundary.txt

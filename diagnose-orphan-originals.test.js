@@ -38,7 +38,7 @@ function run({ preflight = PASS3, env = {}, url = SECRET, tamper, replace, stale
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orphan-diag-'));
   const work = path.join(dir, 'work');
   fs.mkdirSync(work);
-  for (const f of ['1-preflight.sql', '2-diagnostic.sql', '3-reconcile.sql', '4-source-health.sql', '5-gallery-listing-state.sql', '6-properties-updated-at-probe.sql', '7-gallery-history-vs-snapshots.sql', '8-gallery-provenance-photos-changed.sql', 'summarize.py', 'summarize_gallery.py', 'run.sh']) fs.copyFileSync(path.join(SRC, f), path.join(work, f));
+  for (const f of ['1-preflight.sql', '2-diagnostic.sql', '3-reconcile.sql', '4-source-health.sql', '5-gallery-listing-state.sql', '6-properties-updated-at-probe.sql', '7-gallery-history-vs-snapshots.sql', '8-gallery-provenance-photos-changed.sql', '10-registry-activation-boundary.sql', 'summarize.py', 'summarize_gallery.py', 'run.sh']) fs.copyFileSync(path.join(SRC, f), path.join(work, f));
   if (tamper) fs.appendFileSync(path.join(work, tamper.file), tamper.text);
   if (replace) fs.writeFileSync(path.join(work, replace.file), replace.text);
   if (stale) for (const f of ['diagnostic.txt', 'reconcile.csv', 'reconcile-objects.csv', 'reconcile-summary.md', 'source-health.csv']) fs.writeFileSync(path.join(work, f), 'STALE RESULTS FROM AN EARLIER RUN\n');
