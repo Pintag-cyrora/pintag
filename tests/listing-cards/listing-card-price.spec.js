@@ -690,3 +690,33 @@ test('Chinese language -> the "From" label is real Chinese wording, not left in 
   const card = cardFor(page, 'from-price-row-rooms');
   await expect(card.locator('.pt-card-price-from')).toHaveText('起');
 });
+
+// ── STARTING vs EXACT price: the whole price line, placed by language ──────────────────────────────────────────
+// "From ₭3,000,000 / month" (en), "ເລີ່ມຕົ້ນ ₭3,000,000 / ເດືອນ" (lo), "₭3,000,000 / 月起" (zh: 起 AFTER the price).
+// An exact price (a plain listing, identical unit prices) keeps its bare "$450 / month".
+const priceLine = async (card) => (await card.locator('.pt-card-price').first().innerText()).replace(/\s+/g, ' ').trim();
+
+test('the starting-price line reads "From ₭3,000,000 / month" in English, with the word BEFORE the price', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'from-price-row-rooms');
+  expect(await priceLine(card)).toBe('From ₭3,000,000 / month');
+});
+
+test('the starting-price line is "ເລີ່ມຕົ້ນ ₭3,000,000 / ເດືອນ" in Lao', async ({ page }) => {
+  await openListings(page, '?lang=lo');
+  expect(await priceLine(cardFor(page, 'from-price-row-rooms'))).toBe('ເລີ່ມຕົ້ນ ₭3,000,000 / ເດືອນ');
+});
+
+test('the starting-price line is "₭3,000,000 / 月起" in Chinese: 起 closes the phrase, it is not a prefix', async ({ page }) => {
+  await openListings(page, '?lang=zh');
+  const card = cardFor(page, 'from-price-row-rooms');
+  expect(await priceLine(card)).toBe('₭3,000,000 / 月起');
+  await expect(card.locator('.pt-card-price-from')).toHaveText('起');
+});
+
+test('an EXACT price keeps its bare line: no "From" span, nothing appended', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'avail-prop-price');
+  expect(await priceLine(card)).toBe('$450 / month');
+  await expect(card.locator('.pt-card-price-from')).toHaveCount(0);
+});

@@ -59,6 +59,13 @@ const FREQUENCY_SUFFIX = {
   negotiable: { lo: '(ເຈລະຈາໄດ້)', en: '(negotiable)', zh: '(可议价)' },
 };
 const PRICE_ON_REQUEST = { lo: 'ສອບຖາມລາຄາ', en: 'Price on request', zh: '价格面议' };
+// Mirrors components.js's PT_FROM_PRICE_PREFIX / PT_FROM_PRICE_PLACEMENT: a STARTING price says so in the link
+// preview too. "From $350 / month" (en), "ເລີ່ມຕົ້ນ $350 / ເດືອນ" (lo), "$350 / 月起" (zh: 起 closes the phrase).
+const FROM_PRICE = {
+  lo: { word: 'ເລີ່ມຕົ້ນ', placement: 'prefix' },
+  en: { word: 'From', placement: 'prefix' },
+  zh: { word: '起', placement: 'suffix' },
+};
 
 // ── Pricing (ported from components.js/currency.js) ─────────────────────
 // This Worker is a separate Cloudflare deploy that can't import a browser
@@ -102,6 +109,54 @@ function legacyRentText(row, lang) {
   if (/\d[^/]*\/\s*\S/.test(text)) return text;
   const suffix = FREQUENCY_SUFFIX[RENT_PERIOD_FREQUENCY[row.rent_period] || 'monthly'] || FREQUENCY_SUFFIX.monthly;
   return text + ' ' + (suffix[lang] || suffix.en);
+}
+
+// Mirrors components.js's _ptValidAmount(): a structured amount is only displayable when it is a real, positive number
+// (never a literal "null", "NaN" or "$0").
+function validAmount(value) {
+  if (value == null || value === '' || typeof value === 'boolean') return false;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0;
+}
+
+// Mirrors components.js's ptResolveUnitPriceVariance(): true only when 2+ unit types resolve to a numeric price in the
+// SAME currency and frequency and those prices are not all identical -- then the single number shown is a MINIMUM
+// ("starting price"), not necessarily what every unit costs. sale_or_rent is out of scope, exactly as in the browser.
+function unitPriceVariance(row) {
+  if (!row || row.transaction_type === 'sale_or_rent') return false;
+  const units = Array.isArray(row.unit_types) ? row.unit_types : [];
+  if (units.length < 2) return false;
+  const amounts = [];
+  let currency = null, frequency = null, mixedCurrency = false, mixedFrequency = false;
+  for (const unit of units) {
+    const resolved = resolveUnitPriceFields(row, unit);
+    if (!validAmount(resolved.priceAmount)) continue;
+    amounts.push(Number(resolved.priceAmount));
+    if (currency === null) currency = resolved.priceCurrency;
+    else if (resolved.priceCurrency !== currency) mixedCurrency = true;
+    if (frequency === null) frequency = resolved.priceFrequency;
+    else if (resolved.priceFrequency !== frequency) mixedFrequency = true;
+  }
+  if (amounts.length < 2 || mixedCurrency || mixedFrequency) return false;
+  return Math.min(...amounts) !== Math.max(...amounts);
+}
+
+// Mirrors components.js's ptFormatPriceLine() for a single price: the "from" word before the price (en/lo) or 起 after it
+// (zh: "$350 / 月起"; after a parenthesised unit it follows the amount instead).
+function qualifyPrice(moneyText, suffixText, fromActive, lang) {
+  const body = moneyText + (suffixText ? ' ' + suffixText : '');
+  if (!fromActive) return body;
+  const from = FROM_PRICE[lang] || FROM_PRICE.en;
+  if (from.placement === 'suffix') {
+    return suffixText && suffixText.charAt(0) !== '(' ? body + from.word : moneyText + from.word + (suffixText ? ' ' + suffixText : '');
+  }
+  return from.word + ' ' + body;
+}
+// The same qualification for a unit's already-built price text ("$300 / month").
+function qualifyBuiltPrice(text, fromActive, lang) {
+  if (!fromActive || !text) return text;
+  const m = text.match(/^(\S+)(?: (.+))?$/);
+  return m ? qualifyPrice(m[1], m[2] || '', true, lang) : text;
 }
 
 // Mirrors terminology.js's resolveUnitType(): a unit_types row's own value
@@ -153,7 +208,7 @@ function buildUnitPriceText(row, resolved, lang) {
     }
     return parts.length ? parts.join(' · ') : null;
   }
-  if (resolved.priceAmount != null) {
+  if (validAmount(resolved.priceAmount)) {
     const text = formatMoneyEdge(resolved.priceAmount, resolved.priceCurrency);
     if (row.transaction_type !== 'for_rent') return text;
     const suffix = FREQUENCY_SUFFIX[resolved.priceFrequency] || FREQUENCY_SUFFIX.monthly;
@@ -163,9 +218,9 @@ function buildUnitPriceText(row, resolved, lang) {
 }
 
 // Mirrors components.js's ptResolveUnitTypesPriceEntry()/
-// ptResolveUnitTypesPrice(): the CHEAPEST resolvable unit's own price text
-// (no "from" prefix is added by the canonical implementation either -- this
-// intentionally does not invent one). property-level price is nulled out
+// ptResolveUnitTypesPrice(): the CHEAPEST resolvable unit's own price text.
+// formatPriceLine() below adds the "from" qualifier when the unit prices genuinely
+// differ (unitPriceVariance()), exactly as formatPropertyPrice() does. property-level price is nulled out
 // on save for e.g. a fully-occupied multi-unit building, so this is the
 // fallback the crawler-visible description needs whenever there is no
 // property-level price to show but real unit_types pricing exists.
@@ -215,11 +270,12 @@ function formatPriceLine(row, lang) {
     // formatPropertyPrice()'s own documented behavior for this case.
   }
 
-  if (row.price_amount != null) {
+  if (validAmount(row.price_amount)) {
     const moneyText = formatMoneyEdge(row.price_amount, row.price_currency);
-    if (kind !== 'rent') return moneyText;
+    const fromActive = unitPriceVariance(row);   // the number shown is the MINIMUM across differing unit prices
+    if (kind !== 'rent') return qualifyPrice(moneyText, '', fromActive, lang);
     const suffix = FREQUENCY_SUFFIX[row.price_frequency] || FREQUENCY_SUFFIX.monthly;
-    return moneyText + ' ' + (suffix[lang] || suffix.en);
+    return qualifyPrice(moneyText, suffix[lang] || suffix.en, fromActive, lang);
   }
 
   const raw = (row.price_display || '').replace(/\s*\/\s*(ເດືອນ|month|mo|月)\s*/i, '').trim();
@@ -230,7 +286,7 @@ function formatPriceLine(row, lang) {
   }
 
   const unitText = resolveUnitTypesPrice(row, lang);
-  if (unitText) return unitText;
+  if (unitText) return qualifyBuiltPrice(unitText, unitPriceVariance(row), lang);
 
   return PRICE_ON_REQUEST[lang] || PRICE_ON_REQUEST.en;
 }

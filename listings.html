@@ -1265,7 +1265,7 @@ function showMapPreview(p) {
   var mpPriceText = mpPriceInfo.isSor
     ? [mpPriceInfo.saleText, mpPriceInfo.rentText].filter(Boolean).join(' / ')
     : (mpPriceInfo.singleText
-        ? (mpPriceInfo.singleText + (mpPriceInfo.unitText ? ' ' + mpPriceInfo.unitText : ''))
+        ? ptFormatPriceLine(mpPriceInfo, lang)   // "From $350 / month" for a starting price, exact otherwise
         : {lo:'ສອບຖາມ',en:'Price on request',zh:'价格面议'}[lang]);
   document.getElementById('mp-price').textContent = mpPriceText;
 
