@@ -665,18 +665,28 @@ test('identical unit prices -> no "From", plain price display unchanged', async 
   await expect(card.locator('.pt-card-price')).toContainText('$400');
 });
 
-test('mixed CURRENCY across unit types -> no "From" (never compares across currencies), price unchanged', async ({ page }) => {
+test('mixed CURRENCY across unit types -> no "From" and no bare amount: the card says "Prices vary"', async ({ page }) => {
   await openListings(page);
   const card = cardFor(page, 'from-price-mixed-currency');
   await expect(card.locator('.pt-card-price-from')).toHaveCount(0);
-  await expect(card.locator('.pt-card-price')).toContainText('$300');
+  await expect(card.locator('.pt-card-price-req')).toHaveText('Prices vary');
+  await expect(card.locator('.pt-card-price')).toHaveCount(0);
 });
 
-test('mixed FREQUENCY across unit types -> no "From" (never implies a false comparison), price unchanged', async ({ page }) => {
+test('mixed FREQUENCY across unit types -> no "From" and no bare amount: the card says "Prices vary"', async ({ page }) => {
   await openListings(page);
   const card = cardFor(page, 'from-price-mixed-frequency');
   await expect(card.locator('.pt-card-price-from')).toHaveCount(0);
-  await expect(card.locator('.pt-card-price')).toContainText('$300');
+  await expect(card.locator('.pt-card-price-req')).toHaveText('Prices vary');
+});
+
+test('"Prices vary" in Lao and Chinese', async ({ page }) => {
+  await openListings(page, '?lang=lo');
+  await expect(cardFor(page, 'from-price-mixed-currency').locator('.pt-card-price-req')).toHaveText('ລາຄາແຕກຕ່າງກັນ');
+  const p2 = await page.context().newPage();
+  await openListings(p2, '?lang=zh');
+  await expect(cardFor(p2, 'from-price-mixed-currency').locator('.pt-card-price-req')).toHaveText('价格不一');
+  await p2.close();
 });
 
 test('Lao language -> the "From" label is real Lao wording, not left in English', async ({ page }) => {

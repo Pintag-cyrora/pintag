@@ -3018,6 +3018,9 @@ function buildMockupLayout(){
     if(priceInfo.rentText) resolvedPriceHtml+='<p class="price-value">'+esc(priceInfo.rentText)+'<span class="price-type-label"> &mdash; <span class="lo-i">ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">出租</span></span></p>';
   }else if(priceInfo.isPriceOnRequest){
     resolvedPriceHtml='<p class="price-inquire">'+L.inquire[lang]+'</p>';
+  }else if(priceInfo.isPriceVaries){
+    // Units in incomparable currencies / frequencies: no amount is a reliable starting price -> a neutral label.
+    resolvedPriceHtml='<p class="price-inquire" data-price-kind="varies">'+esc(priceInfo.singleText)+'</p>';
   }else if(priceInfo.singleText){
     // A starting price must read as one: "From $350 / month" (en/lo) or "$350 / 月起" (zh) -- the qualifier
     // formatPropertyPrice() decided (priceInfo.fromLabel / fromPlacement), never dropped here. An exact

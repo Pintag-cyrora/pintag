@@ -4,7 +4,7 @@
 //                         differ (same currency + frequency), or the cheapest comparable lease term
 //   "$350 / month"        an EXACT price: a plain listing, or units that all cost the same -- existing listings are
 //                         never converted into starting prices
-//   "$350–500 / month"    a RANGE: the unit prices' span (rangeText) or a range already typed as text ("$280-300")
+//   "$350–$500 / month"    a RANGE: the unit prices' span (rangeText) or a range already typed as text ("$280-300")
 //
 // The reported defect: the listing DETAIL page, the share text, the link-preview metadata and the compact preview tile
 // dropped the "From" that formatPropertyPrice() already computed, so "$350 / month" read as the exact rent of the unit
@@ -116,26 +116,53 @@ test('STARTING PRICE: a negotiable frequency keeps its parenthesised note after 
   assert.equal(line(p, 'zh'), '$350起 (可议价)');
 });
 
-test('NOT COMPARABLE: units in different currencies or frequencies are never compared into a "from" claim (documented, unchanged)', () => {
-  assert.equal(line(multi({ unit_types: [unit('a', 350), unit('b', 9000000, { price_currency: 'LAK' })] })), '$350 / month');
-  assert.equal(line(multi({ unit_types: [unit('a', 350), unit('b', 500, { price_frequency: 'daily' })] })), '$350 / month');
+test('PRICES VARY: units in different currencies or frequencies never get a bare headline price -- a neutral label, in all three languages', () => {
+  const mixedCurrency = multi({ unit_types: [unit('a', 350), unit('b', 9000000, { price_currency: 'LAK' })] });
+  const mixedFrequency = multi({ unit_types: [unit('a', 350), unit('b', 500, { price_frequency: 'daily' })] });
+  for (const p of [mixedCurrency, mixedFrequency]) {
+    for (const [lang, want] of [['en', 'Prices vary'], ['lo', 'ລາຄາແຕກຕ່າງກັນ'], ['zh', '价格不一']]) {
+      const info = formatPropertyPrice(p, lang);
+      assert.equal(info.isPriceVaries, true);
+      assert.equal(info.priceKind, 'varies');
+      assert.equal(info.fromLabel, null);
+      assert.equal(info.rangeText, null);
+      assert.equal(ptFormatPriceLine(info, lang), want);
+      assert.doesNotMatch(ptFormatPriceLine(info, lang), /[$₭฿]|\d/);
+    }
+  }
+});
+
+test('PRICES VARY: it also replaces a legacy price text and a unit-only price, and is not triggered by a single priced unit, identical units or sale_or_rent', () => {
+  assert.equal(line(multi({ price_amount: null, price_display: '$350 / month', unit_types: [unit('a', 350), unit('b', 9000000, { price_currency: 'LAK' })] })), 'Prices vary');
+  assert.equal(line(multi({ price_amount: null, price_display: null, unit_types: [unit('a', 350), unit('b', 500, { price_frequency: 'yearly' })] })), 'Prices vary');
+  assert.equal(line(rental({ price_amount: null, price_display: '$350 / month', unit_types: [unit('a', 350), unit('b', null)] })), '$350 / month');   // only ONE unit has a price: exact
+  assert.equal(line(multi({ unit_types: [unit('a', 350), unit('b', 350)] })), '$350 / month');                                                // identical: exact
+  const sor = rental({ transaction_type: 'sale_or_rent', price_amount: 250000, rent_price_amount: 1200, rent_price_currency: 'USD', rent_price_frequency: 'monthly',
+    unit_types: [unit('a', 1), unit('b', 2, { price_currency: 'LAK' })] });
+  assert.equal(formatPropertyPrice(sor, 'en').isPriceVaries, undefined);
 });
 
 // ── Minimum and maximum price ────────────────────────────────────────────────────────────────────────────────────
-test('MIN / MAX: differing unit prices expose the span as rangeText ("$350–500 / month") in all languages; the headline stays the minimum', () => {
-  assert.equal(formatPropertyPrice(multi(), 'en').rangeText, '$350–500 / month');
-  assert.equal(formatPropertyPrice(multi(), 'lo').rangeText, '$350–500 / ເດືອນ');
-  assert.equal(formatPropertyPrice(multi(), 'zh').rangeText, '$350–500 / 月');
-  assert.equal(formatPropertyPrice(multi({ unit_types: [unit('a', 3000000, { price_currency: 'LAK' }), unit('b', 4500000, { price_currency: 'LAK' })], price_currency: 'LAK', price_amount: 3000000 }), 'en').rangeText, '₭3,000,000–4,500,000 / month');
+test('MIN / MAX: differing unit prices expose the span as rangeText ("$350–$500 / month") in all languages; the headline stays the minimum', () => {
+  assert.equal(formatPropertyPrice(multi(), 'en').rangeText, '$350–$500 / month');
+  assert.equal(formatPropertyPrice(multi(), 'lo').rangeText, '$350–$500 / ເດືອນ');
+  assert.equal(formatPropertyPrice(multi(), 'zh').rangeText, '$350–$500 / 月');
+  assert.equal(formatPropertyPrice(multi({ unit_types: [unit('a', 3000000, { price_currency: 'LAK' }), unit('b', 4500000, { price_currency: 'LAK' })], price_currency: 'LAK', price_amount: 3000000 }), 'en').rangeText, '₭3,000,000–₭4,500,000 / month');
   assert.equal(formatPropertyPrice(multi(), 'en').singleText, '$350');
 });
 
-test('RANGE: a range already typed as text is an explicit range -- kept as written, kind "range", never turned into "From"', () => {
+test('RANGE: a range already typed as text is an explicit range -- kind "range", never turned into "From"; the one-symbol shape is shown as "$280–$300", other text as written', () => {
   const p = rental({ price_amount: null, price_display: '$280-300 / month' });
   const info = formatPropertyPrice(p, 'en');
   assert.equal(info.priceKind, 'range');
   assert.equal(info.fromLabel, undefined);
-  assert.equal(ptFormatPriceLine(info, 'en'), '$280-300 / month');
+  assert.equal(ptFormatPriceLine(info, 'en'), '$280–$300 / month');                       // the one-symbol shape is shown in the standard range format
+  assert.equal(ptFormatPriceLine(formatPropertyPrice(rental({ price_amount: null, price_display: '₭3,000,000 - 3,500,000' }), 'en'), 'en'), '₭3,000,000–₭3,500,000 / month');
+  assert.equal(ptFormatPriceLine(formatPropertyPrice(rental({ price_amount: null, price_display: '$280-$300' }), 'zh'), 'zh'), '$280–$300 / 月');
+  // anything else typed is left exactly as written
+  for (const odd of ['280-300 USD', '$280 to $300', 'About $280-300 depending on floor', '$280-300-350']) {
+    assert.equal(formatPropertyPrice(rental({ price_amount: null, price_display: odd }), 'en').singleText, odd, odd);
+  }
   assert.equal(formatPropertyPrice(rental({ price_amount: null, price_display: '$300' }), 'en').priceKind, 'exact');
 });
 

@@ -137,12 +137,12 @@ test.describe('desktop (1400x900)', () => {
     expect(interactive).toBe(0);
   });
 
-  test('the headline .price-block is unchanged from PR #91: it still shows the cheapest comparable tier, with no "From" prefix on the detail page', async ({ page }) => {
+  test('the headline .price-block still shows the cheapest comparable tier -- now qualified "From" on the detail page too (it is a starting price: only the 12-month lease costs $500)', async ({ page }) => {
     await mockRest(page, [LEASE_ROW]);
     await page.goto('/listing.html?slug=lease1&lang=en');
     await page.waitForSelector('.hero-lease-pricing');
     const headline = await page.$eval('.price-block', (el) => el.textContent.trim());
-    expect(headline).toBe('$500 / month');
+    expect(headline).toBe('From $500 / month');
   });
 
   test('localization: the label and all three lines are correctly translated in lo/en/zh', async ({ page }) => {

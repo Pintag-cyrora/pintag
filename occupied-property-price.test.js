@@ -554,19 +554,21 @@ test('E5. only one unit type on file -> no "From" (nothing to compare against)',
   assert.equal(formatPropertyPrice(p, 'en').fromLabel, null);
 });
 
-test('E6. mixed CURRENCY across unit types -> existing safe behaviour, no "From" (never compares across currencies)', () => {
+test('E6. mixed CURRENCY across unit types -> no "From" (never compares across currencies) and NO bare amount: "Prices vary"', () => {
   const p = fanAcRowRooms();
   p.unit_types[1].price_currency = 'USD'; // AC room priced in USD, Fan room in LAK
   const info = formatPropertyPrice(p, 'en');
   assert.equal(info.fromLabel, null);
-  assert.equal(info.singleText, '₭3,000,000', 'the displayed number itself is untouched by this change');
+  assert.equal(info.isPriceVaries, true);
+  assert.equal(info.singleText, 'Prices vary', 'no single amount is a reliable starting price, so none is shown');
 });
 
-test('E7. mixed FREQUENCY across unit types -> existing safe behaviour, no "From" (never implies a false comparison)', () => {
+test('E7. mixed FREQUENCY across unit types -> no "From" (never implies a false comparison) and "Prices vary"', () => {
   const p = fanAcRowRooms();
   p.unit_types[1].price_frequency = 'yearly'; // AC room quoted yearly, Fan room monthly
   const info = formatPropertyPrice(p, 'en');
   assert.equal(info.fromLabel, null);
+  assert.equal(info.singleText, 'Prices vary');
 });
 
 test('E8. sale_or_rent is unchanged -- the isSor branch never carries a fromLabel', () => {

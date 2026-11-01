@@ -60,10 +60,14 @@ test('currencySymbol / currencyCode accessors', () => {
 // naming regression in either call site is caught here, in CI, rather
 // than surfacing as a "Can't find variable" error discovered by staff
 // clicking through Smart Import.
-test('formatMoneyRange formats a genuine range with one symbol and an en dash', () => {
-  assert.equal(formatMoneyRange(280, 300, 'USD'), '$280–300');
-  assert.equal(formatMoneyRange(1200, 1500, 'USD'), '$1,200–1,500');
-  assert.equal(formatMoneyRange(3000000, 3500000, 'LAK'), '₭3,000,000–3,500,000');
+test('formatMoneyRange formats a genuine range with the symbol on BOTH ends and an en dash, no spaces', () => {
+  assert.equal(formatMoneyRange(280, 300, 'USD'), '$280–$300');
+  assert.equal(formatMoneyRange(1200, 1500, 'USD'), '$1,200–$1,500');
+  assert.equal(formatMoneyRange(3000000, 3500000, 'LAK'), '₭3,000,000–₭3,500,000');
+  assert.equal(formatMoneyRange(9000, 12000, 'THB'), '฿9,000–฿12,000');
+  // the new text still parses to its lower bound (listings price bands read it), never to "280300"
+  assert.equal(parseLegacyPriceAmount(formatMoneyRange(280, 300, 'USD') + ' / month'), 280);
+  assert.equal(parseLegacyPriceAmount(formatMoneyRange(3000000, 3500000, 'LAK')), 3000000);
 });
 
 test('formatMoneyRange collapses to a single formatMoney() value when min === max', () => {

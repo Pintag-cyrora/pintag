@@ -261,10 +261,18 @@ test('PRICING J: LAK and THB keep their symbols; a sale listing gets "From" with
   assert.match(buildOgFields(sale, 'en').desc, /^From \$250,000(?! \/)/);
 });
 
-test('PRICING K: units in different currencies or frequencies are not compared (no "from" claim from an incomparable minimum)', () => {
-  const mixed = MULTI({ unit_types: [
-    { is_available: true, available_count: 1, price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' }, { is_available: true, available_count: 1, price_amount: 9000000, price_currency: 'LAK', price_frequency: 'monthly' }] });
-  assert.doesNotMatch(buildOgFields(mixed, 'en').desc, /^From/);
+test('PRICING K: units in different currencies or frequencies -> "Prices vary" (no amount), never a bare price that reads as exact', () => {
+  const mk = (units) => MULTI({ unit_types: units.map((u) => Object.assign({ is_available: true, available_count: 1 }, u)) });
+  const mixedCurrency = mk([{ price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' }, { price_amount: 9000000, price_currency: 'LAK', price_frequency: 'monthly' }]);
+  const mixedFrequency = mk([{ price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' }, { price_amount: 20, price_currency: 'USD', price_frequency: 'daily' }]);
+  for (const row of [mixedCurrency, mixedFrequency]) {
+    assert.match(buildOgFields(row, 'en').desc, /^Prices vary/);
+    assert.match(buildOgFields(row, 'lo').desc, /^ລາຄາແຕກຕ່າງກັນ/);
+    assert.match(buildOgFields(row, 'zh').desc, /^价格不一/);
+    assert.doesNotMatch(buildOgFields(row, 'en').desc, /^\$|^From|^฿|^₭/);
+  }
+  // only ONE priced unit (the other has no price): nothing is mixed -> still an exact price
+  assert.match(buildOgFields(mk([{ price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' }, { price_amount: null }]), 'en').desc, /^\$350 \/ month/);
 });
 
 test('PRICING L: missing or invalid structured prices never print "null", "NaN" or "$0" -> Price on request', () => {

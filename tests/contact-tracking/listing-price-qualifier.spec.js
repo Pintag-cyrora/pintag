@@ -50,7 +50,7 @@ test.describe('detail page headline', () => {
 
   test('the span of unit prices is shown on its own line; the headline stays the minimum', async ({ page }) => {
     await open(page, MULTI());
-    expect(norm(await page.locator('#section-price .price-range').innerText())).toBe('$350–500 / month');
+    expect(norm(await page.locator('#section-price .price-range').innerText())).toBe('$350–$500 / month');
     expect(norm(await headline(page).innerText())).toBe('From $350 / month');
   });
 
@@ -79,6 +79,15 @@ test.describe('detail page headline', () => {
     await expect(page.locator('#section-price .price-from')).toHaveCount(0);
   });
 
+  for (const [lang, want] of [['en', '$280–$300 / month'], ['lo', '$280–$300 / ເດືອນ'], ['zh', '$280–$300 / 月']]) {
+    test(`a range typed as text ("$280-300") is a RANGE, shown in the standard format, not a starting price (${lang})`, async ({ page }) => {
+      await open(page, prop({ slug: 'typed-range', price_amount: null, price_display: '$280-300 / month' }), { lang });
+      expect(norm(await headline(page).innerText())).toBe(want);
+      await expect(headline(page)).toHaveAttribute('data-price-kind', 'range');
+      await expect(page.locator('#section-price .price-from')).toHaveCount(0);
+    });
+  }
+
   test('LAK and THB keep their own symbols in the qualified price', async ({ page }) => {
     await open(page, MULTI({ price_amount: 3000000, price_currency: 'LAK', unit_types: [UT('a', 'Fan', 3000000, { price_currency: 'LAK' }), UT('b', 'AC', 4000000, { price_currency: 'LAK' })] }));
     expect(norm(await headline(page).innerText())).toBe('From ₭3,000,000 / month');
@@ -87,6 +96,16 @@ test.describe('detail page headline', () => {
     expect(norm(await p2.locator('#section-price .price-value').first().innerText())).toBe('ເລີ່ມຕົ້ນ ฿9,000 / ເດືອນ');
     await p2.close();
   });
+
+  for (const [lang, want] of [['en', 'Prices vary'], ['lo', 'ລາຄາແຕກຕ່າງກັນ'], ['zh', '价格不一']]) {
+    test(`units in different currencies / frequencies -> a neutral "${want}", no amount that reads as exact (${lang})`, async ({ page }) => {
+      await open(page, MULTI({ unit_types: [STUDIO, UT('u-lak', 'Fan Room', 3000000, { price_currency: 'LAK' })] }), { lang });
+      const block = norm(await page.locator('#section-price').innerText());
+      expect(block).toContain(want);
+      expect(block).not.toMatch(/\$350|₭3,000,000/);
+      await expect(page.locator('#section-price [data-price-kind="varies"]')).toHaveCount(1);
+    });
+  }
 
   test('selecting a unit shows THAT unit\'s own exact price (no "From")', async ({ page }) => {
     await open(page, MULTI(), { query: '&unit=two-bedroom' });

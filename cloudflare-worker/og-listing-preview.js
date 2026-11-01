@@ -61,6 +61,9 @@ const FREQUENCY_SUFFIX = {
 const PRICE_ON_REQUEST = { lo: 'ສອບຖາມລາຄາ', en: 'Price on request', zh: '价格面议' };
 // Mirrors components.js's PT_FROM_PRICE_PREFIX / PT_FROM_PRICE_PLACEMENT: a STARTING price says so in the link
 // preview too. "From $350 / month" (en), "ເລີ່ມຕົ້ນ $350 / ເດືອນ" (lo), "$350 / 月起" (zh: 起 closes the phrase).
+// Mirrors components.js's PT_PRICES_VARY: shown INSTEAD of a price when a multi-unit listing's units are priced in
+// different currencies or frequencies (no reliable starting price exists).
+const PRICES_VARY = { lo: 'ລາຄາແຕກຕ່າງກັນ', en: 'Prices vary', zh: '价格不一' };
 const FROM_PRICE = {
   lo: { word: 'ເລີ່ມຕົ້ນ', placement: 'prefix' },
   en: { word: 'From', placement: 'prefix' },
@@ -139,6 +142,29 @@ function unitPriceVariance(row) {
   }
   if (amounts.length < 2 || mixedCurrency || mixedFrequency) return false;
   return Math.min(...amounts) !== Math.max(...amounts);
+}
+
+// Mirrors components.js's ptResolveUnitPricesMixed(): 2+ unit types with a real price whose currencies or frequencies differ.
+function unitPricesMixed(row) {
+  if (!row || row.transaction_type === 'sale_or_rent') return false;
+  const units = Array.isArray(row.unit_types) ? row.unit_types : [];
+  if (units.length < 2) return false;
+  let priced = 0, currency = null, frequency = null, mixed = false;
+  for (const unit of units) {
+    const resolved = resolveUnitPriceFields(row, unit);
+    if (!validAmount(resolved.priceAmount)) continue;
+    priced++;
+    if (priced === 1) { currency = resolved.priceCurrency; frequency = resolved.priceFrequency; }
+    else if (resolved.priceCurrency !== currency || resolved.priceFrequency !== frequency) mixed = true;
+  }
+  return priced >= 2 && mixed;
+}
+
+// Mirrors components.js's _ptNormalizeRangeText(): a range typed with ONE symbol ("$280-300") is shown as "$280–$300".
+const SIMPLE_RANGE_RE = /^\s*([$\u20ad\u0e3f])\s*(\d[\d,]*)\s*[-\u2013\u2014]\s*(?:[$\u20ad\u0e3f]\s*)?(\d[\d,]*)\s*$/;
+function normalizeRangeText(text) {
+  const m = SIMPLE_RANGE_RE.exec(text);
+  return m ? m[1] + m[2] + '\u2013' + m[1] + m[3] : text;
 }
 
 // Mirrors components.js's ptFormatPriceLine() for a single price: the "from" word before the price (en/lo) or 起 after it
@@ -270,6 +296,8 @@ function formatPriceLine(row, lang) {
     // formatPropertyPrice()'s own documented behavior for this case.
   }
 
+  if (unitPricesMixed(row)) return PRICES_VARY[lang] || PRICES_VARY.en;   // no reliable starting price: state no amount
+
   if (validAmount(row.price_amount)) {
     const moneyText = formatMoneyEdge(row.price_amount, row.price_currency);
     const fromActive = unitPriceVariance(row);   // the number shown is the MINIMUM across differing unit prices
@@ -280,9 +308,10 @@ function formatPriceLine(row, lang) {
 
   const raw = (row.price_display || '').replace(/\s*\/\s*(ເດືອນ|month|mo|月)\s*/i, '').trim();
   if (raw) {
-    if (kind !== 'rent') return raw;
+    const shown = normalizeRangeText(raw);
+    if (kind !== 'rent') return shown;
     const suffix = FREQUENCY_SUFFIX.monthly;
-    return raw + ' ' + (suffix[lang] || suffix.en);
+    return shown + ' ' + (suffix[lang] || suffix.en);
   }
 
   const unitText = resolveUnitTypesPrice(row, lang);
