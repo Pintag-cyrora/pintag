@@ -14,7 +14,13 @@
 # --dry-run   Print row counts that would be copied; touches nothing.
 # --yes       Skip the interactive confirmation before truncating dev tables.
 #
-# ── What this copies ─────────────────────────────────────────────────────
+# ── What this copies (allowlist; see seed-dev-lib.sh — anything not listed there is NOT copied) ──
+#   SUMMARY (2026-11): the previous version copied `SELECT *`, so it also copied every listing's exact map link and coordinates, third-party video/post links, the owner
+#   link and internal notes, soft-deleted and draft rows, and every agent's phone and email. Now: published listings only, an explicit column allowlist, placeholder
+#   phones/names, no accounts, no location fields, map links inside free text removed, and a guard that aborts if a forbidden column or a map link survives.
+#   The older description below is kept for context but is SUPERSEDED where it differs.
+#
+# ── Original description ───────
 #   properties  — every column, EXCEPT view_count/views_week/price_previous
 #                 are reset to 0/NULL (analytics, not representative sample
 #                 data). images/amenities are plain array columns on this
@@ -89,6 +95,8 @@ if [[ "$PINTAG_PROD_DB_URL" == *"$DEV_PROJECT_REF"* ]]; then
   echo "That's harmless (source is read-only here) but is probably a mistake — check your env vars." >&2
 fi
 
+source "$(dirname "$0")/seed-dev-lib.sh"
+
 psql_prod() { psql "$PINTAG_PROD_DB_URL" -v ON_ERROR_STOP=1 "$@"; }
 psql_dev()  { psql "$PINTAG_DEV_DB_URL"  -v ON_ERROR_STOP=1 "$@"; }
 
@@ -118,43 +126,8 @@ fi
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
-echo "== Exporting redacted data from production (read-only; nothing is written back) =="
-
-psql_prod -c "
-  CREATE TEMP TABLE _seed_parties AS SELECT * FROM parties;
-  UPDATE _seed_parties SET auth_user_id = NULL;
-  \copy _seed_parties TO '$WORKDIR/parties.csv' WITH (FORMAT csv, HEADER true)
-"
-
-psql_prod -c "
-  CREATE TEMP TABLE _seed_contacts AS SELECT * FROM contacts;
-  UPDATE _seed_contacts SET created_by = NULL, phone = '0000000000', whatsapp = '0000000000';
-  \copy _seed_contacts TO '$WORKDIR/contacts.csv' WITH (FORMAT csv, HEADER true)
-"
-
-# images/amenities/district_* are plain columns on properties — no separate
-# tables to handle. images stay pointing at production's *public* storage
-# bucket (property-images / agent-photos are public-read), so photos render
-# correctly in dev without copying any actual files between projects.
-psql_prod -c "
-  CREATE TEMP TABLE _seed_properties AS SELECT * FROM properties;
-  UPDATE _seed_properties SET view_count = 0, views_week = 0, price_previous = NULL;
-  \copy _seed_properties TO '$WORKDIR/properties.csv' WITH (FORMAT csv, HEADER true)
-"
-
-echo "== Reseeding pintag-dev =="
-
-# CASCADE also clears dev's lead_events/listing_events rows that reference
-# the properties being replaced (their property_id would otherwise dangle)
-# — expected and fine, those rows are exactly the operational data this
-# script deliberately never repopulates.
-psql_dev -c "TRUNCATE properties, contacts, parties RESTART IDENTITY CASCADE;"
-
-# Import order matters: parties and contacts are referenced by properties'
-# foreign keys, so they must exist first.
-psql_dev -c "\copy parties FROM '$WORKDIR/parties.csv' WITH (FORMAT csv, HEADER true)"
-psql_dev -c "\copy contacts FROM '$WORKDIR/contacts.csv' WITH (FORMAT csv, HEADER true)"
-psql_dev -c "\copy properties FROM '$WORKDIR/properties.csv' WITH (FORMAT csv, HEADER true)"
+# The column allowlist, the redaction and the leak guard live in seed-dev-lib.sh (tested: seed-dev-redaction.test.js).
+seed_copy_data "$WORKDIR"
 
 echo "== Re-linking the dev staff login =="
 # The copied production "Pintag Staff" party (auth_user_id now NULL) is

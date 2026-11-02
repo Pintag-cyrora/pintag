@@ -69,6 +69,13 @@ PINTAG_DEV_DB_URL="<pintag-dev Session Pooler connection string>" \
 ./scripts/seed-dev-from-prod.sh
 ```
 
+### What the seed copies (changed 2026-11) and how to check an already-seeded dev database
+
+The development site and its database are **public** (the repository, the Pages site and the dev anon key are all public). The seed therefore uses an **allowlist** (`scripts/seed-dev-lib.sh`, tested by `seed-dev-redaction.test.js`):
+published listings only (no drafts, no soft-deleted rows); no exact location (`map_embed_url`, `latitude`, `longitude`), no third-party video/post links, no owner link, no notes, no named landmarks (`nearby_places`, `neighborhood_*`); no accounts (`auth_user_id`, `email`, `created_by`); phone numbers and contact names are placeholders; map links typed inside titles/descriptions are replaced; a production column that is not on the allowlist is not copied (its name is printed so you can decide). An address typed in words inside a description cannot be detected.
+
+The earlier version copied `SELECT *`. **If the dev database was seeded with it, it holds those fields and they are readable with the dev public key until it is reseeded.** Re-running the new script (it truncates and reseeds) replaces them. To check without touching production, count (do not print) non-empty location fields on the DEV project only, using the dev public key from `config.dev.js`: `GET <dev-url>/rest/v1/properties?select=id&map_embed_url=not.is.null&limit=1` with header `Prefer: count=exact` and read only the `Content-Range` total; the same for `latitude`, and `GET …/parties?select=id&phone=not.is.null`. A non-zero total means the old data is there. Whether dev was ever seeded is not recorded anywhere in the repository (the script runs from a developer machine).
+
 It's destructive to `pintag-dev`'s current `properties`/`parties`/`contacts` (asks for confirmation first) and hard-refuses to run against anything that isn't `pintag-dev`. See the script's header comment for exactly what's copied, redacted, and excluded.
 
 ## One-time setup (reference — already done unless noted)
