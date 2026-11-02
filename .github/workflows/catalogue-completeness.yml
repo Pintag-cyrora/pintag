@@ -8,6 +8,9 @@ name: Catalogue completeness report (read-only)
 # SAFETY, in order of importance:
 #   * workflow_dispatch ONLY -- no push / pull_request / schedule trigger, so it can never run by itself.
 #   * Same protected `production-backup` environment and the same read-only DB secret as the other diagnostics -- no new secret or credential.
+#   * THE OUTPUT IS PUBLIC: the repository is public, so this run's log and summary are visible to anyone. Aggregate counts only, but see the README
+#     ("Before dispatching") for the written acceptance and the operator confirmation of the production-backup environment restrictions that must
+#     precede any dispatch.
 #   * `contents: read`. NO artifact is uploaded and nothing is cached: the output is counts per fixed label (no listing id, title, description,
 #     village, phone, address, URL, coordinate, price value or payload), shown in the job log and job summary.
 #   * run.sh gates: SQL lint (each file exactly one plain SELECT/WITH), a catalog-only PREFLIGHT (any FAIL or WARN stops the run, including a role

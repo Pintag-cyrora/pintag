@@ -356,6 +356,12 @@ test('workflow: manual only, contents: read, the protected environment, one secr
   assert.doesNotMatch(WF, /orphan-originals/);
   assert.match(WF, /\n    if: github\.ref == 'refs\/heads\/main'\n    runs-on: ubuntu-latest/);   // a dispatch of another branch must not reach the production secret
 });
+test('the README and workflow state that the output is public and require the written acceptance and the operator confirmation before a dispatch', () => {
+  const readme = fs.readFileSync(path.join(D, 'README.md'), 'utf8');
+  assert.match(readme, /output is PUBLIC/); assert.match(readme, /readable by anyone/); assert.match(readme, /production-backup/); assert.match(readme, /restricted to the `main` branch/);
+  assert.match(readme, /Do not dispatch until/);
+  assert.match(WF, /THE OUTPUT IS PUBLIC/);
+});
 test('the SQL files hold no write keyword, no transaction control and no identifier-bearing column in the output', () => {
   for (const f of ['1-preflight.sql', '2-catalogue.sql']) {
     const s = fs.readFileSync(path.join(D, f), 'utf8').replace(/--[^\n]*/g, '').replace(/'(?:[^']|'')*'/g, "''");

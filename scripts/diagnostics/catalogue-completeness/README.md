@@ -39,6 +39,13 @@ nothing: no section groups by a person, contact, owner or party.
 
 ## Before dispatching (operator checklist)
 
+0. **The output is PUBLIC.** This repository is public, so the workflow's job log, job summary and annotations are readable by anyone who can
+   see the repository's Actions. The report is aggregate-only (counts per fixed label), but it still discloses the size and shape of the catalogue,
+   including the map-link precision classes. The owner must accept that before any dispatch. There is no private artifact option here by design.
+   **Do not dispatch until** the owner has given that acceptance in writing, and an **authorized operator** (a repository administrator) has confirmed
+   in the repository settings that the `production-backup` environment is restricted to the `main` branch and has its required reviewers, and has
+   recorded the date and who confirmed. (This could not be verified from the repository or through the API available to the author.)
+
 1. Dispatch **only from `main`** (the job is skipped from any other ref). Confirm the run's commit is the reviewed merge commit.
 2. In the repository settings, confirm the `production-backup` environment is restricted to the `main` branch (deployment branches) and
    has its required reviewers; this cannot be verified from the repository.
