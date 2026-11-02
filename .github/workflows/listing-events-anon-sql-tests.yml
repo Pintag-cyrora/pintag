@@ -1,0 +1,44 @@
+name: Listing Events Anonymous Access SQL Tests
+
+# Proves supabase/migrations/20261104010000_listing_events_no_anon_select.sql against a THROWAWAY PostgreSQL: first reproduces the finding (anon can read every event), then shows that after
+# the migration anon cannot read or enumerate events by any route while public insertion and the 30-minute per-session dedup still work, and the administrator can still read.
+# Reads no real data and needs no credentials. (The migration is applied to production by hand through apply-migration.yml, never by this workflow.)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261104010000_listing_events_no_anon_select.sql'
+      - 'tests/security/regression/run-listing-events-anon-pg.sh'
+      - 'tests/security/regression/listing_events_anon_regression.sql'
+      - 'tests/security/regression/schema_listing_events_anon.sql'
+      - '.github/workflows/listing-events-anon-sql-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261104010000_listing_events_no_anon_select.sql'
+      - 'tests/security/regression/run-listing-events-anon-pg.sh'
+      - 'tests/security/regression/listing_events_anon_regression.sql'
+      - 'tests/security/regression/schema_listing_events_anon.sql'
+      - '.github/workflows/listing-events-anon-sql-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sql:
+    name: listing_events anonymous access (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install PostgreSQL server binaries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql
+
+      - name: listing_events anonymous-access regression
+        run: bash tests/security/regression/run-listing-events-anon-pg.sh
