@@ -21,7 +21,7 @@ hiding links.**
 | `properties.village_en`, `district_*`, `province` | Deliberately public place names | Public by design (owner decision) |
 | `properties_row_snapshots.row_data` | Full-row JSON of a property written on soft/hard delete — includes the link | Administrator only (policy `admin read properties_row_snapshots`; the weekly drift check shows anonymous reads return no rows) |
 | `listing_provenance` (`map_changed` events carry old/new link) | History of edits | Administrator only (policies are `is_pintag_admin`) |
-| `import_records.raw_payload`, `import_images` | Smart-import raw material (may include a pasted location or address text) | Administrator only (drift check: no anonymous rows for internal tables) |
+| `import_records.raw_payload`, `import_images` | Smart-import raw material (may include a pasted location or address text) | Administrator only by policy (`admin read import_records` / `import_images`, `is_pintag_admin`); not among the tables the weekly anonymous probe reads, so confirm it there |
 | Encrypted weekly backups, off-platform | Everything | Holder of the offline private key |
 | Free text: `description_*`, `title_*`, `neighborhood_*`, `nearby_places`, AI-generated copy | Could contain a street, house number or building name | Public. **UNVERIFIED** how often; needs an aggregate pattern count (see 6.2) |
 | Photos (storage bucket, public CDN) | Possible embedded GPS metadata and identifying content (house numbers, signage). No code in the repository strips or inspects metadata explicitly; whether the watermark step re-encodes and drops it is **UNVERIFIED** | Public |
