@@ -18,7 +18,7 @@ asserts what Lao law requires.
 | Closed requests | Retained **12 months**, then personal information is **anonymized** (deleted or irreversibly de-identified), subject to any legitimate legal retention requirement (see "Legal review") |
 | Who coordinates | **Administrator** (no owner login in V1); owner confirms, declines or proposes another time via the administrator |
 | Owner portal | **Deferred** until a proper authentication and authorization design exists |
-| Availability (decided 2026-11-02, supersedes the earlier wording) | A property is **eligible only when it is available AND at least one relevant unit type is available** (see "Eligibility and unit selection"). Requests for unavailable or occupied units are **rejected server-side**, never only hidden in the form |
+| Availability (decided 2026-11-02, restored 2026-11-03) | **Default:** a property is eligible only when it is available AND at least one relevant unit type is available; tenants may select only eligible unit types; requests for unavailable or occupied units are **rejected server-side**. **Exception:** an administrator may deliberately enable viewings for an otherwise unavailable or occupied listing through `viewing_policy` (see "Eligibility and unit selection"). The exception is never automatic |
 | Notifications | No paid APIs. Admin dashboard + manual WhatsApp. Automation is proposed separately |
 | Bot protection | Cloudflare Turnstile, validated server-side, with an accessible WhatsApp fallback (`docs/TURNSTILE_SETUP.md`) |
 | Initial limits (configurable defaults) | 5 submissions per IP per hour · 3 open requests per phone · 20 open requests per property. IP limits are **never the only control** (shared mobile IPs in Laos): combine with per-phone/property caps, honeypot, Turnstile and expiry |
@@ -32,23 +32,38 @@ The public viewing-request form does not launch until each of these items in `do
 block launch by themselves. **L1 Production Safe remains PENDING** until its full certification criteria are met; accepting a risk for the
 viewing-request launch does not certify L1. Exact location exposure is a separate gate (`docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md`).
 
-## Eligibility and unit selection (owner decision, 2026-11-02)
+## Eligibility and unit selection (owner decision, 2026-11-02; exception restored 2026-11-03)
+
+### Default rule (applies to every listing unless the exception below is on)
 1. **Eligible property:** the property's market status is *available* (canonical rule in `property-availability.js`, ported to SQL for the
    server check) **and** at least one relevant unit type is available (canonical rule in `unit-availability.js`). A single-unit listing
    counts as its own unit.
-2. **Unit choice:** when only *some* unit types are available, the tenant must **choose which available unit type they want to view**. On a
-   multi-unit listing the unit is always required (the WhatsApp flow already requires a unit selection). Unavailable and occupied unit
-   types are not offered in the form.
+2. **Unit choice:** the tenant may select **only eligible (available) unit types**. When only *some* unit types are available, the tenant chooses which
+   available one to view. On a multi-unit listing the unit is always required (the WhatsApp flow already requires a unit selection).
+   Unavailable and occupied unit types are not offered in the form.
 3. **Server-side enforcement:** the submission function re-evaluates availability at the moment of the request and **rejects** (with a clear,
-   translated message and the WhatsApp alternative) any request for: an unavailable or occupied property; a unit type that is not
-   available; a unit type that does not belong to the property; a missing unit on a multi-unit listing. The client's view of availability is
-   never trusted.
-4. **Race handling:** if a unit becomes unavailable after submission but before the administrator responds, the request stays on record and
-   the administrator declines or proposes another unit; availability is checked again when the administrator confirms.
-5. **Stored with the request:** the unit type requested (already part of the planned model) and the availability state seen at submission, for
-   audit.
-6. **Open:** the earlier idea of a per-listing opt-in to accept viewings on an otherwise unavailable listing is **not** part of this rule and
-   is not carried forward unless the owner restores it explicitly.
+   translated message and the WhatsApp alternative) any request for: an unavailable or occupied property; a unit type that is not available;
+   a unit type that does not belong to the property; a missing unit on a multi-unit listing. The client's view of availability is never trusted.
+4. **Race handling:** if a unit becomes unavailable after submission but before the administrator responds, the request stays on record and the
+   administrator declines or proposes another unit; eligibility is checked again when the administrator confirms.
+5. **Stored with the request:** the unit type requested and the availability state and `viewing_policy` seen at submission, for audit.
+
+### Exception: `viewing_policy` (explicit, administrator-only)
+* `properties.viewing_policy` has three values: *default* (NULL; the rule above), `allow_when_unavailable` (the exception) and `disabled`
+  (no requests for this listing at all). Only the administrator can change it.
+* **Intentional:** turning the exception on is a deliberate action in the admin console, never inferred from a status, a date, a lead or an
+  import. Availability changes never switch it on, and it is not on by default for any listing.
+* **Auditable:** every change writes an append-only event (who, when, old value, new value, a **required short reason**) in the existing
+  provenance/audit trail, with no personal data. The admin list can show which listings currently have the exception. The proposal is that the exception
+  carries an **expiry date** (suggested default 30 days, administrator-adjustable) after which the listing reverts to *default*, so it cannot linger
+  by accident. Expiry is an open product decision.
+* **Validated server-side:** the submission function reads `viewing_policy` (and its expiry) from the database at the moment of the request;
+  the client is never trusted. It is read again when the administrator confirms. A request on an exception listing records that the exception was
+  in force.
+* **Unit selection under the exception:** the tenant must still choose a unit type on a multi-unit listing, and may select only unit types the
+  administrator has made eligible. Open question: is the exception scoped to the whole listing (every unit type becomes selectable) or to named
+  unit types? Recommended: listing-level in V1, with the administrator's reason recorded; named-unit scope only if needed.
+* A listing with the exception on still follows every other rule: rate limits, Turnstile, 7-day expiry, privacy, address protection.
 
 ## Address privacy (owner decision)
 * **Public pages** show the **village and an approximate location only**.
@@ -121,6 +136,7 @@ Counsel (or a qualified adviser in Laos) should confirm, **before launch**:
 Until answered, the defaults above stand, and they can be lengthened or shortened by configuration without a redesign.
 
 ## Still open (needs the owner)
-* The approach for protecting exact addresses on public pages — decisions listed in `docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md` §6.1.
+* Whether the `viewing_policy` exception expires automatically (suggested: 30 days) and whether it is listing-level or unit-level (suggested: listing-level in V1).
+* The remaining location-privacy items in `docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md` §6.1.
 * Consent/notice wording review (Lao, Chinese) and the counsel answers above.
 * Who holds the Turnstile account (`docs/TURNSTILE_SETUP.md`).
