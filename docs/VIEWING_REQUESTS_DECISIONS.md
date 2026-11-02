@@ -54,15 +54,20 @@ viewing-request launch does not certify L1. Exact location exposure is a separat
 * **Intentional:** turning the exception on is a deliberate action in the admin console, never inferred from a status, a date, a lead or an
   import. Availability changes never switch it on, and it is not on by default for any listing.
 * **Auditable:** every change writes an append-only event (who, when, old value, new value, a **required short reason**) in the existing
-  provenance/audit trail, with no personal data. The admin list can show which listings currently have the exception. The proposal is that the exception
-  carries an **expiry date** (suggested default 30 days, administrator-adjustable) after which the listing reverts to *default*, so it cannot linger
-  by accident. Expiry is an open product decision.
+  provenance/audit trail, with no personal data. The admin list shows which listings currently have the exception and when each expires.
+* **Expires after 30 days (decided 2026-11-03):** `allow_when_unavailable` carries an expiry timestamp, set to 30 days from the moment the
+  administrator enables it. After that moment the listing automatically reverts to *default* (a scheduled job and, as a backstop, a check at every
+  request). An administrator can **renew** it only deliberately, again for 30 days from the renewal, and each renewal is its own logged event with
+  a **required reason**. Expiry and renewal are enforced by the database, not the page.
+* **Listing-level scope (decided 2026-11-03):** the exception applies to the listing as a whole, not to named unit types.
 * **Validated server-side:** the submission function reads `viewing_policy` (and its expiry) from the database at the moment of the request;
   the client is never trusted. It is read again when the administrator confirms. A request on an exception listing records that the exception was
   in force.
-* **Unit selection under the exception:** the tenant must still choose a unit type on a multi-unit listing, and may select only unit types the
-  administrator has made eligible. Open question: is the exception scoped to the whole listing (every unit type becomes selectable) or to named
-  unit types? Recommended: listing-level in V1, with the administrator's reason recorded; named-unit scope only if needed.
+* **Unit selection under the exception (decided 2026-11-03):** even when the exception is on, the tenant must still select a unit type on a multi-unit
+  listing, and the selected unit type must itself be **explicitly eligible**: the listing-level exception makes the *listing* eligible but never
+  makes an arbitrary unit selectable. A unit type is explicitly eligible when it is available under the default rule, or when the administrator has
+  explicitly marked that unit type viewable as part of enabling the exception (recorded in the same audit event). The server rejects any other unit
+  type. Open question: the exact control for marking an otherwise unavailable unit type viewable (a per-unit checkbox in the admin console is suggested).
 * A listing with the exception on still follows every other rule: rate limits, Turnstile, 7-day expiry, privacy, address protection.
 
 ## Address privacy (owner decision)
@@ -136,7 +141,7 @@ Counsel (or a qualified adviser in Laos) should confirm, **before launch**:
 Until answered, the defaults above stand, and they can be lengthened or shortened by configuration without a redesign.
 
 ## Still open (needs the owner)
-* Whether the `viewing_policy` exception expires automatically (suggested: 30 days) and whether it is listing-level or unit-level (suggested: listing-level in V1).
+* The admin control for marking a specific unit type explicitly viewable when the exception is enabled (see "Unit selection under the exception").
 * The remaining location-privacy items in `docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md` §6.1.
 * Consent/notice wording review (Lao, Chinese) and the counsel answers above.
 * Who holds the Turnstile account (`docs/TURNSTILE_SETUP.md`).
