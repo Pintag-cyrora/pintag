@@ -1,12 +1,29 @@
 # Pintag Launch Roadmap — LIVING DOCUMENT
 
+> ## ⚠️ Historical scope note (added 2026-11-02)
+> The figures in this document — **"0 / 91" Publishable and Recovered, "Awaiting …" counts,
+> the Phase-1 "0 / 30" catalogue target, and the photo/owner recovery numbers — were last
+> updated **2026-08-05/06** and describe **only the 91 listings that were deleted in the
+> 2026-08-03 incident** (the cohort in `properties_removal_log`). They are **not** a measure of
+> the whole catalogue and are **not** current.
+>
+> For context only: a later automated check (monitoring run, 2026-11-02 00:00 UTC) counted
+> **183 listings that are not soft-deleted** in production, and 87 listings had a Gallery
+> Recovery record by 2026-10-22. Neither number says how many of those are publishable,
+> priced or photographed; that has not been measured. Do not read a recovery or publishable
+> percentage for the live catalogue into this page.
+>
+> Sources: GitHub Actions runs 41364797511 (monitoring, 2026-11-02) and 39749742187 (read-only
+> probe, 2026-10-22). Nothing below this note has
+> been edited; it is preserved as the August record.
+
 <!-- ============================================================= -->
 <!-- CANONICAL RECOVERY KPI — single source of truth for progress. -->
 <!-- Refresh at every session close (query at the bottom of this block). -->
 <!-- ============================================================= -->
 # 📊 Listing Recovery Scoreboard
 
-**★ Business KPI — Publishable:** 0 / 91 (0%) &nbsp; ← *the number that matters*
+**★ Business KPI — Publishable (of the 91 incident-recovery cohort only, as of 2026-08-06):** 0 / 91 (0%) &nbsp; ← *the number that matters*
 **Recovery KPI — Recovered:** 0 / 91 (0%)
 
 **Awaiting gallery:** 91
