@@ -63,11 +63,15 @@ viewing-request launch does not certify L1. Exact location exposure is a separat
 * **Validated server-side:** the submission function reads `viewing_policy` (and its expiry) from the database at the moment of the request;
   the client is never trusted. It is read again when the administrator confirms. A request on an exception listing records that the exception was
   in force.
-* **Unit selection under the exception (decided 2026-11-03):** even when the exception is on, the tenant must still select a unit type on a multi-unit
-  listing, and the selected unit type must itself be **explicitly eligible**: the listing-level exception makes the *listing* eligible but never
-  makes an arbitrary unit selectable. A unit type is explicitly eligible when it is available under the default rule, or when the administrator has
-  explicitly marked that unit type viewable as part of enabling the exception (recorded in the same audit event). The server rejects any other unit
-  type. Open question: the exact control for marking an otherwise unavailable unit type viewable (a per-unit checkbox in the admin console is suggested).
+* **Unit selection under the exception (decided 2026-11-03):** the exception stays **listing-level**, but which unit types a tenant can pick is controlled
+  **per unit type** by an administrator checkbox ("viewable while the exception is on"). The checkbox **defaults to disabled**: enabling the exception on a
+  listing makes no unit type selectable until the administrator ticks specific unit types. Each tick is recorded in the same audit event as the exception (who,
+  when, reason). On a multi-unit listing the tenant must still choose a unit type, and may choose **only** a unit type that is explicitly eligible: available
+  under the default rule, or ticked under the exception. A single-unit listing is its own unit; the exception makes it requestable only if the listing-level
+  setting is on and its own box is ticked.
+* **Validated again, server-side, at both moments:** eligibility (property status, unit availability, `viewing_policy` and its expiry, and the unit's checkbox) is
+  evaluated by the database at **submission** and evaluated again at **confirmation**. If the exception expired, was turned off, or the unit was un-ticked in
+  between, the administrator cannot confirm and must decline or propose another unit. The client is never trusted.
 * A listing with the exception on still follows every other rule: rate limits, Turnstile, 7-day expiry, privacy, address protection.
 
 ## Address privacy (owner decision)
@@ -141,7 +145,6 @@ Counsel (or a qualified adviser in Laos) should confirm, **before launch**:
 Until answered, the defaults above stand, and they can be lengthened or shortened by configuration without a redesign.
 
 ## Still open (needs the owner)
-* The admin control for marking a specific unit type explicitly viewable when the exception is enabled (see "Unit selection under the exception").
 * The remaining location-privacy items in `docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md` §6.1.
 * Consent/notice wording review (Lao, Chinese) and the counsel answers above.
 * Who holds the Turnstile account (`docs/TURNSTILE_SETUP.md`).
