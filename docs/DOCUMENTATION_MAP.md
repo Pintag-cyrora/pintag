@@ -33,7 +33,7 @@ gets a banner, not a rewrite.*
 
 ## Parked designs (Designed, not Built — no maintenance burden)
 
-`docs/find-my-home/PLAN.md` · `docs/intelligence/ROADMAP.md`,
+`docs/VIEWING_REQUESTS_DECISIONS.md` · `docs/TURNSTILE_SETUP.md` (decisions/runbook; nothing built) · `docs/find-my-home/PLAN.md` · `docs/intelligence/ROADMAP.md`,
 `PHASE2_PLAN.md` (see the Over-Engineering Register for the parking
 decision and its reasoning)
 
