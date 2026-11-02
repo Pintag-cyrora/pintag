@@ -38,15 +38,34 @@
 
 ## 3. What this means for L1
 
-* **L1 is not certified.** O1–O9 each correspond to a row of the certification
-  template that cannot be filled from CI logs.
-* The evidence does support: scheduled backups and a database restore path are
-  working and monitored (V1, V2); the database authorization model matches the
-  repository (V3); the anonymous surface is closed to the probed tables and
+* **L1 Production Safe remains PENDING.** It is certified only when *every* criterion in
+  `docs/L1_PRODUCTION_SAFE_CERTIFICATION.md` has real evidence. Nothing in this record, and no risk acceptance below,
+  certifies L1. The outstanding items below include rows of that template that cannot be filled from CI logs.
+* The evidence does support: scheduled backups and a database restore path are working and monitored (V1, V2); the
+  database authorization model matches the repository (V3); the anonymous surface is closed to the probed tables and
   functions (V4).
-* **Gate for new public write features** (e.g. the planned viewing-request form):
-  O1, O2, O3 and O9 should be closed or explicitly risk-accepted by the owner
-  first. This record does not make that decision.
+
+### Launch gate for the public viewing-request form (owner decision, 2026-11-02)
+| Item | Role | Status |
+|---|---|---|
+| O1 storage restore | **Required** — completed with evidence, or explicitly risk-accepted | OPEN |
+| O2 point-in-time recovery | **Required** — completed with evidence, or explicitly risk-accepted | OPEN |
+| O3 authenticated admin lockdown matrix | **Required** — completed with evidence, or explicitly risk-accepted | OPEN |
+| O9 Cloudflare rate limiting / WAF | **Required** — completed with evidence, or explicitly risk-accepted | OPEN |
+| O4 live security-header / XSS proof | Tracked; does not block by itself | OPEN |
+| O7 alert delivery | Tracked; does not block by itself | OPEN |
+| O8 backup decryption | Tracked; does not block by itself | OPEN |
+
+Exact public location exposure is a separate gate: `docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md`.
+
+### Accepted-risk register (empty until the owner decides)
+A risk is accepted only by an entry here with: the item, the date, who accepted it, the reason, what could go wrong, any
+compensating control, and a review date. No risk has been accepted yet. An accepted risk **does not** change the item's status
+to done and **does not** affect L1.
+
+| Item | Date | Accepted by | Reason | Compensating control | Review by |
+|---|---|---|---|---|---|
+| *(none)* | | | | | |
 
 ## 4. How to refresh this record
 
