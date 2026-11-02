@@ -4,7 +4,7 @@
 // WHY: the production deploy used to upload the whole repository root (minus five pruned pages), so docs, SQL migrations, scripts, tests and
 // internal runbooks were served on the production domain. Deny-by-default: only files named in site-manifest.txt are copied.
 //
-//   node scripts/build-site.mjs [--out _site] [--version <sha8>] [--check-only]
+//   node scripts/build-site.mjs [--out _site] [--version <sha8>] [--env prod|dev] [--check-only]
 //
 // Manifest lines:   + path                 include (copied verbatim)
 //                   - path  # reason       reviewed and deliberately NOT published (kept in the repo)
@@ -162,10 +162,17 @@ export function refsOf(file, text) {
   return out;
 }
 
-export function build({ out = path.join(ROOT, '_site'), version = '', trackedFiles = tracked(), manifestText = fs.readFileSync(MANIFEST, 'utf8'), checkOnly = false, root = ROOT } = {}) {
+export function build({ out = path.join(ROOT, '_site'), version = '', trackedFiles = tracked(), manifestText = fs.readFileSync(MANIFEST, 'utf8'), checkOnly = false, root = ROOT, env = 'prod' } = {}) {
   const v = validate(manifestText, trackedFiles);
   const errors = [...v.errors];
   if (errors.length) return { ok: false, errors: errors.map(show), files: [] };
+  if (env !== 'prod' && env !== 'dev') return { ok: false, errors: [`unknown environment "${show(env)}"`], files: [] };
+  if (env === 'dev') {
+    // The development mirror (a separate repository with its own Pages site) uses the SAME allowlist: the development configuration replaces the production one, and the
+    // production-only CNAME is left out (pintag-dev has no custom domain).
+    v.include = v.include.filter((e) => e.path !== 'CNAME');
+    v.generated = v.generated.map((g) => (g.source === 'config.prod.js' ? { ...g, source: 'config.dev.js' } : g));
+  }
   for (const f of [...v.include.map((e) => e.path), ...v.generated.map((g) => g.source)]) {
     let st; try { st = fs.lstatSync(path.join(root, f)); } catch { errors.push(`"${f}" cannot be read`); continue; }
     if (st.isSymbolicLink() || !st.isFile()) errors.push(`"${f}" is not a regular file (a symbolic link or directory cannot be published)`);
@@ -222,7 +229,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const arg = (n) => { const i = process.argv.indexOf(n); return i > -1 ? process.argv[i + 1] : ''; };
   const out = path.resolve(ROOT, arg('--out') || '_site');
   const version = arg('--version') || (process.env.GITHUB_SHA ? process.env.GITHUB_SHA.slice(0, 8) : '');
-  const r = build({ out, version, checkOnly: process.argv.includes('--check-only') });
+  const r = build({ out, version, env: arg('--env') || 'prod', checkOnly: process.argv.includes('--check-only') });
   if (!r.ok) { console.error('SITE BUILD FAILED:\n' + r.errors.map((e) => '  - ' + show(e)).join('\n')); process.exit(1); }
   console.log(`site build ok: ${r.files.length} files${process.argv.includes('--check-only') ? ' (check only)' : ` in ${path.relative(ROOT, out) || '.'}`}; ${r.exclude.length} reviewed exclusions`);
 }
