@@ -171,8 +171,10 @@ test('excluding a page that another published page links to is caught', () => {
 // ── served as Pages would serve it: exact file, or "name" -> "name.html"; everything else 404 ──
 function serve(dir) {
   const srv = http.createServer((req, res) => {
-    const p = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\/+/, '') || 'index.html';
-    const cands = [p, p + '.html'].filter((c) => !c.includes('..'));
+    // parse the request target ourselves: a target such as "//name" must not be read as a protocol-relative URL
+    let p; try { p = decodeURIComponent(req.url.split(/[?#]/)[0]); } catch { res.statusCode = 400; return res.end('bad'); }
+    p = path.posix.normalize(p.replace(/\\/g, '/')).replace(/^\/+/, '').replace(/\/+$/, '') || 'index.html';
+    const cands = [p, p + '.html'].filter((c) => !c.startsWith('..') && !c.includes('\0'));
     const hit = cands.find((c) => fs.existsSync(path.join(dir, c)) && fs.statSync(path.join(dir, c)).isFile());
     if (!hit) { res.statusCode = 404; return res.end('404'); }
     res.statusCode = 200; res.end(fs.readFileSync(path.join(dir, hit)));
@@ -195,6 +197,26 @@ test('served from _site: every published page and asset answers 200, every revie
       assert.equal(await get(p), 404, p);
     }
   } finally { srv.close(); }
+});
+
+
+test('alternate routes cannot reach excluded files: case, encoding, traversal, double slashes, trailing slashes, extension-less and directory forms all 404', async () => {
+  const srv = await serve(built.out);
+  const base = `http://127.0.0.1:${srv.address().port}`;
+  const status = async (raw) => { const r = await fetch(base + raw, { redirect: 'manual' }); return r.status; };
+  try {
+    const targets = ['/SECURITY.md', '/docs/DOCUMENTATION_MAP.md', '/supabase/migrations/20260817000000_security_audit_hardening.sql', '/watermark-migrate.html', '/og-preview-gen.html', '/config.prod.js'];
+    for (const t of targets) {
+      const variants = [t, t.toUpperCase(), '/' + t.slice(1).replace(/\//g, '%2F'), t.replace(/\./g, '%2E'), '/%2e%2e' + t, '/./' + t.slice(1), '//' + t.slice(1), t + '/', t + '%00', t + '?x=1', t + '#x',
+        t.replace(/\.[a-z]+$/, ''), '/index.html/..' + t, '/assets/..' + t, '/..%2f' + t.slice(1), '/' + t.slice(1).replace(/\//g, '%5C')];
+      for (const v of variants) assert.equal(await status(v), 404, v);
+    }
+    for (const d of ['/docs', '/docs/', '/supabase/', '/tests/', '/scripts/', '/.github/', '/.git/config', '/node_modules/']) assert.equal(await status(d), 404, d);
+  } finally { srv.close(); }
+});
+test('the output directory holds only regular files (no symlinks, no empty directories) and nothing writable outside it was created', () => {
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => { const p = path.join(d, e.name); if (e.isSymbolicLink()) return [`SYMLINK ${p}`]; if (e.isDirectory()) return fs.readdirSync(p).length ? walk(p) : [`EMPTYDIR ${p}`]; return []; });
+  assert.deepEqual(walk(built.out), []);
 });
 
 // ── the workflow ──

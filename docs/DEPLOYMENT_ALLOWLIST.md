@@ -20,6 +20,10 @@ Now: `node scripts/build-site.mjs` copies **only the files listed with `+` in `s
   script or image therefore fails CI until someone decides on purpose.
 * Every reference in the published HTML, JS and CSS (script/link/img/source, CSS `url()`, quoted file names in inline scripts and modules, the site's own absolute
   URLs on `pintag.io` and the legacy `pintag-cyrora.github.io/pintag/` host) must resolve inside `_site/`. A reference to a repository file that is not published fails the build.
+* The reference scanner removes nothing from the HTML it reads (a commented-out reference counts as a reference, the conservative direction) and decodes each
+  value as a browser would (HTML entities, percent-encoding repeated, backslashes, `.`/`..`, protocol-relative and mixed-case forms of the site's own URLs, `srcset`, meta refresh).
+  A value is only ever used as a lookup key; it is never used as a file path, and text from repository files is stripped of control characters and `::` before it is printed in CI logs.
+* A symbolic link cannot be listed in the manifest (it would copy a file from outside the repository into `_site`).
 * No `__ASSET_VERSION__` placeholder may remain; `config.js` must equal `config.prod.js`.
 
 ## How to add or restore a file
