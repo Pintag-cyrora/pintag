@@ -18,11 +18,37 @@ asserts what Lao law requires.
 | Closed requests | Retained **12 months**, then personal information is **anonymized** (deleted or irreversibly de-identified), subject to any legitimate legal retention requirement (see "Legal review") |
 | Who coordinates | **Administrator** (no owner login in V1); owner confirms, declines or proposes another time via the administrator |
 | Owner portal | **Deferred** until a proper authentication and authorization design exists |
-| Availability | Requests are **not** accepted for unavailable/occupied listings unless the listing explicitly permits viewings |
+| Availability (decided 2026-11-02, supersedes the earlier wording) | A property is **eligible only when it is available AND at least one relevant unit type is available** (see "Eligibility and unit selection"). Requests for unavailable or occupied units are **rejected server-side**, never only hidden in the form |
 | Notifications | No paid APIs. Admin dashboard + manual WhatsApp. Automation is proposed separately |
 | Bot protection | Cloudflare Turnstile, validated server-side, with an accessible WhatsApp fallback (`docs/TURNSTILE_SETUP.md`) |
 | Initial limits (configurable defaults) | 5 submissions per IP per hour · 3 open requests per phone · 20 open requests per property. IP limits are **never the only control** (shared mobile IPs in Laos): combine with per-phone/property caps, honeypot, Turnstile and expiry |
 | Link to existing data | Every request is linked to the property and to the existing lead (through the tracked-event path) |
+
+## Launch gate (owner decision, 2026-11-02)
+The public viewing-request form does not launch until each of these items in `docs/SECURITY_BACKUP_EVIDENCE_2026-11-02.md` is
+**completed** (with evidence) or **explicitly risk-accepted in writing by the owner** (recorded in that document with date and reason):
+**O1** storage restore · **O2** point-in-time recovery · **O3** authenticated admin lockdown matrix · **O9** Cloudflare rate limiting / WAF.
+**O4** (live security-header / XSS proof), **O7** (alert delivery) and **O8** (backup decryption) are tracked in the same document and do not
+block launch by themselves. **L1 Production Safe remains PENDING** until its full certification criteria are met; accepting a risk for the
+viewing-request launch does not certify L1. Exact location exposure is a separate gate (`docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md`).
+
+## Eligibility and unit selection (owner decision, 2026-11-02)
+1. **Eligible property:** the property's market status is *available* (canonical rule in `property-availability.js`, ported to SQL for the
+   server check) **and** at least one relevant unit type is available (canonical rule in `unit-availability.js`). A single-unit listing
+   counts as its own unit.
+2. **Unit choice:** when only *some* unit types are available, the tenant must **choose which available unit type they want to view**. On a
+   multi-unit listing the unit is always required (the WhatsApp flow already requires a unit selection). Unavailable and occupied unit
+   types are not offered in the form.
+3. **Server-side enforcement:** the submission function re-evaluates availability at the moment of the request and **rejects** (with a clear,
+   translated message and the WhatsApp alternative) any request for: an unavailable or occupied property; a unit type that is not
+   available; a unit type that does not belong to the property; a missing unit on a multi-unit listing. The client's view of availability is
+   never trusted.
+4. **Race handling:** if a unit becomes unavailable after submission but before the administrator responds, the request stays on record and
+   the administrator declines or proposes another unit; availability is checked again when the administrator confirms.
+5. **Stored with the request:** the unit type requested (already part of the planned model) and the availability state seen at submission, for
+   audit.
+6. **Open:** the earlier idea of a per-listing opt-in to accept viewings on an otherwise unavailable listing is **not** part of this rule and
+   is not carried forward unless the owner restores it explicitly.
 
 ## Address privacy (owner decision)
 * **Public pages** show the **village and an approximate location only**.
@@ -31,7 +57,10 @@ asserts what Lao law requires.
 * **After a viewing is confirmed**, the exact address is given **privately to the confirmed tenant** (status page for
   that request and the administrator's WhatsApp message), never before.
 
-### What the current code actually exposes (finding, read-only inspection of `main` at 292e7ea)
+> The full audit and implementation specification is in **`docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md`** (separate pull request, specification
+> only). Viewing requests must not launch before that exposure is closed, or the owner explicitly risk-accepts it.
+
+### What the current code actually exposed (finding, read-only inspection of `main` at 292e7ea; superseded in detail by the audit above)
 This is a **gap versus the decision above**, recorded so it is fixed deliberately:
 1. A listing's `map_embed_url` (the administrator-pasted Google Maps link) is the location source of truth
    (`map-location.js`, rule 4: "Nothing is rounded… 7 decimal places (~1 cm)").
@@ -92,8 +121,6 @@ Counsel (or a qualified adviser in Laos) should confirm, **before launch**:
 Until answered, the defaults above stand, and they can be lengthened or shortened by configuration without a redesign.
 
 ## Still open (needs the owner)
-* The approach for protecting exact addresses on public pages (see the finding above) — scope, approximate-location rule,
-  and whether existing listings are migrated automatically or by the administrator.
-* Whether viewings are allowed on a listing when only some unit types are available.
+* The approach for protecting exact addresses on public pages — decisions listed in `docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md` §6.1.
 * Consent/notice wording review (Lao, Chinese) and the counsel answers above.
 * Who holds the Turnstile account (`docs/TURNSTILE_SETUP.md`).
