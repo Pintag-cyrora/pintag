@@ -1,0 +1,3 @@
+# result files run.sh writes next to itself (counts only, but never committed)
+preflight.txt
+catalogue.txt

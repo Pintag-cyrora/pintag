@@ -1,0 +1,65 @@
+name: Catalogue completeness report (read-only)
+
+# MANUAL, READ-ONLY, AGGREGATE-ONLY report on what the current catalogue contains: published listings, galleries and the image registry, price
+# classes, unit-type price patterns, availability consistency, title/description languages, contact and ownership links, location fields, the
+# PRECISION CLASS of public map links (no URL or coordinate is ever printed), duplicate-title counts, lead history and creation months.
+# See scripts/diagnostics/catalogue-completeness/README.md for every section and its limits.
+#
+# SAFETY, in order of importance:
+#   * workflow_dispatch ONLY -- no push / pull_request / schedule trigger, so it can never run by itself.
+#   * Same protected `production-backup` environment and the same read-only DB secret as the other diagnostics -- no new secret or credential.
+#   * `contents: read`. NO artifact is uploaded and nothing is cached: the output is counts per fixed label (no listing id, title, description,
+#     village, phone, address, URL, coordinate, price value or payload), shown in the job log and job summary.
+#   * run.sh gates: SQL lint (each file exactly one plain SELECT/WITH), a catalog-only PREFLIGHT (any FAIL or WARN stops the run, including a role
+#     that can write or that row-level security could hide rows from), then the single query inside `BEGIN READ ONLY` ... `ROLLBACK`.
+#     Nothing is written to the database, Storage, R2 or backups.
+#   * Independent of the other diagnostics (shares no file with them).
+#   * Delete this workflow when the catalogue has been assessed, or keep it as a manual health report.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: catalogue-completeness
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    environment: production-backup
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify DB URL secret is present
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+        run: |
+          if [ -z "${PINTAG_PROD_DB_URL:-}" ]; then
+            echo "::error::Missing secret PINTAG_PROD_DB_URL (read-only connection) in the production-backup environment."
+            exit 1
+          fi
+
+      - name: Run read-only report (lint, preflight, then the single aggregate SELECT)
+        env:
+          PINTAG_PROD_DB_URL: ${{ secrets.PINTAG_PROD_DB_URL }}
+        run: bash scripts/diagnostics/catalogue-completeness/run.sh
+
+      - name: Publish results (counts per fixed label only)
+        if: always()
+        working-directory: scripts/diagnostics/catalogue-completeness
+        run: |
+          {
+            echo "## Catalogue completeness (read-only, aggregate only)"
+            echo
+            if [ -f preflight.txt ]; then echo "### Preflight"; echo '```'; grep -v ' | ok$' preflight.txt || true; echo '```'; else echo "Preflight did not produce output."; fi
+            if [ -f catalogue.txt ]; then echo "### Catalogue (counts)"; echo '```'; cat catalogue.txt; echo '```'; else echo "**The catalogue query was NOT run.**"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
