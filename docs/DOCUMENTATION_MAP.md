@@ -24,6 +24,7 @@ gets a banner, not a rewrite.*
 | OG/share metadata pipeline | `docs/OG_METADATA_ARCHITECTURE.md` |
 | Dev/prod environments & branch preview | `PREVIEW.md` |
 | System-level keep/merge/archive decisions | `docs/OVER_ENGINEERING_REGISTER.md` |
+| Dated evidence of which security/backup checks passed in CI, and which still need an operator (not a certification) | `docs/SECURITY_BACKUP_EVIDENCE_2026-11-02.md` (refresh in place; L1 status stays owned by the certification doc) |
 
 ## Historical (point-in-time; banner applied; never updated)
 
