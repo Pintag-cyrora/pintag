@@ -397,6 +397,20 @@ test('buildPrompt (daily) new "## Demand & Supply" section wires the DEMAND -> S
   assert.match(prompt, /POTENTIAL INVENTORY GAP/);
 });
 
+// The supply definition the model is told must match 20261012000000_intelligence_canonical_availability.sql
+// (property-availability.js ported to SQL). It used to say "market_status=available AND workflow_status=active".
+test('DEMAND -> SUPPLY -> GAP prompt describes supply by the canonical availability rules, not market_status=available alone', () => {
+  const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
+  const segments = [{ transaction_type: 'for_rent', property_type: 'apartment', district: 'Sisattanak', search_count: 40, impressions: 80 }];
+  const prompt = buildPrompt('daily', composed, { customer_intent_segments: segments, active_inventory: { available_by_segment: { 'for_rent|apartment|Sisattanak': 2 } } }, null);
+  assert.ok(!/market_status\s*=\s*available/.test(prompt), 'outdated market_status=available supply definition is back');
+  assert.match(prompt, /canonical availability rules, with workflow_status=active/);
+  assert.match(prompt, /sold, off-market or coming-soon listing never counts/);
+  assert.match(prompt, /reserved, rented or fully-occupied listing counts only if it is multi-unit with at least one open unit/);
+  assert.match(prompt, /unless all of its unit types are closed/);
+  assert.match(prompt, /available_count above 0/);
+});
+
 // item 12 / REQUIRED 3 & 12: never fabricate a gap when supply is unknown for the day
 test('REQUIRED: demandSupplyBlock never fabricates a gap when active_inventory/available_by_segment is entirely absent -- every row reads insufficient_data', () => {
   const composed = { new_insights: [], continuing_insights: [], resolved_insights: [] };
