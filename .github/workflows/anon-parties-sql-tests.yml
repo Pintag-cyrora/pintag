@@ -1,0 +1,45 @@
+name: Anonymous Parties SQL Tests
+
+# Proves supabase/migrations/20261104000000_restrict_anon_parties_columns.sql against a THROWAWAY PostgreSQL: anonymous visitors keep the public-profile columns and
+# cannot read auth_user_id, phone, email, created_by or any other column by any route; a signed-in non-admin sees only their own party row; the administrator is
+# unaffected; the migration is idempotent. Reads no real data and needs no credentials. (The migration is applied to production by hand through apply-migration.yml,
+# never by this workflow.) The static companion (anon-parties-columns.test.js) runs in the Frontend Regression Tests workflow.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261104000000_restrict_anon_parties_columns.sql'
+      - 'tests/security/regression/run-anon-parties-pg.sh'
+      - 'tests/security/regression/anon_parties_regression.sql'
+      - 'tests/security/regression/schema_anon_parties.sql'
+      - '.github/workflows/anon-parties-sql-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261104000000_restrict_anon_parties_columns.sql'
+      - 'tests/security/regression/run-anon-parties-pg.sh'
+      - 'tests/security/regression/anon_parties_regression.sql'
+      - 'tests/security/regression/schema_anon_parties.sql'
+      - '.github/workflows/anon-parties-sql-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sql:
+    name: Anonymous parties access (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install PostgreSQL server binaries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql
+
+      - name: Anonymous parties regression
+        run: bash tests/security/regression/run-anon-parties-pg.sh

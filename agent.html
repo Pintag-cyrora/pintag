@@ -331,6 +331,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:54px;display:flex;ali
 <script src="tracking.js?v=__ASSET_VERSION__"></script>
 <script src="analytics-tracking.js?v=__ASSET_VERSION__"></script>
 <script>
+// The ONLY party columns the public site reads. Anonymous access to `parties` is limited to these columns by the database (migration 20261104000000_restrict_anon_parties_columns.sql), so a
+// bare `parties?...` request (which means select=*) would now be refused: always name the columns.
+var PARTY_PUBLIC_COLUMNS='id,type,slug,name_en,name_lo,photo_url,agency_name,bio_en,bio_lo,is_verified,is_active,whatsapp,languages,created_at';
 const SB=window.PINTAG.supabaseUrl;
 const KEY=window.PINTAG.anonKey;
 
@@ -463,7 +466,7 @@ async function load(){
   var ctrl=new AbortController();
   var t=setTimeout(function(){ctrl.abort();},8000);
   try{
-    var r=await fetch(SB+'/rest/v1/parties?type=eq.agent&is_active=eq.true&slug=eq.'+encodeURIComponent(slug)+'&limit=1',
+    var r=await fetch(SB+'/rest/v1/parties?type=eq.agent&is_active=eq.true&slug=eq.'+encodeURIComponent(slug)+'&limit=1&select='+PARTY_PUBLIC_COLUMNS,
       {headers:{'apikey':KEY,'Authorization':'Bearer '+KEY},signal:ctrl.signal});
     clearTimeout(t);
     if(!r.ok) throw new Error('HTTP '+r.status);
