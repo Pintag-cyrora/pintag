@@ -24,6 +24,7 @@ gets a banner, not a rewrite.*
 | OG/share metadata pipeline | `docs/OG_METADATA_ARCHITECTURE.md` |
 | Dev/prod environments & branch preview | `PREVIEW.md` |
 | System-level keep/merge/archive decisions | `docs/OVER_ENGINEERING_REGISTER.md` |
+| Location privacy: audit of where exact locations are stored/exposed, and the (unbuilt) protection design | `docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md` |
 
 ## Historical (point-in-time; banner applied; never updated)
 
