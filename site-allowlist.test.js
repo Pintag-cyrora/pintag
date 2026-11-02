@@ -170,12 +170,14 @@ test('excluding a page that another published page links to is caught', () => {
 
 // ── served as Pages would serve it: exact file, or "name" -> "name.html"; everything else 404 ──
 function serve(dir) {
+  // The request never reaches the filesystem as a path: it is only compared with the list of files that exist in the directory, and the file that is read
+  // is the list's own entry (like a static host that serves only what is in its artifact).
+  const files = listFiles(dir);
   const srv = http.createServer((req, res) => {
     // parse the request target ourselves: a target such as "//name" must not be read as a protocol-relative URL
     let p; try { p = decodeURIComponent(req.url.split(/[?#]/)[0]); } catch { res.statusCode = 400; return res.end('bad'); }
     p = path.posix.normalize(p.replace(/\\/g, '/')).replace(/^\/+/, '').replace(/\/+$/, '') || 'index.html';
-    const cands = [p, p + '.html'].filter((c) => !c.startsWith('..') && !c.includes('\0'));
-    const hit = cands.find((c) => fs.existsSync(path.join(dir, c)) && fs.statSync(path.join(dir, c)).isFile());
+    const hit = files.find((f) => f === p || f === p + '.html');
     if (!hit) { res.statusCode = 404; return res.end('404'); }
     res.statusCode = 200; res.end(fs.readFileSync(path.join(dir, hit)));
   });
