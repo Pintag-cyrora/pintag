@@ -58,6 +58,15 @@
 
 Exact public location exposure is a separate gate: `docs/LOCATION_PRIVACY_AUDIT_AND_SPEC.md`.
 
+### Administrator-security items: current status (updated 2026-11-03)
+| Item | Status | Why it stays open |
+|---|---|---|
+| O3 authenticated admin lockdown matrix | **OPEN — NOT verified** | The last weekly run was `1 passed, 0 failed, 3 skipped`: *authenticated non-admin*, *admin aal1* and *admin with MFA* were skipped because no admin credentials exist in CI. **AAL1 refusal and MFA enforcement are therefore established only by migration code and the weekly catalog check (`is_pintag_admin()` references `aal2`), not by a test that has run.** Needs an operator run with a TOTP-enrolled administrator. |
+| O4 live security-header / XSS proof | **OPEN** | Cloudflare challenges the CI runner (HTTP 403, `cf-mitigated`), so these checks are unverifiable. No new evidence. |
+| O7 alert delivery | **OPEN** | `ALERT_WEBHOOK_URL` is blank in the monitoring log. No new evidence. |
+
+Related review findings (code-based, not live-verified) are handled in separate pull requests: anonymous `parties` column access, anonymous `listing_events` read access, the development seed and the development deployment. None of them changes the status of O3, O4 or O7.
+
 ### Accepted-risk register (empty until the owner decides)
 A risk is accepted only by an entry here with: the item, the date, who accepted it, the reason, what could go wrong, any
 compensating control, and a review date. No risk has been accepted yet. An accepted risk **does not** change the item's status
