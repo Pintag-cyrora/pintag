@@ -10,6 +10,16 @@ coordinates and unit addresses are never public; administrators keep the complet
 privately to a tenant only after a viewing is confirmed. **Protect the underlying data — not browser-side rounding or
 hiding links.**
 
+### Decisions recorded by the owner (2026-11-03) — these override any alternative below
+1. **Approximate public location = the centre of a 0.01° grid cell** (about 1.1 km), computed in the database.
+2. **Display an approximate area, not a precise pin.** Zoom **14 or lower** only.
+3. **No precise-public-pin exception in V1**, including commercial buildings. May be reconsidered later.
+4. **If a map link cannot be parsed safely, show village/district information only** and do not invent a map point.
+5. **The backfill is an administrator/operator-controlled process**: dry-run and aggregate report first; **never guess or silently discard** an
+   unparseable location (it is kept, flagged and listed for the administrator — see M2).
+6. **Before any owner notification:** document the exposure and obtain appropriate legal advice on notification obligations.
+7. **Implementation is not authorized.** This is audit and specification only.
+
 ---------------------------------------------------------------------------------------------------
 ## 1. Audit
 
@@ -96,18 +106,18 @@ link in the UI, or relying on `select=*` not being used. Row-level security hide
 `public_location_lat`, `public_location_lng` (numeric), `public_location_precision` (`'area'` | `'village'` | `'district'` | `'none'`),
 `public_location_label` (optional place name). Public by design; contains nothing derived reversibly.
 * **Computed in the database by the admin RPC, never in the browser.** The point is the **centre of a fixed grid cell**
-  (proposed 0.01° ≈ 1.1 km; 0.005° ≈ 550 m for dense areas — owner decision). Every listing in a cell shows the same point, so
+  (**decided: 0.01° ≈ 1.1 km**). Every listing in a cell shows the same point, so
   there is no per-listing offset to average away or reverse, no random seed to discover, and the exact position can be
   anywhere in the cell. (Rejected: random jitter — repeated reads or a known seed let an attacker triangulate; plain rounding of
   the exact value to few decimals — same as the grid but leaks the cell boundary pattern less well; offsetting by a fixed vector — reversible.)
-* **Alternatives per property type** (owner decision): `village`/`district` centroid from an admin-maintained table when the link is a
-  place-only link or unparseable; `none` (no map, name only) when nothing is safe. Public shows "Approximate area" wording.
-* **Map rendering:** zoom no higher than the grid supports (about 14), shown as an area, not a pin; no street-level imagery; the
-  outbound link opens the **approximate point at that zoom**, labelled approximate. No page reads `map_embed_url`, `latitude` or
-  `longitude`.
-* Condominium/commercial buildings whose address is itself public may be allowed a precise public pin through an **explicit**
-  per-listing setting (`public_location_precision = 'exact_public'`, set deliberately by the administrator); default is approximate.
-  Owner decision whether this exception exists at all.
+* **Fallback when the link cannot be parsed safely** (place-only link, short link that cannot be expanded, out-of-bounds or reversed pair, no link):
+  `public_location_precision = 'none'` — the page shows the village/district names only; **no map and no point are invented**, and no district
+  centroid is substituted. The listing stays in the administrator's "needs attention" list until a safe link is supplied.
+* **Map rendering (decided):** an **approximate area** (a circle or the grid cell, labelled "approximate area"), **not a pin**; zoom **14 or lower**, so
+  the base map cannot resolve buildings; no street-level imagery or Street View link. The outbound link opens the approximate point at that zoom,
+  labelled approximate. No page reads `map_embed_url`, `latitude` or `longitude`.
+* **No precise-public-pin exception in V1** (including commercial buildings). `public_location_precision` therefore has only `'area'`, `'village'`,
+  `'district'` and `'none'`; there is no value that publishes an exact point.
 
 ### 3.3 Administrator access
 Administrators (single MFA-gated admin, `is_pintag_admin`) read and edit exact data through the private table/RPC. `admin.html`'s
@@ -129,7 +139,7 @@ provenance events, import payloads, encrypted backups — listed and verified pr
 |---|---|---|
 | M0 | Preconditions: a **fresh verified backup** and PITR confirmed (evidence record O1, O2); decide grid size; decide the exact-public exception | Owner sign-off |
 | M1 | **Additive migration**: private table (revoked/RLS/FORCE), public columns, admin RPC, read-only check functions. No data moved, no behaviour change | DB regression tests (section 5) pass on a throwaway Postgres; apply to **dev** first |
-| M2 | **Admin backfill** (a one-off script run by the administrator, dry-run first): for each property with a link, call the RPC to copy exact → private and compute public point. Listings whose link is place-only or unparseable are **reported (counts) and left for the administrator** — never guessed | Aggregate report only: rows with link / private rows / public points / needing attention |
+| M2 | **Operator-controlled backfill** (a one-off script run by the administrator/operator, **never automatic**). Step 1 is a **dry-run that writes nothing** and produces an **aggregate report**: listings with a link; parseable safely; place-only; short link not expanded; out of bounds; reversed or implausible pair; no link. Only after the operator approves the dry-run is the real run executed. Each parseable link is copied to the private table and its public point computed. **Every unparseable or ambiguous link is kept (raw, in the private table, flagged `parse_status`), shown to the administrator as a counted "needs attention" list, and the listing falls back to village/district only — it is never guessed, rounded to a "best" point, or silently discarded** | Aggregate report only (no values); operator sign-off on the dry-run |
 | M3 | **Verification before anything is removed** (read-only, aggregate): (a) private rows = properties that had a link; (b) a hash of each stored link equals the hash of the private copy (lossless copy); (c) every public point is a grid-cell centre and differs from the exact point; (d) every parseable listing has a public point; (e) `anon` cannot read the private table (42501) and `properties` public columns hold no exact value in the new columns; (f) a second backup taken after the copy | All pass, recorded in an evidence note |
 | M4 | **Deploy public pages that read only the approximate fields** (listing detail, map view, homepage no longer needs the column). Pages must not fall back to `map_embed_url` | Browser tests (section 5); deploy only after M3 |
 | M5 | **Clear** `map_embed_url`, `latitude`, `longitude` on `properties` (single transaction, batch-size-limited, row count asserted equal to M3, ops alert noted beforehand) | Backup <30 min old; abort on any count mismatch |
@@ -154,12 +164,12 @@ provenance events, import payloads, encrypted backups — listed and verified pr
 6. **Drift check additions** in `scripts/verify-production-security.sql`: anon privilege on the private table = none; `properties` columns visible to anon exclude any exact-location column.
 
 ## 6. Risks, decisions and related findings
-### 6.1 Decisions needed from the owner
-1. Grid size (0.01° ≈ 1.1 km vs 0.005°) and map presentation (area vs pin; zoom ≤ 14).
-2. Whether any exception exists for buildings whose address is public (condos, offices, shops, land).
-3. Fallback when a link cannot be parsed: village/district centroid vs no map.
-4. Who performs the backfill and reviews the "needs attention" list.
-5. Whether to notify owners that exact locations were previously retrievable.
+### 6.1 Decisions
+Decided (2026-11-03): grid 0.01°; area not pin; zoom ≤ 14; no exact-public exception in V1; village/district only when unparseable; operator-controlled
+dry-run-first backfill; never guess or silently discard; legal advice before owner notification.
+Still open: who performs the backfill and reviews the "needs attention" list; the wording of the "approximate area" label in Lao, English and Chinese
+(native-speaker review); the interim handling of listings whose only location is the exposed link (see 6.4).
+
 ### 6.2 Further read-only checks to add (aggregate counts only, no values)
 Count listings whose description/title/neighborhood text matches address-like patterns; count public photos with embedded location
 metadata (sample by an administrator); confirm Realtime publication and GraphQL status; confirm the `latitude`/`longitude` columns exist.
@@ -171,7 +181,37 @@ and deserves its own decision (publish only the site files).
 ### 6.4 Accepted-risk record (to be signed by the owner)
 Until M5 completes, exact locations remain retrievable by the public key. Data retrieved before M5 cannot be recalled. This is a
 known, documented exposure; the spec shortens it by ordering M4 (public code) before M5 (clearing) and by not blocking on optional work.
+### 6.4a Owner notification (decided: document first, advice first)
+Before any owner is told, (1) document the exposure (what was retrievable, since when, how many listings by aggregate count, what evidence shows
+whether it was accessed — the data API's access logs may or may not exist), and (2) obtain appropriate legal advice on any notification obligation to
+owners and authorities and on wording. No notification is sent by engineering.
+
 ### 6.5 Complexity and dependencies
 Large; split into four PRs (M1 DB + tests; admin RPC use in `admin.html` + backfill tool; public pages + tests; production proof workflow).
 Dependencies: M0 backup/PITR evidence; independent of viewing requests, but the confirmed-tenant address release (3.4) depends on it, so
 **viewing requests must not launch before M5 is complete or the exposure is explicitly risk-accepted.**
+
+---------------------------------------------------------------------------------------------------
+## 7. Indirect location identification (assessment)
+Protecting the coordinates does not by itself prevent a person from working out where a home is. Public content can narrow a 1.1 km cell to a building.
+Assessment, ordered by how much each source narrows the location (rating = my judgement, not measured; **UNVERIFIED** against real listings — the
+catalogue report and an administrator review would measure it):
+
+| Source | How it identifies | Rating | Control |
+|---|---|---|---|
+| **Photos** | Visible house numbers, signage, shop names, street names; distinctive buildings, rooflines, views from windows; reverse-image search of public photos; embedded GPS metadata (EXIF) if the pipeline keeps it (UNVERIFIED) | **High** | Strip all metadata server-side at upload and verify on a sample; administrator photo checklist (no house numbers/signs/license plates; limit exterior and window-view shots); optional blurring tool; re-check existing galleries |
+| **Building / project / condo names** in titles, descriptions, tags | A named building is an exact location | **High** where used | House style: residential listings use a neutral description (type, size, area) rather than the building name; decide the policy for named buildings (V1 has no exact-pin exception, so names should not reintroduce one) |
+| **Descriptions and AI-generated copy** | Street names, house numbers, "behind X", "opposite Y", lane/soi numbers | **High** | Aggregate pattern scan (counts only) of descriptions/titles; admin edit pass; make the content generator and Smart Import prompts exclude addresses and landmarks; review on publish |
+| **Nearby places** (`nearby_places`, neighbourhood text) with names and distances | Two or three named landmarks with distances triangulate a point | **Medium–High** | Show categories and distance bands, not named landmarks with exact distances, or cap to one landmark at ≥ 500 m |
+| **Village + district + province** (public by decision) | Narrows to the village; in a small village this is nearly the street | **Medium** | Accepted by the owner; measure listings per village in the aggregate report so tiny villages can be treated as district-level |
+| **Listing attributes** (floor, unit number, floor plan, view, price, size, availability date) | A distinctive combination plus public floor plans identifies the building | **Medium** | Do not publish unit numbers; floor ranges only |
+| **Third-party links** (`facebook_video_url`, `video_url`, imported source posts) | The original social post often carries an address, tagged place, owner name and comments | **High** where present | Public pages should not link to or embed the original post; keep `source_url`/raw payload admin-only; review existing video links |
+| **Agent / contact information** | An office address or the owner's own number can resolve to a place | **Low–Medium** | Contact-routing decision already separates identity from buyer contact; review agents whose public profile is the owner |
+| **Map tiles at zoom ≤ 14** | Show main roads and districts only | **Low** | Decided cap |
+| **Time and change history** | Repeated edits of the public point would reveal movement; the grid makes it constant | **Low** | Grid cell is deterministic; no jitter to average |
+| **Combination with other sites** | Facebook groups, other portals, Google reverse image search | Outside our control | Reduces with photo hygiene and neutral descriptions |
+
+**Residual risk:** this cannot be driven to zero. The design target is that a casual visitor, scraper or bulk harvester cannot obtain a street address
+from the platform's data, and that a determined individual needs substantial independent effort. The owner should accept this explicitly.
+**Measurements to add (aggregate counts only):** descriptions/titles matching address-like patterns; listings with named landmarks in `nearby_places`; listings
+per village (small-cell check); listings with a third-party video/post link; a sampled count of photos with metadata or visible text (administrator).
