@@ -1,0 +1,47 @@
+name: Price Qualifier SQL Tests
+
+# Proves supabase/migrations/20261103000000_price_qualifier.sql against a THROWAWAY PostgreSQL: the migration is additive (existing rows
+# untouched, new columns NULL), applies twice cleanly, accepts exact / from / range on both price legs of properties and unit_types, and the
+# database refuses every invalid shape (unknown qualifier, range without a maximum, maximum not above the amount, range without its own amount,
+# a maximum without the range qualifier). Reads no real data and needs no credentials. (The migration itself is applied to production by hand
+# through apply-migration.yml, never by this workflow.)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261103000000_price_qualifier.sql'
+      - 'tests/security/regression/run-price-qualifier-pg.sh'
+      - 'tests/security/regression/price_qualifier_regression.sql'
+      - 'tests/security/regression/schema_price_qualifier.sql'
+      - '.github/workflows/price-qualifier-sql-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261103000000_price_qualifier.sql'
+      - 'tests/security/regression/run-price-qualifier-pg.sh'
+      - 'tests/security/regression/price_qualifier_regression.sql'
+      - 'tests/security/regression/schema_price_qualifier.sql'
+      - '.github/workflows/price-qualifier-sql-tests.yml'
+  workflow_dispatch:
+
+# Least privilege: reads code and runs tests, nothing else.
+permissions:
+  contents: read
+
+jobs:
+  sql:
+    name: Price qualifier migration (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install PostgreSQL server binaries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql
+
+      - name: Price qualifier migration regression
+        run: bash tests/security/regression/run-price-qualifier-pg.sh
