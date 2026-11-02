@@ -16,7 +16,8 @@ nothing: no section groups by a person, contact, owner or party.
 
 ## Definitions
 
-* **Published** = `deleted_at IS NULL AND workflow_status = 'active'`.
+* **Published** = what the public read policy on `properties` shows an anonymous visitor: `deleted_at IS NULL AND status IN ('active','available')`
+  (migration `20260806020000`). The editorial rule (`workflow_status = 'active'`) is reported beside it and any disagreement is counted (should be 0).
 * Optional columns (prices, titles, descriptions, contact links, province, map link, `available_from`) are read
   through `to_jsonb(p)`, so a column that does not exist is counted as "absent" instead of failing the report.
   Only the columns listed in `1-preflight.sql` are required.
@@ -35,6 +36,17 @@ nothing: no section groups by a person, contact, owner or party.
 11 unit-type count · 12 availability consistency · 13 title languages · 14 description languages ·
 15 party / contact / owner links · 16 province / district / village · 17 map-link precision class ·
 18 duplicate English titles · 19 lead history · 20 listings by month created.
+
+## Before dispatching (operator checklist)
+
+1. Dispatch **only from `main`** (the job is skipped from any other ref). Confirm the run's commit is the reviewed merge commit.
+2. In the repository settings, confirm the `production-backup` environment is restricted to the `main` branch (deployment branches) and
+   has its required reviewers; this cannot be verified from the repository.
+3. The secret must be the **read-only** database role. The preflight verifies the role cannot write and that row-level security cannot hide rows
+   from it; any warning stops the run and also fails the `role+session` verdict. It cannot prove the URL points at **production** rather than another
+   database: compare section 1 ("not soft-deleted") with an independent figure such as the latest monitoring run
+   (`listings (not soft-deleted): N`), and read section 21 (advisory comparison with the catalogue's row estimate; statistics can lag).
+4. Output is counts per fixed label only. Free text in a category column is printed as `other (not a plain code)`, never as the text.
 
 ## Limits
 

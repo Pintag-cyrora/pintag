@@ -2,8 +2,9 @@
 -- after the preflight passed, inside a READ ONLY transaction opened by the psql command line; section 0 says so and, if the session were not read
 -- only, every count below is deliberately zero.
 --
--- Question: what does the current catalogue actually contain? "Published" = not soft-deleted AND workflow_status = 'active' (the rule the public
--- policies use). Everything is a COUNT (or a date-by-month count) per fixed label. No listing id, title, name, phone, address, URL, coordinate,
+-- Question: what does the current catalogue actually contain? "Published" = exactly the rule of the public read policy on properties
+-- (migration 20260806020000): deleted_at IS NULL AND status IN ('active','available'). The editorial rule (workflow_status = 'active') is reported
+-- beside it, and any listing on which the two disagree is counted, so the headline number is what an anonymous visitor can actually see. Everything is a COUNT (or a date-by-month count) per fixed label. No listing id, title, name, phone, address, URL, coordinate,
 -- price value, object name or payload is ever selected into the output; the map-link and price sections classify with regular expressions and
 -- print only the class. The price classes APPROXIMATE the formatter in components.js (ptFormatPriceLine); they are a completeness measure, not a
 -- second source of truth for what a visitor sees.
@@ -27,9 +28,14 @@ units AS (
 l AS (
   SELECT p.id,
          (p.deleted_at IS NOT NULL) AS soft_deleted,
-         (p.deleted_at IS NULL AND p.workflow_status = 'active') AS published,
-         p.workflow_status, p.market_status, p.transaction_type, p.created_at,
-         coalesce(nullif(btrim(to_jsonb(p)->>'property_type'), ''), 'none') AS ptype,
+         (p.deleted_at IS NULL AND p.status IN ('active', 'available')) AS published,
+         (p.deleted_at IS NULL AND p.workflow_status = 'active') AS wf_active,
+         CASE WHEN p.workflow_status::text ~ '^[a-z_]{1,30}$' THEN p.workflow_status::text ELSE 'other (not a plain code)' END AS workflow_status,
+         CASE WHEN p.market_status::text ~ '^[a-z_]{1,30}$' THEN p.market_status::text ELSE 'other (not a plain code)' END AS market_status,
+         CASE WHEN p.transaction_type::text ~ '^[a-z_]{1,30}$' THEN p.transaction_type::text ELSE 'other (not a plain code)' END AS transaction_type,
+         p.created_at,
+         CASE WHEN btrim(to_jsonb(p)->>'property_type') ~ '^[a-z_]{1,30}$' THEN btrim(to_jsonb(p)->>'property_type')
+              WHEN nullif(btrim(to_jsonb(p)->>'property_type'), '') IS NULL THEN 'none' ELSE 'other (not a plain code)' END AS ptype,
          CASE WHEN jsonb_typeof(p.images) = 'array'
               THEN (SELECT count(*) FROM jsonb_array_elements(p.images) e WHERE jsonb_typeof(e) = 'string' AND btrim(e #>> '{}') <> '')
               ELSE 0 END AS n_images,
@@ -41,7 +47,10 @@ l AS (
          (nullif(btrim(to_jsonb(p)->>'price_amount'), '') IS NOT NULL OR nullif(btrim(to_jsonb(p)->>'rent_price_amount'), '') IS NOT NULL) AS any_amt_text,
          (nullif(btrim(to_jsonb(p)->>'price_display'), '') IS NOT NULL OR nullif(btrim(to_jsonb(p)->>'sale_price'), '') IS NOT NULL
           OR nullif(btrim(to_jsonb(p)->>'rent_price'), '') IS NOT NULL) AS has_text_price,
-         coalesce(nullif(btrim(to_jsonb(p)->>'price_currency'), ''), nullif(btrim(to_jsonb(p)->>'rent_price_currency'), ''), 'none') AS cur,
+         CASE WHEN coalesce(nullif(btrim(to_jsonb(p)->>'price_currency'), ''), nullif(btrim(to_jsonb(p)->>'rent_price_currency'), '')) ~ '^[A-Z]{3}$'
+              THEN coalesce(nullif(btrim(to_jsonb(p)->>'price_currency'), ''), nullif(btrim(to_jsonb(p)->>'rent_price_currency'), ''))
+              WHEN coalesce(nullif(btrim(to_jsonb(p)->>'price_currency'), ''), nullif(btrim(to_jsonb(p)->>'rent_price_currency'), '')) IS NULL THEN 'none'
+              ELSE 'other (not a 3-letter code)' END AS cur,
          (nullif(btrim(to_jsonb(p)->>'title_lo'), '') IS NOT NULL) AS t_lo, (nullif(btrim(to_jsonb(p)->>'title_en'), '') IS NOT NULL) AS t_en,
          (nullif(btrim(to_jsonb(p)->>'title_zh'), '') IS NOT NULL) AS t_zh,
          (nullif(btrim(to_jsonb(p)->>'description_lo'), '') IS NOT NULL) AS d_lo, (nullif(btrim(to_jsonb(p)->>'description_en'), '') IS NOT NULL) AS d_en,
@@ -85,7 +94,9 @@ SELECT section, label, n FROM (
   UNION ALL SELECT 1, '1 properties rows', 'all rows', count(*) FROM l
   UNION ALL SELECT 1, '1 properties rows', 'soft-deleted', count(*) FROM l WHERE soft_deleted
   UNION ALL SELECT 1, '1 properties rows', 'not soft-deleted', count(*) FROM l WHERE NOT soft_deleted
-  UNION ALL SELECT 1, '1 properties rows', 'PUBLISHED (not soft-deleted and workflow_status = active)', count(*) FROM l WHERE published
+  UNION ALL SELECT 1, '1 properties rows', 'PUBLISHED (what the public read policy shows: not soft-deleted and status active/available)', count(*) FROM l WHERE published
+  UNION ALL SELECT 1, '1 properties rows', 'published by the editorial rule (not soft-deleted and workflow_status = active)', count(*) FROM l WHERE wf_active
+  UNION ALL SELECT 1, '1 properties rows', 'listings on which the two rules DISAGREE (should be 0)', count(*) FROM l WHERE published <> wf_active
   UNION ALL SELECT 2, '2 not soft-deleted by workflow_status', workflow_status, count(*) FROM l WHERE NOT soft_deleted GROUP BY 3
   UNION ALL SELECT 3, '3 published by market_status', market_status, count(*) FROM pub GROUP BY 3
   UNION ALL SELECT 4, '4 published by transaction_type', coalesce(transaction_type, 'NULL'), count(*) FROM pub GROUP BY 3
@@ -118,4 +129,11 @@ SELECT section, label, n FROM (
          CASE WHEN title_key IS NULL OR title_key = '' THEN 'no English title' WHEN title_n > 1 THEN 'shares its English title' ELSE 'unique' END, count(*) FROM pubk GROUP BY 3
   UNION ALL SELECT 19, '19 published: lead history', CASE WHEN has_lead THEN 'has at least one lead' ELSE 'no lead ever' END, count(*) FROM pub GROUP BY 3
   UNION ALL SELECT 20, '20 published by month created', to_char(date_trunc('month', created_at), 'YYYY-MM'), count(*) FROM pub GROUP BY 3
+  UNION ALL SELECT 21, '21 visibility cross-check: rows this connection saw vs the planner estimate in the catalogue (advisory: statistics can lag; also compare section 1 with an independent count)',
+         x.label || CASE WHEN c.reltuples < 0 THEN ': no estimate yet (table never analyzed)'
+                         WHEN x.seen < 0.9 * c.reltuples THEN ': FEWER rows seen than the estimate of ' || round(c.reltuples)::text || ' (possible hidden rows)'
+                         ELSE ': consistent with the estimate (' || round(c.reltuples)::text || ')' END, x.seen
+    FROM (SELECT 'properties' AS label, (SELECT count(*) FROM l) AS seen
+          UNION ALL SELECT 'unit_types', (SELECT coalesce(sum(n_units), 0) FROM units)) x
+    JOIN pg_class c ON c.relname = x.label AND c.relnamespace = 'public'::regnamespace
 ) t ORDER BY s, section, label;

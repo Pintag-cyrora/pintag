@@ -41,7 +41,7 @@ before(() => {
   port = 20000 + Math.floor(Math.random() * 20000);
   assert.equal(asPg(path.join(PGBIN, 'initdb'), ['-D', path.join(dir, 'data'), '-A', 'trust', '-U', 'postgres', '-E', 'UTF8', '--locale=C']).status, 0);
   assert.equal(asPg(path.join(PGBIN, 'pg_ctl'), ['-D', path.join(dir, 'data'), '-w', '-l', path.join(dir, 'log'), '-o', `-p ${port} -k ${sock} -c listen_addresses= -c fsync=off`, 'start']).status, 0);
-  psqlRaw('postgres', [], 'CREATE ROLE cat_ro LOGIN BYPASSRLS; CREATE ROLE cat_plain LOGIN;');
+  psqlRaw('postgres', [], 'CREATE ROLE cat_ro LOGIN BYPASSRLS; CREATE ROLE cat_plain LOGIN; CREATE ROLE cat_owner LOGIN;');
 });
 after(() => {
   if (!dir) return;
@@ -49,9 +49,12 @@ after(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+const PUB = 'PUBLISHED (what the public read policy shows: not soft-deleted and status active/available)';
+const WFA = 'published by the editorial rule (not soft-deleted and workflow_status = active)';
+const DIS = 'listings on which the two rules DISAGREE (should be 0)';
 const E = (n) => `00000000-0000-0000-eeee-${String(n).padStart(12, '0')}`;   // planted listing ids
 const SCHEMA = `
-CREATE TABLE public.properties (id uuid PRIMARY KEY, deleted_at timestamptz, workflow_status text NOT NULL, market_status text NOT NULL, transaction_type text,
+CREATE TABLE public.properties (id uuid PRIMARY KEY, deleted_at timestamptz, status text, workflow_status text NOT NULL, market_status text NOT NULL, transaction_type text,
   images jsonb, created_at timestamptz NOT NULL DEFAULT now(), property_type text, price_amount numeric, price_currency text, price_frequency text,
   rent_price_amount numeric, rent_price_currency text, price_display text, title_lo text, title_en text, title_zh text, description_en text,
   managed_by_party_id uuid, contact_id uuid, owner_id uuid, district_en text, village_en text, province text, map_embed_url text, available_from date);
@@ -69,16 +72,16 @@ CREATE TABLE public.property_contacts (id uuid PRIMARY KEY, property_id uuid, co
 // L7 published, no price at all, Available From in the past, same English title as L1
 // L8 published, legacy text price only, a coordinate-less link, images that are not an array
 const DATA = `
-INSERT INTO properties (id, deleted_at, workflow_status, market_status, transaction_type, images, created_at, property_type, price_amount, price_currency, price_frequency, price_display,
+INSERT INTO properties (id, deleted_at, status, workflow_status, market_status, transaction_type, images, created_at, property_type, price_amount, price_currency, price_frequency, price_display,
    title_lo, title_en, title_zh, description_en, managed_by_party_id, contact_id, owner_id, district_en, village_en, province, map_embed_url, available_from) VALUES
- ('${E(1)}', NULL, 'active', 'available', 'for_rent', '["a.jpg","b.jpg","c.jpg"]', '2026-09-10', 'condo', 350, 'USD', 'month', NULL, 'SYN-TITLE-lo', 'SYN-TITLE-dup', NULL, 'SYN-DESC', '${E(90)}', '${E(91)}', NULL, 'Chanthabury', 'SYN-VILLAGE', 'Vientiane Capital', 'https://maps.app.goo.gl/SYN-MAP', NULL),
- ('${E(2)}', NULL, 'active', 'available', 'for_rent', '[]', '2026-09-20', 'apartment', NULL, NULL, NULL, NULL, NULL, 'SYN-TITLE-two', NULL, NULL, NULL, NULL, '${E(92)}', 'Sikhottabong', NULL, NULL, 'https://www.google.com/maps/place/SYN-MAP/@18.1234567,102.1234567,17z', NULL),
- ('${E(3)}', NULL, 'active', 'available', 'for_rent', '["x.jpg"]', '2026-10-01', 'apartment', NULL, NULL, NULL, NULL, 'SYN-TITLE-lo3', 'SYN-TITLE-three', 'SYN-TITLE-zh3', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
- ('${E(4)}', NULL, 'draft', 'available', 'for_rent', '["d.jpg"]', '2026-10-02', 'house', 100, 'USD', 'month', NULL, NULL, 'SYN-TITLE-four', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
- ('${E(5)}', '2026-10-03', 'active', 'available', 'for_rent', '["e.jpg"]', '2026-10-03', 'house', 100, 'USD', 'month', NULL, NULL, 'SYN-TITLE-five', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
- ('${E(6)}', NULL, 'active', 'reserved', 'for_sale', '[]', '2026-10-04', 'land', 0, 'USD', NULL, NULL, NULL, 'SYN-TITLE-six', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'https://www.google.com/maps?q=18.123,102.123', NULL),
- ('${E(7)}', NULL, 'active', 'available', 'for_rent', '["g.jpg"]', '2026-10-05', 'house', NULL, NULL, NULL, NULL, NULL, 'SYN-TITLE-DUP', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2020-01-01'),
- ('${E(8)}', NULL, 'active', 'available', 'for_rent', '"not-an-array"', '2026-10-06', 'house', NULL, NULL, NULL, '$200 / month', NULL, 'SYN-TITLE-eight', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'https://example.com/SYN-MAP', NULL);
+ ('${E(1)}', NULL, 'active', 'active', 'available', 'for_rent', '["a.jpg","b.jpg","c.jpg"]', '2026-09-10', 'condo', 350, 'USD', 'month', NULL, 'SYN-TITLE-lo', 'SYN-TITLE-dup', NULL, 'SYN-DESC', '${E(90)}', '${E(91)}', NULL, 'Chanthabury', 'SYN-VILLAGE', 'Vientiane Capital', 'https://maps.app.goo.gl/SYN-MAP', NULL),
+ ('${E(2)}', NULL, 'active', 'active', 'available', 'for_rent', '[]', '2026-09-20', 'apartment', NULL, NULL, NULL, NULL, NULL, 'SYN-TITLE-two', NULL, NULL, NULL, NULL, '${E(92)}', 'Sikhottabong', NULL, NULL, 'https://www.google.com/maps/place/SYN-MAP/@18.1234567,102.1234567,17z', NULL),
+ ('${E(3)}', NULL, 'active', 'active', 'available', 'for_rent', '["x.jpg"]', '2026-10-01', 'apartment', NULL, NULL, NULL, NULL, 'SYN-TITLE-lo3', 'SYN-TITLE-three', 'SYN-TITLE-zh3', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+ ('${E(4)}', NULL, 'draft', 'draft', 'available', 'for_rent', '["d.jpg"]', '2026-10-02', 'house', 100, 'USD', 'month', NULL, NULL, 'SYN-TITLE-four', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+ ('${E(5)}', '2026-10-03', 'active', 'active', 'available', 'for_rent', '["e.jpg"]', '2026-10-03', 'house', 100, 'USD', 'month', NULL, NULL, 'SYN-TITLE-five', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+ ('${E(6)}', NULL, 'active', 'active', 'reserved', 'for_sale', '[]', '2026-10-04', 'land', 0, 'USD', NULL, NULL, NULL, 'SYN-TITLE-six', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'https://www.google.com/maps?q=18.123,102.123', NULL),
+ ('${E(7)}', NULL, 'active', 'active', 'available', 'for_rent', '["g.jpg"]', '2026-10-05', 'house', NULL, NULL, NULL, NULL, NULL, 'SYN-TITLE-DUP', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2020-01-01'),
+ ('${E(8)}', NULL, 'active', 'active', 'available', 'for_rent', '"not-an-array"', '2026-10-06', 'house', NULL, NULL, NULL, '$200 / month', NULL, 'SYN-TITLE-eight', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'https://example.com/SYN-MAP', NULL);
 INSERT INTO unit_types VALUES
  ('${E(21)}', '${E(2)}', 350, 'USD', 'month', NULL, NULL, NULL, true), ('${E(22)}', '${E(2)}', 500, 'USD', 'month', NULL, NULL, NULL, true), ('${E(23)}', '${E(2)}', 500, 'USD', 'month', NULL, NULL, NULL, false),
  ('${E(24)}', '${E(3)}', 300, 'USD', 'month', NULL, NULL, NULL, false), ('${E(25)}', '${E(3)}', NULL, NULL, NULL, 2000000, 'LAK', 'month', false);
@@ -114,7 +117,7 @@ function preflight(db, o) {
 test('catalogue counts: published scope, galleries, registry, prices, units, availability, content, links, leads', opts, () => {
   const r = report(makeDb());
   assert.ok(r.rows.some((x) => x.section.startsWith('0 ') && x.label === 'transaction_read_only=on'));
-  assert.deepEqual(r.get('1'), { 'all rows': '8', 'soft-deleted': '1', 'not soft-deleted': '7', 'PUBLISHED (not soft-deleted and workflow_status = active)': '6' });
+  assert.deepEqual(r.get('1'), { 'all rows': '8', 'soft-deleted': '1', 'not soft-deleted': '7', [PUB]: '6', [WFA]: '6', [DIS]: '0' });
   assert.deepEqual(r.get('2'), { active: '6', draft: '1' });
   assert.deepEqual(r.get('3'), { available: '5', reserved: '1' });
   assert.deepEqual(r.get('4'), { for_rent: '5', for_sale: '1' });
@@ -155,7 +158,7 @@ test('catalogue counts: published scope, galleries, registry, prices, units, ava
 test('READ ONLY guard: outside a READ ONLY transaction every count is zero and the guard row says so', opts, () => {
   const r = report(makeDb(), { readOnly: false });
   assert.ok(r.rows.some((x) => x.section.startsWith('0 ') && x.label === 'transaction_read_only=off'));
-  assert.deepEqual(r.get('1'), { 'all rows': '0', 'soft-deleted': '0', 'not soft-deleted': '0', 'PUBLISHED (not soft-deleted and workflow_status = active)': '0' });
+  assert.deepEqual(r.get('1'), { 'all rows': '0', 'soft-deleted': '0', 'not soft-deleted': '0', [PUB]: '0', [WFA]: '0', [DIS]: '0' });
 });
 
 test('aggregates only: no title, description, village, map link, coordinate, id or secret is printed; the database is unchanged', opts, () => {
@@ -173,7 +176,7 @@ test('aggregates only: no title, description, village, map link, coordinate, id 
 test('optional columns missing: the report still runs (they are read through to_jsonb), only the required ones gate the preflight', opts, () => {
   const db = makeDb({ extra: 'ALTER TABLE properties DROP COLUMN province; ALTER TABLE properties DROP COLUMN description_en; ALTER TABLE unit_types DROP COLUMN is_available;' });
   const r = report(db);
-  assert.equal(r.get('1')['PUBLISHED (not soft-deleted and workflow_status = active)'], '6');
+  assert.equal(r.get('1')[PUB], '6');
   assert.equal(preflight(db).verdict('catalogue-schema'), 'PASS');
 });
 
@@ -209,6 +212,58 @@ test('preflight: a role that RLS applies to produces a WARN (counts could be hid
 test('preflight: outside a READ ONLY transaction FAILS role+session', opts, () => {
   const p = preflight(makeDb(), { readOnly: false });
   assert.equal(p.verdict('role+session'), 'FAIL');
+});
+
+
+// ── adversarial review of the visibility gate: can the preflight certify a connection that cannot see every row? ──
+test('preflight: FORCE ROW LEVEL SECURITY applies to the table OWNER too -> WARN (an owner is not exempt), and the verdict FAILS', opts, () => {
+  const db = makeDb({ extra: 'ALTER TABLE properties OWNER TO cat_owner; ALTER TABLE properties ENABLE ROW LEVEL SECURITY; ALTER TABLE properties FORCE ROW LEVEL SECURITY; CREATE POLICY hide ON properties USING (false);', grant: 'cat_owner' });
+  const p = preflight(db, { user: 'cat_owner' });
+  assert.ok(p.rows.some((r) => r.area === 'role' && /properties/.test(r.item) && /rows of/.test(r.item) && /^WARN/.test(r.status)), p.text);
+  assert.equal(p.verdict('role+session'), 'FAIL');
+});
+test('preflight: an owner WITHOUT force-RLS is not hidden by RLS (it bypasses it), so no RLS warning for that table', opts, () => {
+  const db = makeDb({ extra: 'ALTER TABLE properties OWNER TO cat_owner; ALTER TABLE properties ENABLE ROW LEVEL SECURITY;', grant: 'cat_owner' });
+  const p = preflight(db, { user: 'cat_owner' });
+  assert.ok(!p.rows.some((r) => r.area === 'role' && /rows of properties/.test(r.item) && /^WARN/.test(r.status)));
+});
+test('preflight: any WARN also makes the role+session VERDICT FAIL, so a PASS verdict can never be read as "all rows visible"', opts, () => {
+  const db = makeDb({ extra: 'ALTER TABLE properties ENABLE ROW LEVEL SECURITY;', grant: 'cat_plain' });
+  const p = preflight(db, { user: 'cat_plain' });
+  assert.ok(p.rows.some((r) => /^WARN/.test(r.status)));
+  assert.equal(p.verdict('role+session'), 'FAIL');
+});
+test('"published" is the rule of the public read policy; a listing whose status is available but workflow_status is draft is published and the disagreement is counted', opts, () => {
+  const db = makeDb({ extra: `INSERT INTO properties (id, status, workflow_status, market_status, transaction_type, images) VALUES ('${E(9)}', 'available', 'draft', 'available', 'for_rent', '[]');` });
+  const r = report(db);
+  assert.equal(r.get('1')[PUB], '7');
+  assert.equal(r.get('1')[WFA], '6');
+  assert.equal(r.get('1')[DIS], '1');
+});
+test('a status the public policy does not show (archived) is not published even if workflow_status says active', opts, () => {
+  const db = makeDb({ extra: `INSERT INTO properties (id, status, workflow_status, market_status, transaction_type, images) VALUES ('${E(9)}', 'archived', 'active', 'available', 'for_rent', '[]');` });
+  const r = report(db);
+  assert.equal(r.get('1')[PUB], '6');
+  assert.equal(r.get('1')[DIS], '1');
+});
+test('labels built from data are sanitized: free text in a category column prints as "other", never as the text', opts, () => {
+  const db = makeDb({ extra: `UPDATE properties SET property_type = 'SYN-TITLE leak, a name', transaction_type = 'SYN-DESC for_rent', price_currency = 'SYN-MAP' WHERE id = '${E(7)}'; UPDATE properties SET market_status = 'SYN-TITLE market' WHERE id = '${E(8)}';` });
+  const r = report(db);
+  assert.doesNotMatch(r.text, IDENT);
+  assert.ok(r.text.includes('other (not a plain code)'));
+  assert.ok(r.text.includes('other (not a 3-letter code)'));
+});
+test('visibility cross-check: a connection that sees fewer rows than the catalogue estimate says so (advisory), and an unrestricted one is consistent', opts, () => {
+  const ok = report(makeDb({ extra: 'ANALYZE;' }));
+  const row = (rr) => Object.keys(rr.get('21')).find((k) => k.startsWith('properties'));
+  assert.match(row(ok), /consistent with the estimate/);
+  const db = makeDb({ extra: 'ANALYZE; ALTER TABLE properties ENABLE ROW LEVEL SECURITY; CREATE POLICY hide ON properties FOR SELECT TO cat_plain USING (false);', grant: 'cat_plain' });
+  const hidden = report(db, { user: 'cat_plain' });
+  assert.match(row(hidden), /FEWER rows seen than the estimate/);
+});
+test('visibility cross-check: a table that was never analyzed says so instead of pretending', opts, () => {
+  const r = report(makeDb());
+  assert.ok(Object.keys(r.get('21')).some((k) => /no estimate yet|consistent with the estimate/.test(k)));
 });
 
 // ── run.sh against a fake psql ──
@@ -299,6 +354,7 @@ test('workflow: manual only, contents: read, the protected environment, one secr
   assert.doesNotMatch(WF, /upload-artifact|actions\/cache|gh release|git push|curl |wget /);
   assert.match(WF, /bash scripts\/diagnostics\/catalogue-completeness\/run\.sh/);
   assert.doesNotMatch(WF, /orphan-originals/);
+  assert.match(WF, /\n    if: github\.ref == 'refs\/heads\/main'\n    runs-on: ubuntu-latest/);   // a dispatch of another branch must not reach the production secret
 });
 test('the SQL files hold no write keyword, no transaction control and no identifier-bearing column in the output', () => {
   for (const f of ['1-preflight.sql', '2-catalogue.sql']) {

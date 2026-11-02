@@ -13,6 +13,7 @@ name: Catalogue completeness report (read-only)
 #   * run.sh gates: SQL lint (each file exactly one plain SELECT/WITH), a catalog-only PREFLIGHT (any FAIL or WARN stops the run, including a role
 #     that can write or that row-level security could hide rows from), then the single query inside `BEGIN READ ONLY` ... `ROLLBACK`.
 #     Nothing is written to the database, Storage, R2 or backups.
+#   * The job runs only from refs/heads/main (a dispatch of any other branch is skipped before the secret is available).
 #   * Independent of the other diagnostics (shares no file with them).
 #   * Delete this workflow when the catalogue has been assessed, or keep it as a manual health report.
 
@@ -28,6 +29,8 @@ concurrency:
 
 jobs:
   report:
+    # A workflow_dispatch can name any branch. Only the reviewed code on main may touch the production secret: from any other ref the job is skipped.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production-backup
     timeout-minutes: 10

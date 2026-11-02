@@ -2,13 +2,15 @@
 -- public table. Runs inside the READ ONLY transaction that psql opens on the command line. Output rows: area | item | status. Two verdicts follow:
 --   VERDICT | catalogue-schema | PASS   every table/column the catalogue query reads exists, has the expected type and is SELECT-able
 --   VERDICT | role+session     | PASS   the connection cannot write, row-level security cannot hide rows from it, and the transaction is READ ONLY
--- run.sh refuses to run the data query unless BOTH say PASS and no row says WARN.
+-- run.sh refuses to run the data query unless BOTH say PASS and no row says WARN. A WARN (for example row-level security applying to this role,
+-- which would hide rows and make every count untrustworthy) also makes role+session FAIL, so no reader can take PASS as "all rows visible".
 WITH need(sch, tbl, col, typ) AS (VALUES
     ('public', 'properties',       'id',               NULL::text),
     ('public', 'properties',       'deleted_at',       'timestamp with time zone'),
-    ('public', 'properties',       'workflow_status',  'text'),
-    ('public', 'properties',       'market_status',    'text'),
-    ('public', 'properties',       'transaction_type', 'text'),
+    ('public', 'properties',       'status',           NULL),   -- the column the public read policy tests (see 2-catalogue.sql, "published")
+    ('public', 'properties',       'workflow_status',  NULL),
+    ('public', 'properties',       'market_status',    NULL),
+    ('public', 'properties',       'transaction_type', NULL),
     ('public', 'properties',       'images',           'jsonb'),
     ('public', 'properties',       'created_at',       NULL),
     ('public', 'unit_types',       'id',               NULL),
@@ -21,7 +23,7 @@ have AS (
     FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
    WHERE a.attnum > 0 AND NOT a.attisdropped AND c.relkind IN ('r', 'p') AND n.nspname = 'public'),
 tabs AS (
-  SELECT DISTINCT x.tbl, c.oid AS relid, c.relrowsecurity AS rls, c.relowner AS owner
+  SELECT DISTINCT x.tbl, c.oid AS relid, c.relrowsecurity AS rls, c.relforcerowsecurity AS forced, c.relowner AS owner
     FROM need x LEFT JOIN pg_class c ON c.relname = x.tbl AND c.relnamespace = 'public'::regnamespace),
 me AS (SELECT rolsuper, rolbypassrls, oid AS roid FROM pg_roles WHERE rolname = current_user),
 rows_all(ord, area, item, status) AS (
@@ -41,7 +43,7 @@ rows_all(ord, area, item, status) AS (
   UNION ALL
   SELECT 21, 'role', 'row-level security cannot hide rows of ' || t.tbl || ' (counts would be UNTRUSTWORTHY)',
          CASE WHEN t.relid IS NULL THEN 'FAIL (table missing)'
-              WHEN t.rls AND NOT (SELECT rolbypassrls OR rolsuper FROM me) AND t.owner <> (SELECT roid FROM me) THEN 'WARN (RLS applies to this role)'
+              WHEN t.rls AND NOT (SELECT rolbypassrls OR rolsuper FROM me) AND (t.forced OR t.owner <> (SELECT roid FROM me)) THEN 'WARN (RLS applies to this role)'
               ELSE 'ok' END
     FROM tabs t
   UNION ALL
@@ -56,5 +58,5 @@ SELECT area, item, status FROM (
   UNION ALL SELECT 90, 'VERDICT', 'catalogue-schema',
          CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area = 'catalogue-schema' AND status <> 'ok') THEN 'FAIL' ELSE 'PASS' END
   UNION ALL SELECT 91, 'VERDICT', 'role+session',
-         CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area IN ('role', 'session') AND status LIKE 'FAIL%') THEN 'FAIL' ELSE 'PASS' END
+         CASE WHEN EXISTS (SELECT 1 FROM rows_all WHERE area IN ('role', 'session') AND (status LIKE 'FAIL%' OR status LIKE 'WARN%')) THEN 'FAIL' ELSE 'PASS' END
 ) t ORDER BY ord, item;
