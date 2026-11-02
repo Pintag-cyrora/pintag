@@ -203,7 +203,7 @@ test('PRICING C: structured sale-or-rent -> BOTH legs, sale amount + rent amount
   assert.match(buildOgFields(row, 'zh').desc, /^\$250,000 · \$1,200 \/ 月/);
 });
 
-test('PRICING D: no property-level price, but unit_types has real pricing -> cheapest unit\'s price (no invented "from" prefix)', () => {
+test('PRICING D: no property-level price, but unit_types has real pricing -> the cheapest unit\'s price, qualified as a STARTING price when the units differ', () => {
   const row = Object.assign({}, ROW, {
     transaction_type: 'for_rent', price_amount: null, price_display: null,
     unit_types: [
@@ -211,10 +211,77 @@ test('PRICING D: no property-level price, but unit_types has real pricing -> che
       { is_available: true, available_count: 1, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' }, // cheaper -- must win
     ],
   });
+  assert.match(buildOgFields(row, 'en').desc, /^From \$300 \/ month/);
+  assert.match(buildOgFields(row, 'lo').desc, /^ເລີ່ມຕົ້ນ \$300 \/ ເດືອນ/);
+  assert.match(buildOgFields(row, 'zh').desc, /^\$300 \/ 月起/);
+});
+
+test('PRICING D3: units that all cost the same -> an EXACT price, no "from"', () => {
+  const row = Object.assign({}, ROW, {
+    transaction_type: 'for_rent', price_amount: null, price_display: null,
+    unit_types: [
+      { is_available: true, available_count: 1, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' },
+      { is_available: true, available_count: 1, price_amount: 300, price_currency: 'USD', price_frequency: 'monthly' },
+    ],
+  });
   assert.match(buildOgFields(row, 'en').desc, /^\$300 \/ month/);
-  assert.match(buildOgFields(row, 'lo').desc, /^\$300 \/ ເດືອນ/);
-  assert.match(buildOgFields(row, 'zh').desc, /^\$300 \/ 月/);
-  assert.doesNotMatch(buildOgFields(row, 'en').desc, /from/i);
+  assert.doesNotMatch(buildOgFields(row, 'en').desc, /From/);
+});
+
+// ── STARTING PRICE vs EXACT PRICE (link preview must not claim a unit costs exactly the minimum) ──
+const MULTI = (over) => Object.assign({}, ROW, {
+  transaction_type: 'for_rent', price_amount: 350, price_currency: 'USD', price_frequency: 'monthly', price_display: null,
+  unit_types: [
+    { is_available: true, available_count: 1, price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' },
+    { is_available: true, available_count: 1, price_amount: 500, price_currency: 'USD', price_frequency: 'monthly' },
+  ],
+}, over || {});
+
+test('PRICING H: a multi-unit listing whose units differ -> "From $350 / month" in the preview, all three languages', () => {
+  assert.match(buildOgFields(MULTI(), 'en').desc, /^From \$350 \/ month/);
+  assert.match(buildOgFields(MULTI(), 'lo').desc, /^ເລີ່ມຕົ້ນ \$350 \/ ເດືອນ/);
+  assert.match(buildOgFields(MULTI(), 'zh').desc, /^\$350 \/ 月起/);
+});
+
+test('PRICING I: a plain listing with no unit types stays an EXACT price (existing listings are never converted)', () => {
+  assert.match(buildOgFields(MULTI({ unit_types: [] }), 'en').desc, /^\$350 \/ month/);
+  assert.doesNotMatch(buildOgFields(MULTI({ unit_types: [] }), 'en').desc, /From/);
+  assert.match(buildOgFields(MULTI({ unit_types: [{ is_available: true, available_count: 1, price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' }] }), 'en').desc, /^\$350 \/ month/);
+});
+
+test('PRICING J: LAK and THB keep their symbols; a sale listing gets "From" without a frequency', () => {
+  const lak = MULTI({ is_available: true, available_count: 1, price_amount: 3000000, price_currency: 'LAK', unit_types: [
+    { is_available: true, available_count: 1, price_amount: 3000000, price_currency: 'LAK', price_frequency: 'monthly' }, { is_available: true, available_count: 1, price_amount: 4000000, price_currency: 'LAK', price_frequency: 'monthly' }] });
+  assert.match(buildOgFields(lak, 'en').desc, /^From ₭3,000,000 \/ month/);
+  const thb = MULTI({ is_available: true, available_count: 1, price_amount: 9000, price_currency: 'THB', unit_types: [
+    { is_available: true, available_count: 1, price_amount: 9000, price_currency: 'THB', price_frequency: 'monthly' }, { is_available: true, available_count: 1, price_amount: 12000, price_currency: 'THB', price_frequency: 'monthly' }] });
+  assert.match(buildOgFields(thb, 'zh').desc, /^฿9,000 \/ 月起/);
+  const sale = MULTI({ transaction_type: 'for_sale', price_amount: 250000, price_frequency: null, unit_types: [
+    { is_available: true, available_count: 1, price_amount: 250000, price_currency: 'USD' }, { is_available: true, available_count: 1, price_amount: 300000, price_currency: 'USD' }] });
+  assert.match(buildOgFields(sale, 'en').desc, /^From \$250,000(?! \/)/);
+});
+
+test('PRICING K: units in different currencies or frequencies -> "Prices vary" (no amount), never a bare price that reads as exact', () => {
+  const mk = (units) => MULTI({ unit_types: units.map((u) => Object.assign({ is_available: true, available_count: 1 }, u)) });
+  const mixedCurrency = mk([{ price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' }, { price_amount: 9000000, price_currency: 'LAK', price_frequency: 'monthly' }]);
+  const mixedFrequency = mk([{ price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' }, { price_amount: 20, price_currency: 'USD', price_frequency: 'daily' }]);
+  for (const row of [mixedCurrency, mixedFrequency]) {
+    assert.match(buildOgFields(row, 'en').desc, /^Prices vary/);
+    assert.match(buildOgFields(row, 'lo').desc, /^ລາຄາແຕກຕ່າງກັນ/);
+    assert.match(buildOgFields(row, 'zh').desc, /^价格不一/);
+    assert.doesNotMatch(buildOgFields(row, 'en').desc, /^\$|^From|^฿|^₭/);
+  }
+  // only ONE priced unit (the other has no price): nothing is mixed -> still an exact price
+  assert.match(buildOgFields(mk([{ price_amount: 350, price_currency: 'USD', price_frequency: 'monthly' }, { price_amount: null }]), 'en').desc, /^\$350 \/ month/);
+});
+
+test('PRICING L: missing or invalid structured prices never print "null", "NaN" or "$0" -> Price on request', () => {
+  for (const bad of [null, undefined, '', 'abc', NaN, 0, -5, true]) {
+    const row = Object.assign({}, ROW, { is_available: true, available_count: 1, price_amount: bad, price_display: null, unit_types: [] });
+    const desc = buildOgFields(row, 'en').desc;
+    assert.match(desc, /^Price on request/, String(bad));
+    assert.doesNotMatch(desc, /null|NaN|\$0/);
+  }
 });
 
 test('PRICING D2: sale-or-rent unit_types pricing resolves both legs per unit, cheapest overall wins', () => {
@@ -238,13 +305,13 @@ test('PRICING E: legacy sale_price + rent_price text (no structured columns) -> 
 });
 
 test('PRICING F: legacy price_display text -> existing "/month" stripped and re-localized, not duplicated', () => {
-  const row = Object.assign({}, ROW, { price_amount: null, price_display: '$800 / month' });
+  const row = Object.assign({}, ROW, { is_available: true, available_count: 1, price_amount: null, price_display: '$800 / month' });
   assert.match(buildOgFields(row, 'en').desc, /^\$800 \/ month(?! \/ month)/);
   assert.match(buildOgFields(row, 'lo').desc, /^\$800 \/ ເດືອນ/);
 });
 
 test('PRICING G: no property-level price, no unit_types -> localized "Price on request", never blank', () => {
-  const row = Object.assign({}, ROW, { price_amount: null, price_display: null, unit_types: [] });
+  const row = Object.assign({}, ROW, { is_available: true, available_count: 1, price_amount: null, price_display: null, unit_types: [] });
   assert.match(buildOgFields(row, 'en').desc, /^Price on request/);
   assert.match(buildOgFields(row, 'lo').desc, /^ສອບຖາມລາຄາ/);
   assert.match(buildOgFields(row, 'zh').desc, /^价格面议/);

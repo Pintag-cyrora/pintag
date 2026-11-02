@@ -24,7 +24,7 @@
 // edit-listing.html's currency selectors, listings.html/listing.html's
 // price rendering) reads CURRENCIES/formatMoney() from here.
 //
-// Price RANGES ("$280–300 / month") go through formatMoneyRange() — never
+// Price RANGES ("$280–$300 / month") go through formatMoneyRange() — never
 // hand-built by concatenating two formatMoney() calls with a comma or a
 // plain string join, and never produced by digit-stripping a range of text
 // down to one number (see parseLegacyPriceAmount()'s header for the exact
@@ -51,14 +51,16 @@ function formatMoney(amount, currency) {
 }
 
 // formatMoneyRange(min, max, currency) — the one place a price RANGE
-// becomes a displayed string ("$280–300", "₭3,000,000–3,500,000"). A range
-// uses ONE currency symbol (not one per side) and an en dash between the
-// two numbers, each with its own thousands separators -- never a plain
-// comma joining two full prices, which is indistinguishable from a single
-// large number ("$280,300" reads as two hundred eighty thousand three
-// hundred, not "$280 to $300"). Falls back to formatMoney() for a single
-// value when only one side is present, and collapses to a single value
-// when min===max (no range to show).
+// becomes a displayed string ("$280–$300", "₭3,000,000–₭3,500,000"). BOTH ends
+// carry the currency symbol, joined by an en dash with no spaces: each end is
+// a complete price in its own right, so a visitor never has to infer what the
+// second number is ("$350–500" can be misread as $350 to 500 of something
+// else), and it matches the way a single price is shown. Never a plain comma
+// joining two full prices, which is indistinguishable from a single large
+// number ("$280,300" reads as two hundred eighty thousand three hundred, not
+// "$280 to $300"). Falls back to formatMoney() for a single value when only
+// one side is present, and collapses to a single value when min===max (no
+// range to show). (Before 2026-11 the second end had no symbol: "$280–300".)
 function formatMoneyRange(min, max, currency) {
   var minN = Number(min), maxN = Number(max);
   var hasMin = min != null && !isNaN(minN);
@@ -67,7 +69,7 @@ function formatMoneyRange(min, max, currency) {
   if (!hasMin) return formatMoney(maxN, currency);
   if (!hasMax || minN === maxN) return formatMoney(minN, currency);
   var cur = CURRENCIES[currency] || CURRENCIES[DEFAULT_CURRENCY];
-  return cur.symbol + Math.round(minN).toLocaleString('en-US') + '–' + Math.round(maxN).toLocaleString('en-US');
+  return cur.symbol + Math.round(minN).toLocaleString('en-US') + '–' + cur.symbol + Math.round(maxN).toLocaleString('en-US');
 }
 
 // parseLegacyPriceAmount(text) — extracts a single numeric amount from a

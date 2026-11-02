@@ -138,6 +138,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:calc(52px + env(safe-
 html[lang="lo"] .info-title{line-height:1.4;}
 html[lang="lo"] .unit-name,html[lang="lo"] .spec-val{line-height:1.5;}
 .price-value{font-size:28px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1.1;}
+.price-from{font-size:14px;font-weight:400;color:var(--ink-muted);margin-right:4px;}
+.price-from-suffix{margin-right:0;margin-left:2px;}
+.price-range{font-size:12px;color:var(--ink-muted);margin-top:4px;font-variant-numeric:tabular-nums;}
 .price-lak{font-size:11px;color:var(--ink-muted);margin-top:4px;font-variant-numeric:tabular-nums;}
 .price-deposit{font-size:13px;color:var(--ink-muted);margin-top:6px;}
 .price-inquire{font-size:14px;font-weight:400;color:var(--ink-muted);}
@@ -1430,12 +1433,7 @@ function getListingSharePayload(){
   if(!propertyContext)return null;
   var lang=getCurrentLang();
   var priceInfo=(typeof formatPropertyPrice==='function')?formatPropertyPrice(propertyContext,lang):null;
-  var priceLine=priceInfo?(priceInfo.isPriceOnRequest
-    ? (typeof PT_PRICE_ON_REQUEST!=='undefined'?PT_PRICE_ON_REQUEST[lang]:null)
-    : (priceInfo.isSor
-        ? [priceInfo.saleText,priceInfo.rentText].filter(Boolean).join(' · ')
-        : (priceInfo.singleText?(priceInfo.singleText+(priceInfo.unitText?' '+priceInfo.unitText:'')):null)))
-    :null;
+  var priceLine=priceInfo?ptFormatPriceLine(priceInfo,lang):null;   // the same qualified line the page shows ("From $350 / month")
   var districtLine=propertyContext['district_'+lang]||propertyContext.district_en||null;
   var text=[priceLine,districtLine].filter(Boolean).join(' · ')||null;
   return {
@@ -1552,12 +1550,7 @@ function updateOGTags(data){
   // field -- see getListingSharePayload() for that side), so price/district
   // lead the description rather than living only in the share payload.
   var ogPriceInfo=(typeof formatPropertyPrice==='function')?formatPropertyPrice(data,lang):null;
-  var ogPriceLine=ogPriceInfo?(ogPriceInfo.isPriceOnRequest
-    ? (typeof PT_PRICE_ON_REQUEST!=='undefined'?PT_PRICE_ON_REQUEST[lang]:null)
-    : (ogPriceInfo.isSor
-        ? [ogPriceInfo.saleText,ogPriceInfo.rentText].filter(Boolean).join(' · ')
-        : (ogPriceInfo.singleText?(ogPriceInfo.singleText+(ogPriceInfo.unitText?' '+ogPriceInfo.unitText:'')):null)))
-    :null;
+  var ogPriceLine=ogPriceInfo?ptFormatPriceLine(ogPriceInfo,lang):null;   // qualified like the page: a starting price says "From" in the link preview too
   var ogDistrictLine=data['district_'+lang]||data.district_en||null;
   var ogPriceLocLine=[ogPriceLine,ogDistrictLine].filter(Boolean).join(' · ');
   var ogHighlight=resolveLangField(data,'property_highlight',lang,null)
@@ -1774,7 +1767,7 @@ async function fetchSimilarProperties(prop){
              'rent_price_amount,rent_price_currency,rent_price_frequency,' +
              'transaction_type,status,workflow_status,market_status,property_type,created_at,' +
              // the unit availability columns the canonical resolver reads (property-availability.js)
-             'unit_types(id,is_available,available_count,total_units,next_available_date)';
+             'unit_types(id,is_available,available_count,total_units,next_available_date,price_display,sale_price,rent_price,rent_period,price_amount,price_currency,price_frequency,rent_price_amount,rent_price_currency,rent_price_frequency)';
   var results = [];
 
   if(!prop.property_type){ PT.timeEnd('fetchSimilar'); hideSimilarSection(); return; }
@@ -3025,8 +3018,18 @@ function buildMockupLayout(){
     if(priceInfo.rentText) resolvedPriceHtml+='<p class="price-value">'+esc(priceInfo.rentText)+'<span class="price-type-label"> &mdash; <span class="lo-i">ເຊົ່າ</span><span class="en-i">For Rent</span><span class="zh-i">出租</span></span></p>';
   }else if(priceInfo.isPriceOnRequest){
     resolvedPriceHtml='<p class="price-inquire">'+L.inquire[lang]+'</p>';
+  }else if(priceInfo.isPriceVaries){
+    // Units in incomparable currencies / frequencies: no amount is a reliable starting price -> a neutral label.
+    resolvedPriceHtml='<p class="price-inquire" data-price-kind="varies">'+esc(priceInfo.singleText)+'</p>';
   }else if(priceInfo.singleText){
-    resolvedPriceHtml='<p class="price-value">'+esc(priceInfo.singleText)+(priceInfo.unitText?' <span class="price-type-label">'+esc(priceInfo.unitText)+'</span>':'')+'</p>';
+    // A starting price must read as one: "From $350 / month" (en/lo) or "$350 / 月起" (zh) -- the qualifier
+    // formatPropertyPrice() decided (priceInfo.fromLabel / fromPlacement), never dropped here. An exact
+    // price renders exactly as before. When the unit prices span a range, the range sits on its own line.
+    var _fromSpan=priceInfo.fromLabel?'<span class="price-from'+(priceInfo.fromPlacement==='suffix'?' price-from-suffix':'')+'">'+esc(priceInfo.fromLabel)+'</span>':'';
+    var _fromBefore=(_fromSpan&&priceInfo.fromPlacement!=='suffix')?_fromSpan+' ':'';
+    var _fromAfter=(_fromSpan&&priceInfo.fromPlacement==='suffix')?_fromSpan:'';
+    resolvedPriceHtml='<p class="price-value" data-price-kind="'+esc(priceInfo.priceKind||'exact')+'">'+_fromBefore+esc(priceInfo.singleText)+(priceInfo.unitText?' <span class="price-type-label">'+esc(priceInfo.unitText)+'</span>':'')+_fromAfter+'</p>';
+    if(priceInfo.priceKind==='from'&&priceInfo.rangeText)resolvedPriceHtml+='<p class="price-range">'+esc(priceInfo.rangeText)+'</p>';
     if(data.price_lak)resolvedPriceHtml+='<p class="price-lak">'+esc(data.price_lak)+'</p>';
   }else{
     resolvedPriceHtml='<p class="price-inquire">'+L.inquire[lang]+'</p>';

@@ -665,18 +665,28 @@ test('identical unit prices -> no "From", plain price display unchanged', async 
   await expect(card.locator('.pt-card-price')).toContainText('$400');
 });
 
-test('mixed CURRENCY across unit types -> no "From" (never compares across currencies), price unchanged', async ({ page }) => {
+test('mixed CURRENCY across unit types -> no "From" and no bare amount: the card says "Prices vary"', async ({ page }) => {
   await openListings(page);
   const card = cardFor(page, 'from-price-mixed-currency');
   await expect(card.locator('.pt-card-price-from')).toHaveCount(0);
-  await expect(card.locator('.pt-card-price')).toContainText('$300');
+  await expect(card.locator('.pt-card-price-req')).toHaveText('Prices vary');
+  await expect(card.locator('.pt-card-price')).toHaveCount(0);
 });
 
-test('mixed FREQUENCY across unit types -> no "From" (never implies a false comparison), price unchanged', async ({ page }) => {
+test('mixed FREQUENCY across unit types -> no "From" and no bare amount: the card says "Prices vary"', async ({ page }) => {
   await openListings(page);
   const card = cardFor(page, 'from-price-mixed-frequency');
   await expect(card.locator('.pt-card-price-from')).toHaveCount(0);
-  await expect(card.locator('.pt-card-price')).toContainText('$300');
+  await expect(card.locator('.pt-card-price-req')).toHaveText('Prices vary');
+});
+
+test('"Prices vary" in Lao and Chinese', async ({ page }) => {
+  await openListings(page, '?lang=lo');
+  await expect(cardFor(page, 'from-price-mixed-currency').locator('.pt-card-price-req')).toHaveText('ລາຄາແຕກຕ່າງກັນ');
+  const p2 = await page.context().newPage();
+  await openListings(p2, '?lang=zh');
+  await expect(cardFor(p2, 'from-price-mixed-currency').locator('.pt-card-price-req')).toHaveText('价格不一');
+  await p2.close();
 });
 
 test('Lao language -> the "From" label is real Lao wording, not left in English', async ({ page }) => {
@@ -689,4 +699,34 @@ test('Chinese language -> the "From" label is real Chinese wording, not left in 
   await openListings(page, '?lang=zh');
   const card = cardFor(page, 'from-price-row-rooms');
   await expect(card.locator('.pt-card-price-from')).toHaveText('起');
+});
+
+// ── STARTING vs EXACT price: the whole price line, placed by language ──────────────────────────────────────────
+// "From ₭3,000,000 / month" (en), "ເລີ່ມຕົ້ນ ₭3,000,000 / ເດືອນ" (lo), "₭3,000,000 / 月起" (zh: 起 AFTER the price).
+// An exact price (a plain listing, identical unit prices) keeps its bare "$450 / month".
+const priceLine = async (card) => (await card.locator('.pt-card-price').first().innerText()).replace(/\s+/g, ' ').trim();
+
+test('the starting-price line reads "From ₭3,000,000 / month" in English, with the word BEFORE the price', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'from-price-row-rooms');
+  expect(await priceLine(card)).toBe('From ₭3,000,000 / month');
+});
+
+test('the starting-price line is "ເລີ່ມຕົ້ນ ₭3,000,000 / ເດືອນ" in Lao', async ({ page }) => {
+  await openListings(page, '?lang=lo');
+  expect(await priceLine(cardFor(page, 'from-price-row-rooms'))).toBe('ເລີ່ມຕົ້ນ ₭3,000,000 / ເດືອນ');
+});
+
+test('the starting-price line is "₭3,000,000 / 月起" in Chinese: 起 closes the phrase, it is not a prefix', async ({ page }) => {
+  await openListings(page, '?lang=zh');
+  const card = cardFor(page, 'from-price-row-rooms');
+  expect(await priceLine(card)).toBe('₭3,000,000 / 月起');
+  await expect(card.locator('.pt-card-price-from')).toHaveText('起');
+});
+
+test('an EXACT price keeps its bare line: no "From" span, nothing appended', async ({ page }) => {
+  await openListings(page);
+  const card = cardFor(page, 'avail-prop-price');
+  expect(await priceLine(card)).toBe('$450 / month');
+  await expect(card.locator('.pt-card-price-from')).toHaveCount(0);
 });

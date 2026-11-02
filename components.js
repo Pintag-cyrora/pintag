@@ -26,6 +26,7 @@
 // Plus the shared data-shaping / formatting helpers:
 //   resolvePartyDisplay(party, listingCount, lang) -> plain object
 //   formatPropertyPrice(property, lang)            -> plain object
+//   ptFormatPriceLine(info, lang)                  -> string ("From $350 / month" | "$350 / month" | ...), the one qualified price line
 //
 // Visual note: the canonical property card structure is listings.html's
 // pre-existing body-below-image layout (richer, already on real design
@@ -510,6 +511,16 @@ var PT_PRICE_ON_REQUEST = { lo:'ສອບຖາມລາຄາ', en:'Price on re
 // ("3,000,000起"); flagged for native-speaker review, same as 出租房 was
 // flagged for row_rooms, rather than guessed at silently.
 var PT_FROM_PRICE_PREFIX = { lo:'ເລີ່ມຕົ້ນ', en:'From', zh:'起' };
+// Shown INSTEAD of a price when a multi-unit listing's units are priced in different currencies or frequencies
+// (a USD monthly unit next to a LAK daily one): no single number is a reliable starting price, and a bare "$350 / month"
+// would read as the rent of whichever unit is on screen. Neutral on purpose -- it states no amount. lo and zh are flagged
+// for native-speaker review, the same convention as PT_FROM_PRICE_PREFIX's Chinese note above.
+var PT_PRICES_VARY = { lo:'ລາຄາແຕກຕ່າງກັນ', en:'Prices vary', zh:'价格不一' };
+// WHERE the "from" word goes. English and Lao put it BEFORE the price ("From $350 / month",
+// "ເລີ່ມຕົ້ນ $350 / ເດືອນ"); Chinese puts 起 AFTER it ("$350 / 月起"). A prefixed 起 ("起 $350") is
+// not Chinese. fromLabel keeps the word itself (it is what existing callers and tests read);
+// fromPlacement says where it goes, and ptFormatPriceLine() is the one place that applies it.
+var PT_FROM_PRICE_PLACEMENT = { lo:'prefix', en:'prefix', zh:'suffix' };
 var PT_FREQUENCY_SUFFIX = {
   monthly:    { lo:'/ ເດືອນ',      en:'/ month', zh:'/ 月' },
   yearly:     { lo:'/ ປີ',         en:'/ year',  zh:'/ 年' },
@@ -798,7 +809,7 @@ function ptBuildUnitPriceText(property, resolved, lang) {
     }
     return parts.length ? parts.join(' · ') : null;
   }
-  if (resolved.priceAmount != null) {
+  if (_ptValidAmount(resolved.priceAmount)) {
     var text = formatMoney(resolved.priceAmount, resolved.priceCurrency);
     return property.transaction_type === 'for_rent'
       ? (text + ' ' + _ptFrequencySuffix(resolved.priceFrequency, lang))
@@ -889,8 +900,8 @@ function ptResolveUnitPriceVariance(property) {
   var currency = null, frequency = null, mixedCurrency = false, mixedFrequency = false;
   for (var i = 0; i < units.length; i++) {
     var resolved = resolveUnitType(property, units[i]);
-    if (resolved.priceAmount == null) continue;
-    amounts.push(resolved.priceAmount);
+    if (!_ptValidAmount(resolved.priceAmount)) continue;   // null, NaN, text, zero or negative: not a price to compare
+    amounts.push(Number(resolved.priceAmount));
     if (currency === null) currency = resolved.priceCurrency;
     else if (resolved.priceCurrency !== currency) mixedCurrency = true;
     if (frequency === null) frequency = resolved.priceFrequency;
@@ -902,6 +913,26 @@ function ptResolveUnitPriceVariance(property) {
   if (min === max) return null; // every resolvable unit costs the same -- nothing to communicate
 
   return { min: min, max: max, currency: currency, frequency: frequency };
+}
+
+// ptResolveUnitPricesMixed(property) -- true when 2+ unit types have a real price but those prices cannot be compared:
+// different currencies, or different frequencies (monthly next to daily). ptResolveUnitPriceVariance() above refuses to call a
+// minimum across such units "From"; without this the listing fell back to a BARE headline price, which is exactly the
+// misleading display. The display then says "Prices vary" (PT_PRICES_VARY) instead of any amount. False when the comparable
+// case applies (variance resolves), when fewer than 2 units are priced, and for sale_or_rent (own dual-price branch).
+function ptResolveUnitPricesMixed(property) {
+  if (!property || property.transaction_type === 'sale_or_rent') return false;
+  var units = Array.isArray(property.unit_types) ? property.unit_types : [];
+  if (units.length < 2 || typeof resolveUnitType !== 'function') return false;
+  var priced = 0, currency = null, frequency = null, mixed = false;
+  for (var i = 0; i < units.length; i++) {
+    var resolved = resolveUnitType(property, units[i]);
+    if (!_ptValidAmount(resolved.priceAmount)) continue;
+    priced++;
+    if (priced === 1) { currency = resolved.priceCurrency; frequency = resolved.priceFrequency; }
+    else if (resolved.priceCurrency !== currency || resolved.priceFrequency !== frequency) mixed = true;
+  }
+  return priced >= 2 && mixed;
 }
 
 // ptResolveSortPrice(property) -- the numeric price key for SORTING and
@@ -943,6 +974,64 @@ function ptResolveSortPrice(property, parseLegacy) {
   return { amount: null, currency: property.price_currency || null };
 }
 
+// A structured price_amount is only displayable when it is a real, positive number. null, '', NaN,
+// a non-numeric string, 0 and a negative number are "no usable price": the caller falls through to
+// the legacy text, the unit-type / lease-tier fallbacks and finally "Price on request" -- never a
+// literal "null", "NaN" or "$0".
+function _ptValidAmount(value) {
+  if (value == null || value === '' || typeof value === 'boolean') return false;
+  var n = Number(value);
+  return isFinite(n) && n > 0;
+}
+// The price-qualifier fields every single-price result carries. `active` is true only when the shown
+// number is NOT necessarily what every unit costs (see ptResolveUnitPriceVariance() and the lease-tier
+// headline): priceKind 'from'. Everything else stays 'exact' -- existing listings are never converted.
+function _ptPriceQualifier(active, lang) {
+  return {
+    priceKind: active ? 'from' : 'exact',
+    fromLabel: active ? (PT_FROM_PRICE_PREFIX[lang] || PT_FROM_PRICE_PREFIX.en) : null,
+    fromPlacement: active ? (PT_FROM_PRICE_PLACEMENT[lang] || 'prefix') : null
+  };
+}
+// "$300–$400 / month" for a multi-unit listing whose unit prices span a range (formatMoneyRange() is the
+// one range formatter: one symbol, en dash). null when there is no real span.
+function _ptVarianceRangeText(variance, showUnit, lang) {
+  if (!variance || typeof formatMoneyRange !== 'function') return null;
+  var range = formatMoneyRange(variance.min, variance.max, variance.currency);
+  if (!range) return null;
+  return range + (showUnit && variance.frequency ? ' ' + _ptFrequencySuffix(variance.frequency, lang) : '');
+}
+// An explicit range typed or imported as text ("$280-300 / month"): the displayed text already is a range.
+var _PT_LEGACY_RANGE_RE = /\d[\d,.]*\s*[-\u2013\u2014~]\s*[^\d\s]?\s*\d/;
+// "$280-300" / "₭3,000,000 - 3,500,000" typed with ONE symbol -> "$280–$300" / "₭3,000,000–₭3,500,000", the same range format as
+// formatMoneyRange(). Only that exact shape is rewritten; any other text (extra words, no symbol, odd separators) stays as typed.
+var _PT_SIMPLE_RANGE_RE = /^\s*([$\u20ad\u0e3f])\s*(\d[\d,]*)\s*[-\u2013\u2014]\s*(?:[$\u20ad\u0e3f]\s*)?(\d[\d,]*)\s*$/;
+function _ptNormalizeRangeText(text) {
+  var m = _PT_SIMPLE_RANGE_RE.exec(text);
+  return m ? m[1] + m[2] + '\u2013' + m[1] + m[3] : text;
+}
+
+// ptFormatPriceLine(info, lang) -- the ONE place a formatPropertyPrice() result becomes a single line of
+// text: "$350 / month" (exact), "From $350 / month" (starting price), "$350–$500 / month" (an explicit
+// range already in the text), "Price on request", or "$X · $Y / month" for sale_or_rent. Every surface
+// that needs a price as a string (detail page, share text, link-preview metadata, agent and map
+// cards) calls this, so no page can quietly drop the qualifier.
+function ptFormatPriceLine(info, lang) {
+  lang = lang || 'en';
+  if (!info) return null;
+  if (info.isPriceOnRequest) return info.requestText || PT_PRICE_ON_REQUEST[lang] || PT_PRICE_ON_REQUEST.en;
+  if (info.isSor) return [info.saleText, info.rentText].filter(Boolean).join(' \u00b7 ') || null;
+  if (!info.singleText) return null;
+  var unit = info.unitText || '';
+  var body = info.singleText + (unit ? ' ' + unit : '');
+  if (!info.fromLabel) return body;
+  if (info.fromPlacement === 'suffix') {
+    // 起 closes the phrase: "$350 / 月起". After a parenthesised unit ("(可议价)") it follows the amount instead.
+    return (unit && unit.charAt(0) !== '(') ? body + info.fromLabel : info.singleText + info.fromLabel + (unit ? ' ' + unit : '');
+  }
+  return info.fromLabel + ' ' + body;
+}
+
 function formatPropertyPrice(property, lang) {
   lang = lang || 'en';
   var kind = _ptTransactionKind(property.transaction_type);
@@ -955,14 +1044,15 @@ function formatPropertyPrice(property, lang) {
       var rentText = property.rent_price_amount != null
         ? (formatMoney(property.rent_price_amount, property.rent_price_currency) + ' ' + _ptFrequencySuffix(property.rent_price_frequency, lang))
         : _ptLegacyRentText(property, lang);
-      return { isSor: true, saleText: saleText, rentText: rentText, isPriceOnRequest: false };
+      return { isSor: true, saleText: saleText, rentText: rentText, isPriceOnRequest: false, priceKind: 'exact' };
     }
     if (property.sale_price || property.rent_price) {
       return {
         isSor: true,
         saleText: property.sale_price || null,
         rentText: _ptLegacyRentText(property, lang),
-        isPriceOnRequest: false
+        isPriceOnRequest: false,
+        priceKind: 'exact'
       };
     }
     // Neither leg has any data at all (structured or legacy) -- fall
@@ -970,7 +1060,14 @@ function formatPropertyPrice(property, lang) {
     // behavior of treating price_display as a plain price in this case.
   }
 
-  if (property.price_amount != null) {
+  // Units priced in incomparable currencies / frequencies: no reliable starting price exists, so say so rather than
+  // show a bare number that reads as exact. (Checked before every price source: property column, legacy text, units.)
+  if (ptResolveUnitPricesMixed(property)) {
+    return { isSor: false, singleText: PT_PRICES_VARY[lang] || PT_PRICES_VARY.en, unitText: null, isPriceOnRequest: false,
+             isPriceVaries: true, priceKind: 'varies', fromLabel: null, fromPlacement: null, rangeText: null };
+  }
+
+  if (_ptValidAmount(property.price_amount)) {
     var moneyText = formatMoney(property.price_amount, property.price_currency);
     var showUnit = kind === 'rent';
     // "From $X" when this multi-unit listing's own unit types genuinely
@@ -981,11 +1078,13 @@ function formatPropertyPrice(property, lang) {
     // cheapest active unit) -- this only decides whether to qualify it,
     // never recomputes or overrides it.
     var variance = ptResolveUnitPriceVariance(property);
+    var q = _ptPriceQualifier(!!variance, lang);
     return {
       isSor: false, singleText: moneyText,
       unitText: showUnit ? _ptFrequencySuffix(property.price_frequency, lang) : null,
       isPriceOnRequest: false,
-      fromLabel: variance ? PT_FROM_PRICE_PREFIX[lang] || PT_FROM_PRICE_PREFIX.en : null
+      priceKind: q.priceKind, fromLabel: q.fromLabel, fromPlacement: q.fromPlacement,
+      rangeText: _ptVarianceRangeText(variance, showUnit, lang)
     };
   }
 
@@ -1002,9 +1101,11 @@ function formatPropertyPrice(property, lang) {
     var unitText = ptResolveUnitTypesPrice(property, lang);
     if (unitText) {
       var fallbackVariance = ptResolveUnitPriceVariance(property);
+      var qf = _ptPriceQualifier(!!fallbackVariance, lang);
       return {
         isSor: false, singleText: unitText, unitText: null, isPriceOnRequest: false, priceSource: 'unit_type',
-        fromLabel: fallbackVariance ? PT_FROM_PRICE_PREFIX[lang] || PT_FROM_PRICE_PREFIX.en : null
+        priceKind: qf.priceKind, fromLabel: qf.fromLabel, fromPlacement: qf.fromPlacement,
+        rangeText: _ptVarianceRangeText(fallbackVariance, kind === 'rent', lang)
       };
     }
     // NEXT LAST RESORT: the listing may be priced only via its 3/6/12-month
@@ -1025,18 +1126,21 @@ function formatPropertyPrice(property, lang) {
         if (cheapestTerm) {
           var leaseText = formatLeaseTermAmount(cheapestTerm.term, leaseResolved.currency, lang);
           if (leaseText) {
+            var ql = _ptPriceQualifier(!!cheapestTerm.hasVariance, lang);
             return {
               isSor: false, singleText: leaseText, unitText: null, isPriceOnRequest: false, priceSource: 'lease_tier',
-              fromLabel: cheapestTerm.hasVariance ? (PT_FROM_PRICE_PREFIX[lang] || PT_FROM_PRICE_PREFIX.en) : null
+              priceKind: ql.priceKind, fromLabel: ql.fromLabel, fromPlacement: ql.fromPlacement
             };
           }
         }
       }
     }
-    return { isSor: false, singleText: null, isPriceOnRequest: true, requestText: PT_PRICE_ON_REQUEST[lang] };
+    return { isSor: false, singleText: null, isPriceOnRequest: true, requestText: PT_PRICE_ON_REQUEST[lang], priceKind: 'none' };
   }
   var showUnitLegacy = kind === 'rent';
-  return { isSor: false, singleText: raw, unitText: showUnitLegacy ? PT_PER_MONTH[lang] : null, isPriceOnRequest: false };
+  // Text that is itself a range ("$280-300") is an explicit range, not a starting price and not an exact one.
+  return { isSor: false, singleText: _ptNormalizeRangeText(raw), unitText: showUnitLegacy ? PT_PER_MONTH[lang] : null, isPriceOnRequest: false,
+           priceKind: _PT_LEGACY_RANGE_RE.test(raw) ? 'range' : 'exact' };
 }
 
 // resolvePartyDisplay(party, listingCount, lang) -- the shared data-shaping
@@ -1258,10 +1362,16 @@ function renderPropertyCard(property, opts) {
                 (price.rentText ? '<p class="pt-card-price">' + _ptEsc(price.rentText) + '</p>' : '');
   } else if (price.isPriceOnRequest) {
     priceHtml = '<p class="pt-card-price-req">' + _ptEsc(price.requestText) + '</p>';
+  } else if (price.isPriceVaries) {
+    priceHtml = '<p class="pt-card-price-req" data-price-kind="varies">' + _ptEsc(price.singleText) + '</p>';
   } else {
-    priceHtml = '<p class="pt-card-price">' +
-      (price.fromLabel ? '<span class="pt-card-price-from">' + _ptEsc(price.fromLabel) + '</span> ' : '') +
-      _ptEsc(price.singleText) + (price.unitText ? ' <span class="pt-card-price-unit">' + _ptEsc(price.unitText) + '</span>' : '') + '</p>';
+    // The "from" word goes where the language puts it (ptFormatPriceLine()): before the price in English and
+    // Lao, after it in Chinese ("$350 / 月起").
+    var fromSpan = price.fromLabel ? '<span class="pt-card-price-from">' + _ptEsc(price.fromLabel) + '</span>' : '';
+    var fromBefore = (fromSpan && price.fromPlacement !== 'suffix') ? fromSpan + ' ' : '';
+    var fromAfter = (fromSpan && price.fromPlacement === 'suffix') ? fromSpan : '';
+    priceHtml = '<p class="pt-card-price">' + fromBefore +
+      _ptEsc(price.singleText) + (price.unitText ? ' <span class="pt-card-price-unit">' + _ptEsc(price.unitText) + '</span>' : '') + fromAfter + '</p>';
   }
   // "$450 / month · Available 15 Sep 2026" -- a compact inline suffix on the
   // PRICE paragraph itself, not another block, so the card does not grow a line.
@@ -1463,9 +1573,9 @@ function renderPropertyPreview(property, opts) {
   }
 
   var price = formatPropertyPrice(p, lang);
-  var priceHtml = price.isPriceOnRequest
-    ? '<p class="pt-preview-price-req">' + _ptEsc(price.requestText) + '</p>'
-    : '<p class="pt-preview-price">' + _ptEsc(price.isSor ? (price.saleText || price.rentText || '') : price.singleText) + '</p>';
+  var priceHtml = (price.isPriceOnRequest || price.isPriceVaries)
+    ? '<p class="pt-preview-price-req">' + _ptEsc(price.isPriceVaries ? price.singleText : price.requestText) + '</p>'
+    : '<p class="pt-preview-price">' + _ptEsc(price.isSor ? (price.saleText || price.rentText || '') : ptFormatPriceLine(price, lang)) + '</p>';
 
   var pinSvg = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D8C8C" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>';
 
