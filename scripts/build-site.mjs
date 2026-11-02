@@ -92,7 +92,7 @@ export function validate(manifestText, trackedFiles) {
     if (f.includes('/')) continue;
     const ext = path.extname(f).toLowerCase();
     if (!WEB_EXT.includes(ext)) continue;
-    if (/\.test\.js$/.test(f)) continue;
+    if (/\.test\.js$/.test(f) || NEVER_NAMES.some((re) => re.test(f))) continue;   // can never be published, so needs no entry
     if (!listed.has(f) && !genOut.has(f)) errors.push(`unclassified root web file "${f}": add "+ ${f}" or "- ${f}  # reason" to site-manifest.txt`);
   }
   return { ...m, errors };
@@ -108,6 +108,17 @@ const SELF_PREFIX = /^https?:\/\/(?:(?:www\.)?pintag\.io|pintag-cyrora\.github\.
 const ABS_SELF = /https?:\/\/(?:(?:www\.)?pintag\.io|pintag-cyrora\.github\.io\/pintag)\/([A-Za-z0-9_\-./]+)/g;
 // Comment stripping is deliberately conservative: a block comment must start after whitespace or a delimiter, so the "/*" in "image/*" does not open one.
 const stripJsLineComments = (t) => t.replace(/^[ \t]*\/\/.*$/gm, '').replace(/(^|[\s;{}(,])\/\*[\s\S]*?\*\//g, '$1');
+// This is for reference SCANNING only (never for sanitizing output), done with indexOf so an unterminated comment is simply kept.
+function withoutHtmlComments(t) {
+  let out = '', i = 0;
+  for (;;) {
+    const a = t.indexOf('<!--', i);
+    if (a < 0) return out + t.slice(i);
+    const b = t.indexOf('-->', a + 4);
+    if (b < 0) return out + t.slice(i);
+    out += t.slice(i, a); i = b + 3;
+  }
+}
 export function localRef(raw) {
   if (!raw) return null;
   let r = raw.trim();
@@ -124,7 +135,7 @@ export function refsOf(file, text) {
     for (const m of text.matchAll(META_URL)) { const v = m[1] ?? m[2]; if (v && SELF_PREFIX.test(v)) add(v); }
     // quoted file names anywhere in the page (inline scripts build URLs from them); comments removed. A whole-file scan, not per <script>
     // block, because a page can contain the text "<script" inside a string, which breaks block matching.
-    for (const m of stripJsLineComments(text.replace(/<!--[\s\S]*?-->/g, '')).matchAll(LITERAL)) add(m[2]);
+    for (const m of stripJsLineComments(withoutHtmlComments(text)).matchAll(LITERAL)) add(m[2]);
   } else if (file.endsWith('.js') || file.endsWith('.mjs')) {
     for (const m of stripJsLineComments(text).matchAll(LITERAL)) add(m[2]);
   } else if (file.endsWith('.css')) {
