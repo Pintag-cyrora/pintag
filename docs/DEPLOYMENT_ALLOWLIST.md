@@ -78,6 +78,28 @@ Manual spot checks (expect 404): `/SECURITY.md`, `/docs/DOCUMENTATION_MAP.md`, `
 `/tests/security/README.md`, `/RECOVERY_RUNBOOK.md`, `/database-migration.sql`, `/watermark-migrate.html`. Expect 200: `/`, `/listings.html`, `/listing.html`, `/admin.html`, `/config.js`.
 Also check in a browser: the home page, a listing page in Lao/English/Chinese, the map view, the administrator console sign-in, and a link preview of a listing.
 
+## Environment guard (production and development builds)
+`scripts/build-site.mjs --env prod|dev` fails closed unless the configuration it would publish belongs to the environment being built:
+* both `config.prod.js` and `config.dev.js` must exist, name a `https://<project>.supabase.co` address, carry the public anon key (never a service key), and have the right `env`, `isProduction` and `tag`;
+  the project must be the production project (`prod`) or the development project (`dev`); a development config naming the production project, or the reverse, is refused;
+* the generated `config.js` must come from the environment's own file (`config.prod.js` for prod, `config.dev.js` for dev), and the published `config.js` is checked again after the copy;
+* the other environment's project reference may not appear in any published file except on the generated Content-Security-Policy line;
+* a workflow may only build its own environment (`GITHUB_WORKFLOW` is compared: the development workflow cannot build `prod`, the production workflow cannot build `dev`);
+* `--env` must have a value of `prod` or `dev`; an unknown option such as `--env=dev` is an error, never silently ignored (which would build production).
+The two project references are constants in `build-site.mjs` (`PROJECT_REF`); if a project ever changes, the build fails until they are updated on purpose.
+
+## Development mirror: verifying a publish without a dry run
+`deploy-dev.yml` publishes `_site` with `peaceiris/actions-gh-pages`, pinned to commit `84c30a85c19949d7eee79c4ff27748b70285e453`. The `action.yml` at that commit defines 20 inputs
+(`deploy_key, github_token, personal_token, publish_branch, publish_dir, destination_dir, external_repository, allow_empty_commit, keep_files, force_orphan, user_name, user_email,
+commit_message, full_commit_message, tag_name, tag_message, enable_jekyll, disable_nojekyll, cname, exclude_assets`). **There is no `dry_run` input**, so a safe dry run of the publish step does not exist.
+Because `force_orphan: true` replaces the target repository's history, the first real publish is destructive to whatever `Pintag-dev` holds today. A verification procedure that never touches it:
+
+1. **Prove the build without publishing** (no secrets, no network): `node scripts/build-site.mjs --out _site --env dev --version test`, then list `_site`; `node --test site-allowlist-dev.test.js site-env-guard.test.js` covers the contents, the configuration and the environment guard.
+2. **Rehearse the publish against a scratch target, never `Pintag-dev`**: an operator creates a private scratch repository and a token scoped only to it, copies the workflow to a throwaway file with `external_repository` and the secret name changed, and runs it from a throwaway branch. Check the scratch repository's tree equals the `_site` listing (no `docs/`, `scripts/`, `supabase/`, `tests/`, no `*.md`/`*.sql`, no `CNAME`). Delete the scratch repository afterwards.
+3. **Before the first real publish** (separate authorization): (a) take a full backup of the current `Pintag-dev` (`git clone --mirror`, stored privately) so the July snapshot can be restored or inspected; (b) merge `main` into the stale `dev` branch so it contains the builder and manifest; (c) confirm the `PINTAG_DEV_DEPLOY_TOKEN` scope and the repository's Pages source branch; (d) decide whether the old snapshot may be overwritten.
+4. **After the first real publish**: compare the repository tree with the `_site` listing; run `SITE_URL=https://pintag-cyrora.github.io/pintag-dev bash scripts/verify-site-exclusions.sh` from a network that can reach it (expect 404 for every exclusion and sensitive path, 200 for published pages; a Cloudflare challenge would be UNVERIFIABLE, though that site is not behind Cloudflare); open the dev site and confirm the orange DEV banner and that it talks to the development project.
+5. **Rollback**: re-push the mirror backup from step 3a, or revert the workflow change.
+
 ## What this does not fix
 * **The repository is public:** every file remains readable on GitHub, in forks and in caches, and workflow logs are public. This change stops the production domain from also
   hosting them; it does not make them private. Repository visibility is a separate decision (currently: stay public).

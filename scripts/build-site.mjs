@@ -4,7 +4,7 @@
 // WHY: the production deploy used to upload the whole repository root (minus five pruned pages), so docs, SQL migrations, scripts, tests and
 // internal runbooks were served on the production domain. Deny-by-default: only files named in site-manifest.txt are copied.
 //
-//   node scripts/build-site.mjs [--out _site] [--version <sha8>] [--check-only]
+//   node scripts/build-site.mjs [--out _site] [--version <sha8>] [--env prod|dev] [--check-only]
 //
 // Manifest lines:   + path                 include (copied verbatim)
 //                   - path  # reason       reviewed and deliberately NOT published (kept in the repo)
@@ -162,10 +162,71 @@ export function refsOf(file, text) {
   return out;
 }
 
-export function build({ out = path.join(ROOT, '_site'), version = '', trackedFiles = tracked(), manifestText = fs.readFileSync(MANIFEST, 'utf8'), checkOnly = false, root = ROOT } = {}) {
+// ── environment guard: a build for one environment must never carry another environment's configuration ──
+// The two Supabase projects. A build fails closed unless the configuration it publishes names the project that belongs to the environment being built, so a
+// mis-mapped manifest, an edited config file or a wrong --env cannot publish the development site against production (or the reverse).
+export const PROJECT_REF = { prod: 'eoladhcljbpbhnrmmpev', dev: 'ebtgoqrywdywuqrvudcp' };
+const EXPECTED_CONFIG = { prod: { env: 'production', isProduction: 'true', tag: 'PROD' }, dev: { env: 'development', isProduction: 'false', tag: 'DEV' } };
+// GitHub sets GITHUB_WORKFLOW automatically; a workflow may only build its own environment.
+export const WORKFLOW_ENV = { 'Deploy Production (Pages + Worker)': 'prod', 'Deploy Dev (mirror to pintag-dev)': 'dev' };
+export function parseConfig(text) {
+  const g = (re) => { const m = re.exec(text); return m ? m[1] : null; };
+  const url = g(/\bsupabaseUrl:\s*'([^']*)'/);
+  return { env: g(/\benv:\s*'([^']*)'/), isProduction: g(/\bisProduction:\s*(true|false)\b/), supabaseUrl: url, anonKey: g(/\banonKey:\s*'([^']*)'/), tag: g(/\btag:\s*'([^']*)'/),
+    ref: url ? ((/^https:\/\/([a-z0-9]{20})\.supabase\.co$/.exec(url) || [])[1] || null) : null };
+}
+export function checkEnvConfig(env, text, label = 'configuration') {
+  const errs = [];
+  if (typeof text !== 'string' || !text.trim()) return [`${label} is missing or empty`];
+  const c = parseConfig(text), want = EXPECTED_CONFIG[env], other = env === 'dev' ? 'prod' : 'dev';
+  if (!c.supabaseUrl) errs.push(`${label} has no supabaseUrl`);
+  else if (!c.ref) errs.push(`${label}: supabaseUrl is not a https://<20-character project>.supabase.co address`);
+  if (c.ref && c.ref === PROJECT_REF[other]) errs.push(`${label} points to the ${other === 'prod' ? 'PRODUCTION' : 'DEVELOPMENT'} Supabase project but this is a ${env === 'prod' ? 'production' : 'development'} build`);
+  else if (c.ref && c.ref !== PROJECT_REF[env]) errs.push(`${label} points to an unexpected Supabase project (expected the ${env === 'prod' ? 'production' : 'development'} project)`);
+  if (c.env !== want.env) errs.push(`${label}: env must be '${want.env}'`);
+  if (c.isProduction !== want.isProduction) errs.push(`${label}: isProduction must be ${want.isProduction}`);
+  if (c.tag !== want.tag) errs.push(`${label}: tag must be '${want.tag}'`);
+  if (!c.anonKey) errs.push(`${label} has no anonKey`);
+  else {
+    try { const role = JSON.parse(Buffer.from(c.anonKey.split('.')[1], 'base64url').toString()).role; if (role !== 'anon') errs.push(`${label}: the key is not the public anon key`); }
+    catch { errs.push(`${label}: anonKey is not a valid JWT`); }
+  }
+  return errs;
+}
+// Another environment's project reference may appear in a published file only on the generated Content-Security-Policy line (which lists both hosts).
+export function crossEnvRefs(outDir, files, env) {
+  const foreign = PROJECT_REF[env === 'dev' ? 'prod' : 'dev'], errs = [];
+  for (const f of files) {
+    if (!/\.(html|js|css|json|txt)$/.test(f)) continue;
+    const lines = fs.readFileSync(path.join(outDir, f), 'utf8').split('\n');
+    lines.forEach((l, i) => { if (l.includes(foreign) && !l.includes('Content-Security-Policy')) errs.push(`${f}:${i + 1} names the ${env === 'dev' ? 'production' : 'development'} Supabase project`); });
+  }
+  return errs;
+}
+
+export function build({ out = path.join(ROOT, '_site'), version = '', trackedFiles = tracked(), manifestText = fs.readFileSync(MANIFEST, 'utf8'), checkOnly = false, root = ROOT, env = 'prod', workflow = process.env.GITHUB_WORKFLOW || '' } = {}) {
   const v = validate(manifestText, trackedFiles);
   const errors = [...v.errors];
   if (errors.length) return { ok: false, errors: errors.map(show), files: [] };
+  if (env !== 'prod' && env !== 'dev') return { ok: false, errors: [`unknown environment "${show(env)}"`], files: [] };
+  if (env === 'dev') {
+    // The development mirror (a separate repository with its own Pages site) uses the SAME allowlist: the development configuration replaces the production one, and the
+    // production-only CNAME is left out (pintag-dev has no custom domain).
+    v.include = v.include.filter((e) => e.path !== 'CNAME');
+    v.generated = v.generated.map((g) => (g.source === 'config.prod.js' ? { ...g, source: 'config.dev.js' } : g));
+  }
+  // 1. the workflow running this build may only build its own environment
+  if (Object.prototype.hasOwnProperty.call(WORKFLOW_ENV, workflow) && WORKFLOW_ENV[workflow] !== env) {
+    return { ok: false, errors: [`workflow "${show(workflow)}" builds ${WORKFLOW_ENV[workflow]}, but this build was asked for --env ${env}`], files: [] };
+  }
+  // 2. both configurations must be what they claim to be, and the one this build will publish must be the environment's own
+  const cfgErr = [];
+  const readCfg = (f) => { try { return fs.readFileSync(path.join(root, f), 'utf8'); } catch { return null; } };
+  cfgErr.push(...checkEnvConfig('prod', readCfg('config.prod.js'), 'config.prod.js'), ...checkEnvConfig('dev', readCfg('config.dev.js'), 'config.dev.js'));
+  const wantSource = env === 'dev' ? 'config.dev.js' : 'config.prod.js';
+  for (const g of v.generated) if (g.path === 'config.js' && g.source !== wantSource) cfgErr.push(`generated config.js comes from ${g.source}, but a ${env} build must use ${wantSource}`);
+  if (!v.generated.some((g) => g.path === 'config.js')) cfgErr.push('the manifest does not generate config.js');
+  if (cfgErr.length) return { ok: false, errors: cfgErr.map(show), files: [] };
   for (const f of [...v.include.map((e) => e.path), ...v.generated.map((g) => g.source)]) {
     let st; try { st = fs.lstatSync(path.join(root, f)); } catch { errors.push(`"${f}" cannot be read`); continue; }
     if (st.isSymbolicLink() || !st.isFile()) errors.push(`"${f}" is not a regular file (a symbolic link or directory cannot be published)`);
@@ -188,6 +249,8 @@ export function build({ out = path.join(ROOT, '_site'), version = '', trackedFil
     for (const f of want) if (!files.includes(f)) errors.push(`missing from output: ${f}`);
     if (version) for (const f of files) if (f.endsWith('.html') && fs.readFileSync(path.join(out, f), 'utf8').includes('__ASSET_VERSION__')) errors.push(`placeholder left in ${f}`);
     errors.push(...unresolved(out, files, new Set(trackedFiles), new Set(v.knownMissing.map((k) => k.path))));
+    errors.push(...checkEnvConfig(env, fs.existsSync(path.join(out, 'config.js')) ? fs.readFileSync(path.join(out, 'config.js'), 'utf8') : null, 'published config.js'));
+    errors.push(...crossEnvRefs(out, files, env));
   }
   return { ok: errors.length === 0, errors: errors.map(show), files, include: v.include, exclude: v.exclude, generated: v.generated, knownMissing: v.knownMissing };
 }
@@ -222,7 +285,15 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const arg = (n) => { const i = process.argv.indexOf(n); return i > -1 ? process.argv[i + 1] : ''; };
   const out = path.resolve(ROOT, arg('--out') || '_site');
   const version = arg('--version') || (process.env.GITHUB_SHA ? process.env.GITHUB_SHA.slice(0, 8) : '');
-  const r = build({ out, version, checkOnly: process.argv.includes('--check-only') });
+  // An unrecognised option (for example `--env=dev`, which this parser does not read) must not be ignored: ignoring it would build production.
+  const KNOWN = ['--out', '--version', '--env', '--check-only'];
+  const unknown = process.argv.slice(2).filter((a) => a.startsWith('--') && !KNOWN.includes(a));
+  if (unknown.length) { console.error('SITE BUILD FAILED:\n  - unknown option ' + show(unknown.join(' ')) + ' (use --env prod|dev, not --env=dev)'); process.exit(1); }
+  // `--env` without a value (or with a typo) must not silently fall back to production
+  const envIdx = process.argv.indexOf('--env');
+  const envArg = envIdx > -1 ? process.argv[envIdx + 1] : 'prod';
+  if (envIdx > -1 && !['prod', 'dev'].includes(envArg || '')) { console.error('SITE BUILD FAILED:\n  - --env needs a value: prod or dev'); process.exit(1); }
+  const r = build({ out, version, env: envArg, checkOnly: process.argv.includes('--check-only') });
   if (!r.ok) { console.error('SITE BUILD FAILED:\n' + r.errors.map((e) => '  - ' + show(e)).join('\n')); process.exit(1); }
   console.log(`site build ok: ${r.files.length} files${process.argv.includes('--check-only') ? ' (check only)' : ` in ${path.relative(ROOT, out) || '.'}`}; ${r.exclude.length} reviewed exclusions`);
 }
