@@ -7,6 +7,8 @@ reworded as passes; a later `PASSED` row does not delete earlier rows.
 
 **Current state: NO live verification has been performed or recorded.** The allowlist has not been deployed from this record's point of view; the table is intentionally empty.
 
+**Accepted risk (not a verification result).** The single administrator email address remaining in `admin-auth.js` is temporarily accepted by the owner (2026-11-04). This is an accepted exposure, not a passed security control, and it is not a verification entry. It is limited strictly to that address; no other personal information, credentials, tokens or secrets are covered. It must be revisited when server-side authorization can replace the client-side email check. See `docs/DEPLOYMENT_ALLOWLIST.md`.
+
 | Date (UTC) | Operator | Site | Deployed commit | Result | Outstanding failures / unverifiable paths | Notes |
 |---|---|---|---|---|---|---|
 | _none_ | | | | | | |

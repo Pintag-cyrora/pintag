@@ -11,6 +11,9 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { build, validate, parseManifest, tracked, listFiles, unsafe, refsOf, ROOT } from './scripts/build-site.mjs';
 
+// One complete regex-escaping helper: escapes the backslash first-class along with every regex metacharacter (and '-' and '/'), so a literal string can be embedded in a RegExp safely.
+const escapeRegExp = (s) => String(s).replace(/[\\^$.*+?()[\]{}|\/-]/g, '\\$&');
+
 const TRACKED = tracked();
 const MANIFEST_TEXT = fs.readFileSync(path.join(ROOT, 'site-manifest.txt'), 'utf8');
 const M = parseManifest(MANIFEST_TEXT);
@@ -327,7 +330,7 @@ test('verification: a Cloudflare challenge is UNVERIFIABLE (exit 2, INCOMPLETE),
 test('verification: a sensitive path that is served (200, or a redirect or 403 that is not a challenge) is a FAIL', async () => {
   const r = await verifyWith({ 'RECOVERY_RUNBOOK.md': (res) => { res.statusCode = 200; res.end('leak'); }, 'docs/DOCUMENTATION_MAP.md': (res) => { res.statusCode = 403; res.end('forbidden'); }, 'watermark-migrate.html': (res) => { res.statusCode = 301; res.end(''); } });
   assert.equal(r.code, 1);
-  for (const p of ['RECOVERY_RUNBOOK.md', 'docs/DOCUMENTATION_MAP.md', 'watermark-migrate.html']) assert.match(r.stdout, new RegExp(`FAIL\\s+/${p.replace(/[.]/g, '\\.')}`));
+  for (const p of ['RECOVERY_RUNBOOK.md', 'docs/DOCUMENTATION_MAP.md', 'watermark-migrate.html']) assert.match(r.stdout, new RegExp(`FAIL\\s+/${escapeRegExp(p)}`));
 });
 test('verification: no response at all is UNVERIFIABLE, and a missing operator makes the record INVALID and the exit status non-zero', async () => {
   const dead = await runVerify('http://127.0.0.1:1', { OPERATOR: 'Test Operator' });
@@ -350,9 +353,13 @@ test('docs: the verification record is empty and says no live verification has b
 });
 test('docs: the administrator-email section records the exposure and leaves the decision pending (nothing is presented as accepted)', () => {
   assert.match(DOC, /## Administrator email address in published code/);
-  assert.match(DOC, /PENDING owner decision: accept, or request the server-side change/);
-  assert.match(DOC, /No acceptance is assumed or recorded/);
-  assert.doesNotMatch(DOC, /\| Residual exposure[^\n]*\| \*\*(ACCEPTED|Accepted)/);
+  assert.match(DOC, /TEMPORARILY ACCEPTED by the owner/);
+  assert.match(DOC, /accepted exposure, not a passed security control/);
+  assert.match(DOC, /limited strictly to that one address/);
+  assert.match(DOC, /No other personal information, credentials, tokens or secrets are covered/);
+  assert.match(DOC, /revisited when server-side authorization can replace the client-side email check/);
+  assert.doesNotMatch(DOC, /PENDING owner decision: accept/);
+  assert.doesNotMatch(DOC, /\| Residual exposure[^\n]*\| \*\*(PASSED|Passed|CONTROL)/);
 });
 test('docs: the related controls match the evidence record (#168): O3 partially skipped, O4 blocked, O7 unknown, PITR and storage restore outstanding; none is called passed', () => {
   const t = DOC.slice(DOC.indexOf('## Related security controls'));
@@ -370,11 +377,36 @@ test('administrator address: the published site serves it exactly once (the cons
   assert.equal(hits.length, 1, hits.join(', '));
   assert.match(hits[0], /^admin-auth\.js:\d+$/);
   const auth = fs.readFileSync(path.join(built.out, 'admin-auth.js'), 'utf8');
-  assert.match(auth, new RegExp(`var ADMIN_EMAIL = '${needle.replace(/[.]/g, '\\.')}';`));
+  assert.match(auth, new RegExp(`var ADMIN_EMAIL = '${escapeRegExp(needle)}';`));
   assert.equal((auth.match(/ADMIN_EMAIL\.toLowerCase\(\)/g) || []).length, 3, 'the three client-side checks are unchanged');
   assert.match(auth, /ADMIN_EMAIL: ADMIN_EMAIL/);                                                    // still exported for the provenance actor label
   const adminHtml = fs.readFileSync(path.join(built.out, 'admin.html'), 'utf8');
   assert.doesNotMatch(adminHtml, /const ADMIN_EMAIL\s*=/);                                         // the dead duplicate is gone
   assert.equal((adminHtml.match(/PintagAdminAuth\.ADMIN_EMAIL/g) || []).length, 2, 'the provenance actor still comes from the shared module');
   assert.doesNotMatch(adminHtml.replace(/PintagAdminAuth\.ADMIN_EMAIL/g, ''), /\bADMIN_EMAIL\b/);   // nothing else in admin.html reads a local ADMIN_EMAIL
+});
+
+test('escapeRegExp: a complete escape - the result matches exactly the literal input, never a look-alike', () => {
+  const cases = ['a.b', 'a\\b', 'a\\.b', '[x]', 'a(b)c', 'a*b', 'a+b', 'a?b', '{1,2}', 'a|b', '^a$', 'a-b', 'a/b', 'C:\\dir\\f.txt', '(.*)+[a-z]\\d{2}|^$?'];
+  for (const lit of cases) {
+    const re = new RegExp(`^${escapeRegExp(lit)}$`);
+    assert.ok(re.test(lit), `matches itself: ${lit}`);
+    assert.equal(lit.match(re)[0], lit);
+  }
+  assert.equal(new RegExp(`^${escapeRegExp('a.b')}$`).test('axb'), false, 'dot is literal');
+  assert.equal(new RegExp(`^${escapeRegExp('a\\b')}$`).test('ab'), false, 'backslash is literal, not an escape');
+  assert.equal(new RegExp(`^${escapeRegExp('a\\.b')}$`).test('a\\xb'), false, 'backslash then dot: both literal');
+  assert.equal(new RegExp(`^${escapeRegExp('[x]')}$`).test('x'), false, 'brackets are literal');
+  assert.equal(new RegExp(`^${escapeRegExp('a(b)c')}$`).test('abc'), false, 'parentheses are literal');
+  assert.equal(new RegExp(`^${escapeRegExp('a*b')}$`).test('aaab'), false, 'asterisk is literal');
+  assert.equal(new RegExp(`^${escapeRegExp('a+b')}$`).test('aab'), false, 'plus is literal');
+  assert.equal(new RegExp(`^${escapeRegExp('(.*)+[a-z]')}$`).test('abc'), false, 'mixed specials are literal');
+  assert.equal(escapeRegExp('a.b'), 'a\\.b');
+  assert.equal(escapeRegExp('\\'), '\\\\');
+  assert.equal(escapeRegExp(''), '');
+});
+
+test('escapeRegExp is the only regex-escaping expression in this file (no incomplete dot-only escapes)', () => {
+  const src = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  assert.equal((src.match(/replace\(\/\[\.\]\/g/g) || []).length, 0);
 });

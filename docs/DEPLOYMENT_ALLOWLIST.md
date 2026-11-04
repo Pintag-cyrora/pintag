@@ -114,11 +114,14 @@ not part of this change.
 
 **Exact residual exposure.** The administrator's address can be read by anyone who opens `admin-auth.js`, which is served by the production domain and is also in the public repository. It tells an attacker
 which account to target for password guessing or phishing. The controls that matter are unchanged: sign-in needs the password **and** a TOTP code, the database refuses any other account, and public
-sign-up was reported disabled by the weekly production probe (2026-11-02). **This is presented for explicit risk acceptance by the owner. No acceptance is assumed or recorded.**
+sign-up was reported disabled by the weekly production probe (2026-11-02). **Owner decision (2026-11-04): this residual exposure is TEMPORARILY ACCEPTED by the owner.** This is an accepted exposure, not a passed security control: nothing here is verified or mitigated by the
+acceptance. The acceptance is limited strictly to that one address (the single occurrence remaining in `admin-auth.js`). No other personal information, credentials, tokens or secrets are covered, and it
+does not cover any further occurrence of that address or of any other identifier. The issue must be revisited when server-side authorization can replace the client-side email check; until then the
+acceptance stays open and is not a closure of the finding.
 
 | Item | Decision |
 |---|---|
-| Residual exposure (one served occurrence plus the public repository) | **PENDING owner decision: accept, or request the server-side change.** Date / decided by: _not recorded_ |
+| Residual exposure (one served occurrence plus the public repository) | **TEMPORARILY ACCEPTED by the owner (accepted exposure, not a passed control).** Date: 2026-11-04; decided by: the repository owner. Scope: that one address only. Revisit: when server-side authorization can replace the client-side email check. |
 
 ## Related security controls (reconciled with the evidence record in PR #168)
 This change does not verify, certify or improve any of the following, and a green CI run for this pull request proves none of them. The statuses below are the ones in
