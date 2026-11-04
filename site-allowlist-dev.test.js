@@ -58,3 +58,46 @@ test('deploy-dev.yml builds the allowlisted dev site and publishes only _site (n
   assert.match(WF, /external_repository: Pintag-cyrora\/pintag-dev/);                    // target unchanged
   assert.match(WF, /peaceiris\/actions-gh-pages@[0-9a-f]{40}/);                          // still pinned to a commit
 });
+
+// ── CI path filters: every file that can change the production or development build must trigger the workflow that tests it ──
+const CI = fs.readFileSync(path.join(ROOT, '.github/workflows/frontend-regression-tests.yml'), 'utf8');
+function filterPaths(event) {
+  const block = new RegExp(`\\n  ${event}:\\n(?:    .*\\n)*?    paths:\\n((?:      - .*\\n)+)`).exec(CI);
+  assert.ok(block, `${event} has a paths filter`);
+  return block[1].split('\n').filter(Boolean).map((l) => /^\s+- '([^']+)'/.exec(l)[1]);
+}
+const globToRe = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*') + '$');
+const matches = (patterns, file) => patterns.some((p) => globToRe(p).test(file));
+
+test('path filters: every file the production or development build reads or publishes triggers the CI that tests it (push and pull request)', () => {
+  const inputs = new Set([...M.include.map((e) => e.path), ...M.generated.map((g) => g.source), 'config.dev.js', 'config.prod.js', 'site-manifest.txt', 'scripts/build-site.mjs',
+    '.github/workflows/deploy-dev.yml', '.github/workflows/deploy-prod.yml', 'site-allowlist.test.js', 'site-allowlist-dev.test.js', 'site-env-guard.test.js', 'site-build-refs.test.js']);
+  for (const ev of ['push', 'pull_request']) {
+    const pats = filterPaths(ev);
+    const missing = [...inputs].filter((f) => !matches(pats, f));
+    assert.deepEqual(missing, [], `${ev}: changes to these files would not trigger the build tests`);
+  }
+});
+
+test('path filters stay narrow: only this workflow was widened, and no catch-all pattern was added', () => {
+  for (const ev of ['push', 'pull_request']) {
+    const pats = filterPaths(ev);
+    assert.ok(!pats.some((p) => p === '**' || p === '*' || p === '**/*'), 'no catch-all');
+    assert.ok(!matches(pats, 'docs/DEPLOYMENT_ALLOWLIST.md') && !matches(pats, 'PREVIEW.md') && !matches(pats, 'supabase/migrations/20261104000000_x.sql') && !matches(pats, 'scripts/seed-dev-lib.sh'), 'documentation, migrations and seed scripts do not trigger it');
+  }
+  assert.deepEqual(filterPaths('push'), filterPaths('pull_request'));
+});
+
+test('the path-filter matcher itself: single star stays inside a directory, double star crosses them', () => {
+  assert.ok(matches(['*.png'], 'pintag-hero.png')); assert.ok(!matches(['*.png'], 'assets/pintag-watermark.png'));
+  assert.ok(matches(['assets/**'], 'assets/pintag-watermark.png')); assert.ok(matches(['fonts/**'], 'fonts/a/b.woff2')); assert.ok(!matches(['fonts/**'], 'docs/fonts/x.woff2'));
+});
+
+test('the documentation records the dry-run finding for the pinned action and a verification procedure that never touches Pintag-dev', () => {
+  const doc = fs.readFileSync(path.join(ROOT, 'docs/DEPLOYMENT_ALLOWLIST.md'), 'utf8');
+  const pin = /peaceiris\/actions-gh-pages@([0-9a-f]{40})/.exec(WF)[1];
+  assert.ok(doc.includes(pin), 'the documented commit is the pinned one');
+  assert.match(doc, /There is no `dry_run` input/);
+  for (const h of ['Prove the build without publishing', 'scratch target, never `Pintag-dev`', 'Before the first real publish', 'After the first real publish', 'Rollback']) assert.ok(doc.includes(h), h);
+  assert.match(doc, /Environment guard/);
+});
