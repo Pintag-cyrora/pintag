@@ -252,7 +252,7 @@ test('verify-site-exclusions.sh run against a local server of _site: PASS everyw
   const srv = await serve(built.out);
   const url = `http://127.0.0.1:${srv.address().port}`;
   try {
-    const out = await new Promise((resolve) => { import('node:child_process').then(({ execFile }) => execFile('bash', [path.join(ROOT, 'scripts/verify-site-exclusions.sh')], { env: { PATH: process.env.PATH, SITE_URL: url } }, (err, stdout) => resolve({ code: err ? err.code : 0, stdout }))); });
+    const out = await new Promise((resolve) => { import('node:child_process').then(({ execFile }) => execFile('bash', [path.join(ROOT, 'scripts/verify-site-exclusions.sh')], { env: { PATH: process.env.PATH, SITE_URL: url, OPERATOR: 'Test Operator' } }, (err, stdout) => resolve({ code: err ? err.code : 0, stdout }))); });
     assert.equal(out.code, 0, out.stdout);
     assert.match(out.stdout, /0 failed, 0 unverifiable/);
     assert.doesNotMatch(out.stdout, /FAIL/);
@@ -263,8 +263,118 @@ test('verify-site-exclusions.sh FAILS when an excluded file is being served (mut
   fs.mkdirSync(path.join(dir, 'docs'), { recursive: true }); fs.writeFileSync(path.join(dir, 'docs', 'DOCUMENTATION_MAP.md'), 'leak'); fs.writeFileSync(path.join(dir, 'watermark-migrate.html'), 'leak');
   const srv = await serve(dir);
   try {
-    const out = await new Promise((resolve) => { import('node:child_process').then(({ execFile }) => execFile('bash', [path.join(ROOT, 'scripts/verify-site-exclusions.sh')], { env: { PATH: process.env.PATH, SITE_URL: `http://127.0.0.1:${srv.address().port}` } }, (err, stdout) => resolve({ code: err ? err.code : 0, stdout }))); });
+    const out = await new Promise((resolve) => { import('node:child_process').then(({ execFile }) => execFile('bash', [path.join(ROOT, 'scripts/verify-site-exclusions.sh')], { env: { PATH: process.env.PATH, SITE_URL: `http://127.0.0.1:${srv.address().port}`, OPERATOR: 'Test Operator' } }, (err, stdout) => resolve({ code: err ? err.code : 0, stdout }))); });
     assert.equal(out.code, 1);
     assert.match(out.stdout, /FAIL\s+\/docs\/DOCUMENTATION_MAP\.md/); assert.match(out.stdout, /FAIL\s+\/watermark-migrate\.html/);
   } finally { srv.close(); }
+});
+
+// ── post-deployment verification: 200 must be a COMPLETE 200 (never 206), a Cloudflare challenge is unverifiable, and the run leaves a record ──
+import { execFile } from 'node:child_process';
+const runVerify = (url, env = {}) => new Promise((resolve) => execFile('bash', [path.join(ROOT, 'scripts/verify-site-exclusions.sh')], { env: { PATH: process.env.PATH, SITE_URL: url, ...env } }, (err, stdout) => resolve({ code: err ? err.code : 0, stdout })));
+// a site that behaves like _site except for the paths listed in `odd` (path -> handler(res)); the request is only ever compared with fixed strings
+function serveOdd(dir, odd) {
+  const files = listFiles(dir);
+  const srv = http.createServer((req, res) => {
+    const raw = req.url.split(/[?#]/)[0];
+    for (const [k, h] of Object.entries(odd)) if (raw === '/' + k) return h(res);
+    const p = path.posix.normalize(raw).replace(/^\/+/, '').replace(/\/+$/, '') || 'index.html';
+    const hit = files.find((f) => f === p || f === p + '.html');
+    if (!hit) { res.statusCode = 404; return res.end('404'); }
+    res.statusCode = 200; res.end(fs.readFileSync(path.join(dir, hit)));
+  });
+  return new Promise((resolve) => srv.listen(0, '127.0.0.1', () => resolve(srv)));
+}
+const verifyWith = async (odd, env = { OPERATOR: 'Test Operator', EXPECTED_SHA: 'abc123' }) => {
+  const srv = await serveOdd(built.out, odd);
+  try { return await runVerify(`http://127.0.0.1:${srv.address().port}`, env); } finally { srv.close(); }
+};
+
+test('verification: a clean site PASSES (exit 0) and prints a record naming operator, date, site, commit and result', async () => {
+  const r = await verifyWith({});
+  assert.equal(r.code, 0, r.stdout);
+  assert.match(r.stdout, /Operator:\s+Test Operator/); assert.match(r.stdout, /Date \(UTC\):\s+\d{4}-\d\d-\d\d \d\d:\d\d:\d\d/);
+  assert.match(r.stdout, /Site:\s+http:\/\/127\.0\.0\.1:\d+/); assert.match(r.stdout, /Expected commit:\s+abc123/);
+  assert.match(r.stdout, /Result:\s+PASSED/); assert.match(r.stdout, /Outstanding:\s+none/);
+  assert.match(r.stdout, /index\.html  \(HTTP 200, \d+ bytes, complete\)/);
+});
+test('verification: HTTP 206 on a published page is a FAIL, not a pass (partial content)', async () => {
+  const r = await verifyWith({ 'listing.html': (res) => { res.statusCode = 206; res.setHeader('Content-Range', 'bytes 0-9/100'); res.end('<html></html'); } });
+  assert.equal(r.code, 1); assert.match(r.stdout, /FAIL\s+\/listing\.html\s+\(HTTP 206 partial content/); assert.match(r.stdout, /Result:\s+FAILED/); assert.match(r.stdout, /Outstanding:\n\s+- FAIL \/listing\.html/);
+});
+test('verification: a 200 that carries a Content-Range header, an empty body, a truncated HTML body or a Content-Length mismatch are all FAILs', async () => {
+  const r = await verifyWith({
+    'agents.html': (res) => { res.statusCode = 200; res.setHeader('Content-Range', 'bytes 0-9/100'); res.end('<html>x</html>'); },
+    'agent.html': (res) => { res.statusCode = 200; res.end(''); },
+    'index.html': (res) => { res.statusCode = 200; res.end('<!doctype html><html><body>cut off here'); },
+    'listings.html': (res) => { res.statusCode = 200; res.setHeader('Content-Length', '9999'); res.write('<html></html>'); res.destroy(); },
+  });
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, /FAIL\s+\/agents\.html\s+\(a Content-Range header on a 200/);
+  assert.match(r.stdout, /FAIL\s+\/agent\.html\s+\(HTTP 200 with an empty body/);
+  assert.match(r.stdout, /FAIL\s+\/index\.html\s+\(HTML does not end with <\/html>/);
+  assert.match(r.stdout, /\/listings\.html\s+\((body is \d+ bytes but Content-Length says 9999|no response)/);
+});
+test('verification: a Cloudflare challenge is UNVERIFIABLE (exit 2, INCOMPLETE), never PASS and never FAIL', async () => {
+  const r = await verifyWith({
+    'admin.html': (res) => { res.statusCode = 403; res.setHeader('cf-mitigated', 'challenge'); res.end('<html>Just a moment...</html>'); },
+    'SECURITY.md': (res) => { res.statusCode = 403; res.end('<html><title>Just a moment...</title><script src="/cdn-cgi/challenge-platform/h/b"></script></html>'); },
+  });
+  assert.equal(r.code, 2, r.stdout);
+  assert.match(r.stdout, /UNVERIFIABLE\s+\/admin\.html\s+\(HTTP 403, Cloudflare challenge/); assert.match(r.stdout, /UNVERIFIABLE\s+\/SECURITY\.md\s+\(HTTP 403, Cloudflare challenge/);
+  assert.doesNotMatch(r.stdout, /FAIL /); assert.match(r.stdout, /Result:\s+INCOMPLETE/); assert.match(r.stdout, /Outstanding:\n(\s+- .*\n)*\s+- UNVERIFIABLE \/admin\.html/);
+});
+test('verification: a sensitive path that is served (200, or a redirect or 403 that is not a challenge) is a FAIL', async () => {
+  const r = await verifyWith({ 'RECOVERY_RUNBOOK.md': (res) => { res.statusCode = 200; res.end('leak'); }, 'docs/DOCUMENTATION_MAP.md': (res) => { res.statusCode = 403; res.end('forbidden'); }, 'watermark-migrate.html': (res) => { res.statusCode = 301; res.end(''); } });
+  assert.equal(r.code, 1);
+  for (const p of ['RECOVERY_RUNBOOK.md', 'docs/DOCUMENTATION_MAP.md', 'watermark-migrate.html']) assert.match(r.stdout, new RegExp(`FAIL\\s+/${p.replace(/[.]/g, '\\.')}`));
+});
+test('verification: no response at all is UNVERIFIABLE, and a missing operator makes the record INVALID and the exit status non-zero', async () => {
+  const dead = await runVerify('http://127.0.0.1:1', { OPERATOR: 'Test Operator' });
+  assert.equal(dead.code, 2); assert.match(dead.stdout, /UNVERIFIABLE/); assert.doesNotMatch(dead.stdout, /PASS /);
+  const r = await verifyWith({}, {});
+  assert.equal(r.code, 2); assert.match(r.stdout, /Operator:\s+NOT SET -- this record is INVALID/); assert.match(r.stdout, /Expected commit:\s+not given/);
+});
+
+// ── the documentation: live verification is recorded as NOT done; the email exposure is NOT presented as accepted; the controls match the evidence record ──
+const DOC = fs.readFileSync(path.join(ROOT, 'docs/DEPLOYMENT_ALLOWLIST.md'), 'utf8');
+const RECORD = fs.readFileSync(path.join(ROOT, 'docs/DEPLOYMENT_VERIFICATION_RECORD.md'), 'utf8');
+test('docs: the procedure covers 200s, 404s, Cloudflare challenges, complete bodies (never 206) and the record', () => {
+  for (const t of ['exactly HTTP 200', 'Never 206', 'Complete HTML', 'ends with `</html>`', 'exactly HTTP 404', 'UNVERIFIABLE', 'never PASS and never FAIL', 'do not work around the challenge', 'RECORD block',
+    'operator, UTC date, site, expected commit, result, outstanding failures', 'A record without an operator is invalid', 'never reworded as a pass']) assert.ok(DOC.includes(t), t);
+});
+test('docs: the verification record is empty and says no live verification has been performed', () => {
+  assert.match(RECORD, /NO live verification has been performed or recorded/);
+  assert.match(RECORD, /\| _none_ \|/);
+  assert.doesNotMatch(RECORD.replace(/^## Template[\s\S]*$/m, ''), /\|\s*PASSED\s*\|/);
+});
+test('docs: the administrator-email section records the exposure and leaves the decision pending (nothing is presented as accepted)', () => {
+  assert.match(DOC, /## Administrator email address in published code/);
+  assert.match(DOC, /PENDING owner decision: accept, or request the server-side change/);
+  assert.match(DOC, /No acceptance is assumed or recorded/);
+  assert.doesNotMatch(DOC, /\| Residual exposure[^\n]*\| \*\*(ACCEPTED|Accepted)/);
+});
+test('docs: the related controls match the evidence record (#168): O3 partially skipped, O4 blocked, O7 unknown, PITR and storage restore outstanding; none is called passed', () => {
+  const t = DOC.slice(DOC.indexOf('## Related security controls'));
+  for (const [label, re] of [['O3', /O3 admin lockdown matrix \| \*\*Partially skipped: NOT verified\*\*/], ['O4', /O4 live security headers and XSS proof \| \*\*Unknown \/ blocked\*\*/], ['O7', /O7 alert delivery \| \*\*Unknown\*\*/],
+    ['PITR', /PITR \| \*\*Outstanding \/ unknown\*\*/], ['storage', /Storage-object restore \| \*\*Outstanding \(skipped\)\*\*/]]) assert.match(t, re, label);
+  assert.match(t, /proves none of them/); assert.match(t, /1 passed, 0 failed, 3 skipped/);
+  for (const row of t.split('\n').filter((l) => /^\| (O3|O4|O7|PITR|Storage)/.test(l))) assert.doesNotMatch(row, /\*\*(Verified|Passed|PASS)/i, row);
+});
+
+// ── the administrator address ──
+test('administrator address: the published site serves it exactly once (the constant in admin-auth.js); comments and the dead duplicate are gone; the sign-in code still uses the constant', () => {
+  const needle = ['cyrora', 'trading@gmail.com'].join('.');
+  const hits = [];
+  for (const f of listFiles(built.out)) { if (!/\.(html|js|css|json|txt)$/.test(f)) continue; fs.readFileSync(path.join(built.out, f), 'utf8').split('\n').forEach((l, i) => { if (l.includes(needle)) hits.push(`${f}:${i + 1}`); }); }
+  assert.equal(hits.length, 1, hits.join(', '));
+  assert.match(hits[0], /^admin-auth\.js:\d+$/);
+  const auth = fs.readFileSync(path.join(built.out, 'admin-auth.js'), 'utf8');
+  assert.match(auth, new RegExp(`var ADMIN_EMAIL = '${needle.replace(/[.]/g, '\\.')}';`));
+  assert.equal((auth.match(/ADMIN_EMAIL\.toLowerCase\(\)/g) || []).length, 3, 'the three client-side checks are unchanged');
+  assert.match(auth, /ADMIN_EMAIL: ADMIN_EMAIL/);                                                    // still exported for the provenance actor label
+  const adminHtml = fs.readFileSync(path.join(built.out, 'admin.html'), 'utf8');
+  assert.doesNotMatch(adminHtml, /const ADMIN_EMAIL\s*=/);                                         // the dead duplicate is gone
+  assert.equal((adminHtml.match(/PintagAdminAuth\.ADMIN_EMAIL/g) || []).length, 2, 'the provenance actor still comes from the shared module');
+  assert.doesNotMatch(adminHtml.replace(/PintagAdminAuth\.ADMIN_EMAIL/g, ''), /\bADMIN_EMAIL\b/);   // nothing else in admin.html reads a local ADMIN_EMAIL
 });

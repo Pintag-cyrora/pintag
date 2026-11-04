@@ -13,7 +13,7 @@ const SUPABASE_ANON = window.PINTAG.anonKey;
 const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // Unified administrator authentication — the SAME shared module every
-// privileged Pintag page uses (admin-auth.js): only cyrora.trading@gmail.com,
+// privileged Pintag page uses (admin-auth.js): only the sole administrator account,
 // email + password + TOTP two-factor (AAL2), the session validated SERVER-SIDE
 // on every page load. This replaces the old password-only legacy-admin-email
 // login and the getSession() auto-login from a persisted localStorage session.

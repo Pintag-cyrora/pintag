@@ -71,12 +71,67 @@ recorded as `-` lines with reasons; restoring one is a one-line change. Nothing 
   records it (`~`) so the build tolerates it; it is not fixed here.
 * **Dev deployment** (`deploy-dev.yml`) still uploads the repository root; it is unchanged by this change.
 
-## Verifying a deployment (read-only; needs a network allowed to reach the site)
-`SITE_URL=https://pintag.io bash scripts/verify-site-exclusions.sh` sends GET requests only and checks that every reviewed exclusion and a fixed list of sensitive paths return **404**
-and every published page and `config.js` return **200**. A Cloudflare challenge (HTTP 403 with `cf-mitigated`) is reported as UNVERIFIABLE, never as a pass.
-Manual spot checks (expect 404): `/SECURITY.md`, `/docs/DOCUMENTATION_MAP.md`, `/supabase/migrations/20260817000000_security_audit_hardening.sql`, `/scripts/restore-production.sh`,
-`/tests/security/README.md`, `/RECOVERY_RUNBOOK.md`, `/database-migration.sql`, `/watermark-migrate.html`. Expect 200: `/`, `/listings.html`, `/listing.html`, `/admin.html`, `/config.js`.
-Also check in a browser: the home page, a listing page in Lao/English/Chinese, the map view, the administrator console sign-in, and a link preview of a listing.
+## Post-deployment verification (an operator task; read-only; never bypasses a challenge)
+Nothing in this change has been verified against the live site: the authoring environment cannot reach it, and this procedure is **not** run by CI. It must be performed by an authorized
+operator, from a network and identity that the site (and Cloudflare) allow, after the deployment of the allowlist has finished. Do not use a proxy, a mirror or a header trick to get past a
+challenge: a challenged request proves nothing and is recorded as UNVERIFIABLE.
+
+**Run:** `OPERATOR="Full Name" SITE_URL=https://pintag.io EXPECTED_SHA=<deployed commit> bash scripts/verify-site-exclusions.sh` (GET requests only; no body, cookies, credentials or Range header).
+
+| Expectation | How it is decided |
+|---|---|
+| **200** for every published page in the manifest and for `/config.js` | exactly HTTP 200. **Never 206**: a 206 (partial content) or a `Content-Range` header on a 200 is a FAIL. |
+| **Complete HTML**, not a truncated or partial body | the body is non-empty, its size equals `Content-Length` when the server sends one, and an HTML page ends with `</html>`. |
+| **404** for every reviewed exclusion (`-` line in the manifest) and for a fixed list of sensitive paths (documents, runbooks, audit reports, SQL migrations, scripts, tests, workflows, worker source, config templates, the manifest) | exactly HTTP 404. A 200, 403 or 301 on such a path is a FAIL. |
+| **Cloudflare challenge** | a response with `cf-mitigated: challenge`, or a 403/503 whose body is a challenge page, is **UNVERIFIABLE**, never PASS and never FAIL. The run exits 2 and the record says INCOMPLETE. Re-run from an allowed network; do not work around the challenge. |
+
+Exit status: 0 only if every check passed and an operator was named; 1 if anything failed; 2 if nothing failed but something was unverifiable or no operator was given.
+
+**Manual spot checks** (in a browser, as a person): `/SECURITY.md`, `/docs/DOCUMENTATION_MAP.md`, `/supabase/migrations/20260817000000_security_audit_hardening.sql`, `/scripts/restore-production.sh`,
+`/tests/security/README.md`, `/RECOVERY_RUNBOOK.md`, `/database-migration.sql`, `/watermark-migrate.html` (all 404); `/`, `/listings.html`, `/listing.html`, `/admin.html`, `/config.js` (200); then the home page,
+a listing page in Lao, English and Chinese, the map view, the administrator console sign-in, and a link preview of a listing.
+
+**Record:** the script ends with a RECORD block (operator, UTC date, site, expected commit, result, outstanding failures). Paste it into
+`docs/DEPLOYMENT_VERIFICATION_RECORD.md` in a pull request. A record without an operator is invalid. The allowlist deployment is not considered verified until a PASSED record exists; an
+INCOMPLETE or FAILED record stays open with its outstanding items listed, and is never reworded as a pass.
+
+## Administrator email address in published code
+**Finding.** Before this change the administrator's sign-in address appeared 10 times in code served on the production domain: once as the constant `ADMIN_EMAIL` in `admin-auth.js`, once as a dead
+duplicate constant in `admin.html` (nothing read it), and eight times in comments of the administrator pages.
+
+**Why it is there.** `admin-auth.js` compares the signed-in user's address with the constant (three client-side checks) for an early, friendly rejection of any other account, and exports it so
+that `admin.html` can label provenance events with the acting administrator. The *authorization* is not the constant: the server decides through `is_pintag_admin()` (allowlist plus an AAL2 session) in
+RLS, storage policies, the analytics functions and the administrator Edge Functions.
+
+**What this change does.** It removes the address from the eight comments and deletes the dead duplicate in `admin.html`, with no change in behaviour. One occurrence remains, in `admin-auth.js`
+(the constant and its explanatory comment, which does not repeat the address).
+
+**Why the last occurrence is not removed here.** Removing it would change the administrator sign-in flow, which cannot be exercised against the real authentication service from here; and the address
+is already public in the repository (about thirty-six tracked files: security documents, migrations, scripts and tests) and in its history, so removing it from the served code would reduce the exposure only
+on the production domain. A hashed comparison would keep the behaviour but is obfuscation, not secrecy (anyone who guesses the address can confirm it), and it would still need the sign-in flow retested.
+A real fix is server-side: a database function that answers "is this the administrator account" at the password stage, which would let the browser drop the constant entirely; that is database work and is
+not part of this change.
+
+**Exact residual exposure.** The administrator's address can be read by anyone who opens `admin-auth.js`, which is served by the production domain and is also in the public repository. It tells an attacker
+which account to target for password guessing or phishing. The controls that matter are unchanged: sign-in needs the password **and** a TOTP code, the database refuses any other account, and public
+sign-up was reported disabled by the weekly production probe (2026-11-02). **This is presented for explicit risk acceptance by the owner. No acceptance is assumed or recorded.**
+
+| Item | Decision |
+|---|---|
+| Residual exposure (one served occurrence plus the public repository) | **PENDING owner decision: accept, or request the server-side change.** Date / decided by: _not recorded_ |
+
+## Related security controls (reconciled with the evidence record in PR #168)
+This change does not verify, certify or improve any of the following, and a green CI run for this pull request proves none of them. The statuses below are the ones in
+`docs/SECURITY_BACKUP_EVIDENCE_2026-11-02.md` (pull request #168); if that record is updated, it is the source of truth.
+
+| Control | Status | What that means |
+|---|---|---|
+| O3 admin lockdown matrix | **Partially skipped: NOT verified** | The weekly matrix last reported 1 passed, 0 failed, 3 skipped (authenticated non-admin, admin AAL1, admin with MFA), because CI has no admin credentials. AAL1 refusal and MFA enforcement rest on migration code and a catalog check, not on a test that has run. |
+| O4 live security headers and XSS proof | **Unknown / blocked** | Cloudflare challenges the CI runner, so 5 HTTP checks and 2 XSS checks are unverifiable. Neither a pass nor a failure. |
+| O7 alert delivery | **Unknown** | The alert webhook is not configured in the monitoring job's log; delivery has not been demonstrated. |
+| PITR | **Outstanding / unknown** | A dashboard setting that no workflow can observe. |
+| Storage-object restore | **Outstanding (skipped)** | The 2026-10-02 restore drill restored the database but reported 0 storage objects and deferred storage to an operator step. |
+Also outstanding and unaffected by this change: the failing weekly image-integrity check, Cloudflare WAF/rate limiting (O9), backup decryption (O8), and L1 certification (still PENDING).
 
 ## What this does not fix
 * **The repository is public:** every file remains readable on GitHub, in forks and in caches, and workflow logs are public. This change stops the production domain from also
