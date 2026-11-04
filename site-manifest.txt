@@ -1,0 +1,109 @@
+# site-manifest.txt -- the ONLY files published to production (deny by default). Read by scripts/build-site.mjs, which copies exactly these into _site/.
+#
+#   + path               published, copied verbatim
+#   - path  # reason     reviewed and deliberately NOT published (the file stays in the repository)
+#   = out <- source      generated at build time (a copy of the named source)
+#
+# Adding a page, script, stylesheet or image: add a "+" line here in the same pull request, or the build and CI fail. Tests, scripts, SQL, migrations,
+# documentation, runbooks, audit reports, workers, the studio and anything starting with "." can never be listed (see NEVER_* in build-site.mjs).
+# Audit and reasoning: docs/DEPLOYMENT_ALLOWLIST.md.
+
+# ── Public site: pages ──
++ index.html
++ listings.html
++ listing.html
++ agents.html
++ agent.html
++ for-agents.html
++ viengkhone-phomthavong.html
+
+# ── Authentication return page (Supabase password-reset links land here) ──
++ reset-password.html
+
+# ── Administrator tools (login-gated by admin-auth.js: email + password + TOTP). Each is linked from admin.html or is the active recovery tool ──
++ admin.html
++ agent-setup.html
++ analytics.html
++ analytics-inspector.html
++ intelligence.html
++ gallery-recovery.html
+
+# ── First-party scripts and stylesheets (each loaded by at least one published page) ──
++ admin-auth.js
++ amenities.js
++ analytics-core.js
++ analytics-tracking.js
++ analytics.js
++ availability-issues.js
++ charts.js
++ components.js
++ contact-intent-funnel.js
++ contact-intent.js
++ contact-languages.js
++ currency.js
++ dev-banner.js
++ image-renditions.js
++ import-provenance.js
++ intelligence.js
++ lang.js
++ laos-date.js
++ lease-pricing.js
++ listing-provenance.js
++ listing-status.js
++ listing-title.js
++ map-location.js
++ property-availability.js
++ provinces.js
++ rental-terms.js
++ session.js
++ shared-components.css
++ terminology.js
++ tracking.js
++ unit-availability.js
+
+# ── Images (OG/social previews, hero/fallback images, agent photos, watermark) ──
++ agent-keomany-vatthanaphone.jpeg
++ agent-souksavanh.JPG
++ agent-suphaxay.JPG
++ agent-tik.jpg
++ agent-viengkhone-phomthavong.jpg
++ assets/pintag-watermark.png
++ og-preview-listings.jpg
++ og-preview.jpg
++ pintag-balcony.png
++ pintag-exterior.png
++ pintag-hero.png
++ pintag-interior.png
++ pintag-villa.png
+
+# ── Fonts (self-hosted Lao display font + its SIL OFL licence) ──
++ fonts/OFL.txt
++ fonts/phetsarath-bold.woff2
++ fonts/phetsarath-regular.woff2
+
+# ── Custom-domain file required by GitHub Pages ──
++ CNAME
+
+# ── Generated ──
+= config.js <- config.prod.js
+
+# ═══ Reviewed exclusions (kept in the repository, NOT published) ═══
+# Legacy agent/owner portal: retired model (docs/LEGACY_AGENT_PORTAL.md). Already removed from production by the old prune step; unchanged behaviour.
+- agent-login.html  # legacy agent portal login (password-only); pruned from production before this change
+- dashboard.html  # legacy agent dashboard; pruned from production before this change
+- edit-listing.html  # legacy owner listing editor; pruned from production before this change
+- add-property.html  # legacy owner listing form; pruned from production before this change
+- map-location-field.js  # loaded only by the two legacy owner forms above
+# Founder tool outside the single-administrator auth model (separate Supabase project).
+- marketing-os.html  # founder marketing tool, password-only login outside admin-auth.js; pruned from production before this change
+# Internal tools no production flow needs. Newly removed from the artifact: see docs/DEPLOYMENT_ALLOWLIST.md for the audit and how to restore.
+- watermark-migrate.html  # one-off watermark migration tool; the migration is done (docs/OVER_ENGINEERING_REGISTER.md: delete later). NEW exclusion
+- og-preview-gen.html  # internal generator for og-preview.jpg (the JPG is committed and published); not linked from any page (register: archive). NEW exclusion
+- og-preview-listings-gen.html  # internal generator for og-preview-listings.jpg; not linked from any page (register: archive). NEW exclusion
+# Libraries and configuration that no published page loads.
+- budget-bands.js  # not loaded by any page (referenced by tests and comments only)
+- config.dev.js  # development environment configuration; production gets config.js generated from config.prod.js
+- config.prod.js  # source of the generated config.js; not published under its own name
+
+# ═══ Known dangling references (pre-existing; tolerated by the build, NOT fixed in this change) ═══
+~ favicon.png  # listing.html declares <link rel="icon" href="favicon.png">, but no such file exists in the repository, so it already returns 404 in production

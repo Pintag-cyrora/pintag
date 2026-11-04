@@ -6,7 +6,7 @@
 // — this replaces every legacy password-only login and hardcoded-admin-email check.
 //
 // Guarantees:
-//   * Only cyrora.trading@gmail.com may enter (any other account is rejected).
+//   * Only the sole administrator account may enter (any other account is rejected).
 //   * email + password + TOTP two-factor (Authenticator Assurance Level 2).
 //   * The session is validated SERVER-SIDE (auth.getUser) on every page load —
 //     no auto-login from a persisted localStorage session.
@@ -31,6 +31,9 @@
 // ============================================================================
 (function () {
   'use strict';
+  // The ONE place the administrator's address is served to browsers. It is used for exactly two things: an early client-side rejection of any other account
+  // (a convenience; the server decides, via is_pintag_admin() / RLS / the edge functions), and the `actor` label recorded on provenance events. See
+  // docs/DEPLOYMENT_ALLOWLIST.md ("Administrator email address") for the exposure and the decision record.
   var ADMIN_EMAIL = 'cyrora.trading@gmail.com';
   var _client = null;
   var _onReady = null;

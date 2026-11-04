@@ -24,6 +24,7 @@ gets a banner, not a rewrite.*
 | OG/share metadata pipeline | `docs/OG_METADATA_ARCHITECTURE.md` |
 | Dev/prod environments & branch preview | `PREVIEW.md` |
 | System-level keep/merge/archive decisions | `docs/OVER_ENGINEERING_REGISTER.md` |
+| What is published to the production domain (allowlist, page audit, post-deploy verification procedure) | `docs/DEPLOYMENT_ALLOWLIST.md` (the list itself: `site-manifest.txt`); live results: `docs/DEPLOYMENT_VERIFICATION_RECORD.md` |
 
 ## Historical (point-in-time; banner applied; never updated)
 

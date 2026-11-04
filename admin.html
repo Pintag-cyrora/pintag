@@ -1191,7 +1191,6 @@ function escJs(s) {
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-const ADMIN_EMAIL   = 'cyrora.trading@gmail.com';  // the ONLY account authorized for admin access
 const sbClient      = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ══════════════════════════════════════════════════════════════════
@@ -3140,7 +3139,7 @@ const WM = {
 
 // ── AUTH — unified administrator authentication (admin-auth.js) ────────────
 // This panel gates on the SAME shared module every privileged Pintag page uses
-// (admin-auth.js): only cyrora.trading@gmail.com, email + password + TOTP
+// (admin-auth.js): only the sole administrator account, email + password + TOTP
 // two-factor (AAL2), the session validated SERVER-SIDE on every page load, and
 // re-validated before every privileged action via requireAdminSession(). There
 // is deliberately no second in-page copy of this logic to drift out of sync —
