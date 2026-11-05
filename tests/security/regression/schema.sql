@@ -290,3 +290,53 @@ INSERT INTO lead_events (listing_id, event_type, session_id) VALUES
 INSERT INTO property_images (property_id, storage_bucket, storage_path, storage_url, display_order, is_cover, status) VALUES
   ('22222222-0000-0000-0000-000000000002', 'property-images', 'draft-secret-photo.jpg',
    'https://example.supabase.co/storage/v1/object/public/property-images/draft-secret-photo.jpg', 0, true, 'active');
+
+
+-- ============================================================================
+-- Tables and policies for the WRITE-DENIAL assertions (rls_regression.sql sections M and N).
+-- These are the paths the live suite no longer probes on production: it sends only GET there, so the write policies are asserted here, on a throwaway
+-- database, with the REAL predicates copied verbatim from the migrations named in each block.
+-- ============================================================================
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS contact_id uuid;
+
+CREATE TABLE parties  (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name_en text, type text);
+CREATE TABLE contacts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), role text, phone text);
+CREATE TABLE intelligence_reports  (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), report_type text, period_start date, period_end date, title text);
+CREATE TABLE intelligence_insights (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), type text, metric_key text, title text);
+CREATE TABLE report_insights       (report_id uuid, insight_id uuid, role text);
+
+-- VERBATIM from 20260804130000_single_admin_cyrora_lockdown.sql sections 3 and 5 (the policies in force after the lockdown).
+ALTER TABLE parties ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public read parties" ON parties FOR SELECT TO public USING (true);
+CREATE POLICY "admin write parties" ON parties FOR ALL TO authenticated
+  USING (is_pintag_admin(auth.uid())) WITH CHECK (is_pintag_admin(auth.uid()));
+ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public read contacts of active properties" ON contacts
+  FOR SELECT TO public USING (id IN (
+    SELECT contact_id FROM properties
+    WHERE contact_id IS NOT NULL AND status IN ('active','available')));
+CREATE POLICY "admin write contacts" ON contacts FOR ALL TO authenticated
+  USING (is_pintag_admin(auth.uid())) WITH CHECK (is_pintag_admin(auth.uid()));
+ALTER TABLE intelligence_reports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "admin read intelligence_reports" ON intelligence_reports FOR SELECT TO authenticated USING (is_pintag_admin(auth.uid()));
+CREATE POLICY "admin delete intelligence_reports" ON intelligence_reports FOR DELETE TO authenticated USING (is_pintag_admin(auth.uid()));
+ALTER TABLE intelligence_insights ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "admin read intelligence_insights" ON intelligence_insights FOR SELECT TO authenticated USING (is_pintag_admin(auth.uid()));
+ALTER TABLE report_insights ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "admin read report_insights" ON report_insights FOR SELECT TO authenticated USING (is_pintag_admin(auth.uid()));
+-- the privilege-layer floor (section 6 of the same migration) for the tables in this block
+REVOKE INSERT, UPDATE, DELETE ON parties, contacts FROM anon;
+
+-- Supabase's storage schema, reduced to what the storage policies need. storage.extension() is Supabase's own definition.
+CREATE SCHEMA IF NOT EXISTS storage;
+CREATE TABLE storage.objects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), bucket_id text, name text, owner uuid);
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+CREATE OR REPLACE FUNCTION storage.extension(name text) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE _parts text[]; _filename text;
+BEGIN
+  SELECT string_to_array(name, '/') INTO _parts;
+  SELECT _parts[array_length(_parts, 1)] INTO _filename;
+  RETURN reverse(split_part(reverse(_filename), '.', 1));
+END $$;
+GRANT USAGE ON SCHEMA storage TO anon, authenticated;
+GRANT ALL ON storage.objects TO anon, authenticated;   -- as Supabase grants; the policies (applied from the real migration) are the control

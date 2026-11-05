@@ -54,7 +54,10 @@ require_env SUPABASE_URL SUPABASE_ANON_KEY
 ALL_SUITES=()
 declare -A SUITE_FUNC
 
-for f in tests/security/suites/*.sh; do
+# Production-safe suites (plain GET / local only) always load. The credentialed and mutating suites load ONLY for a listed, confirmed staging project.
+SUITE_FILES=(tests/security/suites/*.sh)
+if [[ "$PT_MODE" == "staging-full" ]]; then SUITE_FILES+=(tests/security/staging-suites/*.sh); fi
+for f in "${SUITE_FILES[@]}"; do
   [[ -f "$f" ]] || continue
   # shellcheck source=/dev/null
   source "$f"

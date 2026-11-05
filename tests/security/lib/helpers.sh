@@ -117,12 +117,8 @@ http_request() {
   local attempt=0 max_retries=3
   local response status body start_ms end_ms duration_ms
   # Production-readonly guard: a refused request is a hard stop, never a skipped or "passing" check.
-  if ! pt_guard_request "$method" "$url" "$@"; then
-    echo "FATAL: the live suite attempted a request that production-readonly forbids." >&2
-    # http_request usually runs inside $(...); $$ is still the main shell, so this stops the whole run (exit 97 via the TERM trap in run.sh).
-    kill -TERM $$ 2>/dev/null
-    exit 97
-  fi
+  pt_guard_request "$method" "$url" "$@" || pt_abort_refused
+
 
   while true; do
     start_ms=$(now_ms)
@@ -152,6 +148,18 @@ http_request() {
   done
 
   printf '%s\n%s' "$body" "${status:-000}"
+}
+
+# ── Plain GET / HEAD of the public site (headers suite) ───────────────────────
+# The only way suites reach the site: through the same guard as every other request (no redirects are followed, so a redirect can never carry the
+# run to a third-party host; set SITE_URL to the final address).
+site_head() {
+  pt_guard_request HEAD "$1" || pt_abort_refused
+  curl -sI --max-time 10 "$1" 2>/dev/null
+}
+site_get() {
+  pt_guard_request GET "$1" || pt_abort_refused
+  curl -s --max-time 10 "$1" 2>/dev/null
 }
 
 # ── Global counters ───────────────────────────────────────────────────────────
@@ -502,7 +510,8 @@ generate_reports() {
     printf '{\n'
     printf '  "framework_version": "%s",\n' "$FRAMEWORK_VERSION"
     printf '  "run_id": "%s",\n'          "$RUN_ID"
-    printf '  "environment": "%s",\n'     "$(json_escape "${APP_ENV:-unknown}")"
+    printf '  "target_mode": "%s",\n'     "$(json_escape "${PT_MODE:-unclassified}")"
+    printf '  "project_ref": "%s",\n'     "$(json_escape "$(pt_target_ref)")"
     printf '  "supabase_url": "%s",\n'    "$(json_escape "${SUPABASE_URL:-}")"
     printf '  "started_at": "%s",\n'      "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     printf '  "duration_sec": %s,\n'      "$total_sec"
@@ -554,7 +563,7 @@ generate_coverage_report() {
     if echo "$tested_fns" | grep -q "^${fn}$"; then
       printf "    ${GREEN}✓${RESET}  %s\n" "$fn"
     else
-      printf "    ${RED}✗${RESET}  %s ${DIM}(not tested)${RESET}\n" "$fn"
+      printf "    ${RED}✗${RESET}  %s ${DIM}(not probed on production by design: see README)${RESET}\n" "$fn"
     fi
   done
 
@@ -563,7 +572,7 @@ generate_coverage_report() {
     if echo "$tested_tables" | grep -q "^${tbl}$"; then
       printf "    ${GREEN}✓${RESET}  %s\n" "$tbl"
     else
-      printf "    ${RED}✗${RESET}  %s ${DIM}(not tested)${RESET}\n" "$tbl"
+      printf "    ${RED}✗${RESET}  %s ${DIM}(not probed on production by design: see README)${RESET}\n" "$tbl"
     fi
   done
 
@@ -572,7 +581,7 @@ generate_coverage_report() {
     if echo "$tested_buckets" | grep -q "^${bucket}$"; then
       printf "    ${GREEN}✓${RESET}  %s\n" "$bucket"
     else
-      printf "    ${RED}✗${RESET}  %s ${DIM}(not tested)${RESET}\n" "$bucket"
+      printf "    ${RED}✗${RESET}  %s ${DIM}(not probed on production by design: see README)${RESET}\n" "$bucket"
     fi
   done
 
@@ -691,7 +700,7 @@ print_run_banner() {
   printf  "  ${DIM}Commit:    %s  %s${RESET}\n" "$git_commit" "$git_subject"
   printf  "  ${DIM}Target:    %s${RESET}\n" "${SUPABASE_URL:-?}"
   [[ -n "${SITE_URL:-}" ]] && printf "  ${DIM}Site:      %s${RESET}\n" "${SITE_URL}"
-  printf  "  ${DIM}Env:       %s${RESET}\n" "${APP_ENV:-local}"
+  printf  "  ${DIM}Mode:      %s (project ref %s)${RESET}\n" "${PT_MODE:-unclassified}" "$(pt_target_ref)"
   echo ""
   echo -e "  ${BOLD}Credentials:${RESET}"
   if [[ -n "${ADMIN_JWT:-}" ]]; then
