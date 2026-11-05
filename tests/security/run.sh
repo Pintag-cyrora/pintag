@@ -18,8 +18,8 @@
 #   SUPABASE_ANON_KEY   eyJ...
 #
 # Optional (enables additional tests):
-#   APP_ENV             local|staging  (default: local; "production" is refused)
-#   ADMIN_EMAIL         admin@pintag.io
+#   APP_ENV             informational label only; the target (production / staging / refused) is derived from SUPABASE_URL (tests/security/lib/target-guard.sh)
+#   ADMIN_EMAIL         (credentialed tests are disabled: refused against production, and no isolated staging project is listed)
 #   ADMIN_PASSWORD      <admin password>
 #   TEST_USER_EMAIL     agent@example.com
 #   TEST_USER_PASSWORD  <test user password>
@@ -38,6 +38,12 @@ source tests/security/lib/helpers.sh
 
 # ── Environment safety ────────────────────────────────────────────────────────
 check_app_env
+PT_ROOT="$PWD"; export PT_ROOT
+trap 'echo "FATAL: run aborted by the production-readonly guard" >&2; exit 97' TERM
+pt_enforce_target   # derives production / staging from SUPABASE_URL vs config.prod.js; refuses credentials against production
+
+echo -e "${DIM}Target mode: ${PT_MODE} (project ref $(pt_target_ref))${RESET}"
+[[ "$PT_MODE" == "production-readonly" ]] && echo -e "${DIM}Production is probed anonymously and read-only: no login, no user token, no request that can create or change a real row.${RESET}"
 
 # ── Validate required env vars ────────────────────────────────────────────────
 require_env SUPABASE_URL SUPABASE_ANON_KEY

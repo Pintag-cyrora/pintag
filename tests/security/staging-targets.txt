@@ -1,0 +1,11 @@
+# Isolated STAGING Supabase projects that may run the credentialed security tests (one 20-character project reference per line).
+#
+# This file is intentionally EMPTY. No isolated staging project exists yet, so credentialed tests (admin, test-user, anything that writes)
+# are disabled everywhere. A project may be listed here only if ALL of the following hold, and the listing is reviewed in a pull request:
+#   * it is a dedicated project created for testing, never the production project and never a project whose data was ever copied from production;
+#   * it contains synthetic data only (no real names, phone numbers, addresses, coordinates or listing ids);
+#   * it has its own credentials, separate from production (admin, test user, anon key, service key);
+#   * it reproduces production authentication behaviour, including the TOTP / AAL2 requirement for the administrator;
+#   * its security migrations are applied in the same order as production.
+# Running against a listed project additionally requires SECURITY_TARGET_CONFIRM=<the same project reference>.
+# See docs/SECURITY_STAGING_ENVIRONMENT.md.

@@ -13,6 +13,8 @@ fi
 # shellcheck source=tests/security/resources.sh
 _SECURITY_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")"
 source "${_SECURITY_LIB_DIR}/../resources.sh"
+# shellcheck source=tests/security/lib/target-guard.sh
+source "${_SECURITY_LIB_DIR}/target-guard.sh"
 
 # ── Colour codes ──────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -24,15 +26,12 @@ fi
 
 # ── Environment safety check ──────────────────────────────────────────────────
 check_app_env() {
+  # APP_ENV is only a label the caller chooses, so it is NEVER used to decide whether credentialed or mutating tests may run.
+  # That decision comes from the project reference in SUPABASE_URL (target-guard.sh). The literal value "production" is still refused.
   local env="${APP_ENV:-}"
   if [[ "$env" == "production" ]]; then
     echo "SECURITY TESTS REFUSED ON PRODUCTION"
     exit 1
-  fi
-  if [[ -z "$env" ]]; then
-    echo -e "${YELLOW}WARNING: APP_ENV not set. Assuming local. Set APP_ENV=local or APP_ENV=staging.${RESET}"
-  elif [[ "$env" != "local" && "$env" != "staging" ]]; then
-    echo -e "${YELLOW}WARNING: APP_ENV='${env}' is not 'local' or 'staging'. Proceeding with caution.${RESET}"
   fi
 }
 
@@ -117,6 +116,13 @@ http_request() {
   shift 2
   local attempt=0 max_retries=3
   local response status body start_ms end_ms duration_ms
+  # Production-readonly guard: a refused request is a hard stop, never a skipped or "passing" check.
+  if ! pt_guard_request "$method" "$url" "$@"; then
+    echo "FATAL: the live suite attempted a request that production-readonly forbids." >&2
+    # http_request usually runs inside $(...); $$ is still the main shell, so this stops the whole run (exit 97 via the TERM trap in run.sh).
+    kill -TERM $$ 2>/dev/null
+    exit 97
+  fi
 
   while true; do
     start_ms=$(now_ms)

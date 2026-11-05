@@ -4,6 +4,13 @@
 
 Run before every production deployment, on every PR to `main`, and weekly on Mondays.
 
+> **Production safety (read first).** The live job targets the PRODUCTION Supabase project and is **anonymous and read-only**. The target is classified from the
+> project reference in `SUPABASE_URL` (compared with `config.prod.js`), never from `APP_ENV`; against production the suite sends no login, no user token and no request
+> that can create, change or delete a real row (a probe may only name the nil UUID `00000000-0000-0000-0000-000000000000`). Admin and test-user credentials are refused
+> against production and are **disabled everywhere** until an isolated staging project is listed in `staging-targets.txt` (design: `docs/SECURITY_STAGING_ENVIRONMENT.md`).
+> Behaviour that needs a *successful* insert (deduplication, rate limits, ceilings) is tested in `regression/rls_regression.sql` against a throwaway PostgreSQL database.
+> A nil-UUID probe proves only that an invalid reference is **rejected**; it does not prove that a legitimate insert succeeds or that deduplication works.
+
 ---
 
 ## Table of Contents
@@ -92,11 +99,12 @@ Reports are written to `tests/security/output/reports/` (gitignored):
 |---|---|---|
 | `SUPABASE_URL` | **Yes** | `https://<ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | **Yes** | Publishable anon key (safe to commit) |
-| `APP_ENV` | Recommended | `local` or `staging` — **production is refused**; defaults to `local` with a warning |
-| `ADMIN_EMAIL` | Recommended | Enables admin auth, storage, XSS, Smart Import, and admin RLS tests |
-| `ADMIN_PASSWORD` | Recommended | Password for `ADMIN_EMAIL` |
-| `TEST_USER_EMAIL` | Optional | A non-admin Supabase Auth user — enables cross-user access tests |
-| `TEST_USER_PASSWORD` | Optional | Password for `TEST_USER_EMAIL` |
+| `APP_ENV` | No | Informational label only. It never decides what may run; the literal value `production` is still refused |
+| `ADMIN_EMAIL` | **Disabled** | Credentialed tests only run against a listed isolated staging project (`staging-targets.txt`, currently empty). Against production the run is refused if this is set |
+| `ADMIN_PASSWORD` | **Disabled** | Same as `ADMIN_EMAIL` |
+| `TEST_USER_EMAIL` | **Disabled** | Same as `ADMIN_EMAIL` |
+| `TEST_USER_PASSWORD` | **Disabled** | Same as `ADMIN_EMAIL` |
+| `SECURITY_TARGET_CONFIRM` | Staging only | Must equal the project reference of a listed staging project |
 | `SITE_URL` | Optional | Base URL of the deployed frontend — enables Suite 08 (security headers) |
 | `DEBUG` | Optional | Set to `1` to print every request URL, status, and timing to stderr |
 
@@ -176,7 +184,7 @@ tests/security/
 ### How a run works
 
 1. `run.sh` sources `helpers.sh`, which sources `resources.sh` and sets up global state
-2. `check_app_env()` refuses `APP_ENV=production`
+2. `check_app_env()` refuses the literal `APP_ENV=production`, then `pt_enforce_target` classifies the target from `SUPABASE_URL` (production-readonly / staging-full / refused) and refuses credentials against production; every request then passes `pt_guard_request`
 3. All suite files under `suites/` are sourced automatically — no manual registration required
 4. Admin and test-user JWTs are acquired (if credentials are set)
 5. A version banner is printed showing commit, environment, credentials, and feature flags
@@ -322,16 +330,11 @@ The workflow at `.github/workflows/security-regression.yml` runs automatically o
 
 | Secret | Value |
 |---|---|
-| `SUPABASE_URL` | `https://eoladhcljbpbhnrmmpev.supabase.co` |
+| `SUPABASE_URL` | `https://<20-character-ref>.supabase.co` (the standard form is required: a custom domain cannot be classified and is refused) |
 | `SUPABASE_ANON_KEY` | Anon key from Supabase Dashboard → Settings → API |
-| `ADMIN_EMAIL` | `admin@pintag.io` |
-| `ADMIN_PASSWORD` | Admin account password |
-| `TEST_USER_EMAIL` | Test agent email |
-| `TEST_USER_PASSWORD` | Test agent password |
-| `SITE_URL` | `https://pintag.io` (or staging URL) |
+| `SITE_URL` | `https://pintag.io` (optional; enables the header checks, read-only GET/HEAD) |
 
-`APP_ENV` is hardcoded to `staging` in the workflow — no secret needed.
-The suite refuses to run if `APP_ENV=production`.
+The live job is given **no** administrator or test-user secret and no `APP_ENV`. Do not add `ADMIN_*` or `TEST_USER_*` secrets to the production job: the run would be refused.
 
 ### Artifacts
 
@@ -471,7 +474,7 @@ Performance regressions are **warnings only** — they never fail CI. The baseli
 
 ### "SECURITY TESTS REFUSED ON PRODUCTION"
 
-The suite refuses to run against `APP_ENV=production`. Set `APP_ENV=staging` or `APP_ENV=local`.
+Either `APP_ENV=production` was set, or the target could not be classified, or admin / test-user credentials are set while `SUPABASE_URL` is the production project. Credentialed tests are disabled until an isolated staging project is listed in `tests/security/staging-targets.txt`. Unset the credentials, or point `SUPABASE_URL` at a listed staging project and set `SECURITY_TARGET_CONFIRM`.
 
 ### "Required environment variables not set: SUPABASE_URL"
 
