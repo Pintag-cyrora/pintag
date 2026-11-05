@@ -4,12 +4,22 @@
 
 Run before every production deployment, on every PR to `main`, and weekly on Mondays.
 
-> **Production safety (read first).** The live job targets the PRODUCTION Supabase project and is **anonymous and read-only**. The target is classified from the
-> project reference in `SUPABASE_URL` (compared with `config.prod.js`), never from `APP_ENV`; against production the suite sends no login, no user token and no request
-> that can create, change or delete a real row (a probe may only name the nil UUID `00000000-0000-0000-0000-000000000000`). Admin and test-user credentials are refused
-> against production and are **disabled everywhere** until an isolated staging project is listed in `staging-targets.txt` (design: `docs/SECURITY_STAGING_ENVIRONMENT.md`).
-> Behaviour that needs a *successful* insert (deduplication, rate limits, ceilings) is tested in `regression/rls_regression.sql` against a throwaway PostgreSQL database.
-> A nil-UUID probe proves only that an invalid reference is **rejected**; it does not prove that a legitimate insert succeeds or that deduplication works.
+> **Production safety (read first).** The live job in `security-regression.yml` targets the PRODUCTION Supabase project and sends **only plain GET (and HEAD) requests**,
+> to the project's `/rest/v1/` and to the site. The target is classified from the project reference in `SUPABASE_URL` (compared with `config.prod.js`), never from
+> `APP_ENV`. Against production the suite sends no request body, no login, no user token, no RPC, no Edge Function call, no Storage call and no request to any other host; it
+> does **not** rely on a production policy or authentication gate to reject a dangerous request, because such a request is never sent. Admin and test-user credentials are refused
+> against production by this suite, and the credentialed / mutating suites in `staging-suites/` load only for a project listed in `staging-targets.txt` (currently empty; design in
+> `docs/SECURITY_STAGING_ENVIRONMENT.md`). Everything that needs a write, an upload, an Edge Function or a successful RPC is tested **locally**: `regression/rls_regression.sql`
+> (sections H, I, K, L, M, N, O: insert, update, delete, upload, deduplication, ceilings and the `increment_listing_view` input check, on a throwaway PostgreSQL database),
+> `edge-function-auth-gates.test.js` and `resolve-map-url-validation.test.js` (the real function code with a mocked network).
+>
+> **What this means for coverage on production (stated, not hidden):**
+> * *Write-path policy drift* (a regression that would let an anonymous caller write to `properties`, `parties`, `contacts`, `intelligence_*`, `lead_events` or `listing_events`) is **not detected by the live suite**; it is detected in the repository (local assertions) and by the catalog check in `verify-production-security.yml` when its read-only database secret is configured.
+> * *Storage* upload policy drift is not probed on production (local assertions apply the real migration to a stub); no object is ever created there by this suite.
+> * *Edge Function* authentication gates and `resolve-map-url` validation are not probed on production (any call can run code, call an AI provider or fetch a third-party URL); they are tested locally with a mocked network. A gateway or deployment misconfiguration of a deployed function would not be seen by this suite.
+> * *`increment_listing_view`* is **not tested on production at all**. The previous probe sent `{"property_id": ...}` to a function whose parameter is `p_listing_id`, so it never reached the function. A correct call would reach the function body, and even a nil UUID writes a row to `listing_view_throttle`, so no value is ever sent there. Local section O asserts that invalid input is rejected at the cast (22P02) with nothing written, and that a nil UUID is not inert.
+>
+> **Separate workflow, not covered by this guard:** `verify-production-security.yml` (weekly and on demand) runs `scripts/verify-admin-lockdown.sh`, which **signs in** as the administrator and a test user against production when the `ADMIN_*` / `TEST_USER_*` secrets exist, then sends a handful of probes aimed at a listing that cannot exist (a PATCH, an RPC call, a call to the `generate-listing-content` Edge Function, and a storage upload) to check the AAL2 gate. It is optional (it skips when the secrets are absent), it is outside `tests/security/run.sh`, and it is **not** made read-only by this change. Its status is recorded in the security evidence record (O3).
 
 ---
 
@@ -100,10 +110,10 @@ Reports are written to `tests/security/output/reports/` (gitignored):
 | `SUPABASE_URL` | **Yes** | `https://<ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | **Yes** | Publishable anon key (safe to commit) |
 | `APP_ENV` | No | Informational label only. It never decides what may run; the literal value `production` is still refused |
-| `ADMIN_EMAIL` | **Disabled** | Credentialed tests only run against a listed isolated staging project (`staging-targets.txt`, currently empty). Against production the run is refused if this is set |
-| `ADMIN_PASSWORD` | **Disabled** | Same as `ADMIN_EMAIL` |
-| `TEST_USER_EMAIL` | **Disabled** | Same as `ADMIN_EMAIL` |
-| `TEST_USER_PASSWORD` | **Disabled** | Same as `ADMIN_EMAIL` |
+| `ADMIN_EMAIL` | Staging only | Credentialed suites (`staging-suites/`) run only against a listed, confirmed staging project (`staging-targets.txt`, currently empty). Against production `run.sh` refuses to start if this is set |
+| `ADMIN_PASSWORD` | Staging only | Same as `ADMIN_EMAIL` |
+| `TEST_USER_EMAIL` | Staging only | Same as `ADMIN_EMAIL` |
+| `TEST_USER_PASSWORD` | Staging only | Same as `ADMIN_EMAIL` |
 | `SECURITY_TARGET_CONFIRM` | Staging only | Must equal the project reference of a listed staging project |
 | `SITE_URL` | Optional | Base URL of the deployed frontend — enables Suite 08 (security headers) |
 | `DEBUG` | Optional | Set to `1` to print every request URL, status, and timing to stderr |
@@ -185,7 +195,7 @@ tests/security/
 
 1. `run.sh` sources `helpers.sh`, which sources `resources.sh` and sets up global state
 2. `check_app_env()` refuses the literal `APP_ENV=production`, then `pt_enforce_target` classifies the target from `SUPABASE_URL` (production-readonly / staging-full / refused) and refuses credentials against production; every request then passes `pt_guard_request`
-3. All suite files under `suites/` are sourced automatically — no manual registration required
+3. All suite files under `suites/` (the production-safe, GET-only suites) are sourced automatically; `staging-suites/` is sourced only when the target is a listed, confirmed staging project
 4. Admin and test-user JWTs are acquired (if credentials are set)
 5. A version banner is printed showing commit, environment, credentials, and feature flags
 6. Each requested suite's `run_<name>_tests()` function is called in order

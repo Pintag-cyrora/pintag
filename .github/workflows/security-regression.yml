@@ -46,8 +46,8 @@ jobs:
         run: node --test xss-inline-handlers.test.js
 
       # The production guard of the live suite: target classification, credential refusal, and a dry run of the whole suite against a recording curl.
-      - name: Live-suite production safety (target guard, dry run)
-        run: node --test security-target-guard.test.js
+      - name: Live-suite production safety (target guard, GET-only dry run) and the local replacements for the removed production probes
+        run: node --test security-target-guard.test.js edge-function-auth-gates.test.js resolve-map-url-validation.test.js
 
       - name: Request-wide deadline (smart-listing-importer)
         run: node --test tests/smart-import-vision/request-deadline.test.mjs
@@ -80,8 +80,8 @@ jobs:
   # It runs on every push to `main` and weekly. It deliberately receives ONLY the project URL, the public anon key and the site URL:
   # no administrator or test-user credential is placed in this job's environment, so a credentialed (and potentially mutating) test cannot run
   # against production even by mistake. tests/security/lib/target-guard.sh enforces the same rule a second time inside the suite: it classifies
-  # the target from the project reference in SUPABASE_URL (not from a label), refuses credentials if the target is production, and refuses any
-  # request that could create, change or delete a real row (the nil UUID is the only record a probe may name).
+  # the target from the project reference in SUPABASE_URL (not from a label), refuses credentials if the target is production, and allows ONLY plain
+  # GET/HEAD requests to the project's /rest/v1/ and the site (no body, no RPC, no Edge Function, no Storage, no auth endpoint, no other host).
   # Behaviour that needs a SUCCESSFUL insert (deduplication, rate limits, ceilings) is tested against a throwaway PostgreSQL database in the
   # `local` job above, never here. Credentialed tests stay disabled until an isolated staging project exists (docs/SECURITY_STAGING_ENVIRONMENT.md).
   #

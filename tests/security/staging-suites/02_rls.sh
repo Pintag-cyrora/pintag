@@ -49,13 +49,10 @@ run_rls_tests() {
   # nuance already documented for the intelligence tables in suite 13.
   check "anon INSERT properties → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
-  # Production is probed anonymously with a filter that can match NO real row (the nil UUID), so a regression in the policies could never
-  # rewrite or delete a real listing. The assertion is on the refusal itself (401/403): with no UPDATE/DELETE privilege for anon the request is
-  # refused before any row is considered; if privilege were granted and only row filtering remained, the answer would be 204 and this check fails.
-  r=$(api_patch "properties?id=eq.00000000-0000-0000-0000-000000000000" '{"title_en":"HACKED"}')
+  r=$(api_patch "properties?status=eq.active" '{"title_en":"HACKED"}')
   check "anon UPDATE properties → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
-  r=$(api_delete "properties?id=eq.00000000-0000-0000-0000-000000000000")
+  r=$(api_delete "properties?status=eq.active")
   check "anon DELETE properties → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   # Authenticated non-admin
@@ -264,9 +261,33 @@ run_rls_tests() {
   # ════════════════════════════════
   info "--- lead_events ---"
 
-  # Anonymous callers cannot READ leads back (no SELECT policy). This is a read, so it creates nothing.
-  r=$(api_get "lead_events?limit=5")
-  check_empty "anon SELECT lead_events → empty (no SELECT policy)" "$(resp_body "$r")"
+  if [[ -n "$active_id" ]]; then
+    local lead_session="pentest-lead-$(date +%s)"
+
+    # TODO(staging): once CI targets a staging project (not production), revert
+    # this to the real success path — api_post_minimal (return=minimal) asserting
+    # 201 — so it exercises the actual app insert shape. See ENVIRONMENT-DRIFT.md.
+    #
+    # lead_events has NO anon SELECT policy (admin-read only). A
+    # return=representation POST appends RETURNING *, whose read-back the SELECT
+    # policy filters out — so even though the INSERT WITH CHECK passes, anon gets
+    # an RLS denial. That inability to read a lead back is the property asserted
+    # here. This does NOT mean anon can't record leads: the live app inserts with
+    # Prefer: return=minimal (listing.html postEvent), which needs no read-back
+    # and succeeds. Exercising that success path here would fire the
+    # create_lead_from_event trigger and persist test leads to the production
+    # leads CRM (this suite targets production), which we deliberately avoid.
+    r=$(api_post "lead_events" \
+      "{\"listing_id\":\"${active_id}\",\"event_type\":\"whatsapp_click\",\"session_id\":\"${lead_session}\"}")
+    check "anon INSERT lead_events (active listing, return=representation) → denied read-back (401/403)" '^(401|403)$' "$(resp_status "$r")"
+
+    # Anon cannot SELECT lead_events
+    r=$(api_get "lead_events?limit=5")
+    check_empty "anon SELECT lead_events → empty (no SELECT policy)" "$(resp_body "$r")"
+  else
+    skip "lead_events INSERT test" "no active listing available"
+    skip "lead_events SELECT test" "no active listing available"
+  fi
 
   # Anon cannot INSERT lead_events for a non-existent listing
   r=$(api_post "lead_events" \
@@ -274,26 +295,34 @@ run_rls_tests() {
   # Valid event_type (passes the column CHECK) so the RLS active-listing check is
   # what rejects it: the WITH CHECK's `listing_id IN (active properties)` half is
   # false, so the row never inserts. PostgREST surfaces the RLS denial as 401/403.
-  # This proves only that a reference to a listing that does not exist is REJECTED. It does not prove that a legitimate insert succeeds or that
-  # per-session deduplication works: those need a successful insert and run against the throwaway PostgreSQL database (rls_regression.sql, sections H and L).
-  check "anon INSERT lead_events (nil-UUID listing reference) → rejected (401/403)" '^(401|403)$' "$(resp_status "$r")"
+  check "anon INSERT lead_events (non-existent listing) → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
 
   # ════════════════════════════════
   # TABLE: listing_events
   # ════════════════════════════════
   info "--- listing_events ---"
 
-  # Rejection of an invalid property reference. A successful insert (and the 30-minute deduplication and the per-listing ceiling) are NOT exercised
-  # here: they would write rows into the production analytics table, so they live in rls_regression.sql section L against a throwaway database.
-  r=$(api_post "listing_events" \
-    '{"property_id":"00000000-0000-0000-0000-000000000000","event_type":"view","session_id":"pentest-nil-reference"}')
-  check "anon INSERT listing_events (nil-UUID property reference) → rejected (401/403)" '^(401|403)$' "$(resp_status "$r")"
+  if [[ -n "$active_id" ]]; then
+    local ev_session="pentest-ev-$(date +%s)"
 
-  # Anon CAN read listing_events by design: prod policy "anon dedup read
-  # listing_events" (single-admin lockdown) is FOR SELECT TO anon USING (true),
-  # letting the client dedup impressions/clicks. A non-empty array is expected.
-  r=$(api_get "listing_events?limit=5")
-  check "anon SELECT listing_events → readable (intentional anon dedup-read policy)" '^\[' "$(resp_body "$r")"
+    r=$(api_post "listing_events" \
+      "{\"property_id\":\"${active_id}\",\"event_type\":\"view\",\"session_id\":\"${ev_session}\"}")
+    check_status "anon INSERT listing_events (active listing) → 201" 201 "$(resp_status "$r")"
+
+    # Second identical event within 30 min should be blocked by dedup policy.
+    # Denial surfaces as 401 or 403 on this project (see Group A convention).
+    r=$(api_post "listing_events" \
+      "{\"property_id\":\"${active_id}\",\"event_type\":\"view\",\"session_id\":\"${ev_session}\"}")
+    check "anon INSERT listing_events (duplicate within window) → denied (401/403)" '^(401|403)$' "$(resp_status "$r")"
+
+    # Anon CAN read listing_events by design: prod policy "anon dedup read
+    # listing_events" (single-admin lockdown) is FOR SELECT TO anon USING (true),
+    # letting the client dedup impressions/clicks. A non-empty array is expected.
+    r=$(api_get "listing_events?limit=5")
+    check "anon SELECT listing_events → readable (intentional anon dedup-read policy)" '^\[' "$(resp_body "$r")"
+  else
+    skip "listing_events tests" "no active listing available"
+  fi
 
   suite_end
 }

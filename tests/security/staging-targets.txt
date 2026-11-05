@@ -1,7 +1,10 @@
 # Isolated STAGING Supabase projects that may run the credentialed security tests (one 20-character project reference per line).
 #
-# This file is intentionally EMPTY. No isolated staging project exists yet, so credentialed tests (admin, test-user, anything that writes)
-# are disabled everywhere. A project may be listed here only if ALL of the following hold, and the listing is reviewed in a pull request:
+# This file is intentionally EMPTY. No isolated staging project exists yet, so the credentialed and mutating suites in tests/security/staging-suites/
+# (admin, test user, anything that writes, uploads or calls an Edge Function) cannot run from tests/security/run.sh; in the live security-regression workflow they
+# are disabled outright. This does not cover the separate verify-production-security.yml workflow, whose optional admin-lockdown matrix signs in when its secrets
+# exist (see tests/security/README.md).
+# A project may be listed here only if ALL of the following hold, and the listing is reviewed in a pull request:
 #   * it is a dedicated project created for testing, never the production project and never a project whose data was ever copied from production;
 #   * it contains synthetic data only (no real names, phone numbers, addresses, coordinates or listing ids);
 #   * it has its own credentials, separate from production (admin, test user, anon key, service key);

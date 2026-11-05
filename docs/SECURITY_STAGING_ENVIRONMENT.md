@@ -1,6 +1,6 @@
-# Isolated staging environment for credentialed security tests — design (not yet built)
+# Isolated staging environment for credentialed security tests (in the live security-regression workflow) — design (not yet built)
 
-**Status: design only. No staging project exists, none is listed in `tests/security/staging-targets.txt`, and therefore every credentialed security test is disabled.**
+**Status: design only. No staging project exists, none is listed in `tests/security/staging-targets.txt`, and therefore the credentialed and mutating suites of the live security-regression workflow (`tests/security/staging-suites/`) cannot run. The separate `verify-production-security.yml` workflow is outside this statement: its optional admin-lockdown matrix signs in against production when its secrets exist (see `tests/security/README.md`).**
 The existing `Pintag-dev` project is **not** to be used: its seed history and contents are unverified (it may contain data copied from production).
 
 ## Why
