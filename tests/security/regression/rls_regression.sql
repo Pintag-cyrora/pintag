@@ -544,5 +544,100 @@ BEGIN
   PERFORM assert((r::jsonb) ? 'views_week', 'public_listing_stats() returns a views_week key (the shape listing.html expects)');
 END $$;
 
+\echo '=== L. listing_events anonymous insert: success, dedup, ceiling, targets ====='
+-- These are the assertions the LIVE suite (tests/security/suites/02_rls.sh, 07_rate_limiting.sh) used to make by
+-- inserting real rows into the production listing_events table. They live here instead, against a throwaway database,
+-- so production analytics are never written by a test.
+
+-- L1: a first view of an active listing is recorded (the legitimate path still works).
+DO $$
+DECLARE ok boolean := false;
+BEGIN
+  PERFORM become_anon();
+  BEGIN
+    INSERT INTO listing_events (property_id, event_type, session_id)
+    VALUES ('11111111-0000-0000-0000-000000000001', 'view', 'l-session-1');
+    ok := true;
+  EXCEPTION WHEN OTHERS THEN ok := false;
+  END;
+  RESET ROLE;
+  PERFORM assert(ok, 'anon INSERT listing_events (active listing, first event of a session) is accepted');
+END $$;
+
+-- L2: the same session repeating the same event inside the window is refused (per-session dedup).
+DO $$
+DECLARE ok boolean := true;
+BEGIN
+  PERFORM become_anon();
+  BEGIN
+    INSERT INTO listing_events (property_id, event_type, session_id)
+    VALUES ('11111111-0000-0000-0000-000000000001', 'view', 'l-session-1');
+  EXCEPTION WHEN OTHERS THEN ok := false;
+  END;
+  RESET ROLE;
+  PERFORM assert(NOT ok, 'anon INSERT listing_events (duplicate session+listing+event inside the window) is refused');
+END $$;
+
+-- L3: a different event type for the same session is not deduplicated.
+DO $$
+DECLARE ok boolean := false;
+BEGIN
+  PERFORM become_anon();
+  BEGIN
+    INSERT INTO listing_events (property_id, event_type, session_id)
+    VALUES ('11111111-0000-0000-0000-000000000001', 'share', 'l-session-1');
+    ok := true;
+  EXCEPTION WHEN OTHERS THEN ok := false;
+  END;
+  RESET ROLE;
+  PERFORM assert(ok, 'anon INSERT listing_events (different event type, same session) is accepted');
+END $$;
+
+-- L4: events for an unpublished, an unknown, and a NULL listing are refused.
+DO $$
+DECLARE refused int := 0; pid uuid;
+BEGIN
+  PERFORM become_anon();
+  FOREACH pid IN ARRAY ARRAY['22222222-0000-0000-0000-000000000002'::uuid,
+                             '00000000-0000-0000-0000-000000000000'::uuid] LOOP
+    BEGIN
+      INSERT INTO listing_events (property_id, event_type, session_id) VALUES (pid, 'view', 'l-session-2');
+    EXCEPTION WHEN OTHERS THEN refused := refused + 1;
+    END;
+  END LOOP;
+  RESET ROLE;
+  PERFORM assert(refused = 2, 'anon INSERT listing_events for a draft listing and for a non-existent listing are both refused');
+END $$;
+
+-- L5: rotating session ids is bounded by the per-listing ceiling (300/minute), and another listing is unaffected.
+DO $$
+DECLARE accepted int := 0; i int;
+BEGIN
+  PERFORM become_anon();
+  FOR i IN 1..400 LOOP
+    BEGIN
+      INSERT INTO listing_events (property_id, event_type, session_id)
+      VALUES ('11111111-0000-0000-0000-000000000001', 'impression', 'l-rotated-' || i::text);
+      accepted := accepted + 1;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+  END LOOP;
+  RESET ROLE;
+  PERFORM assert(accepted <= 300, format('rotating session ids on listing_events is bounded by the ceiling (accepted %s, cap 300)', accepted));
+  PERFORM assert(accepted > 0, 'the listing_events ceiling does not block everything outright');
+END $$;
+
+-- L6: anonymous callers cannot update or delete listing_events, and cannot widen what they may read beyond the table's policy.
+DO $$
+DECLARE upd int; del int; denied_upd boolean := false; denied_del boolean := false;
+BEGIN
+  PERFORM become_anon();
+  BEGIN UPDATE listing_events SET event_type = 'hacked' WHERE session_id = 'l-session-1'; GET DIAGNOSTICS upd = ROW_COUNT; EXCEPTION WHEN OTHERS THEN denied_upd := true; END;
+  BEGIN DELETE FROM listing_events WHERE session_id = 'l-session-1'; GET DIAGNOSTICS del = ROW_COUNT; EXCEPTION WHEN OTHERS THEN denied_del := true; END;
+  RESET ROLE;
+  PERFORM assert(denied_upd OR coalesce(upd, 0) = 0, 'anon UPDATE listing_events changes nothing');
+  PERFORM assert(denied_del OR coalesce(del, 0) = 0, 'anon DELETE listing_events removes nothing');
+END $$;
+
 \echo ''
 \echo 'ALL DATA-LAYER SECURITY REGRESSION ASSERTIONS PASSED'
