@@ -258,8 +258,8 @@ test('dry run of the production suites against a recording curl: ONLY plain GET/
     assert.ok(c.url.startsWith(`https://${PROD_REF}.supabase.co/rest/v1/`), `only the project's /rest/v1/: ${c.url}`);
     assert.ok(!/\/rpc\/|\/functions\/v1\/|\/storage\/v1\/|\/auth\/v1\//.test(c.url), `no rpc / function / storage / auth: ${c.url}`);
     assert.equal(c.bearer, undefined, `no Authorization header at all: ${c.text}`);
-    // EXACTLY the one permitted form: curl -q --proto =https -s -w <fmt> -X GET <url> -H "apikey: anonkey"  (nothing else, in this order)
-    assert.match(c.text.trim(), /^-q --proto =https -s -w \S* ?\S*\s*-X GET https:\/\/\S+ -H apikey: anonkey$/, `only the permitted argument form: ${c.text}`);
+    // EXACTLY the one permitted form: curl -q --proto =https --noproxy '*' -s -w <fmt> -X GET <url> -H "apikey: anonkey"  (nothing else, in this order)
+    assert.match(c.text.trim(), /^-q --proto =https --noproxy \* -s -w \S* ?\S*\s*-X GET https:\/\/\S+ -H apikey: anonkey$/, `only the permitted argument form: ${c.text}`);
     assert.ok(/\/rest\/v1\/(properties|parties|contacts|lead_events|listing_events|intelligence_reports|intelligence_insights|report_insights|intelligence_sweep_lock)(\?|$)/.test(c.url), `only permitted tables: ${c.url}`);
   }
   // the requests that DO get sent are the read probes (a few examples that must be present)
@@ -348,9 +348,125 @@ test('the injection suite\'s pure-bash fallback encoder escapes every byte outsi
   assert.equal(g, 0, 'the encoded payload is an acceptable (and harmless) read');
 });
 
-test('every curl in the live helpers is hardened: no curlrc, https only, and the guard runs first', () => {
+test('every curl in the live helpers is hardened: it takes its options from PT_CURL_OPTS (no curlrc, https only, no proxy by default), and the guard runs first', () => {
   const h = fs.readFileSync(path.join(ROOT, 'tests/security/lib/helpers.sh'), 'utf8');
   const calls = h.split('\n').filter((l) => /\bcurl\b/.test(l) && !/^\s*#/.test(l));
   assert.ok(calls.length >= 3);
-  for (const l of calls) assert.match(l, /curl -q --proto =https /, l);
+  for (const l of calls) assert.match(l, /curl "\$\{PT_CURL_OPTS\[@\]\}" /, l);
+  const g = fs.readFileSync(path.join(ROOT, 'tests/security/lib/target-guard.sh'), 'utf8');
+  assert.match(g, /^PT_CURL_OPTS=\(-q --proto =https --noproxy '\*'\)$/m, 'the fail-closed default already ignores proxies');
+});
+
+// ── Environment behaviour: proxy variables, custom CA settings, BASH_ENV and imported functions ───────────────────────────────────────────────
+const SECRET_PROXY = 'http://secret-proxy.invalid:3128', SECRET_CA = '/nonexistent/secret-ca.pem';
+const POISON = { http_proxy: SECRET_PROXY, https_proxy: SECRET_PROXY, all_proxy: SECRET_PROXY, ftp_proxy: SECRET_PROXY, no_proxy: 'x', HTTP_PROXY: SECRET_PROXY, HTTPS_PROXY: SECRET_PROXY, ALL_PROXY: SECRET_PROXY, FTP_PROXY: SECRET_PROXY, NO_PROXY: 'x',
+  CURL_CA_BUNDLE: SECRET_CA, SSL_CERT_FILE: SECRET_CA, SSL_CERT_DIR: '/nonexistent/secret-ca-dir', CURL_HOME: '/nonexistent/secret-home', OPENSSL_CONF: '/nonexistent/secret-openssl.cnf', SSLKEYLOGFILE: '/nonexistent/secret-keylog' };
+const WATCHED = Object.keys(POISON);
+
+// A curl stand-in that records its arguments AND which of the watched variables it can see in its environment.
+function envRecordingCurl() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'envcurl-')); const bin = path.join(dir, 'bin'); fs.mkdirSync(bin); const log = path.join(dir, 'calls.log');
+  fs.writeFileSync(path.join(bin, 'curl'), `#!/bin/bash\nvis=""; for v in ${WATCHED.join(' ')} LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT; do [[ -v $v ]] && vis+="$v "; done\nprintf 'CALL %s | ENV: %s\\n' "$*" "$vis" >> '${log}'\nprintf '[]\\n401'\n`, { mode: 0o755 });
+  return { bin, calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter((l) => l.startsWith('CALL ')) : []) };
+}
+function runWith(extraEnv, { cmd = ['bash', 'tests/security/run.sh', 'intelligence_read'] } = {}) {
+  const rc = envRecordingCurl();
+  const r = spawnSync(cmd[0], cmd.slice(1), { cwd: ROOT, encoding: 'utf8', timeout: 120000, env: { PATH: `${rc.bin}:${process.env.PATH}`, HOME: os.tmpdir(), SUPABASE_URL: U, SUPABASE_ANON_KEY: 'anonkey', ...extraEnv } });
+  return { r, calls: rc.calls() };
+}
+
+test('production-readonly removes inherited proxy, CA/TLS and loader settings: no request can reach curl while any of them is set, every curl is told --noproxy "*", and no value is printed', () => {
+  const { r, calls } = runWith({ ...POISON, LD_LIBRARY_PATH: '/nonexistent/secret-ldpath' });
+  assert.notEqual(r.status, 97, r.stderr);
+  assert.ok(calls.length >= 4, `requests were made (${calls.length})`);
+  for (const l of calls) {
+    assert.match(l, /^CALL -q --proto =https --noproxy \* /, l);
+    assert.match(l, /\| ENV: $/, `curl must see none of the proxy / CA / loader variables: ${l}`);
+  }
+  const out = r.stdout + r.stderr;
+  assert.match(out, /Production environment hardened: removed inherited .*HTTPS_PROXY.*CURL_CA_BUNDLE.*SSL_CERT_FILE.*SSL_CERT_DIR.*\(names only; values are never printed\)/);
+  for (const secret of ['secret-proxy', 'secret-ca', 'secret-home', 'secret-openssl', 'secret-keylog', 'secret-ldpath']) assert.ok(!out.includes(secret), `a value leaked into the output: ${secret}`);
+});
+
+test('a BASH_ENV, ENV or imported shell function in a production run is REFUSED before any request (Bash runs them before the script body, so unsetting would be too late); no value is printed', () => {
+  const marker = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bashenv-')), 'ran');
+  const hook = path.join(path.dirname(marker), 'hook.sh'); fs.writeFileSync(hook, `echo ran > '${marker}'\n`);
+  // 1. the threat is real: Bash executes BASH_ENV before the script, whatever the script then does
+  let x = runWith({ BASH_ENV: hook });
+  assert.ok(fs.existsSync(marker), 'plain bash executed the BASH_ENV file before run.sh started');
+  assert.equal(x.r.status, 1); assert.match(x.r.stderr, /BASH_ENV is set\. Bash executes that file before this script starts/); assert.deepEqual(x.calls, [], 'no request was made');
+  assert.ok(!(x.r.stdout + x.r.stderr).includes(hook), 'the value (a path) is not printed');
+  fs.unlinkSync(marker);
+  // 2. ENV, and an exported function that would shadow curl
+  x = runWith({ ENV: hook }); assert.equal(x.r.status, 1); assert.match(x.r.stderr, /ENV is set/); assert.deepEqual(x.calls, []);
+  x = runWith({ 'BASH_FUNC_curl%%': '() { echo hijacked; }' }); assert.equal(x.r.status, 1); assert.match(x.r.stderr, /exported shell function\(s\) were imported from the environment \(BASH_FUNC_curl%%\)/); assert.deepEqual(x.calls, []);
+  assert.ok(!(x.r.stdout + x.r.stderr).includes('hijacked'));
+  // 3. the empty values are harmless and accepted
+  x = runWith({ BASH_ENV: '', ENV: '' }); assert.notEqual(x.r.status, 97); assert.doesNotMatch(x.r.stderr, /REFUSED/); assert.ok(x.calls.length > 0);
+  // 4. the way the workflow starts the step prevents the execution altogether
+  x = runWith({ BASH_ENV: hook }, { cmd: ['env', '-u', 'BASH_ENV', '-u', 'ENV', 'bash', '--noprofile', '--norc', '-eo', 'pipefail', '-c', 'bash tests/security/run.sh intelligence_read'] });
+  assert.ok(!fs.existsSync(marker), 'env -u BASH_ENV: the file was never executed');
+  assert.doesNotMatch(x.r.stderr, /BASH_ENV is set/); assert.ok(x.calls.length > 0, 'and the suite then runs normally');
+});
+
+test('the live workflow starts the suite step without BASH_ENV / ENV, sets no proxy, CA or loader variable anywhere, and never enables the local proxy opt-in', () => {
+  const y = stripWfComments(WORKFLOW);
+  const step = y.slice(y.indexOf('- name: Run security suite'));
+  assert.match(step, /^- name: Run security suite\n\s+shell: env -u BASH_ENV -u ENV bash --noprofile --norc -eo pipefail \{0\}\n\s+run: bash tests\/security\/run\.sh/);
+  assert.doesNotMatch(y, /\b(https?_proxy|all_proxy|ftp_proxy|no_proxy|CURL_[A-Z_]+|SSL_CERT_(FILE|DIR)|OPENSSL_[A-Z_]+|LD_[A-Z_]+|SSLKEYLOGFILE|BASH_ENV|PT_PRODUCTION_ALLOW_PROXY|PT_MODE|PT_ROOT)\b\s*:/i, 'no such variable is set by the workflow');
+  assert.doesNotMatch(y, /GITHUB_ENV|GITHUB_PATH/, 'no step writes to the job environment');
+});
+function stripWfComments(t) { return t.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'); }
+
+test('the local proxy opt-in keeps proxy settings for local development only: refused in GitHub Actions / CI, never relaxes CA or loader settings; staging keeps proxies and its own trust settings', () => {
+  const ok = runWith({ ...POISON, PT_PRODUCTION_ALLOW_PROXY: '1' });
+  assert.ok(ok.calls.length > 0); const first = ok.calls[0];
+  assert.doesNotMatch(first, /--noproxy/, 'the opt-in drops --noproxy'); assert.match(first, /\| ENV: .*HTTPS_PROXY/, 'proxy variables are kept'); assert.doesNotMatch(first, /CURL_CA_BUNDLE|SSL_CERT_FILE|SSL_CERT_DIR|CURL_HOME|OPENSSL_CONF|SSLKEYLOGFILE/, 'but trust settings are still removed');
+  assert.match(ok.r.stderr, /PT_PRODUCTION_ALLOW_PROXY=1 -> inherited proxy settings are kept \(local use only/);
+  for (const ci of [{ GITHUB_ACTIONS: 'true' }, { CI: 'true' }]) { const x = runWith({ ...POISON, PT_PRODUCTION_ALLOW_PROXY: '1', ...ci }); assert.equal(x.r.status, 1); assert.match(x.r.stderr, /not accepted in GitHub Actions \/ CI/); assert.deepEqual(x.calls, []); }
+  assert.equal(runWith({ ...POISON, PT_PRODUCTION_ALLOW_PROXY: 'yes' }).calls[0].includes('--noproxy'), true, 'only the exact value 1 enables it');
+  // staging-full: no --noproxy and nothing removed (a staging project may need a corporate proxy or CA)
+  const sb = sandbox(); fs.writeFileSync(path.join(sb.root, 'tests/security/staging-targets.txt'), `${OTHER_REF}\n`);
+  const r = bash(`source tests/security/lib/target-guard.sh; pt_enforce_target; printf '%s|' "\${PT_CURL_OPTS[*]}"; [[ -v HTTPS_PROXY && -v CURL_CA_BUNDLE ]] && echo kept`, { SUPABASE_URL: `https://${OTHER_REF}.supabase.co`, SECURITY_TARGET_CONFIRM: OTHER_REF, HTTPS_PROXY: SECRET_PROXY, CURL_CA_BUNDLE: SECRET_CA }, sb);
+  assert.equal(r.stdout.trim(), '-q --proto =https|kept', r.stderr);
+});
+
+// Real curl, real sockets, no external network: the neutralised environment cannot redirect a request or replace TLS trust.
+import http from 'node:http';
+import https from 'node:https';
+import net from 'node:net';
+import { spawn } from 'node:child_process';
+const runAsync = (script, env) => new Promise((resolve) => { const p = spawn('bash', ['-c', script], { cwd: ROOT, env: { PATH: process.env.PATH, HOME: os.tmpdir(), ...env } }); let out = ''; p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (out += d)); p.on('close', (code) => resolve({ code, out })); });
+
+test('REAL curl: an inherited HTTPS_PROXY receives the request without the hardening and nothing with it', async () => {
+  const seen = []; const proxy = net.createServer((sock) => { sock.on('data', (d) => seen.push(String(d).split('\r\n')[0])); sock.on('error', () => {}); sock.end(); });
+  await new Promise((r) => proxy.listen(0, '127.0.0.1', r)); const port = proxy.address().port;
+  const env = { HTTPS_PROXY: `http://127.0.0.1:${port}`, https_proxy: `http://127.0.0.1:${port}` };
+  const target = 'https://127.0.0.1:1/rest/v1/properties';
+  try {
+    const control = await runAsync(`curl -q --proto =https -s -m 5 -o /dev/null ${target}`, env);
+    assert.ok(seen.some((l) => /^CONNECT 127\.0\.0\.1:1 /.test(l)), `control: without the hardening the proxy IS used (${control.code}, ${seen.join('|')})`);
+    seen.length = 0;
+    const hardened = await runAsync(`source tests/security/lib/target-guard.sh; pt_secure_production_env 2>/dev/null; curl "\${PT_CURL_OPTS[@]}" -s -m 5 -o /dev/null ${target}; echo "exit=$?"`, env);
+    assert.deepEqual(seen, [], 'with the hardening the proxy received nothing');
+    assert.match(hardened.out, /exit=7/, 'curl tried the real destination directly (connection refused)');
+    seen.length = 0;
+    const optOnly = await runAsync(`curl -q --proto =https --noproxy '*' -s -m 5 -o /dev/null ${target}; echo "exit=$?"`, env);
+    assert.deepEqual(seen, [], '--noproxy "*" alone is enough, even if the variables were not removed'); assert.match(optOnly.out, /exit=7/);
+  } finally { proxy.close(); }
+});
+
+test('REAL curl: an inherited CURL_CA_BUNDLE makes a self-signed server trusted without the hardening and is rejected with it (the standard trust store is used)', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ca-')); const key = path.join(dir, 'k.pem'), crt = path.join(dir, 'c.pem');
+  const gen = spawnSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', crt, '-days', '1', '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1'], { encoding: 'utf8' });
+  if (gen.status !== 0) { t.skip('openssl is not available'); return; }
+  const server = https.createServer({ key: fs.readFileSync(key), cert: fs.readFileSync(crt) }, (req, res) => res.end('[]'));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r)); const port = server.address().port;
+  const env = { CURL_CA_BUNDLE: crt, SSL_CERT_FILE: crt };
+  try {
+    const control = await runAsync(`curl -q --proto =https --noproxy '*' -s -m 5 -o /dev/null https://127.0.0.1:${port}/; echo "exit=$?"`, env);
+    assert.match(control.out, /exit=0/, `control: the injected CA is honoured without the hardening (${control.out})`);
+    const hardened = await runAsync(`source tests/security/lib/target-guard.sh; pt_secure_production_env 2>/dev/null; curl "\${PT_CURL_OPTS[@]}" -s -m 5 -o /dev/null https://127.0.0.1:${port}/; echo "exit=$?"`, env);
+    assert.match(hardened.out, /exit=(60|35|77)/, `with the hardening the certificate is NOT trusted (${hardened.out})`);
+  } finally { server.close(); }
 });

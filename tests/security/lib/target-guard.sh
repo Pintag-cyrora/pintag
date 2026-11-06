@@ -32,6 +32,44 @@ pt_classify_target() {
   echo "refuse:project is neither production nor a listed staging target"
 }
 
+# ── Environment hardening for production-readonly ─────────────────────────────────────────────────────────────────────────────────────────
+# curl (even with -q, which only skips ~/.curlrc) honours proxy variables and custom CA settings from the process environment, and Bash itself executes the file
+# named by BASH_ENV (and imports exported functions) BEFORE a script body runs. The guard validates the destination of every request, but not what carries it, so in
+# production-readonly mode the suite (a) refuses to start when something that already ran or was defined in this shell could be hostile, (b) removes the inherited
+# settings that could redirect a request or replace TLS trust, and (c) passes --noproxy '*' to every curl. Names are reported, values never are.
+#   Proxy variables stay usable for local development with an explicit opt-in (PT_PRODUCTION_ALLOW_PROXY=1), which is refused inside GitHub Actions / CI.
+#   The workflow itself must also start the step with `env -u BASH_ENV -u ENV` (see security-regression.yml): by the time this function runs, a BASH_ENV file would
+#   already have executed, which is why a set BASH_ENV is refused here rather than merely unset.
+PT_PROXY_VARS=(http_proxy https_proxy all_proxy ftp_proxy no_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY FTP_PROXY NO_PROXY)
+PT_TRUST_VARS=(CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR CURL_HOME CURL_SSL_BACKEND SSLKEYLOGFILE OPENSSL_CONF OPENSSL_MODULES LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT)
+# Fail-closed default: until a mode is chosen, curl is told to ignore proxies. staging-full relaxes only the proxy flag.
+PT_CURL_OPTS=(-q --proto =https --noproxy '*')
+
+# Prints (names only) what it removed; returns 1 and prints the reason when the start state is not acceptable.
+pt_secure_production_env() {
+  local v removed=() funcs
+  # Bash runs BASH_ENV / ENV before the script: if one is set, code may already have run, so unsetting now is too late. Refuse (empty is harmless).
+  for v in BASH_ENV ENV; do
+    if [[ -n "${!v:-}" ]]; then echo "SECURITY SUITE REFUSED: $v is set. Bash executes that file before this script starts, so the run cannot be trusted. Start the suite with 'env -u BASH_ENV -u ENV bash tests/security/run.sh'." >&2; return 1; fi
+  done
+  # Exported shell functions (BASH_FUNC_name%%) are imported by Bash at start-up and can shadow curl or test builtins.
+  funcs="$(env | sed -n 's/^\(BASH_FUNC_[^=]*\)=.*/\1/p' | head -n 5 | tr '\n' ' ')"
+  if [[ -n "$funcs" ]]; then echo "SECURITY SUITE REFUSED: exported shell function(s) were imported from the environment (${funcs% }); they could shadow curl." >&2; return 1; fi
+  PT_CURL_OPTS=(-q --proto =https --noproxy '*')
+  if [[ "${PT_PRODUCTION_ALLOW_PROXY:-}" == "1" ]]; then
+    if [[ -n "${GITHUB_ACTIONS:-}${CI:-}" ]]; then echo "SECURITY SUITE REFUSED: PT_PRODUCTION_ALLOW_PROXY=1 is not accepted in GitHub Actions / CI." >&2; return 1; fi
+    PT_CURL_OPTS=(-q --proto =https)   # local development only; the destination is still restricted by pt_guard_request
+    echo "NOTE: PT_PRODUCTION_ALLOW_PROXY=1 -> inherited proxy settings are kept (local use only; certificate trust is still the system store)." >&2
+  else
+    for v in "${PT_PROXY_VARS[@]}"; do [[ -v $v ]] && { removed+=("$v"); unset "$v"; }; done
+  fi
+  for v in "${PT_TRUST_VARS[@]}"; do [[ -v $v ]] && { removed+=("$v"); unset "$v"; }; done
+  # BASH_ENV / ENV that are set-but-empty are removed too, so no child shell can ever pick one up later
+  unset BASH_ENV ENV
+  [[ ${#removed[@]} -gt 0 ]] && echo "Production environment hardened: removed inherited ${removed[*]} (names only; values are never printed)." >&2
+  return 0
+}
+
 # Called once, before any request. Exits the run unless the target is understood; refuses credentials against production.
 pt_enforce_target() {
   local c; c="$(pt_classify_target)"
@@ -39,7 +77,9 @@ pt_enforce_target() {
     refuse:*) echo "SECURITY SUITE REFUSED: ${c#refuse:}" >&2; exit 1;;
   esac
   PT_MODE="$c"; export PT_MODE
+  [[ "$PT_MODE" == "staging-full" ]] && PT_CURL_OPTS=(-q --proto =https)   # an isolated staging project may genuinely need a proxy; trust variables are untouched there
   if [[ "$PT_MODE" == "production-readonly" ]]; then
+    pt_secure_production_env || exit 1
     # SITE_URL is a repository secret: it is trusted as a destination only after it passes the same validation as every request (see pt_site_origin).
     if [[ -n "${SITE_URL:-}" ]]; then
       local so; so="$(pt_site_origin)" || { echo "SECURITY SUITE REFUSED: SITE_URL is not an acceptable destination (expected https://<the project's own domain from CNAME, or www. of it>, with no port, userinfo, path or query)." >&2; exit 1; }

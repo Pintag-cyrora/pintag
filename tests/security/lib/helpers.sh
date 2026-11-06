@@ -122,7 +122,7 @@ http_request() {
 
   while true; do
     start_ms=$(now_ms)
-    response=$(curl -q --proto =https -s -w "\n%{http_code}" -X "$method" "$url" "$@" 2>/dev/null)
+    response=$(curl "${PT_CURL_OPTS[@]}" -s -w "\n%{http_code}" -X "$method" "$url" "$@" 2>/dev/null)
     end_ms=$(now_ms)
     duration_ms=$(( end_ms - start_ms ))
 
@@ -155,11 +155,11 @@ http_request() {
 # run to a third-party host; set SITE_URL to the final address).
 site_head() {
   pt_guard_request HEAD "$1" || pt_abort_refused
-  curl -q --proto =https -sI --max-time 10 "$1" 2>/dev/null
+  curl "${PT_CURL_OPTS[@]}" -sI --max-time 10 "$1" 2>/dev/null
 }
 site_get() {
   pt_guard_request GET "$1" || pt_abort_refused
-  curl -q --proto =https -s --max-time 10 "$1" 2>/dev/null
+  curl "${PT_CURL_OPTS[@]}" -s --max-time 10 "$1" 2>/dev/null
 }
 
 # ── Global counters ───────────────────────────────────────────────────────────

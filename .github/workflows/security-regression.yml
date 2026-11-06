@@ -118,7 +118,11 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq curl jq
 
+      # The step shell is started WITHOUT BASH_ENV / ENV: Bash executes the file named by BASH_ENV before any script text runs, so a value inherited into the job (or
+      # written to the job environment by an earlier step) could run code with the project keys in reach. `env -u` removes them before Bash starts; run.sh additionally
+      # refuses to start if either is set, removes inherited proxy / CA / loader settings, and gives every curl --noproxy '*' (tests/security/lib/target-guard.sh).
       - name: Run security suite
+        shell: env -u BASH_ENV -u ENV bash --noprofile --norc -eo pipefail {0}
         run: bash tests/security/run.sh
 
       - name: Upload reports
