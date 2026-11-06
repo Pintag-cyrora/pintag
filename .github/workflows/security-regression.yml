@@ -62,6 +62,9 @@ jobs:
       - name: Data-layer RLS / authorization regressions
         run: bash tests/security/regression/run-local-pg.sh
 
+      - name: Pentest-event assessment is read-only and correct (throwaway database, synthetic rows)
+        run: bash tests/security/regression/run-assess-pentest-events-pg.sh
+
       - name: CSP is stamped on every published page and is current
         run: node scripts/apply-csp.mjs --check
 
