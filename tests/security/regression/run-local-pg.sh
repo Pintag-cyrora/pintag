@@ -27,6 +27,7 @@ MIGRATIONS=(
   "$ROOT/supabase/migrations/20260817010000_authz_identity_and_abuse_bounds.sql"
   "$ROOT/supabase/migrations/20260818000000_revoke_public_execute.sql"
   "$ROOT/supabase/migrations/20260818010000_restore_views_week_column.sql"
+  "$ROOT/supabase/migrations/20260804150000_storage_lockdown_hardfix.sql"   # the real storage.objects policies, applied to the fixture's storage stub
 )
 for m in "${MIGRATIONS[@]}"; do
   [[ -f "$m" ]] || { echo "FATAL: security migration not found: $m"; exit 1; }
