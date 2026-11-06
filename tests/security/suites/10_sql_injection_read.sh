@@ -13,7 +13,7 @@
 # NOT probed on production: the Edge Function JSON-body injections (external side effects) and the RPC injection. The old RPC probe sent
 # {"property_id": ...} to increment_listing_view(p_listing_id uuid), so PostgREST could not find the function and the body was never reached: it did
 # not test the function. A correct call would reach the function, and even a nil UUID would write a bookkeeping row (listing_view_throttle), so no RPC is
-# sent to production. Invalid-UUID rejection is asserted locally (rls_regression.sql section N). That is a documented coverage gap on production.
+# sent to production. Invalid-UUID rejection is asserted locally (rls_regression.sql section O). That is a documented coverage gap on production.
 
 _sqli_urlencode() {
   # URL-encode the characters most likely to affect query-string parsing.
@@ -21,10 +21,13 @@ _sqli_urlencode() {
   python3 -c \
     "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=''))" \
     "$1" 2>/dev/null && return
-  local s="$1"
-  s="${s// /%20}"; s="${s//\'/%27}"; s="${s//\"/%22}"
-  s="${s//;/%3B}";  s="${s//&/%26}";  s="${s//#/%23}"
-  s="${s//=/%3D}";  s="${s//+/%2B}";  s="${s//|/%7C}"
+  # pure bash: percent-encode EVERY byte outside the RFC 3986 unreserved set, so a payload can never add a URL, fragment, glob or header character
+  local s="$1" out="" i c
+  for (( i=0; i<${#s}; i++ )); do
+    c="${s:i:1}"
+    case "$c" in [A-Za-z0-9._~-]) out+="$c";; *) out+=$(printf '%%%02X' "'$c");; esac
+  done
+  s="$out"
   printf '%s' "$s"
 }
 
@@ -121,7 +124,7 @@ run_sql_injection_read_tests() {
   # Edge functions use Supabase client internally (parameterised).
   # ════════════════════════════════════
   skip "Edge Function JSON-body injection (generate-listing-content, smart-listing-importer)" "not sent to production: external side effects; gate covered locally (edge-function-auth-gates.test.js)"
-  skip "RPC parameter injection (increment_listing_view)" "not sent to production: coverage gap documented; invalid-UUID rejection asserted locally (rls_regression.sql section N)"
+  skip "RPC parameter injection (increment_listing_view)" "not sent to production: coverage gap documented; invalid-UUID rejection asserted locally (rls_regression.sql section O)"
 
   info "--- DB integrity check ---"
   r=$(api_get "properties?status=eq.active&select=id&limit=1")

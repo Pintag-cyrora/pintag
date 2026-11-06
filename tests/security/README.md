@@ -194,7 +194,7 @@ tests/security/
 ### How a run works
 
 1. `run.sh` sources `helpers.sh`, which sources `resources.sh` and sets up global state
-2. `check_app_env()` refuses the literal `APP_ENV=production`, then `pt_enforce_target` classifies the target from `SUPABASE_URL` (production-readonly / staging-full / refused) and refuses credentials against production; every request then passes `pt_guard_request`
+2. `check_app_env()` refuses the literal `APP_ENV=production`, then `pt_enforce_target` classifies the target from `SUPABASE_URL` (production-readonly / staging-full / refused) and refuses credentials against production; every request then passes `pt_guard_request`, a fail-closed ALLOWLIST: the only forms sent to production are `GET`/`HEAD` of `<project>/rest/v1/<one listed table>[?<restricted query>]` with exactly the arguments `-H "apikey: <anon key>"`, or `GET`/`HEAD` of a plain path on the validated `SITE_URL` (https, the project's own domain from `CNAME` or `www.` of it, no port, userinfo, path or query) with no arguments; any other curl option in any spelling, extra URL, redirect, proxy, credential, cookie, body, encoded or ambiguous path is refused, and a refusal ends the run. The curl calls also use `-q --proto =https`. Limits of this guarantee: it covers `tests/security/run.sh` only, and it cannot see curl behaviour set through the process environment (for example proxy variables or `CURL_CA_BUNDLE`)
 3. All suite files under `suites/` (the production-safe, GET-only suites) are sourced automatically; `staging-suites/` is sourced only when the target is a listed, confirmed staging project
 4. Admin and test-user JWTs are acquired (if credentials are set)
 5. A version banner is printed showing commit, environment, credentials, and feature flags
@@ -342,7 +342,7 @@ The workflow at `.github/workflows/security-regression.yml` runs automatically o
 |---|---|
 | `SUPABASE_URL` | `https://<20-character-ref>.supabase.co` (the standard form is required: a custom domain cannot be classified and is refused) |
 | `SUPABASE_ANON_KEY` | Anon key from Supabase Dashboard → Settings → API |
-| `SITE_URL` | `https://pintag.io` (optional; enables the header checks, read-only GET/HEAD) |
+| `SITE_URL` | `https://pintag.io` (optional; enables the header checks, read-only GET/HEAD). Validated before use: https, the domain in `CNAME` (or `www.` of it), no port, userinfo, path or query; anything else stops the run |
 
 The live job is given **no** administrator or test-user secret and no `APP_ENV`. Do not add `ADMIN_*` or `TEST_USER_*` secrets to the production job: the run would be refused.
 

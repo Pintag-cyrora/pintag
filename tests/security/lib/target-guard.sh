@@ -40,6 +40,11 @@ pt_enforce_target() {
   esac
   PT_MODE="$c"; export PT_MODE
   if [[ "$PT_MODE" == "production-readonly" ]]; then
+    # SITE_URL is a repository secret: it is trusted as a destination only after it passes the same validation as every request (see pt_site_origin).
+    if [[ -n "${SITE_URL:-}" ]]; then
+      local so; so="$(pt_site_origin)" || { echo "SECURITY SUITE REFUSED: SITE_URL is not an acceptable destination (expected https://<the project's own domain from CNAME, or www. of it>, with no port, userinfo, path or query)." >&2; exit 1; }
+      SITE_URL="$so"; export SITE_URL
+    fi
     local set=()
     [[ -n "${ADMIN_EMAIL:-}${ADMIN_PASSWORD:-}" ]] && set+=(ADMIN_EMAIL/ADMIN_PASSWORD)
     [[ -n "${TEST_USER_EMAIL:-}${TEST_USER_PASSWORD:-}" ]] && set+=(TEST_USER_EMAIL/TEST_USER_PASSWORD)
@@ -57,39 +62,69 @@ pt_abort_refused() {
   exit 97
 }
 
+# ── The production request allowlist ──────────────────────────────────────────────────────────────────────────────────────────────────────
+# Fail-closed ALLOWLIST (not a denylist of curl options): a request is sent to production only if it is EXACTLY one of these forms, and anything the guard does not
+# recognise is refused, however harmless it looks.
+#   project read   METHOD in {GET, HEAD}, URL  https://<production-ref>.supabase.co/rest/v1/<table>[?<query>]  and the ONLY curl arguments are  -H "apikey: <anon key>"
+#   site read      METHOD in {GET, HEAD}, URL  <validated SITE_URL><path>  and NO curl arguments at all
+# <table> is one of the tables below (exact match; no sub-path, no rpc/, no extra segment). The path part carries no percent-escape, no dot segment, no "//" and no
+# character outside [A-Za-z0-9._-]; the query is limited to a conservative character set in which every "%" starts a valid escape and no character can start a
+# second URL, a curl glob ([ ] { }), a fragment, a credential (@) or a shell/URL metacharacter. Every other curl option, in any spelling (separate, attached, long,
+# short, abbreviated, upper case, @file), is refused simply because it is not the one permitted pair. Nothing relies on the server rejecting the request.
+PT_READ_TABLES=(properties parties contacts lead_events listing_events intelligence_reports intelligence_insights report_insights intelligence_sweep_lock)
+
+# Validates SITE_URL and prints it without a trailing slash; non-zero (nothing printed) when it is not acceptable.
+# Accepted: https://<host> with a plain DNS host name that is the project's own domain (the CNAME file) or www. of it. No port, userinfo, path, query, fragment,
+# IP address, localhost, upper case, whitespace or control character.
+pt_site_origin() {
+  local s="${SITE_URL:-}" host cname
+  s="${s%/}"
+  [[ "$s" =~ ^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+)$ ]] || return 1
+  host="${BASH_REMATCH[1]}"
+  [[ "$host" =~ ^[0-9.]+$ ]] && return 1
+  cname="$(head -n 1 "${PT_ROOT:-.}/CNAME" 2>/dev/null | tr -d '[:space:]')"
+  [[ -n "$cname" && ( "$host" == "$cname" || "$host" == "www.$cname" ) ]] || return 1
+  printf '%s' "$s"
+}
+
 # pt_guard_request METHOD URL [curl args...]  -> returns 0 to allow, 1 to refuse (reason on stderr).
 pt_guard_request() {
   local method="$1" url="$2"; shift 2
   # Fail closed: when nothing has classified the target (PT_MODE unset), assume production.
   [[ "${PT_MODE:-production-readonly}" == "production-readonly" ]] || return 0
-  local why=""
-  case "$method" in GET|HEAD) ;; *) why="method $method (only GET and HEAD may be sent to production)";; esac
+  local why="" api="${SUPABASE_URL:-}" site rest path query t found=0
+  api="${api%/}"
+  [[ "$method" == "GET" || "$method" == "HEAD" ]] || why="method '$method' (only the exact upper-case GET and HEAD may be sent to production)"
+  # the whole URL: a conservative character set, https only, no ambiguity before the query
   if [[ -z "$why" ]]; then
-    local api="${SUPABASE_URL:-}" site="${SITE_URL:-}" ok=0; api="${api%/}"; site="${site%/}"
-    if [[ -n "$api" && "$url" == "$api/rest/v1/"* ]]; then ok=1; fi
-    if [[ -n "$site" && ( "$url" == "$site" || "$url" == "$site/"* ) ]]; then ok=1; fi
-    [[ $ok -eq 1 ]] || why="host or path not allowed (only the project's /rest/v1/ and the site itself): ${url%%\?*}"
+    [[ "$url" =~ ^https://[A-Za-z0-9._/~?=\&,*\(\)%+\!\'-]+$ ]] || why="the URL contains a character or form that is not allowed: ${url%%\?*}"
   fi
   if [[ -z "$why" ]]; then
-    case "$url" in
-      */rest/v1/rpc/*|*/functions/v1/*|*/auth/v1/*|*/storage/v1/*) why="rpc / edge function / auth / storage endpoints are never called on production: ${url%%\?*}";;
-    esac
-  fi
-  if [[ -z "$why" ]]; then
-    local a prev=""
-    for a in "$@"; do
-      case "$a" in
-        -d|--data|--data-raw|--data-binary|--data-urlencode|--json|-F|--form|-T|--upload-file|-b|--cookie|-K|--config|-u|--user) why="request body, upload, cookie or credential option $a";;
-        -X|--request) ;;
-      esac
-      [[ "$prev" == "-X" || "$prev" == "--request" ]] && [[ "$a" != "GET" && "$a" != "HEAD" ]] && why="curl -X $a"
-      if [[ "$a" =~ ^[Aa]uthorization:\ *(.+)$ ]]; then
-        local cred="${BASH_REMATCH[1]}"
-        # only the public anon key as a bearer; any other credential is refused
-        [[ "$cred" == "Bearer ${SUPABASE_ANON_KEY:-}" ]] || why="an Authorization header other than the public anon key"
+    if [[ "$api" =~ ^https://[a-z0-9]{20}\.supabase\.co$ && "$url" == "$api/rest/v1/"* ]]; then
+      # ── project read: exactly one table, optional query, exactly the anon-key header ──
+      rest="${url#"$api"/rest/v1/}"; path="${rest%%\?*}"; query=""
+      [[ "$rest" == *\?* ]] && query="${rest#*\?}"
+      for t in "${PT_READ_TABLES[@]}"; do [[ "$path" == "$t" ]] && found=1; done
+      [[ $found -eq 1 ]] || why="not one of the permitted read tables (exact name, no sub-path): ${path}"
+      if [[ -z "$why" && -n "$query" ]]; then
+        [[ "$query" =~ ^[A-Za-z0-9._~:=\&,*\(\)%+\!\'-]*$ ]] || why="the query contains a character that is not allowed"
+        [[ "$query" =~ %($|[^0-9A-Fa-f]|[0-9A-Fa-f]($|[^0-9A-Fa-f])) ]] && why="the query contains a malformed percent-escape"
       fi
-      prev="$a"
-    done
+      if [[ -z "$why" ]]; then
+        # exactly: -H "apikey: <anon key>"   (nothing else; this also refuses Authorization, cookies, bodies, -X, redirects, proxies, extra URLs, @files, abbreviations)
+        if [[ -z "${SUPABASE_ANON_KEY:-}" || $# -ne 2 || "$1" != "-H" || "$2" != "apikey: ${SUPABASE_ANON_KEY}" ]]; then
+          why="the only permitted curl arguments are exactly: -H \"apikey: <the public anon key>\""
+        fi
+      fi
+    elif site="$(pt_site_origin)" && [[ "$url" == "$site" || "$url" == "$site/"* ]]; then
+      # ── site read: a plain path of one or more segments, no query, no curl arguments ──
+      path="${url#"$site"}"
+      if [[ -n "$path" && ! "$path" =~ ^(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*/?$ ]]; then why="the site path is not a plain path (no dot segment, empty segment, escape or query): ${path}"
+      elif [[ "$path" == *..* ]]; then why="the site path contains '..'"
+      elif [[ $# -ne 0 ]]; then why="no curl arguments may accompany a site request"; fi
+    else
+      why="the destination is neither the production project's /rest/v1/<table> nor the validated site: ${url%%\?*}"
+    fi
   fi
   if [[ -n "$why" ]]; then echo "REFUSED in production-readonly: $why" >&2; return 1; fi
   return 0
