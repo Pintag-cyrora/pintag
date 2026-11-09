@@ -335,17 +335,59 @@ test('the coverage gaps this change creates on production are stated, not hidden
   for (const gap of [/write-path policy drift/i, /Storage/i, /Edge Function/i, /increment_listing_view/, /listing_view_throttle/]) assert.match(readme, gap, String(gap));
 });
 
-test('the injection suite\'s pure-bash fallback encoder escapes every byte outside the unreserved set, so a payload can never reach the guard unencoded; the section reference is correct', () => {
+test('the pure-bash fallback encoder is byte-wise and locale-independent: exact UTF-8 percent-encoding under LC_ALL=C and LC_ALL=C.UTF-8 (the bash function itself, not Python), round-trips, and agrees with Python', () => {
   const src = fs.readFileSync(path.join(SUITE_DIR, '10_sql_injection_read.sh'), 'utf8');
   assert.doesNotMatch(src, /rls_regression\.sql section N\b/, 'increment_listing_view is section O');
   assert.match(src, /rls_regression\.sql section O/);
-  const fn = /_sqli_urlencode\(\) \{[\s\S]*?\n\}/.exec(src)[0].replace(/python3 -c \\\n[^\n]*\n[^\n]*\n/, '');
-  const payload = `'; DROP TABLE x;-- <script>alert(1)</script> [1-5] {a,b} \\ ^ \` $HOME | " # @ / ? & = + é`;
-  const r = spawnSync('bash', ['-c', `${fn}\n_sqli_urlencode "$1"`, 'x', payload], { encoding: 'utf8' });
-  assert.match(r.stdout, /^[A-Za-z0-9._~%-]+$/, r.stdout);
-  assert.equal(decodeURIComponent(r.stdout), payload);
-  const g = spawnSync('bash', ['-c', `source tests/security/lib/target-guard.sh; PT_MODE=production-readonly; SUPABASE_URL=${U}; SUPABASE_ANON_KEY=anonkey; pt_guard_request GET "${U}/rest/v1/properties?slug=eq.${r.stdout}" -H "apikey: anonkey"`], { cwd: ROOT }).status;
-  assert.equal(g, 0, 'the encoded payload is an acceptable (and harmless) read');
+  const fnSrc = /^_sqli_urlencode_bash\(\) \{[\s\S]*?\n\}/m.exec(src)[0];
+  assert.doesNotMatch(fnSrc, /python|perl|node|awk|sed|xxd|od\b|iconv/, 'the fallback uses no external program');
+  assert.match(fnSrc, /local LC_ALL=C/, 'the locale is fixed locally inside the encoder');
+  assert.doesNotMatch(src, /^\s*(export\s+)?(LC_ALL|LANG)=/m, 'no script-wide locale change');
+  const enc = (text, loc) => spawnSync('bash', ['-c', `${fnSrc}\n_sqli_urlencode_bash "$1"; printf '|%s' "\${LC_ALL-unset}"`, 'x', text], { encoding: 'utf8', env: { PATH: process.env.PATH, LC_ALL: loc } });
+  const exact = [
+    ['abc-XYZ_019.~', 'abc-XYZ_019.~'], ['a b', 'a%20b'], ["'; DROP TABLE x;--", '%27%3B%20DROP%20TABLE%20x%3B--'], ['<s>[1]{a,b}\\^`$|"#@/?&=+', '%3Cs%3E%5B1%5D%7Ba%2Cb%7D%5C%5E%60%24%7C%22%23%40%2F%3F%26%3D%2B'],
+    ['é', '%C3%A9'], ['日本語', '%E6%97%A5%E6%9C%AC%E8%AA%9E'], ['😀', '%F0%9F%98%80'], ['a é 日 😀 b', 'a%20%C3%A9%20%E6%97%A5%20%F0%9F%98%80%20b'], ['', ''],
+  ];
+  for (const loc of ['C', 'C.UTF-8']) {
+    for (const [input, want] of exact) {
+      const r = enc(input, loc); assert.equal(r.status, 0, r.stderr);
+      const [out, after] = r.stdout.split('|');
+      assert.equal(out, want, `LC_ALL=${loc}: ${JSON.stringify(input)}`);
+      assert.equal(decodeURIComponent(out), input, `round trip under ${loc}`);
+      assert.equal(after, loc, `the caller's LC_ALL is untouched (${loc})`);
+    }
+  }
+  // the long payload from the audit: no character outside the unreserved set survives, under both locales, and the guard accepts the result as a harmless read
+  const payload = `'; DROP TABLE x;-- <script>alert(1)</script> [1-5] {a,b} \\ ^ \` $HOME | " # @ / ? & = + é 日 😀`;
+  for (const loc of ['C', 'C.UTF-8']) {
+    const out = enc(payload, loc).stdout.split('|')[0];
+    assert.match(out, /^[A-Za-z0-9._~%-]+$/); assert.equal(decodeURIComponent(out), payload);
+    const g = spawnSync('bash', ['-c', `source tests/security/lib/target-guard.sh; PT_MODE=production-readonly; SUPABASE_URL=${U}; SUPABASE_ANON_KEY=anonkey; pt_guard_request GET "${U}/rest/v1/properties?slug=eq.${out}" -H "apikey: anonkey"`], { cwd: ROOT }).status;
+    assert.equal(g, 0, `the encoded payload is an acceptable (and harmless) read under ${loc}`);
+  }
+  // identical to Python's quote(safe='') when Python is present
+  if (spawnSync('python3', ['-c', 'pass']).status === 0) {
+    for (const [input] of exact) {
+      const py = spawnSync('python3', ['-I', '-c', "import sys,urllib.parse; sys.stdout.write(urllib.parse.quote(sys.argv[1],safe=''))", input], { encoding: 'utf8' }).stdout;
+      assert.equal(enc(input, 'C.UTF-8').stdout.split('|')[0], py, `same as Python for ${JSON.stringify(input)}`);
+    }
+  }
+});
+
+test('_sqli_urlencode really falls back to the pure-bash path when python3 is unavailable, and prefers Python when it is present', () => {
+  const src = fs.readFileSync(path.join(SUITE_DIR, '10_sql_injection_read.sh'), 'utf8');
+  const both = /^_sqli_urlencode_bash\(\) \{[\s\S]*?\n\}\n[\s\S]*?^_sqli_urlencode\(\) \{[\s\S]*?\n\}/m.exec(src)[0];
+  const emptyBin = fs.mkdtempSync(path.join(os.tmpdir(), 'nopy-'));
+  for (const loc of ['C', 'C.UTF-8']) {
+    // no python3 on PATH at all (bash is called by absolute path): python3 is "command not found", so only the bash function can produce the output
+    const bashPath = spawnSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).stdout.trim();
+    const r = spawnSync(bashPath, ['-c', `command -v python3 >/dev/null && echo PYTHON-PRESENT; ${both}\n_sqli_urlencode "$1"`, 'x', 'é 日 😀'], { encoding: 'utf8', env: { PATH: emptyBin, LC_ALL: loc } });
+    assert.equal(r.stdout, '%C3%A9%20%E6%97%A5%20%F0%9F%98%80', `fallback under ${loc}: ${r.stdout}${r.stderr}`);
+  }
+  // with a stub python3 that prints a marker, the wrapper uses it (so the first test's direct call to the bash function is the only way it exercises the fallback)
+  const stub = fs.mkdtempSync(path.join(os.tmpdir(), 'pystub-')); fs.writeFileSync(path.join(stub, 'python3'), '#!/bin/sh\nprintf PYTHON-USED\n', { mode: 0o755 });
+  const r2 = spawnSync('bash', ['-c', `${both}\n_sqli_urlencode "$1"`, 'x', 'é'], { encoding: 'utf8', env: { PATH: `${stub}:${process.env.PATH}` } });
+  assert.match(r2.stdout, /^PYTHON-USED/);
 });
 
 test('every curl in the live helpers is hardened: it takes its options from PT_CURL_OPTS (no curlrc, https only, no proxy by default), and the guard runs first', () => {

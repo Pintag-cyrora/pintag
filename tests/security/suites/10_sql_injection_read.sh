@@ -15,20 +15,26 @@
 # not test the function. A correct call would reach the function, and even a nil UUID would write a bookkeeping row (listing_view_throttle), so no RPC is
 # sent to production. Invalid-UUID rejection is asserted locally (rls_regression.sql section O). That is a documented coverage gap on production.
 
-_sqli_urlencode() {
-  # URL-encode the characters most likely to affect query-string parsing.
-  # Falls back to a pure-bash implementation if python3 is unavailable.
-  python3 -c \
-    "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=''))" \
-    "$1" 2>/dev/null && return
-  # pure bash: percent-encode EVERY byte outside the RFC 3986 unreserved set, so a payload can never add a URL, fragment, glob or header character
+# Pure-bash percent-encoder (no external program). It works on BYTES whatever locale the caller has: with LC_ALL=C, ${#s} counts bytes and printf "'$c" yields the
+# byte value, so a UTF-8 character becomes its constituent bytes (e -acute -> %C3%A9). In a UTF-8 locale printf would print the code point (%E9), which is not valid UTF-8.
+# LC_ALL is made local to this function only (bash restores it on return); the caller's and the workflow's locale are untouched.
+_sqli_urlencode_bash() {
+  local LC_ALL=C
   local s="$1" out="" i c
   for (( i=0; i<${#s}; i++ )); do
     c="${s:i:1}"
     case "$c" in [A-Za-z0-9._~-]) out+="$c";; *) out+=$(printf '%%%02X' "'$c");; esac
   done
-  s="$out"
-  printf '%s' "$s"
+  printf '%s' "$out"
+}
+
+_sqli_urlencode() {
+  # URL-encode every character outside the unreserved set so a payload can never add a URL, fragment, glob or header character.
+  # Python when available; otherwise the pure-bash implementation above (identical output for every input).
+  python3 -c \
+    "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=''))" \
+    "$1" 2>/dev/null && return
+  _sqli_urlencode_bash "$1"
 }
 
 _sqli_body_clean() {
