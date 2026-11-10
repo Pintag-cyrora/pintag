@@ -83,6 +83,7 @@ const U = `https://${PROD_REF}.supabase.co`;
 const SITE = 'https://pintag.io';
 const KEY = ['-H', 'apikey: anonkey'];
 const guard = (method, url, { site = SITE, args } = {}) => spawnSync('bash', ['-c', `source tests/security/lib/target-guard.sh; PT_MODE=production-readonly; SUPABASE_URL=https://${PROD_REF}.supabase.co; SITE_URL="${site}"; SUPABASE_ANON_KEY=anonkey; pt_guard_request "$@"`, 'g', method, url,
+  // default arguments only: a project-looking URL (including look-alikes of it) gets the permitted pair so that a refusal is decided by the URL checks, not by missing arguments
   ...(args ?? (url.startsWith(U) ? KEY : []))], { cwd: ROOT, encoding: 'utf8' }).status;
 
 test('production-readonly allows EXACTLY plain GET/HEAD of a permitted table with the anon-key header, and of the validated site', () => {
@@ -177,7 +178,7 @@ test('SITE_URL is validated before it is trusted as a destination: scheme, host,
   // a trailing slash in the secret is normalised, not turned into a // path
   const { r, calls } = dryRun({ SITE_URL: 'https://pintag.io/' });
   assert.notEqual(r.status, 97, r.stderr); assert.doesNotMatch(r.stderr, /not an acceptable destination/);
-  assert.ok(calls.some((l) => /https:\/\/pintag\.io\/\s*$/.test(l)), 'the site was requested at its normalised root'); assert.ok(calls.every((l) => !/pintag\.io\/\//.test(l)), 'no // path');
+  assert.ok(siteRootRequested(calls), 'the site was requested at its normalised root'); assert.ok(calls.every((l) => !/pintag\.io\/\//.test(l)), 'no // path');
 });
 
 test('a refused request STOPS the run (kill + exit 97) instead of becoming a failed, skipped or passing check', () => {
@@ -244,6 +245,14 @@ const parse = (line) => {
   return { method: (/-X (\w+)/.exec(t) || [, 'GET'])[1], url: (/https?:\/\/\S+/.exec(t) || [''])[0], bearer: (/Authorization: Bearer (\S+)/.exec(t) || [])[1], body: (/(?:-d|--data-raw|--data-binary) (.*?)(?: -[HXsw]\b|$)/.exec(t) || [, ''])[1], text: t };
 };
 
+// URL assertions never use string containment. A recorded curl call is split into arguments, each http(s) argument is parsed with the URL parser, and the parts
+// (protocol, hostname, port, credentials, path) are compared exactly. `raw === href` additionally rejects spellings the parser would silently normalise (an explicit
+// default port such as :443, an upper-case host, a dot segment), so "the request went to pintag.io" cannot be satisfied by a lookalike or embedded host.
+const requestedUrls = (line) => line.replace(/^CALL /, '').split(/\s+/).filter((t) => /^[a-z][a-z0-9+.-]*:/i.test(t) && t.includes('//')).map((raw) => { try { return { raw, url: new URL(raw) }; } catch { return null; } }).filter(Boolean);
+const isSiteRoot = ({ raw, url }) => url.protocol === 'https:' && url.hostname === 'pintag.io' && url.port === '' && url.username === '' && url.password === '' && url.pathname === '/' && url.search === '' && url.hash === '' && raw === url.href;
+const siteRootRequested = (calls) => calls.some((l) => requestedUrls(l).some(isSiteRoot));
+const isProjectRead = ({ url }) => url.protocol === 'https:' && url.hostname === `${PROD_REF}.supabase.co` && url.port === '' && url.username === '' && url.password === '' && url.pathname.startsWith('/rest/v1/');
+
 test('dry run of the production suites against a recording curl: ONLY plain GET/HEAD to the project\'s /rest/v1/ and the site; no body, no token, no RPC, no function, no storage, no auth', () => {
   const { r, calls } = dryRun();
   assert.notEqual(r.status, 97, 'the guard never fired: ' + r.stderr);
@@ -255,22 +264,39 @@ test('dry run of the production suites against a recording curl: ONLY plain GET/
   for (const line of calls) {
     const c = parse(line);
     assert.equal(c.method, 'GET', `only GET: ${c.text}`);
-    assert.ok(c.url.startsWith(`https://${PROD_REF}.supabase.co/rest/v1/`), `only the project's /rest/v1/: ${c.url}`);
-    assert.ok(!/\/rpc\/|\/functions\/v1\/|\/storage\/v1\/|\/auth\/v1\//.test(c.url), `no rpc / function / storage / auth: ${c.url}`);
+    assert.ok(requestedUrls(line).length === 1 && isProjectRead(requestedUrls(line)[0]), `exactly one URL, on the project host (https, no port, no credentials), under /rest/v1/: ${c.url}`);
+    const pu = requestedUrls(line)[0].url;
+    assert.ok(!/\/rpc\/|\/functions\/v1\/|\/storage\/v1\/|\/auth\/v1\//.test(pu.pathname), `no rpc / function / storage / auth: ${pu.pathname}`);
     assert.equal(c.bearer, undefined, `no Authorization header at all: ${c.text}`);
     // EXACTLY the one permitted form: curl -q --proto =https --noproxy '*' -s -w <fmt> -X GET <url> -H "apikey: anonkey"  (nothing else, in this order)
     assert.match(c.text.trim(), /^-q --proto =https --noproxy \* -s -w \S* ?\S*\s*-X GET https:\/\/\S+ -H apikey: anonkey$/, `only the permitted argument form: ${c.text}`);
-    assert.ok(/\/rest\/v1\/(properties|parties|contacts|lead_events|listing_events|intelligence_reports|intelligence_insights|report_insights|intelligence_sweep_lock)(\?|$)/.test(c.url), `only permitted tables: ${c.url}`);
+    assert.match(pu.pathname, /^\/rest\/v1\/(properties|parties|contacts|lead_events|listing_events|intelligence_reports|intelligence_insights|report_insights|intelligence_sweep_lock)$/, `only permitted tables: ${pu.pathname}`);
   }
   // the requests that DO get sent are the read probes (a few examples that must be present)
-  for (const must of ['/rest/v1/properties?status=eq.draft', '/rest/v1/lead_events', '/rest/v1/intelligence_reports', '/rest/v1/report_insights']) assert.ok(calls.some((l) => l.includes(must)), `read probe present: ${must}`);
+  for (const must of ['/rest/v1/properties?status=eq.draft', '/rest/v1/lead_events', '/rest/v1/intelligence_reports', '/rest/v1/report_insights']) assert.ok(calls.some((l) => requestedUrls(l).some((r) => isProjectRead(r) && `${r.url.pathname}${r.url.search}`.startsWith(must))), `read probe present: ${must}`);
 });
 
 test('with SITE_URL set the header suite sends only GET/HEAD to the site, through the same guard', () => {
   const { r, calls } = dryRun({ SITE_URL: 'https://pintag.io' });
   assert.notEqual(r.status, 97, r.stderr);
   assert.ok(calls.every((l) => !/\s-X\s(POST|PUT|PATCH|DELETE)\s/.test(l) && !/\s(-d|--data\S*)\s/.test(l)), 'no write verb and no body, with or without SITE_URL');
-  assert.ok(calls.some((l) => l.includes('https://pintag.io/')), 'the site was requested (HEAD/GET)');
+  assert.ok(siteRootRequested(calls), 'the site root was requested (HEAD/GET) with protocol https:, host pintag.io, no port, no credentials');
+});
+
+test('the URL assertions used by these tests reject look-alike and embedded hosts, other ports, credentials and protocols (parsed, never substring)', () => {
+  const call = (u) => [`CALL -q --proto =https --noproxy * -sI --max-time 10 ${u}`];
+  const accepted = ['https://pintag.io/'];
+  const rejected = ['https://evil.example/https://pintag.io/', 'https://pintag.io.evil.example/', 'https://evil.example@pintag.io/', 'https://pintag.io@evil.example/', 'https://user:pw@pintag.io/', 'https://pintag.io:8443/', 'https://pintag.io:443/',
+    'http://pintag.io/', 'ftp://pintag.io/', 'file://pintag.io/', 'https://evilpintag.io/', 'https://sub.pintag.io/', 'https://www.pintag.io/', 'https://PINTAG.io/', 'https://pintag.io/x', 'https://pintag.io/?u=1', 'https://pintag.io/#f',
+    'https://evil.example/?u=https://pintag.io/', 'https://evil.example/%2F..%2Fhttps://pintag.io/', 'https://pintag.io/../', 'https://pintag.io//', 'https://pintag.io:/'];
+  for (const u of accepted) assert.equal(siteRootRequested(call(u)), true, u);
+  for (const u of rejected) assert.equal(siteRootRequested(call(u)), false, `must not be accepted: ${u}`);
+  // the same strictness for the project host
+  const P = (u) => isProjectRead(requestedUrls(`CALL ${u}`)[0]);
+  assert.equal(P(`${U}/rest/v1/properties?select=id`), true);
+  for (const u of [`${U}.evil.example/rest/v1/properties`, `https://evil.example/${U}/rest/v1/properties`, `https://${PROD_REF}.supabase.co@evil.example/rest/v1/properties`, `https://evil.example@${PROD_REF}.supabase.co/rest/v1/properties`, `${U}:8443/rest/v1/properties`, `http://${PROD_REF}.supabase.co/rest/v1/properties`, `${U}/functions/v1/x`]) assert.equal(P(u), false, u);
+  // and the guard itself refuses the look-alike / embedded / port / credential / protocol forms as destinations (plain site paths such as /x are legitimately allowed by the guard, so they are not in this list)
+  for (const u of rejected.filter((x) => !/^https:\/\/pintag\.io(\/(x|\?u=1|#f|\.\.\/|\/)?)?$/.test(x))) assert.equal(guard('GET', u), 1, `guard refuses: ${u}`);
 });
 
 test('APP_ENV never changes the outcome or the label: the banner and the report name the real target mode and project ref', () => {
