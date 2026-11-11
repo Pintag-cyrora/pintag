@@ -38,7 +38,7 @@ declare -A SUITE_RUNTIME
 declare -A SUITE_FILE
 SUITE_ORDER=()
 
-for f in tests/security/suites/*.sh; do
+for f in tests/security/suites/*.sh tests/security/staging-suites/*.sh; do
   [[ -f "$f" ]] || continue
   local_name=$(basename "$f" .sh | sed 's/^[0-9]*_//')
   SUITE_ORDER+=("$local_name")

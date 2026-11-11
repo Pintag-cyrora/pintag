@@ -45,6 +45,10 @@ jobs:
       - name: XSS / inline-handler escaping regressions
         run: node --test xss-inline-handlers.test.js
 
+      # The production guard of the live suite: target classification, credential refusal, and a dry run of the whole suite against a recording curl.
+      - name: Live-suite production safety (target guard, GET-only dry run) and the local replacements for the removed production probes
+        run: node --test security-target-guard.test.js edge-function-auth-gates.test.js resolve-map-url-validation.test.js
+
       - name: Request-wide deadline (smart-listing-importer)
         run: node --test tests/smart-import-vision/request-deadline.test.mjs
 
@@ -72,18 +76,16 @@ jobs:
           npx playwright install --with-deps chromium
           npx playwright test
 
-  # ── Live suite — probes a real Supabase project, so it needs credentials ───
-  # Deliberately NOT run on `pull_request`. This job puts ADMIN_EMAIL/
-  # ADMIN_PASSWORD and the project keys into the environment of a step that
-  # executes `tests/security/run.sh` FROM THE CHECKED-OUT TREE. On a
-  # pull_request from a branch in this repository, secrets ARE available, so
-  # anyone able to open such a PR could edit that script to print or exfiltrate
-  # the administrator's credentials. Restricting the job to push/schedule/
-  # dispatch means the script that runs with the credentials is always one that
-  # is already on main. (Audit 2026-08-17.)
+  # ── Live suite — probes the real Supabase project ANONYMOUSLY and READ-ONLY ─
+  # It runs on every push to `main` and weekly. It deliberately receives ONLY the project URL, the public anon key and the site URL:
+  # no administrator or test-user credential is placed in this job's environment, so a credentialed (and potentially mutating) test cannot run
+  # against production even by mistake. tests/security/lib/target-guard.sh enforces the same rule a second time inside the suite: it classifies
+  # the target from the project reference in SUPABASE_URL (not from a label), refuses credentials if the target is production, and allows ONLY plain
+  # GET/HEAD requests to the project's /rest/v1/ and the site (no body, no RPC, no Edge Function, no Storage, no auth endpoint, no other host).
+  # Behaviour that needs a SUCCESSFUL insert (deduplication, rate limits, ceilings) is tested against a throwaway PostgreSQL database in the
+  # `local` job above, never here. Credentialed tests stay disabled until an isolated staging project exists (docs/SECURITY_STAGING_ENVIRONMENT.md).
   #
-  # Coverage is not lost: PRs still run the `local` job above, and this suite
-  # runs on every push to main, weekly, and on demand.
+  # Deliberately NOT run on `pull_request`: the script that runs with the project keys is always one that is already on main (Audit 2026-08-17).
   security:
     name: Security Regression Suite (live project)
     if: github.event_name != 'pull_request'
@@ -91,13 +93,8 @@ jobs:
     timeout-minutes: 15
 
     env:
-      APP_ENV:            staging
       SUPABASE_URL:       ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY:  ${{ secrets.SUPABASE_ANON_KEY }}
-      ADMIN_EMAIL:        ${{ secrets.ADMIN_EMAIL }}
-      ADMIN_PASSWORD:     ${{ secrets.ADMIN_PASSWORD }}
-      TEST_USER_EMAIL:    ${{ secrets.TEST_USER_EMAIL }}
-      TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
       SITE_URL:           ${{ secrets.SITE_URL }}
 
     steps:
@@ -121,7 +118,11 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq curl jq
 
+      # The step shell is started WITHOUT BASH_ENV / ENV: Bash executes the file named by BASH_ENV before any script text runs, so a value inherited into the job (or
+      # written to the job environment by an earlier step) could run code with the project keys in reach. `env -u` removes them before Bash starts; run.sh additionally
+      # refuses to start if either is set, removes inherited proxy / CA / loader settings, and gives every curl --noproxy '*' (tests/security/lib/target-guard.sh).
       - name: Run security suite
+        shell: env -u BASH_ENV -u ENV bash --noprofile --norc -eo pipefail {0}
         run: bash tests/security/run.sh
 
       - name: Upload reports

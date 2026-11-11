@@ -33,7 +33,7 @@ run_headers_tests() {
   for page in "${PAGES[@]}"; do
     local url="${SITE_URL}${page}"
     local headers
-    headers=$(curl -sIL --max-time 10 "$url" 2>/dev/null)
+    headers=$(site_head "$url")
 
     if [[ -z "$headers" ]]; then
       skip "Headers for ${page}" "request failed or timed out"
@@ -58,7 +58,7 @@ run_headers_tests() {
     else
       # Check for meta CSP in HTML body
       local body
-      body=$(curl -sL --max-time 10 "$url" 2>/dev/null | head -50)
+      body=$(site_get "$url" | head -50)
       if echo "$body" | grep -qi "Content-Security-Policy"; then
         check "${page}: CSP meta tag present in HTML" "Content-Security-Policy" "$body"
         info "  CSP is in <meta> tag only — HTTP header layer not set (add at CDN/host)"

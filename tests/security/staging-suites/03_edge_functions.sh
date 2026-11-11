@@ -36,7 +36,7 @@ run_edge_functions_tests() {
     check "empty payload → 4xx or 5xx" "^[45]" "$status"
 
     # Malformed JSON
-    r=$(curl -s -w "\n%{http_code}" -X POST \
+    r=$(http_request POST \
       "${SUPABASE_URL}/functions/v1/generate-listing-content" \
       -H "apikey: ${SUPABASE_ANON_KEY}" \
       -H "Authorization: Bearer ${ADMIN_JWT}" \

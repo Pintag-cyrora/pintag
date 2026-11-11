@@ -544,5 +544,277 @@ BEGIN
   PERFORM assert((r::jsonb) ? 'views_week', 'public_listing_stats() returns a views_week key (the shape listing.html expects)');
 END $$;
 
+\echo '=== L. listing_events anonymous insert: success, dedup, ceiling, targets ====='
+-- These are the assertions the LIVE suite (tests/security/suites/02_rls.sh, 07_rate_limiting.sh) used to make by
+-- inserting real rows into the production listing_events table. They live here instead, against a throwaway database,
+-- so production analytics are never written by a test.
+
+-- L1: a first view of an active listing is recorded (the legitimate path still works).
+DO $$
+DECLARE ok boolean := false;
+BEGIN
+  PERFORM become_anon();
+  BEGIN
+    INSERT INTO listing_events (property_id, event_type, session_id)
+    VALUES ('11111111-0000-0000-0000-000000000001', 'view', 'l-session-1');
+    ok := true;
+  EXCEPTION WHEN OTHERS THEN ok := false;
+  END;
+  RESET ROLE;
+  PERFORM assert(ok, 'anon INSERT listing_events (active listing, first event of a session) is accepted');
+END $$;
+
+-- L2: the same session repeating the same event inside the window is refused (per-session dedup).
+DO $$
+DECLARE ok boolean := true;
+BEGIN
+  PERFORM become_anon();
+  BEGIN
+    INSERT INTO listing_events (property_id, event_type, session_id)
+    VALUES ('11111111-0000-0000-0000-000000000001', 'view', 'l-session-1');
+  EXCEPTION WHEN OTHERS THEN ok := false;
+  END;
+  RESET ROLE;
+  PERFORM assert(NOT ok, 'anon INSERT listing_events (duplicate session+listing+event inside the window) is refused');
+END $$;
+
+-- L3: a different event type for the same session is not deduplicated.
+DO $$
+DECLARE ok boolean := false;
+BEGIN
+  PERFORM become_anon();
+  BEGIN
+    INSERT INTO listing_events (property_id, event_type, session_id)
+    VALUES ('11111111-0000-0000-0000-000000000001', 'share', 'l-session-1');
+    ok := true;
+  EXCEPTION WHEN OTHERS THEN ok := false;
+  END;
+  RESET ROLE;
+  PERFORM assert(ok, 'anon INSERT listing_events (different event type, same session) is accepted');
+END $$;
+
+-- L4: events for an unpublished, an unknown, and a NULL listing are refused.
+DO $$
+DECLARE refused int := 0; pid uuid;
+BEGIN
+  PERFORM become_anon();
+  FOREACH pid IN ARRAY ARRAY['22222222-0000-0000-0000-000000000002'::uuid,
+                             '00000000-0000-0000-0000-000000000000'::uuid] LOOP
+    BEGIN
+      INSERT INTO listing_events (property_id, event_type, session_id) VALUES (pid, 'view', 'l-session-2');
+    EXCEPTION WHEN OTHERS THEN refused := refused + 1;
+    END;
+  END LOOP;
+  RESET ROLE;
+  PERFORM assert(refused = 2, 'anon INSERT listing_events for a draft listing and for a non-existent listing are both refused');
+END $$;
+
+-- L5: rotating session ids is bounded by the per-listing ceiling (300/minute), and another listing is unaffected.
+DO $$
+DECLARE accepted int := 0; i int;
+BEGIN
+  PERFORM become_anon();
+  FOR i IN 1..400 LOOP
+    BEGIN
+      INSERT INTO listing_events (property_id, event_type, session_id)
+      VALUES ('11111111-0000-0000-0000-000000000001', 'impression', 'l-rotated-' || i::text);
+      accepted := accepted + 1;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+  END LOOP;
+  RESET ROLE;
+  PERFORM assert(accepted <= 300, format('rotating session ids on listing_events is bounded by the ceiling (accepted %s, cap 300)', accepted));
+  PERFORM assert(accepted > 0, 'the listing_events ceiling does not block everything outright');
+END $$;
+
+-- L6: anonymous callers cannot update or delete listing_events, and cannot widen what they may read beyond the table's policy.
+DO $$
+DECLARE upd int; del int; denied_upd boolean := false; denied_del boolean := false;
+BEGIN
+  PERFORM become_anon();
+  BEGIN UPDATE listing_events SET event_type = 'hacked' WHERE session_id = 'l-session-1'; GET DIAGNOSTICS upd = ROW_COUNT; EXCEPTION WHEN OTHERS THEN denied_upd := true; END;
+  BEGIN DELETE FROM listing_events WHERE session_id = 'l-session-1'; GET DIAGNOSTICS del = ROW_COUNT; EXCEPTION WHEN OTHERS THEN denied_del := true; END;
+  RESET ROLE;
+  PERFORM assert(denied_upd OR coalesce(upd, 0) = 0, 'anon UPDATE listing_events changes nothing');
+  PERFORM assert(denied_del OR coalesce(del, 0) = 0, 'anon DELETE listing_events removes nothing');
+END $$;
+
+\echo '=== M. Write paths: anonymous and non-admin callers cannot write; the administrator can only with AAL2 =========='
+-- These are the assertions the live suite used to make by SENDING write requests to production (anonymous POST/PATCH/DELETE on properties, parties,
+-- contacts, intelligence_* and report_insights). The live suite now sends only GET to production; the policies are asserted here, on a throwaway database.
+
+-- Seed one row per table as the superuser (RLS does not apply to it).
+INSERT INTO parties (id, name_en, type) VALUES ('d0000000-0000-0000-0000-000000000001', 'Seed party', 'agent');
+INSERT INTO contacts (id, role, phone) VALUES ('d0000000-0000-0000-0000-000000000002', 'owner', '00000000');
+INSERT INTO intelligence_reports (id, report_type, period_start, period_end, title) VALUES ('d0000000-0000-0000-0000-000000000003', 'daily', '2026-01-01', '2026-01-01', 'Seed report');
+INSERT INTO intelligence_insights (id, type, metric_key, title) VALUES ('d0000000-0000-0000-0000-000000000004', 'demand_spike', 'seed', 'Seed insight');
+INSERT INTO report_insights (report_id, insight_id, role) VALUES ('d0000000-0000-0000-0000-000000000003', 'd0000000-0000-0000-0000-000000000004', 'mentioned');
+
+-- M1: anonymous INSERT is refused on every table the live suite used to probe, and nothing is written.
+DO $$
+DECLARE
+  stmts text[] := ARRAY[
+    $q$INSERT INTO properties (title_en, status, slug) VALUES ('PENTEST_INSERT', 'active', 'pentest-rls-insert')$q$,
+    $q$INSERT INTO parties (name_en) VALUES ('PENTEST_AGENT')$q$,
+    $q$INSERT INTO contacts (role, phone) VALUES ('owner', '02099999999')$q$,
+    $q$INSERT INTO intelligence_reports (report_type, period_start, period_end) VALUES ('daily', '2026-01-01', '2026-01-01')$q$,
+    $q$INSERT INTO intelligence_insights (type, metric_key, title) VALUES ('demand_spike', 'test', 'PENTEST')$q$,
+    $q$INSERT INTO report_insights (report_id, insight_id, role) VALUES (gen_random_uuid(), gen_random_uuid(), 'mentioned')$q$ ];
+  q text; refused int := 0;
+BEGIN
+  PERFORM become_anon();
+  FOREACH q IN ARRAY stmts LOOP
+    BEGIN EXECUTE q; EXCEPTION WHEN insufficient_privilege THEN refused := refused + 1; END;   -- any OTHER error propagates and fails the run
+  END LOOP;
+  RESET ROLE;
+  PERFORM assert(refused = array_length(stmts, 1), format('anon INSERT refused on all %s tables (permission denied / RLS), not merely rejected later', array_length(stmts, 1)));
+  PERFORM assert((SELECT count(*) FROM properties WHERE slug = 'pentest-rls-insert') = 0
+             AND (SELECT count(*) FROM parties) = 1 AND (SELECT count(*) FROM contacts) = 1
+             AND (SELECT count(*) FROM intelligence_reports) = 1 AND (SELECT count(*) FROM intelligence_insights) = 1 AND (SELECT count(*) FROM report_insights) = 1,
+             'nothing was written by the anonymous attempts');
+END $$;
+
+-- M2: anonymous UPDATE and DELETE change nothing (refused by privilege, or matching no visible row), and the seed rows are intact.
+DO $$
+DECLARE
+  stmts text[] := ARRAY[
+    $q$UPDATE properties SET title_en = 'HACKED' WHERE status = 'active'$q$,
+    $q$DELETE FROM properties WHERE status = 'active'$q$,
+    $q$UPDATE parties SET name_en = 'HACKED'$q$, $q$DELETE FROM parties$q$,
+    $q$UPDATE contacts SET phone = 'HACKED'$q$, $q$DELETE FROM contacts$q$,
+    $q$UPDATE intelligence_reports SET title = 'HACKED'$q$, $q$DELETE FROM intelligence_reports$q$,
+    $q$UPDATE intelligence_insights SET title = 'HACKED'$q$, $q$DELETE FROM intelligence_insights$q$,
+    $q$DELETE FROM report_insights$q$ ];
+  q text; n bigint; affected bigint := 0;
+BEGIN
+  PERFORM become_anon();
+  FOREACH q IN ARRAY stmts LOOP
+    BEGIN EXECUTE q; GET DIAGNOSTICS n = ROW_COUNT; affected := affected + n; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  END LOOP;
+  RESET ROLE;
+  PERFORM assert(affected = 0, 'anon UPDATE / DELETE affected no row on any table');
+  PERFORM assert((SELECT name_en FROM parties) = 'Seed party' AND (SELECT phone FROM contacts) = '00000000' AND (SELECT title FROM intelligence_reports) = 'Seed report'
+             AND (SELECT count(*) FROM properties WHERE title_en = 'HACKED') = 0, 'the seed rows are unchanged');
+END $$;
+
+-- M3: the legitimate path still works, so "deny everyone" cannot pass: only the allowlisted administrator at AAL2 writes parties / contacts / properties;
+--     a signed-up non-admin and the administrator at AAL1 are refused; nobody writes the Intelligence tables through a client role.
+DO $$
+DECLARE who text; uid uuid; aal text; ok boolean; refused boolean; k int := 0;
+BEGIN
+  FOR who, uid, aal IN VALUES ('signed-up non-admin', 'bbbbbbbb-0000-0000-0000-000000000002'::uuid, 'aal2'), ('administrator at AAL1', 'aaaaaaaa-0000-0000-0000-000000000001'::uuid, 'aal1') LOOP
+    PERFORM become_user(uid, 'someone@example.test', aal);
+    refused := false;
+    BEGIN INSERT INTO parties (name_en) VALUES ('X'); EXCEPTION WHEN insufficient_privilege THEN refused := true; END;
+    PERFORM assert(refused, format('%s cannot INSERT into parties', who));
+    refused := false;
+    BEGIN INSERT INTO contacts (role) VALUES ('other'); EXCEPTION WHEN insufficient_privilege THEN refused := true; END;
+    PERFORM assert(refused, format('%s cannot INSERT into contacts', who));
+    refused := false;
+    BEGIN INSERT INTO properties (title_en, status, slug) VALUES ('X', 'draft', 'x-' || k); EXCEPTION WHEN insufficient_privilege THEN refused := true; END;
+    PERFORM assert(refused, format('%s cannot INSERT into properties', who));
+    RESET ROLE; k := k + 1;
+  END LOOP;
+
+  PERFORM become_user('aaaaaaaa-0000-0000-0000-000000000001', 'someone@example.test', 'aal2');
+  ok := false; BEGIN INSERT INTO parties (name_en) VALUES ('Admin party'); ok := true; EXCEPTION WHEN insufficient_privilege THEN ok := false; END;
+  PERFORM assert(ok, 'the administrator at AAL2 CAN INSERT into parties (the legitimate path works)');
+  ok := false; BEGIN INSERT INTO contacts (role) VALUES ('other'); ok := true; EXCEPTION WHEN insufficient_privilege THEN ok := false; END;
+  PERFORM assert(ok, 'the administrator at AAL2 CAN INSERT into contacts');
+  ok := false; BEGIN INSERT INTO properties (title_en, status, slug) VALUES ('Admin draft', 'draft', 'admin-draft'); ok := true; EXCEPTION WHEN insufficient_privilege THEN ok := false; END;
+  PERFORM assert(ok, 'the administrator at AAL2 CAN INSERT into properties');
+  refused := false; BEGIN INSERT INTO intelligence_reports (report_type, period_start, period_end) VALUES ('daily', '2026-01-02', '2026-01-02'); EXCEPTION WHEN insufficient_privilege THEN refused := true; END;
+  PERFORM assert(refused, 'even the administrator at AAL2 cannot INSERT into intelligence_reports (written only by the service role)');
+  refused := false; BEGIN INSERT INTO intelligence_insights (type, metric_key, title) VALUES ('x', 'y', 'z'); EXCEPTION WHEN insufficient_privilege THEN refused := true; END;
+  PERFORM assert(refused, 'even the administrator at AAL2 cannot INSERT into intelligence_insights');
+  PERFORM assert((SELECT count(*) FROM intelligence_reports) = 1, 'the administrator at AAL2 can READ intelligence_reports');
+  RESET ROLE;
+END $$;
+
+-- M4: the Intelligence tables expose nothing to anonymous or non-admin readers.
+DO $$
+DECLARE a bigint; b bigint;
+BEGIN
+  PERFORM become_anon();
+  SELECT (SELECT count(*) FROM intelligence_reports) + (SELECT count(*) FROM intelligence_insights) + (SELECT count(*) FROM report_insights) INTO a;
+  RESET ROLE;
+  PERFORM become_user('bbbbbbbb-0000-0000-0000-000000000002', 'someone@example.test', 'aal2');
+  SELECT (SELECT count(*) FROM intelligence_reports) + (SELECT count(*) FROM intelligence_insights) + (SELECT count(*) FROM report_insights) INTO b;
+  RESET ROLE;
+  PERFORM assert(a = 0 AND b = 0, 'anon and a signed-up non-admin read no row from the Intelligence tables');
+END $$;
+
+\echo ''
+\echo '=== N. Storage policies (the REAL migration 20260804150000 applied to a storage.objects stub) =================='
+-- The live suite used to upload pentest-*.php/.js/.sh/.html/.exe/.jpg files to the production buckets. Uploads are asserted here instead.
+DO $$
+DECLARE refused int; ok boolean; fn text; bkt text;
+BEGIN
+  FOREACH bkt IN ARRAY ARRAY['property-images', 'agent-photos'] LOOP
+    PERFORM become_anon(); refused := 0;
+    FOREACH fn IN ARRAY ARRAY['a.jpg', 'a.php', 'a.js', 'a.sh', 'a.html', 'a.exe', 'a.svg'] LOOP
+      BEGIN INSERT INTO storage.objects (bucket_id, name) VALUES (bkt, 'pentest-' || fn); EXCEPTION WHEN insufficient_privilege THEN refused := refused + 1; END;
+    END LOOP;
+    RESET ROLE;
+    PERFORM assert(refused = 7, format('anon cannot upload any file type to %s', bkt));
+    PERFORM become_user('bbbbbbbb-0000-0000-0000-000000000002', 'someone@example.test', 'aal2'); ok := true;
+    BEGIN INSERT INTO storage.objects (bucket_id, name) VALUES (bkt, 'u.jpg'); EXCEPTION WHEN insufficient_privilege THEN ok := false; END; RESET ROLE;
+    PERFORM assert(NOT ok, format('a signed-up non-admin cannot upload to %s', bkt));
+    PERFORM become_user('aaaaaaaa-0000-0000-0000-000000000001', 'someone@example.test', 'aal1'); ok := true;
+    BEGIN INSERT INTO storage.objects (bucket_id, name) VALUES (bkt, 'u1.jpg'); EXCEPTION WHEN insufficient_privilege THEN ok := false; END; RESET ROLE;
+    PERFORM assert(NOT ok, format('the administrator at AAL1 cannot upload to %s', bkt));
+    PERFORM become_user('aaaaaaaa-0000-0000-0000-000000000001', 'someone@example.test', 'aal2');
+    ok := false; BEGIN INSERT INTO storage.objects (bucket_id, name) VALUES (bkt, 'ok.jpg'); ok := true; EXCEPTION WHEN insufficient_privilege THEN ok := false; END;
+    PERFORM assert(ok, format('the administrator at AAL2 CAN upload a .jpg to %s (the legitimate path works)', bkt));
+    refused := 0;
+    FOREACH fn IN ARRAY ARRAY['bad.php', 'bad.js', 'bad.sh', 'bad.html', 'bad.exe', 'bad.svg', 'bad.jpg.php', '.htaccess'] LOOP
+      BEGIN INSERT INTO storage.objects (bucket_id, name) VALUES (bkt, fn); EXCEPTION WHEN insufficient_privilege THEN refused := refused + 1; END;
+    END LOOP;
+    PERFORM assert(refused = 8, format('the administrator at AAL2 cannot upload scripts, svg or extension-less names to %s', bkt));
+    RESET ROLE;
+  END LOOP;
+  PERFORM become_user('aaaaaaaa-0000-0000-0000-000000000001', 'someone@example.test', 'aal2'); ok := true;
+  BEGIN INSERT INTO storage.objects (bucket_id, name) VALUES ('other-bucket', 'x.jpg'); EXCEPTION WHEN insufficient_privilege THEN ok := false; END; RESET ROLE;
+  PERFORM assert(NOT ok, 'no write policy exists for an unlisted bucket');
+  PERFORM become_anon();
+  DELETE FROM storage.objects; UPDATE storage.objects SET name = 'hacked.jpg';
+  PERFORM assert((SELECT count(*) FROM storage.objects WHERE name = 'ok.jpg') = 2, 'anon DELETE / UPDATE on storage.objects changed nothing and the public read works');
+  RESET ROLE;
+END $$;
+
+\echo ''
+\echo '=== O. increment_listing_view: invalid input is rejected before the function body; a nil UUID is NOT inert ==========='
+-- Why production is never sent this RPC: even a nil UUID reaches the body and writes a bookkeeping row. Invalid input is rejected at the argument cast, so the
+-- body (and its throttle write) is never entered. The old production probe sent {"property_id": ...} to a function whose parameter is p_listing_id, so it never
+-- reached the function at all; nothing on production tests this function (documented coverage gap).
+DO $$
+DECLARE before_t bigint; before_v bigint; after_t bigint; after_v bigint; sqlstate_seen text; bad text; n int := 0; nil_rows bigint;
+BEGIN
+  PERFORM assert((SELECT count(*) FROM pg_proc WHERE proname = 'increment_listing_view') = 1
+             AND (SELECT pronargs FROM pg_proc WHERE proname = 'increment_listing_view') = 1
+             AND (SELECT proargtypes::text FROM pg_proc WHERE proname = 'increment_listing_view') = (SELECT oid::text FROM pg_type WHERE typname = 'uuid'),
+             'increment_listing_view has exactly one signature, (uuid): a non-UUID value cannot be passed to a text overload');
+  SELECT count(*) INTO before_t FROM listing_view_throttle;
+  SELECT coalesce(sum(view_count), 0) INTO before_v FROM properties;
+  PERFORM become_anon();
+  FOREACH bad IN ARRAY ARRAY['not-a-uuid', '''', '''; DROP TABLE properties--', '1 UNION SELECT NULL--', '', '00000000-0000-0000-0000-00000000000g'] LOOP
+    sqlstate_seen := NULL;
+    BEGIN EXECUTE format('SELECT increment_listing_view(%L::uuid)', bad);
+    EXCEPTION WHEN OTHERS THEN sqlstate_seen := SQLSTATE; END;
+    IF sqlstate_seen = '22P02' THEN n := n + 1; END IF;
+  END LOOP;
+  RESET ROLE;
+  SELECT count(*) INTO after_t FROM listing_view_throttle;
+  SELECT coalesce(sum(view_count), 0) INTO after_v FROM properties;
+  PERFORM assert(n = 6, 'every invalid UUID input is rejected with 22P02 (invalid_text_representation) at the cast');
+  PERFORM assert(after_t = before_t AND after_v = before_v, 'rejected input wrote nothing: no throttle row, no view count change (the function body was never entered)');
+  PERFORM become_anon();
+  PERFORM increment_listing_view('00000000-0000-0000-0000-000000000000');
+  RESET ROLE;
+  SELECT count(*) INTO nil_rows FROM listing_view_throttle WHERE property_id = '00000000-0000-0000-0000-000000000000';
+  PERFORM assert(nil_rows = 1, 'a NIL-UUID call DOES write a row to listing_view_throttle: a nil UUID is not inert');
+  DELETE FROM listing_view_throttle WHERE property_id = '00000000-0000-0000-0000-000000000000';
+END $$;
+
 \echo ''
 \echo 'ALL DATA-LAYER SECURITY REGRESSION ASSERTIONS PASSED'
