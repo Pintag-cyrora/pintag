@@ -71,16 +71,27 @@ RUN_START_MS=$(now_ms)
 LAST_CHECK_MS=$RUN_START_MS
 SUITE_START_MS=$RUN_START_MS
 
-# ── Request logging ───────────────────────────────────────────────────────────
-TOTAL_REQUESTS=0
+# ── Request logging and counting ──────────────────────────────────────────────
+# THE REQUEST COUNT is a FILE, not a variable. http_request normally runs inside $(...) (r=$(api_get ...)), i.e. in a subshell: any shell variable it
+# increments dies with that subshell, which is why the summary printed "Requests: 0" after 32 real requests. A file is shared by every process of the run.
+# _count_request appends ONE byte (O_APPEND, a single write(2) of 1 byte is atomic, so no lock is needed and parallel writers cannot lose or double a count)
+# immediately BEFORE a curl process is started and AFTER pt_guard_request approved the request, so
+#   * a request the guard refused is never counted (the run is killed before this line is reached);
+#   * a request that was issued and then failed, timed out or was killed mid-flight IS counted;
+#   * every retry attempt is a separate request and is counted separately.
+# requests_issued reads the size of that file. Every curl invocation in this file must be preceded by _count_request (checked by security-request-counter.test.js).
 PERF_WARNINGS=0
 LOG_DIR="tests/security/output"
 REQUEST_LOG="${LOG_DIR}/requests-${RUN_ID_SHORT}.log"
+REQUEST_COUNT_FILE="${LOG_DIR}/request-count-${RUN_ID_SHORT}"
 mkdir -p "${LOG_DIR}/reports"
+: > "$REQUEST_COUNT_FILE"
+
+_count_request() { printf '.' >> "$REQUEST_COUNT_FILE" || echo "WARNING: the request counter could not be written; the request count will be too low" >&2; }
+requests_issued() { local n; n=$(wc -c < "$REQUEST_COUNT_FILE" 2>/dev/null) || n=0; printf '%s' "${n//[[:space:]]/}"; }
 
 _log_request() {
   local method="$1" url="$2" status="$3" duration_ms="$4"
-  TOTAL_REQUESTS=$((TOTAL_REQUESTS+1))
   printf "%s\t%s\t%s\t%s\t%s\t%s\t%dms\n" \
     "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
     "${CURRENT_SUITE:-?}" \
@@ -122,6 +133,7 @@ http_request() {
 
   while true; do
     start_ms=$(now_ms)
+    _count_request
     response=$(curl "${PT_CURL_OPTS[@]}" -s -w "\n%{http_code}" -X "$method" "$url" "$@" 2>/dev/null)
     end_ms=$(now_ms)
     duration_ms=$(( end_ms - start_ms ))
@@ -155,10 +167,12 @@ http_request() {
 # run to a third-party host; set SITE_URL to the final address).
 site_head() {
   pt_guard_request HEAD "$1" || pt_abort_refused
+  _count_request
   curl "${PT_CURL_OPTS[@]}" -sI --max-time 10 "$1" 2>/dev/null
 }
 site_get() {
   pt_guard_request GET "$1" || pt_abort_refused
+  _count_request
   curl "${PT_CURL_OPTS[@]}" -s --max-time 10 "$1" 2>/dev/null
 }
 
@@ -519,7 +533,7 @@ generate_reports() {
     printf '  "passed": %d,\n'            "$TOTAL_PASS"
     printf '  "failed": %d,\n'            "$TOTAL_FAIL"
     printf '  "skipped": %d,\n'           "$TOTAL_SKIP"
-    printf '  "total_requests": %d,\n'    "$TOTAL_REQUESTS"
+    printf '  "total_requests": %d,\n'    "$(requests_issued)"
     printf '  "perf_warnings": %d,\n'     "$PERF_WARNINGS"
     printf '  "suites": [%s]\n'           "$suites_json"
     printf '}\n'
