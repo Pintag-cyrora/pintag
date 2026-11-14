@@ -47,7 +47,7 @@ jobs:
 
       # The production guard of the live suite: target classification, credential refusal, and a dry run of the whole suite against a recording curl.
       - name: Live-suite production safety (target guard, GET-only dry run) and the local replacements for the removed production probes
-        run: node --test security-target-guard.test.js edge-function-auth-gates.test.js resolve-map-url-validation.test.js
+        run: node --test security-target-guard.test.js security-request-counter.test.js edge-function-auth-gates.test.js resolve-map-url-validation.test.js
 
       - name: Request-wide deadline (smart-listing-importer)
         run: node --test tests/smart-import-vision/request-deadline.test.mjs

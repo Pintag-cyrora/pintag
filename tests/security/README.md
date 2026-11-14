@@ -184,12 +184,25 @@ tests/security/
 │   ├── 02_rls.sh
 │   └── ...
 └── output/                  Gitignored at runtime
+    ├── request-count-<id>   Request counter: one byte per curl process started (its size is the count)
     ├── requests-<id>.log    TSV request log (timestamp, suite, test, method, url, status, duration)
     ├── perf-baseline.json   Performance regression baseline (updated each run)
     └── reports/
         ├── junit-<id>.xml   JUnit XML report
         └── summary-<id>.json JSON summary
 ```
+
+### How requests are counted
+
+The `Requests:` line of the summary and `total_requests` in `reports/summary-<id>.json` come from a **file**, `output/request-count-<id>`, not from a shell variable.
+`http_request` normally runs inside `$(...)` (a subshell), where a variable increment is lost; the first production run printed `Requests: 0` after about 32 real requests for that reason.
+
+* `_count_request` appends **one byte** to the file immediately **before each curl process is started** and **after** the production guard approved the request. A one-byte append is atomic, so subshells, pipelines, background jobs and parallel jobs cannot lose or double a count. `requests_issued` is the file's size.
+* **A counted request means a curl process was started**: it is counted even if it then failed to connect, timed out or was killed, and each **retry attempt is counted separately**. It does not prove what the server received.
+* **A request the guard refuses is never counted**: the run is stopped (exit 97) before the counting call, and curl is never started.
+* `site_head` and `site_get` (header suite) are counted. The TSV `requests-<id>.log` records project requests only (one line per `http_request` attempt, after it returns), so with `SITE_URL` set its line count is lower than the request count by the number of site requests.
+* Every curl invocation in `lib/helpers.sh` must be preceded by `_count_request`; `security-request-counter.test.js` enforces this and compares the counter with a recording curl in the cases above.
+
 
 ### How a run works
 

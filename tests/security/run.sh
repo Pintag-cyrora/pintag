@@ -143,7 +143,7 @@ echo -e "   ${GREEN}Passed:${RESET}   $TOTAL_PASS"
 echo -e "   ${RED}Failed:${RESET}   $TOTAL_FAIL"
 [[ $TOTAL_SKIP -gt 0 ]] && \
   echo -e "   ${YELLOW}Skipped:${RESET}  $TOTAL_SKIP ${DIM}(set env vars for full coverage)${RESET}"
-echo -e "   ${DIM}Requests: $TOTAL_REQUESTS${RESET}"
+echo -e "   ${DIM}Requests: $(requests_issued)${RESET}"
 [[ $PERF_WARNINGS -gt 0 ]] && \
   echo -e "   ${YELLOW}Perf:${RESET}     $PERF_WARNINGS warning(s) (see above for details)"
 
