@@ -48,7 +48,7 @@ jobs:
 
   frontend-tests:
     name: intelligence.html (Playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: Playwright 1.56.1 cannot install Chromium on ubuntu-26.04 (see ci-runner-pin.test.js)
     timeout-minutes: 10
     steps:
       - name: Checkout
