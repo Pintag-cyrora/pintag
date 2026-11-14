@@ -4,6 +4,23 @@
 
 Run before every production deployment, on every PR to `main`, and weekly on Mondays.
 
+> **Production safety (read first).** The live job in `security-regression.yml` targets the PRODUCTION Supabase project and sends **only plain GET (and HEAD) requests**,
+> to the project's `/rest/v1/` and to the site. The target is classified from the project reference in `SUPABASE_URL` (compared with `config.prod.js`), never from
+> `APP_ENV`. Against production the suite sends no request body, no login, no user token, no RPC, no Edge Function call, no Storage call and no request to any other host; it
+> does **not** rely on a production policy or authentication gate to reject a dangerous request, because such a request is never sent. Admin and test-user credentials are refused
+> against production by this suite, and the credentialed / mutating suites in `staging-suites/` load only for a project listed in `staging-targets.txt` (currently empty; design in
+> `docs/SECURITY_STAGING_ENVIRONMENT.md`). Everything that needs a write, an upload, an Edge Function or a successful RPC is tested **locally**: `regression/rls_regression.sql`
+> (sections H, I, K, L, M, N, O: insert, update, delete, upload, deduplication, ceilings and the `increment_listing_view` input check, on a throwaway PostgreSQL database),
+> `edge-function-auth-gates.test.js` and `resolve-map-url-validation.test.js` (the real function code with a mocked network).
+>
+> **What this means for coverage on production (stated, not hidden):**
+> * *Write-path policy drift* (a regression that would let an anonymous caller write to `properties`, `parties`, `contacts`, `intelligence_*`, `lead_events` or `listing_events`) is **not detected by the live suite**; it is detected in the repository (local assertions) and by the catalog check in `verify-production-security.yml` when its read-only database secret is configured.
+> * *Storage* upload policy drift is not probed on production (local assertions apply the real migration to a stub); no object is ever created there by this suite.
+> * *Edge Function* authentication gates and `resolve-map-url` validation are not probed on production (any call can run code, call an AI provider or fetch a third-party URL); they are tested locally with a mocked network. A gateway or deployment misconfiguration of a deployed function would not be seen by this suite.
+> * *`increment_listing_view`* is **not tested on production at all**. The previous probe sent `{"property_id": ...}` to a function whose parameter is `p_listing_id`, so it never reached the function. A correct call would reach the function body, and even a nil UUID writes a row to `listing_view_throttle`, so no value is ever sent there. Local section O asserts that invalid input is rejected at the cast (22P02) with nothing written, and that a nil UUID is not inert.
+>
+> **Separate workflow, not covered by this guard:** `verify-production-security.yml` (weekly and on demand) runs `scripts/verify-admin-lockdown.sh`, which **signs in** as the administrator and a test user against production when the `ADMIN_*` / `TEST_USER_*` secrets exist, then sends a handful of probes aimed at a listing that cannot exist (a PATCH, an RPC call, a call to the `generate-listing-content` Edge Function, and a storage upload) to check the AAL2 gate. It is optional (it skips when the secrets are absent), it is outside `tests/security/run.sh`, and it is **not** made read-only by this change. Its status is recorded in the security evidence record (O3).
+
 ---
 
 ## Table of Contents
@@ -92,11 +109,12 @@ Reports are written to `tests/security/output/reports/` (gitignored):
 |---|---|---|
 | `SUPABASE_URL` | **Yes** | `https://<ref>.supabase.co` |
 | `SUPABASE_ANON_KEY` | **Yes** | Publishable anon key (safe to commit) |
-| `APP_ENV` | Recommended | `local` or `staging` — **production is refused**; defaults to `local` with a warning |
-| `ADMIN_EMAIL` | Recommended | Enables admin auth, storage, XSS, Smart Import, and admin RLS tests |
-| `ADMIN_PASSWORD` | Recommended | Password for `ADMIN_EMAIL` |
-| `TEST_USER_EMAIL` | Optional | A non-admin Supabase Auth user — enables cross-user access tests |
-| `TEST_USER_PASSWORD` | Optional | Password for `TEST_USER_EMAIL` |
+| `APP_ENV` | No | Informational label only. It never decides what may run; the literal value `production` is still refused |
+| `ADMIN_EMAIL` | Staging only | Credentialed suites (`staging-suites/`) run only against a listed, confirmed staging project (`staging-targets.txt`, currently empty). Against production `run.sh` refuses to start if this is set |
+| `ADMIN_PASSWORD` | Staging only | Same as `ADMIN_EMAIL` |
+| `TEST_USER_EMAIL` | Staging only | Same as `ADMIN_EMAIL` |
+| `TEST_USER_PASSWORD` | Staging only | Same as `ADMIN_EMAIL` |
+| `SECURITY_TARGET_CONFIRM` | Staging only | Must equal the project reference of a listed staging project |
 | `SITE_URL` | Optional | Base URL of the deployed frontend — enables Suite 08 (security headers) |
 | `DEBUG` | Optional | Set to `1` to print every request URL, status, and timing to stderr |
 
@@ -166,6 +184,7 @@ tests/security/
 │   ├── 02_rls.sh
 │   └── ...
 └── output/                  Gitignored at runtime
+    ├── request-count-<id>   Request counter: one byte per curl process started (its size is the count)
     ├── requests-<id>.log    TSV request log (timestamp, suite, test, method, url, status, duration)
     ├── perf-baseline.json   Performance regression baseline (updated each run)
     └── reports/
@@ -173,11 +192,23 @@ tests/security/
         └── summary-<id>.json JSON summary
 ```
 
+### How requests are counted
+
+The `Requests:` line of the summary and `total_requests` in `reports/summary-<id>.json` come from a **file**, `output/request-count-<id>`, not from a shell variable.
+`http_request` normally runs inside `$(...)` (a subshell), where a variable increment is lost; the first production run printed `Requests: 0` after about 32 real requests for that reason.
+
+* `_count_request` appends **one byte** to the file immediately **before each curl process is started** and **after** the production guard approved the request. A one-byte append is atomic, so subshells, pipelines, background jobs and parallel jobs cannot lose or double a count. `requests_issued` is the file's size.
+* **A counted request means a curl process was started**: it is counted even if it then failed to connect, timed out or was killed, and each **retry attempt is counted separately**. It does not prove what the server received.
+* **A request the guard refuses is never counted**: the run is stopped (exit 97) before the counting call, and curl is never started.
+* `site_head` and `site_get` (header suite) are counted. The TSV `requests-<id>.log` records project requests only (one line per `http_request` attempt, after it returns), so with `SITE_URL` set its line count is lower than the request count by the number of site requests.
+* Every curl invocation in `lib/helpers.sh` must be preceded by `_count_request`; `security-request-counter.test.js` enforces this and compares the counter with a recording curl in the cases above.
+
+
 ### How a run works
 
 1. `run.sh` sources `helpers.sh`, which sources `resources.sh` and sets up global state
-2. `check_app_env()` refuses `APP_ENV=production`
-3. All suite files under `suites/` are sourced automatically — no manual registration required
+2. `check_app_env()` refuses the literal `APP_ENV=production`, then `pt_enforce_target` classifies the target from `SUPABASE_URL` (production-readonly / staging-full / refused) and refuses credentials against production; every request then passes `pt_guard_request`, a fail-closed ALLOWLIST: the only forms sent to production are `GET`/`HEAD` of `<project>/rest/v1/<one listed table>[?<restricted query>]` with exactly the arguments `-H "apikey: <anon key>"`, or `GET`/`HEAD` of a plain path on the validated `SITE_URL` (https, the project's own domain from `CNAME` or `www.` of it, no port, userinfo, path or query) with no arguments; any other curl option in any spelling, extra URL, redirect, proxy, credential, cookie, body, encoded or ambiguous path is refused, and a refusal ends the run. Every curl also uses `-q --proto =https --noproxy '*'`. In production-readonly mode the suite additionally removes the inherited proxy variables (`http_proxy`, `https_proxy`, `all_proxy`, `ftp_proxy`, `no_proxy` and their upper-case forms) and the trust and loader settings (`CURL_CA_BUNDLE`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `CURL_HOME`, `CURL_SSL_BACKEND`, `SSLKEYLOGFILE`, `OPENSSL_CONF`, `OPENSSL_MODULES`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`), so certificate trust is the runner's system store; it prints only the NAMES it removed. It REFUSES to start (instead of unsetting, because it would be too late) when `BASH_ENV` or `ENV` is set, or when an exported shell function was imported from the environment, since Bash runs those before the script body; the workflow starts the step with `shell: env -u BASH_ENV -u ENV bash --noprofile --norc -eo pipefail {0}` so they never reach Bash. For local development behind a proxy, `PT_PRODUCTION_ALLOW_PROXY=1` keeps the proxy variables (never the trust settings); it is refused in GitHub Actions / CI. `staging-full` keeps the caller's proxy and trust settings. Limits of this guarantee: it covers `tests/security/run.sh` only; the runner image, the system trust store and DNS are not controlled by the repository; and anything that changes the machine itself (for example a file under `/etc/ssl`, or `/etc/hosts`) is outside what a script can see
+3. All suite files under `suites/` (the production-safe, GET-only suites) are sourced automatically; `staging-suites/` is sourced only when the target is a listed, confirmed staging project
 4. Admin and test-user JWTs are acquired (if credentials are set)
 5. A version banner is printed showing commit, environment, credentials, and feature flags
 6. Each requested suite's `run_<name>_tests()` function is called in order
@@ -322,16 +353,11 @@ The workflow at `.github/workflows/security-regression.yml` runs automatically o
 
 | Secret | Value |
 |---|---|
-| `SUPABASE_URL` | `https://eoladhcljbpbhnrmmpev.supabase.co` |
+| `SUPABASE_URL` | `https://<20-character-ref>.supabase.co` (the standard form is required: a custom domain cannot be classified and is refused) |
 | `SUPABASE_ANON_KEY` | Anon key from Supabase Dashboard → Settings → API |
-| `ADMIN_EMAIL` | `admin@pintag.io` |
-| `ADMIN_PASSWORD` | Admin account password |
-| `TEST_USER_EMAIL` | Test agent email |
-| `TEST_USER_PASSWORD` | Test agent password |
-| `SITE_URL` | `https://pintag.io` (or staging URL) |
+| `SITE_URL` | `https://pintag.io` (optional; enables the header checks, read-only GET/HEAD). Validated before use: https, the domain in `CNAME` (or `www.` of it), no port, userinfo, path or query; anything else stops the run |
 
-`APP_ENV` is hardcoded to `staging` in the workflow — no secret needed.
-The suite refuses to run if `APP_ENV=production`.
+The live job is given **no** administrator or test-user secret and no `APP_ENV`. Do not add `ADMIN_*` or `TEST_USER_*` secrets to the production job: the run would be refused.
 
 ### Artifacts
 
@@ -471,7 +497,7 @@ Performance regressions are **warnings only** — they never fail CI. The baseli
 
 ### "SECURITY TESTS REFUSED ON PRODUCTION"
 
-The suite refuses to run against `APP_ENV=production`. Set `APP_ENV=staging` or `APP_ENV=local`.
+Either `APP_ENV=production` was set, or the target could not be classified, or admin / test-user credentials are set while `SUPABASE_URL` is the production project. Credentialed tests are disabled until an isolated staging project is listed in `tests/security/staging-targets.txt`. Unset the credentials, or point `SUPABASE_URL` at a listed staging project and set `SECURITY_TARGET_CONFIRM`.
 
 ### "Required environment variables not set: SUPABASE_URL"
 

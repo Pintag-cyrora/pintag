@@ -13,6 +13,8 @@ fi
 # shellcheck source=tests/security/resources.sh
 _SECURITY_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")"
 source "${_SECURITY_LIB_DIR}/../resources.sh"
+# shellcheck source=tests/security/lib/target-guard.sh
+source "${_SECURITY_LIB_DIR}/target-guard.sh"
 
 # ── Colour codes ──────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -24,15 +26,12 @@ fi
 
 # ── Environment safety check ──────────────────────────────────────────────────
 check_app_env() {
+  # APP_ENV is only a label the caller chooses, so it is NEVER used to decide whether credentialed or mutating tests may run.
+  # That decision comes from the project reference in SUPABASE_URL (target-guard.sh). The literal value "production" is still refused.
   local env="${APP_ENV:-}"
   if [[ "$env" == "production" ]]; then
     echo "SECURITY TESTS REFUSED ON PRODUCTION"
     exit 1
-  fi
-  if [[ -z "$env" ]]; then
-    echo -e "${YELLOW}WARNING: APP_ENV not set. Assuming local. Set APP_ENV=local or APP_ENV=staging.${RESET}"
-  elif [[ "$env" != "local" && "$env" != "staging" ]]; then
-    echo -e "${YELLOW}WARNING: APP_ENV='${env}' is not 'local' or 'staging'. Proceeding with caution.${RESET}"
   fi
 }
 
@@ -72,16 +71,27 @@ RUN_START_MS=$(now_ms)
 LAST_CHECK_MS=$RUN_START_MS
 SUITE_START_MS=$RUN_START_MS
 
-# ── Request logging ───────────────────────────────────────────────────────────
-TOTAL_REQUESTS=0
+# ── Request logging and counting ──────────────────────────────────────────────
+# THE REQUEST COUNT is a FILE, not a variable. http_request normally runs inside $(...) (r=$(api_get ...)), i.e. in a subshell: any shell variable it
+# increments dies with that subshell, which is why the summary printed "Requests: 0" after 32 real requests. A file is shared by every process of the run.
+# _count_request appends ONE byte (O_APPEND, a single write(2) of 1 byte is atomic, so no lock is needed and parallel writers cannot lose or double a count)
+# immediately BEFORE a curl process is started and AFTER pt_guard_request approved the request, so
+#   * a request the guard refused is never counted (the run is killed before this line is reached);
+#   * a request that was issued and then failed, timed out or was killed mid-flight IS counted;
+#   * every retry attempt is a separate request and is counted separately.
+# requests_issued reads the size of that file. Every curl invocation in this file must be preceded by _count_request (checked by security-request-counter.test.js).
 PERF_WARNINGS=0
 LOG_DIR="tests/security/output"
 REQUEST_LOG="${LOG_DIR}/requests-${RUN_ID_SHORT}.log"
+REQUEST_COUNT_FILE="${LOG_DIR}/request-count-${RUN_ID_SHORT}"
 mkdir -p "${LOG_DIR}/reports"
+: > "$REQUEST_COUNT_FILE"
+
+_count_request() { printf '.' >> "$REQUEST_COUNT_FILE" || echo "WARNING: the request counter could not be written; the request count will be too low" >&2; }
+requests_issued() { local n; n=$(wc -c < "$REQUEST_COUNT_FILE" 2>/dev/null) || n=0; printf '%s' "${n//[[:space:]]/}"; }
 
 _log_request() {
   local method="$1" url="$2" status="$3" duration_ms="$4"
-  TOTAL_REQUESTS=$((TOTAL_REQUESTS+1))
   printf "%s\t%s\t%s\t%s\t%s\t%s\t%dms\n" \
     "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
     "${CURRENT_SUITE:-?}" \
@@ -117,10 +127,14 @@ http_request() {
   shift 2
   local attempt=0 max_retries=3
   local response status body start_ms end_ms duration_ms
+  # Production-readonly guard: a refused request is a hard stop, never a skipped or "passing" check.
+  pt_guard_request "$method" "$url" "$@" || pt_abort_refused
+
 
   while true; do
     start_ms=$(now_ms)
-    response=$(curl -s -w "\n%{http_code}" -X "$method" "$url" "$@" 2>/dev/null)
+    _count_request
+    response=$(curl "${PT_CURL_OPTS[@]}" -s -w "\n%{http_code}" -X "$method" "$url" "$@" 2>/dev/null)
     end_ms=$(now_ms)
     duration_ms=$(( end_ms - start_ms ))
 
@@ -146,6 +160,20 @@ http_request() {
   done
 
   printf '%s\n%s' "$body" "${status:-000}"
+}
+
+# ── Plain GET / HEAD of the public site (headers suite) ───────────────────────
+# The only way suites reach the site: through the same guard as every other request (no redirects are followed, so a redirect can never carry the
+# run to a third-party host; set SITE_URL to the final address).
+site_head() {
+  pt_guard_request HEAD "$1" || pt_abort_refused
+  _count_request
+  curl "${PT_CURL_OPTS[@]}" -sI --max-time 10 "$1" 2>/dev/null
+}
+site_get() {
+  pt_guard_request GET "$1" || pt_abort_refused
+  _count_request
+  curl "${PT_CURL_OPTS[@]}" -s --max-time 10 "$1" 2>/dev/null
 }
 
 # ── Global counters ───────────────────────────────────────────────────────────
@@ -496,7 +524,8 @@ generate_reports() {
     printf '{\n'
     printf '  "framework_version": "%s",\n' "$FRAMEWORK_VERSION"
     printf '  "run_id": "%s",\n'          "$RUN_ID"
-    printf '  "environment": "%s",\n'     "$(json_escape "${APP_ENV:-unknown}")"
+    printf '  "target_mode": "%s",\n'     "$(json_escape "${PT_MODE:-unclassified}")"
+    printf '  "project_ref": "%s",\n'     "$(json_escape "$(pt_target_ref)")"
     printf '  "supabase_url": "%s",\n'    "$(json_escape "${SUPABASE_URL:-}")"
     printf '  "started_at": "%s",\n'      "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     printf '  "duration_sec": %s,\n'      "$total_sec"
@@ -504,7 +533,7 @@ generate_reports() {
     printf '  "passed": %d,\n'            "$TOTAL_PASS"
     printf '  "failed": %d,\n'            "$TOTAL_FAIL"
     printf '  "skipped": %d,\n'           "$TOTAL_SKIP"
-    printf '  "total_requests": %d,\n'    "$TOTAL_REQUESTS"
+    printf '  "total_requests": %d,\n'    "$(requests_issued)"
     printf '  "perf_warnings": %d,\n'     "$PERF_WARNINGS"
     printf '  "suites": [%s]\n'           "$suites_json"
     printf '}\n'
@@ -548,7 +577,7 @@ generate_coverage_report() {
     if echo "$tested_fns" | grep -q "^${fn}$"; then
       printf "    ${GREEN}✓${RESET}  %s\n" "$fn"
     else
-      printf "    ${RED}✗${RESET}  %s ${DIM}(not tested)${RESET}\n" "$fn"
+      printf "    ${RED}✗${RESET}  %s ${DIM}(not probed on production by design: see README)${RESET}\n" "$fn"
     fi
   done
 
@@ -557,7 +586,7 @@ generate_coverage_report() {
     if echo "$tested_tables" | grep -q "^${tbl}$"; then
       printf "    ${GREEN}✓${RESET}  %s\n" "$tbl"
     else
-      printf "    ${RED}✗${RESET}  %s ${DIM}(not tested)${RESET}\n" "$tbl"
+      printf "    ${RED}✗${RESET}  %s ${DIM}(not probed on production by design: see README)${RESET}\n" "$tbl"
     fi
   done
 
@@ -566,7 +595,7 @@ generate_coverage_report() {
     if echo "$tested_buckets" | grep -q "^${bucket}$"; then
       printf "    ${GREEN}✓${RESET}  %s\n" "$bucket"
     else
-      printf "    ${RED}✗${RESET}  %s ${DIM}(not tested)${RESET}\n" "$bucket"
+      printf "    ${RED}✗${RESET}  %s ${DIM}(not probed on production by design: see README)${RESET}\n" "$bucket"
     fi
   done
 
@@ -685,7 +714,7 @@ print_run_banner() {
   printf  "  ${DIM}Commit:    %s  %s${RESET}\n" "$git_commit" "$git_subject"
   printf  "  ${DIM}Target:    %s${RESET}\n" "${SUPABASE_URL:-?}"
   [[ -n "${SITE_URL:-}" ]] && printf "  ${DIM}Site:      %s${RESET}\n" "${SITE_URL}"
-  printf  "  ${DIM}Env:       %s${RESET}\n" "${APP_ENV:-local}"
+  printf  "  ${DIM}Mode:      %s (project ref %s)${RESET}\n" "${PT_MODE:-unclassified}" "$(pt_target_ref)"
   echo ""
   echo -e "  ${BOLD}Credentials:${RESET}"
   if [[ -n "${ADMIN_JWT:-}" ]]; then
