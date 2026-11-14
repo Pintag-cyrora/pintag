@@ -115,7 +115,7 @@ jobs:
 
   e2e:
     name: Admin Analytics page (Playwright, stubbed RPCs)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: Playwright 1.56.1 cannot install Chromium on ubuntu-26.04 (see ci-runner-pin.test.js)
     timeout-minutes: 15
     steps:
       - name: Checkout
