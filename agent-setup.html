@@ -580,7 +580,7 @@ async function sbApi(method, path, body, extraHeaders) {
 
 // ── Sign in ───────────────────────────────────────────────────────────
 // ── AUTH — unified admin authentication (admin-auth.js) ───────────────
-// cyrora.trading@gmail.com only, email + password + TOTP (AAL2), session
+// the sole administrator account only, email + password + TOTP (AAL2), session
 // validated server-side on every load. No page-local login logic remains.
 async function bootAgentSetup() {
   _token = await PintagAdminAuth.token();

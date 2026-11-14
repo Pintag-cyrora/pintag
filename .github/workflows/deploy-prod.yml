@@ -1,9 +1,9 @@
 name: Deploy Production (Pages + Worker)
 
 # Builds and deploys pintag.io from main via GitHub Actions, replacing the
-# previous "Pages serves main's raw branch content" mechanism. The only
-# "build" step is generating config.js from config.prod.js — there is no
-# bundler; every other file is served as-is.
+# previous "Pages serves main's raw branch content" mechanism. There is no
+# bundler: the "build" copies the allowlisted files (site-manifest.txt) into
+# _site/, generates config.js from config.prod.js and stamps asset versions.
 #
 # Also deploys the Cloudflare Worker (cloudflare-worker/) that generates
 # language-aware OG preview tags for listing.html/listings.html/index.html —
@@ -35,44 +35,27 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      # Every first-party <script src="X.js?v=__ASSET_VERSION__">/<link
-      # href="X.css?v=__ASSET_VERSION__"> tag gets its placeholder replaced
-      # with this commit's short SHA, so every static asset URL changes on
-      # every deploy. This is what actually prevents a cache (browser,
-      # GitHub Pages' own CDN, or Cloudflare in front of pintag.io) from
-      # ever serving two files from two different deploys together — no
-      # cache purge is required, because a stale cache simply has no entry
-      # for the new URL and must fetch it fresh. See the 2026-08 postmortem
-      # for the incident this fixes (a stale currency.js served alongside a
-      # fresh admin.html produced "Can't find variable: parseLegacyPriceAmount").
-      - name: Stamp asset version into all first-party script/link tags
-        run: sed -i "s/__ASSET_VERSION__/${GITHUB_SHA::8}/g" *.html
-
-      - name: Generate config.js (production)
-        run: cp config.prod.js config.js
-
-      # Surfaces that are NOT part of the current single-administrator
-      # production model are pruned from the published artifact so they are not
-      # publicly reachable on pintag.io. All files remain in the repo.
-      #   * Legacy agent portal (agent self-service login + dashboard + the
-      #     listing editors it links to): the sole administrator manages every
-      #     listing inside admin.html (its own saveListing() upsert), which
-      #     never navigates to these pages. Deferred to the future
-      #     verified-agent phase — see docs/LEGACY_AGENT_PORTAL.md.
-      #   * marketing-os.html: a founder tool that logs in as ninee@pintag.io
-      #     (password-only, outside admin-auth.js) against a separate
-      #     founder-server subsystem — outside the single-admin auth model.
-      - name: Prune non-production surfaces from the production artifact
-        run: rm -f agent-login.html dashboard.html edit-listing.html add-property.html marketing-os.html
+      # DENY BY DEFAULT. The site is built into a clean `_site/` directory from the reviewed allowlist `site-manifest.txt`
+      # (scripts/build-site.mjs), and ONLY `_site/` is uploaded. Previously the whole repository root was uploaded, which
+      # published docs, SQL migrations, scripts, tests and runbooks on the production domain. The build:
+      #   * copies exactly the files listed with "+" in site-manifest.txt (public pages, admin tools, scripts, styles, images, fonts, CNAME);
+      #   * generates config.js from config.prod.js;
+      #   * stamps every first-party <script src="X.js?v=__ASSET_VERSION__">/<link href="X.css?v=__ASSET_VERSION__"> with this commit's
+      #     short SHA, so every static asset URL changes on every deploy (no cache can serve files from two deploys together; see the
+      #     2026-08 postmortem: a stale currency.js next to a fresh admin.html);
+      #   * fails if an unlisted web file appears, an excluded file is still referenced, or the output differs from the manifest.
+      # Surfaces that are not part of the single-administrator production model (legacy agent portal, marketing-os.html, one-off and
+      # generator tools) are "-" entries in the manifest with a recorded reason; all files remain in the repository.
+      - name: Build the allowlisted site (_site)
+        run: node scripts/build-site.mjs --out _site --version "${GITHUB_SHA::8}"
 
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
-      # path: . uploads the whole repo root, so the existing CNAME file
-      # (pintag.io) is included automatically — required for the custom
-      # domain to keep working under an Actions-based Pages deploy.
+      # path: _site uploads ONLY the allowlisted build output. CNAME (pintag.io) is a "+" entry in
+      # site-manifest.txt — required for the custom domain to keep working under an Actions-based Pages deploy.
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
-          path: .
+          path: _site
 
   deploy:
     needs: build

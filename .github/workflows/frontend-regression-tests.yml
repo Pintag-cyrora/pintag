@@ -17,6 +17,10 @@ on:
       - '*.css'
       - 'cloudflare-worker/**'   # og-availability-parity.test.js pins the Worker's availability port to the browser resolver
       - 'tests/**'
+      - 'site-manifest.txt'         # the deploy allowlist (site-allowlist.test.js builds _site from it)
+      - 'scripts/build-site.mjs'
+      - 'CNAME'
+      - '.github/workflows/deploy-prod.yml'
       - '.github/workflows/frontend-regression-tests.yml'
   pull_request:
     branches: [main]
@@ -26,6 +30,10 @@ on:
       - '*.css'
       - 'cloudflare-worker/**'   # og-availability-parity.test.js pins the Worker's availability port to the browser resolver
       - 'tests/**'
+      - 'site-manifest.txt'         # the deploy allowlist (site-allowlist.test.js builds _site from it)
+      - 'scripts/build-site.mjs'
+      - 'CNAME'
+      - '.github/workflows/deploy-prod.yml'
       - '.github/workflows/frontend-regression-tests.yml'
   workflow_dispatch:
 
