@@ -20,7 +20,14 @@ on:
       - 'site-manifest.txt'         # the deploy allowlist (site-allowlist.test.js builds _site from it)
       - 'scripts/build-site.mjs'
       - 'CNAME'
+      - '*.png'                     # published images and fonts are listed in the manifest: renaming or deleting one breaks the build
+      - '*.jpg'
+      - '*.jpeg'
+      - '*.JPG'
+      - 'fonts/**'
+      - 'assets/**'
       - '.github/workflows/deploy-prod.yml'
+      - '.github/workflows/deploy-dev.yml'
       - '.github/workflows/frontend-regression-tests.yml'
   pull_request:
     branches: [main]
@@ -33,7 +40,14 @@ on:
       - 'site-manifest.txt'         # the deploy allowlist (site-allowlist.test.js builds _site from it)
       - 'scripts/build-site.mjs'
       - 'CNAME'
+      - '*.png'                     # published images and fonts are listed in the manifest: renaming or deleting one breaks the build
+      - '*.jpg'
+      - '*.jpeg'
+      - '*.JPG'
+      - 'fonts/**'
+      - 'assets/**'
       - '.github/workflows/deploy-prod.yml'
+      - '.github/workflows/deploy-dev.yml'
       - '.github/workflows/frontend-regression-tests.yml'
   workflow_dispatch:
 

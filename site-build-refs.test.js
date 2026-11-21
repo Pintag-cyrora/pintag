@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { refsOf, localRef, decodeRef, build, show } from './scripts/build-site.mjs';
+import { refsOf, localRef, decodeRef, build, show, ROOT } from './scripts/build-site.mjs';
 
 const SRC = fs.readFileSync(new URL('./scripts/build-site.mjs', import.meta.url), 'utf8');
 const SECRET = 'docs/SECURITY.md';
@@ -59,12 +59,15 @@ test('encoded variants decode to the file a browser would request', () => {
 });
 
 // ── end to end: a published page that still reaches an excluded repository file must FAIL the build ──
-function fixture(files, extraManifest = '', { symlink = null } = {}) {
+// the real, valid environment configurations (the build refuses to run without them: see site-env-guard.test.js)
+const CONFIGS = { 'config.prod.js': fs.readFileSync(path.join(ROOT, 'config.prod.js'), 'utf8'), 'config.dev.js': fs.readFileSync(path.join(ROOT, 'config.dev.js'), 'utf8') };
+function fixture(files0, extraManifest = '', { symlink = null } = {}) {
+  const files = { ...CONFIGS, ...files0 };
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fx-'));
   for (const [f, body] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true }); fs.writeFileSync(path.join(root, f), body); }
   if (symlink) fs.symlinkSync(symlink.target, path.join(root, symlink.name));
   const tracked = [...Object.keys(files), ...(symlink ? [symlink.name] : [])];
-  const manifestText = `+ index.html\n- docs/SECURITY.md  # excluded document\n- hidden.js  # excluded script\n- secret.png  # excluded image\n${extraManifest}`;
+  const manifestText = `+ index.html\n= config.js <- config.prod.js\n- config.prod.js  # source of the generated config.js\n- config.dev.js  # development configuration\n- docs/SECURITY.md  # excluded document\n- hidden.js  # excluded script\n- secret.png  # excluded image\n${extraManifest}`;
   return { root, tracked, manifestText, run: () => build({ root, out: path.join(root, '_site'), trackedFiles: tracked, manifestText, version: 'v1' }) };
 }
 const BASE = { 'docs/SECURITY.md': 'secret', 'hidden.js': 'x', 'secret.png': 'x' };

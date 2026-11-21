@@ -22,19 +22,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      # Same asset-versioning stamp as deploy-prod.yml -- see that file's
-      # comment for the full rationale. Keeping the dev mirror on the same
-      # mechanism means a stale-cache mismatch can't happen there either.
-      - name: Stamp asset version into all first-party script/link tags
-        run: sed -i "s/__ASSET_VERSION__/${GITHUB_SHA::8}/g" *.html
-
-      - name: Generate config.js (development)
-        run: cp config.dev.js config.js
-
-      # pintag-dev has no custom domain — don't carry pintag.io's CNAME
-      # binding over to the mirror repo.
-      - name: Strip production-only CNAME
-        run: rm -f CNAME
+      # Same allowlisted build as deploy-prod.yml (site-manifest.txt, scripts/build-site.mjs), with the DEVELOPMENT configuration (config.dev.js -> config.js) and
+      # without the production-only CNAME (pintag-dev has no custom domain). Only the clean _site/ directory is published. This mirror is a PUBLIC repository
+      # with its own Pages site, so publishing the repository root (docs, SQL migrations, scripts, tests, runbooks) would expose all of it. The asset-version
+      # stamp is applied by the same build, so a stale-cache mismatch can't happen here either.
+      # NOTE: this workflow runs from the `dev` branch. That branch must contain scripts/build-site.mjs and site-manifest.txt (merge main into dev) or this
+      # step fails closed with "Cannot find module".
+      - name: Build the allowlisted development site (_site)
+        run: node scripts/build-site.mjs --out _site --env dev --version "${GITHUB_SHA::8}"
 
       - name: Publish to pintag-dev
         uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
@@ -42,7 +37,7 @@ jobs:
           personal_token: ${{ secrets.PINTAG_DEV_DEPLOY_TOKEN }}
           external_repository: Pintag-cyrora/pintag-dev
           publish_branch: main
-          publish_dir: .
+          publish_dir: _site
           force_orphan: true
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
