@@ -48,8 +48,16 @@ new_uuid() {
     $(( (RANDOM & 0x3fff) | 0x8000 )) $RANDOM $RANDOM $RANDOM
 }
 
+# now_ms is used ONLY for elapsed times (end - start). It reads a MONOTONIC clock: /proc/uptime (seconds since boot, 10 ms resolution) never steps
+# backwards, unlike the wall clock, which a runner may correct by NTP mid-run. A backwards step once made a suite duration negative, ms_to_sec printed
+# "0.-05", and the JSON summary became invalid (security-regression run 45152177959, 2026-11-23). Read with the `read` builtin: no process per call.
+# Fallback where /proc/uptime does not exist (macOS): the wall clock, as before; ms_to_sec below still clamps any negative difference.
 now_ms() {
-  local result
+  local up result
+  if [[ -r /proc/uptime ]] && read -r up _ < /proc/uptime 2>/dev/null && [[ "$up" =~ ^([0-9]+)\.([0-9]{2})$ ]]; then
+    echo $(( 10#${BASH_REMATCH[1]} * 1000 + 10#${BASH_REMATCH[2]} * 10 ))
+    return
+  fi
   result=$(date +%s%3N 2>/dev/null)
   if [[ "$result" =~ ^[0-9]{13}$ ]]; then
     echo "$result"
@@ -59,8 +67,12 @@ now_ms() {
   fi
 }
 
+# Milliseconds -> seconds with three decimals, ALWAYS a valid JSON number ("0.000" .. "N.NNN"). A negative, empty or non-numeric input is reported
+# as 0.000: a duration cannot be negative, and the JSON summary and JUnit XML must stay parseable whatever the clock did.
 ms_to_sec() {
   local ms="${1:-0}"
+  [[ "$ms" =~ ^[0-9]+$ ]] || ms=0
+  ms=$(( 10#$ms ))
   printf "%d.%03d" "$((ms/1000))" "$((ms%1000))"
 }
 
