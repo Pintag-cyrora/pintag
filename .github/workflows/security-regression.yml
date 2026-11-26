@@ -30,9 +30,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Node
+        id: node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           # Node 24: request-deadline.test.mjs imports a temp .mts extracted
@@ -45,31 +47,42 @@ jobs:
       - name: XSS / inline-handler escaping regressions
         run: node --test xss-inline-handlers.test.js
 
+      # The checks below are INDEPENDENT of each other: one failing must not hide the others' results. Each runs unless the run was cancelled, and
+      # only when the steps it actually needs (checkout, Node, PostgreSQL) succeeded. No continue-on-error anywhere: any failed step still fails the job.
+
       # The production guard of the live suite: target classification, credential refusal, and a dry run of the whole suite against a recording curl.
       - name: Live-suite production safety (target guard, GET-only dry run) and the local replacements for the removed production probes
-        run: node --test security-target-guard.test.js security-request-counter.test.js edge-function-auth-gates.test.js resolve-map-url-validation.test.js
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.node.outcome == 'success' }}
+        run: node --test security-target-guard.test.js security-request-counter.test.js edge-function-auth-gates.test.js resolve-map-url-validation.test.js security-report-timing.test.js
 
       - name: Request-wide deadline (smart-listing-importer)
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.node.outcome == 'success' }}
         run: node --test tests/smart-import-vision/request-deadline.test.mjs
 
       # "Generation failed: Load failed" — an unbounded Gemini call outliving the
       # Edge Function wall clock, killed by the platform before it could emit its
       # CORS headers. Guards the time budget and the failure classifier.
       - name: AI generation failure handling (bounded Gemini call)
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.node.outcome == 'success' }}
         run: node --test ai-generation-failure.test.js
 
       - name: Install PostgreSQL server binaries
+        id: pg
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql
 
       - name: Data-layer RLS / authorization regressions
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.pg.outcome == 'success' }}
         run: bash tests/security/regression/run-local-pg.sh
 
       - name: CSP is stamped on every published page and is current
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.node.outcome == 'success' }}
         run: node scripts/apply-csp.mjs --check
 
       - name: CSP is enforced in a real browser with no violations
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.node.outcome == 'success' }}
         run: |
           cd tests/csp
           npm install --no-audit --no-fund
