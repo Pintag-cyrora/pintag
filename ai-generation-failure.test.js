@@ -27,7 +27,7 @@ const fn = fs.readFileSync(new URL('./supabase/functions/smart-listing-importer/
 // ── The edge function's Gemini call is bounded ────────────────────────────
 test('the Gemini fetch has an abort signal (it previously had none)', () => {
   const call = fn.slice(fn.indexOf('generativelanguage.googleapis.com'));
-  const body = call.slice(0, call.indexOf('if (response.ok) break;'));
+  const body = call.slice(0, call.indexOf('if (response.ok) {'));
   assert.match(body, /signal:\s*AbortSignal\.timeout\(/,
     'an unbounded Gemini fetch can outlive the wall-clock limit, and a platform kill ' +
     'returns no CORS headers — which is what surfaces as "Load failed"');
@@ -61,14 +61,16 @@ test('the deadline is created at handler entry, before any external call', () =>
 });
 
 test('the retry ladder charges its sleeps to the same deadline', () => {
+  // Only the 429/503 path retries now; a timed-out attempt is not retried (it would only get the leftover budget).
   const guard = /deadline\.usable\(\) > RETRY_DELAYS\[attempt\] \+ GEMINI_MIN_ATTEMPT_MS/g;
-  assert.equal((fn.match(guard) || []).length, 2,
-    'both the timeout-retry and the 429/503-retry paths must check the shared budget before sleeping');
+  assert.equal((fn.match(guard) || []).length, 1,
+    'the 429/503-retry path must check the shared budget before sleeping');
 });
 
-test('a timed-out attempt is rethrown as a normal Error, so the outer catch can answer', () => {
+test('a timed-out attempt becomes a typed GeminiTimeoutError, so the outer catch can answer 504', () => {
   assert.match(fn, /TimeoutError'\s*\|\|\s*e\.name === 'AbortError'/);
-  assert.match(fn, /throw new Error\(GEMINI_TIMEOUT_MESSAGE\)/);
+  assert.match(fn, /throw new GeminiTimeoutError\(\)/);
+  assert.match(fn, /if \(error instanceof GeminiTimeoutError\)[\s\S]*?status: 504/);
 });
 
 test('a retryable Gemini status that runs out of budget is explained, not left bare', () => {

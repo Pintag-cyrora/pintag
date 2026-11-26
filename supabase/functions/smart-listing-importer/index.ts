@@ -111,6 +111,17 @@ type RequestDeadline = ReturnType<typeof createRequestDeadline>;
 const GEMINI_TIMEOUT_MESSAGE =
   'Gemini did not respond within the available time. Try again in a minute, or generate with fewer photos.';
 
+// A Gemini timeout is not a server fault: it is answered with HTTP 504 and a
+// machine-readable code, so the browser can say "slow, try again" without
+// parsing prose. The function is stateless and writes nothing, so a retry is safe.
+class GeminiTimeoutError extends Error {
+  constructor() { super(GEMINI_TIMEOUT_MESSAGE); this.name = 'GeminiTimeoutError'; }
+}
+const GEMINI_TIMEOUT_RETRY_AFTER_S = 60;
+function isTimeoutError(e: unknown): boolean {
+  return e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError');
+}
+
 const MAX_IMAGES = 10;
 
 // Only fetch images from trusted Supabase Storage domains.
@@ -180,8 +191,8 @@ async function requireAdmin(req: Request, deadline: RequestDeadline): Promise<{ 
 // (Promise.all) and base64-encoded each with a per-byte string concat — an
 // O(n²) build that, across a full gallery, exhausted the Edge isolate
 // (546 WORKER_RESOURCE_LIMIT) and could also exceed Gemini's ~20MB inline cap.
-// This replacement: (1) asks Supabase Storage for a downscaled rendition so the
-// bytes are small before they ever enter the isolate, (2) processes images with
+// This replacement: (1) reads the pre-generated 1200 px WebP rendition (see
+// buildRenditionUrl) so the bytes are small before they ever enter the isolate, (2) processes images with
 // bounded concurrency instead of all at once, (3) encodes with a chunked base64
 // (no per-byte concat), and (4) stops accumulating at a total-inline budget so
 // the isolate never holds the whole gallery — failing gracefully, never crashing.
@@ -195,12 +206,17 @@ const IMAGE_CONCURRENCY = 2;
 // Total base64 budget across the request, under Gemini's ~20MB inline limit.
 // Accumulation stops here — extra images are skipped (and logged), never held.
 const MAX_TOTAL_INLINE_BYTES = 18 * 1024 * 1024;
-// Storage render-endpoint downscale target: longest edge ≤ RENDER_MAX_EDGE
-// (contain-fit into a square box), JPEG quality RENDER_QUALITY. 1536px preserves
-// room layout, finishes, and distinctive features for vision analysis while
-// cutting a multi-MB photo to a few hundred KB (also relieves Gemini token use).
-const RENDER_MAX_EDGE = 1536;
-const RENDER_QUALITY = 80;
+// Gemini reads the pre-generated WebP rendition, not the original. Storage's
+// on-the-fly render endpoint (/storage/v1/render/image/...) is a paid feature and
+// answers 403 FeatureNotEnabled on this Free project, so the previous code
+// silently fell back to the full-resolution original for EVERY photo. Renditions
+// are produced at upload time by image-renditions.js (renditionPath()):
+//   property-images/renditions/<object name without extension>/<profile>.webp
+// 'hero' is 1200 px wide (never upscaled): enough for room layout, finishes and
+// distinctive features, a fraction of an original's bytes.
+const RENDITION_BUCKET = 'property-images';
+const RENDITION_PREFIX = 'renditions/';
+const RENDITION_PROFILE = 'hero';
 
 // Chunked base64 — O(n), no per-byte concatenation and no ~2× intermediate.
 // Walks the array in bounded chunks (fromCharCode.apply per chunk), a handful of
@@ -234,18 +250,22 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-// Rewrite a Storage object URL to the on-the-fly image-transform (render)
-// endpoint so Storage returns a small, controlled-size rendition. Returns null
-// if the URL is not a recognizable Storage object URL (caller uses the original).
-function buildRenderUrl(objectUrl: string): string | null {
-  const marker = '/storage/v1/object/public/';
+// The public URL of the 'hero' rendition of a property-images object, or null
+// when the URL is not a public property-images object (Facebook CDN, agent
+// photos, anything already a rendition) -- the caller then uses the original.
+// Mirrors image-renditions.js objectNameFromPublicUrl() + renditionStem() +
+// renditionPath() exactly; a test pins the two against each other.
+function buildRenditionUrl(objectUrl: string): string | null {
+  if (typeof objectUrl !== 'string') return null;
+  const marker = `/storage/v1/object/public/${RENDITION_BUCKET}/`;
   const i = objectUrl.indexOf(marker);
   if (i < 0) return null;
   const base = objectUrl.slice(0, i);
-  const rest = objectUrl.split('?')[0].slice(i + marker.length); // bucket/path
-  if (!rest) return null;
-  return `${base}/storage/v1/render/image/public/${rest}` +
-    `?width=${RENDER_MAX_EDGE}&height=${RENDER_MAX_EDGE}&resize=contain&quality=${RENDER_QUALITY}`;
+  const name = objectUrl.slice(i + marker.length).split('?')[0].replace(/^\/+/, '');
+  if (!name || name.startsWith(RENDITION_PREFIX)) return null;
+  const stem = name.replace(/\.[A-Za-z0-9]+$/, '');
+  if (!stem) return null;
+  return `${base}${marker}${RENDITION_PREFIX}${stem}/${RENDITION_PROFILE}.webp`;
 }
 
 // Fetch image bytes with the full SSRF + size guards. Returns null on any
@@ -278,18 +298,21 @@ async function fetchImageBytes(url: string, timeoutMs: number): Promise<{ mimeTy
   }
 }
 
-// Load one listing image: prefer the downscaled render rendition; if that is
-// unavailable (Image Transformations disabled, 400, or a non-image response),
-// fall back to the original object. Same size/SSRF guards apply to both.
-async function loadImageBytes(objectUrl: string, budgetMs: () => number): Promise<{ mimeType: string; bytes: Uint8Array } | null> {
-  const renderUrl = buildRenderUrl(objectUrl);
-  if (renderUrl) {
+// Load one listing image: prefer the pre-generated WebP rendition; if it is
+// missing (older photo not yet backfilled, small photo for which no smaller
+// rendition was made, Facebook/agent URL), refused (403/404), not an image, or
+// the fetch fails, fall back to the original object. Same size/SSRF guards apply
+// to both. `via` says which one was used, for the image report and the logs.
+async function loadImageBytes(objectUrl: string, budgetMs: () => number): Promise<{ mimeType: string; bytes: Uint8Array; via: 'rendition' | 'original' } | null> {
+  const renditionUrl = buildRenditionUrl(objectUrl);
+  if (renditionUrl) {
     // budgetMs() is re-read between the two attempts: the rendition fetch has
     // already spent part of the request, and the fallback only gets what's left.
-    const r = await fetchImageBytes(renderUrl, Math.min(IMAGE_FETCH_MAX_MS, budgetMs()));
-    if (r) return r;
+    const r = await fetchImageBytes(renditionUrl, Math.min(IMAGE_FETCH_MAX_MS, budgetMs()));
+    if (r) return { ...r, via: 'rendition' };
   }
-  return await fetchImageBytes(objectUrl, Math.min(IMAGE_FETCH_MAX_MS, budgetMs()));
+  const o = await fetchImageBytes(objectUrl, Math.min(IMAGE_FETCH_MAX_MS, budgetMs()));
+  return o ? { ...o, via: 'original' } : null;
 }
 
 function buildPrompt(description: string, imageCount: number): string {
@@ -515,6 +538,10 @@ Deno.serve(async (req) => {
   // subtracts from it. This is the single budget for the whole invocation.
   const deadline = createRequestDeadline();
 
+  // What happened to each photo -- returned to the browser on success AND on a
+  // Gemini timeout, so no photo is ever left out without the user being told.
+  let imageReport: Record<string, unknown> | null = null;
+
   const authErr = await requireAdmin(req, deadline);
   if (authErr) {
     return new Response(JSON.stringify({ error: authErr.error }), {
@@ -535,9 +562,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const urlsToFetch: string[] = Array.isArray(image_urls) ? image_urls.slice(0, MAX_IMAGES) : [];
+    const requestedUrls: string[] = Array.isArray(image_urls) ? image_urls : [];
+    const urlsToFetch: string[] = requestedUrls.slice(0, MAX_IMAGES);
 
-    // Bounded + budget-gated: each image is fetched as a downscaled rendition
+    // Bounded + budget-gated: each image is fetched as its pre-generated rendition
     // (fallback to original), encoded with the chunked base64, and admitted only
     // while the running total stays under MAX_TOTAL_INLINE_BYTES. Raw bytes are
     // dropped as soon as they are encoded, and at most IMAGE_CONCURRENCY images
@@ -547,6 +575,11 @@ Deno.serve(async (req) => {
     let accumulatedB64 = 0;
     let skippedBudget = 0;
     let skippedDeadline = 0;
+    let fromRendition = 0;
+    let fromOriginal = 0;
+    // Why each photo was NOT sent to Gemini. Index = position in image_urls.
+    const omitted: Array<{ index: number; url: string; reason: 'over_limit' | 'payload_limit' | 'time_limit' | 'unavailable' }> = [];
+    requestedUrls.slice(MAX_IMAGES).forEach((url, k) => omitted.push({ index: MAX_IMAGES + k, url, reason: 'over_limit' }));
     // The image phase ends at whichever comes first: its own cap, or the point
     // where the request must hand what is left to Gemini. Capping images at
     // IMAGE_PHASE_MAX_MS is what guarantees Gemini always inherits a usable
@@ -556,15 +589,16 @@ Deno.serve(async (req) => {
       deadline.expiresAt - RESPONSE_RESERVE_MS,
     );
     const imageBudgetMs = () => imagePhaseEndsAt - Date.now();
-    const loaded = await mapWithConcurrency(urlsToFetch, IMAGE_CONCURRENCY, async (url) => {
+    const loaded = await mapWithConcurrency(urlsToFetch, IMAGE_CONCURRENCY, async (url, index) => {
       // Out of image time: skip the rest rather than push the request over.
-      if (imageBudgetMs() < IMAGE_FETCH_MIN_MS) { skippedDeadline++; return null; }
+      if (imageBudgetMs() < IMAGE_FETCH_MIN_MS) { skippedDeadline++; omitted.push({ index, url, reason: 'time_limit' }); return null; }
       const img = await loadImageBytes(url, imageBudgetMs);
-      if (!img) return null;
+      if (!img) { omitted.push({ index, url, reason: 'unavailable' }); return null; }
       const estB64 = Math.ceil(img.bytes.length / 3) * 4;
-      if (accumulatedB64 + estB64 > MAX_TOTAL_INLINE_BYTES) { skippedBudget++; return null; }
+      if (accumulatedB64 + estB64 > MAX_TOTAL_INLINE_BYTES) { skippedBudget++; omitted.push({ index, url, reason: 'payload_limit' }); return null; }
       const data = toBase64(img.bytes);   // raw bytes become GC-eligible here
       accumulatedB64 += data.length;
+      if (img.via === 'rendition') fromRendition++; else fromOriginal++;
       return { mimeType: img.mimeType, data };
     });
 
@@ -572,13 +606,26 @@ Deno.serve(async (req) => {
       .filter((p): p is { mimeType: string; data: string } => p !== null)
       .map(p => ({ inlineData: { mimeType: p.mimeType, data: p.data } }));
     const failedToLoad = urlsToFetch.length - imageParts.length - skippedBudget - skippedDeadline;
+    const imagePhaseMs = Date.now() - deadline.startedAt;
+    omitted.sort((a, b) => a.index - b.index);
+    imageReport = {
+      requested: requestedUrls.length,
+      sent_to_gemini: imageParts.length,
+      from_rendition: fromRendition,
+      from_original: fromOriginal,
+      inline_bytes: accumulatedB64,
+      preparation_ms: imagePhaseMs,
+      omitted,
+    };
     console.log(JSON.stringify({
       fn: 'smart-listing-importer', source: importSource,
       images_in: urlsToFetch.length, images_used: imageParts.length,
+      images_requested: requestedUrls.length, images_over_limit: Math.max(0, requestedUrls.length - MAX_IMAGES),
+      images_from_rendition: fromRendition, images_from_original: fromOriginal,
       images_skipped_budget: skippedBudget, images_failed: failedToLoad,
       images_skipped_deadline: skippedDeadline,
       inline_bytes: accumulatedB64,
-      image_phase_ms: Date.now() - deadline.startedAt,
+      image_phase_ms: imagePhaseMs,
       budget_left_ms: deadline.remaining(),
     }));
 
@@ -593,11 +640,27 @@ Deno.serve(async (req) => {
     // time and Gemini time can never sum past REQUEST_BUDGET_MS. That is the
     // property a per-phase budget cannot give you.
     //
-    // Gemini 503 stays retryable: it means "model overloaded", a genuinely
-    // transient condition, and the observed production failure recovered from
-    // the FIRST 503 correctly. What it could not survive was the second attempt
-    // hanging with no timeout. So the ladder is kept and bounded, not removed.
-    let response!: Response;
+    // Gemini 429/503 stay retryable: "model overloaded" / "rate limited" are
+    // transient, and the observed production failure recovered from the FIRST
+    // 503 correctly. The ladder is kept and bounded, and every sleep is charged
+    // to the same deadline.
+    //
+    // A TIMEOUT is NOT retried. An attempt that ran out its whole allotment did
+    // not fail fast -- the request is simply slow -- and a retry could only get
+    // the leftover of the same budget (often a few seconds), so it almost never
+    // succeeds, costs a second Gemini request and makes the user wait longer for
+    // the same answer. The browser is told to retry later (504, gemini_timeout).
+    //
+    // The response BODY is read inside the same handler: the attempt's
+    // AbortSignal also governs the body, so a timeout while reading it is a
+    // Gemini timeout like any other, never an unclassified 500.
+    const geminiBody = JSON.stringify({
+      contents: [{ parts: [...imageParts, textPart] }],
+      generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
+    });
+    if (imageReport) imageReport.gemini_request_bytes = geminiBody.length;
+    // deno-lint-ignore no-explicit-any
+    let geminiData: any = null;
     let attemptsMade = 0;
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
       // Never more than the ceiling, never more than the request can afford.
@@ -607,68 +670,57 @@ Deno.serve(async (req) => {
           fn: 'smart-listing-importer', event: 'gemini_budget_exhausted',
           attempts: attemptsMade, budget_left_ms: deadline.remaining(),
         }));
-        throw new Error(GEMINI_TIMEOUT_MESSAGE);
+        throw new GeminiTimeoutError();
       }
 
       attemptsMade++;
       try {
-        response = await fetch(
+        const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [...imageParts, textPart] }],
-              generationConfig: { maxOutputTokens: 4000, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
-            }),
+            body: geminiBody,
             // THE fix for the EarlyDrop: this fetch used to have no signal at
             // all, so a hung attempt ran until the platform killed the isolate.
             signal: AbortSignal.timeout(attemptBudget),
           }
         );
-      } catch (e) {
-        const timedOut = e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError');
-        if (!timedOut) throw e;
-        console.log(JSON.stringify({
-          fn: 'smart-listing-importer', event: 'gemini_attempt_timeout',
-          attempt: attempt + 1, attempt_budget_ms: attemptBudget, budget_left_ms: deadline.remaining(),
-        }));
-        // A timed-out attempt is as retryable as a 503 -- but only if the
-        // request can still fund the delay AND a meaningful attempt after it.
-        if (attempt < RETRY_DELAYS.length &&
-            deadline.usable() > RETRY_DELAYS[attempt] + GEMINI_MIN_ATTEMPT_MS) {
+
+        if (response.ok) { geminiData = await response.json(); break; }
+
+        if (
+          (response.status === 429 || response.status === 503) &&
+          attempt < RETRY_DELAYS.length &&
+          // The sleep itself draws from the same clock. Without this guard the
+          // ladder can spend the budget it is waiting to use.
+          deadline.usable() > RETRY_DELAYS[attempt] + GEMINI_MIN_ATTEMPT_MS
+        ) {
+          console.log(`Gemini ${response.status}, retry ${attempt + 1}/${RETRY_DELAYS.length}`);
           await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
           continue;
         }
-        throw new Error(GEMINI_TIMEOUT_MESSAGE);
-      }
 
-      if (response.ok) break;
-
-      if (
-        (response.status === 429 || response.status === 503) &&
-        attempt < RETRY_DELAYS.length &&
-        // The sleep itself draws from the same clock. Without this guard the
-        // ladder can spend the budget it is waiting to use.
-        deadline.usable() > RETRY_DELAYS[attempt] + GEMINI_MIN_ATTEMPT_MS
-      ) {
-        console.log(`Gemini ${response.status}, retry ${attempt + 1}/${RETRY_DELAYS.length}`);
-        await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
-        continue;
+        const errText = await response.text();
+        if (response.status === 429 || response.status === 503) {
+          // Retryable, but out of budget to retry again.
+          throw new Error(
+            `Gemini is busy right now (HTTP ${response.status}) and did not recover within the time available. ` +
+            'Try again in a minute, or generate with fewer photos.'
+          );
+        }
+        throw new Error(`Gemini API ${response.status}: ${errText.slice(0, 200)}`);
+      } catch (e) {
+        if (!isTimeoutError(e)) throw e;
+        console.log(JSON.stringify({
+          fn: 'smart-listing-importer', event: 'gemini_attempt_timeout',
+          attempt: attempt + 1, attempt_budget_ms: attemptBudget, budget_left_ms: deadline.remaining(),
+          retried: false,
+        }));
+        throw new GeminiTimeoutError();
       }
-
-      const errText = await response.text();
-      if (response.status === 429 || response.status === 503) {
-        // Retryable, but out of budget to retry again.
-        throw new Error(
-          `Gemini is busy right now (HTTP ${response.status}) and did not recover within the time available. ` +
-          'Try again in a minute, or generate with fewer photos.'
-        );
-      }
-      throw new Error(`Gemini API ${response.status}: ${errText.slice(0, 200)}`);
     }
 
-    const geminiData = await response.json();
     const candidateCount = geminiData.candidates?.length ?? 0;
     const finishReason = geminiData.candidates?.[0]?.finishReason ?? 'unknown';
     console.log(`Gemini candidates: ${candidateCount}, finishReason: ${finishReason}`);
@@ -741,12 +793,19 @@ Deno.serve(async (req) => {
     const heroIndex = typeof result.hero_index === 'number' ? result.hero_index : 0;
     const recommendedOrder = Array.isArray(result.recommended_order) ? result.recommended_order as number[] : [];
 
-    const rawImages = urlsToFetch.map((url, i) => ({
+    // EVERY requested photo stays in images[] -- the browser saves exactly this
+    // list as the listing's photos. Only the first MAX_IMAGES were shown to
+    // Gemini, so its per-photo answers (hero, room type, quality, order) apply
+    // to those positions only; photos beyond the limit keep their upload order
+    // after them and carry no analysis. (Previously images[] held only the
+    // analysed photos, and the rest were silently dropped from the listing.)
+    const analysedCount = urlsToFetch.length;
+    const rawImages = requestedUrls.map((url, i) => ({
       storageUrl: url,
-      primary: i === heroIndex,
+      primary: i < analysedCount && i === heroIndex,
       source: importSource,
-      roomType: photoAnalysis.find(p => p.index === i)?.room_type,
-      qualityScore: photoAnalysis.find(p => p.index === i)?.quality_score,
+      roomType: i < analysedCount ? photoAnalysis.find(p => p.index === i)?.room_type : undefined,
+      qualityScore: i < analysedCount ? photoAnalysis.find(p => p.index === i)?.quality_score : undefined,
     }));
 
     // images[] IS the canonical, already-ordered source of truth for
@@ -755,8 +814,9 @@ Deno.serve(async (req) => {
     // cross-reference recommended_order for ordering. recommended_order is
     // still included below, purely as a fallback/compatibility signal for
     // any older or simpler consumer that only understands index arrays.
-    const orderedIndexes = recommendedOrder.length
-      ? [...recommendedOrder, ...rawImages.map((_, i) => i).filter(i => !recommendedOrder.includes(i))]
+    const analysedOrder = [...new Set(recommendedOrder.filter(i => Number.isInteger(i) && i >= 0 && i < analysedCount))];   // a repeated index must not save a photo twice
+    const orderedIndexes = analysedOrder.length
+      ? [...analysedOrder, ...rawImages.map((_, i) => i).filter(i => !analysedOrder.includes(i))]
       : rawImages.map((_, i) => i);
     enriched.images = orderedIndexes.map(i => rawImages[i]).filter(Boolean);
     enriched.recommended_order = recommendedOrder;
@@ -766,11 +826,28 @@ Deno.serve(async (req) => {
       ? result.photo_conflicts.filter((c: unknown) => c && typeof c === 'object')
       : [];
     enriched.metadata = { source: importSource, enrichedAt: new Date().toISOString() };
+    // Every photo that was NOT analysed, and why (over_limit, payload_limit,
+    // time_limit, unavailable) -- shown to the user, never silently dropped.
+    enriched.image_report = imageReport;
 
     return new Response(JSON.stringify(enriched), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
+    if (error instanceof GeminiTimeoutError) {
+      // 504 Gateway Timeout: the upstream (Gemini) did not answer in time. Not a
+      // server fault and safe to retry -- this function writes nothing.
+      return new Response(JSON.stringify({
+        error: GEMINI_TIMEOUT_MESSAGE,
+        code: 'gemini_timeout',
+        retryable: true,
+        retry_after_seconds: GEMINI_TIMEOUT_RETRY_AFTER_S,
+        image_report: imageReport,
+      }), {
+        status: 504,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': String(GEMINI_TIMEOUT_RETRY_AFTER_S) },
+      });
+    }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
