@@ -199,7 +199,8 @@ test('the reserve survives to the end, so a response can always be built', () =>
 // ── Source-level guarantees ──────────────────────────────────────────────
 test('the Gemini fetch carries an AbortSignal derived from the deadline', () => {
   const call = SRC.slice(SRC.indexOf('generativelanguage.googleapis.com'));
-  const body = call.slice(0, call.indexOf('if (response.ok) break;'));
+  const body = call.slice(0, call.indexOf('if (response.ok) {'));
+  assert.ok(body.length > 0 && body.length < 1000, 'the fetch call was located');
   assert.match(body, /signal: AbortSignal\.timeout\(attemptBudget\)/);
   assert.match(SRC, /const attemptBudget = deadline\.allot\(GEMINI_ATTEMPT_MAX_MS\)/);
 });
@@ -223,11 +224,53 @@ test('Gemini 503 remains retryable', () => {
   assert.match(SRC, /Gemini \$\{response\.status\}, retry/);
 });
 
-test('a timeout throws a normal Error, so the outer catch returns 500 + CORS', () => {
-  assert.match(SRC, /throw new Error\(GEMINI_TIMEOUT_MESSAGE\)/);
+test('a Gemini timeout is answered as 504 gemini_timeout (retryable) with CORS; every other error stays 500 + CORS', () => {
+  // Both timeout points -- budget exhausted before an attempt, and an attempt that timed out -- raise the typed error.
+  assert.equal((SRC.match(/throw new GeminiTimeoutError\(\)/g) || []).length, 2);
+  assert.equal(/throw new Error\(GEMINI_TIMEOUT_MESSAGE\)/.test(SRC), false, 'no untyped timeout error is left');
   const outer = SRC.slice(SRC.lastIndexOf('} catch (error)'));
-  assert.match(outer, /status: 500/);
-  assert.match(outer, /\.\.\.corsHeaders/);
+  const timeoutBranch = outer.slice(outer.indexOf('if (error instanceof GeminiTimeoutError)'), outer.indexOf("const message = error instanceof Error"));
+  assert.match(timeoutBranch, /status: 504/);
+  assert.match(timeoutBranch, /code: 'gemini_timeout'/);
+  assert.match(timeoutBranch, /retryable: true/);
+  assert.match(timeoutBranch, /\.\.\.corsHeaders/);
+  assert.match(timeoutBranch, /'Retry-After'/);
+  const rest = outer.slice(outer.indexOf("const message = error instanceof Error"));
+  assert.match(rest, /status: 500/);
+  assert.match(rest, /\.\.\.corsHeaders/);
+});
+
+// ── Timeout versus 429/503 (extended 2026-11-24) ─────────────────────────
+// A timed-out attempt is NOT retried: it already used its whole allotment, and a retry could only get the leftover of
+// the same budget. 429/503 keep the bounded, deadline-charged ladder.
+const geminiLoop = SRC.slice(SRC.indexOf('for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++)'), SRC.indexOf('const candidateCount'));
+
+test('a timed-out Gemini attempt is not retried: the timeout branch throws, it never sleeps or continues', () => {
+  const catchBlock = geminiLoop.slice(geminiLoop.lastIndexOf('} catch (e) {'));
+  assert.match(catchBlock, /if \(!isTimeoutError\(e\)\) throw e;/);
+  assert.match(catchBlock, /throw new GeminiTimeoutError\(\)/);
+  assert.equal(/continue;|setTimeout/.test(catchBlock), false, 'no retry after a timeout');
+});
+
+test('429/503 keep the bounded retry ladder, each sleep charged to the shared deadline', () => {
+  assert.equal((geminiLoop.match(/deadline\.usable\(\) > RETRY_DELAYS\[attempt\] \+ GEMINI_MIN_ATTEMPT_MS/g) || []).length, 1,
+    'exactly one retry path remains, and it checks the shared budget before sleeping');
+  assert.match(geminiLoop, /\(response\.status === 429 \|\| response\.status === 503\) &&\s*\n\s*attempt < RETRY_DELAYS\.length/);
+  assert.deepEqual(RETRY_DELAYS, [2000, 5000, 10000]);
+});
+
+test('the Gemini response body is read INSIDE the timeout handling (a timeout while reading is a Gemini timeout)', () => {
+  const tryBlock = geminiLoop.slice(geminiLoop.indexOf('try {'), geminiLoop.lastIndexOf('} catch (e) {'));
+  assert.match(tryBlock, /geminiData = await response\.json\(\)/);
+  assert.match(tryBlock, /await response\.text\(\)/);
+  assert.equal(SRC.slice(SRC.indexOf('const candidateCount')).includes('response.json()'), false, 'no body read after the loop');
+});
+
+test('the worst case is now SHORTER: a timeout ends Gemini after one attempt instead of one attempt plus a retry', () => {
+  // Before: a 45 s attempt that timed out was followed by a sleep and a second attempt funded by the leftover.
+  // Now the request ends at the first timeout, so the user waits at most images + one attempt + reserve.
+  const worst = C.IMAGE_PHASE_MAX_MS + C.GEMINI_ATTEMPT_MAX_MS + C.RESPONSE_RESERVE_MS;
+  assert.ok(worst <= C.REQUEST_BUDGET_MS, `${worst} ms <= ${C.REQUEST_BUDGET_MS} ms`);
 });
 
 test('the user-facing timeout message is actionable and leaks no runtime internals', () => {

@@ -2,7 +2,7 @@
 // Extracts the REAL helper source from index.ts (Node ≥22.18 type-stripping),
 // so we test the deployed logic — not a copy. Proves: chunked base64 (no O(n²)),
 // bounded concurrency, budget-gated accumulation (bounded peak memory), the
-// Storage render-URL rewrite + fallback shape, and request construction.
+// pre-generated rendition URL + fallback shape, and request construction.
 //
 // Run:  node tests/smart-import-vision/vision-memory.test.mjs
 import fs from 'fs';
@@ -34,14 +34,14 @@ function extractConst(src, name) {
 
 const toBase64Src        = extractFn(SRC, /function toBase64\(/);
 const mapConcSrc         = extractFn(SRC, /async function mapWithConcurrency</);
-const renderUrlSrc       = extractFn(SRC, /function buildRenderUrl\(/);
-const consts = ['MAX_IMAGE_BYTES','IMAGE_CONCURRENCY','MAX_TOTAL_INLINE_BYTES','RENDER_MAX_EDGE','RENDER_QUALITY']
+const renditionUrlSrc    = extractFn(SRC, /function buildRenditionUrl\(/);
+const consts = ['MAX_IMAGE_BYTES','IMAGE_CONCURRENCY','MAX_TOTAL_INLINE_BYTES','RENDITION_BUCKET','RENDITION_PREFIX','RENDITION_PROFILE']
   .map(n => extractConst(SRC, n)).join('\n');
 
 const tmp = path.join(os.tmpdir(), 'vision_extracted_' + Date.now() + '.ts');
 fs.writeFileSync(tmp,
-  consts + '\n' + toBase64Src + '\n' + mapConcSrc + '\n' + renderUrlSrc + '\n' +
-  'export { toBase64, mapWithConcurrency, buildRenderUrl, MAX_IMAGE_BYTES, IMAGE_CONCURRENCY, MAX_TOTAL_INLINE_BYTES, RENDER_MAX_EDGE, RENDER_QUALITY };\n');
+  consts + '\n' + toBase64Src + '\n' + mapConcSrc + '\n' + renditionUrlSrc + '\n' +
+  'export { toBase64, mapWithConcurrency, buildRenditionUrl, MAX_IMAGE_BYTES, IMAGE_CONCURRENCY, MAX_TOTAL_INLINE_BYTES };\n');
 
 const results = [];
 const check = (n, ok, d) => results.push({ n, ok: !!ok, d: d || '' });
@@ -53,7 +53,7 @@ try {
   check('extracted helpers import (Node type-stripping)', false, e.message);
   report(); process.exit(1);
 }
-const { toBase64, mapWithConcurrency, buildRenderUrl, IMAGE_CONCURRENCY, MAX_TOTAL_INLINE_BYTES, RENDER_MAX_EDGE, RENDER_QUALITY } = mod;
+const { toBase64, mapWithConcurrency, buildRenditionUrl, IMAGE_CONCURRENCY, MAX_TOTAL_INLINE_BYTES } = mod;
 
 // ── 1. chunked base64 correctness (exact bytes preserved) ──
 function eqBytes(a, b) { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; }
@@ -120,22 +120,24 @@ check('5: over-budget images skipped, not held', sim.skipped > 0 && sim.used < 1
 check('5: peak concurrency still ≤ ' + IMAGE_CONCURRENCY + ' under load', sim.peak <= IMAGE_CONCURRENCY, 'peak=' + sim.peak);
 
 // small gallery entirely fits, nothing skipped
-const simSmall = await budgetSim([...Array(8)].map(() => 300 * 1024)); // 8×300KB (render-sized)
+const simSmall = await budgetSim([...Array(8)].map(() => 300 * 1024)); // 8×300KB (rendition-sized)
 check('5: normal downscaled gallery (8×300KB) all admitted', simSmall.used === 8 && simSmall.skipped === 0, 'used=' + simSmall.used);
 
-// ── 6. Storage render-URL rewrite + fallback shape ──
+// ── 6. pre-generated rendition URL + fallback shape ──
+// The paid render endpoint (/storage/v1/render/image/...) answers 403 FeatureNotEnabled on this Free project; the
+// importer reads the 'hero' rendition image-renditions.js stores at upload time.
 const objUrl = 'https://eoladhcljbpbhnrmmpev.supabase.co/storage/v1/object/public/property-images/abc/def.jpg?token=x';
-const rUrl = buildRenderUrl(objUrl);
-check('6: object URL → render endpoint with width/quality',
-  /\/storage\/v1\/render\/image\/public\/property-images\/abc\/def\.jpg\?/.test(rUrl) &&
-  rUrl.includes('width=' + RENDER_MAX_EDGE) && rUrl.includes('quality=' + RENDER_QUALITY) && rUrl.includes('resize=contain'),
-  rUrl);
-check('6: render URL strips the original query string', !rUrl.includes('token=x'));
-check('6: non-storage URL → null (caller uses original)', buildRenderUrl('https://example.com/x.jpg') === null);
+const rUrl = buildRenditionUrl(objUrl);
+check('6: object URL → renditions/<stem>/hero.webp in the same public bucket',
+  rUrl === 'https://eoladhcljbpbhnrmmpev.supabase.co/storage/v1/object/public/property-images/renditions/abc/def/hero.webp', rUrl);
+check('6: rendition URL strips the original query string', !rUrl.includes('token=x'));
+check('6: no render-endpoint URL is ever built', !rUrl.includes('/render/image/'));
+check('6: non-storage URL → null (caller uses original)', buildRenditionUrl('https://example.com/x.jpg') === null);
+check('6: a rendition URL is never derived from a rendition', buildRenditionUrl(rUrl) === null);
 // The fallback is unchanged in behaviour; its signature now carries the
 // request-wide deadline (fetchImageBytes(url, timeoutMs)), so the match is on
 // the objectUrl argument rather than an exact one-argument call.
-check('6: fallback-to-original path exists in source', /async function loadImageBytes/.test(SRC) && /return await fetchImageBytes\(objectUrl,/.test(SRC));
+check('6: fallback-to-original path exists in source', /async function loadImageBytes/.test(SRC) && /const o = await fetchImageBytes\(objectUrl,/.test(SRC));
 check('6: image fetches take their timeout from the request deadline',
   /async function fetchImageBytes\(url: string, timeoutMs: number\)/.test(SRC)
   && /AbortSignal\.timeout\(timeoutMs\)/.test(SRC));
@@ -149,7 +151,7 @@ for (const n of [1, 4, 8]) {
 }
 
 // ── 8. shared pipeline: the image path never branches on source ──
-const pipeline = [toBase64Src, mapConcSrc, renderUrlSrc,
+const pipeline = [toBase64Src, mapConcSrc, renditionUrlSrc,
   extractFn(SRC, /async function fetchImageBytes\(/), extractFn(SRC, /async function loadImageBytes\(/)].join('\n');
 check('8: vision pipeline is source-agnostic (Smart Import == Edit)',
   !/\bsource\b|importSource|edit_regen|['"]manual['"]/.test(pipeline));
